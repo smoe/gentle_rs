@@ -34,8 +34,7 @@ use crate::{
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
         CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, CutRunAlignConfig,
         CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
-        DEFAULT_HOST_PROFILE_CATALOG_PATH,
-        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
@@ -6602,10 +6601,9 @@ impl ShellCommand {
                     .map(|value| format!(" for '{}'", value))
                     .unwrap_or_default()
             ),
-            Self::CutRunShowReadReport { report_id } => format!(
-                "show CUT&RUN read report '{}'",
-                report_id
-            ),
+            Self::CutRunShowReadReport { report_id } => {
+                format!("show CUT&RUN read report '{}'", report_id)
+            }
             Self::CutRunExportCoverage {
                 report_id,
                 path,
@@ -16477,6 +16475,39 @@ pub fn execute_shell_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
+    if matches!(
+        command,
+        ShellCommand::CreateArrangementSerial { .. }
+            | ShellCommand::ContainersSetExclusive { .. }
+            | ShellCommand::SetArrangementLadders { .. }
+    ) {
+        return execute_arrangement_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::RenderPoolGelSvg { .. }
+            | ShellCommand::RacksCreateFromArrangement { .. }
+            | ShellCommand::RacksPlaceArrangement { .. }
+            | ShellCommand::RacksMove { .. }
+            | ShellCommand::RacksMoveSamples { .. }
+            | ShellCommand::RacksMoveBlocks { .. }
+            | ShellCommand::RacksShow { .. }
+            | ShellCommand::RacksLabelsSvg { .. }
+            | ShellCommand::RacksFabricationSvg { .. }
+            | ShellCommand::RacksIsometricSvg { .. }
+            | ShellCommand::RacksOpenScad { .. }
+            | ShellCommand::RacksCarrierLabelsSvg { .. }
+            | ShellCommand::RacksSimulationJson { .. }
+            | ShellCommand::RacksSetProfile { .. }
+            | ShellCommand::RacksApplyTemplate { .. }
+            | ShellCommand::RacksSetFillDirection { .. }
+            | ShellCommand::RacksSetCustomProfile { .. }
+            | ShellCommand::RacksSetBlocked { .. }
+            | ShellCommand::LaddersList { .. }
+            | ShellCommand::LaddersExport { .. }
+    ) {
+        return execute_arrangement_rack_and_ladder_command(engine, command);
+    }
     execute_shell_command_with_options(engine, command, &ShellExecutionOptions::default())
 }
 
@@ -17600,33 +17631,11 @@ fn execute_candidates_analysis_command(
 }
 
 #[inline(never)]
-fn execute_arrangement_rack_and_ladder_command(
+fn execute_arrangement_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
-        ShellCommand::RenderPoolGelSvg {
-            inputs,
-            output,
-            ladders,
-            container_ids,
-            arrangement_id,
-            conditions,
-        } => Ok(ShellRunResult {
-            state_changed: false,
-            output: json!({
-                "result": engine
-                    .apply(Operation::RenderPoolGelSvg {
-                        inputs: inputs.clone(),
-                        path: output.clone(),
-                        ladders: ladders.clone(),
-                        container_ids: container_ids.clone(),
-                        arrangement_id: arrangement_id.clone(),
-                        conditions: Some(conditions.clone()),
-                    })
-                    .map_err(|e| e.to_string())?
-            }),
-        }),
         ShellCommand::CreateArrangementSerial {
             container_ids,
             arrangement_id,
@@ -17655,6 +17664,52 @@ fn execute_arrangement_rack_and_ladder_command(
                     .apply(Operation::SetArrangementLadders {
                         arrangement_id: arrangement_id.clone(),
                         ladders: ladders.clone(),
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::ContainersSetExclusive {
+            container_id,
+            exclusive,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetContainerDeclaredContentsExclusive {
+                        container_id: container_id.clone(),
+                        exclusive: *exclusive,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        _ => unreachable!("non-arrangement command passed to arrangement helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_arrangement_rack_and_ladder_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::RenderPoolGelSvg {
+            inputs,
+            output,
+            ladders,
+            container_ids,
+            arrangement_id,
+            conditions,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "result": engine
+                    .apply(Operation::RenderPoolGelSvg {
+                        inputs: inputs.clone(),
+                        path: output.clone(),
+                        ladders: ladders.clone(),
+                        container_ids: container_ids.clone(),
+                        arrangement_id: arrangement_id.clone(),
+                        conditions: Some(conditions.clone()),
                     })
                     .map_err(|e| e.to_string())?
             }),
@@ -17997,20 +18052,6 @@ fn execute_arrangement_rack_and_ladder_command(
                 output: json!({ "result": op_result }),
             })
         }
-        ShellCommand::ContainersSetExclusive {
-            container_id,
-            exclusive,
-        } => Ok(ShellRunResult {
-            state_changed: true,
-            output: json!({
-                "result": engine
-                    .apply(Operation::SetContainerDeclaredContentsExclusive {
-                        container_id: container_id.clone(),
-                        exclusive: *exclusive,
-                    })
-                    .map_err(|e| e.to_string())?
-            }),
-        }),
         _ => unreachable!("non-arrangement/rack/ladder command passed to helper"),
     }
 }
@@ -21794,111 +21835,6 @@ fn execute_sequence_analysis_command(
                 }),
             })
         }
-        ShellCommand::InspectFeatureExpert { seq_id, target } => {
-            let view = engine
-                .inspect_feature_expert(seq_id, target)
-                .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(view)
-                    .map_err(|e| format!("Could not serialize feature expert view: {e}"))?,
-            })
-        }
-        ShellCommand::InspectSplicingAttract {
-            seq_id,
-            feature_id,
-            settings,
-        } => {
-            let view = engine
-                .inspect_splicing_attract_evidence(seq_id, *feature_id, settings)
-                .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(view)
-                    .map_err(|e| format!("Could not serialize ATtRACT splicing view: {e}"))?,
-            })
-        }
-        ShellCommand::RenderFeatureExpertSvg {
-            seq_id,
-            target,
-            output,
-        } => {
-            let op_result = engine
-                .apply(Operation::RenderFeatureExpertSvg {
-                    seq_id: seq_id.clone(),
-                    target: target.clone(),
-                    path: output.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            })
-        }
-        ShellCommand::PanelsImportIsoform {
-            seq_id,
-            panel_path,
-            panel_id,
-            strict,
-        } => {
-            let op_result = engine
-                .apply(Operation::ImportIsoformPanel {
-                    seq_id: seq_id.clone(),
-                    panel_path: panel_path.clone(),
-                    panel_id: panel_id.clone(),
-                    strict: *strict,
-                })
-                .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: true,
-                output: json!({ "result": op_result }),
-            })
-        }
-        ShellCommand::PanelsInspectIsoform { seq_id, panel_id } => {
-            let view = engine
-                .inspect_feature_expert(
-                    seq_id,
-                    &FeatureExpertTarget::IsoformArchitecture {
-                        panel_id: panel_id.clone(),
-                    },
-                )
-                .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(view)
-                    .map_err(|e| format!("Could not serialize isoform architecture view: {e}"))?,
-            })
-        }
-        ShellCommand::PanelsRenderIsoformSvg {
-            seq_id,
-            panel_id,
-            output,
-        } => {
-            let op_result = engine
-                .apply(Operation::RenderIsoformArchitectureSvg {
-                    seq_id: seq_id.clone(),
-                    panel_id: panel_id.clone(),
-                    path: output.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({ "result": op_result }),
-            })
-        }
-        ShellCommand::PanelsValidateIsoform {
-            panel_path,
-            panel_id,
-        } => {
-            let report =
-                GentleEngine::validate_isoform_panel_resource(panel_path, panel_id.as_deref())
-                    .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(report)
-                    .map_err(|e| format!("Could not serialize isoform validation report: {e}"))?,
-            })
-        }
         ShellCommand::FlexCompute {
             seq_id,
             span_start_0based,
@@ -22037,6 +21973,121 @@ fn execute_sequence_analysis_command(
             })
         }
         _ => unreachable!("non-sequence-analysis command passed to sequence-analysis helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_feature_expert_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            let view = engine
+                .inspect_feature_expert(seq_id, target)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(view)
+                    .map_err(|e| format!("Could not serialize feature expert view: {e}"))?,
+            })
+        }
+        ShellCommand::InspectSplicingAttract {
+            seq_id,
+            feature_id,
+            settings,
+        } => {
+            let view = engine
+                .inspect_splicing_attract_evidence(seq_id, *feature_id, settings)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(view)
+                    .map_err(|e| format!("Could not serialize ATtRACT splicing view: {e}"))?,
+            })
+        }
+        ShellCommand::RenderFeatureExpertSvg {
+            seq_id,
+            target,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderFeatureExpertSvg {
+                    seq_id: seq_id.clone(),
+                    target: target.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::PanelsImportIsoform {
+            seq_id,
+            panel_path,
+            panel_id,
+            strict,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportIsoformPanel {
+                    seq_id: seq_id.clone(),
+                    panel_path: panel_path.clone(),
+                    panel_id: panel_id.clone(),
+                    strict: *strict,
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::PanelsInspectIsoform { seq_id, panel_id } => {
+            let view = engine
+                .inspect_feature_expert(
+                    seq_id,
+                    &FeatureExpertTarget::IsoformArchitecture {
+                        panel_id: panel_id.clone(),
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(view)
+                    .map_err(|e| format!("Could not serialize isoform architecture view: {e}"))?,
+            })
+        }
+        ShellCommand::PanelsRenderIsoformSvg {
+            seq_id,
+            panel_id,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderIsoformArchitectureSvg {
+                    seq_id: seq_id.clone(),
+                    panel_id: panel_id.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::PanelsValidateIsoform {
+            panel_path,
+            panel_id,
+        } => {
+            let report =
+                GentleEngine::validate_isoform_panel_resource(panel_path, panel_id.as_deref())
+                    .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize isoform validation report: {e}"))?,
+            })
+        }
+        _ => unreachable!("non-feature-expert command passed to feature-expert helper"),
     }
 }
 
@@ -24191,6 +24242,39 @@ pub fn execute_shell_command_with_options(
     ) {
         return execute_agent_meta_command(engine, command);
     }
+    if matches!(
+        command,
+        ShellCommand::CreateArrangementSerial { .. }
+            | ShellCommand::ContainersSetExclusive { .. }
+            | ShellCommand::SetArrangementLadders { .. }
+    ) {
+        return execute_arrangement_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::RenderPoolGelSvg { .. }
+            | ShellCommand::RacksCreateFromArrangement { .. }
+            | ShellCommand::RacksPlaceArrangement { .. }
+            | ShellCommand::RacksMove { .. }
+            | ShellCommand::RacksMoveSamples { .. }
+            | ShellCommand::RacksMoveBlocks { .. }
+            | ShellCommand::RacksShow { .. }
+            | ShellCommand::RacksLabelsSvg { .. }
+            | ShellCommand::RacksFabricationSvg { .. }
+            | ShellCommand::RacksIsometricSvg { .. }
+            | ShellCommand::RacksOpenScad { .. }
+            | ShellCommand::RacksCarrierLabelsSvg { .. }
+            | ShellCommand::RacksSimulationJson { .. }
+            | ShellCommand::RacksSetProfile { .. }
+            | ShellCommand::RacksApplyTemplate { .. }
+            | ShellCommand::RacksSetFillDirection { .. }
+            | ShellCommand::RacksSetCustomProfile { .. }
+            | ShellCommand::RacksSetBlocked { .. }
+            | ShellCommand::LaddersList { .. }
+            | ShellCommand::LaddersExport { .. }
+    ) {
+        return execute_arrangement_rack_and_ladder_command(engine, command);
+    }
     if let ShellCommand::MacrosRun {
         script,
         transactional,
@@ -24282,34 +24366,6 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::CandidatesParetoFrontier { .. }
     ) {
         return execute_candidates_analysis_command(engine, command);
-    }
-    if matches!(
-        command,
-        ShellCommand::RenderPoolGelSvg { .. }
-            | ShellCommand::CreateArrangementSerial { .. }
-            | ShellCommand::ContainersSetExclusive { .. }
-            | ShellCommand::SetArrangementLadders { .. }
-            | ShellCommand::RacksCreateFromArrangement { .. }
-            | ShellCommand::RacksPlaceArrangement { .. }
-            | ShellCommand::RacksMove { .. }
-            | ShellCommand::RacksMoveSamples { .. }
-            | ShellCommand::RacksMoveBlocks { .. }
-            | ShellCommand::RacksShow { .. }
-            | ShellCommand::RacksLabelsSvg { .. }
-            | ShellCommand::RacksFabricationSvg { .. }
-            | ShellCommand::RacksIsometricSvg { .. }
-            | ShellCommand::RacksOpenScad { .. }
-            | ShellCommand::RacksCarrierLabelsSvg { .. }
-            | ShellCommand::RacksSimulationJson { .. }
-            | ShellCommand::RacksSetProfile { .. }
-            | ShellCommand::RacksApplyTemplate { .. }
-            | ShellCommand::RacksSetFillDirection { .. }
-            | ShellCommand::RacksSetCustomProfile { .. }
-            | ShellCommand::RacksSetBlocked { .. }
-            | ShellCommand::LaddersList { .. }
-            | ShellCommand::LaddersExport { .. }
-    ) {
-        return execute_arrangement_rack_and_ladder_command(engine, command);
     }
     if matches!(
         command,
@@ -24455,6 +24511,18 @@ pub fn execute_shell_command_with_options(
     }
     if matches!(
         command,
+        ShellCommand::InspectFeatureExpert { .. }
+            | ShellCommand::InspectSplicingAttract { .. }
+            | ShellCommand::RenderFeatureExpertSvg { .. }
+            | ShellCommand::PanelsImportIsoform { .. }
+            | ShellCommand::PanelsInspectIsoform { .. }
+            | ShellCommand::PanelsRenderIsoformSvg { .. }
+            | ShellCommand::PanelsValidateIsoform { .. }
+    ) {
+        return execute_feature_expert_command(engine, command);
+    }
+    if matches!(
+        command,
         ShellCommand::TranscriptsDerive { .. }
             | ShellCommand::FeaturesQuery { .. }
             | ShellCommand::FeaturesExportBed { .. }
@@ -24472,13 +24540,6 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::DotplotOverlayCompute { .. }
             | ShellCommand::DotplotList { .. }
             | ShellCommand::DotplotShow { .. }
-            | ShellCommand::InspectFeatureExpert { .. }
-            | ShellCommand::InspectSplicingAttract { .. }
-            | ShellCommand::RenderFeatureExpertSvg { .. }
-            | ShellCommand::PanelsImportIsoform { .. }
-            | ShellCommand::PanelsInspectIsoform { .. }
-            | ShellCommand::PanelsRenderIsoformSvg { .. }
-            | ShellCommand::PanelsValidateIsoform { .. }
             | ShellCommand::FlexCompute { .. }
             | ShellCommand::FlexList { .. }
             | ShellCommand::FlexShow { .. }
@@ -24686,8 +24747,10 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PanelsImportIsoform { .. }
         | ShellCommand::PanelsInspectIsoform { .. }
         | ShellCommand::PanelsRenderIsoformSvg { .. }
-        | ShellCommand::PanelsValidateIsoform { .. }
-        | ShellCommand::TranscriptsDerive { .. }
+        | ShellCommand::PanelsValidateIsoform { .. } => {
+            execute_feature_expert_command(engine, command)?
+        }
+        ShellCommand::TranscriptsDerive { .. }
         | ShellCommand::FeaturesQuery { .. }
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }

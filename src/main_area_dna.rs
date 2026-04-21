@@ -1200,10 +1200,9 @@ mod tests {
             AnnotationCandidateSummary, ConstructRole, DotplotMode, DotplotOverlayAnchorExonRef,
             DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EvidenceClass,
             FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode,
-            OpResult, Operation,
-            PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
-            PrimerDesignProgress, PrimerDesignSideConstraint, ProjectState,
-            PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
+            OpResult, Operation, PairwiseAlignmentMode, PrimerDesignBackend,
+            PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignSideConstraint,
+            ProjectState, PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
             RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
             RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
             RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
@@ -8249,6 +8248,82 @@ mod tests {
             other => panic!("unexpected workflow op: {other:?}"),
         }
         assert_eq!(area.rna_reads_ui.report_id, "tp73_manual_review");
+    }
+
+    #[test]
+    fn legacy_rna_read_ui_state_keeps_manual_report_id_after_load() {
+        let legacy_json = serde_json::json!({
+            "input_path": "/tmp/SRR32957124.fasta.gz",
+            "report_id": "tp73_manual_review"
+        });
+        let mut loaded =
+            serde_json::from_value::<RnaReadInterpretOpsUiState>(legacy_json).expect("legacy ui");
+        assert!(
+            loaded.report_id_auto_sync,
+            "legacy default still deserializes as auto"
+        );
+        assert!(
+            !loaded.report_id_auto_sync_explicit,
+            "legacy state should not carry the explicit auto/manual marker"
+        );
+        loaded.normalize_loaded_state();
+        assert!(
+            !loaded.report_id_auto_sync,
+            "legacy manual report IDs should stay manual after normalization"
+        );
+        assert!(loaded.report_id_auto_sync_explicit);
+
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("TP73.ncbi".to_string()), None);
+        area.rna_reads_ui = loaded;
+        area.workflow_run_id.clear();
+        let view = SplicingExpertView {
+            seq_id: "TP73.ncbi".to_string(),
+            target_feature_id: 42,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 8,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        let workflow = area
+            .build_splicing_rna_read_workflow(&view)
+            .expect("workflow");
+        assert_eq!(
+            workflow.run_id,
+            "workflow_rna_reads_tp73_ncbi_tp73_manual_review"
+        );
+        match &workflow.ops[0] {
+            Operation::InterpretRnaReads { report_id, .. } => {
+                assert_eq!(report_id.as_deref(), Some("tp73_manual_review"));
+            }
+            other => panic!("unexpected workflow op: {other:?}"),
+        }
+        assert_eq!(area.rna_reads_ui.report_id, "tp73_manual_review");
+    }
+
+    #[test]
+    fn explicit_auto_rna_read_ui_state_stays_auto_after_load() {
+        let mut ui_state = RnaReadInterpretOpsUiState::default();
+        ui_state.input_path = "/tmp/SRR32957124.fasta.gz".to_string();
+        ui_state.report_id = "rna_tp73_srr32957124_ncdna_aobs_sg".to_string();
+        let serialized = serde_json::to_value(&ui_state).expect("serialize ui");
+        let mut loaded =
+            serde_json::from_value::<RnaReadInterpretOpsUiState>(serialized).expect("reload ui");
+        loaded.normalize_loaded_state();
+        assert!(loaded.report_id_auto_sync);
+        assert!(loaded.report_id_auto_sync_explicit);
     }
 
     #[test]
@@ -44968,6 +45043,7 @@ impl MainAreaDna {
         }
         self.dotplot_ui = s.dotplot_ui;
         self.rna_reads_ui = s.rna_reads_ui;
+        self.rna_reads_ui.normalize_loaded_state();
         self.rna_read_evidence_ui = s.rna_read_evidence_ui;
         self.rna_read_concatemer_ui = s.rna_read_concatemer_ui;
         self.invalidate_dotplot_cache();

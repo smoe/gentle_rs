@@ -230,6 +230,23 @@ order. Durable architecture constraints and decisions remain in
   - the contiguous arrangement/rack/ladder command family is now split out via
     `#[inline(never)]` helper dispatch, matching the existing small-stack
     mitigation pattern already used for candidate-analysis commands
+  - the narrow arrangement-mutation trio
+    (`CreateArrangementSerial`, `SetArrangementLadders`,
+    `SetContainerDeclaredContentsExclusive`) now also short-circuits through an
+    even smaller helper before the broader rack/export helper so the smallest
+    stack-sensitive test threads do not pay for the larger rack-render/export
+    command frame when they only need one arrangement update
+- Engine operation dispatch now applies the same arrangement/rack/ladder
+  split-helper pattern:
+  - shell-side helper dispatch alone was not sufficient because
+    `Operation::SetArrangementLadders` still entered the monolithic
+    `GentleEngine::apply_internal(...)` matcher and could still overflow the
+    same smaller-stack test threads when shell commands called into engine
+    execution
+  - those operations now short-circuit through a dedicated
+    `#[inline(never)]` helper before the large engine matcher, while the inner
+    branch still delegates back to that helper so there remains one
+    implementation path
 - Engine-shell export/import/resource commands now use the same split-helper
   pattern:
   - `ExportRunBundle` previously still entered the monolithic inner matcher and

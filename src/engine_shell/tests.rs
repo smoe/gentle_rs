@@ -13936,7 +13936,10 @@ fn execute_cutrun_interpret_list_show_and_export_coverage() {
         interpret.output["report"]["report_id"].as_str(),
         Some("toy_cutrun_reads")
     );
-    assert_eq!(interpret.output["report"]["fragment_count"].as_u64(), Some(3));
+    assert_eq!(
+        interpret.output["report"]["fragment_count"].as_u64(),
+        Some(3)
+    );
     assert_eq!(
         interpret.output["report"]["concordant_pair_count"].as_u64(),
         Some(1)
@@ -13964,7 +13967,10 @@ fn execute_cutrun_interpret_list_show_and_export_coverage() {
     )
     .expect("execute CUT&RUN show-read-report");
     assert!(!shown.state_changed);
-    assert_eq!(shown.output["report"]["seq_id"].as_str(), Some("toy_cutrun_roi"));
+    assert_eq!(
+        shown.output["report"]["seq_id"].as_str(),
+        Some("toy_cutrun_roi")
+    );
     assert_eq!(shown.output["report"]["mapped_units"].as_u64(), Some(3));
     assert_eq!(shown.output["report"]["orphan_r1_count"].as_u64(), Some(1));
     assert_eq!(shown.output["report"]["orphan_r2_count"].as_u64(), Some(1));
@@ -13980,7 +13986,10 @@ fn execute_cutrun_interpret_list_show_and_export_coverage() {
     )
     .expect("execute CUT&RUN export-coverage");
     assert!(!exported.state_changed);
-    assert_eq!(exported.output["report_id"].as_str(), Some("toy_cutrun_reads"));
+    assert_eq!(
+        exported.output["report_id"].as_str(),
+        Some("toy_cutrun_reads")
+    );
     assert_eq!(exported.output["row_count"].as_u64(), Some(12));
     let coverage_text = fs::read_to_string(&export_path).expect("read coverage export");
     assert_eq!(
@@ -16007,6 +16016,11 @@ fn execute_panels_validate_isoform_returns_report() {
 
 #[test]
 fn execute_isoform_svg_routes_are_byte_identical() {
+    execute_isoform_svg_routes_are_byte_identical_impl();
+}
+
+#[inline(never)]
+fn execute_isoform_svg_routes_are_byte_identical_impl() {
     let mut state = ProjectState::default();
     state
         .sequences

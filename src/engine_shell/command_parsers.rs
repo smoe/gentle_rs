@@ -14,8 +14,7 @@
 use super::*;
 use crate::engine::{
     CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
-    CutRunSeedFilterConfig,
-    TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
+    CutRunSeedFilterConfig, TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
     TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
 };
 
@@ -5776,26 +5775,28 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--format" => {
-                        let raw = parse_option_path(tokens, &mut idx, "--format", "cutrun interpret")?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--format", "cutrun interpret")?;
                         input_format = match raw.trim().to_ascii_lowercase().as_str() {
                             "fasta" => CutRunInputFormat::Fasta,
                             "fastq" => CutRunInputFormat::Fastq,
                             other => {
                                 return Err(format!(
                                     "Unknown CUT&RUN input format '{other}' (expected fasta or fastq)"
-                                ))
+                                ));
                             }
                         };
                     }
                     "--layout" => {
-                        let raw = parse_option_path(tokens, &mut idx, "--layout", "cutrun interpret")?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--layout", "cutrun interpret")?;
                         read_layout = match raw.trim().to_ascii_lowercase().as_str() {
                             "single_end" | "single-end" | "single" => CutRunReadLayout::SingleEnd,
                             "paired_end" | "paired-end" | "paired" => CutRunReadLayout::PairedEnd,
                             other => {
                                 return Err(format!(
                                     "Unknown CUT&RUN read layout '{other}' (expected single_end or paired_end)"
-                                ))
+                                ));
                             }
                         };
                     }
@@ -5843,7 +5844,9 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                             "cutrun interpret",
                         )?;
                         seed_filter.kmer_len = raw.parse::<usize>().map_err(|e| {
-                            format!("Invalid --seed-kmer-len value '{raw}' for cutrun interpret: {e}")
+                            format!(
+                                "Invalid --seed-kmer-len value '{raw}' for cutrun interpret: {e}"
+                            )
                         })?;
                     }
                     "--min-seed-matches" => {
@@ -5854,7 +5857,9 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                             "cutrun interpret",
                         )?;
                         seed_filter.min_seed_matches = raw.parse::<usize>().map_err(|e| {
-                            format!("Invalid --min-seed-matches value '{raw}' for cutrun interpret: {e}")
+                            format!(
+                                "Invalid --min-seed-matches value '{raw}' for cutrun interpret: {e}"
+                            )
                         })?;
                     }
                     "--max-mismatches" => {
@@ -5865,7 +5870,9 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                             "cutrun interpret",
                         )?;
                         align_config.max_mismatches = raw.parse::<usize>().map_err(|e| {
-                            format!("Invalid --max-mismatches value '{raw}' for cutrun interpret: {e}")
+                            format!(
+                                "Invalid --max-mismatches value '{raw}' for cutrun interpret: {e}"
+                            )
                         })?;
                     }
                     "--min-identity" => {
@@ -5876,7 +5883,9 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                             "cutrun interpret",
                         )?;
                         align_config.min_identity_fraction = raw.parse::<f64>().map_err(|e| {
-                            format!("Invalid --min-identity value '{raw}' for cutrun interpret: {e}")
+                            format!(
+                                "Invalid --min-identity value '{raw}' for cutrun interpret: {e}"
+                            )
                         })?;
                     }
                     "--max-fragment-span-bp" => {
@@ -5918,7 +5927,9 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
         }
         "list-read-reports" => {
             if tokens.len() > 3 {
-                return Err("cutrun list-read-reports expects at most one optional SEQ_ID".to_string());
+                return Err(
+                    "cutrun list-read-reports expects at most one optional SEQ_ID".to_string(),
+                );
             }
             let seq_id = if tokens.len() == 3 {
                 let raw = tokens[2].trim();
@@ -5975,11 +5986,15 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
                             other => {
                                 return Err(format!(
                                     "Unknown CUT&RUN coverage kind '{other}' (expected coverage, cut_sites, or fragments)"
-                                ))
+                                ));
                             }
                         };
                     }
-                    other => return Err(format!("Unknown option '{other}' for cutrun export-coverage")),
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for cutrun export-coverage"
+                        ));
+                    }
                 }
             }
             Ok(ShellCommand::CutRunExportCoverage {

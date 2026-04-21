@@ -5706,689 +5706,13 @@ impl GentleEngine {
         Ok(())
     }
 
-    pub(super) fn apply_internal(
+    #[inline(never)]
+    fn apply_arrangement_rack_and_ladder_operation(
         &mut self,
         op: Operation,
-        run_id: &str,
-        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
-    ) -> Result<OpResult, EngineError> {
-        self.reconcile_lineage_nodes();
-        self.reconcile_containers();
-        let op_for_containers = op.clone();
-        let op = match op {
-            Operation::MergeContainersById {
-                container_ids,
-                output_prefix,
-            } => Operation::MergeContainers {
-                inputs: self.flatten_container_members(&container_ids)?,
-                output_prefix,
-            },
-            Operation::LigationContainer {
-                container_id,
-                circularize_if_possible,
-                output_id,
-                protocol,
-                output_prefix,
-                unique,
-            } => Operation::Ligation {
-                inputs: self.container_members(&container_id)?,
-                circularize_if_possible,
-                output_id,
-                protocol,
-                output_prefix,
-                unique,
-            },
-            Operation::FilterContainerByMolecularWeight {
-                container_id,
-                min_bp,
-                max_bp,
-                error,
-                unique,
-                output_prefix,
-            } => Operation::FilterByMolecularWeight {
-                inputs: self.container_members(&container_id)?,
-                min_bp,
-                max_bp,
-                error,
-                unique,
-                output_prefix,
-            },
-            other => other,
-        };
-        let op_id = self.next_op_id();
-        let mut parent_seq_ids: Vec<SeqId> = vec![];
-        let mut result = OpResult {
-            op_id,
-            created_seq_ids: vec![],
-            changed_seq_ids: vec![],
-            warnings: vec![],
-            messages: vec![],
-            protocol_cartoon_preview: None,
-            genome_annotation_projection: None,
-            sequence_alignment: None,
-            protein_derivation_report: None,
-            reverse_translation_report: None,
-            construct_reasoning_graph: None,
-            sequencing_confirmation_report: None,
-            sequencing_primer_overlay_report: None,
-            sequencing_trace_import_report: None,
-            sequencing_trace_record: None,
-            sequencing_trace_summaries: None,
-            cutrun_dataset_list: None,
-            cutrun_dataset_status: None,
-            cutrun_read_report: None,
-            cutrun_read_report_summaries: None,
-            cutrun_read_coverage_export: None,
-            cutrun_dataset_projection: None,
-            rna_read_gene_support_summary: None,
-            rna_read_gene_support_audit: None,
-            tfbs_region_summary: None,
-            tfbs_score_tracks: None,
-            tfbs_track_similarity: None,
-            tfbs_hit_scan: None,
-            restriction_site_scan: None,
-            jaspar_remote_metadata_snapshot: None,
-            jaspar_catalog_report: None,
-            jaspar_entry_expert_view: None,
-            jaspar_registry_benchmark: None,
-            jaspar_entry_presentation: None,
-            sequence_context_view: None,
-            sequence_context_bundle: None,
-            variant_promoter_context: None,
-            promoter_reporter_candidates: None,
-            uniprot_projection_audit: None,
-            uniprot_projection_audit_parity: None,
-        };
-
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
         match op {
-            Operation::LoadFile { path, as_id } => {
-                let mut dna = GENtleApp::load_from_file(&path).map_err(|e| EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!("Could not load sequence file '{path}': {e}"),
-                })?;
-                Self::prepare_sequence(&mut dna);
-
-                let base = as_id.unwrap_or_else(|| Self::derive_seq_id(&path));
-                let seq_id = self.unique_seq_id(&base);
-                self.state.sequences.insert(seq_id.clone(), dna);
-                self.add_lineage_node(
-                    &seq_id,
-                    Self::classify_import_origin(
-                        &path,
-                        self.state
-                            .sequences
-                            .get(&seq_id)
-                            .expect("sequence just inserted"),
-                    ),
-                    Some(&result.op_id),
-                );
-                let imported_anchor = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .and_then(|loaded| Self::infer_imported_genbank_anchor(&path, loaded));
-                if let Some(anchor) = imported_anchor {
-                    let mut anchor_verified: Option<bool> = None;
-                    let default_catalog_path = default_catalog_discovery_token(false);
-                    let default_catalog_label = default_catalog_discovery_label(false);
-                    if let Some(loaded) = self.state.sequences.get(&seq_id) {
-                        match Self::verify_anchor_sequence_against_catalog(
-                            loaded,
-                            &anchor,
-                            default_catalog_path,
-                            None,
-                        ) {
-                            Ok(is_match) => {
-                                anchor_verified = Some(is_match);
-                                if is_match {
-                                    result.messages.push(format!(
-                                        "Verified imported GenBank anchor '{}' against catalog '{}' ({}:{}-{})",
-                                        seq_id,
-                                        default_catalog_label,
-                                        anchor.genome_id,
-                                        anchor.chromosome,
-                                        anchor.start_1based
-                                    ));
-                                } else {
-                                    result.warnings.push(format!(
-                                        "Imported GenBank anchor '{}' does not match catalog sequence at {}:{}:{}-{} (catalog='{}')",
-                                        seq_id,
-                                        anchor.genome_id,
-                                        anchor.chromosome,
-                                        anchor.start_1based,
-                                        anchor.end_1based,
-                                        default_catalog_label
-                                    ));
-                                }
-                            }
-                            Err(err) => {
-                                result.warnings.push(format!(
-                                    "Could not verify imported GenBank anchor '{}' against catalog '{}': {}",
-                                    seq_id, default_catalog_label, err
-                                ));
-                            }
-                        }
-                    }
-                    self.append_genome_extraction_provenance(GenomeExtractionProvenance {
-                        seq_id: seq_id.clone(),
-                        recorded_at_unix_ms: Self::now_unix_ms(),
-                        operation: "LoadFileGenBankRegion".to_string(),
-                        genome_id: anchor.genome_id.clone(),
-                        // Imported GenBank files are sequence sources, not catalog JSON.
-                        // Keep the default catalog path so later anchor-extension flows
-                        // resolve against real genome catalogs instead of the .gb file.
-                        catalog_path: default_catalog_path.to_string(),
-                        cache_dir: None,
-                        chromosome: Some(anchor.chromosome.clone()),
-                        start_1based: Some(anchor.start_1based),
-                        end_1based: Some(anchor.end_1based),
-                        gene_query: None,
-                        occurrence: None,
-                        gene_extract_mode: None,
-                        transcript_id: None,
-                        tss_1based: None,
-                        promoter_upstream_bp: None,
-                        promoter_downstream_bp: None,
-                        gene_id: None,
-                        gene_name: None,
-                        strand: None,
-                        anchor_strand: anchor.strand,
-                        anchor_verified,
-                        sequence_source_type: Some("genbank_file".to_string()),
-                        annotation_source_type: Some("genbank_file".to_string()),
-                        sequence_source: Some(path.clone()),
-                        annotation_source: Some(path.clone()),
-                        sequence_sha1: None,
-                        annotation_sha1: None,
-                    });
-                    let strand = anchor.strand.unwrap_or('+');
-                    let verification_label = match anchor_verified {
-                        Some(true) => "verified",
-                        Some(false) => "unverified",
-                        None => "verification n/a",
-                    };
-                    result.messages.push(format!(
-                        "Detected GenBank genome anchor for '{}': {}:{}-{} ({}, strand {}, {})",
-                        seq_id,
-                        anchor.chromosome,
-                        anchor.start_1based,
-                        anchor.end_1based,
-                        anchor.genome_id,
-                        strand,
-                        verification_label
-                    ));
-                }
-                result.created_seq_ids.push(seq_id.clone());
-                result
-                    .messages
-                    .push(format!("Loaded '{path}' as '{seq_id}'"));
-            }
-            Operation::SaveFile {
-                seq_id,
-                path,
-                format,
-            } => {
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?;
-
-                match format {
-                    ExportFormat::GenBank => {
-                        dna.write_genbank_file(&path).map_err(|e| EngineError {
-                            code: ErrorCode::Io,
-                            message: format!("Could not write GenBank file '{path}': {e}"),
-                        })?;
-                    }
-                    ExportFormat::Fasta => Self::save_as_fasta(&seq_id, dna, &path)?,
-                }
-
-                result.changed_seq_ids.push(seq_id.clone());
-                result
-                    .messages
-                    .push(format!("Wrote '{seq_id}' to '{path}'"));
-            }
-            Operation::RenderSequenceSvg { seq_id, mode, path } => {
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?;
-                let svg = match mode {
-                    RenderSvgMode::Linear => export_linear_svg(dna, &self.state.display),
-                    RenderSvgMode::Circular => export_circular_svg(dna, &self.state.display),
-                };
-                std::fs::write(&path, svg).map_err(|e| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!("Could not write SVG output '{path}': {e}"),
-                })?;
-                result.messages.push(format!(
-                    "Wrote {:?} SVG for '{}' to '{}'",
-                    mode, seq_id, path
-                ));
-            }
-            Operation::RenderDotplotSvg {
-                seq_id,
-                dotplot_id,
-                path,
-                flex_track_id,
-                display_density_threshold,
-                display_intensity_gain,
-                overlay_x_axis_mode,
-                overlay_anchor_exon,
-            } => {
-                self.render_dotplot_svg_to_path(
-                    &seq_id,
-                    &dotplot_id,
-                    &path,
-                    flex_track_id.as_deref(),
-                    display_density_threshold,
-                    display_intensity_gain,
-                    overlay_x_axis_mode,
-                    overlay_anchor_exon.as_ref(),
-                )?;
-                result.messages.push(format!(
-                    "Wrote dotplot SVG for '{}' dotplot='{}' to '{}'",
-                    seq_id, dotplot_id, path
-                ));
-            }
-            Operation::RenderTfbsScoreTracksSvg {
-                target,
-                motifs,
-                score_kind,
-                clip_negative,
-                path,
-            } => {
-                let mut report = self.summarize_tfbs_score_tracks(
-                    target.clone(),
-                    &motifs,
-                    score_kind,
-                    clip_negative,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                let svg = crate::render_tfbs_score_tracks::render_tfbs_score_tracks_svg(&report);
-                std::fs::write(&path, svg).map_err(|e| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!("Could not write TFBS score-track SVG to '{}': {e}", path),
-                })?;
-                result.messages.push(format!(
-                    "Wrote TFBS score-track SVG for '{}' ({} motif(s), {}..{}, score_kind={}, clip_negative={}) to '{}'",
-                    report.target_label,
-                    report.tracks.len(),
-                    report.view_start_0based,
-                    report.view_end_0based_exclusive,
-                    report.score_kind.as_str(),
-                    report.clip_negative,
-                    path
-                ));
-                result.tfbs_score_tracks = Some(report);
-            }
-            Operation::RenderTfbsScoreTrackCorrelationSvg {
-                seq_id,
-                motifs,
-                start_0based,
-                end_0based_exclusive,
-                score_kind,
-                correlation_metric,
-                correlation_signal_source,
-                clip_negative,
-                path,
-            } => {
-                let mut report = self.summarize_tfbs_score_tracks(
-                    SequenceScanTarget::SeqId {
-                        seq_id: seq_id.clone(),
-                        span_start_0based: Some(start_0based),
-                        span_end_0based_exclusive: Some(end_0based_exclusive),
-                    },
-                    &motifs,
-                    score_kind,
-                    clip_negative,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                let svg = crate::render_tfbs_score_tracks::render_tfbs_score_track_correlation_svg(
-                    &report,
-                    correlation_metric,
-                    correlation_signal_source,
-                );
-                std::fs::write(&path, svg).map_err(|e| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!("Could not write TFBS correlation SVG to '{}': {e}", path),
-                })?;
-                result.messages.push(format!(
-                    "Wrote TFBS score-track correlation SVG for '{}' ({} motif(s), {}..{}, score_kind={}, correlation_metric={}, correlation_signal_source={}, clip_negative={}) to '{}'",
-                    seq_id,
-                    report.tracks.len(),
-                    report.view_start_0based,
-                    report.view_end_0based_exclusive,
-                    report.score_kind.as_str(),
-                    correlation_metric.as_str(),
-                    correlation_signal_source.as_str(),
-                    report.clip_negative,
-                    path
-                ));
-                result.tfbs_score_tracks = Some(report);
-            }
-            Operation::RenderFeatureExpertSvg {
-                seq_id,
-                target,
-                path,
-            } => {
-                self.render_feature_expert_svg_to_path(&seq_id, &target, &path)?;
-                result.messages.push(format!(
-                    "Wrote feature expert SVG for '{}' target={} to '{}'",
-                    seq_id,
-                    target.describe(),
-                    path
-                ));
-            }
-            Operation::RenderIsoformArchitectureSvg {
-                seq_id,
-                panel_id,
-                path,
-            } => {
-                self.render_isoform_architecture_svg_to_path(&seq_id, &panel_id, &path)?;
-                result.messages.push(format!(
-                    "Wrote isoform architecture SVG for '{}' panel='{}' to '{}'",
-                    seq_id, panel_id, path
-                ));
-            }
-            Operation::RenderRnaStructureSvg { seq_id, path } => {
-                let report = self.render_rna_structure_svg_to_path(&seq_id, &path)?;
-                result.messages.push(format!(
-                    "Wrote RNA structure SVG for '{}' to '{}' using {}",
-                    seq_id, path, report.tool
-                ));
-            }
-            Operation::RenderLineageSvg { path } => {
-                let svg = export_lineage_svg(&self.state, self.operation_log());
-                std::fs::write(&path, svg).map_err(|e| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!("Could not write SVG output '{path}': {e}"),
-                })?;
-                result
-                    .messages
-                    .push(format!("Wrote lineage SVG to '{}'", path));
-            }
-            Operation::RenderProtocolCartoonSvg { protocol, path } => {
-                let svg = crate::protocol_cartoon::render_protocol_cartoon_svg(&protocol);
-                std::fs::write(&path, svg).map_err(|e| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!("Could not write SVG output '{path}': {e}"),
-                })?;
-                result.messages.push(format!(
-                    "Wrote protocol cartoon SVG for '{}' to '{}'",
-                    protocol.id(),
-                    path
-                ));
-            }
-            Operation::RenderProtocolCartoonTemplateSvg {
-                template_path,
-                path,
-            } => {
-                let template_json =
-                    std::fs::read_to_string(&template_path).map_err(|e| EngineError {
-                        code: ErrorCode::Io,
-                        message: format!(
-                            "Could not read protocol cartoon template '{}': {e}",
-                            template_path
-                        ),
-                    })?;
-                let template: crate::protocol_cartoon::ProtocolCartoonTemplate =
-                    serde_json::from_str(&template_json).map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Could not parse protocol cartoon template JSON from '{}': {e}",
-                            template_path
-                        ),
-                    })?;
-                let spec = crate::protocol_cartoon::resolve_protocol_cartoon_template(&template)
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Invalid protocol cartoon template '{}': {}",
-                            template_path, e
-                        ),
-                    })?;
-                let svg = crate::protocol_cartoon::render_protocol_cartoon_spec_svg(&spec);
-                std::fs::write(&path, svg).map_err(|e| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!("Could not write SVG output '{path}': {e}"),
-                })?;
-                result.messages.push(format!(
-                    "Wrote protocol cartoon template SVG for '{}' from '{}' to '{}'",
-                    spec.id, template_path, path
-                ));
-            }
-            Operation::ValidateProtocolCartoonTemplate { template_path } => {
-                let template_json =
-                    std::fs::read_to_string(&template_path).map_err(|e| EngineError {
-                        code: ErrorCode::Io,
-                        message: format!(
-                            "Could not read protocol cartoon template '{}': {e}",
-                            template_path
-                        ),
-                    })?;
-                let template: crate::protocol_cartoon::ProtocolCartoonTemplate =
-                    serde_json::from_str(&template_json).map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Could not parse protocol cartoon template JSON from '{}': {e}",
-                            template_path
-                        ),
-                    })?;
-                let spec = crate::protocol_cartoon::resolve_protocol_cartoon_template(&template)
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Invalid protocol cartoon template '{}': {}",
-                            template_path, e
-                        ),
-                    })?;
-                result.messages.push(format!(
-                    "Validated protocol cartoon template '{}' from '{}' (events={})",
-                    spec.id,
-                    template_path,
-                    spec.events.len()
-                ));
-            }
-            Operation::RenderProtocolCartoonTemplateWithBindingsSvg {
-                template_path,
-                bindings_path,
-                path,
-            } => {
-                let template_json =
-                    std::fs::read_to_string(&template_path).map_err(|e| EngineError {
-                        code: ErrorCode::Io,
-                        message: format!(
-                            "Could not read protocol cartoon template '{}': {e}",
-                            template_path
-                        ),
-                    })?;
-                let template: crate::protocol_cartoon::ProtocolCartoonTemplate =
-                    serde_json::from_str(&template_json).map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Could not parse protocol cartoon template JSON from '{}': {e}",
-                            template_path
-                        ),
-                    })?;
-                let bindings_json =
-                    std::fs::read_to_string(&bindings_path).map_err(|e| EngineError {
-                        code: ErrorCode::Io,
-                        message: format!(
-                            "Could not read protocol cartoon bindings '{}': {e}",
-                            bindings_path
-                        ),
-                    })?;
-                let bindings: crate::protocol_cartoon::ProtocolCartoonTemplateBindings =
-                    serde_json::from_str(&bindings_json).map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Could not parse protocol cartoon bindings JSON from '{}': {e}",
-                            bindings_path
-                        ),
-                    })?;
-                let spec =
-                    crate::protocol_cartoon::resolve_protocol_cartoon_template_with_bindings(
-                        &template, &bindings,
-                    )
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Invalid protocol cartoon template/bindings ('{}', '{}'): {}",
-                            template_path, bindings_path, e
-                        ),
-                    })?;
-                let svg = crate::protocol_cartoon::render_protocol_cartoon_spec_svg(&spec);
-                std::fs::write(&path, svg).map_err(|e| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!("Could not write SVG output '{path}': {e}"),
-                })?;
-                result.messages.push(format!(
-                    "Wrote protocol cartoon template SVG for '{}' from '{}' with bindings '{}' to '{}'",
-                    spec.id, template_path, bindings_path, path
-                ));
-            }
-            Operation::ExportProtocolCartoonTemplateJson { protocol, path } => {
-                let template =
-                    crate::protocol_cartoon::protocol_cartoon_template_for_kind(&protocol);
-                let json = serde_json::to_string_pretty(&template).map_err(|e| EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "Could not serialize protocol cartoon template '{}' as JSON: {e}",
-                        protocol.id()
-                    ),
-                })?;
-                std::fs::write(&path, format!("{json}\n")).map_err(|e| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!("Could not write JSON output '{path}': {e}"),
-                })?;
-                result.messages.push(format!(
-                    "Exported protocol cartoon template '{}' to '{}'",
-                    protocol.id(),
-                    path
-                ));
-            }
-            Operation::ApplyGibsonAssemblyPlan { plan_json } => {
-                let plan: GibsonAssemblyPlan =
-                    serde_json::from_str(&plan_json).map_err(|err| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("Could not parse Gibson assembly plan JSON: {err}"),
-                    })?;
-                let execution = derive_gibson_execution_plan(self, &plan)?;
-                parent_seq_ids = execution.parent_seq_ids.clone();
-                result.warnings.extend(execution.preview.warnings.clone());
-                let mut assembled_product_seq_id: Option<String> = None;
-                for output in execution.outputs {
-                    let seq_id = self.unique_seq_id(&output.base_seq_id);
-                    let mut dna = output.dna;
-                    Self::prepare_sequence(&mut dna);
-                    let length_bp = dna.len();
-                    let topology_label = if dna.is_circular() {
-                        "circular"
-                    } else {
-                        "linear"
-                    };
-                    self.state.sequences.insert(seq_id.clone(), dna);
-                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                    result.created_seq_ids.push(seq_id.clone());
-                    let container_name = self
-                        .state
-                        .sequences
-                        .get(&seq_id)
-                        .and_then(|dna| dna.name().clone())
-                        .filter(|name| !name.trim().is_empty())
-                        .unwrap_or_else(|| seq_id.clone());
-                    let _ = self.add_container(
-                        std::slice::from_ref(&seq_id),
-                        ContainerKind::Singleton,
-                        Some(container_name),
-                        Some(&result.op_id),
-                    );
-                    if output.kind == "assembled_product" {
-                        assembled_product_seq_id = Some(seq_id.clone());
-                    }
-                    result.messages.push(format!(
-                        "Created Gibson {} '{}' ({} bp, {})",
-                        output.kind.replace('_', " "),
-                        seq_id,
-                        length_bp,
-                        topology_label
-                    ));
-                }
-                let plan_label = execution.preview.plan_id.trim();
-                let insert_summary = if execution.preview.fragments.is_empty() {
-                    "-".to_string()
-                } else {
-                    execution
-                        .preview
-                        .fragments
-                        .iter()
-                        .map(|fragment| fragment.seq_id.clone())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                };
-                result.messages.push(format!(
-                    "Applied Gibson assembly plan '{}' from destination '{}' and inserts '{}'",
-                    if plan_label.is_empty() {
-                        execution.preview.title.as_str()
-                    } else {
-                        plan_label
-                    },
-                    execution.preview.destination.seq_id,
-                    insert_summary
-                ));
-                if let Some(product_seq_id) = assembled_product_seq_id.as_deref() {
-                    match self.maybe_create_gibson_arrangement(&plan, product_seq_id, &result.op_id)
-                    {
-                        Ok(Some(arrangement_id)) => {
-                            let arrangement = self
-                                .state
-                                .container_state
-                                .arrangements
-                                .get(&arrangement_id)
-                                .cloned();
-                            let lane_count = arrangement
-                                .as_ref()
-                                .map(|arrangement| arrangement.lane_container_ids.len())
-                                .unwrap_or(0);
-                            let ladders = arrangement
-                                .as_ref()
-                                .map(|arrangement| {
-                                    if arrangement.ladders.is_empty() {
-                                        "auto".to_string()
-                                    } else {
-                                        arrangement.ladders.join(" + ")
-                                    }
-                                })
-                                .unwrap_or_else(|| "auto".to_string());
-                            let rack_id = arrangement
-                                .and_then(|arrangement| arrangement.default_rack_id)
-                                .unwrap_or_else(|| "draft-on-demand".to_string());
-                            result.messages.push(format!(
-                                "Created Gibson serial arrangement '{}' with {} sample lane(s), ladders '{}', and rack draft '{}'",
-                                arrangement_id, lane_count, ladders, rack_id
-                            ));
-                        }
-                        Ok(None) => {}
-                        Err(err) => {
-                            result.warnings.push(format!(
-                                "Gibson arrangement was not created automatically: {}",
-                                err.message
-                            ));
-                        }
-                    }
-                }
-            }
             Operation::CreateArrangementSerial {
                 container_ids,
                 arrangement_id,
@@ -6706,9 +6030,9 @@ impl GentleEngine {
                     }
                     if container_ids.as_ref().is_some_and(|ids| !ids.is_empty()) {
                         result.warnings.push(
-                                "RenderPoolGelSvg ignored 'container_ids' because arrangement_id was provided"
-                                    .to_string(),
-                            );
+                            "RenderPoolGelSvg ignored 'container_ids' because arrangement_id was provided"
+                                .to_string(),
+                        );
                     }
                     if arrangement_id.is_empty() {
                         return Err(EngineError {
@@ -6780,70 +6104,809 @@ impl GentleEngine {
                     report.ladder_count, filter_text, report.path
                 ));
             }
-            Operation::ExportPool {
-                inputs,
-                path,
-                pool_id,
-                human_id,
-            } => {
-                let (pool_id, human_id, count) =
-                    self.export_pool_file(&inputs, &path, pool_id, human_id)?;
-                result.messages.push(format!(
-                    "Wrote pool export '{}' ({}) with {} members to '{}'",
-                    pool_id, human_id, count, path
-                ));
-            }
-            Operation::ExportProcessRunBundle { path, run_id } => {
-                let bundle = self.export_process_run_bundle_file(&path, run_id.as_deref())?;
-                let run_scope = bundle
-                    .run_id_filter
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .unwrap_or("all");
-                result.messages.push(format!(
-                    "Wrote process run bundle '{}' with {} record(s) (run_id={}) to '{}'",
-                    bundle.schema, bundle.selected_record_count, run_scope, path
-                ));
-            }
-            Operation::PrepareGenome {
-                genome_id,
-                catalog_path,
-                cache_dir,
-                timeout_seconds,
-            } => {
-                let report = Self::prepare_reference_genome_once(
-                    &genome_id,
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                    timeout_seconds,
-                    &mut |p| on_progress(OperationProgress::GenomePrepare(p)),
-                )?;
-                result.messages.push(Self::format_prepare_genome_message(
-                    &genome_id,
-                    cache_dir.as_deref(),
-                    &report,
-                ));
-                if !report.warnings.is_empty() {
-                    result.warnings.extend(report.warnings.clone());
-                }
-            }
-            Operation::ExtractGenomeRegion {
-                genome_id,
-                chromosome,
-                start_1based,
-                end_1based,
+            _ => unreachable!("non-arrangement/rack/ladder operation passed to helper"),
+        }
+
+        Ok(())
+    }
+
+    pub(super) fn apply_internal(
+        &mut self,
+        op: Operation,
+        run_id: &str,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<OpResult, EngineError> {
+        self.reconcile_lineage_nodes();
+        self.reconcile_containers();
+        let op_for_containers = op.clone();
+        let op = match op {
+            Operation::MergeContainersById {
+                container_ids,
+                output_prefix,
+            } => Operation::MergeContainers {
+                inputs: self.flatten_container_members(&container_ids)?,
+                output_prefix,
+            },
+            Operation::LigationContainer {
+                container_id,
+                circularize_if_possible,
                 output_id,
-                annotation_scope,
-                max_annotation_features,
-                include_genomic_annotation,
-                catalog_path,
-                cache_dir,
-            } => {
-                let _ = self.extract_genome_region_into_state(
-                    &mut result,
-                    &genome_id,
-                    &chromosome,
+                protocol,
+                output_prefix,
+                unique,
+            } => Operation::Ligation {
+                inputs: self.container_members(&container_id)?,
+                circularize_if_possible,
+                output_id,
+                protocol,
+                output_prefix,
+                unique,
+            },
+            Operation::FilterContainerByMolecularWeight {
+                container_id,
+                min_bp,
+                max_bp,
+                error,
+                unique,
+                output_prefix,
+            } => Operation::FilterByMolecularWeight {
+                inputs: self.container_members(&container_id)?,
+                min_bp,
+                max_bp,
+                error,
+                unique,
+                output_prefix,
+            },
+            other => other,
+        };
+        let op_id = self.next_op_id();
+        let mut parent_seq_ids: Vec<SeqId> = vec![];
+        let mut result = OpResult {
+            op_id,
+            created_seq_ids: vec![],
+            changed_seq_ids: vec![],
+            warnings: vec![],
+            messages: vec![],
+            protocol_cartoon_preview: None,
+            genome_annotation_projection: None,
+            sequence_alignment: None,
+            protein_derivation_report: None,
+            reverse_translation_report: None,
+            construct_reasoning_graph: None,
+            sequencing_confirmation_report: None,
+            sequencing_primer_overlay_report: None,
+            sequencing_trace_import_report: None,
+            sequencing_trace_record: None,
+            sequencing_trace_summaries: None,
+            cutrun_dataset_list: None,
+            cutrun_dataset_status: None,
+            cutrun_read_report: None,
+            cutrun_read_report_summaries: None,
+            cutrun_read_coverage_export: None,
+            cutrun_dataset_projection: None,
+            rna_read_gene_support_summary: None,
+            rna_read_gene_support_audit: None,
+            tfbs_region_summary: None,
+            tfbs_score_tracks: None,
+            tfbs_track_similarity: None,
+            tfbs_hit_scan: None,
+            restriction_site_scan: None,
+            jaspar_remote_metadata_snapshot: None,
+            jaspar_catalog_report: None,
+            jaspar_entry_expert_view: None,
+            jaspar_registry_benchmark: None,
+            jaspar_entry_presentation: None,
+            sequence_context_view: None,
+            sequence_context_bundle: None,
+            variant_promoter_context: None,
+            promoter_reporter_candidates: None,
+            uniprot_projection_audit: None,
+            uniprot_projection_audit_parity: None,
+        };
+
+        if matches!(
+            &op,
+            Operation::CreateArrangementSerial { .. }
+                | Operation::SetArrangementLadders { .. }
+                | Operation::SetContainerDeclaredContentsExclusive { .. }
+                | Operation::CreateRackFromArrangement { .. }
+                | Operation::PlaceArrangementOnRack { .. }
+                | Operation::MoveRackPlacement { .. }
+                | Operation::MoveRackSamples { .. }
+                | Operation::MoveRackArrangementBlocks { .. }
+                | Operation::SetRackProfile { .. }
+                | Operation::ApplyRackTemplate { .. }
+                | Operation::SetRackFillDirection { .. }
+                | Operation::SetRackProfileCustom { .. }
+                | Operation::SetRackBlockedCoordinates { .. }
+                | Operation::ExportRackLabelsSvg { .. }
+                | Operation::ExportRackFabricationSvg { .. }
+                | Operation::ExportRackIsometricSvg { .. }
+                | Operation::ExportRackOpenScad { .. }
+                | Operation::ExportRackCarrierLabelsSvg { .. }
+                | Operation::ExportRackSimulationJson { .. }
+                | Operation::RenderPoolGelSvg { .. }
+                | Operation::ExportDnaLadders { .. }
+                | Operation::ExportRnaLadders { .. }
+        ) {
+            self.apply_arrangement_rack_and_ladder_operation(op, &mut result)?;
+        } else {
+            match op {
+                Operation::LoadFile { path, as_id } => {
+                    let mut dna = GENtleApp::load_from_file(&path).map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Could not load sequence file '{path}': {e}"),
+                    })?;
+                    Self::prepare_sequence(&mut dna);
+
+                    let base = as_id.unwrap_or_else(|| Self::derive_seq_id(&path));
+                    let seq_id = self.unique_seq_id(&base);
+                    self.state.sequences.insert(seq_id.clone(), dna);
+                    self.add_lineage_node(
+                        &seq_id,
+                        Self::classify_import_origin(
+                            &path,
+                            self.state
+                                .sequences
+                                .get(&seq_id)
+                                .expect("sequence just inserted"),
+                        ),
+                        Some(&result.op_id),
+                    );
+                    let imported_anchor = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .and_then(|loaded| Self::infer_imported_genbank_anchor(&path, loaded));
+                    if let Some(anchor) = imported_anchor {
+                        let mut anchor_verified: Option<bool> = None;
+                        let default_catalog_path = default_catalog_discovery_token(false);
+                        let default_catalog_label = default_catalog_discovery_label(false);
+                        if let Some(loaded) = self.state.sequences.get(&seq_id) {
+                            match Self::verify_anchor_sequence_against_catalog(
+                                loaded,
+                                &anchor,
+                                default_catalog_path,
+                                None,
+                            ) {
+                                Ok(is_match) => {
+                                    anchor_verified = Some(is_match);
+                                    if is_match {
+                                        result.messages.push(format!(
+                                        "Verified imported GenBank anchor '{}' against catalog '{}' ({}:{}-{})",
+                                        seq_id,
+                                        default_catalog_label,
+                                        anchor.genome_id,
+                                        anchor.chromosome,
+                                        anchor.start_1based
+                                    ));
+                                    } else {
+                                        result.warnings.push(format!(
+                                        "Imported GenBank anchor '{}' does not match catalog sequence at {}:{}:{}-{} (catalog='{}')",
+                                        seq_id,
+                                        anchor.genome_id,
+                                        anchor.chromosome,
+                                        anchor.start_1based,
+                                        anchor.end_1based,
+                                        default_catalog_label
+                                    ));
+                                    }
+                                }
+                                Err(err) => {
+                                    result.warnings.push(format!(
+                                    "Could not verify imported GenBank anchor '{}' against catalog '{}': {}",
+                                    seq_id, default_catalog_label, err
+                                ));
+                                }
+                            }
+                        }
+                        self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                            seq_id: seq_id.clone(),
+                            recorded_at_unix_ms: Self::now_unix_ms(),
+                            operation: "LoadFileGenBankRegion".to_string(),
+                            genome_id: anchor.genome_id.clone(),
+                            // Imported GenBank files are sequence sources, not catalog JSON.
+                            // Keep the default catalog path so later anchor-extension flows
+                            // resolve against real genome catalogs instead of the .gb file.
+                            catalog_path: default_catalog_path.to_string(),
+                            cache_dir: None,
+                            chromosome: Some(anchor.chromosome.clone()),
+                            start_1based: Some(anchor.start_1based),
+                            end_1based: Some(anchor.end_1based),
+                            gene_query: None,
+                            occurrence: None,
+                            gene_extract_mode: None,
+                            transcript_id: None,
+                            tss_1based: None,
+                            promoter_upstream_bp: None,
+                            promoter_downstream_bp: None,
+                            gene_id: None,
+                            gene_name: None,
+                            strand: None,
+                            anchor_strand: anchor.strand,
+                            anchor_verified,
+                            sequence_source_type: Some("genbank_file".to_string()),
+                            annotation_source_type: Some("genbank_file".to_string()),
+                            sequence_source: Some(path.clone()),
+                            annotation_source: Some(path.clone()),
+                            sequence_sha1: None,
+                            annotation_sha1: None,
+                        });
+                        let strand = anchor.strand.unwrap_or('+');
+                        let verification_label = match anchor_verified {
+                            Some(true) => "verified",
+                            Some(false) => "unverified",
+                            None => "verification n/a",
+                        };
+                        result.messages.push(format!(
+                            "Detected GenBank genome anchor for '{}': {}:{}-{} ({}, strand {}, {})",
+                            seq_id,
+                            anchor.chromosome,
+                            anchor.start_1based,
+                            anchor.end_1based,
+                            anchor.genome_id,
+                            strand,
+                            verification_label
+                        ));
+                    }
+                    result.created_seq_ids.push(seq_id.clone());
+                    result
+                        .messages
+                        .push(format!("Loaded '{path}' as '{seq_id}'"));
+                }
+                Operation::SaveFile {
+                    seq_id,
+                    path,
+                    format,
+                } => {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+
+                    match format {
+                        ExportFormat::GenBank => {
+                            dna.write_genbank_file(&path).map_err(|e| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!("Could not write GenBank file '{path}': {e}"),
+                            })?;
+                        }
+                        ExportFormat::Fasta => Self::save_as_fasta(&seq_id, dna, &path)?,
+                    }
+
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result
+                        .messages
+                        .push(format!("Wrote '{seq_id}' to '{path}'"));
+                }
+                Operation::RenderSequenceSvg { seq_id, mode, path } => {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    let svg = match mode {
+                        RenderSvgMode::Linear => export_linear_svg(dna, &self.state.display),
+                        RenderSvgMode::Circular => export_circular_svg(dna, &self.state.display),
+                    };
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write SVG output '{path}': {e}"),
+                    })?;
+                    result.messages.push(format!(
+                        "Wrote {:?} SVG for '{}' to '{}'",
+                        mode, seq_id, path
+                    ));
+                }
+                Operation::RenderDotplotSvg {
+                    seq_id,
+                    dotplot_id,
+                    path,
+                    flex_track_id,
+                    display_density_threshold,
+                    display_intensity_gain,
+                    overlay_x_axis_mode,
+                    overlay_anchor_exon,
+                } => {
+                    self.render_dotplot_svg_to_path(
+                        &seq_id,
+                        &dotplot_id,
+                        &path,
+                        flex_track_id.as_deref(),
+                        display_density_threshold,
+                        display_intensity_gain,
+                        overlay_x_axis_mode,
+                        overlay_anchor_exon.as_ref(),
+                    )?;
+                    result.messages.push(format!(
+                        "Wrote dotplot SVG for '{}' dotplot='{}' to '{}'",
+                        seq_id, dotplot_id, path
+                    ));
+                }
+                Operation::RenderTfbsScoreTracksSvg {
+                    target,
+                    motifs,
+                    score_kind,
+                    clip_negative,
+                    path,
+                } => {
+                    let mut report = self.summarize_tfbs_score_tracks(
+                        target.clone(),
+                        &motifs,
+                        score_kind,
+                        clip_negative,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    let svg =
+                        crate::render_tfbs_score_tracks::render_tfbs_score_tracks_svg(&report);
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write TFBS score-track SVG to '{}': {e}", path),
+                    })?;
+                    result.messages.push(format!(
+                    "Wrote TFBS score-track SVG for '{}' ({} motif(s), {}..{}, score_kind={}, clip_negative={}) to '{}'",
+                    report.target_label,
+                    report.tracks.len(),
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.score_kind.as_str(),
+                    report.clip_negative,
+                    path
+                ));
+                    result.tfbs_score_tracks = Some(report);
+                }
+                Operation::RenderTfbsScoreTrackCorrelationSvg {
+                    seq_id,
+                    motifs,
+                    start_0based,
+                    end_0based_exclusive,
+                    score_kind,
+                    correlation_metric,
+                    correlation_signal_source,
+                    clip_negative,
+                    path,
+                } => {
+                    let mut report = self.summarize_tfbs_score_tracks(
+                        SequenceScanTarget::SeqId {
+                            seq_id: seq_id.clone(),
+                            span_start_0based: Some(start_0based),
+                            span_end_0based_exclusive: Some(end_0based_exclusive),
+                        },
+                        &motifs,
+                        score_kind,
+                        clip_negative,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    let svg =
+                        crate::render_tfbs_score_tracks::render_tfbs_score_track_correlation_svg(
+                            &report,
+                            correlation_metric,
+                            correlation_signal_source,
+                        );
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write TFBS correlation SVG to '{}': {e}", path),
+                    })?;
+                    result.messages.push(format!(
+                    "Wrote TFBS score-track correlation SVG for '{}' ({} motif(s), {}..{}, score_kind={}, correlation_metric={}, correlation_signal_source={}, clip_negative={}) to '{}'",
+                    seq_id,
+                    report.tracks.len(),
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.score_kind.as_str(),
+                    correlation_metric.as_str(),
+                    correlation_signal_source.as_str(),
+                    report.clip_negative,
+                    path
+                ));
+                    result.tfbs_score_tracks = Some(report);
+                }
+                Operation::RenderFeatureExpertSvg {
+                    seq_id,
+                    target,
+                    path,
+                } => {
+                    self.render_feature_expert_svg_to_path(&seq_id, &target, &path)?;
+                    result.messages.push(format!(
+                        "Wrote feature expert SVG for '{}' target={} to '{}'",
+                        seq_id,
+                        target.describe(),
+                        path
+                    ));
+                }
+                Operation::RenderIsoformArchitectureSvg {
+                    seq_id,
+                    panel_id,
+                    path,
+                } => {
+                    self.render_isoform_architecture_svg_to_path(&seq_id, &panel_id, &path)?;
+                    result.messages.push(format!(
+                        "Wrote isoform architecture SVG for '{}' panel='{}' to '{}'",
+                        seq_id, panel_id, path
+                    ));
+                }
+                Operation::RenderRnaStructureSvg { seq_id, path } => {
+                    let report = self.render_rna_structure_svg_to_path(&seq_id, &path)?;
+                    result.messages.push(format!(
+                        "Wrote RNA structure SVG for '{}' to '{}' using {}",
+                        seq_id, path, report.tool
+                    ));
+                }
+                Operation::RenderLineageSvg { path } => {
+                    let svg = export_lineage_svg(&self.state, self.operation_log());
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write SVG output '{path}': {e}"),
+                    })?;
+                    result
+                        .messages
+                        .push(format!("Wrote lineage SVG to '{}'", path));
+                }
+                Operation::RenderProtocolCartoonSvg { protocol, path } => {
+                    let svg = crate::protocol_cartoon::render_protocol_cartoon_svg(&protocol);
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write SVG output '{path}': {e}"),
+                    })?;
+                    result.messages.push(format!(
+                        "Wrote protocol cartoon SVG for '{}' to '{}'",
+                        protocol.id(),
+                        path
+                    ));
+                }
+                Operation::RenderProtocolCartoonTemplateSvg {
+                    template_path,
+                    path,
+                } => {
+                    let template_json =
+                        std::fs::read_to_string(&template_path).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not read protocol cartoon template '{}': {e}",
+                                template_path
+                            ),
+                        })?;
+                    let template: crate::protocol_cartoon::ProtocolCartoonTemplate =
+                        serde_json::from_str(&template_json).map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not parse protocol cartoon template JSON from '{}': {e}",
+                                template_path
+                            ),
+                        })?;
+                    let spec =
+                        crate::protocol_cartoon::resolve_protocol_cartoon_template(&template)
+                            .map_err(|e| EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Invalid protocol cartoon template '{}': {}",
+                                    template_path, e
+                                ),
+                            })?;
+                    let svg = crate::protocol_cartoon::render_protocol_cartoon_spec_svg(&spec);
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write SVG output '{path}': {e}"),
+                    })?;
+                    result.messages.push(format!(
+                        "Wrote protocol cartoon template SVG for '{}' from '{}' to '{}'",
+                        spec.id, template_path, path
+                    ));
+                }
+                Operation::ValidateProtocolCartoonTemplate { template_path } => {
+                    let template_json =
+                        std::fs::read_to_string(&template_path).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not read protocol cartoon template '{}': {e}",
+                                template_path
+                            ),
+                        })?;
+                    let template: crate::protocol_cartoon::ProtocolCartoonTemplate =
+                        serde_json::from_str(&template_json).map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not parse protocol cartoon template JSON from '{}': {e}",
+                                template_path
+                            ),
+                        })?;
+                    let spec =
+                        crate::protocol_cartoon::resolve_protocol_cartoon_template(&template)
+                            .map_err(|e| EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Invalid protocol cartoon template '{}': {}",
+                                    template_path, e
+                                ),
+                            })?;
+                    result.messages.push(format!(
+                        "Validated protocol cartoon template '{}' from '{}' (events={})",
+                        spec.id,
+                        template_path,
+                        spec.events.len()
+                    ));
+                }
+                Operation::RenderProtocolCartoonTemplateWithBindingsSvg {
+                    template_path,
+                    bindings_path,
+                    path,
+                } => {
+                    let template_json =
+                        std::fs::read_to_string(&template_path).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not read protocol cartoon template '{}': {e}",
+                                template_path
+                            ),
+                        })?;
+                    let template: crate::protocol_cartoon::ProtocolCartoonTemplate =
+                        serde_json::from_str(&template_json).map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not parse protocol cartoon template JSON from '{}': {e}",
+                                template_path
+                            ),
+                        })?;
+                    let bindings_json =
+                        std::fs::read_to_string(&bindings_path).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not read protocol cartoon bindings '{}': {e}",
+                                bindings_path
+                            ),
+                        })?;
+                    let bindings: crate::protocol_cartoon::ProtocolCartoonTemplateBindings =
+                        serde_json::from_str(&bindings_json).map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not parse protocol cartoon bindings JSON from '{}': {e}",
+                                bindings_path
+                            ),
+                        })?;
+                    let spec =
+                        crate::protocol_cartoon::resolve_protocol_cartoon_template_with_bindings(
+                            &template, &bindings,
+                        )
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Invalid protocol cartoon template/bindings ('{}', '{}'): {}",
+                                template_path, bindings_path, e
+                            ),
+                        })?;
+                    let svg = crate::protocol_cartoon::render_protocol_cartoon_spec_svg(&spec);
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write SVG output '{path}': {e}"),
+                    })?;
+                    result.messages.push(format!(
+                    "Wrote protocol cartoon template SVG for '{}' from '{}' with bindings '{}' to '{}'",
+                    spec.id, template_path, bindings_path, path
+                ));
+                }
+                Operation::ExportProtocolCartoonTemplateJson { protocol, path } => {
+                    let template =
+                        crate::protocol_cartoon::protocol_cartoon_template_for_kind(&protocol);
+                    let json =
+                        serde_json::to_string_pretty(&template).map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not serialize protocol cartoon template '{}' as JSON: {e}",
+                                protocol.id()
+                            ),
+                        })?;
+                    std::fs::write(&path, format!("{json}\n")).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write JSON output '{path}': {e}"),
+                    })?;
+                    result.messages.push(format!(
+                        "Exported protocol cartoon template '{}' to '{}'",
+                        protocol.id(),
+                        path
+                    ));
+                }
+                Operation::ApplyGibsonAssemblyPlan { plan_json } => {
+                    let plan: GibsonAssemblyPlan =
+                        serde_json::from_str(&plan_json).map_err(|err| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("Could not parse Gibson assembly plan JSON: {err}"),
+                        })?;
+                    let execution = derive_gibson_execution_plan(self, &plan)?;
+                    parent_seq_ids = execution.parent_seq_ids.clone();
+                    result.warnings.extend(execution.preview.warnings.clone());
+                    let mut assembled_product_seq_id: Option<String> = None;
+                    for output in execution.outputs {
+                        let seq_id = self.unique_seq_id(&output.base_seq_id);
+                        let mut dna = output.dna;
+                        Self::prepare_sequence(&mut dna);
+                        let length_bp = dna.len();
+                        let topology_label = if dna.is_circular() {
+                            "circular"
+                        } else {
+                            "linear"
+                        };
+                        self.state.sequences.insert(seq_id.clone(), dna);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(seq_id.clone());
+                        let container_name = self
+                            .state
+                            .sequences
+                            .get(&seq_id)
+                            .and_then(|dna| dna.name().clone())
+                            .filter(|name| !name.trim().is_empty())
+                            .unwrap_or_else(|| seq_id.clone());
+                        let _ = self.add_container(
+                            std::slice::from_ref(&seq_id),
+                            ContainerKind::Singleton,
+                            Some(container_name),
+                            Some(&result.op_id),
+                        );
+                        if output.kind == "assembled_product" {
+                            assembled_product_seq_id = Some(seq_id.clone());
+                        }
+                        result.messages.push(format!(
+                            "Created Gibson {} '{}' ({} bp, {})",
+                            output.kind.replace('_', " "),
+                            seq_id,
+                            length_bp,
+                            topology_label
+                        ));
+                    }
+                    let plan_label = execution.preview.plan_id.trim();
+                    let insert_summary = if execution.preview.fragments.is_empty() {
+                        "-".to_string()
+                    } else {
+                        execution
+                            .preview
+                            .fragments
+                            .iter()
+                            .map(|fragment| fragment.seq_id.clone())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    };
+                    result.messages.push(format!(
+                        "Applied Gibson assembly plan '{}' from destination '{}' and inserts '{}'",
+                        if plan_label.is_empty() {
+                            execution.preview.title.as_str()
+                        } else {
+                            plan_label
+                        },
+                        execution.preview.destination.seq_id,
+                        insert_summary
+                    ));
+                    if let Some(product_seq_id) = assembled_product_seq_id.as_deref() {
+                        match self.maybe_create_gibson_arrangement(
+                            &plan,
+                            product_seq_id,
+                            &result.op_id,
+                        ) {
+                            Ok(Some(arrangement_id)) => {
+                                let arrangement = self
+                                    .state
+                                    .container_state
+                                    .arrangements
+                                    .get(&arrangement_id)
+                                    .cloned();
+                                let lane_count = arrangement
+                                    .as_ref()
+                                    .map(|arrangement| arrangement.lane_container_ids.len())
+                                    .unwrap_or(0);
+                                let ladders = arrangement
+                                    .as_ref()
+                                    .map(|arrangement| {
+                                        if arrangement.ladders.is_empty() {
+                                            "auto".to_string()
+                                        } else {
+                                            arrangement.ladders.join(" + ")
+                                        }
+                                    })
+                                    .unwrap_or_else(|| "auto".to_string());
+                                let rack_id = arrangement
+                                    .and_then(|arrangement| arrangement.default_rack_id)
+                                    .unwrap_or_else(|| "draft-on-demand".to_string());
+                                result.messages.push(format!(
+                                "Created Gibson serial arrangement '{}' with {} sample lane(s), ladders '{}', and rack draft '{}'",
+                                arrangement_id, lane_count, ladders, rack_id
+                            ));
+                            }
+                            Ok(None) => {}
+                            Err(err) => {
+                                result.warnings.push(format!(
+                                    "Gibson arrangement was not created automatically: {}",
+                                    err.message
+                                ));
+                            }
+                        }
+                    }
+                }
+                op @ Operation::CreateArrangementSerial { .. }
+                | op @ Operation::SetArrangementLadders { .. }
+                | op @ Operation::SetContainerDeclaredContentsExclusive { .. }
+                | op @ Operation::CreateRackFromArrangement { .. }
+                | op @ Operation::PlaceArrangementOnRack { .. }
+                | op @ Operation::MoveRackPlacement { .. }
+                | op @ Operation::MoveRackSamples { .. }
+                | op @ Operation::MoveRackArrangementBlocks { .. }
+                | op @ Operation::SetRackProfile { .. }
+                | op @ Operation::ApplyRackTemplate { .. }
+                | op @ Operation::SetRackFillDirection { .. }
+                | op @ Operation::SetRackProfileCustom { .. }
+                | op @ Operation::SetRackBlockedCoordinates { .. }
+                | op @ Operation::ExportRackLabelsSvg { .. }
+                | op @ Operation::ExportRackFabricationSvg { .. }
+                | op @ Operation::ExportRackIsometricSvg { .. }
+                | op @ Operation::ExportRackOpenScad { .. }
+                | op @ Operation::ExportRackCarrierLabelsSvg { .. }
+                | op @ Operation::ExportRackSimulationJson { .. }
+                | op @ Operation::RenderPoolGelSvg { .. }
+                | op @ Operation::ExportDnaLadders { .. }
+                | op @ Operation::ExportRnaLadders { .. } => {
+                    self.apply_arrangement_rack_and_ladder_operation(op, &mut result)?;
+                }
+                Operation::ExportPool {
+                    inputs,
+                    path,
+                    pool_id,
+                    human_id,
+                } => {
+                    let (pool_id, human_id, count) =
+                        self.export_pool_file(&inputs, &path, pool_id, human_id)?;
+                    result.messages.push(format!(
+                        "Wrote pool export '{}' ({}) with {} members to '{}'",
+                        pool_id, human_id, count, path
+                    ));
+                }
+                Operation::ExportProcessRunBundle { path, run_id } => {
+                    let bundle = self.export_process_run_bundle_file(&path, run_id.as_deref())?;
+                    let run_scope = bundle
+                        .run_id_filter
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or("all");
+                    result.messages.push(format!(
+                        "Wrote process run bundle '{}' with {} record(s) (run_id={}) to '{}'",
+                        bundle.schema, bundle.selected_record_count, run_scope, path
+                    ));
+                }
+                Operation::PrepareGenome {
+                    genome_id,
+                    catalog_path,
+                    cache_dir,
+                    timeout_seconds,
+                } => {
+                    let report = Self::prepare_reference_genome_once(
+                        &genome_id,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                        timeout_seconds,
+                        &mut |p| on_progress(OperationProgress::GenomePrepare(p)),
+                    )?;
+                    result.messages.push(Self::format_prepare_genome_message(
+                        &genome_id,
+                        cache_dir.as_deref(),
+                        &report,
+                    ));
+                    if !report.warnings.is_empty() {
+                        result.warnings.extend(report.warnings.clone());
+                    }
+                }
+                Operation::ExtractGenomeRegion {
+                    genome_id,
+                    chromosome,
                     start_1based,
                     end_1based,
                     output_id,
@@ -6852,147 +6915,160 @@ impl GentleEngine {
                     include_genomic_annotation,
                     catalog_path,
                     cache_dir,
-                    "ExtractGenomeRegion",
-                    None,
-                )?;
-            }
-            Operation::FetchDbSnpRegion {
-                rs_id,
-                genome_id,
-                flank_bp,
-                output_id,
-                annotation_scope,
-                max_annotation_features,
-                catalog_path,
-                cache_dir,
-            } => {
-                let genome_id = genome_id.trim().to_string();
-                if genome_id.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "Genome id cannot be empty for dbSNP fetch".to_string(),
-                    });
-                }
-                let (display_rs_id, refsnp_id) = Self::normalize_dbsnp_rs_id(&rs_id)?;
-                let mut emit_progress = |stage: DbSnpFetchStage, detail: String| {
-                    let _ = on_progress(OperationProgress::DbSnpFetch(DbSnpFetchProgress {
-                        rs_id: display_rs_id.clone(),
-                        genome_id: genome_id.clone(),
-                        stage,
-                        detail,
-                    }));
-                };
-                emit_progress(
-                    DbSnpFetchStage::ValidateInput,
-                    format!(
-                        "Validated dbSNP request '{}' for prepared genome '{}'",
-                        display_rs_id, genome_id
-                    ),
-                );
-                let resolved_catalog_path = catalog_path
-                    .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
-                let (catalog, _) =
-                    Self::open_reference_genome_catalog(Some(&resolved_catalog_path))?;
-                emit_progress(
-                    DbSnpFetchStage::InspectPreparedGenome,
-                    format!(
-                        "Inspecting prepared genome '{}' via catalog '{}'",
-                        genome_id, resolved_catalog_path
-                    ),
-                );
-                let compatibility = catalog
-                    .inspect_prepared_genome_compatibility(&genome_id, cache_dir.as_deref())
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Could not inspect prepared compatibility for '{}': {}",
-                            genome_id, e
-                        ),
-                    })?;
-                let source_url = Self::dbsnp_refsnp_url(&refsnp_id);
-                emit_progress(
-                    DbSnpFetchStage::ContactServer,
-                    format!(
-                        "Contacting NCBI Variation refSNP service at '{}' for '{}'",
-                        source_url, display_rs_id
-                    ),
-                );
-                emit_progress(
-                    DbSnpFetchStage::WaitResponse,
-                    format!("Waiting for dbSNP response from '{}'", source_url),
-                );
-                let (_source_url_from_fetch, raw_document) =
-                    Self::fetch_dbsnp_refsnp_text(&refsnp_id)?;
-                emit_progress(
-                    DbSnpFetchStage::ParseResponse,
-                    format!("Parsing dbSNP response for '{}'", display_rs_id),
-                );
-                let document = Self::parse_dbsnp_refsnp_json(&refsnp_id, &raw_document)?;
-                emit_progress(
-                    DbSnpFetchStage::ResolvePlacement,
-                    format!(
-                        "Resolving genomic placement for '{}' against genome '{}'",
-                        display_rs_id, genome_id
-                    ),
-                );
-                let placement = Self::resolve_dbsnp_primary_placement(
-                    &document,
-                    &display_rs_id,
-                    compatibility.requested_family.as_deref(),
-                )?;
-                let flank_bp = flank_bp.unwrap_or(3000);
-                let start_1based = placement.position_1based.saturating_sub(flank_bp).max(1);
-                let end_1based = placement.position_1based.saturating_add(flank_bp);
-                let chromosome_label = if placement.chromosome_display.trim().is_empty() {
-                    placement.chromosome.clone()
-                } else {
-                    placement.chromosome_display.clone()
-                };
-                let chromosome_message_label = if placement.chromosome.trim().is_empty()
-                    || placement
-                        .chromosome
-                        .trim()
-                        .eq_ignore_ascii_case(chromosome_label.trim())
-                {
-                    chromosome_label.clone()
-                } else {
-                    format!("{} [{}]", chromosome_label, placement.chromosome)
-                };
-                let output_id = output_id.or_else(|| {
-                    Some(format!(
-                        "{}_{}_{}_{}",
-                        Self::normalize_id_token(&display_rs_id),
-                        Self::normalize_id_token(&chromosome_label),
+                } => {
+                    let _ = self.extract_genome_region_into_state(
+                        &mut result,
+                        &genome_id,
+                        &chromosome,
                         start_1based,
-                        end_1based
-                    ))
-                });
-                let annotation_scope =
-                    Some(annotation_scope.unwrap_or(GenomeAnnotationScope::Full));
-                let include_genomic_annotation = Some(!matches!(
+                        end_1based,
+                        output_id,
+                        annotation_scope,
+                        max_annotation_features,
+                        include_genomic_annotation,
+                        catalog_path,
+                        cache_dir,
+                        "ExtractGenomeRegion",
+                        None,
+                    )?;
+                }
+                Operation::FetchDbSnpRegion {
+                    rs_id,
+                    genome_id,
+                    flank_bp,
+                    output_id,
                     annotation_scope,
-                    Some(GenomeAnnotationScope::None)
-                ));
-                let max_annotation_features = Some(max_annotation_features.unwrap_or(0));
-                let assembly_name = placement
-                    .assembly_name
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .unwrap_or("unknown");
-                let genes = if placement.gene_symbols.is_empty() {
-                    String::new()
-                } else {
-                    format!(" [genes={}]", placement.gene_symbols.join(", "))
-                };
-                emit_progress(
-                    DbSnpFetchStage::ExtractRegion,
-                    format!(
-                        "Extracting annotated slice {}:{}-{} from '{}'",
-                        chromosome_message_label, start_1based, end_1based, genome_id
-                    ),
-                );
-                result.messages.push(format!(
+                    max_annotation_features,
+                    catalog_path,
+                    cache_dir,
+                } => {
+                    let genome_id = genome_id.trim().to_string();
+                    if genome_id.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "Genome id cannot be empty for dbSNP fetch".to_string(),
+                        });
+                    }
+                    let (display_rs_id, refsnp_id) = Self::normalize_dbsnp_rs_id(&rs_id)?;
+                    let mut emit_progress = |stage: DbSnpFetchStage, detail: String| {
+                        let _ = on_progress(OperationProgress::DbSnpFetch(DbSnpFetchProgress {
+                            rs_id: display_rs_id.clone(),
+                            genome_id: genome_id.clone(),
+                            stage,
+                            detail,
+                        }));
+                    };
+                    emit_progress(
+                        DbSnpFetchStage::ValidateInput,
+                        format!(
+                            "Validated dbSNP request '{}' for prepared genome '{}'",
+                            display_rs_id, genome_id
+                        ),
+                    );
+                    let resolved_catalog_path = catalog_path
+                        .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
+                    let (catalog, _) =
+                        Self::open_reference_genome_catalog(Some(&resolved_catalog_path))?;
+                    emit_progress(
+                        DbSnpFetchStage::InspectPreparedGenome,
+                        format!(
+                            "Inspecting prepared genome '{}' via catalog '{}'",
+                            genome_id, resolved_catalog_path
+                        ),
+                    );
+                    let compatibility = catalog
+                        .inspect_prepared_genome_compatibility(&genome_id, cache_dir.as_deref())
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not inspect prepared compatibility for '{}': {}",
+                                genome_id, e
+                            ),
+                        })?;
+                    let source_url = Self::dbsnp_refsnp_url(&refsnp_id);
+                    emit_progress(
+                        DbSnpFetchStage::ContactServer,
+                        format!(
+                            "Contacting NCBI Variation refSNP service at '{}' for '{}'",
+                            source_url, display_rs_id
+                        ),
+                    );
+                    emit_progress(
+                        DbSnpFetchStage::WaitResponse,
+                        format!("Waiting for dbSNP response from '{}'", source_url),
+                    );
+                    let (_source_url_from_fetch, raw_document) =
+                        Self::fetch_dbsnp_refsnp_text(&refsnp_id)?;
+                    emit_progress(
+                        DbSnpFetchStage::ParseResponse,
+                        format!("Parsing dbSNP response for '{}'", display_rs_id),
+                    );
+                    let document = Self::parse_dbsnp_refsnp_json(&refsnp_id, &raw_document)?;
+                    emit_progress(
+                        DbSnpFetchStage::ResolvePlacement,
+                        format!(
+                            "Resolving genomic placement for '{}' against genome '{}'",
+                            display_rs_id, genome_id
+                        ),
+                    );
+                    let placement = Self::resolve_dbsnp_primary_placement(
+                        &document,
+                        &display_rs_id,
+                        compatibility.requested_family.as_deref(),
+                    )?;
+                    let flank_bp = flank_bp.unwrap_or(3000);
+                    let start_1based = placement.position_1based.saturating_sub(flank_bp).max(1);
+                    let end_1based = placement.position_1based.saturating_add(flank_bp);
+                    let chromosome_label = if placement.chromosome_display.trim().is_empty() {
+                        placement.chromosome.clone()
+                    } else {
+                        placement.chromosome_display.clone()
+                    };
+                    let chromosome_message_label = if placement.chromosome.trim().is_empty()
+                        || placement
+                            .chromosome
+                            .trim()
+                            .eq_ignore_ascii_case(chromosome_label.trim())
+                    {
+                        chromosome_label.clone()
+                    } else {
+                        format!("{} [{}]", chromosome_label, placement.chromosome)
+                    };
+                    let output_id = output_id.or_else(|| {
+                        Some(format!(
+                            "{}_{}_{}_{}",
+                            Self::normalize_id_token(&display_rs_id),
+                            Self::normalize_id_token(&chromosome_label),
+                            start_1based,
+                            end_1based
+                        ))
+                    });
+                    let annotation_scope =
+                        Some(annotation_scope.unwrap_or(GenomeAnnotationScope::Full));
+                    let include_genomic_annotation = Some(!matches!(
+                        annotation_scope,
+                        Some(GenomeAnnotationScope::None)
+                    ));
+                    let max_annotation_features = Some(max_annotation_features.unwrap_or(0));
+                    let assembly_name = placement
+                        .assembly_name
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or("unknown");
+                    let genes = if placement.gene_symbols.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [genes={}]", placement.gene_symbols.join(", "))
+                    };
+                    emit_progress(
+                        DbSnpFetchStage::ExtractRegion,
+                        format!(
+                            "Extracting annotated slice {}:{}-{} from '{}'",
+                            chromosome_message_label, start_1based, end_1based, genome_id
+                        ),
+                    );
+                    result.messages.push(format!(
                     "Resolved dbSNP '{}' from '{}' to {}:{} (assembly={}) and extracted +/-{} bp on '{}'{}",
                     placement.rs_id,
                     source_url,
@@ -7003,482 +7079,497 @@ impl GentleEngine {
                     genome_id,
                     genes
                 ));
-                let seq_id = self.extract_genome_region_into_state(
-                    &mut result,
-                    &genome_id,
-                    &placement.chromosome,
-                    start_1based,
-                    end_1based,
-                    output_id,
-                    annotation_scope,
-                    max_annotation_features,
-                    include_genomic_annotation,
-                    Some(resolved_catalog_path),
-                    cache_dir,
-                    "FetchDbSnpRegion",
-                    None,
-                )?;
-                let local_start_0based = placement.position_1based.saturating_sub(start_1based);
-                if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
-                    if local_start_0based < dna.len() {
-                        emit_progress(
-                            DbSnpFetchStage::AttachVariantMarker,
-                            format!(
-                                "Attaching local rs marker '{}' at sequence position {}",
-                                display_rs_id,
-                                local_start_0based.saturating_add(1)
-                            ),
-                        );
-                        dna.features_mut()
-                            .push(Self::build_dbsnp_variant_marker_feature(
-                                &display_rs_id,
-                                &placement.chromosome,
-                                &placement.chromosome_display,
-                                placement.position_1based,
-                                placement.assembly_name.as_deref(),
-                                &placement.gene_symbols,
-                                local_start_0based,
-                            ));
-                        Self::prepare_sequence(dna);
-                    } else {
-                        result.warnings.push(format!(
+                    let seq_id = self.extract_genome_region_into_state(
+                        &mut result,
+                        &genome_id,
+                        &placement.chromosome,
+                        start_1based,
+                        end_1based,
+                        output_id,
+                        annotation_scope,
+                        max_annotation_features,
+                        include_genomic_annotation,
+                        Some(resolved_catalog_path),
+                        cache_dir,
+                        "FetchDbSnpRegion",
+                        None,
+                    )?;
+                    let local_start_0based = placement.position_1based.saturating_sub(start_1based);
+                    if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
+                        if local_start_0based < dna.len() {
+                            emit_progress(
+                                DbSnpFetchStage::AttachVariantMarker,
+                                format!(
+                                    "Attaching local rs marker '{}' at sequence position {}",
+                                    display_rs_id,
+                                    local_start_0based.saturating_add(1)
+                                ),
+                            );
+                            dna.features_mut()
+                                .push(Self::build_dbsnp_variant_marker_feature(
+                                    &display_rs_id,
+                                    &placement.chromosome,
+                                    &placement.chromosome_display,
+                                    placement.position_1based,
+                                    placement.assembly_name.as_deref(),
+                                    &placement.gene_symbols,
+                                    local_start_0based,
+                                ));
+                            Self::prepare_sequence(dna);
+                        } else {
+                            result.warnings.push(format!(
                             "Resolved dbSNP '{}' fell outside extracted sequence '{}' (local position {}, length {})",
                             display_rs_id,
                             seq_id,
                             local_start_0based + 1,
                             dna.len()
                         ));
+                        }
                     }
                 }
-            }
-            Operation::ExtractGenomeGene {
-                genome_id,
-                gene_query,
-                occurrence,
-                output_id,
-                extract_mode,
-                promoter_upstream_bp,
-                annotation_scope,
-                max_annotation_features,
-                include_genomic_annotation,
-                catalog_path,
-                cache_dir,
-            } => {
-                let query = gene_query.trim();
-                if query.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "Gene query cannot be empty".to_string(),
-                    });
-                }
-                let catalog_path = catalog_path
-                    .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
-                let (catalog, _) = Self::open_reference_genome_catalog(Some(&catalog_path))?;
-                let genes = catalog
-                    .list_gene_regions(&genome_id, cache_dir.as_deref())
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "Could not load gene index for genome '{}': {}",
-                            genome_id, e
-                        ),
-                    })?;
-                let mut exact_matches: Vec<&GenomeGeneRecord> = genes
-                    .iter()
-                    .filter(|record| Self::genome_gene_matches_exact(record, query))
-                    .collect();
-                let used_fuzzy = if exact_matches.is_empty() {
-                    let query_lower = query.to_ascii_lowercase();
-                    exact_matches = genes
+                Operation::ExtractGenomeGene {
+                    genome_id,
+                    gene_query,
+                    occurrence,
+                    output_id,
+                    extract_mode,
+                    promoter_upstream_bp,
+                    annotation_scope,
+                    max_annotation_features,
+                    include_genomic_annotation,
+                    catalog_path,
+                    cache_dir,
+                } => {
+                    let query = gene_query.trim();
+                    if query.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "Gene query cannot be empty".to_string(),
+                        });
+                    }
+                    let catalog_path = catalog_path
+                        .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
+                    let (catalog, _) = Self::open_reference_genome_catalog(Some(&catalog_path))?;
+                    let genes = catalog
+                        .list_gene_regions(&genome_id, cache_dir.as_deref())
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Could not load gene index for genome '{}': {}",
+                                genome_id, e
+                            ),
+                        })?;
+                    let mut exact_matches: Vec<&GenomeGeneRecord> = genes
                         .iter()
-                        .filter(|record| Self::genome_gene_matches_contains(record, &query_lower))
+                        .filter(|record| Self::genome_gene_matches_exact(record, query))
                         .collect();
-                    true
-                } else {
-                    false
-                };
-                if exact_matches.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("No genes in '{}' match query '{}'", genome_id, query),
-                    });
-                }
-                let requested_occurrence = occurrence;
-                let occurrence = requested_occurrence.unwrap_or(1);
-                if occurrence == 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "Gene occurrence must be >= 1".to_string(),
-                    });
-                }
-                if exact_matches.len() > 1 && requested_occurrence.is_none() {
-                    result.warnings.push(format!(
+                    let used_fuzzy = if exact_matches.is_empty() {
+                        let query_lower = query.to_ascii_lowercase();
+                        exact_matches = genes
+                            .iter()
+                            .filter(|record| {
+                                Self::genome_gene_matches_contains(record, &query_lower)
+                            })
+                            .collect();
+                        true
+                    } else {
+                        false
+                    };
+                    if exact_matches.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("No genes in '{}' match query '{}'", genome_id, query),
+                        });
+                    }
+                    let requested_occurrence = occurrence;
+                    let occurrence = requested_occurrence.unwrap_or(1);
+                    if occurrence == 0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "Gene occurrence must be >= 1".to_string(),
+                        });
+                    }
+                    if exact_matches.len() > 1 && requested_occurrence.is_none() {
+                        result.warnings.push(format!(
                         "Gene query '{}' matched {} records in '{}'; using first match (set occurrence for another match).",
                         query,
                         exact_matches.len(),
                         genome_id
                     ));
-                }
-                let Some(selected_gene) = exact_matches.get(occurrence - 1) else {
-                    return Err(EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "Gene query '{}' matched {} records, but occurrence {} was requested",
-                            query,
-                            exact_matches.len(),
-                            occurrence
-                        ),
-                    });
-                };
-                let extract_mode = extract_mode.unwrap_or(GenomeGeneExtractMode::Gene);
-                let promoter_upstream_bp = promoter_upstream_bp.unwrap_or(0);
-                if matches!(extract_mode, GenomeGeneExtractMode::Gene) && promoter_upstream_bp > 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "promoter_upstream_bp requires extract_mode=coding_with_promoter"
-                            .to_string(),
-                    });
-                }
-
-                let mut transcript_records = match catalog.list_gene_transcript_records(
-                    &genome_id,
-                    &selected_gene.chromosome,
-                    selected_gene.start_1based,
-                    selected_gene.end_1based,
-                    selected_gene.gene_id.as_deref(),
-                    selected_gene.gene_name.as_deref(),
-                    cache_dir.as_deref(),
-                ) {
-                    Ok(records) => records,
-                    Err(e) => {
-                        result.warnings.push(format!(
-                            "Could not inspect transcript/exon annotation for gene '{}': {}",
-                            Self::genome_gene_display_label(selected_gene),
-                            e
-                        ));
-                        vec![]
                     }
-                };
-                if transcript_records.is_empty() {
-                    match catalog.list_gene_transcript_records(
+                    let Some(selected_gene) = exact_matches.get(occurrence - 1) else {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Gene query '{}' matched {} records, but occurrence {} was requested",
+                                query,
+                                exact_matches.len(),
+                                occurrence
+                            ),
+                        });
+                    };
+                    let extract_mode = extract_mode.unwrap_or(GenomeGeneExtractMode::Gene);
+                    let promoter_upstream_bp = promoter_upstream_bp.unwrap_or(0);
+                    if matches!(extract_mode, GenomeGeneExtractMode::Gene)
+                        && promoter_upstream_bp > 0
+                    {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message:
+                                "promoter_upstream_bp requires extract_mode=coding_with_promoter"
+                                    .to_string(),
+                        });
+                    }
+
+                    let mut transcript_records = match catalog.list_gene_transcript_records(
                         &genome_id,
                         &selected_gene.chromosome,
                         selected_gene.start_1based,
                         selected_gene.end_1based,
-                        None,
-                        None,
+                        selected_gene.gene_id.as_deref(),
+                        selected_gene.gene_name.as_deref(),
                         cache_dir.as_deref(),
                     ) {
-                        Ok(mut records) => {
-                            let selected_gene_id_norm = selected_gene
-                                .gene_id
-                                .as_deref()
-                                .map(Self::normalize_id_token)
-                                .filter(|v| !v.is_empty());
-                            let selected_gene_name_norm = selected_gene
-                                .gene_name
-                                .as_deref()
-                                .map(Self::normalize_id_token)
-                                .filter(|v| !v.is_empty());
-                            if selected_gene_id_norm.is_some() || selected_gene_name_norm.is_some()
-                            {
-                                records.retain(|record| {
-                                    let transcript_gene_id_norm = record
-                                        .gene_id
-                                        .as_deref()
-                                        .map(Self::normalize_id_token)
-                                        .filter(|v| !v.is_empty());
-                                    let transcript_gene_name_norm = record
-                                        .gene_name
-                                        .as_deref()
-                                        .map(Self::normalize_id_token)
-                                        .filter(|v| !v.is_empty());
-                                    selected_gene_id_norm
-                                        .as_ref()
-                                        .zip(transcript_gene_id_norm.as_ref())
-                                        .map(|(left, right)| left == right)
-                                        .unwrap_or(false)
-                                        || selected_gene_name_norm
+                        Ok(records) => records,
+                        Err(e) => {
+                            result.warnings.push(format!(
+                                "Could not inspect transcript/exon annotation for gene '{}': {}",
+                                Self::genome_gene_display_label(selected_gene),
+                                e
+                            ));
+                            vec![]
+                        }
+                    };
+                    if transcript_records.is_empty() {
+                        match catalog.list_gene_transcript_records(
+                            &genome_id,
+                            &selected_gene.chromosome,
+                            selected_gene.start_1based,
+                            selected_gene.end_1based,
+                            None,
+                            None,
+                            cache_dir.as_deref(),
+                        ) {
+                            Ok(mut records) => {
+                                let selected_gene_id_norm = selected_gene
+                                    .gene_id
+                                    .as_deref()
+                                    .map(Self::normalize_id_token)
+                                    .filter(|v| !v.is_empty());
+                                let selected_gene_name_norm = selected_gene
+                                    .gene_name
+                                    .as_deref()
+                                    .map(Self::normalize_id_token)
+                                    .filter(|v| !v.is_empty());
+                                if selected_gene_id_norm.is_some()
+                                    || selected_gene_name_norm.is_some()
+                                {
+                                    records.retain(|record| {
+                                        let transcript_gene_id_norm = record
+                                            .gene_id
+                                            .as_deref()
+                                            .map(Self::normalize_id_token)
+                                            .filter(|v| !v.is_empty());
+                                        let transcript_gene_name_norm = record
+                                            .gene_name
+                                            .as_deref()
+                                            .map(Self::normalize_id_token)
+                                            .filter(|v| !v.is_empty());
+                                        selected_gene_id_norm
                                             .as_ref()
-                                            .zip(transcript_gene_name_norm.as_ref())
+                                            .zip(transcript_gene_id_norm.as_ref())
                                             .map(|(left, right)| left == right)
                                             .unwrap_or(false)
-                                });
-                            }
-                            if !records.is_empty() {
-                                result.warnings.push(format!(
+                                            || selected_gene_name_norm
+                                                .as_ref()
+                                                .zip(transcript_gene_name_norm.as_ref())
+                                                .map(|(left, right)| left == right)
+                                                .unwrap_or(false)
+                                    });
+                                }
+                                if !records.is_empty() {
+                                    result.warnings.push(format!(
                                     "Gene-scoped transcript filter returned no records for '{}'; using overlap fallback with {} transcript candidate(s).",
                                     Self::genome_gene_display_label(selected_gene),
                                     records.len()
                                 ));
-                                transcript_records = records;
+                                    transcript_records = records;
+                                }
+                            }
+                            Err(e) => {
+                                result.warnings.push(format!(
+                                    "Could not run transcript fallback for gene '{}': {}",
+                                    Self::genome_gene_display_label(selected_gene),
+                                    e
+                                ));
                             }
                         }
-                        Err(e) => {
-                            result.warnings.push(format!(
-                                "Could not run transcript fallback for gene '{}': {}",
-                                Self::genome_gene_display_label(selected_gene),
-                                e
-                            ));
-                        }
                     }
-                }
 
-                let (extract_start_1based, extract_end_1based) =
-                    Self::resolve_extract_genome_gene_interval(
-                        selected_gene,
-                        &transcript_records,
-                        extract_mode,
-                        promoter_upstream_bp,
-                    )
-                    .map_err(|message| EngineError {
-                        code: ErrorCode::NotFound,
-                        message,
-                    })?;
-                let sequence = catalog
-                    .get_sequence_region_with_cache(
-                        &genome_id,
-                        &selected_gene.chromosome,
-                        extract_start_1based,
-                        extract_end_1based,
-                        cache_dir.as_deref(),
-                    )
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "Could not load gene extraction interval {}:{}-{} from '{}': {}",
-                            selected_gene.chromosome,
+                    let (extract_start_1based, extract_end_1based) =
+                        Self::resolve_extract_genome_gene_interval(
+                            selected_gene,
+                            &transcript_records,
+                            extract_mode,
+                            promoter_upstream_bp,
+                        )
+                        .map_err(|message| EngineError {
+                            code: ErrorCode::NotFound,
+                            message,
+                        })?;
+                    let sequence = catalog
+                        .get_sequence_region_with_cache(
+                            &genome_id,
+                            &selected_gene.chromosome,
                             extract_start_1based,
                             extract_end_1based,
-                            genome_id,
-                            e
-                        ),
-                    })?;
-                let default_id = Self::default_extract_genome_gene_output_id(
-                    &genome_id,
-                    selected_gene,
-                    extract_mode,
-                    promoter_upstream_bp,
-                );
-                let base = output_id.unwrap_or(default_id);
-                let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
-                let preferred_name = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .and_then(|dna| {
-                        dna.name()
-                            .as_deref()
-                            .map(str::trim)
-                            .filter(|v| !v.is_empty())
-                            .map(str::to_string)
-                    })
-                    .unwrap_or_else(|| seq_id.clone());
-                if preferred_name.eq_ignore_ascii_case("<unnamed sequence>")
-                    || preferred_name.eq_ignore_ascii_case("<no name>")
-                {
-                    if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
-                        dna.set_name(seq_id.clone());
-                        Self::prepare_sequence(dna);
-                    }
-                }
-
-                if let Some(extracted_sequence) = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .map(|dna| dna.get_forward_string())
-                    && let Some(exon_projection) = Self::build_exon_concatenated_projection(
-                        &extracted_sequence,
-                        extract_start_1based,
-                        extract_end_1based,
-                        selected_gene.strand,
-                        &transcript_records,
-                        EXON_CONCAT_SPACER_BP,
-                    )
-                {
-                    let exon_default_id = format!("{seq_id}__exons");
-                    let exon_seq_id = self.unique_seq_id(&exon_default_id);
-                    let mut exon_dna = DNAsequence::from_sequence(&exon_projection.sequence)
+                            cache_dir.as_deref(),
+                        )
                         .map_err(|e| EngineError {
-                            code: ErrorCode::Internal,
+                            code: ErrorCode::NotFound,
                             message: format!(
-                                "Could not construct exon-concatenated sequence for '{}': {e}",
-                                seq_id
+                                "Could not load gene extraction interval {}:{}-{} from '{}': {}",
+                                selected_gene.chromosome,
+                                extract_start_1based,
+                                extract_end_1based,
+                                genome_id,
+                                e
                             ),
                         })?;
-                    exon_dna.set_name(exon_seq_id.clone());
-                    let sequence_len = exon_projection.sequence.len();
-                    if sequence_len > 0 {
-                        let mut transcript_qualifiers = vec![
-                            ("chromosome".into(), Some(selected_gene.chromosome.clone())),
-                            (
-                                "genomic_start_1based".into(),
-                                Some(extract_start_1based.to_string()),
-                            ),
-                            (
-                                "genomic_end_1based".into(),
-                                Some(extract_end_1based.to_string()),
-                            ),
-                            (
-                                "synthetic_origin".into(),
-                                Some("exon_concatenated".to_string()),
-                            ),
-                            (
-                                "synthetic_spacer_bp".into(),
-                                Some(EXON_CONCAT_SPACER_BP.to_string()),
-                            ),
-                        ];
-                        if let Some(gene_name) = selected_gene.gene_name.as_ref() {
-                            transcript_qualifiers.push(("gene".into(), Some(gene_name.clone())));
-                            transcript_qualifiers.push(("label".into(), Some(gene_name.clone())));
-                        }
-                        if let Some(gene_id) = selected_gene.gene_id.as_ref() {
-                            transcript_qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
-                            if selected_gene.gene_name.is_none() {
-                                transcript_qualifiers.push(("label".into(), Some(gene_id.clone())));
-                            }
-                        }
-                        if let Some(strand) = selected_gene.strand {
-                            transcript_qualifiers.push(("strand".into(), Some(strand.to_string())));
-                        }
-                        exon_dna.features_mut().push(gb_io::seq::Feature {
-                            kind: "mRNA".into(),
-                            location: gb_io::seq::Location::simple_range(0, sequence_len as i64),
-                            qualifiers: transcript_qualifiers,
-                        });
-                    }
-                    for (index, block) in exon_projection.blocks.iter().enumerate() {
-                        if block.local_end_0based_exclusive <= block.local_start_0based {
-                            continue;
-                        }
-                        let mut qualifiers = vec![
-                            (
-                                "exon_number".into(),
-                                Some((index.saturating_add(1)).to_string()),
-                            ),
-                            ("chromosome".into(), Some(selected_gene.chromosome.clone())),
-                            (
-                                "genomic_start_1based".into(),
-                                Some(block.genomic_start_1based.to_string()),
-                            ),
-                            (
-                                "genomic_end_1based".into(),
-                                Some(block.genomic_end_1based.to_string()),
-                            ),
-                            (
-                                "synthetic_origin".into(),
-                                Some("exon_concatenated".to_string()),
-                            ),
-                        ];
-                        if let Some(gene_name) = selected_gene.gene_name.as_ref() {
-                            qualifiers.push(("gene".into(), Some(gene_name.clone())));
-                            qualifiers.push(("label".into(), Some(gene_name.clone())));
-                        }
-                        if let Some(gene_id) = selected_gene.gene_id.as_ref() {
-                            qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
-                            if selected_gene.gene_name.is_none() {
-                                qualifiers.push(("label".into(), Some(gene_id.clone())));
-                            }
-                        }
-                        if let Some(strand) = selected_gene.strand {
-                            qualifiers.push(("strand".into(), Some(strand.to_string())));
-                        }
-                        exon_dna.features_mut().push(gb_io::seq::Feature {
-                            kind: "exon".into(),
-                            location: gb_io::seq::Location::simple_range(
-                                block.local_start_0based as i64,
-                                block.local_end_0based_exclusive as i64,
-                            ),
-                            qualifiers,
-                        });
-                    }
-                    Self::prepare_sequence(&mut exon_dna);
-                    self.state.sequences.insert(exon_seq_id.clone(), exon_dna);
-                    self.add_lineage_node(
-                        &exon_seq_id,
-                        SequenceOrigin::Derived,
-                        Some(&result.op_id),
+                    let default_id = Self::default_extract_genome_gene_output_id(
+                        &genome_id,
+                        selected_gene,
+                        extract_mode,
+                        promoter_upstream_bp,
                     );
-                    self.add_lineage_edges(
-                        &[seq_id.clone()],
-                        std::slice::from_ref(&exon_seq_id),
-                        &result.op_id,
-                        run_id,
-                    );
-                    result.created_seq_ids.push(exon_seq_id.clone());
-                    result.messages.push(format!(
+                    let base = output_id.unwrap_or(default_id);
+                    let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
+                    let preferred_name = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .and_then(|dna| {
+                            dna.name()
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|v| !v.is_empty())
+                                .map(str::to_string)
+                        })
+                        .unwrap_or_else(|| seq_id.clone());
+                    if preferred_name.eq_ignore_ascii_case("<unnamed sequence>")
+                        || preferred_name.eq_ignore_ascii_case("<no name>")
+                    {
+                        if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
+                            dna.set_name(seq_id.clone());
+                            Self::prepare_sequence(dna);
+                        }
+                    }
+
+                    if let Some(extracted_sequence) = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .map(|dna| dna.get_forward_string())
+                        && let Some(exon_projection) = Self::build_exon_concatenated_projection(
+                            &extracted_sequence,
+                            extract_start_1based,
+                            extract_end_1based,
+                            selected_gene.strand,
+                            &transcript_records,
+                            EXON_CONCAT_SPACER_BP,
+                        )
+                    {
+                        let exon_default_id = format!("{seq_id}__exons");
+                        let exon_seq_id = self.unique_seq_id(&exon_default_id);
+                        let mut exon_dna = DNAsequence::from_sequence(&exon_projection.sequence)
+                            .map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not construct exon-concatenated sequence for '{}': {e}",
+                                    seq_id
+                                ),
+                            })?;
+                        exon_dna.set_name(exon_seq_id.clone());
+                        let sequence_len = exon_projection.sequence.len();
+                        if sequence_len > 0 {
+                            let mut transcript_qualifiers = vec![
+                                ("chromosome".into(), Some(selected_gene.chromosome.clone())),
+                                (
+                                    "genomic_start_1based".into(),
+                                    Some(extract_start_1based.to_string()),
+                                ),
+                                (
+                                    "genomic_end_1based".into(),
+                                    Some(extract_end_1based.to_string()),
+                                ),
+                                (
+                                    "synthetic_origin".into(),
+                                    Some("exon_concatenated".to_string()),
+                                ),
+                                (
+                                    "synthetic_spacer_bp".into(),
+                                    Some(EXON_CONCAT_SPACER_BP.to_string()),
+                                ),
+                            ];
+                            if let Some(gene_name) = selected_gene.gene_name.as_ref() {
+                                transcript_qualifiers
+                                    .push(("gene".into(), Some(gene_name.clone())));
+                                transcript_qualifiers
+                                    .push(("label".into(), Some(gene_name.clone())));
+                            }
+                            if let Some(gene_id) = selected_gene.gene_id.as_ref() {
+                                transcript_qualifiers
+                                    .push(("gene_id".into(), Some(gene_id.clone())));
+                                if selected_gene.gene_name.is_none() {
+                                    transcript_qualifiers
+                                        .push(("label".into(), Some(gene_id.clone())));
+                                }
+                            }
+                            if let Some(strand) = selected_gene.strand {
+                                transcript_qualifiers
+                                    .push(("strand".into(), Some(strand.to_string())));
+                            }
+                            exon_dna.features_mut().push(gb_io::seq::Feature {
+                                kind: "mRNA".into(),
+                                location: gb_io::seq::Location::simple_range(
+                                    0,
+                                    sequence_len as i64,
+                                ),
+                                qualifiers: transcript_qualifiers,
+                            });
+                        }
+                        for (index, block) in exon_projection.blocks.iter().enumerate() {
+                            if block.local_end_0based_exclusive <= block.local_start_0based {
+                                continue;
+                            }
+                            let mut qualifiers = vec![
+                                (
+                                    "exon_number".into(),
+                                    Some((index.saturating_add(1)).to_string()),
+                                ),
+                                ("chromosome".into(), Some(selected_gene.chromosome.clone())),
+                                (
+                                    "genomic_start_1based".into(),
+                                    Some(block.genomic_start_1based.to_string()),
+                                ),
+                                (
+                                    "genomic_end_1based".into(),
+                                    Some(block.genomic_end_1based.to_string()),
+                                ),
+                                (
+                                    "synthetic_origin".into(),
+                                    Some("exon_concatenated".to_string()),
+                                ),
+                            ];
+                            if let Some(gene_name) = selected_gene.gene_name.as_ref() {
+                                qualifiers.push(("gene".into(), Some(gene_name.clone())));
+                                qualifiers.push(("label".into(), Some(gene_name.clone())));
+                            }
+                            if let Some(gene_id) = selected_gene.gene_id.as_ref() {
+                                qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
+                                if selected_gene.gene_name.is_none() {
+                                    qualifiers.push(("label".into(), Some(gene_id.clone())));
+                                }
+                            }
+                            if let Some(strand) = selected_gene.strand {
+                                qualifiers.push(("strand".into(), Some(strand.to_string())));
+                            }
+                            exon_dna.features_mut().push(gb_io::seq::Feature {
+                                kind: "exon".into(),
+                                location: gb_io::seq::Location::simple_range(
+                                    block.local_start_0based as i64,
+                                    block.local_end_0based_exclusive as i64,
+                                ),
+                                qualifiers,
+                            });
+                        }
+                        Self::prepare_sequence(&mut exon_dna);
+                        self.state.sequences.insert(exon_seq_id.clone(), exon_dna);
+                        self.add_lineage_node(
+                            &exon_seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        self.add_lineage_edges(
+                            &[seq_id.clone()],
+                            std::slice::from_ref(&exon_seq_id),
+                            &result.op_id,
+                            run_id,
+                        );
+                        result.created_seq_ids.push(exon_seq_id.clone());
+                        result.messages.push(format!(
                         "Created exon-concatenated synthetic sequence '{}' from '{}' ({} merged exon block(s), spacer={} bp).",
                         exon_seq_id,
                         seq_id,
                         exon_projection.blocks.len(),
                         EXON_CONCAT_SPACER_BP
                     ));
-                }
+                    }
 
-                let requested_scope = Self::resolve_extract_region_annotation_scope(
-                    annotation_scope,
-                    include_genomic_annotation,
-                );
-                let max_annotation_features = match max_annotation_features {
-                    Some(0) | None => None,
-                    Some(value) => Some(value),
-                };
-                let mut effective_scope = requested_scope;
-                let mut fallback_reason: Option<String> = None;
-                let gene_records = vec![(*selected_gene).clone()];
-                let mut projection = Self::build_extract_region_annotation_projection(
-                    &gene_records,
-                    &transcript_records,
-                    extract_start_1based,
-                    extract_end_1based,
-                    requested_scope,
-                );
-                let candidate_before_fallback = projection.feature_count();
-                if let Some(cap) = max_annotation_features {
-                    if projection.feature_count() > cap {
-                        if matches!(requested_scope, GenomeAnnotationScope::Full) {
-                            let core_projection = Self::build_extract_region_annotation_projection(
-                                &gene_records,
-                                &transcript_records,
-                                extract_start_1based,
-                                extract_end_1based,
-                                GenomeAnnotationScope::Core,
-                            );
-                            if core_projection.feature_count() <= cap {
-                                effective_scope = GenomeAnnotationScope::Core;
-                                projection = core_projection;
-                                fallback_reason = Some(format!(
-                                    "Projected full annotation would attach {} feature(s), exceeding max_annotation_features={cap}; fell back to core projection. Re-run with annotation_scope=full --max-annotation-features 0 to force full transfer.",
-                                    candidate_before_fallback
-                                ));
+                    let requested_scope = Self::resolve_extract_region_annotation_scope(
+                        annotation_scope,
+                        include_genomic_annotation,
+                    );
+                    let max_annotation_features = match max_annotation_features {
+                        Some(0) | None => None,
+                        Some(value) => Some(value),
+                    };
+                    let mut effective_scope = requested_scope;
+                    let mut fallback_reason: Option<String> = None;
+                    let gene_records = vec![(*selected_gene).clone()];
+                    let mut projection = Self::build_extract_region_annotation_projection(
+                        &gene_records,
+                        &transcript_records,
+                        extract_start_1based,
+                        extract_end_1based,
+                        requested_scope,
+                    );
+                    let candidate_before_fallback = projection.feature_count();
+                    if let Some(cap) = max_annotation_features {
+                        if projection.feature_count() > cap {
+                            if matches!(requested_scope, GenomeAnnotationScope::Full) {
+                                let core_projection =
+                                    Self::build_extract_region_annotation_projection(
+                                        &gene_records,
+                                        &transcript_records,
+                                        extract_start_1based,
+                                        extract_end_1based,
+                                        GenomeAnnotationScope::Core,
+                                    );
+                                if core_projection.feature_count() <= cap {
+                                    effective_scope = GenomeAnnotationScope::Core;
+                                    projection = core_projection;
+                                    fallback_reason = Some(format!(
+                                        "Projected full annotation would attach {} feature(s), exceeding max_annotation_features={cap}; fell back to core projection. Re-run with annotation_scope=full --max-annotation-features 0 to force full transfer.",
+                                        candidate_before_fallback
+                                    ));
+                                } else {
+                                    effective_scope = GenomeAnnotationScope::None;
+                                    projection = ExtractRegionAnnotationProjectionBatch::default();
+                                    fallback_reason = Some(format!(
+                                        "Projected annotation exceeded max_annotation_features={cap} even after core fallback; annotation transfer was disabled for this extraction. Re-run with --max-annotation-features 0 for unrestricted transfer."
+                                    ));
+                                }
                             } else {
                                 effective_scope = GenomeAnnotationScope::None;
                                 projection = ExtractRegionAnnotationProjectionBatch::default();
                                 fallback_reason = Some(format!(
-                                    "Projected annotation exceeded max_annotation_features={cap} even after core fallback; annotation transfer was disabled for this extraction. Re-run with --max-annotation-features 0 for unrestricted transfer."
+                                    "Projected annotation exceeded max_annotation_features={cap}; annotation transfer was disabled for this extraction."
                                 ));
                             }
-                        } else {
-                            effective_scope = GenomeAnnotationScope::None;
-                            projection = ExtractRegionAnnotationProjectionBatch::default();
-                            fallback_reason = Some(format!(
-                                "Projected annotation exceeded max_annotation_features={cap}; annotation transfer was disabled for this extraction."
-                            ));
                         }
                     }
-                }
-                let attached_feature_count = projection.feature_count();
-                let genes_attached = projection.gene_count;
-                let transcripts_attached = projection.transcript_count;
-                let exons_attached = projection.exon_count;
-                let cds_attached = projection.cds_count;
-                if attached_feature_count > 0 {
-                    if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
-                        dna.features_mut().extend(projection.features);
-                        Self::prepare_sequence(dna);
-                    }
-                    result.messages.push(format!(
+                    let attached_feature_count = projection.feature_count();
+                    let genes_attached = projection.gene_count;
+                    let transcripts_attached = projection.transcript_count;
+                    let exons_attached = projection.exon_count;
+                    let cds_attached = projection.cds_count;
+                    if attached_feature_count > 0 {
+                        if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
+                            dna.features_mut().extend(projection.features);
+                            Self::prepare_sequence(dna);
+                        }
+                        result.messages.push(format!(
                         "Attached {} genomic annotation feature(s) to extracted gene '{}' (scope={} -> {}, genes={}, transcripts={}, exons={}, cds={})",
                         attached_feature_count,
                         seq_id,
@@ -7489,79 +7580,80 @@ impl GentleEngine {
                         exons_attached,
                         cds_attached
                     ));
-                } else if !matches!(requested_scope, GenomeAnnotationScope::None) {
-                    result.warnings.push(format!(
+                    } else if !matches!(requested_scope, GenomeAnnotationScope::None) {
+                        result.warnings.push(format!(
                         "No overlapping genomic annotation features were attached to extracted gene '{}'",
                         seq_id
                     ));
-                }
-                if let Some(reason) = fallback_reason.as_ref() {
-                    result.warnings.push(reason.clone());
-                }
-                result.genome_annotation_projection = Some(GenomeAnnotationProjectionTelemetry {
-                    requested_scope: requested_scope.as_str().to_string(),
-                    effective_scope: effective_scope.as_str().to_string(),
-                    max_features_cap: max_annotation_features,
-                    candidate_feature_count: candidate_before_fallback,
-                    attached_feature_count,
-                    dropped_feature_count: candidate_before_fallback
-                        .saturating_sub(attached_feature_count),
-                    genes_attached,
-                    transcripts_attached,
-                    exons_attached,
-                    cds_attached,
-                    fallback_applied: fallback_reason.is_some(),
-                    fallback_reason,
-                });
-                self.maybe_attach_known_helper_mcs_annotation(&seq_id, &genome_id, &mut result);
-                let source_plan = catalog.source_plan(&genome_id, cache_dir.as_deref()).ok();
-                let inspection = catalog
-                    .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
-                    .ok()
-                    .flatten();
-                let (
-                    sequence_source_type,
-                    annotation_source_type,
-                    sequence_source,
-                    annotation_source,
-                    sequence_sha1,
-                    annotation_sha1,
-                ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
-                self.append_genome_extraction_provenance(GenomeExtractionProvenance {
-                    seq_id: seq_id.clone(),
-                    recorded_at_unix_ms: Self::now_unix_ms(),
-                    operation: "ExtractGenomeGene".to_string(),
-                    genome_id: genome_id.clone(),
-                    catalog_path: catalog_path.clone(),
-                    cache_dir: cache_dir.clone(),
-                    chromosome: Some(selected_gene.chromosome.clone()),
-                    start_1based: Some(extract_start_1based),
-                    end_1based: Some(extract_end_1based),
-                    gene_query: Some(query.to_string()),
-                    occurrence: Some(occurrence),
-                    gene_extract_mode: Some(extract_mode.as_str().to_string()),
-                    transcript_id: None,
-                    tss_1based: None,
-                    promoter_upstream_bp: matches!(
-                        extract_mode,
-                        GenomeGeneExtractMode::CodingWithPromoter
-                    )
-                    .then_some(promoter_upstream_bp),
-                    promoter_downstream_bp: None,
-                    gene_id: selected_gene.gene_id.clone(),
-                    gene_name: selected_gene.gene_name.clone(),
-                    strand: selected_gene.strand,
-                    anchor_strand: Some('+'),
-                    anchor_verified: Some(true),
-                    sequence_source_type,
-                    annotation_source_type,
-                    sequence_source,
-                    annotation_source,
-                    sequence_sha1,
-                    annotation_sha1,
-                });
-                let match_mode = if used_fuzzy { "fuzzy" } else { "exact" };
-                result.messages.push(format!(
+                    }
+                    if let Some(reason) = fallback_reason.as_ref() {
+                        result.warnings.push(reason.clone());
+                    }
+                    result.genome_annotation_projection =
+                        Some(GenomeAnnotationProjectionTelemetry {
+                            requested_scope: requested_scope.as_str().to_string(),
+                            effective_scope: effective_scope.as_str().to_string(),
+                            max_features_cap: max_annotation_features,
+                            candidate_feature_count: candidate_before_fallback,
+                            attached_feature_count,
+                            dropped_feature_count: candidate_before_fallback
+                                .saturating_sub(attached_feature_count),
+                            genes_attached,
+                            transcripts_attached,
+                            exons_attached,
+                            cds_attached,
+                            fallback_applied: fallback_reason.is_some(),
+                            fallback_reason,
+                        });
+                    self.maybe_attach_known_helper_mcs_annotation(&seq_id, &genome_id, &mut result);
+                    let source_plan = catalog.source_plan(&genome_id, cache_dir.as_deref()).ok();
+                    let inspection = catalog
+                        .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
+                        .ok()
+                        .flatten();
+                    let (
+                        sequence_source_type,
+                        annotation_source_type,
+                        sequence_source,
+                        annotation_source,
+                        sequence_sha1,
+                        annotation_sha1,
+                    ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
+                    self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                        seq_id: seq_id.clone(),
+                        recorded_at_unix_ms: Self::now_unix_ms(),
+                        operation: "ExtractGenomeGene".to_string(),
+                        genome_id: genome_id.clone(),
+                        catalog_path: catalog_path.clone(),
+                        cache_dir: cache_dir.clone(),
+                        chromosome: Some(selected_gene.chromosome.clone()),
+                        start_1based: Some(extract_start_1based),
+                        end_1based: Some(extract_end_1based),
+                        gene_query: Some(query.to_string()),
+                        occurrence: Some(occurrence),
+                        gene_extract_mode: Some(extract_mode.as_str().to_string()),
+                        transcript_id: None,
+                        tss_1based: None,
+                        promoter_upstream_bp: matches!(
+                            extract_mode,
+                            GenomeGeneExtractMode::CodingWithPromoter
+                        )
+                        .then_some(promoter_upstream_bp),
+                        promoter_downstream_bp: None,
+                        gene_id: selected_gene.gene_id.clone(),
+                        gene_name: selected_gene.gene_name.clone(),
+                        strand: selected_gene.strand,
+                        anchor_strand: Some('+'),
+                        anchor_verified: Some(true),
+                        sequence_source_type,
+                        annotation_source_type,
+                        sequence_source,
+                        annotation_source,
+                        sequence_sha1,
+                        annotation_sha1,
+                    });
+                    let match_mode = if used_fuzzy { "fuzzy" } else { "exact" };
+                    result.messages.push(format!(
                     "Extracted genome gene '{}' [{} match, occurrence {}] as '{}' from '{}' ({}, extract_mode={}, promoter_upstream_bp={})",
                     query,
                     match_mode,
@@ -7572,236 +7664,239 @@ impl GentleEngine {
                     extract_mode.as_str(),
                     promoter_upstream_bp
                 ));
-            }
-            Operation::ExtractGenomePromoterSlice {
-                genome_id,
-                gene_query,
-                occurrence,
-                transcript_id,
-                output_id,
-                upstream_bp,
-                downstream_bp,
-                annotation_scope,
-                max_annotation_features,
-                include_genomic_annotation,
-                catalog_path,
-                cache_dir,
-            } => {
-                let query = gene_query.trim();
-                if query.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "Gene query cannot be empty".to_string(),
-                    });
                 }
-                let resolved_transcript_id = transcript_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_string);
-                let catalog_path = catalog_path
-                    .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
-                let (catalog, _) = Self::open_reference_genome_catalog(Some(&catalog_path))?;
-                let genes = catalog
-                    .list_gene_regions(&genome_id, cache_dir.as_deref())
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "Could not load gene index for genome '{}': {}",
-                            genome_id, e
-                        ),
-                    })?;
-                let mut exact_matches: Vec<&GenomeGeneRecord> = genes
-                    .iter()
-                    .filter(|record| Self::genome_gene_matches_exact(record, query))
-                    .collect();
-                let used_fuzzy = if exact_matches.is_empty() {
-                    let query_lower = query.to_ascii_lowercase();
-                    exact_matches = genes
+                Operation::ExtractGenomePromoterSlice {
+                    genome_id,
+                    gene_query,
+                    occurrence,
+                    transcript_id,
+                    output_id,
+                    upstream_bp,
+                    downstream_bp,
+                    annotation_scope,
+                    max_annotation_features,
+                    include_genomic_annotation,
+                    catalog_path,
+                    cache_dir,
+                } => {
+                    let query = gene_query.trim();
+                    if query.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "Gene query cannot be empty".to_string(),
+                        });
+                    }
+                    let resolved_transcript_id = transcript_id
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string);
+                    let catalog_path = catalog_path
+                        .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
+                    let (catalog, _) = Self::open_reference_genome_catalog(Some(&catalog_path))?;
+                    let genes = catalog
+                        .list_gene_regions(&genome_id, cache_dir.as_deref())
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Could not load gene index for genome '{}': {}",
+                                genome_id, e
+                            ),
+                        })?;
+                    let mut exact_matches: Vec<&GenomeGeneRecord> = genes
                         .iter()
-                        .filter(|record| Self::genome_gene_matches_contains(record, &query_lower))
+                        .filter(|record| Self::genome_gene_matches_exact(record, query))
                         .collect();
-                    true
-                } else {
-                    false
-                };
-                if exact_matches.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("No genes in '{}' match query '{}'", genome_id, query),
-                    });
-                }
-                let requested_occurrence = occurrence;
-                let occurrence = requested_occurrence.unwrap_or(1);
-                if occurrence == 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "Gene occurrence must be >= 1".to_string(),
-                    });
-                }
-                if exact_matches.len() > 1 && requested_occurrence.is_none() {
-                    result.warnings.push(format!(
+                    let used_fuzzy = if exact_matches.is_empty() {
+                        let query_lower = query.to_ascii_lowercase();
+                        exact_matches = genes
+                            .iter()
+                            .filter(|record| {
+                                Self::genome_gene_matches_contains(record, &query_lower)
+                            })
+                            .collect();
+                        true
+                    } else {
+                        false
+                    };
+                    if exact_matches.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("No genes in '{}' match query '{}'", genome_id, query),
+                        });
+                    }
+                    let requested_occurrence = occurrence;
+                    let occurrence = requested_occurrence.unwrap_or(1);
+                    if occurrence == 0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "Gene occurrence must be >= 1".to_string(),
+                        });
+                    }
+                    if exact_matches.len() > 1 && requested_occurrence.is_none() {
+                        result.warnings.push(format!(
                         "Gene query '{}' matched {} records in '{}'; using first match (set occurrence for another match).",
                         query,
                         exact_matches.len(),
                         genome_id
                     ));
-                }
-                let Some(selected_gene) = exact_matches.get(occurrence - 1) else {
-                    return Err(EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "Gene query '{}' matched {} records, but occurrence {} was requested",
-                            query,
-                            exact_matches.len(),
-                            occurrence
-                        ),
-                    });
-                };
-
-                let mut transcript_records = match catalog.list_gene_transcript_records(
-                    &genome_id,
-                    &selected_gene.chromosome,
-                    selected_gene.start_1based,
-                    selected_gene.end_1based,
-                    selected_gene.gene_id.as_deref(),
-                    selected_gene.gene_name.as_deref(),
-                    cache_dir.as_deref(),
-                ) {
-                    Ok(records) => records,
-                    Err(e) => {
-                        result.warnings.push(format!(
-                            "Could not inspect transcript/exon annotation for gene '{}': {}",
-                            Self::genome_gene_display_label(selected_gene),
-                            e
-                        ));
-                        vec![]
                     }
-                };
-                if transcript_records.is_empty() {
-                    match catalog.list_gene_transcript_records(
+                    let Some(selected_gene) = exact_matches.get(occurrence - 1) else {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Gene query '{}' matched {} records, but occurrence {} was requested",
+                                query,
+                                exact_matches.len(),
+                                occurrence
+                            ),
+                        });
+                    };
+
+                    let mut transcript_records = match catalog.list_gene_transcript_records(
                         &genome_id,
                         &selected_gene.chromosome,
                         selected_gene.start_1based,
                         selected_gene.end_1based,
-                        None,
-                        None,
+                        selected_gene.gene_id.as_deref(),
+                        selected_gene.gene_name.as_deref(),
                         cache_dir.as_deref(),
                     ) {
-                        Ok(mut records) => {
-                            let selected_gene_id_norm = selected_gene
-                                .gene_id
-                                .as_deref()
-                                .map(Self::normalize_id_token)
-                                .filter(|v| !v.is_empty());
-                            let selected_gene_name_norm = selected_gene
-                                .gene_name
-                                .as_deref()
-                                .map(Self::normalize_id_token)
-                                .filter(|v| !v.is_empty());
-                            if selected_gene_id_norm.is_some() || selected_gene_name_norm.is_some()
-                            {
-                                records.retain(|record| {
-                                    let transcript_gene_id_norm = record
-                                        .gene_id
-                                        .as_deref()
-                                        .map(Self::normalize_id_token)
-                                        .filter(|v| !v.is_empty());
-                                    let transcript_gene_name_norm = record
-                                        .gene_name
-                                        .as_deref()
-                                        .map(Self::normalize_id_token)
-                                        .filter(|v| !v.is_empty());
-                                    selected_gene_id_norm
-                                        .as_ref()
-                                        .zip(transcript_gene_id_norm.as_ref())
-                                        .map(|(left, right)| left == right)
-                                        .unwrap_or(false)
-                                        || selected_gene_name_norm
+                        Ok(records) => records,
+                        Err(e) => {
+                            result.warnings.push(format!(
+                                "Could not inspect transcript/exon annotation for gene '{}': {}",
+                                Self::genome_gene_display_label(selected_gene),
+                                e
+                            ));
+                            vec![]
+                        }
+                    };
+                    if transcript_records.is_empty() {
+                        match catalog.list_gene_transcript_records(
+                            &genome_id,
+                            &selected_gene.chromosome,
+                            selected_gene.start_1based,
+                            selected_gene.end_1based,
+                            None,
+                            None,
+                            cache_dir.as_deref(),
+                        ) {
+                            Ok(mut records) => {
+                                let selected_gene_id_norm = selected_gene
+                                    .gene_id
+                                    .as_deref()
+                                    .map(Self::normalize_id_token)
+                                    .filter(|v| !v.is_empty());
+                                let selected_gene_name_norm = selected_gene
+                                    .gene_name
+                                    .as_deref()
+                                    .map(Self::normalize_id_token)
+                                    .filter(|v| !v.is_empty());
+                                if selected_gene_id_norm.is_some()
+                                    || selected_gene_name_norm.is_some()
+                                {
+                                    records.retain(|record| {
+                                        let transcript_gene_id_norm = record
+                                            .gene_id
+                                            .as_deref()
+                                            .map(Self::normalize_id_token)
+                                            .filter(|v| !v.is_empty());
+                                        let transcript_gene_name_norm = record
+                                            .gene_name
+                                            .as_deref()
+                                            .map(Self::normalize_id_token)
+                                            .filter(|v| !v.is_empty());
+                                        selected_gene_id_norm
                                             .as_ref()
-                                            .zip(transcript_gene_name_norm.as_ref())
+                                            .zip(transcript_gene_id_norm.as_ref())
                                             .map(|(left, right)| left == right)
                                             .unwrap_or(false)
-                                });
-                            }
-                            if !records.is_empty() {
-                                result.warnings.push(format!(
+                                            || selected_gene_name_norm
+                                                .as_ref()
+                                                .zip(transcript_gene_name_norm.as_ref())
+                                                .map(|(left, right)| left == right)
+                                                .unwrap_or(false)
+                                    });
+                                }
+                                if !records.is_empty() {
+                                    result.warnings.push(format!(
                                     "Gene-scoped transcript filter returned no records for '{}'; using overlap fallback with {} transcript candidate(s).",
                                     Self::genome_gene_display_label(selected_gene),
                                     records.len()
                                 ));
-                                transcript_records = records;
+                                    transcript_records = records;
+                                }
+                            }
+                            Err(e) => {
+                                result.warnings.push(format!(
+                                    "Could not run transcript fallback for gene '{}': {}",
+                                    Self::genome_gene_display_label(selected_gene),
+                                    e
+                                ));
                             }
                         }
-                        Err(e) => {
-                            result.warnings.push(format!(
-                                "Could not run transcript fallback for gene '{}': {}",
-                                Self::genome_gene_display_label(selected_gene),
-                                e
-                            ));
-                        }
                     }
-                }
 
-                let (selected_transcript, tss_1based, extract_start_1based, extract_end_1based) =
-                    Self::resolve_extract_genome_promoter_slice_interval(
-                        selected_gene,
-                        &transcript_records,
-                        resolved_transcript_id.as_deref(),
-                        upstream_bp,
-                        downstream_bp,
-                    )
-                    .map_err(|message| EngineError {
-                        code: ErrorCode::NotFound,
-                        message,
-                    })?;
+                    let (selected_transcript, tss_1based, extract_start_1based, extract_end_1based) =
+                        Self::resolve_extract_genome_promoter_slice_interval(
+                            selected_gene,
+                            &transcript_records,
+                            resolved_transcript_id.as_deref(),
+                            upstream_bp,
+                            downstream_bp,
+                        )
+                        .map_err(|message| EngineError {
+                            code: ErrorCode::NotFound,
+                            message,
+                        })?;
 
-                if resolved_transcript_id.is_none() && transcript_records.len() > 1 {
-                    result.warnings.push(format!(
+                    if resolved_transcript_id.is_none() && transcript_records.len() > 1 {
+                        result.warnings.push(format!(
                         "Gene '{}' has {} transcript candidate(s); using outermost 5' transcript '{}' for promoter slice derivation (set transcript_id to choose another).",
                         Self::genome_gene_display_label(selected_gene),
                         transcript_records.len(),
                         selected_transcript.transcript_id
                     ));
-                }
+                    }
 
-                let default_id = Self::default_extract_genome_promoter_slice_output_id(
-                    &genome_id,
-                    selected_gene,
-                    &selected_transcript.transcript_id,
-                    upstream_bp,
-                    downstream_bp,
-                );
-                let seq_id = self.extract_genome_region_into_state(
-                    &mut result,
-                    &genome_id,
-                    &selected_transcript.chromosome,
-                    extract_start_1based,
-                    extract_end_1based,
-                    output_id.or(Some(default_id)),
-                    annotation_scope,
-                    max_annotation_features,
-                    include_genomic_annotation,
-                    Some(catalog_path.clone()),
-                    cache_dir.clone(),
-                    "ExtractGenomePromoterSlice",
-                    Some(GenomeExtractionProvenanceOverrides {
-                        gene_query: Some(query.to_string()),
-                        occurrence: Some(occurrence),
-                        transcript_id: Some(selected_transcript.transcript_id.clone()),
-                        tss_1based: Some(tss_1based),
-                        promoter_upstream_bp: Some(upstream_bp),
-                        promoter_downstream_bp: Some(downstream_bp),
-                        gene_id: selected_gene.gene_id.clone(),
-                        gene_name: selected_gene.gene_name.clone(),
-                        strand: selected_gene.strand,
-                        anchor_strand: Some('+'),
-                        anchor_verified: Some(true),
-                        ..Default::default()
-                    }),
-                )?;
-                let match_mode = if used_fuzzy { "fuzzy" } else { "exact" };
-                result.messages.push(format!(
+                    let default_id = Self::default_extract_genome_promoter_slice_output_id(
+                        &genome_id,
+                        selected_gene,
+                        &selected_transcript.transcript_id,
+                        upstream_bp,
+                        downstream_bp,
+                    );
+                    let seq_id = self.extract_genome_region_into_state(
+                        &mut result,
+                        &genome_id,
+                        &selected_transcript.chromosome,
+                        extract_start_1based,
+                        extract_end_1based,
+                        output_id.or(Some(default_id)),
+                        annotation_scope,
+                        max_annotation_features,
+                        include_genomic_annotation,
+                        Some(catalog_path.clone()),
+                        cache_dir.clone(),
+                        "ExtractGenomePromoterSlice",
+                        Some(GenomeExtractionProvenanceOverrides {
+                            gene_query: Some(query.to_string()),
+                            occurrence: Some(occurrence),
+                            transcript_id: Some(selected_transcript.transcript_id.clone()),
+                            tss_1based: Some(tss_1based),
+                            promoter_upstream_bp: Some(upstream_bp),
+                            promoter_downstream_bp: Some(downstream_bp),
+                            gene_id: selected_gene.gene_id.clone(),
+                            gene_name: selected_gene.gene_name.clone(),
+                            strand: selected_gene.strand,
+                            anchor_strand: Some('+'),
+                            anchor_verified: Some(true),
+                            ..Default::default()
+                        }),
+                    )?;
+                    let match_mode = if used_fuzzy { "fuzzy" } else { "exact" };
+                    result.messages.push(format!(
                     "Extracted promoter slice for '{}' using transcript '{}' [{} match, occurrence {}] as '{}' from '{}' ({}:{}-{}, tss_1based={}, upstream_bp={}, downstream_bp={})",
                     Self::genome_gene_display_label(selected_gene),
                     selected_transcript.transcript_id,
@@ -7816,246 +7911,256 @@ impl GentleEngine {
                     upstream_bp,
                     downstream_bp
                 ));
-            }
-            Operation::ExtendGenomeAnchor {
-                seq_id,
-                side,
-                length_bp,
-                output_id,
-                catalog_path,
-                cache_dir,
-                prepared_genome_id,
-            } => {
-                if length_bp == 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ExtendGenomeAnchor requires length_bp >= 1".to_string(),
-                    });
                 }
-                if !self.state.sequences.contains_key(&seq_id) {
-                    return Err(EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    });
-                }
-                let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
-                if self
-                    .state
-                    .parameters
-                    .require_verified_genome_anchor_for_extension
-                    && anchor.anchor_verified != Some(true)
-                {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "ExtendGenomeAnchor requires a verified genome anchor when parameter 'require_verified_genome_anchor_for_extension' is true (seq_id='{}')",
-                            seq_id
-                        ),
-                    });
-                }
-                let explicit_catalog_requested = catalog_path
-                    .as_deref()
-                    .map(str::trim)
-                    .map(|v| !v.is_empty())
-                    .unwrap_or(false);
-                let requested_catalog_path = catalog_path
-                    .or(anchor.catalog_path.clone())
-                    .map(|v| v.trim().to_string())
-                    .filter(|v| !v.is_empty())
-                    .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
-                let mut resolved_catalog_path = requested_catalog_path.clone();
-                let resolved_cache_dir = cache_dir.or(anchor.cache_dir.clone());
-                let mut catalog_fallback_warning: Option<String> = None;
-                let catalog = match Self::open_reference_genome_catalog(Some(
-                    &requested_catalog_path,
-                )) {
-                    Ok((catalog, _)) => catalog,
-                    Err(primary_err) => {
-                        let default_catalog_path =
-                            default_catalog_discovery_token(false).to_string();
-                        let default_catalog_label = default_catalog_discovery_label(false);
-                        let should_fallback_to_default = !explicit_catalog_requested
-                            && requested_catalog_path != default_catalog_path;
-                        if should_fallback_to_default {
-                            match Self::open_reference_genome_catalog(Some(&default_catalog_path)) {
-                                Ok((catalog, _)) => {
-                                    resolved_catalog_path = default_catalog_path.clone();
-                                    catalog_fallback_warning = Some(format!(
-                                        "Could not open genome catalog '{}' from anchor provenance ({}). Falling back to default '{}'.",
-                                        requested_catalog_path, primary_err, default_catalog_label
-                                    ));
-                                    catalog
-                                }
-                                Err(default_err) => {
-                                    return Err(EngineError {
-                                        code: ErrorCode::InvalidInput,
-                                        message: format!(
-                                            "Could not open genome catalog '{}' ({}) and fallback '{}' ({})",
-                                            requested_catalog_path,
-                                            primary_err.message,
-                                            default_catalog_label,
-                                            default_err.message
-                                        ),
-                                    });
-                                }
-                            }
-                        } else {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Could not open genome catalog '{}': {}",
-                                    requested_catalog_path, primary_err.message
-                                ),
-                            });
-                        }
+                Operation::ExtendGenomeAnchor {
+                    seq_id,
+                    side,
+                    length_bp,
+                    output_id,
+                    catalog_path,
+                    cache_dir,
+                    prepared_genome_id,
+                } => {
+                    if length_bp == 0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ExtendGenomeAnchor requires length_bp >= 1".to_string(),
+                        });
                     }
-                };
-                if let Some(warning) = catalog_fallback_warning {
-                    result.warnings.push(warning);
-                }
+                    if !self.state.sequences.contains_key(&seq_id) {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        });
+                    }
+                    let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                    if self
+                        .state
+                        .parameters
+                        .require_verified_genome_anchor_for_extension
+                        && anchor.anchor_verified != Some(true)
+                    {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "ExtendGenomeAnchor requires a verified genome anchor when parameter 'require_verified_genome_anchor_for_extension' is true (seq_id='{}')",
+                                seq_id
+                            ),
+                        });
+                    }
+                    let explicit_catalog_requested = catalog_path
+                        .as_deref()
+                        .map(str::trim)
+                        .map(|v| !v.is_empty())
+                        .unwrap_or(false);
+                    let requested_catalog_path = catalog_path
+                        .or(anchor.catalog_path.clone())
+                        .map(|v| v.trim().to_string())
+                        .filter(|v| !v.is_empty())
+                        .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
+                    let mut resolved_catalog_path = requested_catalog_path.clone();
+                    let resolved_cache_dir = cache_dir.or(anchor.cache_dir.clone());
+                    let mut catalog_fallback_warning: Option<String> = None;
+                    let catalog = match Self::open_reference_genome_catalog(Some(
+                        &requested_catalog_path,
+                    )) {
+                        Ok((catalog, _)) => catalog,
+                        Err(primary_err) => {
+                            let default_catalog_path =
+                                default_catalog_discovery_token(false).to_string();
+                            let default_catalog_label = default_catalog_discovery_label(false);
+                            let should_fallback_to_default = !explicit_catalog_requested
+                                && requested_catalog_path != default_catalog_path;
+                            if should_fallback_to_default {
+                                match Self::open_reference_genome_catalog(Some(
+                                    &default_catalog_path,
+                                )) {
+                                    Ok((catalog, _)) => {
+                                        resolved_catalog_path = default_catalog_path.clone();
+                                        catalog_fallback_warning = Some(format!(
+                                            "Could not open genome catalog '{}' from anchor provenance ({}). Falling back to default '{}'.",
+                                            requested_catalog_path,
+                                            primary_err,
+                                            default_catalog_label
+                                        ));
+                                        catalog
+                                    }
+                                    Err(default_err) => {
+                                        return Err(EngineError {
+                                            code: ErrorCode::InvalidInput,
+                                            message: format!(
+                                                "Could not open genome catalog '{}' ({}) and fallback '{}' ({})",
+                                                requested_catalog_path,
+                                                primary_err.message,
+                                                default_catalog_label,
+                                                default_err.message
+                                            ),
+                                        });
+                                    }
+                                }
+                            } else {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "Could not open genome catalog '{}': {}",
+                                        requested_catalog_path, primary_err.message
+                                    ),
+                                });
+                            }
+                        }
+                    };
+                    if let Some(warning) = catalog_fallback_warning {
+                        result.warnings.push(warning);
+                    }
 
-                let anchor_is_reverse = anchor.strand == Some('-');
-                let (new_start_1based, new_end_1based) = match (anchor_is_reverse, side) {
-                    (false, GenomeAnchorSide::FivePrime) => (
-                        anchor.start_1based.saturating_sub(length_bp).max(1),
-                        anchor.end_1based,
-                    ),
-                    (false, GenomeAnchorSide::ThreePrime) => (
-                        anchor.start_1based,
-                        anchor.end_1based.saturating_add(length_bp),
-                    ),
-                    (true, GenomeAnchorSide::FivePrime) => (
-                        anchor.start_1based,
-                        anchor.end_1based.saturating_add(length_bp),
-                    ),
-                    (true, GenomeAnchorSide::ThreePrime) => (
-                        anchor.start_1based.saturating_sub(length_bp).max(1),
-                        anchor.end_1based,
-                    ),
-                };
-                let preferred_prepared = prepared_genome_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|v| !v.is_empty())
-                    .map(|v| v.to_string());
-                let resolution_query = preferred_prepared
-                    .as_deref()
-                    .unwrap_or(&anchor.genome_id)
-                    .to_string();
-                let fallback_policy = if preferred_prepared.is_some() {
-                    PreparedGenomeFallbackPolicy::Off
-                } else {
-                    self.genome_anchor_fallback_policy_for_extension()
-                };
-                let prepared_resolution = catalog
-                    .resolve_prepared_genome_id_with_policy(
-                        &resolution_query,
-                        resolved_cache_dir.as_deref(),
-                        fallback_policy,
-                    )
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "Could not resolve prepared genome '{}' for extension: {}",
-                            resolution_query, e
+                    let anchor_is_reverse = anchor.strand == Some('-');
+                    let (new_start_1based, new_end_1based) = match (anchor_is_reverse, side) {
+                        (false, GenomeAnchorSide::FivePrime) => (
+                            anchor.start_1based.saturating_sub(length_bp).max(1),
+                            anchor.end_1based,
                         ),
-                    })?;
-                if let Some(warning) = prepared_resolution.fallback_warning {
-                    result.warnings.push(warning);
-                }
-                let effective_genome_id = prepared_resolution.resolved_genome_id;
-                let mut sequence = catalog
-                    .get_sequence_region_with_cache(
-                        &effective_genome_id,
-                        &anchor.chromosome,
-                        new_start_1based,
-                        new_end_1based,
-                        resolved_cache_dir.as_deref(),
-                    )
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "Could not load extended genome region {}:{}-{} from '{}': {}",
-                            anchor.chromosome,
+                        (false, GenomeAnchorSide::ThreePrime) => (
+                            anchor.start_1based,
+                            anchor.end_1based.saturating_add(length_bp),
+                        ),
+                        (true, GenomeAnchorSide::FivePrime) => (
+                            anchor.start_1based,
+                            anchor.end_1based.saturating_add(length_bp),
+                        ),
+                        (true, GenomeAnchorSide::ThreePrime) => (
+                            anchor.start_1based.saturating_sub(length_bp).max(1),
+                            anchor.end_1based,
+                        ),
+                    };
+                    let preferred_prepared = prepared_genome_id
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .map(|v| v.to_string());
+                    let resolution_query = preferred_prepared
+                        .as_deref()
+                        .unwrap_or(&anchor.genome_id)
+                        .to_string();
+                    let fallback_policy = if preferred_prepared.is_some() {
+                        PreparedGenomeFallbackPolicy::Off
+                    } else {
+                        self.genome_anchor_fallback_policy_for_extension()
+                    };
+                    let prepared_resolution = catalog
+                        .resolve_prepared_genome_id_with_policy(
+                            &resolution_query,
+                            resolved_cache_dir.as_deref(),
+                            fallback_policy,
+                        )
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Could not resolve prepared genome '{}' for extension: {}",
+                                resolution_query, e
+                            ),
+                        })?;
+                    if let Some(warning) = prepared_resolution.fallback_warning {
+                        result.warnings.push(warning);
+                    }
+                    let effective_genome_id = prepared_resolution.resolved_genome_id;
+                    let mut sequence = catalog
+                        .get_sequence_region_with_cache(
+                            &effective_genome_id,
+                            &anchor.chromosome,
                             new_start_1based,
                             new_end_1based,
-                            effective_genome_id,
-                            e
-                        ),
-                    })?;
-                if anchor_is_reverse {
-                    sequence = Self::reverse_complement(&sequence);
-                }
+                            resolved_cache_dir.as_deref(),
+                        )
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Could not load extended genome region {}:{}-{} from '{}': {}",
+                                anchor.chromosome,
+                                new_start_1based,
+                                new_end_1based,
+                                effective_genome_id,
+                                e
+                            ),
+                        })?;
+                    if anchor_is_reverse {
+                        sequence = Self::reverse_complement(&sequence);
+                    }
 
-                let side_token = side.as_str();
-                let default_id = format!("{seq_id}_ext_{side_token}_{length_bp}");
-                let base = output_id.unwrap_or(default_id);
-                let mut dna = DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
-                    code: ErrorCode::Internal,
-                    message: format!("Could not construct DNA sequence from extended anchor: {e}"),
-                })?;
-                Self::prepare_sequence(&mut dna);
-                let extended_seq_id = self.unique_seq_id(&base);
-                dna.set_name(extended_seq_id.clone());
-                self.state.sequences.insert(extended_seq_id.clone(), dna);
-                self.add_lineage_node(
-                    &extended_seq_id,
-                    SequenceOrigin::Derived,
-                    Some(&result.op_id),
-                );
-                result.created_seq_ids.push(extended_seq_id.clone());
-                parent_seq_ids.push(seq_id.clone());
+                    let side_token = side.as_str();
+                    let default_id = format!("{seq_id}_ext_{side_token}_{length_bp}");
+                    let base = output_id.unwrap_or(default_id);
+                    let mut dna =
+                        DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
+                            code: ErrorCode::Internal,
+                            message: format!(
+                                "Could not construct DNA sequence from extended anchor: {e}"
+                            ),
+                        })?;
+                    Self::prepare_sequence(&mut dna);
+                    let extended_seq_id = self.unique_seq_id(&base);
+                    dna.set_name(extended_seq_id.clone());
+                    self.state.sequences.insert(extended_seq_id.clone(), dna);
+                    self.add_lineage_node(
+                        &extended_seq_id,
+                        SequenceOrigin::Derived,
+                        Some(&result.op_id),
+                    );
+                    result.created_seq_ids.push(extended_seq_id.clone());
+                    parent_seq_ids.push(seq_id.clone());
 
-                let source_plan = catalog
-                    .source_plan(&effective_genome_id, resolved_cache_dir.as_deref())
-                    .ok();
-                let inspection = catalog
-                    .inspect_prepared_genome(&effective_genome_id, resolved_cache_dir.as_deref())
-                    .ok()
-                    .flatten();
-                let (
-                    sequence_source_type,
-                    annotation_source_type,
-                    sequence_source,
-                    annotation_source,
-                    sequence_sha1,
-                    annotation_sha1,
-                ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
-                self.append_genome_extraction_provenance(GenomeExtractionProvenance {
-                    seq_id: extended_seq_id.clone(),
-                    recorded_at_unix_ms: Self::now_unix_ms(),
-                    operation: "ExtendGenomeAnchor".to_string(),
-                    genome_id: effective_genome_id.clone(),
-                    catalog_path: resolved_catalog_path.clone(),
-                    cache_dir: resolved_cache_dir.clone(),
-                    chromosome: Some(anchor.chromosome.clone()),
-                    start_1based: Some(new_start_1based),
-                    end_1based: Some(new_end_1based),
-                    gene_query: None,
-                    occurrence: None,
-                    gene_extract_mode: None,
-                    transcript_id: None,
-                    tss_1based: None,
-                    promoter_upstream_bp: None,
-                    promoter_downstream_bp: None,
-                    gene_id: None,
-                    gene_name: None,
-                    strand: anchor.strand,
-                    anchor_strand: Some(anchor.strand.unwrap_or('+')),
-                    anchor_verified: Some(true),
-                    sequence_source_type,
-                    annotation_source_type,
-                    sequence_source,
-                    annotation_source,
-                    sequence_sha1,
-                    annotation_sha1,
-                });
-                let side_label = match side {
-                    GenomeAnchorSide::FivePrime => "5'",
-                    GenomeAnchorSide::ThreePrime => "3'",
-                };
-                let anchor_strand = anchor.strand.unwrap_or('+');
-                result.messages.push(format!(
+                    let source_plan = catalog
+                        .source_plan(&effective_genome_id, resolved_cache_dir.as_deref())
+                        .ok();
+                    let inspection = catalog
+                        .inspect_prepared_genome(
+                            &effective_genome_id,
+                            resolved_cache_dir.as_deref(),
+                        )
+                        .ok()
+                        .flatten();
+                    let (
+                        sequence_source_type,
+                        annotation_source_type,
+                        sequence_source,
+                        annotation_source,
+                        sequence_sha1,
+                        annotation_sha1,
+                    ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
+                    self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                        seq_id: extended_seq_id.clone(),
+                        recorded_at_unix_ms: Self::now_unix_ms(),
+                        operation: "ExtendGenomeAnchor".to_string(),
+                        genome_id: effective_genome_id.clone(),
+                        catalog_path: resolved_catalog_path.clone(),
+                        cache_dir: resolved_cache_dir.clone(),
+                        chromosome: Some(anchor.chromosome.clone()),
+                        start_1based: Some(new_start_1based),
+                        end_1based: Some(new_end_1based),
+                        gene_query: None,
+                        occurrence: None,
+                        gene_extract_mode: None,
+                        transcript_id: None,
+                        tss_1based: None,
+                        promoter_upstream_bp: None,
+                        promoter_downstream_bp: None,
+                        gene_id: None,
+                        gene_name: None,
+                        strand: anchor.strand,
+                        anchor_strand: Some(anchor.strand.unwrap_or('+')),
+                        anchor_verified: Some(true),
+                        sequence_source_type,
+                        annotation_source_type,
+                        sequence_source,
+                        annotation_source,
+                        sequence_sha1,
+                        annotation_sha1,
+                    });
+                    let side_label = match side {
+                        GenomeAnchorSide::FivePrime => "5'",
+                        GenomeAnchorSide::ThreePrime => "3'",
+                    };
+                    let anchor_strand = anchor.strand.unwrap_or('+');
+                    result.messages.push(format!(
                     "Extended genome anchor '{}' on {} by {} bp (anchor strand {}) via '{}' => {}:{}-{} as '{}'",
                     seq_id,
                     side_label,
@@ -8067,281 +8172,288 @@ impl GentleEngine {
                     new_end_1based,
                     extended_seq_id
                 ));
-                let lower_bound_clipped = matches!(
-                    (anchor_is_reverse, side),
-                    (false, GenomeAnchorSide::FivePrime) | (true, GenomeAnchorSide::ThreePrime)
-                ) && new_start_1based == 1
-                    && anchor.start_1based <= length_bp;
-                if lower_bound_clipped {
-                    result.warnings.push(format!(
+                    let lower_bound_clipped = matches!(
+                        (anchor_is_reverse, side),
+                        (false, GenomeAnchorSide::FivePrime) | (true, GenomeAnchorSide::ThreePrime)
+                    ) && new_start_1based == 1
+                        && anchor.start_1based <= length_bp;
+                    if lower_bound_clipped {
+                        result.warnings.push(format!(
                         "Requested {} bp {} extension for '{}' clipped at chromosome start position 1",
                         length_bp, side_label, seq_id
                     ));
+                    }
                 }
-            }
-            Operation::VerifyGenomeAnchor {
-                seq_id,
-                catalog_path,
-                cache_dir,
-                prepared_genome_id,
-            } => {
-                let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?
-                    .clone();
-                let explicit_catalog_requested = catalog_path
-                    .as_deref()
-                    .map(str::trim)
-                    .map(|v| !v.is_empty())
-                    .unwrap_or(false);
-                let requested_catalog_path = catalog_path
-                    .or(anchor.catalog_path.clone())
-                    .map(|v| v.trim().to_string())
-                    .filter(|v| !v.is_empty())
-                    .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
-                let mut resolved_catalog_path = requested_catalog_path.clone();
-                let resolved_cache_dir = cache_dir.or(anchor.cache_dir.clone());
-                let mut catalog_fallback_warning: Option<String> = None;
-                let catalog = match Self::open_reference_genome_catalog(Some(
-                    &requested_catalog_path,
-                )) {
-                    Ok((catalog, _)) => catalog,
-                    Err(primary_err) => {
-                        let default_catalog_path =
-                            default_catalog_discovery_token(false).to_string();
-                        let default_catalog_label = default_catalog_discovery_label(false);
-                        let should_fallback_to_default = !explicit_catalog_requested
-                            && requested_catalog_path != default_catalog_path;
-                        if should_fallback_to_default {
-                            match Self::open_reference_genome_catalog(Some(&default_catalog_path)) {
-                                Ok((catalog, _)) => {
-                                    resolved_catalog_path = default_catalog_path.clone();
-                                    catalog_fallback_warning = Some(format!(
-                                        "Could not open genome catalog '{}' from anchor provenance ({}). Falling back to default '{}'.",
-                                        requested_catalog_path,
-                                        primary_err.message,
-                                        default_catalog_label
-                                    ));
-                                    catalog
-                                }
-                                Err(default_err) => {
-                                    return Err(EngineError {
-                                        code: ErrorCode::InvalidInput,
-                                        message: format!(
-                                            "Could not open genome catalog '{}' ({}) and fallback '{}' ({})",
+                Operation::VerifyGenomeAnchor {
+                    seq_id,
+                    catalog_path,
+                    cache_dir,
+                    prepared_genome_id,
+                } => {
+                    let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?
+                        .clone();
+                    let explicit_catalog_requested = catalog_path
+                        .as_deref()
+                        .map(str::trim)
+                        .map(|v| !v.is_empty())
+                        .unwrap_or(false);
+                    let requested_catalog_path = catalog_path
+                        .or(anchor.catalog_path.clone())
+                        .map(|v| v.trim().to_string())
+                        .filter(|v| !v.is_empty())
+                        .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
+                    let mut resolved_catalog_path = requested_catalog_path.clone();
+                    let resolved_cache_dir = cache_dir.or(anchor.cache_dir.clone());
+                    let mut catalog_fallback_warning: Option<String> = None;
+                    let catalog = match Self::open_reference_genome_catalog(Some(
+                        &requested_catalog_path,
+                    )) {
+                        Ok((catalog, _)) => catalog,
+                        Err(primary_err) => {
+                            let default_catalog_path =
+                                default_catalog_discovery_token(false).to_string();
+                            let default_catalog_label = default_catalog_discovery_label(false);
+                            let should_fallback_to_default = !explicit_catalog_requested
+                                && requested_catalog_path != default_catalog_path;
+                            if should_fallback_to_default {
+                                match Self::open_reference_genome_catalog(Some(
+                                    &default_catalog_path,
+                                )) {
+                                    Ok((catalog, _)) => {
+                                        resolved_catalog_path = default_catalog_path.clone();
+                                        catalog_fallback_warning = Some(format!(
+                                            "Could not open genome catalog '{}' from anchor provenance ({}). Falling back to default '{}'.",
                                             requested_catalog_path,
                                             primary_err.message,
-                                            default_catalog_label,
-                                            default_err.message
-                                        ),
-                                    });
+                                            default_catalog_label
+                                        ));
+                                        catalog
+                                    }
+                                    Err(default_err) => {
+                                        return Err(EngineError {
+                                            code: ErrorCode::InvalidInput,
+                                            message: format!(
+                                                "Could not open genome catalog '{}' ({}) and fallback '{}' ({})",
+                                                requested_catalog_path,
+                                                primary_err.message,
+                                                default_catalog_label,
+                                                default_err.message
+                                            ),
+                                        });
+                                    }
                                 }
+                            } else {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "Could not open genome catalog '{}': {}",
+                                        requested_catalog_path, primary_err.message
+                                    ),
+                                });
                             }
-                        } else {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Could not open genome catalog '{}': {}",
-                                    requested_catalog_path, primary_err.message
-                                ),
-                            });
                         }
+                    };
+                    if let Some(warning) = catalog_fallback_warning {
+                        result.warnings.push(warning);
                     }
-                };
-                if let Some(warning) = catalog_fallback_warning {
-                    result.warnings.push(warning);
-                }
 
-                let preferred_prepared = prepared_genome_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|v| !v.is_empty())
-                    .map(|v| v.to_string());
-                let resolution_query = preferred_prepared
-                    .as_deref()
-                    .unwrap_or(&anchor.genome_id)
-                    .to_string();
-                let fallback_policy = if preferred_prepared.is_some() {
-                    PreparedGenomeFallbackPolicy::Off
-                } else {
-                    self.genome_anchor_fallback_policy_for_extension()
-                };
-                let prepared_resolution = catalog
-                    .resolve_prepared_genome_id_with_policy(
-                        &resolution_query,
+                    let preferred_prepared = prepared_genome_id
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .map(|v| v.to_string());
+                    let resolution_query = preferred_prepared
+                        .as_deref()
+                        .unwrap_or(&anchor.genome_id)
+                        .to_string();
+                    let fallback_policy = if preferred_prepared.is_some() {
+                        PreparedGenomeFallbackPolicy::Off
+                    } else {
+                        self.genome_anchor_fallback_policy_for_extension()
+                    };
+                    let prepared_resolution = catalog
+                        .resolve_prepared_genome_id_with_policy(
+                            &resolution_query,
+                            resolved_cache_dir.as_deref(),
+                            fallback_policy,
+                        )
+                        .map_err(|e| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Could not resolve prepared genome '{}' for verification: {}",
+                                resolution_query, e
+                            ),
+                        })?;
+                    if let Some(warning) = prepared_resolution.fallback_warning {
+                        result.warnings.push(warning);
+                    }
+                    let effective_genome_id = prepared_resolution.resolved_genome_id;
+                    let anchor_for_verification = GenomeSequenceAnchor {
+                        genome_id: effective_genome_id.clone(),
+                        chromosome: anchor.chromosome.clone(),
+                        start_1based: anchor.start_1based,
+                        end_1based: anchor.end_1based,
+                        strand: anchor.strand,
+                        anchor_verified: anchor.anchor_verified,
+                        catalog_path: anchor.catalog_path.clone(),
+                        cache_dir: anchor.cache_dir.clone(),
+                    };
+                    let is_match = Self::verify_anchor_sequence_against_catalog(
+                        &dna,
+                        &anchor_for_verification,
+                        &resolved_catalog_path,
                         resolved_cache_dir.as_deref(),
-                        fallback_policy,
                     )
                     .map_err(|e| EngineError {
-                        code: ErrorCode::NotFound,
+                        code: ErrorCode::InvalidInput,
                         message: format!(
-                            "Could not resolve prepared genome '{}' for verification: {}",
-                            resolution_query, e
+                            "Could not verify genome anchor '{}' against catalog '{}': {}",
+                            seq_id, resolved_catalog_path, e
                         ),
                     })?;
-                if let Some(warning) = prepared_resolution.fallback_warning {
-                    result.warnings.push(warning);
-                }
-                let effective_genome_id = prepared_resolution.resolved_genome_id;
-                let anchor_for_verification = GenomeSequenceAnchor {
-                    genome_id: effective_genome_id.clone(),
-                    chromosome: anchor.chromosome.clone(),
-                    start_1based: anchor.start_1based,
-                    end_1based: anchor.end_1based,
-                    strand: anchor.strand,
-                    anchor_verified: anchor.anchor_verified,
-                    catalog_path: anchor.catalog_path.clone(),
-                    cache_dir: anchor.cache_dir.clone(),
-                };
-                let is_match = Self::verify_anchor_sequence_against_catalog(
-                    &dna,
-                    &anchor_for_verification,
-                    &resolved_catalog_path,
-                    resolved_cache_dir.as_deref(),
-                )
-                .map_err(|e| EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "Could not verify genome anchor '{}' against catalog '{}': {}",
-                        seq_id, resolved_catalog_path, e
-                    ),
-                })?;
-                let source_plan = catalog
-                    .source_plan(&effective_genome_id, resolved_cache_dir.as_deref())
-                    .ok();
-                let inspection = catalog
-                    .inspect_prepared_genome(&effective_genome_id, resolved_cache_dir.as_deref())
-                    .ok()
-                    .flatten();
-                let (
-                    sequence_source_type,
-                    annotation_source_type,
-                    sequence_source,
-                    annotation_source,
-                    sequence_sha1,
-                    annotation_sha1,
-                ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
-                self.append_genome_extraction_provenance(GenomeExtractionProvenance {
-                    seq_id: seq_id.clone(),
-                    recorded_at_unix_ms: Self::now_unix_ms(),
-                    operation: "VerifyGenomeAnchor".to_string(),
-                    genome_id: effective_genome_id.clone(),
-                    catalog_path: resolved_catalog_path.clone(),
-                    cache_dir: resolved_cache_dir.clone(),
-                    chromosome: Some(anchor.chromosome.clone()),
-                    start_1based: Some(anchor.start_1based),
-                    end_1based: Some(anchor.end_1based),
-                    gene_query: None,
-                    occurrence: None,
-                    gene_extract_mode: None,
-                    transcript_id: None,
-                    tss_1based: None,
-                    promoter_upstream_bp: None,
-                    promoter_downstream_bp: None,
-                    gene_id: None,
-                    gene_name: None,
-                    strand: anchor.strand,
-                    anchor_strand: Some(anchor.strand.unwrap_or('+')),
-                    anchor_verified: Some(is_match),
-                    sequence_source_type,
-                    annotation_source_type,
-                    sequence_source,
-                    annotation_source,
-                    sequence_sha1,
-                    annotation_sha1,
-                });
-                result.changed_seq_ids.push(seq_id.clone());
-                if is_match {
-                    result.messages.push(format!(
-                        "Genome anchor for '{}' verified against '{}' via prepared '{}'",
-                        seq_id, resolved_catalog_path, effective_genome_id
-                    ));
-                } else {
-                    result.warnings.push(format!(
-                        "Genome anchor for '{}' is unverified against '{}' via prepared '{}'",
-                        seq_id, resolved_catalog_path, effective_genome_id
-                    ));
-                    result.messages.push(format!(
-                        "Recorded anchor verification status for '{}' as unverified",
-                        seq_id
-                    ));
-                }
-            }
-            Operation::ImportGenomeBedTrack {
-                seq_id,
-                path,
-                track_name,
-                min_score,
-                max_score,
-                clear_existing,
-            } => {
-                if path.trim().is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportGenomeBedTrack requires a non-empty BED path".to_string(),
+                    let source_plan = catalog
+                        .source_plan(&effective_genome_id, resolved_cache_dir.as_deref())
+                        .ok();
+                    let inspection = catalog
+                        .inspect_prepared_genome(
+                            &effective_genome_id,
+                            resolved_cache_dir.as_deref(),
+                        )
+                        .ok()
+                        .flatten();
+                    let (
+                        sequence_source_type,
+                        annotation_source_type,
+                        sequence_source,
+                        annotation_source,
+                        sequence_sha1,
+                        annotation_sha1,
+                    ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
+                    self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                        seq_id: seq_id.clone(),
+                        recorded_at_unix_ms: Self::now_unix_ms(),
+                        operation: "VerifyGenomeAnchor".to_string(),
+                        genome_id: effective_genome_id.clone(),
+                        catalog_path: resolved_catalog_path.clone(),
+                        cache_dir: resolved_cache_dir.clone(),
+                        chromosome: Some(anchor.chromosome.clone()),
+                        start_1based: Some(anchor.start_1based),
+                        end_1based: Some(anchor.end_1based),
+                        gene_query: None,
+                        occurrence: None,
+                        gene_extract_mode: None,
+                        transcript_id: None,
+                        tss_1based: None,
+                        promoter_upstream_bp: None,
+                        promoter_downstream_bp: None,
+                        gene_id: None,
+                        gene_name: None,
+                        strand: anchor.strand,
+                        anchor_strand: Some(anchor.strand.unwrap_or('+')),
+                        anchor_verified: Some(is_match),
+                        sequence_source_type,
+                        annotation_source_type,
+                        sequence_source,
+                        annotation_source,
+                        sequence_sha1,
+                        annotation_sha1,
                     });
+                    result.changed_seq_ids.push(seq_id.clone());
+                    if is_match {
+                        result.messages.push(format!(
+                            "Genome anchor for '{}' verified against '{}' via prepared '{}'",
+                            seq_id, resolved_catalog_path, effective_genome_id
+                        ));
+                    } else {
+                        result.warnings.push(format!(
+                            "Genome anchor for '{}' is unverified against '{}' via prepared '{}'",
+                            seq_id, resolved_catalog_path, effective_genome_id
+                        ));
+                        result.messages.push(format!(
+                            "Recorded anchor verification status for '{}' as unverified",
+                            seq_id
+                        ));
+                    }
                 }
-                if min_score
-                    .zip(max_score)
-                    .map(|(min, max)| min > max)
-                    .unwrap_or(false)
-                {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportGenomeBedTrack requires min_score <= max_score".to_string(),
-                    });
-                }
-
-                let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
-                let _ = self.ensure_lineage_node(&seq_id);
-                let dna = self
-                    .state
-                    .sequences
-                    .get_mut(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?;
-                let seq_id_for_progress = seq_id.clone();
-                let path_for_progress = path.clone();
-                let mut progress_cb = |parsed_records: usize,
-                                       imported_features: usize,
-                                       skipped_records: usize,
-                                       done: bool| {
-                    on_progress(OperationProgress::GenomeTrackImport(
-                        GenomeTrackImportProgress {
-                            seq_id: seq_id_for_progress.clone(),
-                            source: "BED".to_string(),
-                            path: path_for_progress.clone(),
-                            parsed_records,
-                            imported_features,
-                            skipped_records,
-                            done,
-                        },
-                    ))
-                };
-
-                let report = Self::import_genome_bed_track(
-                    dna,
-                    &anchor,
-                    &path,
-                    track_name.as_deref(),
+                Operation::ImportGenomeBedTrack {
+                    seq_id,
+                    path,
+                    track_name,
                     min_score,
                     max_score,
-                    clear_existing.unwrap_or(false),
-                    Some(&mut progress_cb),
-                )?;
+                    clear_existing,
+                } => {
+                    if path.trim().is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportGenomeBedTrack requires a non-empty BED path"
+                                .to_string(),
+                        });
+                    }
+                    if min_score
+                        .zip(max_score)
+                        .map(|(min, max)| min > max)
+                        .unwrap_or(false)
+                    {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportGenomeBedTrack requires min_score <= max_score"
+                                .to_string(),
+                        });
+                    }
 
-                result.changed_seq_ids.push(seq_id.clone());
-                result.warnings.extend(report.warnings);
-                let anchor_strand = anchor.strand.unwrap_or('+');
-                result.messages.push(format!(
+                    let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                    let _ = self.ensure_lineage_node(&seq_id);
+                    let dna = self
+                        .state
+                        .sequences
+                        .get_mut(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    let seq_id_for_progress = seq_id.clone();
+                    let path_for_progress = path.clone();
+                    let mut progress_cb = |parsed_records: usize,
+                                           imported_features: usize,
+                                           skipped_records: usize,
+                                           done: bool| {
+                        on_progress(OperationProgress::GenomeTrackImport(
+                            GenomeTrackImportProgress {
+                                seq_id: seq_id_for_progress.clone(),
+                                source: "BED".to_string(),
+                                path: path_for_progress.clone(),
+                                parsed_records,
+                                imported_features,
+                                skipped_records,
+                                done,
+                            },
+                        ))
+                    };
+
+                    let report = Self::import_genome_bed_track(
+                        dna,
+                        &anchor,
+                        &path,
+                        track_name.as_deref(),
+                        min_score,
+                        max_score,
+                        clear_existing.unwrap_or(false),
+                        Some(&mut progress_cb),
+                    )?;
+
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result.warnings.extend(report.warnings);
+                    let anchor_strand = anchor.strand.unwrap_or('+');
+                    result.messages.push(format!(
                     "Imported {} BED feature(s) into '{}' from '{}' as track '{}' (anchor={} {}:{}-{} strand {}, parsed={}, skipped={})",
                     report.imported_features,
                     seq_id,
@@ -8355,96 +8467,96 @@ impl GentleEngine {
                     report.parsed_records,
                     report.skipped_records
                 ));
-                if report.skipped_missing_score > 0 {
-                    result.warnings.push(format!(
+                    if report.skipped_missing_score > 0 {
+                        result.warnings.push(format!(
                         "{} BED record(s) were skipped because score filters were set but the BED score column was missing",
                         report.skipped_missing_score
                     ));
+                    }
+                    if report.skipped_outside_score_range > 0 {
+                        result.messages.push(format!(
+                            "{} BED record(s) were outside score filter bounds",
+                            report.skipped_outside_score_range
+                        ));
+                    }
+                    if report.truncated_at_limit {
+                        result.warnings.push(format!(
+                            "BED import was truncated after {} features (limit={})",
+                            report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
+                        ));
+                    }
                 }
-                if report.skipped_outside_score_range > 0 {
-                    result.messages.push(format!(
-                        "{} BED record(s) were outside score filter bounds",
-                        report.skipped_outside_score_range
-                    ));
-                }
-                if report.truncated_at_limit {
-                    result.warnings.push(format!(
-                        "BED import was truncated after {} features (limit={})",
-                        report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
-                    ));
-                }
-            }
-            Operation::ImportGenomeBigWigTrack {
-                seq_id,
-                path,
-                track_name,
-                min_score,
-                max_score,
-                clear_existing,
-            } => {
-                if path.trim().is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportGenomeBigWigTrack requires a non-empty BigWig path"
-                            .to_string(),
-                    });
-                }
-                if min_score
-                    .zip(max_score)
-                    .map(|(min, max)| min > max)
-                    .unwrap_or(false)
-                {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportGenomeBigWigTrack requires min_score <= max_score"
-                            .to_string(),
-                    });
-                }
-
-                let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
-                let _ = self.ensure_lineage_node(&seq_id);
-                let dna = self
-                    .state
-                    .sequences
-                    .get_mut(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?;
-                let seq_id_for_progress = seq_id.clone();
-                let path_for_progress = path.clone();
-                let mut progress_cb = |parsed_records: usize,
-                                       imported_features: usize,
-                                       skipped_records: usize,
-                                       done: bool| {
-                    on_progress(OperationProgress::GenomeTrackImport(
-                        GenomeTrackImportProgress {
-                            seq_id: seq_id_for_progress.clone(),
-                            source: "BigWig".to_string(),
-                            path: path_for_progress.clone(),
-                            parsed_records,
-                            imported_features,
-                            skipped_records,
-                            done,
-                        },
-                    ))
-                };
-
-                let report = Self::import_genome_bigwig_track(
-                    dna,
-                    &anchor,
-                    &path,
-                    track_name.as_deref(),
+                Operation::ImportGenomeBigWigTrack {
+                    seq_id,
+                    path,
+                    track_name,
                     min_score,
                     max_score,
-                    clear_existing.unwrap_or(false),
-                    Some(&mut progress_cb),
-                )?;
+                    clear_existing,
+                } => {
+                    if path.trim().is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportGenomeBigWigTrack requires a non-empty BigWig path"
+                                .to_string(),
+                        });
+                    }
+                    if min_score
+                        .zip(max_score)
+                        .map(|(min, max)| min > max)
+                        .unwrap_or(false)
+                    {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportGenomeBigWigTrack requires min_score <= max_score"
+                                .to_string(),
+                        });
+                    }
 
-                result.changed_seq_ids.push(seq_id.clone());
-                result.warnings.extend(report.warnings);
-                let anchor_strand = anchor.strand.unwrap_or('+');
-                result.messages.push(format!(
+                    let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                    let _ = self.ensure_lineage_node(&seq_id);
+                    let dna = self
+                        .state
+                        .sequences
+                        .get_mut(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    let seq_id_for_progress = seq_id.clone();
+                    let path_for_progress = path.clone();
+                    let mut progress_cb = |parsed_records: usize,
+                                           imported_features: usize,
+                                           skipped_records: usize,
+                                           done: bool| {
+                        on_progress(OperationProgress::GenomeTrackImport(
+                            GenomeTrackImportProgress {
+                                seq_id: seq_id_for_progress.clone(),
+                                source: "BigWig".to_string(),
+                                path: path_for_progress.clone(),
+                                parsed_records,
+                                imported_features,
+                                skipped_records,
+                                done,
+                            },
+                        ))
+                    };
+
+                    let report = Self::import_genome_bigwig_track(
+                        dna,
+                        &anchor,
+                        &path,
+                        track_name.as_deref(),
+                        min_score,
+                        max_score,
+                        clear_existing.unwrap_or(false),
+                        Some(&mut progress_cb),
+                    )?;
+
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result.warnings.extend(report.warnings);
+                    let anchor_strand = anchor.strand.unwrap_or('+');
+                    result.messages.push(format!(
                     "Imported {} BigWig feature(s) into '{}' from '{}' as track '{}' (anchor={} {}:{}-{} strand {}, parsed={}, skipped={})",
                     report.imported_features,
                     seq_id,
@@ -8458,94 +8570,96 @@ impl GentleEngine {
                     report.parsed_records,
                     report.skipped_records
                 ));
-                if report.skipped_missing_score > 0 {
-                    result.warnings.push(format!(
+                    if report.skipped_missing_score > 0 {
+                        result.warnings.push(format!(
                         "{} converted bedGraph record(s) were skipped because score filters were set but no value was available",
                         report.skipped_missing_score
                     ));
+                    }
+                    if report.skipped_outside_score_range > 0 {
+                        result.messages.push(format!(
+                            "{} converted bedGraph record(s) were outside score filter bounds",
+                            report.skipped_outside_score_range
+                        ));
+                    }
+                    if report.truncated_at_limit {
+                        result.warnings.push(format!(
+                            "BigWig import was truncated after {} features (limit={})",
+                            report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
+                        ));
+                    }
                 }
-                if report.skipped_outside_score_range > 0 {
-                    result.messages.push(format!(
-                        "{} converted bedGraph record(s) were outside score filter bounds",
-                        report.skipped_outside_score_range
-                    ));
-                }
-                if report.truncated_at_limit {
-                    result.warnings.push(format!(
-                        "BigWig import was truncated after {} features (limit={})",
-                        report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
-                    ));
-                }
-            }
-            Operation::ImportGenomeVcfTrack {
-                seq_id,
-                path,
-                track_name,
-                min_score,
-                max_score,
-                clear_existing,
-            } => {
-                if path.trim().is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportGenomeVcfTrack requires a non-empty VCF path".to_string(),
-                    });
-                }
-                if min_score
-                    .zip(max_score)
-                    .map(|(min, max)| min > max)
-                    .unwrap_or(false)
-                {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportGenomeVcfTrack requires min_score <= max_score".to_string(),
-                    });
-                }
-
-                let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
-                let _ = self.ensure_lineage_node(&seq_id);
-                let dna = self
-                    .state
-                    .sequences
-                    .get_mut(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?;
-                let seq_id_for_progress = seq_id.clone();
-                let path_for_progress = path.clone();
-                let mut progress_cb = |parsed_records: usize,
-                                       imported_features: usize,
-                                       skipped_records: usize,
-                                       done: bool| {
-                    on_progress(OperationProgress::GenomeTrackImport(
-                        GenomeTrackImportProgress {
-                            seq_id: seq_id_for_progress.clone(),
-                            source: "VCF".to_string(),
-                            path: path_for_progress.clone(),
-                            parsed_records,
-                            imported_features,
-                            skipped_records,
-                            done,
-                        },
-                    ))
-                };
-
-                let report = Self::import_genome_vcf_track(
-                    dna,
-                    &anchor,
-                    &path,
-                    track_name.as_deref(),
+                Operation::ImportGenomeVcfTrack {
+                    seq_id,
+                    path,
+                    track_name,
                     min_score,
                     max_score,
-                    clear_existing.unwrap_or(false),
-                    Some(&mut progress_cb),
-                )?;
+                    clear_existing,
+                } => {
+                    if path.trim().is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportGenomeVcfTrack requires a non-empty VCF path"
+                                .to_string(),
+                        });
+                    }
+                    if min_score
+                        .zip(max_score)
+                        .map(|(min, max)| min > max)
+                        .unwrap_or(false)
+                    {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportGenomeVcfTrack requires min_score <= max_score"
+                                .to_string(),
+                        });
+                    }
 
-                result.changed_seq_ids.push(seq_id.clone());
-                result.warnings.extend(report.warnings);
-                let anchor_strand = anchor.strand.unwrap_or('+');
-                result.messages.push(format!(
+                    let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                    let _ = self.ensure_lineage_node(&seq_id);
+                    let dna = self
+                        .state
+                        .sequences
+                        .get_mut(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    let seq_id_for_progress = seq_id.clone();
+                    let path_for_progress = path.clone();
+                    let mut progress_cb = |parsed_records: usize,
+                                           imported_features: usize,
+                                           skipped_records: usize,
+                                           done: bool| {
+                        on_progress(OperationProgress::GenomeTrackImport(
+                            GenomeTrackImportProgress {
+                                seq_id: seq_id_for_progress.clone(),
+                                source: "VCF".to_string(),
+                                path: path_for_progress.clone(),
+                                parsed_records,
+                                imported_features,
+                                skipped_records,
+                                done,
+                            },
+                        ))
+                    };
+
+                    let report = Self::import_genome_vcf_track(
+                        dna,
+                        &anchor,
+                        &path,
+                        track_name.as_deref(),
+                        min_score,
+                        max_score,
+                        clear_existing.unwrap_or(false),
+                        Some(&mut progress_cb),
+                    )?;
+
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result.warnings.extend(report.warnings);
+                    let anchor_strand = anchor.strand.unwrap_or('+');
+                    result.messages.push(format!(
                     "Imported {} VCF feature(s) into '{}' from '{}' as track '{}' (anchor={} {}:{}-{} strand {}, parsed={}, skipped={})",
                     report.imported_features,
                     seq_id,
@@ -8559,144 +8673,144 @@ impl GentleEngine {
                     report.parsed_records,
                     report.skipped_records
                 ));
-                if report.skipped_missing_score > 0 {
-                    result.warnings.push(format!(
+                    if report.skipped_missing_score > 0 {
+                        result.warnings.push(format!(
                         "{} VCF record(s) were skipped because QUAL-based score filters were set but QUAL was missing",
                         report.skipped_missing_score
                     ));
+                    }
+                    if report.skipped_outside_score_range > 0 {
+                        result.messages.push(format!(
+                            "{} VCF record(s) were outside QUAL score filter bounds",
+                            report.skipped_outside_score_range
+                        ));
+                    }
+                    if report.truncated_at_limit {
+                        result.warnings.push(format!(
+                            "VCF import was truncated after {} features (limit={})",
+                            report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
+                        ));
+                    }
                 }
-                if report.skipped_outside_score_range > 0 {
+                Operation::ListCutRunDatasets {
+                    filter,
+                    catalog_path,
+                } => {
+                    let report =
+                        Self::list_cutrun_datasets(filter.as_deref(), catalog_path.as_deref())?;
                     result.messages.push(format!(
-                        "{} VCF record(s) were outside QUAL score filter bounds",
-                        report.skipped_outside_score_range
+                        "Listed {} CUT&RUN dataset(s)",
+                        report.dataset_count
                     ));
+                    result.cutrun_dataset_list = Some(report);
                 }
-                if report.truncated_at_limit {
-                    result.warnings.push(format!(
-                        "VCF import was truncated after {} features (limit={})",
-                        report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
+                Operation::ShowCutRunDatasetStatus {
+                    dataset_id,
+                    catalog_path,
+                    cache_dir,
+                } => {
+                    let status = self.show_cutrun_dataset_status(
+                        &dataset_id,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    result.messages.push(format!(
+                        "Inspected CUT&RUN dataset '{}' status",
+                        status.dataset_id
                     ));
+                    result.warnings.extend(status.warnings.clone());
+                    result.cutrun_dataset_status = Some(status);
                 }
-            }
-            Operation::ListCutRunDatasets {
-                filter,
-                catalog_path,
-            } => {
-                let report =
-                    Self::list_cutrun_datasets(filter.as_deref(), catalog_path.as_deref())?;
-                result.messages.push(format!(
-                    "Listed {} CUT&RUN dataset(s)",
-                    report.dataset_count
-                ));
-                result.cutrun_dataset_list = Some(report);
-            }
-            Operation::ShowCutRunDatasetStatus {
-                dataset_id,
-                catalog_path,
-                cache_dir,
-            } => {
-                let status = self.show_cutrun_dataset_status(
-                    &dataset_id,
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                )?;
-                result.messages.push(format!(
-                    "Inspected CUT&RUN dataset '{}' status",
-                    status.dataset_id
-                ));
-                result.warnings.extend(status.warnings.clone());
-                result.cutrun_dataset_status = Some(status);
-            }
-            Operation::PrepareCutRunDataset {
-                dataset_id,
-                catalog_path,
-                cache_dir,
-            } => {
-                let status = self.prepare_cutrun_dataset(
-                    &dataset_id,
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                )?;
-                let prepared_assets = [
-                    status.peaks.prepared.then_some("peaks"),
-                    status.signal.prepared.then_some("signal"),
-                ]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>();
-                let prepared_label = if prepared_assets.is_empty() {
-                    "no processed assets".to_string()
-                } else {
-                    prepared_assets.join("+")
-                };
-                result.messages.push(format!(
-                    "Prepared CUT&RUN dataset '{}' ({prepared_label})",
-                    status.dataset_id
-                ));
-                result.warnings.extend(status.warnings.clone());
-                result.cutrun_dataset_status = Some(status);
-            }
-            Operation::ProjectCutRunDataset {
-                seq_id,
-                dataset_id,
-                include_peaks,
-                include_signal,
-                clear_existing,
-                catalog_path,
-                cache_dir,
-            } => {
-                let report = self.project_cutrun_dataset(
-                    &seq_id,
-                    &dataset_id,
-                    include_peaks.unwrap_or(true),
-                    include_signal.unwrap_or(true),
-                    clear_existing.unwrap_or(false),
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                )?;
-                result.changed_seq_ids.push(seq_id.clone());
-                result.warnings.extend(report.warnings.clone());
-                result.messages.push(format!(
-                    "Projected CUT&RUN dataset '{}' onto '{}' (peaks={}, signal={})",
-                    report.dataset_id,
-                    report.seq_id,
-                    report.projected_peak_features,
-                    report.projected_signal_features
-                ));
-                result.cutrun_dataset_projection = Some(report);
-            }
-            Operation::InterpretCutRunReads {
-                seq_id,
-                input_r1_path,
-                input_r2_path,
-                input_format,
-                read_layout,
-                roi_flank_bp,
-                seed_filter,
-                align_config,
-                deduplicate_fragments,
-                report_id,
-                checkpoint_path,
-                checkpoint_every_reads,
-            } => {
-                let mut report = self.interpret_cutrun_reads(
-                    &seq_id,
-                    &input_r1_path,
-                    input_r2_path.as_deref(),
+                Operation::PrepareCutRunDataset {
+                    dataset_id,
+                    catalog_path,
+                    cache_dir,
+                } => {
+                    let status = self.prepare_cutrun_dataset(
+                        &dataset_id,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    let prepared_assets = [
+                        status.peaks.prepared.then_some("peaks"),
+                        status.signal.prepared.then_some("signal"),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>();
+                    let prepared_label = if prepared_assets.is_empty() {
+                        "no processed assets".to_string()
+                    } else {
+                        prepared_assets.join("+")
+                    };
+                    result.messages.push(format!(
+                        "Prepared CUT&RUN dataset '{}' ({prepared_label})",
+                        status.dataset_id
+                    ));
+                    result.warnings.extend(status.warnings.clone());
+                    result.cutrun_dataset_status = Some(status);
+                }
+                Operation::ProjectCutRunDataset {
+                    seq_id,
+                    dataset_id,
+                    include_peaks,
+                    include_signal,
+                    clear_existing,
+                    catalog_path,
+                    cache_dir,
+                } => {
+                    let report = self.project_cutrun_dataset(
+                        &seq_id,
+                        &dataset_id,
+                        include_peaks.unwrap_or(true),
+                        include_signal.unwrap_or(true),
+                        clear_existing.unwrap_or(false),
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Projected CUT&RUN dataset '{}' onto '{}' (peaks={}, signal={})",
+                        report.dataset_id,
+                        report.seq_id,
+                        report.projected_peak_features,
+                        report.projected_signal_features
+                    ));
+                    result.cutrun_dataset_projection = Some(report);
+                }
+                Operation::InterpretCutRunReads {
+                    seq_id,
+                    input_r1_path,
+                    input_r2_path,
                     input_format,
                     read_layout,
                     roi_flank_bp,
-                    &seed_filter,
-                    &align_config,
+                    seed_filter,
+                    align_config,
                     deduplicate_fragments,
-                    report_id.as_deref(),
-                    checkpoint_path.as_deref(),
+                    report_id,
+                    checkpoint_path,
                     checkpoint_every_reads,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                self.upsert_cutrun_read_report(report.clone())?;
-                result.messages.push(format!(
+                } => {
+                    let mut report = self.interpret_cutrun_reads(
+                        &seq_id,
+                        &input_r1_path,
+                        input_r2_path.as_deref(),
+                        input_format,
+                        read_layout,
+                        roi_flank_bp,
+                        &seed_filter,
+                        &align_config,
+                        deduplicate_fragments,
+                        report_id.as_deref(),
+                        checkpoint_path.as_deref(),
+                        checkpoint_every_reads,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    self.upsert_cutrun_read_report(report.clone())?;
+                    result.messages.push(format!(
                     "Interpreted CUT&RUN reads into report '{}' (units={}, mapped={}, fragments={}, concordant_pairs={})",
                     report.report_id,
                     report.total_units,
@@ -8704,298 +8818,302 @@ impl GentleEngine {
                     report.fragment_count,
                     report.concordant_pair_count
                 ));
-                result.warnings.extend(report.warnings.clone());
-                result.cutrun_read_report = Some(report);
-            }
-            Operation::ListCutRunReadReports { seq_id } => {
-                let rows = self.list_cutrun_read_reports(seq_id.as_deref());
-                result.messages.push(format!(
-                    "CUT&RUN read reports: {} row(s){}",
-                    rows.len(),
-                    seq_id
-                        .as_deref()
-                        .map(|value| format!(" (seq_id='{}')", value))
-                        .unwrap_or_default()
-                ));
-                result.cutrun_read_report_summaries = Some(rows);
-            }
-            Operation::ShowCutRunReadReport { report_id } => {
-                let report = self.get_cutrun_read_report(&report_id)?;
-                result.messages.push(format!(
-                    "CUT&RUN read report '{}' for '{}' (units={}, mapped={}, fragments={})",
-                    report.report_id,
-                    report.seq_id,
-                    report.total_units,
-                    report.mapped_units,
-                    report.fragment_count
-                ));
-                result.warnings.extend(report.warnings.clone());
-                result.cutrun_read_report = Some(report);
-            }
-            Operation::ExportCutRunReadCoverage {
-                report_id,
-                path,
-                kind,
-            } => {
-                let export = self.export_cutrun_read_coverage(&report_id, &path, kind)?;
-                result.messages.push(format!(
-                    "Exported CUT&RUN {} rows for '{}' to '{}'",
-                    export.kind.as_str(),
-                    export.report_id,
-                    export.path
-                ));
-                result.cutrun_read_coverage_export = Some(export);
-            }
-            Operation::ImportIsoformPanel {
-                seq_id,
-                panel_path,
-                panel_id,
-                strict,
-            } => {
-                if panel_path.trim().is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportIsoformPanel requires a non-empty panel_path".to_string(),
-                    });
+                    result.warnings.extend(report.warnings.clone());
+                    result.cutrun_read_report = Some(report);
                 }
-                if !self.state.sequences.contains_key(&seq_id) {
-                    return Err(EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    });
+                Operation::ListCutRunReadReports { seq_id } => {
+                    let rows = self.list_cutrun_read_reports(seq_id.as_deref());
+                    result.messages.push(format!(
+                        "CUT&RUN read reports: {} row(s){}",
+                        rows.len(),
+                        seq_id
+                            .as_deref()
+                            .map(|value| format!(" (seq_id='{}')", value))
+                            .unwrap_or_default()
+                    ));
+                    result.cutrun_read_report_summaries = Some(rows);
                 }
-                let resource = Self::load_isoform_panel_resource(&panel_path, panel_id.as_deref())?;
-                let panel_id = resource.panel_id.clone();
-                let preview = self.build_isoform_architecture_expert_view_from_resource(
-                    &seq_id, &panel_id, &resource, strict,
-                )?;
-                self.upsert_isoform_panel_record(IsoformPanelRecord {
-                    seq_id: seq_id.clone(),
-                    panel_id: panel_id.clone(),
-                    imported_at_unix_ms: Self::now_unix_ms(),
-                    source_path: panel_path.clone(),
-                    strict,
-                    resource: resource.clone(),
-                })?;
-                result.changed_seq_ids.push(seq_id.clone());
-                result.warnings.extend(preview.warnings.clone());
-                result.messages.push(format!(
-                    "Imported isoform panel '{}' for '{}' (isoforms={}, strict={}) from '{}'",
-                    panel_id,
+                Operation::ShowCutRunReadReport { report_id } => {
+                    let report = self.get_cutrun_read_report(&report_id)?;
+                    result.messages.push(format!(
+                        "CUT&RUN read report '{}' for '{}' (units={}, mapped={}, fragments={})",
+                        report.report_id,
+                        report.seq_id,
+                        report.total_units,
+                        report.mapped_units,
+                        report.fragment_count
+                    ));
+                    result.warnings.extend(report.warnings.clone());
+                    result.cutrun_read_report = Some(report);
+                }
+                Operation::ExportCutRunReadCoverage {
+                    report_id,
+                    path,
+                    kind,
+                } => {
+                    let export = self.export_cutrun_read_coverage(&report_id, &path, kind)?;
+                    result.messages.push(format!(
+                        "Exported CUT&RUN {} rows for '{}' to '{}'",
+                        export.kind.as_str(),
+                        export.report_id,
+                        export.path
+                    ));
+                    result.cutrun_read_coverage_export = Some(export);
+                }
+                Operation::ImportIsoformPanel {
                     seq_id,
-                    resource.isoforms.len(),
+                    panel_path,
+                    panel_id,
                     strict,
-                    panel_path
-                ));
-            }
-            Operation::ImportUniprotSwissProt { path, entry_id } => {
-                if path.trim().is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportUniprotSwissProt requires a non-empty path".to_string(),
-                    });
+                } => {
+                    if panel_path.trim().is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportIsoformPanel requires a non-empty panel_path"
+                                .to_string(),
+                        });
+                    }
+                    if !self.state.sequences.contains_key(&seq_id) {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        });
+                    }
+                    let resource =
+                        Self::load_isoform_panel_resource(&panel_path, panel_id.as_deref())?;
+                    let panel_id = resource.panel_id.clone();
+                    let preview = self.build_isoform_architecture_expert_view_from_resource(
+                        &seq_id, &panel_id, &resource, strict,
+                    )?;
+                    self.upsert_isoform_panel_record(IsoformPanelRecord {
+                        seq_id: seq_id.clone(),
+                        panel_id: panel_id.clone(),
+                        imported_at_unix_ms: Self::now_unix_ms(),
+                        source_path: panel_path.clone(),
+                        strict,
+                        resource: resource.clone(),
+                    })?;
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result.warnings.extend(preview.warnings.clone());
+                    result.messages.push(format!(
+                        "Imported isoform panel '{}' for '{}' (isoforms={}, strict={}) from '{}'",
+                        panel_id,
+                        seq_id,
+                        resource.isoforms.len(),
+                        strict,
+                        panel_path
+                    ));
                 }
-                let text = std::fs::read_to_string(&path).map_err(|e| EngineError {
-                    code: ErrorCode::Io,
-                    message: format!("Could not read SWISS-PROT text from '{}': {e}", path),
-                })?;
-                let source = format!("file://{}", path);
-                let entry =
-                    Self::parse_uniprot_entry_text(&text, &source, None, entry_id.as_deref())?;
-                let resolved_entry_id = entry.entry_id.clone();
-                self.upsert_uniprot_entry(entry)?;
-                result.messages.push(format!(
-                    "Imported UniProt SWISS-PROT entry '{}' from '{}'",
-                    resolved_entry_id, path
-                ));
-            }
-            Operation::FetchUniprotSwissProt { query, entry_id } => {
-                let query_trimmed = query.trim();
-                if query_trimmed.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "FetchUniprotSwissProt requires a non-empty query".to_string(),
-                    });
+                Operation::ImportUniprotSwissProt { path, entry_id } => {
+                    if path.trim().is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportUniprotSwissProt requires a non-empty path".to_string(),
+                        });
+                    }
+                    let text = std::fs::read_to_string(&path).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not read SWISS-PROT text from '{}': {e}", path),
+                    })?;
+                    let source = format!("file://{}", path);
+                    let entry =
+                        Self::parse_uniprot_entry_text(&text, &source, None, entry_id.as_deref())?;
+                    let resolved_entry_id = entry.entry_id.clone();
+                    self.upsert_uniprot_entry(entry)?;
+                    result.messages.push(format!(
+                        "Imported UniProt SWISS-PROT entry '{}' from '{}'",
+                        resolved_entry_id, path
+                    ));
                 }
-                let (source_url, text) = Self::fetch_uniprot_swiss_prot_text(query_trimmed)?;
-                let entry = Self::parse_uniprot_entry_text(
-                    &text,
-                    &source_url,
-                    Some(query_trimmed),
-                    entry_id.as_deref(),
-                )?;
-                let resolved_entry_id = entry.entry_id.clone();
-                let accession = entry.accession.clone();
-                self.upsert_uniprot_entry(entry)?;
-                result.messages.push(format!(
-                    "Fetched UniProt entry '{}' (accession '{}') from '{}'",
-                    resolved_entry_id, accession, source_url
-                ));
-            }
-            Operation::FetchEnsemblProtein { query, entry_id } => {
-                let query_trimmed = query.trim();
-                if query_trimmed.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "FetchEnsemblProtein requires a non-empty query".to_string(),
-                    });
+                Operation::FetchUniprotSwissProt { query, entry_id } => {
+                    let query_trimmed = query.trim();
+                    if query_trimmed.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "FetchUniprotSwissProt requires a non-empty query".to_string(),
+                        });
+                    }
+                    let (source_url, text) = Self::fetch_uniprot_swiss_prot_text(query_trimmed)?;
+                    let entry = Self::parse_uniprot_entry_text(
+                        &text,
+                        &source_url,
+                        Some(query_trimmed),
+                        entry_id.as_deref(),
+                    )?;
+                    let resolved_entry_id = entry.entry_id.clone();
+                    let accession = entry.accession.clone();
+                    self.upsert_uniprot_entry(entry)?;
+                    result.messages.push(format!(
+                        "Fetched UniProt entry '{}' (accession '{}') from '{}'",
+                        resolved_entry_id, accession, source_url
+                    ));
                 }
-                let entry = Self::fetch_ensembl_protein_entry_from_rest(
-                    query_trimmed,
-                    entry_id.as_deref(),
-                )?;
-                let resolved_entry_id = entry.entry_id.clone();
-                let protein_id = entry.protein_id.clone();
-                let transcript_id = entry.transcript_id.clone();
-                self.upsert_ensembl_protein_entry(entry)?;
-                result.messages.push(format!(
-                    "Fetched Ensembl protein '{}' (protein '{}', transcript '{}')",
-                    resolved_entry_id, protein_id, transcript_id
-                ));
-            }
-            Operation::FetchGenBankAccession { accession, as_id } => {
-                let accession_trimmed = accession.trim();
-                if accession_trimmed.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "FetchGenBankAccession requires a non-empty accession".to_string(),
-                    });
+                Operation::FetchEnsemblProtein { query, entry_id } => {
+                    let query_trimmed = query.trim();
+                    if query_trimmed.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "FetchEnsemblProtein requires a non-empty query".to_string(),
+                        });
+                    }
+                    let entry = Self::fetch_ensembl_protein_entry_from_rest(
+                        query_trimmed,
+                        entry_id.as_deref(),
+                    )?;
+                    let resolved_entry_id = entry.entry_id.clone();
+                    let protein_id = entry.protein_id.clone();
+                    let transcript_id = entry.transcript_id.clone();
+                    self.upsert_ensembl_protein_entry(entry)?;
+                    result.messages.push(format!(
+                        "Fetched Ensembl protein '{}' (protein '{}', transcript '{}')",
+                        resolved_entry_id, protein_id, transcript_id
+                    ));
                 }
-                let _ = self.fetch_genbank_accession_into_state(
-                    &mut result,
-                    accession_trimmed,
-                    as_id,
-                    "FetchGenBankAccession",
-                    None,
-                )?;
-            }
-            Operation::FetchUniprotLinkedGenBank {
-                entry_id,
-                accession,
-                as_id,
-            } => {
-                let entry_id_trimmed = entry_id.trim();
-                if entry_id_trimmed.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "FetchUniprotLinkedGenBank requires a non-empty entry_id"
-                            .to_string(),
-                    });
+                Operation::FetchGenBankAccession { accession, as_id } => {
+                    let accession_trimmed = accession.trim();
+                    if accession_trimmed.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "FetchGenBankAccession requires a non-empty accession"
+                                .to_string(),
+                        });
+                    }
+                    let _ = self.fetch_genbank_accession_into_state(
+                        &mut result,
+                        accession_trimmed,
+                        as_id,
+                        "FetchGenBankAccession",
+                        None,
+                    )?;
                 }
-                let entry = self.get_uniprot_entry(entry_id_trimmed)?;
-                let selected = Self::choose_uniprot_nucleotide_xref(&entry, accession.as_deref())?;
-                let source_note = format!(
-                    "UniProt '{}' -> {} accession '{}'{}",
-                    entry.entry_id,
-                    selected.database,
-                    selected.accession,
-                    selected
-                        .molecule_type
-                        .as_deref()
-                        .map(|kind| format!(" ({})", kind))
-                        .unwrap_or_default()
-                );
-                let _ = self.fetch_genbank_accession_into_state(
-                    &mut result,
-                    &selected.accession,
-                    as_id,
-                    "FetchUniprotLinkedGenBank",
-                    Some(&source_note),
-                )?;
-            }
-            Operation::ImportUniprotEntrySequence {
-                entry_id,
-                output_id,
-            } => {
-                let entry_id = entry_id.trim();
-                if entry_id.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportUniprotEntrySequence requires a non-empty entry_id"
-                            .to_string(),
-                    });
-                }
-                let _ = self.import_uniprot_entry_sequence(
-                    &mut result,
+                Operation::FetchUniprotLinkedGenBank {
                     entry_id,
-                    output_id.as_deref(),
-                )?;
-            }
-            Operation::ImportEnsemblProteinSequence {
-                entry_id,
-                output_id,
-            } => {
-                let entry_id = entry_id.trim();
-                if entry_id.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportEnsemblProteinSequence requires a non-empty entry_id"
-                            .to_string(),
-                    });
+                    accession,
+                    as_id,
+                } => {
+                    let entry_id_trimmed = entry_id.trim();
+                    if entry_id_trimmed.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "FetchUniprotLinkedGenBank requires a non-empty entry_id"
+                                .to_string(),
+                        });
+                    }
+                    let entry = self.get_uniprot_entry(entry_id_trimmed)?;
+                    let selected =
+                        Self::choose_uniprot_nucleotide_xref(&entry, accession.as_deref())?;
+                    let source_note = format!(
+                        "UniProt '{}' -> {} accession '{}'{}",
+                        entry.entry_id,
+                        selected.database,
+                        selected.accession,
+                        selected
+                            .molecule_type
+                            .as_deref()
+                            .map(|kind| format!(" ({})", kind))
+                            .unwrap_or_default()
+                    );
+                    let _ = self.fetch_genbank_accession_into_state(
+                        &mut result,
+                        &selected.accession,
+                        as_id,
+                        "FetchUniprotLinkedGenBank",
+                        Some(&source_note),
+                    )?;
                 }
-                let _ = self.import_ensembl_protein_entry_sequence(
-                    &mut result,
+                Operation::ImportUniprotEntrySequence {
                     entry_id,
-                    output_id.as_deref(),
-                )?;
-            }
-            Operation::ProjectUniprotToGenome {
-                seq_id,
-                entry_id,
-                projection_id,
-                transcript_id,
-            } => {
-                let mut projection = self.project_uniprot_to_genome(
-                    &seq_id,
-                    &entry_id,
-                    projection_id.as_deref(),
-                    transcript_id.as_deref(),
-                )?;
-                projection.op_id = Some(result.op_id.clone());
-                projection.run_id = Some(run_id.to_string());
-                let projection_id = projection.projection_id.clone();
-                let transcript_count = projection.transcript_projections.len();
-                result.warnings.extend(projection.warnings.clone());
-                for transcript in &projection.transcript_projections {
-                    result.warnings.extend(transcript.warnings.clone());
+                    output_id,
+                } => {
+                    let entry_id = entry_id.trim();
+                    if entry_id.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportUniprotEntrySequence requires a non-empty entry_id"
+                                .to_string(),
+                        });
+                    }
+                    let _ = self.import_uniprot_entry_sequence(
+                        &mut result,
+                        entry_id,
+                        output_id.as_deref(),
+                    )?;
                 }
-                self.upsert_uniprot_projection(projection)?;
-                result.messages.push(format!(
-                    "Projected UniProt entry '{}' onto '{}' as '{}' (transcripts={})",
-                    entry_id, seq_id, projection_id, transcript_count
-                ));
-            }
-            Operation::AuditUniprotProjectionConsistency {
-                projection_id,
-                transcript_id,
-                report_id,
-                ensembl_entry_id,
-            } => {
-                let projection_id = projection_id.trim();
-                if projection_id.is_empty() {
-                    return Err(EngineError {
+                Operation::ImportEnsemblProteinSequence {
+                    entry_id,
+                    output_id,
+                } => {
+                    let entry_id = entry_id.trim();
+                    if entry_id.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportEnsemblProteinSequence requires a non-empty entry_id"
+                                .to_string(),
+                        });
+                    }
+                    let _ = self.import_ensembl_protein_entry_sequence(
+                        &mut result,
+                        entry_id,
+                        output_id.as_deref(),
+                    )?;
+                }
+                Operation::ProjectUniprotToGenome {
+                    seq_id,
+                    entry_id,
+                    projection_id,
+                    transcript_id,
+                } => {
+                    let mut projection = self.project_uniprot_to_genome(
+                        &seq_id,
+                        &entry_id,
+                        projection_id.as_deref(),
+                        transcript_id.as_deref(),
+                    )?;
+                    projection.op_id = Some(result.op_id.clone());
+                    projection.run_id = Some(run_id.to_string());
+                    let projection_id = projection.projection_id.clone();
+                    let transcript_count = projection.transcript_projections.len();
+                    result.warnings.extend(projection.warnings.clone());
+                    for transcript in &projection.transcript_projections {
+                        result.warnings.extend(transcript.warnings.clone());
+                    }
+                    self.upsert_uniprot_projection(projection)?;
+                    result.messages.push(format!(
+                        "Projected UniProt entry '{}' onto '{}' as '{}' (transcripts={})",
+                        entry_id, seq_id, projection_id, transcript_count
+                    ));
+                }
+                Operation::AuditUniprotProjectionConsistency {
+                    projection_id,
+                    transcript_id,
+                    report_id,
+                    ensembl_entry_id,
+                } => {
+                    let projection_id = projection_id.trim();
+                    if projection_id.is_empty() {
+                        return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message:
                             "AuditUniprotProjectionConsistency requires a non-empty projection_id"
                                 .to_string(),
                     });
-                }
-                let resolved_report_id = report_id
-                    .as_deref()
-                    .map(Self::normalize_uniprot_projection_audit_report_id)
-                    .transpose()?
-                    .unwrap_or_else(|| format!("{projection_id}__audit"));
-                let report = self.audit_uniprot_projection_consistency_from_primitives(
-                    projection_id,
-                    transcript_id.as_deref(),
-                    &resolved_report_id,
-                    ensembl_entry_id.as_deref(),
-                    Some(result.op_id.clone()),
-                    Some(run_id.to_string()),
-                )?;
-                self.upsert_uniprot_projection_audit_report(report.clone())?;
-                result.uniprot_projection_audit = Some(report.clone());
-                result.messages.push(format!(
+                    }
+                    let resolved_report_id = report_id
+                        .as_deref()
+                        .map(Self::normalize_uniprot_projection_audit_report_id)
+                        .transpose()?
+                        .unwrap_or_else(|| format!("{projection_id}__audit"));
+                    let report = self.audit_uniprot_projection_consistency_from_primitives(
+                        projection_id,
+                        transcript_id.as_deref(),
+                        &resolved_report_id,
+                        ensembl_entry_id.as_deref(),
+                        Some(result.op_id.clone()),
+                        Some(run_id.to_string()),
+                    )?;
+                    self.upsert_uniprot_projection_audit_report(report.clone())?;
+                    result.uniprot_projection_audit = Some(report.clone());
+                    result.messages.push(format!(
                     "Audited UniProt projection '{}' into report '{}' (transcripts={}, failing={})",
                     projection_id,
                     report.report_id,
@@ -9006,37 +9124,38 @@ impl GentleEngine {
                         .filter(|row| row.status != UniprotProjectionAuditRowStatus::Consistent)
                         .count()
                 ));
-            }
-            Operation::AuditUniprotProjectionParity {
-                projection_id,
-                transcript_id,
-                report_id,
-                ensembl_entry_id,
-            } => {
-                let projection_id = projection_id.trim();
-                if projection_id.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "AuditUniprotProjectionParity requires a non-empty projection_id"
-                            .to_string(),
-                    });
                 }
-                let resolved_report_id = report_id
-                    .as_deref()
-                    .map(Self::normalize_uniprot_projection_audit_report_id)
-                    .transpose()?
-                    .unwrap_or_else(|| format!("{projection_id}__audit_parity"));
-                let report = self.audit_uniprot_projection_parity_from_primitives(
+                Operation::AuditUniprotProjectionParity {
                     projection_id,
-                    transcript_id.as_deref(),
-                    &resolved_report_id,
-                    ensembl_entry_id.as_deref(),
-                    Some(result.op_id.clone()),
-                    Some(run_id.to_string()),
-                )?;
-                self.upsert_uniprot_projection_audit_parity_report(report.clone())?;
-                result.uniprot_projection_audit_parity = Some(report.clone());
-                result.messages.push(format!(
+                    transcript_id,
+                    report_id,
+                    ensembl_entry_id,
+                } => {
+                    let projection_id = projection_id.trim();
+                    if projection_id.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message:
+                                "AuditUniprotProjectionParity requires a non-empty projection_id"
+                                    .to_string(),
+                        });
+                    }
+                    let resolved_report_id = report_id
+                        .as_deref()
+                        .map(Self::normalize_uniprot_projection_audit_report_id)
+                        .transpose()?
+                        .unwrap_or_else(|| format!("{projection_id}__audit_parity"));
+                    let report = self.audit_uniprot_projection_parity_from_primitives(
+                        projection_id,
+                        transcript_id.as_deref(),
+                        &resolved_report_id,
+                        ensembl_entry_id.as_deref(),
+                        Some(result.op_id.clone()),
+                        Some(run_id.to_string()),
+                    )?;
+                    self.upsert_uniprot_projection_audit_parity_report(report.clone())?;
+                    result.uniprot_projection_audit_parity = Some(report.clone());
+                    result.messages.push(format!(
                     "Built UniProt projection audit parity report '{}' for '{}' (transcripts={}, divergent={})",
                     report.report_id,
                     projection_id,
@@ -9052,91 +9171,91 @@ impl GentleEngine {
                         })
                         .count()
                 ));
-            }
-            Operation::ImportBlastHitsTrack {
-                seq_id,
-                hits,
-                track_name,
-                clear_existing,
-                blast_provenance,
-            } => {
-                if hits.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ImportBlastHitsTrack requires at least one hit".to_string(),
-                    });
                 }
-                let selected_track_name = track_name
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|v| !v.is_empty())
-                    .unwrap_or("blast_hits")
-                    .to_string();
-                let clear_existing = clear_existing.unwrap_or(false);
+                Operation::ImportBlastHitsTrack {
+                    seq_id,
+                    hits,
+                    track_name,
+                    clear_existing,
+                    blast_provenance,
+                } => {
+                    if hits.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportBlastHitsTrack requires at least one hit".to_string(),
+                        });
+                    }
+                    let selected_track_name = track_name
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .unwrap_or("blast_hits")
+                        .to_string();
+                    let clear_existing = clear_existing.unwrap_or(false);
 
-                let _ = self.ensure_lineage_node(&seq_id);
-                let dna = self
-                    .state
-                    .sequences
-                    .get_mut(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?;
-                let seq_len = dna.len();
-                if seq_len == 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Sequence '{}' is empty and cannot receive BLAST hit features",
-                            seq_id
-                        ),
-                    });
-                }
+                    let _ = self.ensure_lineage_node(&seq_id);
+                    let dna = self
+                        .state
+                        .sequences
+                        .get_mut(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    let seq_len = dna.len();
+                    if seq_len == 0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Sequence '{}' is empty and cannot receive BLAST hit features",
+                                seq_id
+                            ),
+                        });
+                    }
 
-                let mut removed_count = 0usize;
-                if clear_existing {
-                    let before = dna.features().len();
-                    Self::remove_generated_blast_hit_features(dna.features_mut());
-                    removed_count = before.saturating_sub(dna.features().len());
-                }
+                    let mut removed_count = 0usize;
+                    if clear_existing {
+                        let before = dna.features().len();
+                        Self::remove_generated_blast_hit_features(dna.features_mut());
+                        removed_count = before.saturating_sub(dna.features().len());
+                    }
 
-                let mut imported_count = 0usize;
-                let mut skipped_count = 0usize;
-                for (idx, hit) in hits.iter().enumerate() {
-                    let start = hit.query_start_1based.min(hit.query_end_1based);
-                    let end = hit.query_start_1based.max(hit.query_end_1based);
-                    if start == 0 || end == 0 {
-                        skipped_count += 1;
-                        if result.warnings.len() < 20 {
-                            result.warnings.push(format!(
+                    let mut imported_count = 0usize;
+                    let mut skipped_count = 0usize;
+                    for (idx, hit) in hits.iter().enumerate() {
+                        let start = hit.query_start_1based.min(hit.query_end_1based);
+                        let end = hit.query_start_1based.max(hit.query_end_1based);
+                        if start == 0 || end == 0 {
+                            skipped_count += 1;
+                            if result.warnings.len() < 20 {
+                                result.warnings.push(format!(
                                 "BLAST hit {} skipped because query coordinates are invalid: {}..{}",
                                 idx + 1,
                                 hit.query_start_1based,
                                 hit.query_end_1based
                             ));
+                            }
+                            continue;
                         }
-                        continue;
-                    }
-                    if start > seq_len {
-                        skipped_count += 1;
-                        if result.warnings.len() < 20 {
-                            result.warnings.push(format!(
+                        if start > seq_len {
+                            skipped_count += 1;
+                            if result.warnings.len() < 20 {
+                                result.warnings.push(format!(
                                 "BLAST hit {} skipped because query start {} is outside sequence length {}",
                                 idx + 1,
                                 start,
                                 seq_len
                             ));
+                            }
+                            continue;
                         }
-                        continue;
-                    }
-                    let end_clamped = end.min(seq_len);
-                    if end_clamped < start {
-                        skipped_count += 1;
-                        continue;
-                    }
-                    if end_clamped < end && result.warnings.len() < 20 {
-                        result.warnings.push(format!(
+                        let end_clamped = end.min(seq_len);
+                        if end_clamped < start {
+                            skipped_count += 1;
+                            continue;
+                        }
+                        if end_clamped < end && result.warnings.len() < 20 {
+                            result.warnings.push(format!(
                             "BLAST hit {} query range {}..{} was clamped to {}..{} for sequence length {}",
                             idx + 1,
                             start,
@@ -9145,32 +9264,32 @@ impl GentleEngine {
                             end_clamped,
                             seq_len
                         ));
+                        }
+                        let local_start_0based = start.saturating_sub(1);
+                        let local_end_0based_exclusive = end_clamped;
+                        let local_strand =
+                            if hit.subject_start_1based == 0 || hit.subject_end_1based == 0 {
+                                None
+                            } else if hit.subject_start_1based <= hit.subject_end_1based {
+                                Some('+')
+                            } else {
+                                Some('-')
+                            };
+                        let feature = Self::build_blast_hit_feature(
+                            hit,
+                            &selected_track_name,
+                            local_start_0based,
+                            local_end_0based_exclusive,
+                            local_strand,
+                        );
+                        dna.features_mut().push(feature);
+                        imported_count += 1;
                     }
-                    let local_start_0based = start.saturating_sub(1);
-                    let local_end_0based_exclusive = end_clamped;
-                    let local_strand =
-                        if hit.subject_start_1based == 0 || hit.subject_end_1based == 0 {
-                            None
-                        } else if hit.subject_start_1based <= hit.subject_end_1based {
-                            Some('+')
-                        } else {
-                            Some('-')
-                        };
-                    let feature = Self::build_blast_hit_feature(
-                        hit,
-                        &selected_track_name,
-                        local_start_0based,
-                        local_end_0based_exclusive,
-                        local_strand,
-                    );
-                    dna.features_mut().push(feature);
-                    imported_count += 1;
-                }
 
-                if imported_count > 0 || removed_count > 0 {
-                    result.changed_seq_ids.push(seq_id.clone());
-                }
-                result.messages.push(format!(
+                    if imported_count > 0 || removed_count > 0 {
+                        result.changed_seq_ids.push(seq_id.clone());
+                    }
+                    result.messages.push(format!(
                     "Imported {} BLAST hit feature(s) into '{}' as track '{}' (input_hits={}, skipped={}, cleared_existing={})",
                     imported_count,
                     seq_id,
@@ -9179,21 +9298,21 @@ impl GentleEngine {
                     skipped_count,
                     removed_count
                 ));
-                if let Some(provenance) = blast_provenance {
-                    let command_line = if provenance.command_line.trim().is_empty() {
-                        if provenance.command.is_empty() {
-                            provenance.blastn_executable.clone()
+                    if let Some(provenance) = blast_provenance {
+                        let command_line = if provenance.command_line.trim().is_empty() {
+                            if provenance.command.is_empty() {
+                                provenance.blastn_executable.clone()
+                            } else {
+                                format!(
+                                    "{} {}",
+                                    provenance.blastn_executable,
+                                    provenance.command.join(" ")
+                                )
+                            }
                         } else {
-                            format!(
-                                "{} {}",
-                                provenance.blastn_executable,
-                                provenance.command.join(" ")
-                            )
-                        }
-                    } else {
-                        provenance.command_line.clone()
-                    };
-                    result.messages.push(format!(
+                            provenance.command_line.clone()
+                        };
+                        result.messages.push(format!(
                         "BLAST provenance: genome='{}', query='{}' ({} bp), task='{}', max_hits={}, command={}",
                         provenance.genome_id,
                         provenance.query_label,
@@ -9202,65 +9321,14 @@ impl GentleEngine {
                         provenance.max_hits,
                         command_line
                     ));
+                    }
                 }
-            }
-            Operation::Digest {
-                input,
-                enzymes,
-                output_prefix,
-            } => {
-                parent_seq_ids.push(input.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&input)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{input}' not found"),
-                    })?
-                    .clone();
-
-                let (found, missing) = self.resolve_enzymes(&enzymes)?;
-                if !missing.is_empty() {
-                    result
-                        .warnings
-                        .push(format!("Unknown enzymes ignored: {}", missing.join(",")));
-                }
-
-                let fragments =
-                    Self::digest_with_guard(&dna, found, self.max_fragments_per_container())?;
-                let prefix = output_prefix.unwrap_or_else(|| format!("{input}_digest"));
-
-                for (i, mut fragment) in fragments.into_iter().enumerate() {
-                    // Keep digest interactive by deferring expensive feature recomputation.
-                    Self::prepare_sequence_light(&mut fragment);
-                    let candidate = format!("{}_{}", prefix, i + 1);
-                    let seq_id = self.unique_seq_id(&candidate);
-                    self.state.sequences.insert(seq_id.clone(), fragment);
-                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                    result.created_seq_ids.push(seq_id);
-                }
-
-                result.messages.push(format!(
-                    "Digest created {} fragment(s); feature recomputation deferred",
-                    result.created_seq_ids.len()
-                ));
-            }
-            Operation::DigestContainer {
-                container_id,
-                enzymes,
-                output_prefix,
-            } => {
-                let inputs = self.container_members(&container_id)?;
-                parent_seq_ids.extend(inputs.clone());
-                let (found, missing) = self.resolve_enzymes(&enzymes)?;
-                if !missing.is_empty() {
-                    result
-                        .warnings
-                        .push(format!("Unknown enzymes ignored: {}", missing.join(",")));
-                }
-                let prefix = output_prefix.unwrap_or_else(|| format!("{container_id}_digest"));
-                for input in inputs {
+                Operation::Digest {
+                    input,
+                    enzymes,
+                    output_prefix,
+                } => {
+                    parent_seq_ids.push(input.clone());
                     let dna = self
                         .state
                         .sequences
@@ -9270,15 +9338,22 @@ impl GentleEngine {
                             message: format!("Sequence '{input}' not found"),
                         })?
                         .clone();
-                    let fragments = Self::digest_with_guard(
-                        &dna,
-                        found.clone(),
-                        self.max_fragments_per_container(),
-                    )?;
+
+                    let (found, missing) = self.resolve_enzymes(&enzymes)?;
+                    if !missing.is_empty() {
+                        result
+                            .warnings
+                            .push(format!("Unknown enzymes ignored: {}", missing.join(",")));
+                    }
+
+                    let fragments =
+                        Self::digest_with_guard(&dna, found, self.max_fragments_per_container())?;
+                    let prefix = output_prefix.unwrap_or_else(|| format!("{input}_digest"));
+
                     for (i, mut fragment) in fragments.into_iter().enumerate() {
                         // Keep digest interactive by deferring expensive feature recomputation.
                         Self::prepare_sequence_light(&mut fragment);
-                        let candidate = format!("{}_{}_{}", prefix, input, i + 1);
+                        let candidate = format!("{}_{}", prefix, i + 1);
                         let seq_id = self.unique_seq_id(&candidate);
                         self.state.sequences.insert(seq_id.clone(), fragment);
                         self.add_lineage_node(
@@ -9287,786 +9362,840 @@ impl GentleEngine {
                             Some(&result.op_id),
                         );
                         result.created_seq_ids.push(seq_id);
-                        if result.created_seq_ids.len() > self.max_fragments_per_container() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Digest produced more than max_fragments_per_container={}",
-                                    self.max_fragments_per_container()
-                                ),
-                            });
+                    }
+
+                    result.messages.push(format!(
+                        "Digest created {} fragment(s); feature recomputation deferred",
+                        result.created_seq_ids.len()
+                    ));
+                }
+                Operation::DigestContainer {
+                    container_id,
+                    enzymes,
+                    output_prefix,
+                } => {
+                    let inputs = self.container_members(&container_id)?;
+                    parent_seq_ids.extend(inputs.clone());
+                    let (found, missing) = self.resolve_enzymes(&enzymes)?;
+                    if !missing.is_empty() {
+                        result
+                            .warnings
+                            .push(format!("Unknown enzymes ignored: {}", missing.join(",")));
+                    }
+                    let prefix = output_prefix.unwrap_or_else(|| format!("{container_id}_digest"));
+                    for input in inputs {
+                        let dna = self
+                            .state
+                            .sequences
+                            .get(&input)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!("Sequence '{input}' not found"),
+                            })?
+                            .clone();
+                        let fragments = Self::digest_with_guard(
+                            &dna,
+                            found.clone(),
+                            self.max_fragments_per_container(),
+                        )?;
+                        for (i, mut fragment) in fragments.into_iter().enumerate() {
+                            // Keep digest interactive by deferring expensive feature recomputation.
+                            Self::prepare_sequence_light(&mut fragment);
+                            let candidate = format!("{}_{}_{}", prefix, input, i + 1);
+                            let seq_id = self.unique_seq_id(&candidate);
+                            self.state.sequences.insert(seq_id.clone(), fragment);
+                            self.add_lineage_node(
+                                &seq_id,
+                                SequenceOrigin::Derived,
+                                Some(&result.op_id),
+                            );
+                            result.created_seq_ids.push(seq_id);
+                            if result.created_seq_ids.len() > self.max_fragments_per_container() {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "Digest produced more than max_fragments_per_container={}",
+                                        self.max_fragments_per_container()
+                                    ),
+                                });
+                            }
                         }
                     }
-                }
 
-                result.messages.push(format!(
+                    result.messages.push(format!(
                     "Digest container '{}' created {} fragment(s); feature recomputation deferred",
                     container_id,
                     result.created_seq_ids.len()
                 ));
-            }
-            Operation::MergeContainersById { .. }
-            | Operation::LigationContainer { .. }
-            | Operation::FilterContainerByMolecularWeight { .. } => {
-                unreachable!("container operation variants are normalized before execution")
-            }
-            Operation::MergeContainers {
-                inputs,
-                output_prefix,
-            } => {
-                if inputs.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "MergeContainers requires at least one input sequence".to_string(),
-                    });
                 }
-                if inputs.len() > self.max_fragments_per_container() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "MergeContainers input count {} exceeds max_fragments_per_container={}",
-                            inputs.len(),
-                            self.max_fragments_per_container()
-                        ),
-                    });
+                Operation::MergeContainersById { .. }
+                | Operation::LigationContainer { .. }
+                | Operation::FilterContainerByMolecularWeight { .. } => {
+                    unreachable!("container operation variants are normalized before execution")
                 }
-                parent_seq_ids.extend(inputs.clone());
-                let prefix = output_prefix.unwrap_or_else(|| "merged".to_string());
-                for (i, input) in inputs.iter().enumerate() {
-                    let dna = self
-                        .state
-                        .sequences
-                        .get(input)
-                        .ok_or_else(|| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!("Sequence '{input}' not found"),
-                        })?
-                        .clone();
-                    let seq_id = self.unique_seq_id(&format!("{}_{}", prefix, i + 1));
-                    self.state.sequences.insert(seq_id.clone(), dna);
-                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                    result.created_seq_ids.push(seq_id);
-                }
-                result.messages.push(format!(
-                    "Merged {} input sequence(s) into container prefix '{}'",
-                    inputs.len(),
-                    prefix
-                ));
-            }
-            Operation::Ligation {
-                inputs,
-                circularize_if_possible,
-                output_id,
-                protocol,
-                output_prefix,
-                unique,
-            } => {
-                parent_seq_ids.extend(inputs.clone());
-                if inputs.len() < 2 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "Ligation requires at least two input sequences".to_string(),
-                    });
-                }
-                if 1 > self.max_fragments_per_container() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Ligation product count exceeds max_fragments_per_container={}",
-                            self.max_fragments_per_container()
-                        ),
-                    });
-                }
-                let mut accepted: Vec<(String, String, String)> = vec![];
-                for (i, left_id) in inputs.iter().enumerate() {
-                    for (j, right_id) in inputs.iter().enumerate() {
-                        if i == j {
-                            continue;
-                        }
-                        let left =
-                            self.state
-                                .sequences
-                                .get(left_id)
-                                .ok_or_else(|| EngineError {
-                                    code: ErrorCode::NotFound,
-                                    message: format!("Sequence '{left_id}' not found"),
-                                })?;
-                        let right =
-                            self.state
-                                .sequences
-                                .get(right_id)
-                                .ok_or_else(|| EngineError {
-                                    code: ErrorCode::NotFound,
-                                    message: format!("Sequence '{right_id}' not found"),
-                                })?;
-
-                        let ok = match protocol {
-                            LigationProtocol::Sticky => Self::sticky_compatible(left, right),
-                            LigationProtocol::Blunt => {
-                                Self::right_end_is_blunt(left) && Self::left_end_is_blunt(right)
-                            }
-                        };
-                        if !ok {
-                            continue;
-                        }
-
-                        let product = format!(
-                            "{}{}",
-                            left.get_forward_string(),
-                            right.get_forward_string()
+                Operation::MergeContainers {
+                    inputs,
+                    output_prefix,
+                } => {
+                    if inputs.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "MergeContainers requires at least one input sequence"
+                                .to_string(),
+                        });
+                    }
+                    if inputs.len() > self.max_fragments_per_container() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "MergeContainers input count {} exceeds max_fragments_per_container={}",
+                                inputs.len(),
+                                self.max_fragments_per_container()
+                            ),
+                        });
+                    }
+                    parent_seq_ids.extend(inputs.clone());
+                    let prefix = output_prefix.unwrap_or_else(|| "merged".to_string());
+                    for (i, input) in inputs.iter().enumerate() {
+                        let dna = self
+                            .state
+                            .sequences
+                            .get(input)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!("Sequence '{input}' not found"),
+                            })?
+                            .clone();
+                        let seq_id = self.unique_seq_id(&format!("{}_{}", prefix, i + 1));
+                        self.state.sequences.insert(seq_id.clone(), dna);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
                         );
-                        accepted.push((left_id.clone(), right_id.clone(), product));
-                        if accepted.len() > self.max_fragments_per_container() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Ligation produced more than max_fragments_per_container={}",
-                                    self.max_fragments_per_container()
-                                ),
-                            });
+                        result.created_seq_ids.push(seq_id);
+                    }
+                    result.messages.push(format!(
+                        "Merged {} input sequence(s) into container prefix '{}'",
+                        inputs.len(),
+                        prefix
+                    ));
+                }
+                Operation::Ligation {
+                    inputs,
+                    circularize_if_possible,
+                    output_id,
+                    protocol,
+                    output_prefix,
+                    unique,
+                } => {
+                    parent_seq_ids.extend(inputs.clone());
+                    if inputs.len() < 2 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "Ligation requires at least two input sequences".to_string(),
+                        });
+                    }
+                    if 1 > self.max_fragments_per_container() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Ligation product count exceeds max_fragments_per_container={}",
+                                self.max_fragments_per_container()
+                            ),
+                        });
+                    }
+                    let mut accepted: Vec<(String, String, String)> = vec![];
+                    for (i, left_id) in inputs.iter().enumerate() {
+                        for (j, right_id) in inputs.iter().enumerate() {
+                            if i == j {
+                                continue;
+                            }
+                            let left =
+                                self.state
+                                    .sequences
+                                    .get(left_id)
+                                    .ok_or_else(|| EngineError {
+                                        code: ErrorCode::NotFound,
+                                        message: format!("Sequence '{left_id}' not found"),
+                                    })?;
+                            let right =
+                                self.state
+                                    .sequences
+                                    .get(right_id)
+                                    .ok_or_else(|| EngineError {
+                                        code: ErrorCode::NotFound,
+                                        message: format!("Sequence '{right_id}' not found"),
+                                    })?;
+
+                            let ok = match protocol {
+                                LigationProtocol::Sticky => Self::sticky_compatible(left, right),
+                                LigationProtocol::Blunt => {
+                                    Self::right_end_is_blunt(left) && Self::left_end_is_blunt(right)
+                                }
+                            };
+                            if !ok {
+                                continue;
+                            }
+
+                            let product = format!(
+                                "{}{}",
+                                left.get_forward_string(),
+                                right.get_forward_string()
+                            );
+                            accepted.push((left_id.clone(), right_id.clone(), product));
+                            if accepted.len() > self.max_fragments_per_container() {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "Ligation produced more than max_fragments_per_container={}",
+                                        self.max_fragments_per_container()
+                                    ),
+                                });
+                            }
                         }
                     }
-                }
 
-                if accepted.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "No ligation products found for protocol '{:?}'",
-                            protocol
-                        ),
-                    });
-                }
+                    if accepted.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "No ligation products found for protocol '{:?}'",
+                                protocol
+                            ),
+                        });
+                    }
 
-                let require_unique = unique.unwrap_or(false);
-                if require_unique && accepted.len() != 1 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Ligation unique=true requires exactly one product, found {}",
-                            accepted.len()
-                        ),
-                    });
-                }
-                if output_id.is_some() && accepted.len() != 1 {
-                    return Err(EngineError {
+                    let require_unique = unique.unwrap_or(false);
+                    if require_unique && accepted.len() != 1 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Ligation unique=true requires exactly one product, found {}",
+                                accepted.len()
+                            ),
+                        });
+                    }
+                    if output_id.is_some() && accepted.len() != 1 {
+                        return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: "Ligation output_id can only be used when exactly one product is produced"
                             .to_string(),
                     });
-                }
+                    }
 
-                let prefix = output_prefix.unwrap_or_else(|| "ligation".to_string());
-                for (idx, (left_id, right_id, merged)) in accepted.into_iter().enumerate() {
-                    let mut product =
-                        DNAsequence::from_sequence(&merged).map_err(|e| EngineError {
-                            code: ErrorCode::Internal,
-                            message: format!("Could not create ligation product: {e}"),
-                        })?;
-                    product.set_circular(circularize_if_possible);
-                    Self::prepare_sequence(&mut product);
+                    let prefix = output_prefix.unwrap_or_else(|| "ligation".to_string());
+                    for (idx, (left_id, right_id, merged)) in accepted.into_iter().enumerate() {
+                        let mut product =
+                            DNAsequence::from_sequence(&merged).map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!("Could not create ligation product: {e}"),
+                            })?;
+                        product.set_circular(circularize_if_possible);
+                        Self::prepare_sequence(&mut product);
 
-                    let seq_id = if idx == 0 {
-                        if let Some(id) = output_id.clone() {
-                            self.unique_seq_id(&id)
+                        let seq_id = if idx == 0 {
+                            if let Some(id) = output_id.clone() {
+                                self.unique_seq_id(&id)
+                            } else {
+                                self.unique_seq_id(&format!("{}_{}", prefix, idx + 1))
+                            }
                         } else {
                             self.unique_seq_id(&format!("{}_{}", prefix, idx + 1))
-                        }
-                    } else {
-                        self.unique_seq_id(&format!("{}_{}", prefix, idx + 1))
-                    };
-                    self.state.sequences.insert(seq_id.clone(), product);
-                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                    result.created_seq_ids.push(seq_id.clone());
-                    result.messages.push(format!(
-                        "Ligation product '{}' from '{}' + '{}'",
-                        seq_id, left_id, right_id
-                    ));
-                }
-            }
-            Operation::Pcr {
-                template,
-                forward_primer,
-                reverse_primer,
-                output_id,
-                unique,
-            } => {
-                parent_seq_ids.push(template.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&template)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{template}' not found"),
-                    })?
-                    .clone();
-
-                if dna.is_circular() {
-                    return Err(EngineError {
-                        code: ErrorCode::Unsupported,
-                        message: "PCR on circular templates is not implemented yet".to_string(),
-                    });
-                }
-
-                let template_seq = dna.get_forward_string().to_ascii_uppercase();
-                let template_bytes = template_seq.as_bytes();
-                let fwd = Self::normalize_dna_text(&forward_primer);
-                let rev = Self::normalize_dna_text(&reverse_primer);
-                if fwd.is_empty() || rev.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "PCR primers must not be empty".to_string(),
-                    });
-                }
-
-                let rev_binding = Self::reverse_complement(&rev);
-                let fwd_sites = Self::find_all_subsequences(template_bytes, fwd.as_bytes());
-                if fwd_sites.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "Forward primer not found on template".to_string(),
-                    });
-                }
-                let rev_sites = Self::find_all_subsequences(template_bytes, rev_binding.as_bytes());
-                if rev_sites.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "Reverse primer binding site not found on template".to_string(),
-                    });
-                }
-
-                let mut amplicon_ranges: Vec<(usize, usize)> = vec![];
-                for fwd_pos in &fwd_sites {
-                    for rev_pos in &rev_sites {
-                        if *rev_pos < *fwd_pos {
-                            continue;
-                        }
-                        let amplicon_end = rev_pos + rev_binding.len();
-                        if amplicon_end <= template_seq.len() {
-                            amplicon_ranges.push((*fwd_pos, amplicon_end));
-                        }
+                        };
+                        self.state.sequences.insert(seq_id.clone(), product);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(seq_id.clone());
+                        result.messages.push(format!(
+                            "Ligation product '{}' from '{}' + '{}'",
+                            seq_id, left_id, right_id
+                        ));
                     }
                 }
-                amplicon_ranges.sort_unstable();
-                amplicon_ranges.dedup();
+                Operation::Pcr {
+                    template,
+                    forward_primer,
+                    reverse_primer,
+                    output_id,
+                    unique,
+                } => {
+                    parent_seq_ids.push(template.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&template)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{template}' not found"),
+                        })?
+                        .clone();
 
-                if amplicon_ranges.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "No valid forward/reverse primer pair produced an amplicon"
-                            .to_string(),
-                    });
-                }
-                if amplicon_ranges.len() > self.max_fragments_per_container() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "PCR produced {} amplicons, exceeding max_fragments_per_container={}",
-                            amplicon_ranges.len(),
-                            self.max_fragments_per_container()
-                        ),
-                    });
-                }
+                    if dna.is_circular() {
+                        return Err(EngineError {
+                            code: ErrorCode::Unsupported,
+                            message: "PCR on circular templates is not implemented yet".to_string(),
+                        });
+                    }
 
-                let require_unique = unique.unwrap_or(false);
-                if require_unique && amplicon_ranges.len() != 1 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "PCR unique=true requires exactly one amplicon, found {}",
-                            amplicon_ranges.len()
-                        ),
-                    });
-                }
-                if output_id.is_some() && amplicon_ranges.len() != 1 {
-                    return Err(EngineError {
+                    let template_seq = dna.get_forward_string().to_ascii_uppercase();
+                    let template_bytes = template_seq.as_bytes();
+                    let fwd = Self::normalize_dna_text(&forward_primer);
+                    let rev = Self::normalize_dna_text(&reverse_primer);
+                    if fwd.is_empty() || rev.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "PCR primers must not be empty".to_string(),
+                        });
+                    }
+
+                    let rev_binding = Self::reverse_complement(&rev);
+                    let fwd_sites = Self::find_all_subsequences(template_bytes, fwd.as_bytes());
+                    if fwd_sites.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "Forward primer not found on template".to_string(),
+                        });
+                    }
+                    let rev_sites =
+                        Self::find_all_subsequences(template_bytes, rev_binding.as_bytes());
+                    if rev_sites.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "Reverse primer binding site not found on template"
+                                .to_string(),
+                        });
+                    }
+
+                    let mut amplicon_ranges: Vec<(usize, usize)> = vec![];
+                    for fwd_pos in &fwd_sites {
+                        for rev_pos in &rev_sites {
+                            if *rev_pos < *fwd_pos {
+                                continue;
+                            }
+                            let amplicon_end = rev_pos + rev_binding.len();
+                            if amplicon_end <= template_seq.len() {
+                                amplicon_ranges.push((*fwd_pos, amplicon_end));
+                            }
+                        }
+                    }
+                    amplicon_ranges.sort_unstable();
+                    amplicon_ranges.dedup();
+
+                    if amplicon_ranges.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "No valid forward/reverse primer pair produced an amplicon"
+                                .to_string(),
+                        });
+                    }
+                    if amplicon_ranges.len() > self.max_fragments_per_container() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "PCR produced {} amplicons, exceeding max_fragments_per_container={}",
+                                amplicon_ranges.len(),
+                                self.max_fragments_per_container()
+                            ),
+                        });
+                    }
+
+                    let require_unique = unique.unwrap_or(false);
+                    if require_unique && amplicon_ranges.len() != 1 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "PCR unique=true requires exactly one amplicon, found {}",
+                                amplicon_ranges.len()
+                            ),
+                        });
+                    }
+                    if output_id.is_some() && amplicon_ranges.len() != 1 {
+                        return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message:
                             "PCR output_id can only be used when exactly one amplicon is produced"
                                 .to_string(),
                     });
+                    }
+
+                    let default_base = format!("{template}_pcr");
+                    for (i, (start, end)) in amplicon_ranges.iter().enumerate() {
+                        let amplicon = &template_seq[*start..*end];
+                        let mut pcr_product =
+                            DNAsequence::from_sequence(amplicon).map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!("Could not create PCR product: {e}"),
+                            })?;
+                        pcr_product.set_circular(false);
+                        Self::prepare_sequence(&mut pcr_product);
+
+                        let requested = if i == 0 { output_id.clone() } else { None };
+                        let seq_id = if let Some(id) = requested {
+                            self.unique_seq_id(&id)
+                        } else if amplicon_ranges.len() == 1 {
+                            self.unique_seq_id(&default_base)
+                        } else {
+                            self.unique_seq_id(&format!("{}_{}", default_base, i + 1))
+                        };
+                        self.state.sequences.insert(seq_id.clone(), pcr_product);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(seq_id.clone());
+                        result.messages.push(format!(
+                            "PCR product '{}' created: {}..{} (len {})",
+                            seq_id,
+                            start,
+                            end,
+                            end - start
+                        ));
+                    }
                 }
+                Operation::PcrAdvanced {
+                    template,
+                    forward_primer,
+                    reverse_primer,
+                    output_id,
+                    unique,
+                } => {
+                    parent_seq_ids.push(template.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&template)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{template}' not found"),
+                        })?
+                        .clone();
 
-                let default_base = format!("{template}_pcr");
-                for (i, (start, end)) in amplicon_ranges.iter().enumerate() {
-                    let amplicon = &template_seq[*start..*end];
-                    let mut pcr_product =
-                        DNAsequence::from_sequence(amplicon).map_err(|e| EngineError {
-                            code: ErrorCode::Internal,
-                            message: format!("Could not create PCR product: {e}"),
-                        })?;
-                    pcr_product.set_circular(false);
-                    Self::prepare_sequence(&mut pcr_product);
-
-                    let requested = if i == 0 { output_id.clone() } else { None };
-                    let seq_id = if let Some(id) = requested {
-                        self.unique_seq_id(&id)
-                    } else if amplicon_ranges.len() == 1 {
-                        self.unique_seq_id(&default_base)
-                    } else {
-                        self.unique_seq_id(&format!("{}_{}", default_base, i + 1))
-                    };
-                    self.state.sequences.insert(seq_id.clone(), pcr_product);
-                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                    result.created_seq_ids.push(seq_id.clone());
-                    result.messages.push(format!(
-                        "PCR product '{}' created: {}..{} (len {})",
-                        seq_id,
-                        start,
-                        end,
-                        end - start
-                    ));
-                }
-            }
-            Operation::PcrAdvanced {
-                template,
-                forward_primer,
-                reverse_primer,
-                output_id,
-                unique,
-            } => {
-                parent_seq_ids.push(template.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&template)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{template}' not found"),
-                    })?
-                    .clone();
-
-                if dna.is_circular() {
-                    return Err(EngineError {
-                        code: ErrorCode::Unsupported,
-                        message: "PCR on circular templates is not implemented yet".to_string(),
-                    });
-                }
-
-                let template_seq = dna.get_forward_string().to_ascii_uppercase();
-                let template_bytes = template_seq.as_bytes();
-
-                let fwd_variants = Self::expand_primer_variants(
-                    &forward_primer,
-                    self.max_fragments_per_container(),
-                )?;
-                let rev_variants = Self::expand_primer_variants(
-                    &reverse_primer,
-                    self.max_fragments_per_container(),
-                )?;
-                if fwd_variants.is_empty() || rev_variants.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "PCR primers must not be empty".to_string(),
-                    });
-                }
-
-                let mut candidates: Vec<(usize, usize, String)> = vec![];
-                let mut seen_amplicons: HashSet<String> = HashSet::new();
-                for fwd_full in &fwd_variants {
-                    let fwd_anneal_len = forward_primer.anneal_len.unwrap_or(fwd_full.len());
-                    if fwd_anneal_len == 0 || fwd_anneal_len > fwd_full.len() {
+                    if dna.is_circular() {
                         return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "Invalid anneal_len in PCR primer spec".to_string(),
+                            code: ErrorCode::Unsupported,
+                            message: "PCR on circular templates is not implemented yet".to_string(),
                         });
                     }
-                    let fwd_anneal = &fwd_full[fwd_full.len() - fwd_anneal_len..];
-                    let fwd_sites = Self::find_anneal_sites(
-                        template_bytes,
-                        fwd_anneal.as_bytes(),
-                        forward_primer.max_mismatches.unwrap_or(0),
-                        forward_primer.require_3prime_exact_bases.unwrap_or(0),
-                        true,
-                    );
-                    if fwd_sites.is_empty() {
-                        continue;
+
+                    let template_seq = dna.get_forward_string().to_ascii_uppercase();
+                    let template_bytes = template_seq.as_bytes();
+
+                    let fwd_variants = Self::expand_primer_variants(
+                        &forward_primer,
+                        self.max_fragments_per_container(),
+                    )?;
+                    let rev_variants = Self::expand_primer_variants(
+                        &reverse_primer,
+                        self.max_fragments_per_container(),
+                    )?;
+                    if fwd_variants.is_empty() || rev_variants.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "PCR primers must not be empty".to_string(),
+                        });
                     }
 
-                    for rev_full in &rev_variants {
-                        let rev_anneal_len = reverse_primer.anneal_len.unwrap_or(rev_full.len());
-                        if rev_anneal_len == 0 || rev_anneal_len > rev_full.len() {
+                    let mut candidates: Vec<(usize, usize, String)> = vec![];
+                    let mut seen_amplicons: HashSet<String> = HashSet::new();
+                    for fwd_full in &fwd_variants {
+                        let fwd_anneal_len = forward_primer.anneal_len.unwrap_or(fwd_full.len());
+                        if fwd_anneal_len == 0 || fwd_anneal_len > fwd_full.len() {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Invalid anneal_len in PCR primer spec".to_string(),
                             });
                         }
-                        let rev_anneal = &rev_full[rev_full.len() - rev_anneal_len..];
-                        let rev_binding = Self::reverse_complement(rev_anneal);
-                        let rev_sites = Self::find_anneal_sites(
+                        let fwd_anneal = &fwd_full[fwd_full.len() - fwd_anneal_len..];
+                        let fwd_sites = Self::find_anneal_sites(
                             template_bytes,
-                            rev_binding.as_bytes(),
-                            reverse_primer.max_mismatches.unwrap_or(0),
-                            reverse_primer.require_3prime_exact_bases.unwrap_or(0),
-                            false,
+                            fwd_anneal.as_bytes(),
+                            forward_primer.max_mismatches.unwrap_or(0),
+                            forward_primer.require_3prime_exact_bases.unwrap_or(0),
+                            true,
                         );
-                        if rev_sites.is_empty() {
+                        if fwd_sites.is_empty() {
                             continue;
                         }
-                        let rev_full_rc = Self::reverse_complement(rev_full);
-                        for fwd_pos in &fwd_sites {
-                            for rev_pos in &rev_sites {
-                                let interior_start = *fwd_pos + fwd_anneal_len;
-                                let interior_end = *rev_pos;
-                                if interior_start > interior_end {
-                                    continue;
-                                }
-                                let interior = &template_seq[interior_start..interior_end];
-                                let amplicon = format!("{fwd_full}{interior}{rev_full_rc}");
-                                if seen_amplicons.insert(amplicon.clone()) {
-                                    candidates.push((*fwd_pos, *rev_pos, amplicon));
-                                    if candidates.len() > self.max_fragments_per_container() {
-                                        return Err(EngineError {
-                                            code: ErrorCode::InvalidInput,
-                                            message: format!(
-                                                "PCR produced more than max_fragments_per_container={}",
-                                                self.max_fragments_per_container()
-                                            ),
-                                        });
+
+                        for rev_full in &rev_variants {
+                            let rev_anneal_len =
+                                reverse_primer.anneal_len.unwrap_or(rev_full.len());
+                            if rev_anneal_len == 0 || rev_anneal_len > rev_full.len() {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: "Invalid anneal_len in PCR primer spec".to_string(),
+                                });
+                            }
+                            let rev_anneal = &rev_full[rev_full.len() - rev_anneal_len..];
+                            let rev_binding = Self::reverse_complement(rev_anneal);
+                            let rev_sites = Self::find_anneal_sites(
+                                template_bytes,
+                                rev_binding.as_bytes(),
+                                reverse_primer.max_mismatches.unwrap_or(0),
+                                reverse_primer.require_3prime_exact_bases.unwrap_or(0),
+                                false,
+                            );
+                            if rev_sites.is_empty() {
+                                continue;
+                            }
+                            let rev_full_rc = Self::reverse_complement(rev_full);
+                            for fwd_pos in &fwd_sites {
+                                for rev_pos in &rev_sites {
+                                    let interior_start = *fwd_pos + fwd_anneal_len;
+                                    let interior_end = *rev_pos;
+                                    if interior_start > interior_end {
+                                        continue;
+                                    }
+                                    let interior = &template_seq[interior_start..interior_end];
+                                    let amplicon = format!("{fwd_full}{interior}{rev_full_rc}");
+                                    if seen_amplicons.insert(amplicon.clone()) {
+                                        candidates.push((*fwd_pos, *rev_pos, amplicon));
+                                        if candidates.len() > self.max_fragments_per_container() {
+                                            return Err(EngineError {
+                                                code: ErrorCode::InvalidInput,
+                                                message: format!(
+                                                    "PCR produced more than max_fragments_per_container={}",
+                                                    self.max_fragments_per_container()
+                                                ),
+                                            });
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-                if candidates.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "No valid advanced PCR amplicon could be formed".to_string(),
-                    });
-                }
+                    if candidates.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "No valid advanced PCR amplicon could be formed".to_string(),
+                        });
+                    }
 
-                let require_unique = unique.unwrap_or(false);
-                if require_unique && candidates.len() != 1 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "PCR unique=true requires exactly one amplicon, found {}",
-                            candidates.len()
-                        ),
-                    });
-                }
-                if output_id.is_some() && candidates.len() != 1 {
-                    return Err(EngineError {
+                    let require_unique = unique.unwrap_or(false);
+                    if require_unique && candidates.len() != 1 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "PCR unique=true requires exactly one amplicon, found {}",
+                                candidates.len()
+                            ),
+                        });
+                    }
+                    if output_id.is_some() && candidates.len() != 1 {
+                        return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message:
                             "PCR output_id can only be used when exactly one amplicon is produced"
                                 .to_string(),
                     });
+                    }
+
+                    let default_base = format!("{template}_pcr");
+                    for (i, (fwd_pos, rev_pos, amplicon)) in candidates.into_iter().enumerate() {
+                        let mut pcr_product =
+                            DNAsequence::from_sequence(&amplicon).map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!("Could not create PCR product: {e}"),
+                            })?;
+                        pcr_product.set_circular(false);
+                        Self::prepare_sequence(&mut pcr_product);
+
+                        let requested = if i == 0 { output_id.clone() } else { None };
+                        let seq_id = if let Some(id) = requested {
+                            self.unique_seq_id(&id)
+                        } else if seen_amplicons.len() == 1 {
+                            self.unique_seq_id(&default_base)
+                        } else {
+                            self.unique_seq_id(&format!("{}_{}", default_base, i + 1))
+                        };
+                        self.state.sequences.insert(seq_id.clone(), pcr_product);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(seq_id.clone());
+                        result.messages.push(format!(
+                            "Advanced PCR product '{}' created from fwd@{} rev@{} (len {})",
+                            seq_id,
+                            fwd_pos,
+                            rev_pos,
+                            amplicon.len()
+                        ));
+                    }
                 }
+                Operation::PcrMutagenesis {
+                    template,
+                    forward_primer,
+                    reverse_primer,
+                    mutations,
+                    output_id,
+                    unique,
+                    require_all_mutations,
+                } => {
+                    parent_seq_ids.push(template.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&template)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{template}' not found"),
+                        })?
+                        .clone();
 
-                let default_base = format!("{template}_pcr");
-                for (i, (fwd_pos, rev_pos, amplicon)) in candidates.into_iter().enumerate() {
-                    let mut pcr_product =
-                        DNAsequence::from_sequence(&amplicon).map_err(|e| EngineError {
-                            code: ErrorCode::Internal,
-                            message: format!("Could not create PCR product: {e}"),
-                        })?;
-                    pcr_product.set_circular(false);
-                    Self::prepare_sequence(&mut pcr_product);
-
-                    let requested = if i == 0 { output_id.clone() } else { None };
-                    let seq_id = if let Some(id) = requested {
-                        self.unique_seq_id(&id)
-                    } else if seen_amplicons.len() == 1 {
-                        self.unique_seq_id(&default_base)
-                    } else {
-                        self.unique_seq_id(&format!("{}_{}", default_base, i + 1))
-                    };
-                    self.state.sequences.insert(seq_id.clone(), pcr_product);
-                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                    result.created_seq_ids.push(seq_id.clone());
-                    result.messages.push(format!(
-                        "Advanced PCR product '{}' created from fwd@{} rev@{} (len {})",
-                        seq_id,
-                        fwd_pos,
-                        rev_pos,
-                        amplicon.len()
-                    ));
-                }
-            }
-            Operation::PcrMutagenesis {
-                template,
-                forward_primer,
-                reverse_primer,
-                mutations,
-                output_id,
-                unique,
-                require_all_mutations,
-            } => {
-                parent_seq_ids.push(template.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&template)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{template}' not found"),
-                    })?
-                    .clone();
-
-                if dna.is_circular() {
-                    return Err(EngineError {
-                        code: ErrorCode::Unsupported,
-                        message: "PCR on circular templates is not implemented yet".to_string(),
-                    });
-                }
-                if mutations.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "PcrMutagenesis requires at least one mutation".to_string(),
-                    });
-                }
-
-                let template_seq = dna.get_forward_string().to_ascii_uppercase();
-                let template_bytes = template_seq.as_bytes();
-
-                let mut normalized_mutations: Vec<(usize, u8, u8)> = vec![];
-                for m in &mutations {
-                    if m.zero_based_position >= template_bytes.len() {
+                    if dna.is_circular() {
                         return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "Mutation position {} is out of bounds for template length {}",
-                                m.zero_based_position,
-                                template_bytes.len()
-                            ),
+                            code: ErrorCode::Unsupported,
+                            message: "PCR on circular templates is not implemented yet".to_string(),
                         });
                     }
-                    let ref_nt = Self::normalize_dna_text(&m.reference).to_ascii_uppercase();
-                    let alt_nt = Self::normalize_dna_text(&m.alternate).to_ascii_uppercase();
-                    if ref_nt.len() != 1 || alt_nt.len() != 1 {
+                    if mutations.is_empty() {
                         return Err(EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: "Mutation reference/alternate must be single nucleotides"
-                                .to_string(),
+                            message: "PcrMutagenesis requires at least one mutation".to_string(),
                         });
                     }
-                    let ref_b = ref_nt.as_bytes()[0];
-                    let alt_b = alt_nt.as_bytes()[0];
-                    if template_bytes[m.zero_based_position] != ref_b {
+
+                    let template_seq = dna.get_forward_string().to_ascii_uppercase();
+                    let template_bytes = template_seq.as_bytes();
+
+                    let mut normalized_mutations: Vec<(usize, u8, u8)> = vec![];
+                    for m in &mutations {
+                        if m.zero_based_position >= template_bytes.len() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Mutation position {} is out of bounds for template length {}",
+                                    m.zero_based_position,
+                                    template_bytes.len()
+                                ),
+                            });
+                        }
+                        let ref_nt = Self::normalize_dna_text(&m.reference).to_ascii_uppercase();
+                        let alt_nt = Self::normalize_dna_text(&m.alternate).to_ascii_uppercase();
+                        if ref_nt.len() != 1 || alt_nt.len() != 1 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Mutation reference/alternate must be single nucleotides"
+                                    .to_string(),
+                            });
+                        }
+                        let ref_b = ref_nt.as_bytes()[0];
+                        let alt_b = alt_nt.as_bytes()[0];
+                        if template_bytes[m.zero_based_position] != ref_b {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Mutation reference mismatch at position {}: template has '{}', expected '{}'",
+                                    m.zero_based_position,
+                                    template_bytes[m.zero_based_position] as char,
+                                    ref_b as char
+                                ),
+                            });
+                        }
+                        normalized_mutations.push((m.zero_based_position, ref_b, alt_b));
+                    }
+
+                    let fwd_variants = Self::expand_primer_variants(
+                        &forward_primer,
+                        self.max_fragments_per_container(),
+                    )?;
+                    let rev_variants = Self::expand_primer_variants(
+                        &reverse_primer,
+                        self.max_fragments_per_container(),
+                    )?;
+                    if fwd_variants.is_empty() || rev_variants.is_empty() {
                         return Err(EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "Mutation reference mismatch at position {}: template has '{}', expected '{}'",
-                                m.zero_based_position,
-                                template_bytes[m.zero_based_position] as char,
-                                ref_b as char
-                            ),
+                            message: "PCR primers must not be empty".to_string(),
                         });
                     }
-                    normalized_mutations.push((m.zero_based_position, ref_b, alt_b));
-                }
 
-                let fwd_variants = Self::expand_primer_variants(
-                    &forward_primer,
-                    self.max_fragments_per_container(),
-                )?;
-                let rev_variants = Self::expand_primer_variants(
-                    &reverse_primer,
-                    self.max_fragments_per_container(),
-                )?;
-                if fwd_variants.is_empty() || rev_variants.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "PCR primers must not be empty".to_string(),
-                    });
-                }
-
-                let require_all = require_all_mutations.unwrap_or(true);
-                let mut selected: Vec<((usize, usize), String)> = vec![];
-                let mut seen_amplicons: HashSet<String> = HashSet::new();
-                for fwd_full in &fwd_variants {
-                    let fwd_anneal_len = forward_primer.anneal_len.unwrap_or(fwd_full.len());
-                    if fwd_anneal_len == 0 || fwd_anneal_len > fwd_full.len() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "Invalid anneal_len in PCR primer spec".to_string(),
-                        });
-                    }
-                    let fwd_anneal = &fwd_full[fwd_full.len() - fwd_anneal_len..];
-                    let fwd_sites = Self::find_anneal_sites(
-                        template_bytes,
-                        fwd_anneal.as_bytes(),
-                        forward_primer.max_mismatches.unwrap_or(0),
-                        forward_primer.require_3prime_exact_bases.unwrap_or(0),
-                        true,
-                    );
-                    if fwd_sites.is_empty() {
-                        continue;
-                    }
-
-                    for rev_full in &rev_variants {
-                        let rev_anneal_len = reverse_primer.anneal_len.unwrap_or(rev_full.len());
-                        if rev_anneal_len == 0 || rev_anneal_len > rev_full.len() {
+                    let require_all = require_all_mutations.unwrap_or(true);
+                    let mut selected: Vec<((usize, usize), String)> = vec![];
+                    let mut seen_amplicons: HashSet<String> = HashSet::new();
+                    for fwd_full in &fwd_variants {
+                        let fwd_anneal_len = forward_primer.anneal_len.unwrap_or(fwd_full.len());
+                        if fwd_anneal_len == 0 || fwd_anneal_len > fwd_full.len() {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "Invalid anneal_len in PCR primer spec".to_string(),
                             });
                         }
-                        let rev_anneal = &rev_full[rev_full.len() - rev_anneal_len..];
-                        let rev_binding = Self::reverse_complement(rev_anneal);
-                        let rev_sites = Self::find_anneal_sites(
+                        let fwd_anneal = &fwd_full[fwd_full.len() - fwd_anneal_len..];
+                        let fwd_sites = Self::find_anneal_sites(
                             template_bytes,
-                            rev_binding.as_bytes(),
-                            reverse_primer.max_mismatches.unwrap_or(0),
-                            reverse_primer.require_3prime_exact_bases.unwrap_or(0),
-                            false,
+                            fwd_anneal.as_bytes(),
+                            forward_primer.max_mismatches.unwrap_or(0),
+                            forward_primer.require_3prime_exact_bases.unwrap_or(0),
+                            true,
                         );
-                        if rev_sites.is_empty() {
+                        if fwd_sites.is_empty() {
                             continue;
                         }
-                        let rev_full_rc = Self::reverse_complement(rev_full);
 
-                        for fwd_pos in &fwd_sites {
-                            for rev_pos in &rev_sites {
-                                let interior_start = *fwd_pos + fwd_anneal_len;
-                                let interior_end = *rev_pos;
-                                if interior_start > interior_end {
-                                    continue;
-                                }
-                                let interior = &template_seq[interior_start..interior_end];
-                                let amplicon = format!("{fwd_full}{interior}{rev_full_rc}");
-                                let mut introduced_count = 0usize;
-                                let mut valid = true;
-                                for (pos, _ref_b, alt_b) in &normalized_mutations {
-                                    if *pos < *fwd_pos || *pos >= (*rev_pos + rev_anneal_len) {
-                                        if require_all {
+                        for rev_full in &rev_variants {
+                            let rev_anneal_len =
+                                reverse_primer.anneal_len.unwrap_or(rev_full.len());
+                            if rev_anneal_len == 0 || rev_anneal_len > rev_full.len() {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: "Invalid anneal_len in PCR primer spec".to_string(),
+                                });
+                            }
+                            let rev_anneal = &rev_full[rev_full.len() - rev_anneal_len..];
+                            let rev_binding = Self::reverse_complement(rev_anneal);
+                            let rev_sites = Self::find_anneal_sites(
+                                template_bytes,
+                                rev_binding.as_bytes(),
+                                reverse_primer.max_mismatches.unwrap_or(0),
+                                reverse_primer.require_3prime_exact_bases.unwrap_or(0),
+                                false,
+                            );
+                            if rev_sites.is_empty() {
+                                continue;
+                            }
+                            let rev_full_rc = Self::reverse_complement(rev_full);
+
+                            for fwd_pos in &fwd_sites {
+                                for rev_pos in &rev_sites {
+                                    let interior_start = *fwd_pos + fwd_anneal_len;
+                                    let interior_end = *rev_pos;
+                                    if interior_start > interior_end {
+                                        continue;
+                                    }
+                                    let interior = &template_seq[interior_start..interior_end];
+                                    let amplicon = format!("{fwd_full}{interior}{rev_full_rc}");
+                                    let mut introduced_count = 0usize;
+                                    let mut valid = true;
+                                    for (pos, _ref_b, alt_b) in &normalized_mutations {
+                                        if *pos < *fwd_pos || *pos >= (*rev_pos + rev_anneal_len) {
+                                            if require_all {
+                                                valid = false;
+                                                break;
+                                            }
+                                            continue;
+                                        }
+
+                                        let observed = if *pos < (*fwd_pos + fwd_anneal_len) {
+                                            let offset =
+                                                fwd_full.len() - fwd_anneal_len + (*pos - *fwd_pos);
+                                            fwd_full.as_bytes()[offset]
+                                        } else if *pos < *rev_pos {
+                                            template_bytes[*pos]
+                                        } else {
+                                            let offset = *pos - *rev_pos;
+                                            rev_full_rc.as_bytes()[offset]
+                                        };
+
+                                        if observed == *alt_b {
+                                            introduced_count += 1;
+                                        } else if require_all {
                                             valid = false;
                                             break;
                                         }
-                                        continue;
                                     }
 
-                                    let observed = if *pos < (*fwd_pos + fwd_anneal_len) {
-                                        let offset =
-                                            fwd_full.len() - fwd_anneal_len + (*pos - *fwd_pos);
-                                        fwd_full.as_bytes()[offset]
-                                    } else if *pos < *rev_pos {
-                                        template_bytes[*pos]
+                                    let keep = if require_all {
+                                        valid && introduced_count == normalized_mutations.len()
                                     } else {
-                                        let offset = *pos - *rev_pos;
-                                        rev_full_rc.as_bytes()[offset]
+                                        introduced_count > 0
                                     };
-
-                                    if observed == *alt_b {
-                                        introduced_count += 1;
-                                    } else if require_all {
-                                        valid = false;
-                                        break;
-                                    }
-                                }
-
-                                let keep = if require_all {
-                                    valid && introduced_count == normalized_mutations.len()
-                                } else {
-                                    introduced_count > 0
-                                };
-                                if keep && seen_amplicons.insert(amplicon.clone()) {
-                                    selected.push(((*fwd_pos, *rev_pos), amplicon));
-                                    if selected.len() > self.max_fragments_per_container() {
-                                        return Err(EngineError {
-                                            code: ErrorCode::InvalidInput,
-                                            message: format!(
-                                                "Mutagenesis PCR produced more than max_fragments_per_container={}",
-                                                self.max_fragments_per_container()
-                                            ),
-                                        });
+                                    if keep && seen_amplicons.insert(amplicon.clone()) {
+                                        selected.push(((*fwd_pos, *rev_pos), amplicon));
+                                        if selected.len() > self.max_fragments_per_container() {
+                                            return Err(EngineError {
+                                                code: ErrorCode::InvalidInput,
+                                                message: format!(
+                                                    "Mutagenesis PCR produced more than max_fragments_per_container={}",
+                                                    self.max_fragments_per_container()
+                                                ),
+                                            });
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                if selected.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: if require_all {
-                            "No amplicon introduced all requested mutations".to_string()
-                        } else {
-                            "No amplicon introduced any requested mutation".to_string()
-                        },
-                    });
-                }
-                if selected.len() > self.max_fragments_per_container() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Mutagenesis PCR produced {} amplicons, exceeding max_fragments_per_container={}",
-                            selected.len(),
-                            self.max_fragments_per_container()
-                        ),
-                    });
-                }
+                    if selected.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: if require_all {
+                                "No amplicon introduced all requested mutations".to_string()
+                            } else {
+                                "No amplicon introduced any requested mutation".to_string()
+                            },
+                        });
+                    }
+                    if selected.len() > self.max_fragments_per_container() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Mutagenesis PCR produced {} amplicons, exceeding max_fragments_per_container={}",
+                                selected.len(),
+                                self.max_fragments_per_container()
+                            ),
+                        });
+                    }
 
-                let require_unique = unique.unwrap_or(false);
-                if require_unique && selected.len() != 1 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "PCR unique=true requires exactly one amplicon, found {}",
-                            selected.len()
-                        ),
-                    });
-                }
-                if output_id.is_some() && selected.len() != 1 {
-                    return Err(EngineError {
+                    let require_unique = unique.unwrap_or(false);
+                    if require_unique && selected.len() != 1 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "PCR unique=true requires exactly one amplicon, found {}",
+                                selected.len()
+                            ),
+                        });
+                    }
+                    if output_id.is_some() && selected.len() != 1 {
+                        return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message:
                             "PCR output_id can only be used when exactly one amplicon is produced"
                                 .to_string(),
                     });
-                }
+                    }
 
-                let default_base = format!("{template}_pcr_mut");
-                for (i, ((fwd_pos, rev_pos), amplicon)) in selected.into_iter().enumerate() {
-                    let mut pcr_product =
-                        DNAsequence::from_sequence(&amplicon).map_err(|e| EngineError {
-                            code: ErrorCode::Internal,
-                            message: format!("Could not create PCR product: {e}"),
-                        })?;
-                    pcr_product.set_circular(false);
-                    Self::prepare_sequence(&mut pcr_product);
+                    let default_base = format!("{template}_pcr_mut");
+                    for (i, ((fwd_pos, rev_pos), amplicon)) in selected.into_iter().enumerate() {
+                        let mut pcr_product =
+                            DNAsequence::from_sequence(&amplicon).map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!("Could not create PCR product: {e}"),
+                            })?;
+                        pcr_product.set_circular(false);
+                        Self::prepare_sequence(&mut pcr_product);
 
-                    let requested = if i == 0 { output_id.clone() } else { None };
-                    let seq_id = if let Some(id) = requested {
-                        self.unique_seq_id(&id)
-                    } else if seen_amplicons.len() == 1 {
-                        self.unique_seq_id(&default_base)
-                    } else {
-                        self.unique_seq_id(&format!("{}_{}", default_base, i + 1))
-                    };
-                    self.state.sequences.insert(seq_id.clone(), pcr_product);
-                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                    result.created_seq_ids.push(seq_id.clone());
-                    result.messages.push(format!(
-                        "Mutagenesis PCR product '{}' created from fwd@{} rev@{}",
-                        seq_id, fwd_pos, rev_pos
-                    ));
+                        let requested = if i == 0 { output_id.clone() } else { None };
+                        let seq_id = if let Some(id) = requested {
+                            self.unique_seq_id(&id)
+                        } else if seen_amplicons.len() == 1 {
+                            self.unique_seq_id(&default_base)
+                        } else {
+                            self.unique_seq_id(&format!("{}_{}", default_base, i + 1))
+                        };
+                        self.state.sequences.insert(seq_id.clone(), pcr_product);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(seq_id.clone());
+                        result.messages.push(format!(
+                            "Mutagenesis PCR product '{}' created from fwd@{} rev@{}",
+                            seq_id, fwd_pos, rev_pos
+                        ));
+                    }
                 }
-            }
-            Operation::DesignPrimerPairs {
-                template,
-                roi_start_0based,
-                roi_end_0based,
-                forward,
-                reverse,
-                pair_constraints,
-                min_amplicon_bp,
-                max_amplicon_bp,
-                max_tm_delta_c,
-                max_pairs,
-                report_id,
-            } => {
-                let op_id = result.op_id.clone();
-                self.execute_design_primer_pairs(
-                    &mut result,
-                    &mut parent_seq_ids,
-                    run_id,
-                    &op_id,
-                    on_progress,
+                Operation::DesignPrimerPairs {
                     template,
                     roi_start_0based,
                     roi_end_0based,
@@ -10078,82 +10207,86 @@ impl GentleEngine {
                     max_tm_delta_c,
                     max_pairs,
                     report_id,
-                    None,
-                )?;
-            }
-            Operation::DesignInsertionPrimerPairs {
-                template,
-                insertion,
-                mut forward,
-                mut reverse,
-                pair_constraints,
-                min_amplicon_bp,
-                max_amplicon_bp,
-                max_tm_delta_c,
-                max_pairs,
-                report_id,
-            } => {
-                let template_len = self
-                    .state
-                    .sequences
-                    .get(&template)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{template}' not found"),
-                    })?
-                    .get_forward_string()
-                    .len();
-                let insertion = Self::normalize_primer_insertion_intent(&insertion, template_len)?;
-                let (roi_start_0based, roi_end_0based) =
-                    Self::derive_insertion_intent_roi_bounds(&insertion, template_len);
-
-                forward.start_0based = Some(insertion.forward_window_start_0based);
-                forward.end_0based = Some(insertion.forward_window_end_0based_exclusive);
-                forward.non_annealing_5prime_tail =
-                    Some(insertion.forward_extension_5prime.clone());
-                reverse.start_0based = Some(insertion.reverse_window_start_0based);
-                reverse.end_0based = Some(insertion.reverse_window_end_0based_exclusive);
-                reverse.non_annealing_5prime_tail =
-                    Some(insertion.reverse_extension_5prime.clone());
-
-                let op_id = result.op_id.clone();
-                self.execute_design_primer_pairs(
-                    &mut result,
-                    &mut parent_seq_ids,
-                    run_id,
-                    &op_id,
-                    on_progress,
+                } => {
+                    let op_id = result.op_id.clone();
+                    self.execute_design_primer_pairs(
+                        &mut result,
+                        &mut parent_seq_ids,
+                        run_id,
+                        &op_id,
+                        on_progress,
+                        template,
+                        roi_start_0based,
+                        roi_end_0based,
+                        forward,
+                        reverse,
+                        pair_constraints,
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_tm_delta_c,
+                        max_pairs,
+                        report_id,
+                        None,
+                    )?;
+                }
+                Operation::DesignInsertionPrimerPairs {
                     template,
-                    roi_start_0based,
-                    roi_end_0based,
-                    forward,
-                    reverse,
+                    insertion,
+                    mut forward,
+                    mut reverse,
                     pair_constraints,
                     min_amplicon_bp,
                     max_amplicon_bp,
                     max_tm_delta_c,
                     max_pairs,
                     report_id,
-                    Some(insertion),
-                )?;
-            }
-            Operation::PrepareRestrictionCloningPcrHandoff {
-                template,
-                primer_report_id,
-                pair_index,
-                destination_vector_seq_id,
-                mode,
-                forward_enzyme,
-                reverse_enzyme,
-                forward_leader_5prime,
-                reverse_leader_5prime,
-            } => {
-                let op_id = result.op_id.clone();
-                self.execute_prepare_restriction_cloning_pcr_handoff(
-                    &mut result,
-                    &mut parent_seq_ids,
-                    run_id,
-                    &op_id,
+                } => {
+                    let template_len = self
+                        .state
+                        .sequences
+                        .get(&template)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{template}' not found"),
+                        })?
+                        .get_forward_string()
+                        .len();
+                    let insertion =
+                        Self::normalize_primer_insertion_intent(&insertion, template_len)?;
+                    let (roi_start_0based, roi_end_0based) =
+                        Self::derive_insertion_intent_roi_bounds(&insertion, template_len);
+
+                    forward.start_0based = Some(insertion.forward_window_start_0based);
+                    forward.end_0based = Some(insertion.forward_window_end_0based_exclusive);
+                    forward.non_annealing_5prime_tail =
+                        Some(insertion.forward_extension_5prime.clone());
+                    reverse.start_0based = Some(insertion.reverse_window_start_0based);
+                    reverse.end_0based = Some(insertion.reverse_window_end_0based_exclusive);
+                    reverse.non_annealing_5prime_tail =
+                        Some(insertion.reverse_extension_5prime.clone());
+
+                    let op_id = result.op_id.clone();
+                    self.execute_design_primer_pairs(
+                        &mut result,
+                        &mut parent_seq_ids,
+                        run_id,
+                        &op_id,
+                        on_progress,
+                        template,
+                        roi_start_0based,
+                        roi_end_0based,
+                        forward,
+                        reverse,
+                        pair_constraints,
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_tm_delta_c,
+                        max_pairs,
+                        report_id,
+                        Some(insertion),
+                    )?;
+                }
+                Operation::PrepareRestrictionCloningPcrHandoff {
                     template,
                     primer_report_id,
                     pair_index,
@@ -10163,266 +10296,335 @@ impl GentleEngine {
                     reverse_enzyme,
                     forward_leader_5prime,
                     reverse_leader_5prime,
-                )?;
-            }
-            Operation::PcrOverlapExtensionMutagenesis {
-                template,
-                edit_start_0based,
-                edit_end_0based_exclusive,
-                insert_sequence,
-                constraints,
-                output_prefix,
-            } => {
-                self.execute_overlap_extension_mutagenesis(
-                    &mut result,
-                    &mut parent_seq_ids,
+                } => {
+                    let op_id = result.op_id.clone();
+                    self.execute_prepare_restriction_cloning_pcr_handoff(
+                        &mut result,
+                        &mut parent_seq_ids,
+                        run_id,
+                        &op_id,
+                        template,
+                        primer_report_id,
+                        pair_index,
+                        destination_vector_seq_id,
+                        mode,
+                        forward_enzyme,
+                        reverse_enzyme,
+                        forward_leader_5prime,
+                        reverse_leader_5prime,
+                    )?;
+                }
+                Operation::PcrOverlapExtensionMutagenesis {
                     template,
                     edit_start_0based,
                     edit_end_0based_exclusive,
                     insert_sequence,
                     constraints,
                     output_prefix,
-                )?;
-            }
-            Operation::DesignQpcrAssays {
-                template,
-                roi_start_0based,
-                roi_end_0based,
-                forward,
-                reverse,
-                probe,
-                pair_constraints,
-                min_amplicon_bp,
-                max_amplicon_bp,
-                max_tm_delta_c,
-                max_probe_tm_delta_c,
-                max_assays,
-                report_id,
-            } => {
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&template)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{template}' not found"),
-                    })?
-                    .clone();
-                if dna.is_circular() {
-                    return Err(EngineError {
-                        code: ErrorCode::Unsupported,
-                        message: "DesignQpcrAssays currently supports linear templates only"
-                            .to_string(),
-                    });
+                } => {
+                    self.execute_overlap_extension_mutagenesis(
+                        &mut result,
+                        &mut parent_seq_ids,
+                        template,
+                        edit_start_0based,
+                        edit_end_0based_exclusive,
+                        insert_sequence,
+                        constraints,
+                        output_prefix,
+                    )?;
                 }
+                Operation::DesignQpcrAssays {
+                    template,
+                    roi_start_0based,
+                    roi_end_0based,
+                    forward,
+                    reverse,
+                    probe,
+                    pair_constraints,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    max_probe_tm_delta_c,
+                    max_assays,
+                    report_id,
+                } => {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&template)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{template}' not found"),
+                        })?
+                        .clone();
+                    if dna.is_circular() {
+                        return Err(EngineError {
+                            code: ErrorCode::Unsupported,
+                            message: "DesignQpcrAssays currently supports linear templates only"
+                                .to_string(),
+                        });
+                    }
 
-                let template_seq = dna.get_forward_string().to_ascii_uppercase();
-                let template_bytes = template_seq.as_bytes();
-                if template_bytes.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "DesignQpcrAssays requires a non-empty template sequence"
-                            .to_string(),
-                    });
-                }
-                if roi_start_0based >= roi_end_0based || roi_end_0based > template_bytes.len() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "DesignQpcrAssays ROI {}..{} is invalid for template length {}",
-                            roi_start_0based,
-                            roi_end_0based,
-                            template_bytes.len()
-                        ),
-                    });
-                }
-                if min_amplicon_bp == 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "DesignQpcrAssays min_amplicon_bp must be >= 1".to_string(),
-                    });
-                }
-                if min_amplicon_bp > max_amplicon_bp {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "DesignQpcrAssays min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
-                        ),
-                    });
-                }
-                let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
-                if max_tm_delta_c < 0.0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "DesignQpcrAssays max_tm_delta_c ({max_tm_delta_c}) must be >= 0.0"
-                        ),
-                    });
-                }
-                let max_probe_tm_delta_c = max_probe_tm_delta_c.unwrap_or(10.0);
-                if max_probe_tm_delta_c < 0.0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "DesignQpcrAssays max_probe_tm_delta_c ({max_probe_tm_delta_c}) must be >= 0.0"
-                        ),
-                    });
-                }
-                let max_assays = max_assays.unwrap_or(200);
-                if max_assays == 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "DesignQpcrAssays max_assays must be >= 1".to_string(),
-                    });
-                }
+                    let template_seq = dna.get_forward_string().to_ascii_uppercase();
+                    let template_bytes = template_seq.as_bytes();
+                    if template_bytes.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "DesignQpcrAssays requires a non-empty template sequence"
+                                .to_string(),
+                        });
+                    }
+                    if roi_start_0based >= roi_end_0based || roi_end_0based > template_bytes.len() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "DesignQpcrAssays ROI {}..{} is invalid for template length {}",
+                                roi_start_0based,
+                                roi_end_0based,
+                                template_bytes.len()
+                            ),
+                        });
+                    }
+                    if min_amplicon_bp == 0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "DesignQpcrAssays min_amplicon_bp must be >= 1".to_string(),
+                        });
+                    }
+                    if min_amplicon_bp > max_amplicon_bp {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "DesignQpcrAssays min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
+                            ),
+                        });
+                    }
+                    let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
+                    if max_tm_delta_c < 0.0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "DesignQpcrAssays max_tm_delta_c ({max_tm_delta_c}) must be >= 0.0"
+                            ),
+                        });
+                    }
+                    let max_probe_tm_delta_c = max_probe_tm_delta_c.unwrap_or(10.0);
+                    if max_probe_tm_delta_c < 0.0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "DesignQpcrAssays max_probe_tm_delta_c ({max_probe_tm_delta_c}) must be >= 0.0"
+                            ),
+                        });
+                    }
+                    let max_assays = max_assays.unwrap_or(200);
+                    if max_assays == 0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "DesignQpcrAssays max_assays must be >= 1".to_string(),
+                        });
+                    }
 
-                Self::validate_primer_design_side_constraints("forward", &forward)?;
-                Self::validate_primer_design_side_constraints("reverse", &reverse)?;
-                Self::validate_primer_design_side_constraints("probe", &probe)?;
-                let forward_sequence_constraints =
-                    Self::normalize_primer_side_sequence_constraints(&forward)?;
-                let reverse_sequence_constraints =
-                    Self::normalize_primer_side_sequence_constraints(&reverse)?;
-                let probe_sequence_constraints =
-                    Self::normalize_primer_side_sequence_constraints(&probe)?;
-                let pair_constraints_normalized =
-                    Self::normalize_primer_pair_constraints(&pair_constraints)?;
-                for (label, side) in [
-                    ("forward", &forward),
-                    ("reverse", &reverse),
-                    ("probe", &probe),
-                ] {
-                    if let Some(location) = side.location_0based {
-                        if location >= template_bytes.len() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "{label}.location_0based ({location}) is outside template length {}",
-                                    template_bytes.len()
-                                ),
-                            });
+                    Self::validate_primer_design_side_constraints("forward", &forward)?;
+                    Self::validate_primer_design_side_constraints("reverse", &reverse)?;
+                    Self::validate_primer_design_side_constraints("probe", &probe)?;
+                    let forward_sequence_constraints =
+                        Self::normalize_primer_side_sequence_constraints(&forward)?;
+                    let reverse_sequence_constraints =
+                        Self::normalize_primer_side_sequence_constraints(&reverse)?;
+                    let probe_sequence_constraints =
+                        Self::normalize_primer_side_sequence_constraints(&probe)?;
+                    let pair_constraints_normalized =
+                        Self::normalize_primer_pair_constraints(&pair_constraints)?;
+                    for (label, side) in [
+                        ("forward", &forward),
+                        ("reverse", &reverse),
+                        ("probe", &probe),
+                    ] {
+                        if let Some(location) = side.location_0based {
+                            if location >= template_bytes.len() {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "{label}.location_0based ({location}) is outside template length {}",
+                                        template_bytes.len()
+                                    ),
+                                });
+                            }
+                        }
+                        if let Some(start) = side.start_0based {
+                            if start >= template_bytes.len() {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "{label}.start_0based ({start}) is outside template length {}",
+                                        template_bytes.len()
+                                    ),
+                                });
+                            }
+                        }
+                        if let Some(end) = side.end_0based {
+                            if end == 0 || end > template_bytes.len() {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "{label}.end_0based ({end}) must be in 1..={} for this template",
+                                        template_bytes.len()
+                                    ),
+                                });
+                            }
                         }
                     }
-                    if let Some(start) = side.start_0based {
+                    if let Some(start) = pair_constraints.fixed_amplicon_start_0based {
                         if start >= template_bytes.len() {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: format!(
-                                    "{label}.start_0based ({start}) is outside template length {}",
+                                    "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
                                     template_bytes.len()
                                 ),
                             });
                         }
                     }
-                    if let Some(end) = side.end_0based {
+                    if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive {
                         if end == 0 || end > template_bytes.len() {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: format!(
-                                    "{label}.end_0based ({end}) must be in 1..={} for this template",
+                                    "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
                                     template_bytes.len()
                                 ),
                             });
                         }
                     }
-                }
-                if let Some(start) = pair_constraints.fixed_amplicon_start_0based {
-                    if start >= template_bytes.len() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
-                                template_bytes.len()
-                            ),
-                        });
-                    }
-                }
-                if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive {
-                    if end == 0 || end > template_bytes.len() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
-                                template_bytes.len()
-                            ),
-                        });
-                    }
-                }
 
-                let pair_generation_limit = max_assays.saturating_mul(25).clamp(max_assays, 5000);
-                let requested_backend = self.state.parameters.primer_design_backend;
-                let primer3_executable = {
-                    let raw = self.state.parameters.primer3_executable.trim();
-                    if raw.is_empty() { "primer3_core" } else { raw }
-                };
-                let mut backend = PrimerDesignBackendInfo {
-                    requested: requested_backend.as_str().to_string(),
-                    ..PrimerDesignBackendInfo::default()
-                };
-                let (pair_candidates, pair_rejections) = match requested_backend {
-                    PrimerDesignBackend::Internal => {
-                        backend.used = PrimerDesignBackend::Internal.as_str().to_string();
-                        let progress_context = PrimerDesignProgressContext {
-                            seq_id: &template,
-                            design_kind: "qpcr_assays",
-                            backend_requested: requested_backend.as_str(),
-                            backend_used: PrimerDesignBackend::Internal.as_str(),
-                            roi_start_0based,
-                            roi_end_0based_exclusive: roi_end_0based,
-                            max_output: max_assays,
-                        };
-                        let mut emit_internal = |progress: PrimerDesignProgress| {
-                            on_progress(OperationProgress::PrimerDesign(progress))
-                        };
-                        Self::design_primer_pairs_internal_core(
-                            template_bytes,
-                            roi_start_0based,
-                            roi_end_0based,
-                            &forward,
-                            &forward_sequence_constraints,
-                            &reverse,
-                            &reverse_sequence_constraints,
-                            &pair_constraints_normalized,
-                            min_amplicon_bp,
-                            max_amplicon_bp,
-                            max_tm_delta_c,
-                            pair_generation_limit,
-                            Some(&progress_context),
-                            &mut emit_internal,
-                        )?
-                    }
-                    PrimerDesignBackend::Primer3 => {
-                        Self::emit_operation_primer_design_progress(
-                            on_progress,
-                            PrimerDesignProgress {
-                                seq_id: template.clone(),
-                                design_kind: "qpcr_assays".to_string(),
-                                backend_requested: requested_backend.as_str().to_string(),
-                                backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
-                                stage: "primer3_run".to_string(),
-                                detail: format!(
-                                    "Running Primer3 backend with executable '{}'",
-                                    primer3_executable
-                                ),
+                    let pair_generation_limit =
+                        max_assays.saturating_mul(25).clamp(max_assays, 5000);
+                    let requested_backend = self.state.parameters.primer_design_backend;
+                    let primer3_executable = {
+                        let raw = self.state.parameters.primer3_executable.trim();
+                        if raw.is_empty() { "primer3_core" } else { raw }
+                    };
+                    let mut backend = PrimerDesignBackendInfo {
+                        requested: requested_backend.as_str().to_string(),
+                        ..PrimerDesignBackendInfo::default()
+                    };
+                    let (pair_candidates, pair_rejections) = match requested_backend {
+                        PrimerDesignBackend::Internal => {
+                            backend.used = PrimerDesignBackend::Internal.as_str().to_string();
+                            let progress_context = PrimerDesignProgressContext {
+                                seq_id: &template,
+                                design_kind: "qpcr_assays",
+                                backend_requested: requested_backend.as_str(),
+                                backend_used: PrimerDesignBackend::Internal.as_str(),
                                 roi_start_0based,
                                 roi_end_0based_exclusive: roi_end_0based,
-                                forward_candidate_count: None,
-                                reverse_candidate_count: None,
-                                probe_candidate_count: None,
-                                pair_candidate_combinations: None,
-                                pair_evaluated: None,
-                                pair_evaluation_limit: None,
-                                pair_evaluation_limited: None,
-                                accepted_pair_count: None,
-                                assay_candidate_combinations: None,
-                                assays_evaluated: None,
-                                accepted_assay_count: None,
                                 max_output: max_assays,
-                                done: false,
-                            },
-                        )?;
-                        let (pairs, rejection_summary, version, explain, request_boulder_io) =
-                            Self::design_primer_pairs_primer3(
+                            };
+                            let mut emit_internal = |progress: PrimerDesignProgress| {
+                                on_progress(OperationProgress::PrimerDesign(progress))
+                            };
+                            Self::design_primer_pairs_internal_core(
+                                template_bytes,
+                                roi_start_0based,
+                                roi_end_0based,
+                                &forward,
+                                &forward_sequence_constraints,
+                                &reverse,
+                                &reverse_sequence_constraints,
+                                &pair_constraints_normalized,
+                                min_amplicon_bp,
+                                max_amplicon_bp,
+                                max_tm_delta_c,
+                                pair_generation_limit,
+                                Some(&progress_context),
+                                &mut emit_internal,
+                            )?
+                        }
+                        PrimerDesignBackend::Primer3 => {
+                            Self::emit_operation_primer_design_progress(
+                                on_progress,
+                                PrimerDesignProgress {
+                                    seq_id: template.clone(),
+                                    design_kind: "qpcr_assays".to_string(),
+                                    backend_requested: requested_backend.as_str().to_string(),
+                                    backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
+                                    stage: "primer3_run".to_string(),
+                                    detail: format!(
+                                        "Running Primer3 backend with executable '{}'",
+                                        primer3_executable
+                                    ),
+                                    roi_start_0based,
+                                    roi_end_0based_exclusive: roi_end_0based,
+                                    forward_candidate_count: None,
+                                    reverse_candidate_count: None,
+                                    probe_candidate_count: None,
+                                    pair_candidate_combinations: None,
+                                    pair_evaluated: None,
+                                    pair_evaluation_limit: None,
+                                    pair_evaluation_limited: None,
+                                    accepted_pair_count: None,
+                                    assay_candidate_combinations: None,
+                                    assays_evaluated: None,
+                                    accepted_assay_count: None,
+                                    max_output: max_assays,
+                                    done: false,
+                                },
+                            )?;
+                            let (pairs, rejection_summary, version, explain, request_boulder_io) =
+                                Self::design_primer_pairs_primer3(
+                                    &template_seq,
+                                    roi_start_0based,
+                                    roi_end_0based,
+                                    &forward,
+                                    &forward_sequence_constraints,
+                                    &reverse,
+                                    &reverse_sequence_constraints,
+                                    &pair_constraints_normalized,
+                                    min_amplicon_bp,
+                                    max_amplicon_bp,
+                                    max_tm_delta_c,
+                                    pair_generation_limit,
+                                    primer3_executable,
+                                )?;
+                            backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
+                            backend.primer3_executable = Some(primer3_executable.to_string());
+                            backend.primer3_version = version;
+                            backend.primer3_explain = explain;
+                            backend.primer3_request_boulder_io = Some(request_boulder_io);
+                            (pairs, rejection_summary)
+                        }
+                        PrimerDesignBackend::Auto => {
+                            Self::emit_operation_primer_design_progress(
+                                on_progress,
+                                PrimerDesignProgress {
+                                    seq_id: template.clone(),
+                                    design_kind: "qpcr_assays".to_string(),
+                                    backend_requested: requested_backend.as_str().to_string(),
+                                    backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
+                                    stage: "primer3_run".to_string(),
+                                    detail: format!(
+                                        "Auto mode trying Primer3 backend with executable '{}'",
+                                        primer3_executable
+                                    ),
+                                    roi_start_0based,
+                                    roi_end_0based_exclusive: roi_end_0based,
+                                    forward_candidate_count: None,
+                                    reverse_candidate_count: None,
+                                    probe_candidate_count: None,
+                                    pair_candidate_combinations: None,
+                                    pair_evaluated: None,
+                                    pair_evaluation_limit: None,
+                                    pair_evaluation_limited: None,
+                                    accepted_pair_count: None,
+                                    assay_candidate_combinations: None,
+                                    assays_evaluated: None,
+                                    accepted_assay_count: None,
+                                    max_output: max_assays,
+                                    done: false,
+                                },
+                            )?;
+                            match Self::design_primer_pairs_primer3(
                                 &template_seq,
                                 roi_start_0based,
                                 roi_end_0based,
@@ -10436,362 +10638,320 @@ impl GentleEngine {
                                 max_tm_delta_c,
                                 pair_generation_limit,
                                 primer3_executable,
-                            )?;
-                        backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
-                        backend.primer3_executable = Some(primer3_executable.to_string());
-                        backend.primer3_version = version;
-                        backend.primer3_explain = explain;
-                        backend.primer3_request_boulder_io = Some(request_boulder_io);
-                        (pairs, rejection_summary)
-                    }
-                    PrimerDesignBackend::Auto => {
-                        Self::emit_operation_primer_design_progress(
-                            on_progress,
-                            PrimerDesignProgress {
-                                seq_id: template.clone(),
-                                design_kind: "qpcr_assays".to_string(),
-                                backend_requested: requested_backend.as_str().to_string(),
-                                backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
-                                stage: "primer3_run".to_string(),
-                                detail: format!(
-                                    "Auto mode trying Primer3 backend with executable '{}'",
-                                    primer3_executable
-                                ),
-                                roi_start_0based,
-                                roi_end_0based_exclusive: roi_end_0based,
-                                forward_candidate_count: None,
-                                reverse_candidate_count: None,
-                                probe_candidate_count: None,
-                                pair_candidate_combinations: None,
-                                pair_evaluated: None,
-                                pair_evaluation_limit: None,
-                                pair_evaluation_limited: None,
-                                accepted_pair_count: None,
-                                assay_candidate_combinations: None,
-                                assays_evaluated: None,
-                                accepted_assay_count: None,
-                                max_output: max_assays,
-                                done: false,
-                            },
-                        )?;
-                        match Self::design_primer_pairs_primer3(
-                            &template_seq,
-                            roi_start_0based,
-                            roi_end_0based,
-                            &forward,
-                            &forward_sequence_constraints,
-                            &reverse,
-                            &reverse_sequence_constraints,
-                            &pair_constraints_normalized,
-                            min_amplicon_bp,
-                            max_amplicon_bp,
-                            max_tm_delta_c,
-                            pair_generation_limit,
-                            primer3_executable,
-                        ) {
-                            Ok((
-                                pairs,
-                                rejection_summary,
-                                version,
-                                explain,
-                                request_boulder_io,
-                            )) => {
-                                backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
-                                backend.primer3_executable = Some(primer3_executable.to_string());
-                                backend.primer3_version = version;
-                                backend.primer3_explain = explain;
-                                backend.primer3_request_boulder_io = Some(request_boulder_io);
-                                (pairs, rejection_summary)
-                            }
-                            Err(err) => {
-                                backend.used = PrimerDesignBackend::Internal.as_str().to_string();
-                                backend.primer3_executable = Some(primer3_executable.to_string());
-                                backend.fallback_reason = Some(err.message.clone());
-                                result.warnings.push(format!(
+                            ) {
+                                Ok((
+                                    pairs,
+                                    rejection_summary,
+                                    version,
+                                    explain,
+                                    request_boulder_io,
+                                )) => {
+                                    backend.used =
+                                        PrimerDesignBackend::Primer3.as_str().to_string();
+                                    backend.primer3_executable =
+                                        Some(primer3_executable.to_string());
+                                    backend.primer3_version = version;
+                                    backend.primer3_explain = explain;
+                                    backend.primer3_request_boulder_io = Some(request_boulder_io);
+                                    (pairs, rejection_summary)
+                                }
+                                Err(err) => {
+                                    backend.used =
+                                        PrimerDesignBackend::Internal.as_str().to_string();
+                                    backend.primer3_executable =
+                                        Some(primer3_executable.to_string());
+                                    backend.fallback_reason = Some(err.message.clone());
+                                    result.warnings.push(format!(
                                     "Primer3 backend unavailable in auto mode: {}. Falling back to internal qPCR design backend.",
                                     err.message
                                 ));
-                                Self::emit_operation_primer_design_progress(
-                                    on_progress,
-                                    PrimerDesignProgress {
-                                        seq_id: template.clone(),
-                                        design_kind: "qpcr_assays".to_string(),
-                                        backend_requested: requested_backend.as_str().to_string(),
-                                        backend_used: PrimerDesignBackend::Internal
-                                            .as_str()
-                                            .to_string(),
-                                        stage: "fallback_to_internal".to_string(),
-                                        detail: err.message.clone(),
+                                    Self::emit_operation_primer_design_progress(
+                                        on_progress,
+                                        PrimerDesignProgress {
+                                            seq_id: template.clone(),
+                                            design_kind: "qpcr_assays".to_string(),
+                                            backend_requested: requested_backend
+                                                .as_str()
+                                                .to_string(),
+                                            backend_used: PrimerDesignBackend::Internal
+                                                .as_str()
+                                                .to_string(),
+                                            stage: "fallback_to_internal".to_string(),
+                                            detail: err.message.clone(),
+                                            roi_start_0based,
+                                            roi_end_0based_exclusive: roi_end_0based,
+                                            forward_candidate_count: None,
+                                            reverse_candidate_count: None,
+                                            probe_candidate_count: None,
+                                            pair_candidate_combinations: None,
+                                            pair_evaluated: None,
+                                            pair_evaluation_limit: None,
+                                            pair_evaluation_limited: None,
+                                            accepted_pair_count: None,
+                                            assay_candidate_combinations: None,
+                                            assays_evaluated: None,
+                                            accepted_assay_count: None,
+                                            max_output: max_assays,
+                                            done: false,
+                                        },
+                                    )?;
+                                    let progress_context = PrimerDesignProgressContext {
+                                        seq_id: &template,
+                                        design_kind: "qpcr_assays",
+                                        backend_requested: requested_backend.as_str(),
+                                        backend_used: PrimerDesignBackend::Internal.as_str(),
                                         roi_start_0based,
                                         roi_end_0based_exclusive: roi_end_0based,
-                                        forward_candidate_count: None,
-                                        reverse_candidate_count: None,
-                                        probe_candidate_count: None,
-                                        pair_candidate_combinations: None,
-                                        pair_evaluated: None,
-                                        pair_evaluation_limit: None,
-                                        pair_evaluation_limited: None,
-                                        accepted_pair_count: None,
-                                        assay_candidate_combinations: None,
-                                        assays_evaluated: None,
-                                        accepted_assay_count: None,
                                         max_output: max_assays,
-                                        done: false,
-                                    },
-                                )?;
-                                let progress_context = PrimerDesignProgressContext {
-                                    seq_id: &template,
-                                    design_kind: "qpcr_assays",
-                                    backend_requested: requested_backend.as_str(),
-                                    backend_used: PrimerDesignBackend::Internal.as_str(),
-                                    roi_start_0based,
-                                    roi_end_0based_exclusive: roi_end_0based,
-                                    max_output: max_assays,
-                                };
-                                let mut emit_internal = |progress: PrimerDesignProgress| {
-                                    on_progress(OperationProgress::PrimerDesign(progress))
-                                };
-                                Self::design_primer_pairs_internal_core(
-                                    template_bytes,
-                                    roi_start_0based,
-                                    roi_end_0based,
-                                    &forward,
-                                    &forward_sequence_constraints,
-                                    &reverse,
-                                    &reverse_sequence_constraints,
-                                    &pair_constraints_normalized,
-                                    min_amplicon_bp,
-                                    max_amplicon_bp,
-                                    max_tm_delta_c,
-                                    pair_generation_limit,
-                                    Some(&progress_context),
-                                    &mut emit_internal,
-                                )?
+                                    };
+                                    let mut emit_internal = |progress: PrimerDesignProgress| {
+                                        on_progress(OperationProgress::PrimerDesign(progress))
+                                    };
+                                    Self::design_primer_pairs_internal_core(
+                                        template_bytes,
+                                        roi_start_0based,
+                                        roi_end_0based,
+                                        &forward,
+                                        &forward_sequence_constraints,
+                                        &reverse,
+                                        &reverse_sequence_constraints,
+                                        &pair_constraints_normalized,
+                                        min_amplicon_bp,
+                                        max_amplicon_bp,
+                                        max_tm_delta_c,
+                                        pair_generation_limit,
+                                        Some(&progress_context),
+                                        &mut emit_internal,
+                                    )?
+                                }
                             }
                         }
-                    }
-                };
+                    };
 
-                let qpcr_progress_context = PrimerDesignProgressContext {
-                    seq_id: &template,
-                    design_kind: "qpcr_assays",
-                    backend_requested: requested_backend.as_str(),
-                    backend_used: backend.used.as_str(),
-                    roi_start_0based,
-                    roi_end_0based_exclusive: roi_end_0based,
-                    max_output: max_assays,
-                };
-                let mut emit_qpcr_progress = |progress: PrimerDesignProgress| {
-                    on_progress(OperationProgress::PrimerDesign(progress))
-                };
-                let (assays, rejection_summary) = Self::design_qpcr_assays_from_pairs_core(
-                    template_bytes,
-                    roi_start_0based,
-                    roi_end_0based,
-                    &probe,
-                    &probe_sequence_constraints,
-                    max_probe_tm_delta_c,
-                    max_assays,
-                    pair_candidates,
-                    pair_rejections,
-                    Some(&qpcr_progress_context),
-                    &mut emit_qpcr_progress,
-                )?;
-                let (best_assay_probe_placement, best_assay_summary) = if let Some(best_assay) =
-                    assays.first()
-                {
-                    let roi_len_bp = roi_end_0based.saturating_sub(roi_start_0based).max(1);
-                    let probe_center_0based = best_assay
-                        .probe
-                        .start_0based
-                        .saturating_add(best_assay.probe.length_bp.saturating_div(2));
-                    let probe_relative = probe_center_0based.saturating_sub(roi_start_0based)
-                        as f64
-                        / roi_len_bp as f64;
-                    let probe_placement = if probe_relative <= 0.33 {
-                        "left_biased"
-                    } else if probe_relative >= 0.67 {
-                        "right_biased"
+                    let qpcr_progress_context = PrimerDesignProgressContext {
+                        seq_id: &template,
+                        design_kind: "qpcr_assays",
+                        backend_requested: requested_backend.as_str(),
+                        backend_used: backend.used.as_str(),
+                        roi_start_0based,
+                        roi_end_0based_exclusive: roi_end_0based,
+                        max_output: max_assays,
+                    };
+                    let mut emit_qpcr_progress = |progress: PrimerDesignProgress| {
+                        on_progress(OperationProgress::PrimerDesign(progress))
+                    };
+                    let (assays, rejection_summary) = Self::design_qpcr_assays_from_pairs_core(
+                        template_bytes,
+                        roi_start_0based,
+                        roi_end_0based,
+                        &probe,
+                        &probe_sequence_constraints,
+                        max_probe_tm_delta_c,
+                        max_assays,
+                        pair_candidates,
+                        pair_rejections,
+                        Some(&qpcr_progress_context),
+                        &mut emit_qpcr_progress,
+                    )?;
+                    let (best_assay_probe_placement, best_assay_summary) = if let Some(best_assay) =
+                        assays.first()
+                    {
+                        let roi_len_bp = roi_end_0based.saturating_sub(roi_start_0based).max(1);
+                        let probe_center_0based = best_assay
+                            .probe
+                            .start_0based
+                            .saturating_add(best_assay.probe.length_bp.saturating_div(2));
+                        let probe_relative = probe_center_0based.saturating_sub(roi_start_0based)
+                            as f64
+                            / roi_len_bp as f64;
+                        let probe_placement = if probe_relative <= 0.33 {
+                            "left_biased"
+                        } else if probe_relative >= 0.67 {
+                            "right_biased"
+                        } else {
+                            "centered"
+                        };
+                        let placement_text = match probe_placement {
+                            "left_biased" => "left-biased inside the ROI",
+                            "right_biased" => "right-biased inside the ROI",
+                            _ => "centered inside the ROI",
+                        };
+                        (
+                            probe_placement.to_string(),
+                            format!(
+                                "assay #{} spans {}..{} ({} bp); probe is {} at {}..{}; ΔTm(primer)={:.1}°C, ΔTm(probe)={:.1}°C; score={:.1}",
+                                best_assay.rank,
+                                best_assay.amplicon_start_0based,
+                                best_assay.amplicon_end_0based_exclusive,
+                                best_assay.amplicon_length_bp,
+                                placement_text,
+                                best_assay.probe.start_0based,
+                                best_assay.probe.end_0based_exclusive,
+                                best_assay.primer_tm_delta_c,
+                                best_assay.probe_tm_delta_c,
+                                best_assay.score
+                            ),
+                        )
                     } else {
-                        "centered"
+                        (
+                            "none".to_string(),
+                            "No accepted qPCR assays were retained in this report.".to_string(),
+                        )
                     };
-                    let placement_text = match probe_placement {
-                        "left_biased" => "left-biased inside the ROI",
-                        "right_biased" => "right-biased inside the ROI",
-                        _ => "centered inside the ROI",
-                    };
-                    (
-                        probe_placement.to_string(),
-                        format!(
-                            "assay #{} spans {}..{} ({} bp); probe is {} at {}..{}; ΔTm(primer)={:.1}°C, ΔTm(probe)={:.1}°C; score={:.1}",
-                            best_assay.rank,
-                            best_assay.amplicon_start_0based,
-                            best_assay.amplicon_end_0based_exclusive,
-                            best_assay.amplicon_length_bp,
-                            placement_text,
-                            best_assay.probe.start_0based,
-                            best_assay.probe.end_0based_exclusive,
-                            best_assay.primer_tm_delta_c,
-                            best_assay.probe_tm_delta_c,
-                            best_assay.score
-                        ),
-                    )
-                } else {
-                    (
-                        "none".to_string(),
-                        "No accepted qPCR assays were retained in this report.".to_string(),
-                    )
-                };
 
-                let report_id = Self::render_primer_design_report_id(report_id, &template);
-                let report = QpcrDesignReport {
-                    schema: QPCR_DESIGN_REPORT_SCHEMA.to_string(),
-                    report_id: report_id.clone(),
-                    template: template.clone(),
-                    generated_at_unix_ms: Self::now_unix_ms(),
-                    op_id: Some(result.op_id.clone()),
-                    run_id: Some(run_id.to_string()),
-                    roi_start_0based,
-                    roi_end_0based,
-                    forward,
-                    reverse,
-                    probe,
-                    pair_constraints,
-                    min_amplicon_bp,
-                    max_amplicon_bp,
-                    max_tm_delta_c,
-                    max_probe_tm_delta_c,
-                    max_assays,
-                    assay_count: assays.len(),
-                    best_assay_probe_placement,
-                    best_assay_summary,
-                    assays,
-                    rejection_summary,
-                    backend,
-                };
-                if report
-                    .rejection_summary
-                    .primer_pair
-                    .pair_evaluation_limit_skipped
-                    > 0
-                {
-                    result.warnings.push(format!(
+                    let report_id = Self::render_primer_design_report_id(report_id, &template);
+                    let report = QpcrDesignReport {
+                        schema: QPCR_DESIGN_REPORT_SCHEMA.to_string(),
+                        report_id: report_id.clone(),
+                        template: template.clone(),
+                        generated_at_unix_ms: Self::now_unix_ms(),
+                        op_id: Some(result.op_id.clone()),
+                        run_id: Some(run_id.to_string()),
+                        roi_start_0based,
+                        roi_end_0based,
+                        forward,
+                        reverse,
+                        probe,
+                        pair_constraints,
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_tm_delta_c,
+                        max_probe_tm_delta_c,
+                        max_assays,
+                        assay_count: assays.len(),
+                        best_assay_probe_placement,
+                        best_assay_summary,
+                        assays,
+                        rejection_summary,
+                        backend,
+                    };
+                    if report
+                        .rejection_summary
+                        .primer_pair
+                        .pair_evaluation_limit_skipped
+                        > 0
+                    {
+                        result.warnings.push(format!(
                         "Internal primer-pair candidate generation for qPCR reached its evaluation limit and skipped {} candidate combinations; narrow ROI/constraints for a more exhaustive run",
                         report
                             .rejection_summary
                             .primer_pair
                             .pair_evaluation_limit_skipped
                     ));
-                }
-                let mut store = self.read_primer_design_store();
-                let replaced = store
-                    .qpcr_reports
-                    .insert(report.report_id.clone(), report.clone())
-                    .is_some();
-                self.write_primer_design_store(store)?;
-                result.messages.push(format!(
-                    "{} qPCR-design report '{}' for template '{}' (assays={})",
-                    if replaced { "Updated" } else { "Created" },
-                    report.report_id,
-                    report.template,
-                    report.assay_count
-                ));
-                if let Some(top_assay) = report.assays.first() {
-                    let dimer_metrics = Self::compute_primer_pair_dimer_metrics(
-                        top_assay.forward.sequence.as_bytes(),
-                        top_assay.reverse.sequence.as_bytes(),
-                    );
-                    let pair_like = PrimerDesignPairRecord {
-                        rank: top_assay.rank,
-                        score: top_assay.score,
-                        forward: top_assay.forward.clone(),
-                        reverse: top_assay.reverse.clone(),
-                        amplicon_start_0based: top_assay.amplicon_start_0based,
-                        amplicon_end_0based_exclusive: top_assay.amplicon_end_0based_exclusive,
-                        amplicon_length_bp: top_assay.amplicon_length_bp,
-                        tm_delta_c: top_assay.primer_tm_delta_c,
-                        primer_pair_complementary_run_bp: dimer_metrics.max_complementary_run_bp,
-                        primer_pair_3prime_complementary_run_bp: dimer_metrics
-                            .max_3prime_complementary_run_bp,
-                        rule_flags: PrimerDesignPairRuleFlags {
-                            roi_covered: top_assay.rule_flags.roi_covered,
-                            amplicon_size_in_range: top_assay.rule_flags.amplicon_size_in_range,
-                            tm_delta_in_range: top_assay.rule_flags.primer_tm_delta_in_range,
-                            forward_secondary_structure_ok: top_assay
-                                .forward
-                                .longest_homopolymer_run_bp
-                                <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
-                                && top_assay.forward.self_complementary_run_bp
-                                    <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
-                            reverse_secondary_structure_ok: top_assay
-                                .reverse
-                                .longest_homopolymer_run_bp
-                                <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
-                                && top_assay.reverse.self_complementary_run_bp
-                                    <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
-                            primer_pair_dimer_risk_low: dimer_metrics.max_complementary_run_bp
-                                <= PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
-                                && dimer_metrics.max_3prime_complementary_run_bp
-                                    <= PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP,
-                            forward_three_prime_gc_clamp: top_assay.forward.three_prime_gc_clamp,
-                            reverse_three_prime_gc_clamp: top_assay.reverse.three_prime_gc_clamp,
-                        },
-                    };
-                    let advisories = Self::primer_pair_heuristic_advisories(&pair_like);
-                    if !advisories.is_empty() {
+                    }
+                    let mut store = self.read_primer_design_store();
+                    let replaced = store
+                        .qpcr_reports
+                        .insert(report.report_id.clone(), report.clone())
+                        .is_some();
+                    self.write_primer_design_store(store)?;
+                    result.messages.push(format!(
+                        "{} qPCR-design report '{}' for template '{}' (assays={})",
+                        if replaced { "Updated" } else { "Created" },
+                        report.report_id,
+                        report.template,
+                        report.assay_count
+                    ));
+                    if let Some(top_assay) = report.assays.first() {
+                        let dimer_metrics = Self::compute_primer_pair_dimer_metrics(
+                            top_assay.forward.sequence.as_bytes(),
+                            top_assay.reverse.sequence.as_bytes(),
+                        );
+                        let pair_like = PrimerDesignPairRecord {
+                            rank: top_assay.rank,
+                            score: top_assay.score,
+                            forward: top_assay.forward.clone(),
+                            reverse: top_assay.reverse.clone(),
+                            amplicon_start_0based: top_assay.amplicon_start_0based,
+                            amplicon_end_0based_exclusive: top_assay.amplicon_end_0based_exclusive,
+                            amplicon_length_bp: top_assay.amplicon_length_bp,
+                            tm_delta_c: top_assay.primer_tm_delta_c,
+                            primer_pair_complementary_run_bp: dimer_metrics
+                                .max_complementary_run_bp,
+                            primer_pair_3prime_complementary_run_bp: dimer_metrics
+                                .max_3prime_complementary_run_bp,
+                            rule_flags: PrimerDesignPairRuleFlags {
+                                roi_covered: top_assay.rule_flags.roi_covered,
+                                amplicon_size_in_range: top_assay.rule_flags.amplicon_size_in_range,
+                                tm_delta_in_range: top_assay.rule_flags.primer_tm_delta_in_range,
+                                forward_secondary_structure_ok: top_assay
+                                    .forward
+                                    .longest_homopolymer_run_bp
+                                    <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+                                    && top_assay.forward.self_complementary_run_bp
+                                        <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
+                                reverse_secondary_structure_ok: top_assay
+                                    .reverse
+                                    .longest_homopolymer_run_bp
+                                    <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+                                    && top_assay.reverse.self_complementary_run_bp
+                                        <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
+                                primer_pair_dimer_risk_low: dimer_metrics.max_complementary_run_bp
+                                    <= PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
+                                    && dimer_metrics.max_3prime_complementary_run_bp
+                                        <= PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP,
+                                forward_three_prime_gc_clamp: top_assay
+                                    .forward
+                                    .three_prime_gc_clamp,
+                                reverse_three_prime_gc_clamp: top_assay
+                                    .reverse
+                                    .three_prime_gc_clamp,
+                            },
+                        };
+                        let advisories = Self::primer_pair_heuristic_advisories(&pair_like);
+                        if !advisories.is_empty() {
+                            result.warnings.push(format!(
+                                "Top qPCR primer pair in report '{}' has heuristic advisories: {}",
+                                report.report_id,
+                                advisories.join("; ")
+                            ));
+                        }
+                    }
+                    if report.assay_count == 0 {
                         result.warnings.push(format!(
-                            "Top qPCR primer pair in report '{}' has heuristic advisories: {}",
-                            report.report_id,
-                            advisories.join("; ")
+                            "No qPCR assays satisfied constraints for report '{}'",
+                            report.report_id
                         ));
                     }
                 }
-                if report.assay_count == 0 {
-                    result.warnings.push(format!(
-                        "No qPCR assays satisfied constraints for report '{}'",
-                        report.report_id
-                    ));
-                }
-            }
-            Operation::DeriveTranscriptSequences {
-                seq_id,
-                feature_ids,
-                scope,
-                output_prefix,
-            } => {
-                let source_sequence_upper = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?
-                    .get_forward_string()
-                    .to_ascii_uppercase()
-                    .into_bytes();
-                let source_features = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?
-                    .features()
-                    .to_vec();
-                let transcript_feature_ids =
-                    self.transcript_feature_ids_for_derivation(&seq_id, &feature_ids, scope)?;
-                parent_seq_ids.push(seq_id.clone());
-                let normalized_prefix = output_prefix
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| format!("{seq_id}__mrna"));
-                for transcript_feature_id in transcript_feature_ids {
-                    let source_feature =
-                        source_features
+                Operation::DeriveTranscriptSequences {
+                    seq_id,
+                    feature_ids,
+                    scope,
+                    output_prefix,
+                } => {
+                    let source_sequence_upper = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?
+                        .get_forward_string()
+                        .to_ascii_uppercase()
+                        .into_bytes();
+                    let source_features = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?
+                        .features()
+                        .to_vec();
+                    let transcript_feature_ids =
+                        self.transcript_feature_ids_for_derivation(&seq_id, &feature_ids, scope)?;
+                    parent_seq_ids.push(seq_id.clone());
+                    let normalized_prefix = output_prefix
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| format!("{seq_id}__mrna"));
+                    for transcript_feature_id in transcript_feature_ids {
+                        let source_feature = source_features
                             .get(transcript_feature_id)
                             .ok_or_else(|| EngineError {
                                 code: ErrorCode::NotFound,
@@ -10800,49 +10960,49 @@ impl GentleEngine {
                                     transcript_feature_id, seq_id
                                 ),
                             })?;
-                    let (
-                        derived_dna,
-                        transcript_id,
-                        transcript_label,
-                        is_reverse,
-                        exon_count,
-                        protein_derivation,
-                    ) = Self::derive_transcript_sequence_from_feature(
-                        &source_sequence_upper,
-                        source_feature,
-                        &source_features,
-                        transcript_feature_id,
-                        &seq_id,
-                    )?;
-                    let transcript_token = Self::normalize_id_token(&transcript_id);
-                    let transcript_token = if transcript_token.is_empty() {
-                        format!("feature_{}", transcript_feature_id + 1)
-                    } else {
-                        transcript_token
-                    };
-                    let base_seq_id = format!(
-                        "{normalized_prefix}__f{}__{}",
-                        transcript_feature_id + 1,
-                        transcript_token
-                    );
-                    let derived_seq_id = self.unique_seq_id(&base_seq_id);
-                    self.state
-                        .sequences
-                        .insert(derived_seq_id.clone(), derived_dna);
-                    self.add_lineage_node(
-                        &derived_seq_id,
-                        SequenceOrigin::Derived,
-                        Some(&result.op_id),
-                    );
-                    result.created_seq_ids.push(derived_seq_id.clone());
-                    let strand = if is_reverse { "-" } else { "+" };
-                    let derived_len = self
-                        .state
-                        .sequences
-                        .get(&derived_seq_id)
-                        .map(|dna| dna.len())
-                        .unwrap_or(0);
-                    result.messages.push(format!(
+                        let (
+                            derived_dna,
+                            transcript_id,
+                            transcript_label,
+                            is_reverse,
+                            exon_count,
+                            protein_derivation,
+                        ) = Self::derive_transcript_sequence_from_feature(
+                            &source_sequence_upper,
+                            source_feature,
+                            &source_features,
+                            transcript_feature_id,
+                            &seq_id,
+                        )?;
+                        let transcript_token = Self::normalize_id_token(&transcript_id);
+                        let transcript_token = if transcript_token.is_empty() {
+                            format!("feature_{}", transcript_feature_id + 1)
+                        } else {
+                            transcript_token
+                        };
+                        let base_seq_id = format!(
+                            "{normalized_prefix}__f{}__{}",
+                            transcript_feature_id + 1,
+                            transcript_token
+                        );
+                        let derived_seq_id = self.unique_seq_id(&base_seq_id);
+                        self.state
+                            .sequences
+                            .insert(derived_seq_id.clone(), derived_dna);
+                        self.add_lineage_node(
+                            &derived_seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(derived_seq_id.clone());
+                        let strand = if is_reverse { "-" } else { "+" };
+                        let derived_len = self
+                            .state
+                            .sequences
+                            .get(&derived_seq_id)
+                            .map(|dna| dna.len())
+                            .unwrap_or(0);
+                        result.messages.push(format!(
                         "Derived transcript '{}' from mRNA feature n-{} ('{}', label='{}', strand {}, exons={}, length={} bp).",
                         derived_seq_id,
                         transcript_feature_id + 1,
@@ -10852,9 +11012,9 @@ impl GentleEngine {
                         exon_count,
                         derived_len
                     ));
-                    if let Some(derivation) = protein_derivation {
-                        if derivation.protein_length_aa > 0 {
-                            result.messages.push(format!(
+                        if let Some(derivation) = protein_derivation {
+                            if derivation.protein_length_aa > 0 {
+                                result.messages.push(format!(
                                 "Derived protein for transcript '{}' using translation table {} ('{}', source={}, {} aa){}.",
                                 derived_seq_id,
                                 derivation.translation_table,
@@ -10880,78 +11040,77 @@ impl GentleEngine {
                                     })
                                     .unwrap_or_default()
                             ));
-                        } else {
-                            result.warnings.push(format!(
+                            } else {
+                                result.warnings.push(format!(
                                 "Transcript '{}' resolved CDS context but did not yield a non-empty protein sequence.",
                                 derived_seq_id
                             ));
-                        }
-                        for warning in derivation.warnings {
+                            }
+                            for warning in derivation.warnings {
+                                result.warnings.push(format!(
+                                    "Transcript '{}': {}",
+                                    derivation.transcript_id, warning
+                                ));
+                            }
+                        } else {
                             result.warnings.push(format!(
-                                "Transcript '{}': {}",
-                                derivation.transcript_id, warning
-                            ));
-                        }
-                    } else {
-                        result.warnings.push(format!(
                             "Transcript '{}' has no CDS annotation; protein translation was not derived.",
                             derived_seq_id
                         ));
+                        }
+                    }
+                    if result.created_seq_ids.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "DeriveTranscriptSequences did not produce transcripts for '{}'",
+                                seq_id
+                            ),
+                        });
                     }
                 }
-                if result.created_seq_ids.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "DeriveTranscriptSequences did not produce transcripts for '{}'",
-                            seq_id
-                        ),
-                    });
-                }
-            }
-            Operation::DeriveProteinSequences {
-                seq_id,
-                feature_ids,
-                scope,
-                output_prefix,
-            } => {
-                let source_sequence_upper = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?
-                    .get_forward_string()
-                    .to_ascii_uppercase()
-                    .into_bytes();
-                let source_features = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?
-                    .features()
-                    .to_vec();
-                let transcript_feature_ids =
-                    self.transcript_feature_ids_for_derivation(&seq_id, &feature_ids, scope)?;
-                parent_seq_ids.push(seq_id.clone());
-                let normalized_prefix = output_prefix
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| format!("{seq_id}__protein"));
-                let report_id = result.op_id.clone();
-                let requested_feature_ids = feature_ids.clone();
-                let selected_feature_ids = transcript_feature_ids.clone();
-                let mut report_rows: Vec<ProteinDerivationReportRow> = vec![];
-                for transcript_feature_id in transcript_feature_ids {
-                    let source_feature =
-                        source_features
+                Operation::DeriveProteinSequences {
+                    seq_id,
+                    feature_ids,
+                    scope,
+                    output_prefix,
+                } => {
+                    let source_sequence_upper = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?
+                        .get_forward_string()
+                        .to_ascii_uppercase()
+                        .into_bytes();
+                    let source_features = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?
+                        .features()
+                        .to_vec();
+                    let transcript_feature_ids =
+                        self.transcript_feature_ids_for_derivation(&seq_id, &feature_ids, scope)?;
+                    parent_seq_ids.push(seq_id.clone());
+                    let normalized_prefix = output_prefix
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| format!("{seq_id}__protein"));
+                    let report_id = result.op_id.clone();
+                    let requested_feature_ids = feature_ids.clone();
+                    let selected_feature_ids = transcript_feature_ids.clone();
+                    let mut report_rows: Vec<ProteinDerivationReportRow> = vec![];
+                    for transcript_feature_id in transcript_feature_ids {
+                        let source_feature = source_features
                             .get(transcript_feature_id)
                             .ok_or_else(|| EngineError {
                                 code: ErrorCode::NotFound,
@@ -10960,91 +11119,93 @@ impl GentleEngine {
                                     transcript_feature_id, seq_id
                                 ),
                             })?;
-                    let (
-                        derived_transcript,
-                        transcript_id,
-                        transcript_label,
-                        _is_reverse,
-                        _exon_count,
-                        annotated_derivation,
-                    ) = Self::derive_transcript_sequence_from_feature(
-                        &source_sequence_upper,
-                        source_feature,
-                        &source_features,
-                        transcript_feature_id,
-                        &seq_id,
-                    )?;
-                    let representative_cds_feature =
-                        Self::collect_matching_cds_features_for_derivation(
+                        let (
+                            derived_transcript,
+                            transcript_id,
+                            transcript_label,
+                            _is_reverse,
+                            _exon_count,
+                            annotated_derivation,
+                        ) = Self::derive_transcript_sequence_from_feature(
+                            &source_sequence_upper,
+                            source_feature,
                             &source_features,
-                            source_feature,
-                            &Self::feature_ranges_0based_for_derivation(source_feature),
-                        )
-                        .into_iter()
-                        .next();
-                    let derivation = match annotated_derivation {
-                        Some(derivation) => Some(derivation),
-                        None => Self::infer_transcript_protein_derivation_without_annotation(
-                            &derived_transcript.get_forward_string(),
-                            source_feature,
                             transcript_feature_id,
                             &seq_id,
-                            &source_features,
-                            &transcript_id,
-                            &transcript_label,
-                        )?,
-                    };
-                    let Some(derivation) = derivation else {
-                        result.warnings.push(format!(
+                        )?;
+                        let representative_cds_feature =
+                            Self::collect_matching_cds_features_for_derivation(
+                                &source_features,
+                                source_feature,
+                                &Self::feature_ranges_0based_for_derivation(source_feature),
+                            )
+                            .into_iter()
+                            .next();
+                        let derivation = match annotated_derivation {
+                            Some(derivation) => Some(derivation),
+                            None => Self::infer_transcript_protein_derivation_without_annotation(
+                                &derived_transcript.get_forward_string(),
+                                source_feature,
+                                transcript_feature_id,
+                                &seq_id,
+                                &source_features,
+                                &transcript_id,
+                                &transcript_label,
+                            )?,
+                        };
+                        let Some(derivation) = derivation else {
+                            result.warnings.push(format!(
                             "Transcript feature n-{} in '{}' could not yield a protein sequence.",
                             transcript_feature_id + 1,
                             seq_id
                         ));
-                        continue;
-                    };
-                    if derivation.protein_length_aa == 0 || derivation.protein_sequence.is_empty() {
-                        result.warnings.push(format!(
-                            "Transcript '{}' did not yield a non-empty protein sequence.",
-                            derivation.transcript_id
-                        ));
-                        continue;
-                    }
-                    let transcript_token = Self::normalize_id_token(&transcript_id);
-                    let transcript_token = if transcript_token.is_empty() {
-                        format!("feature_{}", transcript_feature_id + 1)
-                    } else {
-                        transcript_token
-                    };
-                    let base_seq_id = format!(
-                        "{normalized_prefix}__f{}__{}",
-                        transcript_feature_id + 1,
-                        transcript_token
-                    );
-                    let protein_seq_id = self.unique_seq_id(&base_seq_id);
-                    let protein_name = format!("{transcript_label} protein");
-                    let protein = Self::build_transcript_derived_protein_sequence(
-                        &derivation.protein_sequence,
-                        &protein_name,
-                        &seq_id,
-                        transcript_feature_id,
-                        source_feature,
-                        representative_cds_feature,
-                        &derivation,
-                    )?;
-                    self.state.sequences.insert(protein_seq_id.clone(), protein);
-                    self.add_lineage_node(
-                        &protein_seq_id,
-                        SequenceOrigin::Derived,
-                        Some(&result.op_id),
-                    );
-                    result.created_seq_ids.push(protein_seq_id.clone());
-                    report_rows.push(ProteinDerivationReportRow {
-                        protein_seq_id: protein_seq_id.clone(),
-                        transcript_feature_id,
-                        protein_name: protein_name.clone(),
-                        derivation: derivation.clone(),
-                    });
-                    result.messages.push(format!(
+                            continue;
+                        };
+                        if derivation.protein_length_aa == 0
+                            || derivation.protein_sequence.is_empty()
+                        {
+                            result.warnings.push(format!(
+                                "Transcript '{}' did not yield a non-empty protein sequence.",
+                                derivation.transcript_id
+                            ));
+                            continue;
+                        }
+                        let transcript_token = Self::normalize_id_token(&transcript_id);
+                        let transcript_token = if transcript_token.is_empty() {
+                            format!("feature_{}", transcript_feature_id + 1)
+                        } else {
+                            transcript_token
+                        };
+                        let base_seq_id = format!(
+                            "{normalized_prefix}__f{}__{}",
+                            transcript_feature_id + 1,
+                            transcript_token
+                        );
+                        let protein_seq_id = self.unique_seq_id(&base_seq_id);
+                        let protein_name = format!("{transcript_label} protein");
+                        let protein = Self::build_transcript_derived_protein_sequence(
+                            &derivation.protein_sequence,
+                            &protein_name,
+                            &seq_id,
+                            transcript_feature_id,
+                            source_feature,
+                            representative_cds_feature,
+                            &derivation,
+                        )?;
+                        self.state.sequences.insert(protein_seq_id.clone(), protein);
+                        self.add_lineage_node(
+                            &protein_seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(protein_seq_id.clone());
+                        report_rows.push(ProteinDerivationReportRow {
+                            protein_seq_id: protein_seq_id.clone(),
+                            transcript_feature_id,
+                            protein_name: protein_name.clone(),
+                            derivation: derivation.clone(),
+                        });
+                        result.messages.push(format!(
                         "Derived protein '{}' from transcript '{}' using translation table {} ('{}', source={}, mode={}, {} aa){}.",
                         protein_seq_id,
                         derivation.transcript_id,
@@ -11072,155 +11233,159 @@ impl GentleEngine {
                             })
                             .unwrap_or_default()
                     ));
-                    for warning in &derivation.warnings {
-                        result.warnings.push(format!(
-                            "Protein '{}' (transcript '{}'): {}",
-                            protein_seq_id, derivation.transcript_id, warning
-                        ));
+                        for warning in &derivation.warnings {
+                            result.warnings.push(format!(
+                                "Protein '{}' (transcript '{}'): {}",
+                                protein_seq_id, derivation.transcript_id, warning
+                            ));
+                        }
                     }
+                    if result.created_seq_ids.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "DeriveProteinSequences did not produce proteins for '{}'",
+                                seq_id
+                            ),
+                        });
+                    }
+                    let report = ProteinDerivationReport {
+                        schema: PROTEIN_DERIVATION_REPORT_SCHEMA.to_string(),
+                        report_id: report_id.clone(),
+                        seq_id: seq_id.clone(),
+                        generated_at_unix_ms: Self::now_unix_ms(),
+                        op_id: Some(result.op_id.clone()),
+                        run_id: Some(run_id.to_string()),
+                        requested_feature_ids,
+                        selected_feature_ids,
+                        scope,
+                        effective_output_prefix: normalized_prefix.clone(),
+                        derived_count: report_rows.len(),
+                        rows: report_rows,
+                        warnings: result.warnings.clone(),
+                    };
+                    self.upsert_protein_derivation_report(report.clone())?;
+                    result.messages.push(format!(
+                        "Stored protein-derivation report '{}' for '{}' ({} proteins).",
+                        report.report_id, report.seq_id, report.derived_count
+                    ));
+                    result.protein_derivation_report = Some(report);
                 }
-                if result.created_seq_ids.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!(
-                            "DeriveProteinSequences did not produce proteins for '{}'",
-                            seq_id
-                        ),
-                    });
-                }
-                let report = ProteinDerivationReport {
-                    schema: PROTEIN_DERIVATION_REPORT_SCHEMA.to_string(),
-                    report_id: report_id.clone(),
-                    seq_id: seq_id.clone(),
-                    generated_at_unix_ms: Self::now_unix_ms(),
-                    op_id: Some(result.op_id.clone()),
-                    run_id: Some(run_id.to_string()),
-                    requested_feature_ids,
-                    selected_feature_ids,
-                    scope,
-                    effective_output_prefix: normalized_prefix.clone(),
-                    derived_count: report_rows.len(),
-                    rows: report_rows,
-                    warnings: result.warnings.clone(),
-                };
-                self.upsert_protein_derivation_report(report.clone())?;
-                result.messages.push(format!(
-                    "Stored protein-derivation report '{}' for '{}' ({} proteins).",
-                    report.report_id, report.seq_id, report.derived_count
-                ));
-                result.protein_derivation_report = Some(report);
-            }
-            Operation::ReverseTranslateProteinSequence {
-                seq_id,
-                output_id,
-                speed_profile,
-                speed_mark,
-                translation_table,
-                target_anneal_tm_c,
-                anneal_window_bp,
-            } => {
-                let protein = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?
-                    .clone();
-                if !protein.is_protein_sequence() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "ReverseTranslateProteinSequence requires a protein sequence; '{}' has molecule_type={:?}",
-                            seq_id,
-                            protein.molecule_type()
-                        ),
-                    });
-                }
-                let speed_profile_resolution = speed_profile
-                    .map(|profile| {
-                        Self::translation_speed_profile_resolution_from_profile(
-                            profile,
-                            TranslationSpeedProfileSource::ExplicitRequest,
-                            None,
-                        )
-                    })
-                    .or_else(|| Self::sequence_feature_translation_speed_resolution(&protein));
-                let mut warnings = speed_profile_resolution
-                    .as_ref()
-                    .map(|resolution| resolution.warnings.clone())
-                    .unwrap_or_default();
-                let preferred_species_label = speed_profile_resolution
-                    .as_ref()
-                    .map(|resolution| resolution.reference_species.as_str());
-                let (
-                    effective_translation_table,
-                    effective_translation_table_label,
-                    effective_translation_table_source,
-                    translation_context_organism,
-                    translation_context_organelle,
-                    translation_table_warnings,
-                ) = Self::resolve_translation_table_for_reverse_translation(
-                    &protein,
-                    translation_table.filter(|value| *value > 0),
-                );
-                warnings.extend(translation_table_warnings);
-                let anneal_window_bp = anneal_window_bp.unwrap_or(20).max(6);
-                let protein_sequence = protein.get_forward_string().to_ascii_uppercase();
-                let (coding_sequence, reverse_translation_warnings) =
-                    Self::build_reverse_translated_coding_sequence(
-                        &protein_sequence,
+                Operation::ReverseTranslateProteinSequence {
+                    seq_id,
+                    output_id,
+                    speed_profile,
+                    speed_mark,
+                    translation_table,
+                    target_anneal_tm_c,
+                    anneal_window_bp,
+                } => {
+                    let protein = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?
+                        .clone();
+                    if !protein.is_protein_sequence() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "ReverseTranslateProteinSequence requires a protein sequence; '{}' has molecule_type={:?}",
+                                seq_id,
+                                protein.molecule_type()
+                            ),
+                        });
+                    }
+                    let speed_profile_resolution = speed_profile
+                        .map(|profile| {
+                            Self::translation_speed_profile_resolution_from_profile(
+                                profile,
+                                TranslationSpeedProfileSource::ExplicitRequest,
+                                None,
+                            )
+                        })
+                        .or_else(|| Self::sequence_feature_translation_speed_resolution(&protein));
+                    let mut warnings = speed_profile_resolution
+                        .as_ref()
+                        .map(|resolution| resolution.warnings.clone())
+                        .unwrap_or_default();
+                    let preferred_species_label = speed_profile_resolution
+                        .as_ref()
+                        .map(|resolution| resolution.reference_species.as_str());
+                    let (
                         effective_translation_table,
+                        effective_translation_table_label,
+                        effective_translation_table_source,
+                        translation_context_organism,
+                        translation_context_organelle,
+                        translation_table_warnings,
+                    ) = Self::resolve_translation_table_for_reverse_translation(
+                        &protein,
+                        translation_table.filter(|value| *value > 0),
+                    );
+                    warnings.extend(translation_table_warnings);
+                    let anneal_window_bp = anneal_window_bp.unwrap_or(20).max(6);
+                    let protein_sequence = protein.get_forward_string().to_ascii_uppercase();
+                    let (coding_sequence, reverse_translation_warnings) =
+                        Self::build_reverse_translated_coding_sequence(
+                            &protein_sequence,
+                            effective_translation_table,
+                            preferred_species_label,
+                            speed_mark,
+                            target_anneal_tm_c,
+                            anneal_window_bp,
+                        );
+                    warnings.extend(reverse_translation_warnings);
+                    let requested_output_id = output_id
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| value.to_string());
+                    let base_seq_id = output_id
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| format!("{seq_id}__coding"));
+                    let coding_seq_id = self.unique_seq_id(&base_seq_id);
+                    let coding_name = format!(
+                        "{} coding sequence",
+                        protein.name().as_deref().unwrap_or(seq_id.as_str())
+                    );
+                    let coding = Self::build_reverse_translated_coding_dna(
+                        &coding_sequence,
+                        &coding_name,
+                        &seq_id,
+                        &protein,
+                        effective_translation_table,
+                        &effective_translation_table_label,
+                        &effective_translation_table_source,
+                        speed_profile_resolution
+                            .as_ref()
+                            .map(|resolution| resolution.profile),
+                        speed_profile_resolution
+                            .as_ref()
+                            .map(|resolution| resolution.source),
                         preferred_species_label,
                         speed_mark,
                         target_anneal_tm_c,
                         anneal_window_bp,
+                        translation_context_organism.as_deref(),
+                        translation_context_organelle.as_deref(),
+                        &warnings,
+                    )?;
+                    self.state.sequences.insert(coding_seq_id.clone(), coding);
+                    self.add_lineage_node(
+                        &coding_seq_id,
+                        SequenceOrigin::Derived,
+                        Some(&result.op_id),
                     );
-                warnings.extend(reverse_translation_warnings);
-                let requested_output_id = output_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(|value| value.to_string());
-                let base_seq_id = output_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| format!("{seq_id}__coding"));
-                let coding_seq_id = self.unique_seq_id(&base_seq_id);
-                let coding_name = format!(
-                    "{} coding sequence",
-                    protein.name().as_deref().unwrap_or(seq_id.as_str())
-                );
-                let coding = Self::build_reverse_translated_coding_dna(
-                    &coding_sequence,
-                    &coding_name,
-                    &seq_id,
-                    &protein,
-                    effective_translation_table,
-                    &effective_translation_table_label,
-                    &effective_translation_table_source,
-                    speed_profile_resolution
-                        .as_ref()
-                        .map(|resolution| resolution.profile),
-                    speed_profile_resolution
-                        .as_ref()
-                        .map(|resolution| resolution.source),
-                    preferred_species_label,
-                    speed_mark,
-                    target_anneal_tm_c,
-                    anneal_window_bp,
-                    translation_context_organism.as_deref(),
-                    translation_context_organelle.as_deref(),
-                    &warnings,
-                )?;
-                self.state.sequences.insert(coding_seq_id.clone(), coding);
-                self.add_lineage_node(&coding_seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                parent_seq_ids.push(seq_id.clone());
-                result.created_seq_ids.push(coding_seq_id.clone());
-                result.messages.push(format!(
+                    parent_seq_ids.push(seq_id.clone());
+                    result.created_seq_ids.push(coding_seq_id.clone());
+                    result.messages.push(format!(
                     "Reverse-translated protein '{}' into coding sequence '{}' using translation table {} ('{}', source={}){}{}.",
                     seq_id,
                     coding_seq_id,
@@ -11240,117 +11405,117 @@ impl GentleEngine {
                         .map(|mark| format!(", speed_mark={}", mark.as_str()))
                         .unwrap_or_default()
                 ));
-                if let Some(target_tm) = target_anneal_tm_c {
-                    result.messages.push(format!(
+                    if let Some(target_tm) = target_anneal_tm_c {
+                        result.messages.push(format!(
                         "Applied local reverse-translation Tm heuristic target {:.1} °C over {} bp windows.",
                         target_tm, anneal_window_bp
                     ));
+                    }
+                    let (
+                        preferred_synonymous_choice_count,
+                        alternative_synonymous_choice_count,
+                        fallback_unknown_codon_count,
+                        gc_fraction,
+                        realized_anneal_tm_c,
+                    ) = Self::reverse_translation_choice_diagnostics(
+                        &protein_sequence,
+                        &coding_sequence,
+                        effective_translation_table,
+                        preferred_species_label,
+                        target_anneal_tm_c,
+                        anneal_window_bp,
+                    );
+                    let report = ReverseTranslationReport {
+                        schema: REVERSE_TRANSLATION_REPORT_SCHEMA.to_string(),
+                        report_id: result.op_id.clone(),
+                        protein_seq_id: seq_id.clone(),
+                        coding_seq_id: coding_seq_id.clone(),
+                        generated_at_unix_ms: Self::now_unix_ms(),
+                        op_id: Some(result.op_id.clone()),
+                        run_id: Some(run_id.to_string()),
+                        requested_output_id,
+                        effective_output_id: coding_seq_id.clone(),
+                        protein_length_aa: protein_sequence.len(),
+                        coding_length_bp: coding_sequence.len(),
+                        translation_table: effective_translation_table,
+                        translation_table_label: effective_translation_table_label.clone(),
+                        translation_table_source: effective_translation_table_source,
+                        translation_context_organism: translation_context_organism.clone(),
+                        translation_context_organelle: translation_context_organelle.clone(),
+                        requested_speed_profile: speed_profile,
+                        resolved_speed_profile: speed_profile_resolution
+                            .as_ref()
+                            .map(|resolution| resolution.profile),
+                        resolved_speed_profile_source: speed_profile_resolution
+                            .as_ref()
+                            .map(|resolution| resolution.source),
+                        translation_speed_reference_species: speed_profile_resolution
+                            .as_ref()
+                            .map(|resolution| resolution.reference_species.clone()),
+                        speed_mark,
+                        target_anneal_tm_c,
+                        anneal_window_bp,
+                        preferred_synonymous_choice_count,
+                        alternative_synonymous_choice_count,
+                        fallback_unknown_codon_count,
+                        gc_fraction,
+                        realized_anneal_tm_c,
+                        warnings: warnings.clone(),
+                    };
+                    self.upsert_reverse_translation_report(report.clone())?;
+                    result.messages.push(format!(
+                        "Stored reverse-translation report '{}' for '{}' -> '{}'.",
+                        report.report_id, report.protein_seq_id, report.coding_seq_id
+                    ));
+                    result.warnings.extend(warnings);
+                    result.reverse_translation_report = Some(report);
                 }
-                let (
-                    preferred_synonymous_choice_count,
-                    alternative_synonymous_choice_count,
-                    fallback_unknown_codon_count,
-                    gc_fraction,
-                    realized_anneal_tm_c,
-                ) = Self::reverse_translation_choice_diagnostics(
-                    &protein_sequence,
-                    &coding_sequence,
-                    effective_translation_table,
-                    preferred_species_label,
-                    target_anneal_tm_c,
-                    anneal_window_bp,
-                );
-                let report = ReverseTranslationReport {
-                    schema: REVERSE_TRANSLATION_REPORT_SCHEMA.to_string(),
-                    report_id: result.op_id.clone(),
-                    protein_seq_id: seq_id.clone(),
-                    coding_seq_id: coding_seq_id.clone(),
-                    generated_at_unix_ms: Self::now_unix_ms(),
-                    op_id: Some(result.op_id.clone()),
-                    run_id: Some(run_id.to_string()),
-                    requested_output_id,
-                    effective_output_id: coding_seq_id.clone(),
-                    protein_length_aa: protein_sequence.len(),
-                    coding_length_bp: coding_sequence.len(),
-                    translation_table: effective_translation_table,
-                    translation_table_label: effective_translation_table_label.clone(),
-                    translation_table_source: effective_translation_table_source,
-                    translation_context_organism: translation_context_organism.clone(),
-                    translation_context_organelle: translation_context_organelle.clone(),
-                    requested_speed_profile: speed_profile,
-                    resolved_speed_profile: speed_profile_resolution
-                        .as_ref()
-                        .map(|resolution| resolution.profile),
-                    resolved_speed_profile_source: speed_profile_resolution
-                        .as_ref()
-                        .map(|resolution| resolution.source),
-                    translation_speed_reference_species: speed_profile_resolution
-                        .as_ref()
-                        .map(|resolution| resolution.reference_species.clone()),
-                    speed_mark,
-                    target_anneal_tm_c,
-                    anneal_window_bp,
-                    preferred_synonymous_choice_count,
-                    alternative_synonymous_choice_count,
-                    fallback_unknown_codon_count,
-                    gc_fraction,
-                    realized_anneal_tm_c,
-                    warnings: warnings.clone(),
-                };
-                self.upsert_reverse_translation_report(report.clone())?;
-                result.messages.push(format!(
-                    "Stored reverse-translation report '{}' for '{}' -> '{}'.",
-                    report.report_id, report.protein_seq_id, report.coding_seq_id
-                ));
-                result.warnings.extend(warnings);
-                result.reverse_translation_report = Some(report);
-            }
-            Operation::BuildProteinToDnaHandoffReasoning {
-                seq_id,
-                protein_seq_id,
-                transcript_filter,
-                projection_id,
-                ensembl_entry_id,
-                feature_query,
-                ranking_goal,
-                speed_profile,
-                speed_mark,
-                translation_table,
-                target_anneal_tm_c,
-                anneal_window_bp,
-                objective_id,
-                graph_id,
-            } => {
-                parent_seq_ids.push(seq_id.clone());
-                if !protein_seq_id.eq_ignore_ascii_case(&seq_id) {
-                    parent_seq_ids.push(protein_seq_id.clone());
-                }
-                let graph = self.build_protein_to_dna_handoff_reasoning_graph(
-                    &seq_id,
-                    &protein_seq_id,
-                    transcript_filter.as_deref(),
-                    projection_id.as_deref(),
-                    ensembl_entry_id.as_deref(),
-                    feature_query.as_deref(),
+                Operation::BuildProteinToDnaHandoffReasoning {
+                    seq_id,
+                    protein_seq_id,
+                    transcript_filter,
+                    projection_id,
+                    ensembl_entry_id,
+                    feature_query,
                     ranking_goal,
                     speed_profile,
                     speed_mark,
                     translation_table,
                     target_anneal_tm_c,
                     anneal_window_bp,
-                    objective_id.as_deref(),
-                    graph_id.as_deref(),
-                    Some(&result.op_id),
-                    Some(run_id),
-                )?;
-                result.messages.push(format!(
+                    objective_id,
+                    graph_id,
+                } => {
+                    parent_seq_ids.push(seq_id.clone());
+                    if !protein_seq_id.eq_ignore_ascii_case(&seq_id) {
+                        parent_seq_ids.push(protein_seq_id.clone());
+                    }
+                    let graph = self.build_protein_to_dna_handoff_reasoning_graph(
+                        &seq_id,
+                        &protein_seq_id,
+                        transcript_filter.as_deref(),
+                        projection_id.as_deref(),
+                        ensembl_entry_id.as_deref(),
+                        feature_query.as_deref(),
+                        ranking_goal,
+                        speed_profile,
+                        speed_mark,
+                        translation_table,
+                        target_anneal_tm_c,
+                        anneal_window_bp,
+                        objective_id.as_deref(),
+                        graph_id.as_deref(),
+                        Some(&result.op_id),
+                        Some(run_id),
+                    )?;
+                    result.messages.push(format!(
                     "Built protein-to-DNA handoff reasoning graph '{}' for '{}' using protein '{}'.",
                     graph.graph_id, graph.seq_id, protein_seq_id
                 ));
-                if Self::construct_reasoning_graph_has_protein_to_dna_handoff(&graph) {
-                    let (candidate_count, source_ids) =
-                        Self::construct_reasoning_graph_protein_to_dna_handoff_summary(&graph);
-                    result.messages.push(format!(
+                    if Self::construct_reasoning_graph_has_protein_to_dna_handoff(&graph) {
+                        let (candidate_count, source_ids) =
+                            Self::construct_reasoning_graph_protein_to_dna_handoff_summary(&graph);
+                        result.messages.push(format!(
                         "Stored {} ranked protein-to-DNA handoff candidate(s) from source protein(s) {}.",
                         candidate_count,
                         if source_ids.is_empty() {
@@ -11359,141 +11524,14 @@ impl GentleEngine {
                             source_ids.join(", ")
                         }
                     ));
-                }
-                result.construct_reasoning_graph = Some(graph);
-            }
-            Operation::ComputeDotplot {
-                seq_id,
-                reference_seq_id,
-                span_start_0based,
-                span_end_0based,
-                reference_span_start_0based,
-                reference_span_end_0based,
-                mode,
-                word_size,
-                step_bp,
-                max_mismatches,
-                tile_bp,
-                store_as,
-            } => {
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?;
-                let query_text = dna.get_forward_string().to_ascii_uppercase();
-                let query_bytes = query_text.as_bytes();
-                let (span_start_0based, span_end_0based) = Self::resolve_analysis_span(
-                    query_bytes.len(),
-                    span_start_0based,
-                    span_end_0based,
-                )?;
-                let query_span = &query_bytes[span_start_0based..span_end_0based];
-                let (
-                    reference_label,
-                    reference_seq_id_for_view,
-                    reference_text,
-                    reference_span_start_0based,
-                    reference_span_end_0based,
-                ) = match mode {
-                    DotplotMode::SelfForward | DotplotMode::SelfReverseComplement => (
-                        seq_id.clone(),
-                        None,
-                        query_text.clone(),
-                        span_start_0based,
-                        span_end_0based,
-                    ),
-                    DotplotMode::PairForward | DotplotMode::PairReverseComplement => {
-                        let ref_seq_id = reference_seq_id
-                            .as_ref()
-                            .map(|value| value.trim())
-                            .filter(|value| !value.is_empty())
-                            .ok_or_else(|| EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "ComputeDotplot mode '{}' requires reference_seq_id",
-                                    mode.as_str()
-                                ),
-                            })?;
-                        let reference_dna =
-                            self.state
-                                .sequences
-                                .get(ref_seq_id)
-                                .ok_or_else(|| EngineError {
-                                    code: ErrorCode::NotFound,
-                                    message: format!(
-                                        "Reference sequence '{}' not found",
-                                        ref_seq_id
-                                    ),
-                                })?;
-                        let reference_text =
-                            reference_dna.get_forward_string().to_ascii_uppercase();
-                        let reference_bytes = reference_text.as_bytes();
-                        let (ref_start, ref_end) = Self::resolve_analysis_span(
-                            reference_bytes.len(),
-                            reference_span_start_0based,
-                            reference_span_end_0based,
-                        )?;
-                        (
-                            ref_seq_id.to_string(),
-                            Some(ref_seq_id.to_string()),
-                            reference_text,
-                            ref_start,
-                            ref_end,
-                        )
                     }
-                };
-                let reference_bytes = reference_text.as_bytes();
-                let reference_span =
-                    &reference_bytes[reference_span_start_0based..reference_span_end_0based];
-                let (points, truncated) = Self::compute_dotplot_points(
-                    query_span,
-                    reference_span,
-                    span_start_0based,
-                    reference_span_start_0based,
-                    mode,
-                    word_size,
-                    step_bp,
-                    max_mismatches,
-                    MAX_DOTPLOT_POINTS,
-                )?;
-                let boxplot_bins = Self::compute_dotplot_boxplot_bins(
-                    &points,
+                    result.construct_reasoning_graph = Some(graph);
+                }
+                Operation::ComputeDotplot {
+                    seq_id,
+                    reference_seq_id,
                     span_start_0based,
                     span_end_0based,
-                    DOTPLOT_BOXPLOT_DEFAULT_BINS,
-                );
-                let dotplot_id = if let Some(raw_id) = store_as.as_deref() {
-                    Self::normalize_analysis_id(raw_id, "dotplot")?
-                } else {
-                    format!("dotplot_{}", result.op_id)
-                };
-                let primary_series = Self::build_dotplot_query_series(
-                    format!("{dotplot_id}_series_1"),
-                    seq_id.clone(),
-                    seq_id.clone(),
-                    Self::default_dotplot_series_color(0),
-                    None,
-                    None,
-                    None,
-                    mode,
-                    span_start_0based,
-                    span_end_0based,
-                    points,
-                    boxplot_bins,
-                );
-                let view = DotplotView {
-                    schema: DOTPLOT_VIEW_SCHEMA.to_string(),
-                    dotplot_id: dotplot_id.clone(),
-                    owner_seq_id: seq_id.clone(),
-                    seq_id: seq_id.clone(),
-                    reference_seq_id: reference_seq_id_for_view.clone(),
-                    generated_at_unix_ms: Self::now_unix_ms(),
-                    span_start_0based: primary_series.span_start_0based,
-                    span_end_0based: primary_series.span_end_0based,
                     reference_span_start_0based,
                     reference_span_end_0based,
                     mode,
@@ -11501,27 +11539,155 @@ impl GentleEngine {
                     step_bp,
                     max_mismatches,
                     tile_bp,
-                    point_count: primary_series.point_count,
-                    points: primary_series.points.clone(),
-                    boxplot_bin_count: primary_series.boxplot_bin_count,
-                    boxplot_bins: primary_series.boxplot_bins.clone(),
-                    series_count: 1,
-                    query_series: vec![primary_series],
-                    reference_annotation: reference_seq_id_for_view.as_deref().and_then(|ref_id| {
-                        self.build_dotplot_reference_annotation_track(
-                            ref_id,
-                            reference_span_start_0based,
-                            reference_span_end_0based,
-                        )
-                    }),
-                    overlay_anchor_exons: vec![],
-                };
-                let replaced = self
-                    .read_dotplot_analysis_store()
-                    .dotplots
-                    .contains_key(dotplot_id.as_str());
-                self.upsert_dotplot_view(view.clone())?;
-                result.messages.push(format!(
+                    store_as,
+                } => {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    let query_text = dna.get_forward_string().to_ascii_uppercase();
+                    let query_bytes = query_text.as_bytes();
+                    let (span_start_0based, span_end_0based) = Self::resolve_analysis_span(
+                        query_bytes.len(),
+                        span_start_0based,
+                        span_end_0based,
+                    )?;
+                    let query_span = &query_bytes[span_start_0based..span_end_0based];
+                    let (
+                        reference_label,
+                        reference_seq_id_for_view,
+                        reference_text,
+                        reference_span_start_0based,
+                        reference_span_end_0based,
+                    ) = match mode {
+                        DotplotMode::SelfForward | DotplotMode::SelfReverseComplement => (
+                            seq_id.clone(),
+                            None,
+                            query_text.clone(),
+                            span_start_0based,
+                            span_end_0based,
+                        ),
+                        DotplotMode::PairForward | DotplotMode::PairReverseComplement => {
+                            let ref_seq_id = reference_seq_id
+                                .as_ref()
+                                .map(|value| value.trim())
+                                .filter(|value| !value.is_empty())
+                                .ok_or_else(|| EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "ComputeDotplot mode '{}' requires reference_seq_id",
+                                        mode.as_str()
+                                    ),
+                                })?;
+                            let reference_dna =
+                                self.state.sequences.get(ref_seq_id).ok_or_else(|| {
+                                    EngineError {
+                                        code: ErrorCode::NotFound,
+                                        message: format!(
+                                            "Reference sequence '{}' not found",
+                                            ref_seq_id
+                                        ),
+                                    }
+                                })?;
+                            let reference_text =
+                                reference_dna.get_forward_string().to_ascii_uppercase();
+                            let reference_bytes = reference_text.as_bytes();
+                            let (ref_start, ref_end) = Self::resolve_analysis_span(
+                                reference_bytes.len(),
+                                reference_span_start_0based,
+                                reference_span_end_0based,
+                            )?;
+                            (
+                                ref_seq_id.to_string(),
+                                Some(ref_seq_id.to_string()),
+                                reference_text,
+                                ref_start,
+                                ref_end,
+                            )
+                        }
+                    };
+                    let reference_bytes = reference_text.as_bytes();
+                    let reference_span =
+                        &reference_bytes[reference_span_start_0based..reference_span_end_0based];
+                    let (points, truncated) = Self::compute_dotplot_points(
+                        query_span,
+                        reference_span,
+                        span_start_0based,
+                        reference_span_start_0based,
+                        mode,
+                        word_size,
+                        step_bp,
+                        max_mismatches,
+                        MAX_DOTPLOT_POINTS,
+                    )?;
+                    let boxplot_bins = Self::compute_dotplot_boxplot_bins(
+                        &points,
+                        span_start_0based,
+                        span_end_0based,
+                        DOTPLOT_BOXPLOT_DEFAULT_BINS,
+                    );
+                    let dotplot_id = if let Some(raw_id) = store_as.as_deref() {
+                        Self::normalize_analysis_id(raw_id, "dotplot")?
+                    } else {
+                        format!("dotplot_{}", result.op_id)
+                    };
+                    let primary_series = Self::build_dotplot_query_series(
+                        format!("{dotplot_id}_series_1"),
+                        seq_id.clone(),
+                        seq_id.clone(),
+                        Self::default_dotplot_series_color(0),
+                        None,
+                        None,
+                        None,
+                        mode,
+                        span_start_0based,
+                        span_end_0based,
+                        points,
+                        boxplot_bins,
+                    );
+                    let view = DotplotView {
+                        schema: DOTPLOT_VIEW_SCHEMA.to_string(),
+                        dotplot_id: dotplot_id.clone(),
+                        owner_seq_id: seq_id.clone(),
+                        seq_id: seq_id.clone(),
+                        reference_seq_id: reference_seq_id_for_view.clone(),
+                        generated_at_unix_ms: Self::now_unix_ms(),
+                        span_start_0based: primary_series.span_start_0based,
+                        span_end_0based: primary_series.span_end_0based,
+                        reference_span_start_0based,
+                        reference_span_end_0based,
+                        mode,
+                        word_size,
+                        step_bp,
+                        max_mismatches,
+                        tile_bp,
+                        point_count: primary_series.point_count,
+                        points: primary_series.points.clone(),
+                        boxplot_bin_count: primary_series.boxplot_bin_count,
+                        boxplot_bins: primary_series.boxplot_bins.clone(),
+                        series_count: 1,
+                        query_series: vec![primary_series],
+                        reference_annotation: reference_seq_id_for_view.as_deref().and_then(
+                            |ref_id| {
+                                self.build_dotplot_reference_annotation_track(
+                                    ref_id,
+                                    reference_span_start_0based,
+                                    reference_span_end_0based,
+                                )
+                            },
+                        ),
+                        overlay_anchor_exons: vec![],
+                    };
+                    let replaced = self
+                        .read_dotplot_analysis_store()
+                        .dotplots
+                        .contains_key(dotplot_id.as_str());
+                    self.upsert_dotplot_view(view.clone())?;
+                    result.messages.push(format!(
                     "{} dotplot '{}' for '{}' vs '{}' (mode={}, query_span={}..{}, reference_span={}..{}, points={})",
                     if replaced { "Updated" } else { "Created" },
                     dotplot_id,
@@ -11534,226 +11700,231 @@ impl GentleEngine {
                     reference_span_end_0based,
                     view.point_count
                 ));
-                if truncated {
-                    result.warnings.push(format!(
+                    if truncated {
+                        result.warnings.push(format!(
                         "Dotplot '{}' reached MAX_DOTPLOT_POINTS ({MAX_DOTPLOT_POINTS}); result was truncated",
                         dotplot_id
                     ));
+                    }
                 }
-            }
-            Operation::ComputeDotplotOverlay {
-                owner_seq_id,
-                reference_seq_id,
-                reference_span_start_0based,
-                reference_span_end_0based,
-                queries,
-                word_size,
-                step_bp,
-                max_mismatches,
-                tile_bp,
-                store_as,
-            } => {
-                let owner_seq_id = owner_seq_id.trim().to_string();
-                if owner_seq_id.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ComputeDotplotOverlay requires owner_seq_id".to_string(),
-                    });
-                }
-                if !self.state.sequences.contains_key(owner_seq_id.as_str()) {
-                    return Err(EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Owner sequence '{}' not found", owner_seq_id),
-                    });
-                }
-                let reference_seq_id = reference_seq_id.trim().to_string();
-                if reference_seq_id.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ComputeDotplotOverlay requires reference_seq_id".to_string(),
-                    });
-                }
-                let reference_dna =
-                    self.state
-                        .sequences
-                        .get(&reference_seq_id)
-                        .ok_or_else(|| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!("Reference sequence '{}' not found", reference_seq_id),
-                        })?;
-                if queries.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ComputeDotplotOverlay requires at least one query spec"
-                            .to_string(),
-                    });
-                }
-                let reference_text = reference_dna.get_forward_string().to_ascii_uppercase();
-                let reference_bytes = reference_text.as_bytes();
-                let (reference_span_start_0based, reference_span_end_0based) =
-                    Self::resolve_analysis_span(
-                        reference_bytes.len(),
-                        reference_span_start_0based,
-                        reference_span_end_0based,
-                    )?;
-                let reference_span =
-                    &reference_bytes[reference_span_start_0based..reference_span_end_0based];
-                let dotplot_id = if let Some(raw_id) = store_as.as_deref() {
-                    Self::normalize_analysis_id(raw_id, "dotplot")?
-                } else {
-                    format!("dotplot_{}", result.op_id)
-                };
-                let reference_annotation = self.build_dotplot_reference_annotation_track(
-                    &reference_seq_id,
+                Operation::ComputeDotplotOverlay {
+                    owner_seq_id,
+                    reference_seq_id,
                     reference_span_start_0based,
                     reference_span_end_0based,
-                );
-                let mut query_series: Vec<DotplotQuerySeries> = vec![];
-                let mut truncated_series_labels: Vec<String> = vec![];
-                for (index, query) in queries.iter().enumerate() {
-                    let query_seq_id = query.seq_id.trim();
-                    if query_seq_id.is_empty() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "ComputeDotplotOverlay query spec #{} requires seq_id",
-                                index + 1
-                            ),
-                        });
-                    }
-                    if !matches!(
-                        query.mode,
-                        DotplotMode::PairForward | DotplotMode::PairReverseComplement
-                    ) {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "ComputeDotplotOverlay query '{}' requires pair mode, got '{}'",
-                                query_seq_id,
-                                query.mode.as_str()
-                            ),
-                        });
-                    }
-                    let query_dna =
-                        self.state
-                            .sequences
-                            .get(query_seq_id)
-                            .ok_or_else(|| EngineError {
-                                code: ErrorCode::NotFound,
-                                message: format!("Query sequence '{}' not found", query_seq_id),
-                            })?;
-                    let query_text = query_dna.get_forward_string().to_ascii_uppercase();
-                    let query_bytes = query_text.as_bytes();
-                    let (query_span_start_0based, query_span_end_0based) =
-                        Self::resolve_analysis_span(
-                            query_bytes.len(),
-                            query.span_start_0based,
-                            query.span_end_0based,
-                        )?;
-                    if let Some(query_anchor_0based) = query.query_anchor_0based {
-                        if query_anchor_0based < query_span_start_0based
-                            || query_anchor_0based >= query_span_end_0based
-                        {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "ComputeDotplotOverlay query '{}' anchor {} is outside selected span {}..{}",
-                                    query_seq_id,
-                                    query_anchor_0based.saturating_add(1),
-                                    query_span_start_0based.saturating_add(1),
-                                    query_span_end_0based
-                                ),
-                            });
-                        }
-                    }
-                    let query_span = &query_bytes[query_span_start_0based..query_span_end_0based];
-                    let (points, truncated) = Self::compute_dotplot_points(
-                        query_span,
-                        reference_span,
-                        query_span_start_0based,
-                        reference_span_start_0based,
-                        query.mode,
-                        word_size,
-                        step_bp,
-                        max_mismatches,
-                        MAX_DOTPLOT_POINTS,
-                    )?;
-                    let boxplot_bins = Self::compute_dotplot_boxplot_bins(
-                        &points,
-                        query_span_start_0based,
-                        query_span_end_0based,
-                        DOTPLOT_BOXPLOT_DEFAULT_BINS,
-                    );
-                    let label = if query.label.trim().is_empty() {
-                        query_seq_id.to_string()
-                    } else {
-                        query.label.trim().to_string()
-                    };
-                    if truncated {
-                        truncated_series_labels.push(label.clone());
-                    }
-                    query_series.push(Self::build_dotplot_query_series(
-                        format!("{dotplot_id}_series_{}", index + 1),
-                        query_seq_id.to_string(),
-                        label,
-                        query
-                            .color_rgb
-                            .unwrap_or_else(|| Self::default_dotplot_series_color(index)),
-                        query.transcript_feature_id,
-                        query.query_anchor_0based,
-                        query
-                            .query_anchor_label
-                            .as_ref()
-                            .map(|label| label.trim().to_string())
-                            .filter(|label| !label.is_empty()),
-                        query.mode,
-                        query_span_start_0based,
-                        query_span_end_0based,
-                        points,
-                        boxplot_bins,
-                    ));
-                }
-                let overlay_anchor_exons = self.build_dotplot_overlay_anchor_exons(
-                    &reference_seq_id,
-                    &queries,
-                    &query_series,
-                );
-                let primary_series = query_series.first().cloned().ok_or_else(|| EngineError {
-                    code: ErrorCode::Internal,
-                    message: "ComputeDotplotOverlay did not produce a primary query series"
-                        .to_string(),
-                })?;
-                let view = DotplotView {
-                    schema: DOTPLOT_VIEW_SCHEMA.to_string(),
-                    dotplot_id: dotplot_id.clone(),
-                    owner_seq_id: owner_seq_id.clone(),
-                    seq_id: primary_series.seq_id.clone(),
-                    reference_seq_id: Some(reference_seq_id.clone()),
-                    generated_at_unix_ms: Self::now_unix_ms(),
-                    span_start_0based: primary_series.span_start_0based,
-                    span_end_0based: primary_series.span_end_0based,
-                    reference_span_start_0based,
-                    reference_span_end_0based,
-                    mode: primary_series.mode,
+                    queries,
                     word_size,
                     step_bp,
                     max_mismatches,
                     tile_bp,
-                    point_count: primary_series.point_count,
-                    points: primary_series.points.clone(),
-                    boxplot_bin_count: primary_series.boxplot_bin_count,
-                    boxplot_bins: primary_series.boxplot_bins.clone(),
-                    series_count: query_series.len(),
-                    query_series,
-                    reference_annotation,
-                    overlay_anchor_exons,
-                };
-                let replaced = self
-                    .read_dotplot_analysis_store()
-                    .dotplots
-                    .contains_key(dotplot_id.as_str());
-                self.upsert_dotplot_view(view.clone())?;
-                result.messages.push(format!(
+                    store_as,
+                } => {
+                    let owner_seq_id = owner_seq_id.trim().to_string();
+                    if owner_seq_id.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ComputeDotplotOverlay requires owner_seq_id".to_string(),
+                        });
+                    }
+                    if !self.state.sequences.contains_key(owner_seq_id.as_str()) {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Owner sequence '{}' not found", owner_seq_id),
+                        });
+                    }
+                    let reference_seq_id = reference_seq_id.trim().to_string();
+                    if reference_seq_id.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ComputeDotplotOverlay requires reference_seq_id".to_string(),
+                        });
+                    }
+                    let reference_dna =
+                        self.state
+                            .sequences
+                            .get(&reference_seq_id)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!(
+                                    "Reference sequence '{}' not found",
+                                    reference_seq_id
+                                ),
+                            })?;
+                    if queries.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ComputeDotplotOverlay requires at least one query spec"
+                                .to_string(),
+                        });
+                    }
+                    let reference_text = reference_dna.get_forward_string().to_ascii_uppercase();
+                    let reference_bytes = reference_text.as_bytes();
+                    let (reference_span_start_0based, reference_span_end_0based) =
+                        Self::resolve_analysis_span(
+                            reference_bytes.len(),
+                            reference_span_start_0based,
+                            reference_span_end_0based,
+                        )?;
+                    let reference_span =
+                        &reference_bytes[reference_span_start_0based..reference_span_end_0based];
+                    let dotplot_id = if let Some(raw_id) = store_as.as_deref() {
+                        Self::normalize_analysis_id(raw_id, "dotplot")?
+                    } else {
+                        format!("dotplot_{}", result.op_id)
+                    };
+                    let reference_annotation = self.build_dotplot_reference_annotation_track(
+                        &reference_seq_id,
+                        reference_span_start_0based,
+                        reference_span_end_0based,
+                    );
+                    let mut query_series: Vec<DotplotQuerySeries> = vec![];
+                    let mut truncated_series_labels: Vec<String> = vec![];
+                    for (index, query) in queries.iter().enumerate() {
+                        let query_seq_id = query.seq_id.trim();
+                        if query_seq_id.is_empty() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "ComputeDotplotOverlay query spec #{} requires seq_id",
+                                    index + 1
+                                ),
+                            });
+                        }
+                        if !matches!(
+                            query.mode,
+                            DotplotMode::PairForward | DotplotMode::PairReverseComplement
+                        ) {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "ComputeDotplotOverlay query '{}' requires pair mode, got '{}'",
+                                    query_seq_id,
+                                    query.mode.as_str()
+                                ),
+                            });
+                        }
+                        let query_dna =
+                            self.state
+                                .sequences
+                                .get(query_seq_id)
+                                .ok_or_else(|| EngineError {
+                                    code: ErrorCode::NotFound,
+                                    message: format!("Query sequence '{}' not found", query_seq_id),
+                                })?;
+                        let query_text = query_dna.get_forward_string().to_ascii_uppercase();
+                        let query_bytes = query_text.as_bytes();
+                        let (query_span_start_0based, query_span_end_0based) =
+                            Self::resolve_analysis_span(
+                                query_bytes.len(),
+                                query.span_start_0based,
+                                query.span_end_0based,
+                            )?;
+                        if let Some(query_anchor_0based) = query.query_anchor_0based {
+                            if query_anchor_0based < query_span_start_0based
+                                || query_anchor_0based >= query_span_end_0based
+                            {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "ComputeDotplotOverlay query '{}' anchor {} is outside selected span {}..{}",
+                                        query_seq_id,
+                                        query_anchor_0based.saturating_add(1),
+                                        query_span_start_0based.saturating_add(1),
+                                        query_span_end_0based
+                                    ),
+                                });
+                            }
+                        }
+                        let query_span =
+                            &query_bytes[query_span_start_0based..query_span_end_0based];
+                        let (points, truncated) = Self::compute_dotplot_points(
+                            query_span,
+                            reference_span,
+                            query_span_start_0based,
+                            reference_span_start_0based,
+                            query.mode,
+                            word_size,
+                            step_bp,
+                            max_mismatches,
+                            MAX_DOTPLOT_POINTS,
+                        )?;
+                        let boxplot_bins = Self::compute_dotplot_boxplot_bins(
+                            &points,
+                            query_span_start_0based,
+                            query_span_end_0based,
+                            DOTPLOT_BOXPLOT_DEFAULT_BINS,
+                        );
+                        let label = if query.label.trim().is_empty() {
+                            query_seq_id.to_string()
+                        } else {
+                            query.label.trim().to_string()
+                        };
+                        if truncated {
+                            truncated_series_labels.push(label.clone());
+                        }
+                        query_series.push(Self::build_dotplot_query_series(
+                            format!("{dotplot_id}_series_{}", index + 1),
+                            query_seq_id.to_string(),
+                            label,
+                            query
+                                .color_rgb
+                                .unwrap_or_else(|| Self::default_dotplot_series_color(index)),
+                            query.transcript_feature_id,
+                            query.query_anchor_0based,
+                            query
+                                .query_anchor_label
+                                .as_ref()
+                                .map(|label| label.trim().to_string())
+                                .filter(|label| !label.is_empty()),
+                            query.mode,
+                            query_span_start_0based,
+                            query_span_end_0based,
+                            points,
+                            boxplot_bins,
+                        ));
+                    }
+                    let overlay_anchor_exons = self.build_dotplot_overlay_anchor_exons(
+                        &reference_seq_id,
+                        &queries,
+                        &query_series,
+                    );
+                    let primary_series =
+                        query_series.first().cloned().ok_or_else(|| EngineError {
+                            code: ErrorCode::Internal,
+                            message: "ComputeDotplotOverlay did not produce a primary query series"
+                                .to_string(),
+                        })?;
+                    let view = DotplotView {
+                        schema: DOTPLOT_VIEW_SCHEMA.to_string(),
+                        dotplot_id: dotplot_id.clone(),
+                        owner_seq_id: owner_seq_id.clone(),
+                        seq_id: primary_series.seq_id.clone(),
+                        reference_seq_id: Some(reference_seq_id.clone()),
+                        generated_at_unix_ms: Self::now_unix_ms(),
+                        span_start_0based: primary_series.span_start_0based,
+                        span_end_0based: primary_series.span_end_0based,
+                        reference_span_start_0based,
+                        reference_span_end_0based,
+                        mode: primary_series.mode,
+                        word_size,
+                        step_bp,
+                        max_mismatches,
+                        tile_bp,
+                        point_count: primary_series.point_count,
+                        points: primary_series.points.clone(),
+                        boxplot_bin_count: primary_series.boxplot_bin_count,
+                        boxplot_bins: primary_series.boxplot_bins.clone(),
+                        series_count: query_series.len(),
+                        query_series,
+                        reference_annotation,
+                        overlay_anchor_exons,
+                    };
+                    let replaced = self
+                        .read_dotplot_analysis_store()
+                        .dotplots
+                        .contains_key(dotplot_id.as_str());
+                    self.upsert_dotplot_view(view.clone())?;
+                    result.messages.push(format!(
                     "{} overlay dotplot '{}' for owner '{}' against '{}' (series={}, reference_span={}..{}, word={}, step={}, mismatches={})",
                     if replaced { "Updated" } else { "Created" },
                     dotplot_id,
@@ -11766,170 +11937,171 @@ impl GentleEngine {
                     step_bp,
                     max_mismatches
                 ));
-                if !truncated_series_labels.is_empty() {
-                    result.warnings.push(format!(
+                    if !truncated_series_labels.is_empty() {
+                        result.warnings.push(format!(
                         "Overlay dotplot '{}' truncated {} series at MAX_DOTPLOT_POINTS ({MAX_DOTPLOT_POINTS}): {}",
                         dotplot_id,
                         truncated_series_labels.len(),
                         truncated_series_labels.join(", ")
                     ));
-                }
-            }
-            Operation::ComputeFlexibilityTrack {
-                seq_id,
-                span_start_0based,
-                span_end_0based,
-                model,
-                bin_bp,
-                smoothing_bp,
-                store_as,
-            } => {
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?;
-                let seq_text = dna.get_forward_string().to_ascii_uppercase();
-                let seq_bytes = seq_text.as_bytes();
-                let (span_start_0based, span_end_0based) = Self::resolve_analysis_span(
-                    seq_bytes.len(),
-                    span_start_0based,
-                    span_end_0based,
-                )?;
-                let span = &seq_bytes[span_start_0based..span_end_0based];
-                let bins = Self::compute_flexibility_track_bins(
-                    span,
-                    span_start_0based,
-                    model,
-                    bin_bp,
-                    smoothing_bp,
-                )?;
-                let min_score = bins
-                    .iter()
-                    .map(|bin| bin.score)
-                    .fold(f64::INFINITY, f64::min);
-                let max_score = bins
-                    .iter()
-                    .map(|bin| bin.score)
-                    .fold(f64::NEG_INFINITY, f64::max);
-                let (min_score, max_score) = if bins.is_empty() {
-                    (0.0, 0.0)
-                } else {
-                    (min_score, max_score)
-                };
-                let track_id = if let Some(raw_id) = store_as.as_deref() {
-                    Self::normalize_analysis_id(raw_id, "track")?
-                } else {
-                    format!("flex_{}", result.op_id)
-                };
-                let track = FlexibilityTrack {
-                    schema: FLEXIBILITY_TRACK_SCHEMA.to_string(),
-                    track_id: track_id.clone(),
-                    seq_id: seq_id.clone(),
-                    generated_at_unix_ms: Self::now_unix_ms(),
-                    span_start_0based,
-                    span_end_0based,
-                    model,
-                    bin_bp,
-                    smoothing_bp,
-                    min_score,
-                    max_score,
-                    bins,
-                };
-                let replaced = self
-                    .read_dotplot_analysis_store()
-                    .flexibility_tracks
-                    .contains_key(track_id.as_str());
-                self.upsert_flexibility_track(track.clone())?;
-                result.messages.push(format!(
-                    "{} flexibility track '{}' for '{}' (model={}, span={}..{}, bins={})",
-                    if replaced { "Updated" } else { "Created" },
-                    track_id,
-                    seq_id,
-                    model.as_str(),
-                    span_start_0based,
-                    span_end_0based,
-                    track.bins.len()
-                ));
-            }
-            Operation::DeriveSplicingReferences {
-                seq_id,
-                span_start_0based,
-                span_end_0based,
-                seed_feature_id,
-                scope,
-                output_prefix,
-            } => {
-                parent_seq_ids.push(seq_id.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
-                    })?
-                    .clone();
-                let forward = dna.forward_bytes();
-                let (span_start_0based, span_end_0based) = Self::resolve_analysis_span(
-                    forward.len(),
-                    Some(span_start_0based),
-                    Some(span_end_0based),
-                )?;
-                let resolved_seed_feature_id = if let Some(feature_id) = seed_feature_id {
-                    feature_id
-                } else {
-                    let mut best: Option<(usize, usize, usize)> = None;
-                    for (feature_idx, feature) in dna.features().iter().enumerate() {
-                        if !Self::is_mrna_feature(feature) {
-                            continue;
-                        }
-                        let mut ranges = vec![];
-                        collect_location_ranges_usize(&feature.location, &mut ranges);
-                        if ranges.is_empty() {
-                            if let Ok((from, to)) = feature.location.find_bounds() {
-                                if from >= 0 && to >= 0 {
-                                    ranges.push((from as usize, to as usize));
-                                }
-                            }
-                        }
-                        if ranges.is_empty() {
-                            continue;
-                        }
-                        let mut overlap_bp = 0usize;
-                        let mut min_start = usize::MAX;
-                        for range in ranges {
-                            min_start = min_start.min(range.0);
-                            if let Some((overlap_start, overlap_end)) =
-                                Self::range_intersection_0based(
-                                    range,
-                                    (span_start_0based, span_end_0based),
-                                )
-                            {
-                                overlap_bp = overlap_bp
-                                    .saturating_add(overlap_end.saturating_sub(overlap_start));
-                            }
-                        }
-                        if overlap_bp == 0 {
-                            continue;
-                        }
-                        match best {
-                            None => best = Some((overlap_bp, min_start, feature_idx)),
-                            Some((best_overlap, best_start, best_idx)) => {
-                                if overlap_bp > best_overlap
-                                    || (overlap_bp == best_overlap
-                                        && (min_start < best_start
-                                            || (min_start == best_start && feature_idx < best_idx)))
-                                {
-                                    best = Some((overlap_bp, min_start, feature_idx));
-                                }
-                            }
-                        }
                     }
-                    best.map(|(_, _, feature_idx)| feature_idx)
+                }
+                Operation::ComputeFlexibilityTrack {
+                    seq_id,
+                    span_start_0based,
+                    span_end_0based,
+                    model,
+                    bin_bp,
+                    smoothing_bp,
+                    store_as,
+                } => {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    let seq_text = dna.get_forward_string().to_ascii_uppercase();
+                    let seq_bytes = seq_text.as_bytes();
+                    let (span_start_0based, span_end_0based) = Self::resolve_analysis_span(
+                        seq_bytes.len(),
+                        span_start_0based,
+                        span_end_0based,
+                    )?;
+                    let span = &seq_bytes[span_start_0based..span_end_0based];
+                    let bins = Self::compute_flexibility_track_bins(
+                        span,
+                        span_start_0based,
+                        model,
+                        bin_bp,
+                        smoothing_bp,
+                    )?;
+                    let min_score = bins
+                        .iter()
+                        .map(|bin| bin.score)
+                        .fold(f64::INFINITY, f64::min);
+                    let max_score = bins
+                        .iter()
+                        .map(|bin| bin.score)
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let (min_score, max_score) = if bins.is_empty() {
+                        (0.0, 0.0)
+                    } else {
+                        (min_score, max_score)
+                    };
+                    let track_id = if let Some(raw_id) = store_as.as_deref() {
+                        Self::normalize_analysis_id(raw_id, "track")?
+                    } else {
+                        format!("flex_{}", result.op_id)
+                    };
+                    let track = FlexibilityTrack {
+                        schema: FLEXIBILITY_TRACK_SCHEMA.to_string(),
+                        track_id: track_id.clone(),
+                        seq_id: seq_id.clone(),
+                        generated_at_unix_ms: Self::now_unix_ms(),
+                        span_start_0based,
+                        span_end_0based,
+                        model,
+                        bin_bp,
+                        smoothing_bp,
+                        min_score,
+                        max_score,
+                        bins,
+                    };
+                    let replaced = self
+                        .read_dotplot_analysis_store()
+                        .flexibility_tracks
+                        .contains_key(track_id.as_str());
+                    self.upsert_flexibility_track(track.clone())?;
+                    result.messages.push(format!(
+                        "{} flexibility track '{}' for '{}' (model={}, span={}..{}, bins={})",
+                        if replaced { "Updated" } else { "Created" },
+                        track_id,
+                        seq_id,
+                        model.as_str(),
+                        span_start_0based,
+                        span_end_0based,
+                        track.bins.len()
+                    ));
+                }
+                Operation::DeriveSplicingReferences {
+                    seq_id,
+                    span_start_0based,
+                    span_end_0based,
+                    seed_feature_id,
+                    scope,
+                    output_prefix,
+                } => {
+                    parent_seq_ids.push(seq_id.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?
+                        .clone();
+                    let forward = dna.forward_bytes();
+                    let (span_start_0based, span_end_0based) = Self::resolve_analysis_span(
+                        forward.len(),
+                        Some(span_start_0based),
+                        Some(span_end_0based),
+                    )?;
+                    let resolved_seed_feature_id = if let Some(feature_id) = seed_feature_id {
+                        feature_id
+                    } else {
+                        let mut best: Option<(usize, usize, usize)> = None;
+                        for (feature_idx, feature) in dna.features().iter().enumerate() {
+                            if !Self::is_mrna_feature(feature) {
+                                continue;
+                            }
+                            let mut ranges = vec![];
+                            collect_location_ranges_usize(&feature.location, &mut ranges);
+                            if ranges.is_empty() {
+                                if let Ok((from, to)) = feature.location.find_bounds() {
+                                    if from >= 0 && to >= 0 {
+                                        ranges.push((from as usize, to as usize));
+                                    }
+                                }
+                            }
+                            if ranges.is_empty() {
+                                continue;
+                            }
+                            let mut overlap_bp = 0usize;
+                            let mut min_start = usize::MAX;
+                            for range in ranges {
+                                min_start = min_start.min(range.0);
+                                if let Some((overlap_start, overlap_end)) =
+                                    Self::range_intersection_0based(
+                                        range,
+                                        (span_start_0based, span_end_0based),
+                                    )
+                                {
+                                    overlap_bp = overlap_bp
+                                        .saturating_add(overlap_end.saturating_sub(overlap_start));
+                                }
+                            }
+                            if overlap_bp == 0 {
+                                continue;
+                            }
+                            match best {
+                                None => best = Some((overlap_bp, min_start, feature_idx)),
+                                Some((best_overlap, best_start, best_idx)) => {
+                                    if overlap_bp > best_overlap
+                                        || (overlap_bp == best_overlap
+                                            && (min_start < best_start
+                                                || (min_start == best_start
+                                                    && feature_idx < best_idx)))
+                                    {
+                                        best = Some((overlap_bp, min_start, feature_idx));
+                                    }
+                                }
+                            }
+                        }
+                        best.map(|(_, _, feature_idx)| feature_idx)
                         .ok_or_else(|| EngineError {
                             code: ErrorCode::NotFound,
                             message: format!(
@@ -11937,189 +12109,193 @@ impl GentleEngine {
                                 span_start_0based, span_end_0based, seq_id
                             ),
                         })?
-                };
-                let splicing =
-                    self.build_splicing_expert_view(&seq_id, resolved_seed_feature_id, scope)?;
-                let prefix = output_prefix
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| format!("{seq_id}_splicing_refs"));
+                    };
+                    let splicing =
+                        self.build_splicing_expert_view(&seq_id, resolved_seed_feature_id, scope)?;
+                    let prefix = output_prefix
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| format!("{seq_id}_splicing_refs"));
 
-                let mut dna_window = dna
-                    .extract_region_preserving_features(span_start_0based, span_end_0based)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Could not derive DNA window {}..{} from '{}'",
-                            span_start_0based, span_end_0based, seq_id
-                        ),
-                    })?;
-                if dna_window.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Could not derive DNA window {}..{} from '{}'",
-                            span_start_0based, span_end_0based, seq_id
-                        ),
-                    });
-                }
-                dna_window.set_circular(false);
-                let dna_window_seq_id = self.unique_seq_id(&format!("{prefix}_dna"));
-                dna_window.set_name(dna_window_seq_id.clone());
-                Self::prepare_sequence(&mut dna_window);
-                self.state
-                    .sequences
-                    .insert(dna_window_seq_id.clone(), dna_window);
-                self.add_lineage_node(
-                    &dna_window_seq_id,
-                    SequenceOrigin::Derived,
-                    Some(&result.op_id),
-                );
-                result.created_seq_ids.push(dna_window_seq_id.clone());
-                result.messages.push(format!(
-                    "Derived DNA window '{}' from '{}' span {}..{}",
-                    dna_window_seq_id, seq_id, span_start_0based, span_end_0based
-                ));
-                if let Some(container_id) = self.add_container(
-                    std::slice::from_ref(&dna_window_seq_id),
-                    ContainerKind::Singleton,
-                    Some("Derived splicing DNA window".to_string()),
-                    Some(&result.op_id),
-                ) {
-                    result
-                        .messages
-                        .push(format!("Created DNA-window container '{}'", container_id));
-                }
-
-                let mut mrna_seq_ids: Vec<SeqId> = vec![];
-                for (lane_index, lane) in splicing.transcripts.iter().enumerate() {
-                    let template = Self::make_transcript_template(&dna, lane, 0);
-                    if template.sequence.is_empty() {
-                        continue;
-                    }
-                    let rna_bytes = template
-                        .sequence
-                        .iter()
-                        .map(|base| match base.to_ascii_uppercase() {
-                            b'T' => b'U',
-                            b'A' | b'C' | b'G' | b'U' | b'N' => base.to_ascii_uppercase(),
-                            _ => b'N',
-                        })
-                        .collect::<Vec<_>>();
-                    let rna_sequence = String::from_utf8(rna_bytes).map_err(|e| EngineError {
-                        code: ErrorCode::Internal,
-                        message: format!("Could not render mRNA sequence bytes: {e}"),
-                    })?;
-                    let mut mrna =
-                        DNAsequence::from_sequence(&rna_sequence).map_err(|e| EngineError {
-                            code: ErrorCode::Internal,
+                    let mut dna_window = dna
+                        .extract_region_preserving_features(span_start_0based, span_end_0based)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
                             message: format!(
-                                "Could not create mRNA sequence '{}' from transcript '{}': {e}",
-                                lane.transcript_id, lane.label
+                                "Could not derive DNA window {}..{} from '{}'",
+                                span_start_0based, span_end_0based, seq_id
                             ),
                         })?;
-                    mrna.set_circular(false);
-                    let transcript_token = lane
-                        .transcript_id
-                        .chars()
-                        .map(|ch| {
-                            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
-                                ch
-                            } else {
-                                '_'
-                            }
-                        })
-                        .collect::<String>()
-                        .trim_matches('_')
-                        .to_string();
-                    let transcript_token = if transcript_token.is_empty() {
-                        format!("tx{}", lane_index + 1)
-                    } else {
-                        transcript_token
-                    };
-                    let mrna_seq_id =
-                        self.unique_seq_id(&format!("{prefix}_mrna_{transcript_token}"));
-                    mrna.set_name(mrna_seq_id.clone());
-                    Self::prepare_sequence(&mut mrna);
-                    self.state.sequences.insert(mrna_seq_id.clone(), mrna);
+                    if dna_window.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not derive DNA window {}..{} from '{}'",
+                                span_start_0based, span_end_0based, seq_id
+                            ),
+                        });
+                    }
+                    dna_window.set_circular(false);
+                    let dna_window_seq_id = self.unique_seq_id(&format!("{prefix}_dna"));
+                    dna_window.set_name(dna_window_seq_id.clone());
+                    Self::prepare_sequence(&mut dna_window);
+                    self.state
+                        .sequences
+                        .insert(dna_window_seq_id.clone(), dna_window);
                     self.add_lineage_node(
-                        &mrna_seq_id,
+                        &dna_window_seq_id,
                         SequenceOrigin::Derived,
                         Some(&result.op_id),
                     );
-                    result.created_seq_ids.push(mrna_seq_id.clone());
-                    mrna_seq_ids.push(mrna_seq_id);
-                }
-                if mrna_seq_ids.is_empty() {
-                    result.warnings.push(format!(
+                    result.created_seq_ids.push(dna_window_seq_id.clone());
+                    result.messages.push(format!(
+                        "Derived DNA window '{}' from '{}' span {}..{}",
+                        dna_window_seq_id, seq_id, span_start_0based, span_end_0based
+                    ));
+                    if let Some(container_id) = self.add_container(
+                        std::slice::from_ref(&dna_window_seq_id),
+                        ContainerKind::Singleton,
+                        Some("Derived splicing DNA window".to_string()),
+                        Some(&result.op_id),
+                    ) {
+                        result
+                            .messages
+                            .push(format!("Created DNA-window container '{}'", container_id));
+                    }
+
+                    let mut mrna_seq_ids: Vec<SeqId> = vec![];
+                    for (lane_index, lane) in splicing.transcripts.iter().enumerate() {
+                        let template = Self::make_transcript_template(&dna, lane, 0);
+                        if template.sequence.is_empty() {
+                            continue;
+                        }
+                        let rna_bytes = template
+                            .sequence
+                            .iter()
+                            .map(|base| match base.to_ascii_uppercase() {
+                                b'T' => b'U',
+                                b'A' | b'C' | b'G' | b'U' | b'N' => base.to_ascii_uppercase(),
+                                _ => b'N',
+                            })
+                            .collect::<Vec<_>>();
+                        let rna_sequence =
+                            String::from_utf8(rna_bytes).map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!("Could not render mRNA sequence bytes: {e}"),
+                            })?;
+                        let mut mrna =
+                            DNAsequence::from_sequence(&rna_sequence).map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not create mRNA sequence '{}' from transcript '{}': {e}",
+                                    lane.transcript_id, lane.label
+                                ),
+                            })?;
+                        mrna.set_circular(false);
+                        let transcript_token = lane
+                            .transcript_id
+                            .chars()
+                            .map(|ch| {
+                                if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                                    ch
+                                } else {
+                                    '_'
+                                }
+                            })
+                            .collect::<String>()
+                            .trim_matches('_')
+                            .to_string();
+                        let transcript_token = if transcript_token.is_empty() {
+                            format!("tx{}", lane_index + 1)
+                        } else {
+                            transcript_token
+                        };
+                        let mrna_seq_id =
+                            self.unique_seq_id(&format!("{prefix}_mrna_{transcript_token}"));
+                        mrna.set_name(mrna_seq_id.clone());
+                        Self::prepare_sequence(&mut mrna);
+                        self.state.sequences.insert(mrna_seq_id.clone(), mrna);
+                        self.add_lineage_node(
+                            &mrna_seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(mrna_seq_id.clone());
+                        mrna_seq_ids.push(mrna_seq_id);
+                    }
+                    if mrna_seq_ids.is_empty() {
+                        result.warnings.push(format!(
                         "No transcript-derived mRNA sequences were generated for '{}' (seed feature {}, scope={})",
                         seq_id,
                         resolved_seed_feature_id,
                         scope.as_str()
                     ));
-                } else {
-                    result.messages.push(format!(
-                        "Derived {} mRNA sequence(s): {}",
-                        mrna_seq_ids.len(),
-                        mrna_seq_ids.join(", ")
-                    ));
-                    if let Some(container_id) = self.add_container(
-                        &mrna_seq_ids,
-                        ContainerKind::Pool,
-                        Some("Derived splicing mRNA isoforms".to_string()),
-                        Some(&result.op_id),
-                    ) {
-                        result
-                            .messages
-                            .push(format!("Created mRNA-isoform container '{}'", container_id));
-                    }
-                }
-
-                let mut unique_exons: Vec<(usize, usize)> = splicing
-                    .unique_exons
-                    .iter()
-                    .map(|exon| (exon.start_1based.saturating_sub(1), exon.end_1based))
-                    .collect();
-                if splicing.strand.trim() == "-" {
-                    unique_exons.reverse();
-                }
-                let mut exon_reference_bytes: Vec<u8> = vec![];
-                for (start_0based, end_1based) in unique_exons {
-                    if start_0based >= forward.len() {
-                        continue;
-                    }
-                    let end_0based_exclusive = end_1based.min(forward.len());
-                    if end_0based_exclusive <= start_0based {
-                        continue;
-                    }
-                    let segment = &forward[start_0based..end_0based_exclusive];
-                    if splicing.strand.trim() == "-" {
-                        exon_reference_bytes.extend(
-                            Self::reverse_complement_bytes(segment)
-                                .into_iter()
-                                .map(|base| base.to_ascii_uppercase()),
-                        );
                     } else {
-                        exon_reference_bytes
-                            .extend(segment.iter().copied().map(Self::normalize_nucleotide_base));
+                        result.messages.push(format!(
+                            "Derived {} mRNA sequence(s): {}",
+                            mrna_seq_ids.len(),
+                            mrna_seq_ids.join(", ")
+                        ));
+                        if let Some(container_id) = self.add_container(
+                            &mrna_seq_ids,
+                            ContainerKind::Pool,
+                            Some("Derived splicing mRNA isoforms".to_string()),
+                            Some(&result.op_id),
+                        ) {
+                            result
+                                .messages
+                                .push(format!("Created mRNA-isoform container '{}'", container_id));
+                        }
                     }
-                }
-                if exon_reference_bytes.is_empty() {
-                    result.warnings.push(format!(
+
+                    let mut unique_exons: Vec<(usize, usize)> = splicing
+                        .unique_exons
+                        .iter()
+                        .map(|exon| (exon.start_1based.saturating_sub(1), exon.end_1based))
+                        .collect();
+                    if splicing.strand.trim() == "-" {
+                        unique_exons.reverse();
+                    }
+                    let mut exon_reference_bytes: Vec<u8> = vec![];
+                    for (start_0based, end_1based) in unique_exons {
+                        if start_0based >= forward.len() {
+                            continue;
+                        }
+                        let end_0based_exclusive = end_1based.min(forward.len());
+                        if end_0based_exclusive <= start_0based {
+                            continue;
+                        }
+                        let segment = &forward[start_0based..end_0based_exclusive];
+                        if splicing.strand.trim() == "-" {
+                            exon_reference_bytes.extend(
+                                Self::reverse_complement_bytes(segment)
+                                    .into_iter()
+                                    .map(|base| base.to_ascii_uppercase()),
+                            );
+                        } else {
+                            exon_reference_bytes.extend(
+                                segment.iter().copied().map(Self::normalize_nucleotide_base),
+                            );
+                        }
+                    }
+                    if exon_reference_bytes.is_empty() {
+                        result.warnings.push(format!(
                         "Could not derive an exon-reference sequence for '{}' (seed feature {}, scope={})",
                         seq_id,
                         resolved_seed_feature_id,
                         scope.as_str()
                     ));
-                } else {
-                    let exon_reference_sequence =
-                        String::from_utf8(exon_reference_bytes).map_err(|e| EngineError {
-                            code: ErrorCode::Internal,
-                            message: format!("Could not render exon-reference sequence bytes: {e}"),
-                        })?;
-                    let mut exon_reference = DNAsequence::from_sequence(&exon_reference_sequence)
+                    } else {
+                        let exon_reference_sequence = String::from_utf8(exon_reference_bytes)
+                            .map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not render exon-reference sequence bytes: {e}"
+                                ),
+                            })?;
+                        let mut exon_reference = DNAsequence::from_sequence(&exon_reference_sequence)
                         .map_err(|e| EngineError {
                         code: ErrorCode::Internal,
                         message: format!(
@@ -12127,78 +12303,45 @@ impl GentleEngine {
                             seq_id
                         ),
                     })?;
-                    exon_reference.set_circular(false);
-                    let exon_reference_seq_id =
-                        self.unique_seq_id(&format!("{prefix}_exon_reference"));
-                    exon_reference.set_name(exon_reference_seq_id.clone());
-                    Self::prepare_sequence(&mut exon_reference);
-                    self.state
-                        .sequences
-                        .insert(exon_reference_seq_id.clone(), exon_reference);
-                    self.add_lineage_node(
-                        &exon_reference_seq_id,
-                        SequenceOrigin::Derived,
-                        Some(&result.op_id),
-                    );
-                    result.created_seq_ids.push(exon_reference_seq_id.clone());
-                    result.messages.push(format!(
+                        exon_reference.set_circular(false);
+                        let exon_reference_seq_id =
+                            self.unique_seq_id(&format!("{prefix}_exon_reference"));
+                        exon_reference.set_name(exon_reference_seq_id.clone());
+                        Self::prepare_sequence(&mut exon_reference);
+                        self.state
+                            .sequences
+                            .insert(exon_reference_seq_id.clone(), exon_reference);
+                        self.add_lineage_node(
+                            &exon_reference_seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(exon_reference_seq_id.clone());
+                        result.messages.push(format!(
                         "Derived exon-reference sequence '{}' (seed feature {}, scope={}, unique_exons={})",
                         exon_reference_seq_id,
                         resolved_seed_feature_id,
                         scope.as_str(),
                         splicing.unique_exons.len()
                     ));
-                    if let Some(container_id) = self.add_container(
-                        std::slice::from_ref(&exon_reference_seq_id),
-                        ContainerKind::Singleton,
-                        Some("Derived exon-reference sequence".to_string()),
-                        Some(&result.op_id),
-                    ) {
-                        result.messages.push(format!(
-                            "Created exon-reference container '{}'",
-                            container_id
-                        ));
+                        if let Some(container_id) = self.add_container(
+                            std::slice::from_ref(&exon_reference_seq_id),
+                            ContainerKind::Singleton,
+                            Some("Derived exon-reference sequence".to_string()),
+                            Some(&result.op_id),
+                        ) {
+                            result.messages.push(format!(
+                                "Created exon-reference container '{}'",
+                                container_id
+                            ));
+                        }
                     }
                 }
-            }
-            Operation::AlignSequences {
-                query_seq_id,
-                target_seq_id,
-                query_span_start_0based,
-                query_span_end_0based,
-                target_span_start_0based,
-                target_span_end_0based,
-                mode,
-                match_score,
-                mismatch_score,
-                gap_open,
-                gap_extend,
-            } => {
-                let query_dna =
-                    self.state
-                        .sequences
-                        .get(&query_seq_id)
-                        .ok_or_else(|| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!("Sequence '{query_seq_id}' not found"),
-                        })?;
-                let target_dna =
-                    self.state
-                        .sequences
-                        .get(&target_seq_id)
-                        .ok_or_else(|| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!("Sequence '{target_seq_id}' not found"),
-                        })?;
-                let query_text = query_dna.get_forward_string();
-                let target_text = target_dna.get_forward_string();
-                let report = Self::compute_pairwise_alignment_report(
-                    &query_seq_id,
-                    query_text.as_str(),
+                Operation::AlignSequences {
+                    query_seq_id,
+                    target_seq_id,
                     query_span_start_0based,
                     query_span_end_0based,
-                    &target_seq_id,
-                    target_text.as_str(),
                     target_span_start_0based,
                     target_span_end_0based,
                     mode,
@@ -12206,10 +12349,43 @@ impl GentleEngine {
                     mismatch_score,
                     gap_open,
                     gap_extend,
-                )?
-                .report;
-                result.sequence_alignment = Some(report.clone());
-                result.messages.push(format!(
+                } => {
+                    let query_dna =
+                        self.state
+                            .sequences
+                            .get(&query_seq_id)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!("Sequence '{query_seq_id}' not found"),
+                            })?;
+                    let target_dna =
+                        self.state
+                            .sequences
+                            .get(&target_seq_id)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!("Sequence '{target_seq_id}' not found"),
+                            })?;
+                    let query_text = query_dna.get_forward_string();
+                    let target_text = target_dna.get_forward_string();
+                    let report = Self::compute_pairwise_alignment_report(
+                        &query_seq_id,
+                        query_text.as_str(),
+                        query_span_start_0based,
+                        query_span_end_0based,
+                        &target_seq_id,
+                        target_text.as_str(),
+                        target_span_start_0based,
+                        target_span_end_0based,
+                        mode,
+                        match_score,
+                        mismatch_score,
+                        gap_open,
+                        gap_extend,
+                    )?
+                    .report;
+                    result.sequence_alignment = Some(report.clone());
+                    result.messages.push(format!(
                     "Computed {} alignment '{}' vs '{}' (score={}, identity={:.3}, query_cov={:.3}, target_cov={:.3}, cigar={})",
                     mode.as_str(),
                     query_seq_id,
@@ -12220,29 +12396,13 @@ impl GentleEngine {
                     report.target_coverage_fraction,
                     report.cigar
                 ));
-            }
-            Operation::ConfirmConstructReads {
-                expected_seq_id,
-                baseline_seq_id,
-                read_seq_ids,
-                trace_ids,
-                targets,
-                alignment_mode,
-                match_score,
-                mismatch_score,
-                gap_open,
-                gap_extend,
-                min_identity_fraction,
-                min_target_coverage_fraction,
-                allow_reverse_complement,
-                report_id,
-            } => {
-                let report = self.confirm_construct_reads(
-                    &expected_seq_id,
-                    baseline_seq_id.as_deref(),
-                    &read_seq_ids,
-                    &trace_ids,
-                    &targets,
+                }
+                Operation::ConfirmConstructReads {
+                    expected_seq_id,
+                    baseline_seq_id,
+                    read_seq_ids,
+                    trace_ids,
+                    targets,
                     alignment_mode,
                     match_score,
                     mismatch_score,
@@ -12251,45 +12411,61 @@ impl GentleEngine {
                     min_identity_fraction,
                     min_target_coverage_fraction,
                     allow_reverse_complement,
-                    report_id.as_deref(),
-                )?;
-                result.sequencing_confirmation_report = Some(report.clone());
-                result.messages.push(format!(
-                    "Sequencing confirmation stored report '{}': {}",
-                    report.report_id,
-                    Self::format_sequencing_confirmation_report_detail_summary(&report)
-                ));
-                for target in report.targets.iter().take(8) {
+                    report_id,
+                } => {
+                    let report = self.confirm_construct_reads(
+                        &expected_seq_id,
+                        baseline_seq_id.as_deref(),
+                        &read_seq_ids,
+                        &trace_ids,
+                        &targets,
+                        alignment_mode,
+                        match_score,
+                        mismatch_score,
+                        gap_open,
+                        gap_extend,
+                        min_identity_fraction,
+                        min_target_coverage_fraction,
+                        allow_reverse_complement,
+                        report_id.as_deref(),
+                    )?;
+                    result.sequencing_confirmation_report = Some(report.clone());
                     result.messages.push(format!(
-                        "  - {} [{}] {}",
-                        target.label,
-                        target.target_id,
-                        target.status.as_str()
+                        "Sequencing confirmation stored report '{}': {}",
+                        report.report_id,
+                        Self::format_sequencing_confirmation_report_detail_summary(&report)
                     ));
+                    for target in report.targets.iter().take(8) {
+                        result.messages.push(format!(
+                            "  - {} [{}] {}",
+                            target.label,
+                            target.target_id,
+                            target.status.as_str()
+                        ));
+                    }
+                    if report.targets.len() > 8 {
+                        result.messages.push(format!(
+                            "  ... {} additional target row(s) omitted",
+                            report.targets.len() - 8
+                        ));
+                    }
                 }
-                if report.targets.len() > 8 {
-                    result.messages.push(format!(
-                        "  ... {} additional target row(s) omitted",
-                        report.targets.len() - 8
-                    ));
-                }
-            }
-            Operation::SuggestSequencingPrimers {
-                expected_seq_id,
-                primer_seq_ids,
-                confirmation_report_id,
-                min_3prime_anneal_bp,
-                predicted_read_length_bp,
-            } => {
-                let report = self.suggest_sequencing_primers(
-                    &expected_seq_id,
-                    &primer_seq_ids,
-                    confirmation_report_id.as_deref(),
+                Operation::SuggestSequencingPrimers {
+                    expected_seq_id,
+                    primer_seq_ids,
+                    confirmation_report_id,
                     min_3prime_anneal_bp,
                     predicted_read_length_bp,
-                )?;
-                result.sequencing_primer_overlay_report = Some(report.clone());
-                result.messages.push(format!(
+                } => {
+                    let report = self.suggest_sequencing_primers(
+                        &expected_seq_id,
+                        &primer_seq_ids,
+                        confirmation_report_id.as_deref(),
+                        min_3prime_anneal_bp,
+                        predicted_read_length_bp,
+                    )?;
+                    result.sequencing_primer_overlay_report = Some(report.clone());
+                    result.messages.push(format!(
                     "Sequencing-primer overlay report for '{}' (primers={}, suggestions={}, guidance_rows={}, proposal_rows={}, min_3prime_anneal_bp={}, predicted_read_length_bp={})",
                     report.expected_seq_id,
                     report.primer_seq_ids.len(),
@@ -12299,8 +12475,8 @@ impl GentleEngine {
                     report.min_3prime_anneal_bp,
                     report.predicted_read_length_bp
                 ));
-                for row in report.suggestions.iter().take(8) {
-                    result.messages.push(format!(
+                    for row in report.suggestions.iter().take(8) {
+                        result.messages.push(format!(
                         "  - {} [{}] {} {}..{} read_span={}..{} flagged_targets={} flagged_variants={}",
                         row.primer_label,
                         row.primer_seq_id,
@@ -12312,200 +12488,205 @@ impl GentleEngine {
                         row.covered_problem_target_ids.len(),
                         row.covered_problem_variant_ids.len()
                     ));
-                }
-                if report.suggestions.len() > 8 {
-                    result.messages.push(format!(
-                        "  ... {} additional sequencing-primer suggestion row(s) omitted",
-                        report.suggestions.len() - 8
-                    ));
-                }
-            }
-            Operation::ImportSequencingTrace {
-                path,
-                trace_id,
-                seq_id,
-            } => {
-                let report =
-                    self.import_sequencing_trace(&path, trace_id.as_deref(), seq_id.as_deref())?;
-                let record = self.get_sequencing_trace(&report.trace_id)?;
-                result.sequencing_trace_import_report = Some(report.clone());
-                result.sequencing_trace_record = Some(record.clone());
-                result.messages.push(format!(
-                    "Imported sequencing trace '{}': {}",
-                    report.trace_id,
-                    Self::format_sequencing_trace_detail_summary(&record)
-                ));
-                if !report.warnings.is_empty() {
-                    for warning in report.warnings.iter().take(8) {
-                        result.warnings.push(warning.clone());
                     }
-                    if report.warnings.len() > 8 {
-                        result.warnings.push(format!(
-                            "... {} additional sequencing-trace warning(s) omitted",
-                            report.warnings.len() - 8
+                    if report.suggestions.len() > 8 {
+                        result.messages.push(format!(
+                            "  ... {} additional sequencing-primer suggestion row(s) omitted",
+                            report.suggestions.len() - 8
                         ));
                     }
                 }
-            }
-            Operation::ListSequencingTraces { seq_id } => {
-                let rows = self.list_sequencing_traces(seq_id.as_deref());
-                result.sequencing_trace_summaries = Some(rows.clone());
-                result.messages.push(format!(
-                    "Sequencing traces: {} row(s){}",
-                    rows.len(),
-                    seq_id
-                        .as_deref()
-                        .map(|s| format!(" (seq_id='{}')", s))
-                        .unwrap_or_default()
-                ));
-                for row in rows.iter().take(8) {
+                Operation::ImportSequencingTrace {
+                    path,
+                    trace_id,
+                    seq_id,
+                } => {
+                    let report = self.import_sequencing_trace(
+                        &path,
+                        trace_id.as_deref(),
+                        seq_id.as_deref(),
+                    )?;
+                    let record = self.get_sequencing_trace(&report.trace_id)?;
+                    result.sequencing_trace_import_report = Some(report.clone());
+                    result.sequencing_trace_record = Some(record.clone());
                     result.messages.push(format!(
-                        "  - {}",
-                        Self::format_sequencing_trace_summary_row(row)
+                        "Imported sequencing trace '{}': {}",
+                        report.trace_id,
+                        Self::format_sequencing_trace_detail_summary(&record)
+                    ));
+                    if !report.warnings.is_empty() {
+                        for warning in report.warnings.iter().take(8) {
+                            result.warnings.push(warning.clone());
+                        }
+                        if report.warnings.len() > 8 {
+                            result.warnings.push(format!(
+                                "... {} additional sequencing-trace warning(s) omitted",
+                                report.warnings.len() - 8
+                            ));
+                        }
+                    }
+                }
+                Operation::ListSequencingTraces { seq_id } => {
+                    let rows = self.list_sequencing_traces(seq_id.as_deref());
+                    result.sequencing_trace_summaries = Some(rows.clone());
+                    result.messages.push(format!(
+                        "Sequencing traces: {} row(s){}",
+                        rows.len(),
+                        seq_id
+                            .as_deref()
+                            .map(|s| format!(" (seq_id='{}')", s))
+                            .unwrap_or_default()
+                    ));
+                    for row in rows.iter().take(8) {
+                        result.messages.push(format!(
+                            "  - {}",
+                            Self::format_sequencing_trace_summary_row(row)
+                        ));
+                    }
+                    if rows.len() > 8 {
+                        result.messages.push(format!(
+                            "  ... {} additional trace row(s) omitted",
+                            rows.len() - 8
+                        ));
+                    }
+                }
+                Operation::ShowSequencingTrace { trace_id } => {
+                    let record = self.get_sequencing_trace(&trace_id)?;
+                    result.sequencing_trace_record = Some(record.clone());
+                    result.messages.push(format!(
+                        "Sequencing trace summary: {}",
+                        Self::format_sequencing_trace_detail_summary(&record)
                     ));
                 }
-                if rows.len() > 8 {
+                Operation::ListSequencingConfirmationReports { expected_seq_id } => {
+                    let rows =
+                        self.list_sequencing_confirmation_reports(expected_seq_id.as_deref());
                     result.messages.push(format!(
-                        "  ... {} additional trace row(s) omitted",
-                        rows.len() - 8
+                        "Sequencing-confirmation reports: {} row(s){}",
+                        rows.len(),
+                        expected_seq_id
+                            .as_deref()
+                            .map(|s| format!(" (expected_seq_id='{}')", s))
+                            .unwrap_or_default()
+                    ));
+                    for row in rows.iter().take(8) {
+                        result.messages.push(format!(
+                            "  - {}",
+                            Self::format_sequencing_confirmation_report_summary_row(row)
+                        ));
+                    }
+                    if rows.len() > 8 {
+                        result.messages.push(format!(
+                            "  ... {} additional report row(s) omitted",
+                            rows.len() - 8
+                        ));
+                    }
+                }
+                Operation::ShowSequencingConfirmationReport { report_id } => {
+                    let report = self.get_sequencing_confirmation_report(&report_id)?;
+                    result.messages.push(format!(
+                        "Sequencing-confirmation report summary: {}",
+                        Self::format_sequencing_confirmation_report_detail_summary(&report)
+                    ));
+                    for target in report.targets.iter().take(8) {
+                        result.messages.push(format!(
+                            "  {} [{}] status={} coverage={}/{} support={} contradict={}",
+                            target.label,
+                            target.target_id,
+                            target.status.as_str(),
+                            target.covered_bp,
+                            target.target_length_bp,
+                            target.support_read_ids.len(),
+                            target.contradicting_read_ids.len()
+                        ));
+                    }
+                    if report.targets.len() > 8 {
+                        result.messages.push(format!(
+                            "  ... {} additional target row(s) omitted",
+                            report.targets.len() - 8
+                        ));
+                    }
+                }
+                Operation::ExportSequencingConfirmationReport { report_id, path } => {
+                    let report = self.export_sequencing_confirmation_report(&report_id, &path)?;
+                    result.messages.push(format!(
+                        "Exported sequencing-confirmation report '{}' to '{}'",
+                        report.report_id, path
                     ));
                 }
-            }
-            Operation::ShowSequencingTrace { trace_id } => {
-                let record = self.get_sequencing_trace(&trace_id)?;
-                result.sequencing_trace_record = Some(record.clone());
-                result.messages.push(format!(
-                    "Sequencing trace summary: {}",
-                    Self::format_sequencing_trace_detail_summary(&record)
-                ));
-            }
-            Operation::ListSequencingConfirmationReports { expected_seq_id } => {
-                let rows = self.list_sequencing_confirmation_reports(expected_seq_id.as_deref());
-                result.messages.push(format!(
-                    "Sequencing-confirmation reports: {} row(s){}",
-                    rows.len(),
-                    expected_seq_id
-                        .as_deref()
-                        .map(|s| format!(" (expected_seq_id='{}')", s))
-                        .unwrap_or_default()
-                ));
-                for row in rows.iter().take(8) {
+                Operation::ExportSequencingConfirmationSupportTsv { report_id, path } => {
+                    let report =
+                        self.export_sequencing_confirmation_support_tsv(&report_id, &path)?;
                     result.messages.push(format!(
-                        "  - {}",
-                        Self::format_sequencing_confirmation_report_summary_row(row)
+                        "Exported sequencing-confirmation support TSV '{}' to '{}'",
+                        report.report_id, path
                     ));
                 }
-                if rows.len() > 8 {
-                    result.messages.push(format!(
-                        "  ... {} additional report row(s) omitted",
-                        rows.len() - 8
-                    ));
+                Operation::InterpretRnaReads {
+                    seq_id,
+                    seed_feature_id,
+                    profile,
+                    input_path,
+                    input_format,
+                    scope,
+                    origin_mode,
+                    target_gene_ids,
+                    roi_seed_capture_enabled,
+                    seed_filter,
+                    align_config,
+                    report_id,
+                    report_mode,
+                    checkpoint_path,
+                    checkpoint_every_reads,
+                    resume_from_checkpoint,
+                } => {
+                    let mut keep_running = || true;
+                    let mut report = self
+                        .compute_rna_read_report_with_options_and_progress_and_cancel(
+                            &seq_id,
+                            seed_feature_id,
+                            profile,
+                            &input_path,
+                            input_format,
+                            scope,
+                            origin_mode,
+                            &target_gene_ids,
+                            roi_seed_capture_enabled,
+                            &seed_filter,
+                            &align_config,
+                            report_id.as_deref(),
+                            &RnaReadInterpretOptions {
+                                report_mode,
+                                checkpoint_path: checkpoint_path.clone(),
+                                checkpoint_every_reads,
+                                resume_from_checkpoint,
+                            },
+                            on_progress,
+                            &mut keep_running,
+                        )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    self.push_rna_read_report_result_message(report, &mut result)?;
                 }
-            }
-            Operation::ShowSequencingConfirmationReport { report_id } => {
-                let report = self.get_sequencing_confirmation_report(&report_id)?;
-                result.messages.push(format!(
-                    "Sequencing-confirmation report summary: {}",
-                    Self::format_sequencing_confirmation_report_detail_summary(&report)
-                ));
-                for target in report.targets.iter().take(8) {
-                    result.messages.push(format!(
-                        "  {} [{}] status={} coverage={}/{} support={} contradict={}",
-                        target.label,
-                        target.target_id,
-                        target.status.as_str(),
-                        target.covered_bp,
-                        target.target_length_bp,
-                        target.support_read_ids.len(),
-                        target.contradicting_read_ids.len()
-                    ));
-                }
-                if report.targets.len() > 8 {
-                    result.messages.push(format!(
-                        "  ... {} additional target row(s) omitted",
-                        report.targets.len() - 8
-                    ));
-                }
-            }
-            Operation::ExportSequencingConfirmationReport { report_id, path } => {
-                let report = self.export_sequencing_confirmation_report(&report_id, &path)?;
-                result.messages.push(format!(
-                    "Exported sequencing-confirmation report '{}' to '{}'",
-                    report.report_id, path
-                ));
-            }
-            Operation::ExportSequencingConfirmationSupportTsv { report_id, path } => {
-                let report = self.export_sequencing_confirmation_support_tsv(&report_id, &path)?;
-                result.messages.push(format!(
-                    "Exported sequencing-confirmation support TSV '{}' to '{}'",
-                    report.report_id, path
-                ));
-            }
-            Operation::InterpretRnaReads {
-                seq_id,
-                seed_feature_id,
-                profile,
-                input_path,
-                input_format,
-                scope,
-                origin_mode,
-                target_gene_ids,
-                roi_seed_capture_enabled,
-                seed_filter,
-                align_config,
-                report_id,
-                report_mode,
-                checkpoint_path,
-                checkpoint_every_reads,
-                resume_from_checkpoint,
-            } => {
-                let mut keep_running = || true;
-                let mut report = self
-                    .compute_rna_read_report_with_options_and_progress_and_cancel(
-                        &seq_id,
-                        seed_feature_id,
-                        profile,
-                        &input_path,
-                        input_format,
-                        scope,
-                        origin_mode,
-                        &target_gene_ids,
-                        roi_seed_capture_enabled,
-                        &seed_filter,
-                        &align_config,
-                        report_id.as_deref(),
-                        &RnaReadInterpretOptions {
-                            report_mode,
-                            checkpoint_path: checkpoint_path.clone(),
-                            checkpoint_every_reads,
-                            resume_from_checkpoint,
-                        },
+                Operation::AlignRnaReadReport {
+                    report_id,
+                    selection,
+                    align_config_override,
+                    selected_record_indices,
+                } => {
+                    let mut keep_running = || true;
+                    let mut report = self.align_rna_read_report_with_progress_and_cancel(
+                        &report_id,
+                        selection,
+                        align_config_override.clone(),
+                        &selected_record_indices,
                         on_progress,
                         &mut keep_running,
                     )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                self.push_rna_read_report_result_message(report, &mut result)?;
-            }
-            Operation::AlignRnaReadReport {
-                report_id,
-                selection,
-                align_config_override,
-                selected_record_indices,
-            } => {
-                let mut keep_running = || true;
-                let mut report = self.align_rna_read_report_with_progress_and_cancel(
-                    &report_id,
-                    selection,
-                    align_config_override.clone(),
-                    &selected_record_indices,
-                    on_progress,
-                    &mut keep_running,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                self.push_rna_read_report_result_message(report.clone(), &mut result)?;
-                result.messages.push(format!(
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    self.push_rna_read_report_result_message(report.clone(), &mut result)?;
+                    result.messages.push(format!(
                     "Alignment phase updated report '{}' (selection={}{} aligned={}, msa_eligible(retained)={})",
                     report.report_id,
                     selection.as_str(),
@@ -12520,89 +12701,89 @@ impl GentleEngine {
                     report.read_count_aligned,
                     report.retained_count_msa_eligible
                 ));
-            }
-            Operation::ListRnaReadReports { seq_id } => {
-                let rows = self.list_rna_read_reports(seq_id.as_deref());
-                result.messages.push(format!(
-                    "RNA-read reports: {} row(s){}",
-                    rows.len(),
-                    seq_id
-                        .as_deref()
-                        .map(|s| format!(" (seq_id='{}')", s))
-                        .unwrap_or_default()
-                ));
-                for row in rows.iter().take(8) {
+                }
+                Operation::ListRnaReadReports { seq_id } => {
+                    let rows = self.list_rna_read_reports(seq_id.as_deref());
                     result.messages.push(format!(
-                        "  - {}",
-                        Self::format_rna_read_report_summary_row(row)
+                        "RNA-read reports: {} row(s){}",
+                        rows.len(),
+                        seq_id
+                            .as_deref()
+                            .map(|s| format!(" (seq_id='{}')", s))
+                            .unwrap_or_default()
                     ));
+                    for row in rows.iter().take(8) {
+                        result.messages.push(format!(
+                            "  - {}",
+                            Self::format_rna_read_report_summary_row(row)
+                        ));
+                    }
+                    if rows.len() > 8 {
+                        result.messages.push(format!(
+                            "  ... {} additional report row(s) omitted",
+                            rows.len() - 8
+                        ));
+                    }
                 }
-                if rows.len() > 8 {
+                Operation::ShowRnaReadReport { report_id } => {
+                    let report = self.get_rna_read_report(&report_id)?;
                     result.messages.push(format!(
-                        "  ... {} additional report row(s) omitted",
-                        rows.len() - 8
+                        "RNA-read report summary: {}",
+                        Self::format_rna_read_report_detail_summary(&report)
                     ));
+                    if !report.target_gene_ids.is_empty() {
+                        let preview = report
+                            .target_gene_ids
+                            .iter()
+                            .take(8)
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        let suffix = if report.target_gene_ids.len() > 8 {
+                            format!(" (+{} more)", report.target_gene_ids.len() - 8)
+                        } else {
+                            String::new()
+                        };
+                        result
+                            .messages
+                            .push(format!("  target_genes={}{}", preview, suffix));
+                    }
+                    if !report.origin_class_counts.is_empty() {
+                        let class_summary = report
+                            .origin_class_counts
+                            .iter()
+                            .map(|(class, count)| format!("{class}:{count}"))
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        result
+                            .messages
+                            .push(format!("  origin_classes={class_summary}"));
+                    }
                 }
-            }
-            Operation::ShowRnaReadReport { report_id } => {
-                let report = self.get_rna_read_report(&report_id)?;
-                result.messages.push(format!(
-                    "RNA-read report summary: {}",
-                    Self::format_rna_read_report_detail_summary(&report)
-                ));
-                if !report.target_gene_ids.is_empty() {
-                    let preview = report
-                        .target_gene_ids
-                        .iter()
-                        .take(8)
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    let suffix = if report.target_gene_ids.len() > 8 {
-                        format!(" (+{} more)", report.target_gene_ids.len() - 8)
-                    } else {
-                        String::new()
-                    };
-                    result
-                        .messages
-                        .push(format!("  target_genes={}{}", preview, suffix));
-                }
-                if !report.origin_class_counts.is_empty() {
-                    let class_summary = report
-                        .origin_class_counts
-                        .iter()
-                        .map(|(class, count)| format!("{class}:{count}"))
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    result
-                        .messages
-                        .push(format!("  origin_classes={class_summary}"));
-                }
-            }
-            Operation::SummarizeRnaReadGeneSupport {
-                report_id,
-                gene_ids,
-                selected_record_indices,
-                complete_rule,
-                path,
-            } => {
-                let mut summary = self.summarize_rna_read_gene_support(
-                    &report_id,
-                    &gene_ids,
-                    &selected_record_indices,
+                Operation::SummarizeRnaReadGeneSupport {
+                    report_id,
+                    gene_ids,
+                    selected_record_indices,
                     complete_rule,
-                )?;
-                summary.generated_at_unix_ms = Self::now_unix_ms();
-                summary.op_id = Some(result.op_id.clone());
-                summary.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_rna_read_gene_support_summary_json(&summary, path)?;
+                    path,
+                } => {
+                    let mut summary = self.summarize_rna_read_gene_support(
+                        &report_id,
+                        &gene_ids,
+                        &selected_record_indices,
+                        complete_rule,
+                    )?;
+                    summary.generated_at_unix_ms = Self::now_unix_ms();
+                    summary.op_id = Some(result.op_id.clone());
+                    summary.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_rna_read_gene_support_summary_json(&summary, path)?;
+                        result.messages.push(format!(
+                            "Wrote RNA-read gene-support summary '{}' to '{}'",
+                            summary.report_id, path
+                        ));
+                    }
                     result.messages.push(format!(
-                        "Wrote RNA-read gene-support summary '{}' to '{}'",
-                        summary.report_id, path
-                    ));
-                }
-                result.messages.push(format!(
                     "RNA-read gene-support summary for '{}' matched {} gene(s), missing {}, accepted_target_reads={}, complete_rule={}",
                     summary.report_id,
                     summary.matched_gene_ids.len(),
@@ -12610,34 +12791,34 @@ impl GentleEngine {
                     summary.accepted_target_count,
                     summary.complete_rule.as_str()
                 ));
-                result.rna_read_gene_support_summary = Some(summary);
-            }
-            Operation::InspectRnaReadGeneSupport {
-                report_id,
-                gene_ids,
-                selected_record_indices,
-                complete_rule,
-                cohort_filter,
-                path,
-            } => {
-                let mut audit = self.inspect_rna_read_gene_support(
-                    &report_id,
-                    &gene_ids,
-                    &selected_record_indices,
+                    result.rna_read_gene_support_summary = Some(summary);
+                }
+                Operation::InspectRnaReadGeneSupport {
+                    report_id,
+                    gene_ids,
+                    selected_record_indices,
                     complete_rule,
                     cohort_filter,
-                )?;
-                audit.generated_at_unix_ms = Self::now_unix_ms();
-                audit.op_id = Some(result.op_id.clone());
-                audit.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_rna_read_gene_support_audit_json(&audit, path)?;
+                    path,
+                } => {
+                    let mut audit = self.inspect_rna_read_gene_support(
+                        &report_id,
+                        &gene_ids,
+                        &selected_record_indices,
+                        complete_rule,
+                        cohort_filter,
+                    )?;
+                    audit.generated_at_unix_ms = Self::now_unix_ms();
+                    audit.op_id = Some(result.op_id.clone());
+                    audit.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_rna_read_gene_support_audit_json(&audit, path)?;
+                        result.messages.push(format!(
+                            "Wrote RNA-read gene-support audit '{}' to '{}'",
+                            audit.report_id, path
+                        ));
+                    }
                     result.messages.push(format!(
-                        "Wrote RNA-read gene-support audit '{}' to '{}'",
-                        audit.report_id, path
-                    ));
-                }
-                result.messages.push(format!(
                     "RNA-read gene-support audit for '{}' matched {} gene(s), missing {}, rows={}, cohort={}",
                     audit.report_id,
                     audit.matched_gene_ids.len(),
@@ -12645,32 +12826,32 @@ impl GentleEngine {
                     audit.row_count,
                     audit.cohort_filter.as_str()
                 ));
-                result.rna_read_gene_support_audit = Some(audit);
-            }
-            Operation::FindRestrictionSites {
-                target,
-                enzymes,
-                max_sites_per_enzyme,
-                include_cut_geometry,
-                path,
-            } => {
-                let mut report = self.find_restriction_sites(
-                    target.clone(),
-                    &enzymes,
+                    result.rna_read_gene_support_audit = Some(audit);
+                }
+                Operation::FindRestrictionSites {
+                    target,
+                    enzymes,
                     max_sites_per_enzyme,
                     include_cut_geometry,
-                    Some(&result.op_id),
-                    Some(run_id),
-                )?;
-                if let Some(path) = path.as_deref() {
-                    self.write_pretty_json_file(&report, path, "restriction-site scan report")?;
-                    report.path = Some(path.to_string());
+                    path,
+                } => {
+                    let mut report = self.find_restriction_sites(
+                        target.clone(),
+                        &enzymes,
+                        max_sites_per_enzyme,
+                        include_cut_geometry,
+                        Some(&result.op_id),
+                        Some(run_id),
+                    )?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(&report, path, "restriction-site scan report")?;
+                        report.path = Some(path.to_string());
+                        result.messages.push(format!(
+                            "Wrote restriction-site scan report for '{}' to '{}'",
+                            report.target_label, path
+                        ));
+                    }
                     result.messages.push(format!(
-                        "Wrote restriction-site scan report for '{}' to '{}'",
-                        report.target_label, path
-                    ));
-                }
-                result.messages.push(format!(
                     "Restriction-site scan on '{}' matched {} site(s) across {} enzyme(s) over {}..{}",
                     report.target_label,
                     report.matched_site_count,
@@ -12678,28 +12859,17 @@ impl GentleEngine {
                     report.scan_start_0based,
                     report.scan_end_0based_exclusive,
                 ));
-                if !report.skipped_enzyme_names_due_to_max_sites.is_empty() {
-                    result.warnings.push(format!(
-                        "Skipped enzyme(s) due to max_sites_per_enzyme cap {}: {}",
-                        report.max_sites_per_enzyme.unwrap_or_default(),
-                        report.skipped_enzyme_names_due_to_max_sites.join(", ")
-                    ));
+                    if !report.skipped_enzyme_names_due_to_max_sites.is_empty() {
+                        result.warnings.push(format!(
+                            "Skipped enzyme(s) due to max_sites_per_enzyme cap {}: {}",
+                            report.max_sites_per_enzyme.unwrap_or_default(),
+                            report.skipped_enzyme_names_due_to_max_sites.join(", ")
+                        ));
+                    }
+                    result.restriction_site_scan = Some(report);
                 }
-                result.restriction_site_scan = Some(report);
-            }
-            Operation::SummarizeTfbsRegion {
-                seq_id,
-                focus_start_0based,
-                focus_end_0based_exclusive,
-                context_start_0based,
-                context_end_0based_exclusive,
-                min_focus_occurrences,
-                min_context_occurrences,
-                limit,
-                path,
-            } => {
-                let summary = self.summarize_tfbs_region(TfbsRegionSummaryRequest {
-                    seq_id: seq_id.clone(),
+                Operation::SummarizeTfbsRegion {
+                    seq_id,
                     focus_start_0based,
                     focus_end_0based_exclusive,
                     context_start_0based,
@@ -12707,15 +12877,26 @@ impl GentleEngine {
                     min_focus_occurrences,
                     min_context_occurrences,
                     limit,
-                })?;
-                if let Some(path) = path.as_deref() {
-                    self.write_tfbs_region_summary_json(&summary, path)?;
+                    path,
+                } => {
+                    let summary = self.summarize_tfbs_region(TfbsRegionSummaryRequest {
+                        seq_id: seq_id.clone(),
+                        focus_start_0based,
+                        focus_end_0based_exclusive,
+                        context_start_0based,
+                        context_end_0based_exclusive,
+                        min_focus_occurrences,
+                        min_context_occurrences,
+                        limit,
+                    })?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_tfbs_region_summary_json(&summary, path)?;
+                        result.messages.push(format!(
+                            "Wrote TFBS region summary for '{}' to '{}'",
+                            summary.seq_id, path
+                        ));
+                    }
                     result.messages.push(format!(
-                        "Wrote TFBS region summary for '{}' to '{}'",
-                        summary.seq_id, path
-                    ));
-                }
-                result.messages.push(format!(
                     "TFBS region summary for '{}' matched {} factor(s) in focus {}..{} against context {}..{}",
                     summary.seq_id,
                     summary.matched_tf_count,
@@ -12724,33 +12905,33 @@ impl GentleEngine {
                     summary.context_start_0based,
                     summary.context_end_0based_exclusive,
                 ));
-                result.tfbs_region_summary = Some(summary);
-            }
-            Operation::SummarizeTfbsScoreTracks {
-                target,
-                motifs,
-                score_kind,
-                clip_negative,
-                path,
-            } => {
-                let mut report = self.summarize_tfbs_score_tracks_with_progress(
-                    target.clone(),
-                    &motifs,
+                    result.tfbs_region_summary = Some(summary);
+                }
+                Operation::SummarizeTfbsScoreTracks {
+                    target,
+                    motifs,
                     score_kind,
                     clip_negative,
-                    true,
-                    &mut |progress| on_progress(progress),
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_tfbs_score_track_report_json(&report, path)?;
+                    path,
+                } => {
+                    let mut report = self.summarize_tfbs_score_tracks_with_progress(
+                        target.clone(),
+                        &motifs,
+                        score_kind,
+                        clip_negative,
+                        true,
+                        &mut |progress| on_progress(progress),
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_tfbs_score_track_report_json(&report, path)?;
+                        result.messages.push(format!(
+                            "Wrote TFBS score tracks for '{}' to '{}'",
+                            report.seq_id, path
+                        ));
+                    }
                     result.messages.push(format!(
-                        "Wrote TFBS score tracks for '{}' to '{}'",
-                        report.seq_id, path
-                    ));
-                }
-                result.messages.push(format!(
                     "TFBS score tracks for '{}' covered {} motif(s) over {}..{} with score_kind={} clip_negative={}",
                     report.seq_id,
                     report.tracks.len(),
@@ -12759,44 +12940,44 @@ impl GentleEngine {
                     report.score_kind.as_str(),
                     report.clip_negative
                 ));
-                result.tfbs_score_tracks = Some(report);
-            }
-            Operation::SummarizeTfbsTrackSimilarity {
-                target,
-                anchor_motif,
-                candidate_motifs,
-                ranking_metric,
-                score_kind,
-                clip_negative,
-                species_filters,
-                include_remote_metadata,
-                limit,
-                path,
-            } => {
-                let mut report = self.summarize_tfbs_track_similarity(
-                    target.clone(),
-                    &anchor_motif,
-                    &candidate_motifs,
+                    result.tfbs_score_tracks = Some(report);
+                }
+                Operation::SummarizeTfbsTrackSimilarity {
+                    target,
+                    anchor_motif,
+                    candidate_motifs,
                     ranking_metric,
                     score_kind,
                     clip_negative,
-                    &species_filters,
+                    species_filters,
                     include_remote_metadata,
                     limit,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_pretty_json_file(&report, path, "TFBS similarity report")?;
+                    path,
+                } => {
+                    let mut report = self.summarize_tfbs_track_similarity(
+                        target.clone(),
+                        &anchor_motif,
+                        &candidate_motifs,
+                        ranking_metric,
+                        score_kind,
+                        clip_negative,
+                        &species_filters,
+                        include_remote_metadata,
+                        limit,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(&report, path, "TFBS similarity report")?;
+                        result.messages.push(format!(
+                            "Wrote TFBS track-similarity report for '{}' to '{}'",
+                            report.target_label, path
+                        ));
+                    }
+                    for warning in &report.warnings {
+                        result.warnings.push(warning.clone());
+                    }
                     result.messages.push(format!(
-                        "Wrote TFBS track-similarity report for '{}' to '{}'",
-                        report.target_label, path
-                    ));
-                }
-                for warning in &report.warnings {
-                    result.warnings.push(warning.clone());
-                }
-                result.messages.push(format!(
                     "TFBS track similarity for '{}' ranked {} candidate motif(s) against '{}' over {}..{} (metric={}, score_kind={}, clip_negative={})",
                     report.target_label,
                     report.returned_candidate_count,
@@ -12807,98 +12988,101 @@ impl GentleEngine {
                     report.score_kind.as_str(),
                     report.clip_negative
                 ));
-                result.tfbs_track_similarity = Some(report);
-            }
-            Operation::ScanTfbsHits {
-                target,
-                motifs,
-                min_llr_bits,
-                min_llr_quantile,
-                per_tf_thresholds,
-                max_hits,
-                path,
-            } => {
-                let mut report = self.scan_tfbs_hits(
-                    target.clone(),
-                    &motifs,
+                    result.tfbs_track_similarity = Some(report);
+                }
+                Operation::ScanTfbsHits {
+                    target,
+                    motifs,
                     min_llr_bits,
                     min_llr_quantile,
-                    &per_tf_thresholds,
+                    per_tf_thresholds,
                     max_hits,
-                    Some(&result.op_id),
-                    Some(run_id),
-                )?;
-                if let Some(path) = path.as_deref() {
-                    self.write_pretty_json_file(&report, path, "TFBS hit-scan report")?;
-                    report.path = Some(path.to_string());
+                    path,
+                } => {
+                    let mut report = self.scan_tfbs_hits(
+                        target.clone(),
+                        &motifs,
+                        min_llr_bits,
+                        min_llr_quantile,
+                        &per_tf_thresholds,
+                        max_hits,
+                        Some(&result.op_id),
+                        Some(run_id),
+                    )?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(&report, path, "TFBS hit-scan report")?;
+                        report.path = Some(path.to_string());
+                        result.messages.push(format!(
+                            "Wrote TFBS hit-scan report for '{}' to '{}'",
+                            report.target_label, path
+                        ));
+                    }
                     result.messages.push(format!(
-                        "Wrote TFBS hit-scan report for '{}' to '{}'",
-                        report.target_label, path
+                        "TFBS hit scan on '{}' matched {} hit(s) across {} motif(s) over {}..{}",
+                        report.target_label,
+                        report.matched_hit_count,
+                        report.motifs_scanned.len(),
+                        report.scan_start_0based,
+                        report.scan_end_0based_exclusive,
                     ));
+                    if report.truncated_at_max_hits {
+                        result.warnings.push(format!(
+                            "TFBS hit scan reached max_hits={} and truncated remaining hits",
+                            report.max_hits.unwrap_or_default()
+                        ));
+                    }
+                    result.tfbs_hit_scan = Some(report);
                 }
-                result.messages.push(format!(
-                    "TFBS hit scan on '{}' matched {} hit(s) across {} motif(s) over {}..{}",
-                    report.target_label,
-                    report.matched_hit_count,
-                    report.motifs_scanned.len(),
-                    report.scan_start_0based,
-                    report.scan_end_0based_exclusive,
-                ));
-                if report.truncated_at_max_hits {
-                    result.warnings.push(format!(
-                        "TFBS hit scan reached max_hits={} and truncated remaining hits",
-                        report.max_hits.unwrap_or_default()
-                    ));
-                }
-                result.tfbs_hit_scan = Some(report);
-            }
-            Operation::SummarizeJasparEntries {
-                motifs,
-                random_sequence_length_bp,
-                random_seed,
-                path,
-            } => {
-                let mut report =
-                    self.summarize_jaspar_entries(&motifs, random_sequence_length_bp, random_seed)?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_jaspar_entry_presentation_report_json(&report, path)?;
+                Operation::SummarizeJasparEntries {
+                    motifs,
+                    random_sequence_length_bp,
+                    random_seed,
+                    path,
+                } => {
+                    let mut report = self.summarize_jaspar_entries(
+                        &motifs,
+                        random_sequence_length_bp,
+                        random_seed,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_jaspar_entry_presentation_report_json(&report, path)?;
+                        result.messages.push(format!(
+                            "Wrote JASPAR entry presentation for {} motif(s) to '{}'",
+                            report.resolved_entry_count, path
+                        ));
+                    }
                     result.messages.push(format!(
-                        "Wrote JASPAR entry presentation for {} motif(s) to '{}'",
-                        report.resolved_entry_count, path
-                    ));
-                }
-                result.messages.push(format!(
                     "JASPAR entry presentation summarized {} motif(s) over one deterministic {} bp random background",
                     report.resolved_entry_count,
                     report.random_sequence_length_bp
                 ));
-                result.jaspar_entry_presentation = Some(report);
-            }
-            Operation::BenchmarkJasparRegistry {
-                random_sequence_length_bp,
-                random_seed,
-                path,
-            } => {
-                let mut report =
-                    self.benchmark_jaspar_registry(random_sequence_length_bp, random_seed)?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_jaspar_registry_benchmark_report_json(&report, path)?;
-                    result.messages.push(format!(
-                        "Wrote JASPAR registry benchmark for {} entr{} to '{}'",
-                        report.benchmarked_entry_count,
-                        if report.benchmarked_entry_count == 1 {
-                            "y"
-                        } else {
-                            "ies"
-                        },
-                        path
-                    ));
+                    result.jaspar_entry_presentation = Some(report);
                 }
-                result.messages.push(format!(
+                Operation::BenchmarkJasparRegistry {
+                    random_sequence_length_bp,
+                    random_seed,
+                    path,
+                } => {
+                    let mut report =
+                        self.benchmark_jaspar_registry(random_sequence_length_bp, random_seed)?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_jaspar_registry_benchmark_report_json(&report, path)?;
+                        result.messages.push(format!(
+                            "Wrote JASPAR registry benchmark for {} entr{} to '{}'",
+                            report.benchmarked_entry_count,
+                            if report.benchmarked_entry_count == 1 {
+                                "y"
+                            } else {
+                                "ies"
+                            },
+                            path
+                        ));
+                    }
+                    result.messages.push(format!(
                     "JASPAR registry benchmark summarized {} entr{} over one deterministic {} bp random background",
                     report.benchmarked_entry_count,
                     if report.benchmarked_entry_count == 1 {
@@ -12908,67 +13092,67 @@ impl GentleEngine {
                     },
                     report.random_sequence_length_bp
                 ));
-                result.jaspar_registry_benchmark = Some(report);
-            }
-            Operation::ListJasparCatalog {
-                filter,
-                limit,
-                include_remote_metadata,
-                refresh_remote_metadata,
-                path,
-            } => {
-                let mut report = self.list_jaspar_catalog(
-                    filter.as_deref(),
+                    result.jaspar_registry_benchmark = Some(report);
+                }
+                Operation::ListJasparCatalog {
+                    filter,
                     limit,
                     include_remote_metadata,
                     refresh_remote_metadata,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_jaspar_catalog_report_json(&report, path)?;
-                    result.messages.push(format!(
-                        "Wrote JASPAR catalog report for {} entry/entries to '{}'",
-                        report.returned_entry_count, path
-                    ));
-                }
-                result.messages.push(format!(
-                    "JASPAR catalog listed {} entry/entries{}{}",
-                    report.returned_entry_count,
-                    report
-                        .filter
-                        .as_deref()
-                        .map(|value| format!(" for filter '{}'", value))
-                        .unwrap_or_default(),
-                    if report.include_remote_metadata {
-                        if refresh_remote_metadata {
-                            " with refreshed remote metadata"
-                        } else {
-                            " with optional remote metadata"
-                        }
-                    } else {
-                        ""
+                    path,
+                } => {
+                    let mut report = self.list_jaspar_catalog(
+                        filter.as_deref(),
+                        limit,
+                        include_remote_metadata,
+                        refresh_remote_metadata,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_jaspar_catalog_report_json(&report, path)?;
+                        result.messages.push(format!(
+                            "Wrote JASPAR catalog report for {} entry/entries to '{}'",
+                            report.returned_entry_count, path
+                        ));
                     }
-                ));
-                result.jaspar_catalog_report = Some(report);
-            }
-            Operation::SyncJasparRemoteMetadata {
-                motifs,
-                filter,
-                limit,
-                path,
-            } => {
-                let mut snapshot = self.sync_jaspar_remote_metadata_snapshot(
-                    &motifs,
-                    filter.as_deref(),
-                    limit,
-                    path.as_deref(),
-                )?;
-                snapshot.op_id = Some(result.op_id.clone());
-                snapshot.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_jaspar_remote_metadata_snapshot_json(&snapshot, path)?;
                     result.messages.push(format!(
+                        "JASPAR catalog listed {} entry/entries{}{}",
+                        report.returned_entry_count,
+                        report
+                            .filter
+                            .as_deref()
+                            .map(|value| format!(" for filter '{}'", value))
+                            .unwrap_or_default(),
+                        if report.include_remote_metadata {
+                            if refresh_remote_metadata {
+                                " with refreshed remote metadata"
+                            } else {
+                                " with optional remote metadata"
+                            }
+                        } else {
+                            ""
+                        }
+                    ));
+                    result.jaspar_catalog_report = Some(report);
+                }
+                Operation::SyncJasparRemoteMetadata {
+                    motifs,
+                    filter,
+                    limit,
+                    path,
+                } => {
+                    let mut snapshot = self.sync_jaspar_remote_metadata_snapshot(
+                        &motifs,
+                        filter.as_deref(),
+                        limit,
+                        path.as_deref(),
+                    )?;
+                    snapshot.op_id = Some(result.op_id.clone());
+                    snapshot.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_jaspar_remote_metadata_snapshot_json(&snapshot, path)?;
+                        result.messages.push(format!(
                         "Wrote JASPAR remote-metadata snapshot with {} persisted entr{} to '{}'",
                         snapshot.persisted_entry_count,
                         if snapshot.persisted_entry_count == 1 {
@@ -12978,85 +13162,85 @@ impl GentleEngine {
                         },
                         path
                     ));
-                } else {
-                    self.write_jaspar_remote_metadata_snapshot_json(
-                        &snapshot,
-                        crate::resource_sync::DEFAULT_JASPAR_REMOTE_METADATA_PATH,
-                    )?;
-                }
-                result.messages.push(format!(
-                    "JASPAR remote-metadata snapshot refreshed {} entr{} (persisted={})",
-                    snapshot.fetched_entry_count,
-                    if snapshot.fetched_entry_count == 1 {
-                        "y"
                     } else {
-                        "ies"
-                    },
-                    snapshot.persisted_entry_count
-                ));
-                result.jaspar_remote_metadata_snapshot = Some(snapshot);
-            }
-            Operation::InspectJasparEntry {
-                motif,
-                random_sequence_length_bp,
-                random_seed,
-                include_remote_metadata,
-                refresh_remote_metadata,
-                path,
-            } => {
-                let mut report = self.inspect_jaspar_entry(
-                    &motif,
+                        self.write_jaspar_remote_metadata_snapshot_json(
+                            &snapshot,
+                            crate::resource_sync::DEFAULT_JASPAR_REMOTE_METADATA_PATH,
+                        )?;
+                    }
+                    result.messages.push(format!(
+                        "JASPAR remote-metadata snapshot refreshed {} entr{} (persisted={})",
+                        snapshot.fetched_entry_count,
+                        if snapshot.fetched_entry_count == 1 {
+                            "y"
+                        } else {
+                            "ies"
+                        },
+                        snapshot.persisted_entry_count
+                    ));
+                    result.jaspar_remote_metadata_snapshot = Some(snapshot);
+                }
+                Operation::InspectJasparEntry {
+                    motif,
                     random_sequence_length_bp,
                     random_seed,
                     include_remote_metadata,
                     refresh_remote_metadata,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_jaspar_entry_expert_view_json(&report, path)?;
-                    result.messages.push(format!(
-                        "Wrote JASPAR expert view for '{}' to '{}'",
-                        report.motif_id, path
-                    ));
-                }
-                result.messages.push(format!(
-                    "JASPAR expert view for '{}' prepared {} score family panel(s){}",
-                    report.motif_id,
-                    report.score_panels.len(),
-                    if report.include_remote_metadata {
-                        if refresh_remote_metadata {
-                            " with refreshed remote metadata"
-                        } else {
-                            " with optional remote metadata"
-                        }
-                    } else {
-                        ""
+                    path,
+                } => {
+                    let mut report = self.inspect_jaspar_entry(
+                        &motif,
+                        random_sequence_length_bp,
+                        random_seed,
+                        include_remote_metadata,
+                        refresh_remote_metadata,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_jaspar_entry_expert_view_json(&report, path)?;
+                        result.messages.push(format!(
+                            "Wrote JASPAR expert view for '{}' to '{}'",
+                            report.motif_id, path
+                        ));
                     }
-                ));
-                result.jaspar_entry_expert_view = Some(report);
-            }
-            Operation::InspectSequenceContextView {
-                seq_id,
-                mode,
-                viewport_start_0based,
-                viewport_end_0based_exclusive,
-                include_visible_classes,
-                coordinate_mode,
-                limit,
-            } => {
-                let mut report = self.inspect_sequence_context_view(
-                    &seq_id,
+                    result.messages.push(format!(
+                        "JASPAR expert view for '{}' prepared {} score family panel(s){}",
+                        report.motif_id,
+                        report.score_panels.len(),
+                        if report.include_remote_metadata {
+                            if refresh_remote_metadata {
+                                " with refreshed remote metadata"
+                            } else {
+                                " with optional remote metadata"
+                            }
+                        } else {
+                            ""
+                        }
+                    ));
+                    result.jaspar_entry_expert_view = Some(report);
+                }
+                Operation::InspectSequenceContextView {
+                    seq_id,
                     mode,
                     viewport_start_0based,
                     viewport_end_0based_exclusive,
-                    &include_visible_classes,
+                    include_visible_classes,
                     coordinate_mode,
                     limit,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                result.messages.push(format!(
+                } => {
+                    let mut report = self.inspect_sequence_context_view(
+                        &seq_id,
+                        mode,
+                        viewport_start_0based,
+                        viewport_end_0based_exclusive,
+                        &include_visible_classes,
+                        coordinate_mode,
+                        limit,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    result.messages.push(format!(
                     "Sequence-context view for '{}' summarized {} visible class(es) and {} feature row(s) over {}..{}",
                     report.seq_id,
                     report.visible_classes.len(),
@@ -13064,22 +13248,10 @@ impl GentleEngine {
                     report.viewport_start_0based,
                     report.viewport_end_0based_exclusive
                 ));
-                result.sequence_context_view = Some(report);
-            }
-            Operation::ExportSequenceContextBundle {
-                seq_id,
-                mode,
-                viewport_start_0based,
-                viewport_end_0based_exclusive,
-                coordinate_mode,
-                include_feature_bed,
-                include_text_summary,
-                include_restriction_sites,
-                restriction_enzymes,
-                output_dir,
-            } => {
-                let bundle = self.export_sequence_context_bundle(
-                    &seq_id,
+                    result.sequence_context_view = Some(report);
+                }
+                Operation::ExportSequenceContextBundle {
+                    seq_id,
                     mode,
                     viewport_start_0based,
                     viewport_end_0based_exclusive,
@@ -13087,48 +13259,60 @@ impl GentleEngine {
                     include_feature_bed,
                     include_text_summary,
                     include_restriction_sites,
-                    &restriction_enzymes,
-                    &output_dir,
-                    Some(result.op_id.as_str()),
-                    Some(run_id),
-                )?;
-                result.messages.push(format!(
-                    "Sequence-context bundle for '{}' wrote SVG '{}'{}{} into '{}'",
-                    bundle.seq_id,
-                    bundle.svg_path,
-                    bundle
-                        .summary_text_path
-                        .as_ref()
-                        .map(|path| format!(", summary text '{}'", path))
-                        .unwrap_or_default(),
-                    bundle
-                        .feature_bed_path
-                        .as_ref()
-                        .map(|path| format!(", BED '{}'", path))
-                        .unwrap_or_default(),
-                    bundle.output_dir
-                ));
-                result.sequence_context_bundle = Some(bundle);
-            }
-            Operation::AnnotatePromoterWindows {
-                input,
-                gene_label,
-                transcript_id,
-                upstream_bp,
-                downstream_bp,
-                collapse_mode,
-            } => {
-                parent_seq_ids.push(input.clone());
-                let records = self.annotate_promoter_windows_for_sequence(
-                    &input,
-                    gene_label.as_deref(),
-                    transcript_id.as_deref(),
+                    restriction_enzymes,
+                    output_dir,
+                } => {
+                    let bundle = self.export_sequence_context_bundle(
+                        &seq_id,
+                        mode,
+                        viewport_start_0based,
+                        viewport_end_0based_exclusive,
+                        coordinate_mode,
+                        include_feature_bed,
+                        include_text_summary,
+                        include_restriction_sites,
+                        &restriction_enzymes,
+                        &output_dir,
+                        Some(result.op_id.as_str()),
+                        Some(run_id),
+                    )?;
+                    result.messages.push(format!(
+                        "Sequence-context bundle for '{}' wrote SVG '{}'{}{} into '{}'",
+                        bundle.seq_id,
+                        bundle.svg_path,
+                        bundle
+                            .summary_text_path
+                            .as_ref()
+                            .map(|path| format!(", summary text '{}'", path))
+                            .unwrap_or_default(),
+                        bundle
+                            .feature_bed_path
+                            .as_ref()
+                            .map(|path| format!(", BED '{}'", path))
+                            .unwrap_or_default(),
+                        bundle.output_dir
+                    ));
+                    result.sequence_context_bundle = Some(bundle);
+                }
+                Operation::AnnotatePromoterWindows {
+                    input,
+                    gene_label,
+                    transcript_id,
                     upstream_bp,
                     downstream_bp,
                     collapse_mode,
-                )?;
-                result.changed_seq_ids.push(input.clone());
-                result.messages.push(format!(
+                } => {
+                    parent_seq_ids.push(input.clone());
+                    let records = self.annotate_promoter_windows_for_sequence(
+                        &input,
+                        gene_label.as_deref(),
+                        transcript_id.as_deref(),
+                        upstream_bp,
+                        downstream_bp,
+                        collapse_mode,
+                    )?;
+                    result.changed_seq_ids.push(input.clone());
+                    result.messages.push(format!(
                     "Annotated {} transcript-derived promoter window(s) on '{}' (collapse_mode={}, upstream_bp={}, downstream_bp={})",
                     records.len(),
                     input,
@@ -13136,127 +13320,127 @@ impl GentleEngine {
                     upstream_bp,
                     downstream_bp
                 ));
-            }
-            Operation::SummarizeVariantPromoterContext {
-                input,
-                variant_label_or_id,
-                gene_label,
-                transcript_id,
-                promoter_upstream_bp,
-                promoter_downstream_bp,
-                tfbs_focus_half_window_bp,
-                path,
-            } => {
-                let mut report = self.summarize_variant_promoter_context(
-                    &input,
-                    variant_label_or_id.as_deref(),
-                    gene_label.as_deref(),
-                    transcript_id.as_deref(),
+                }
+                Operation::SummarizeVariantPromoterContext {
+                    input,
+                    variant_label_or_id,
+                    gene_label,
+                    transcript_id,
                     promoter_upstream_bp,
                     promoter_downstream_bp,
                     tfbs_focus_half_window_bp,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_variant_promoter_context_json(&report, path)?;
+                    path,
+                } => {
+                    let mut report = self.summarize_variant_promoter_context(
+                        &input,
+                        variant_label_or_id.as_deref(),
+                        gene_label.as_deref(),
+                        transcript_id.as_deref(),
+                        promoter_upstream_bp,
+                        promoter_downstream_bp,
+                        tfbs_focus_half_window_bp,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_variant_promoter_context_json(&report, path)?;
+                        result.messages.push(format!(
+                            "Wrote variant-promoter context report for '{}' to '{}'",
+                            report.seq_id, path
+                        ));
+                    }
                     result.messages.push(format!(
-                        "Wrote variant-promoter context report for '{}' to '{}'",
-                        report.seq_id, path
-                    ));
-                }
-                result.messages.push(format!(
                     "Variant-promoter context for '{}' selected variant '{}' with promoter_overlap={} and transcript_status={}",
                     report.seq_id,
                     report.variant_label,
                     report.promoter_overlap,
                     report.transcript_ambiguity_status
                 ));
-                result.variant_promoter_context = Some(report);
-            }
-            Operation::SuggestPromoterReporterFragments {
-                input,
-                variant_label_or_id,
-                gene_label,
-                transcript_id,
-                retain_downstream_from_tss_bp,
-                retain_upstream_beyond_variant_bp,
-                max_candidates,
-                path,
-            } => {
-                let mut report = self.suggest_promoter_reporter_fragments(
-                    &input,
-                    variant_label_or_id.as_deref(),
-                    gene_label.as_deref(),
-                    transcript_id.as_deref(),
+                    result.variant_promoter_context = Some(report);
+                }
+                Operation::SuggestPromoterReporterFragments {
+                    input,
+                    variant_label_or_id,
+                    gene_label,
+                    transcript_id,
                     retain_downstream_from_tss_bp,
                     retain_upstream_beyond_variant_bp,
                     max_candidates,
-                )?;
-                report.op_id = Some(result.op_id.clone());
-                report.run_id = Some(run_id.to_string());
-                if let Some(path) = path.as_deref() {
-                    self.write_promoter_reporter_candidates_json(&report, path)?;
+                    path,
+                } => {
+                    let mut report = self.suggest_promoter_reporter_fragments(
+                        &input,
+                        variant_label_or_id.as_deref(),
+                        gene_label.as_deref(),
+                        transcript_id.as_deref(),
+                        retain_downstream_from_tss_bp,
+                        retain_upstream_beyond_variant_bp,
+                        max_candidates,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_promoter_reporter_candidates_json(&report, path)?;
+                        result.messages.push(format!(
+                            "Wrote promoter-reporter candidate report for '{}' to '{}'",
+                            report.seq_id, path
+                        ));
+                    }
                     result.messages.push(format!(
-                        "Wrote promoter-reporter candidate report for '{}' to '{}'",
-                        report.seq_id, path
-                    ));
-                }
-                result.messages.push(format!(
                     "Suggested {} promoter-reporter candidate(s) on '{}' with recommended candidate '{}'",
                     report.candidates.len(),
                     report.seq_id,
                     report.recommended_candidate_id
                 ));
-                result.promoter_reporter_candidates = Some(report);
-            }
-            Operation::MaterializeVariantAllele {
-                input,
-                variant_label_or_id,
-                allele,
-                output_id,
-            } => {
-                parent_seq_ids.push(input.clone());
-                let (base, mut dna) = self.materialize_variant_allele_sequence(
-                    &input,
-                    variant_label_or_id.as_deref(),
-                    allele,
-                    output_id.as_deref(),
-                )?;
-                let seq_id = self.unique_seq_id(&base);
-                Self::prepare_sequence(&mut dna);
-                self.state.sequences.insert(seq_id.clone(), dna);
-                self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                result.created_seq_ids.push(seq_id.clone());
-                result.messages.push(format!(
-                    "Materialized {} allele from '{}' into '{}'",
-                    allele.as_str(),
+                    result.promoter_reporter_candidates = Some(report);
+                }
+                Operation::MaterializeVariantAllele {
                     input,
-                    seq_id
-                ));
-            }
-            Operation::ExportRnaReadReport { report_id, path } => {
-                let report = self.export_rna_read_report(&report_id, &path)?;
-                result.messages.push(format!(
-                    "Exported RNA-read report '{}' to '{}'",
-                    report.report_id, path
-                ));
-            }
-            Operation::ExportRnaReadHitsFasta {
-                report_id,
-                path,
-                selection,
-                selected_record_indices,
-                subset_spec,
-            } => {
-                let count = self.export_rna_read_hits_fasta(
-                    &report_id,
-                    &path,
+                    variant_label_or_id,
+                    allele,
+                    output_id,
+                } => {
+                    parent_seq_ids.push(input.clone());
+                    let (base, mut dna) = self.materialize_variant_allele_sequence(
+                        &input,
+                        variant_label_or_id.as_deref(),
+                        allele,
+                        output_id.as_deref(),
+                    )?;
+                    let seq_id = self.unique_seq_id(&base);
+                    Self::prepare_sequence(&mut dna);
+                    self.state.sequences.insert(seq_id.clone(), dna);
+                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                    result.created_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Materialized {} allele from '{}' into '{}'",
+                        allele.as_str(),
+                        input,
+                        seq_id
+                    ));
+                }
+                Operation::ExportRnaReadReport { report_id, path } => {
+                    let report = self.export_rna_read_report(&report_id, &path)?;
+                    result.messages.push(format!(
+                        "Exported RNA-read report '{}' to '{}'",
+                        report.report_id, path
+                    ));
+                }
+                Operation::ExportRnaReadHitsFasta {
+                    report_id,
+                    path,
                     selection,
-                    &selected_record_indices,
-                    subset_spec.as_deref(),
-                )?;
-                result.messages.push(format!(
+                    selected_record_indices,
+                    subset_spec,
+                } => {
+                    let count = self.export_rna_read_hits_fasta(
+                        &report_id,
+                        &path,
+                        selection,
+                        &selected_record_indices,
+                        subset_spec.as_deref(),
+                    )?;
+                    result.messages.push(format!(
                     "Exported {} RNA-read hit sequence(s) from '{}' to '{}' (selection={}, selected_record_indices={})",
                     count,
                     report_id,
@@ -13264,24 +13448,24 @@ impl GentleEngine {
                     selection.as_str(),
                     selected_record_indices.len()
                 ));
-            }
-            Operation::ExportRnaReadSampleSheet {
-                path,
-                seq_id,
-                report_ids,
-                gene_ids,
-                complete_rule,
-                append,
-            } => {
-                let export = self.export_rna_read_sample_sheet(
-                    &path,
-                    seq_id.as_deref(),
-                    &report_ids,
-                    &gene_ids,
+                }
+                Operation::ExportRnaReadSampleSheet {
+                    path,
+                    seq_id,
+                    report_ids,
+                    gene_ids,
                     complete_rule,
                     append,
-                )?;
-                result.messages.push(format!(
+                } => {
+                    let export = self.export_rna_read_sample_sheet(
+                        &path,
+                        seq_id.as_deref(),
+                        &report_ids,
+                        &gene_ids,
+                        complete_rule,
+                        append,
+                    )?;
+                    result.messages.push(format!(
                     "Exported RNA-read sample sheet '{}' with {} report row(s) (genes={}, complete_rule={}, append={})",
                     export.path,
                     export.report_count,
@@ -13289,22 +13473,22 @@ impl GentleEngine {
                     export.complete_rule.as_str(),
                     export.appended
                 ));
-            }
-            Operation::ExportRnaReadExonPathsTsv {
-                report_id,
-                path,
-                selection,
-                selected_record_indices,
-                subset_spec,
-            } => {
-                let export = self.export_rna_read_exon_paths_tsv(
-                    &report_id,
-                    &path,
+                }
+                Operation::ExportRnaReadExonPathsTsv {
+                    report_id,
+                    path,
                     selection,
-                    &selected_record_indices,
-                    subset_spec.as_deref(),
-                )?;
-                result.messages.push(format!(
+                    selected_record_indices,
+                    subset_spec,
+                } => {
+                    let export = self.export_rna_read_exon_paths_tsv(
+                        &report_id,
+                        &path,
+                        selection,
+                        &selected_record_indices,
+                        subset_spec.as_deref(),
+                    )?;
+                    result.messages.push(format!(
                     "Exported RNA-read exon paths '{}' to '{}' (selection={}, rows={}, selected_record_indices={})",
                     export.report_id,
                     export.path,
@@ -13312,22 +13496,22 @@ impl GentleEngine {
                     export.row_count,
                     selected_record_indices.len()
                 ));
-            }
-            Operation::ExportRnaReadExonAbundanceTsv {
-                report_id,
-                path,
-                selection,
-                selected_record_indices,
-                subset_spec,
-            } => {
-                let export = self.export_rna_read_exon_abundance_tsv(
-                    &report_id,
-                    &path,
+                }
+                Operation::ExportRnaReadExonAbundanceTsv {
+                    report_id,
+                    path,
                     selection,
-                    &selected_record_indices,
-                    subset_spec.as_deref(),
-                )?;
-                result.messages.push(format!(
+                    selected_record_indices,
+                    subset_spec,
+                } => {
+                    let export = self.export_rna_read_exon_abundance_tsv(
+                        &report_id,
+                        &path,
+                        selection,
+                        &selected_record_indices,
+                        subset_spec.as_deref(),
+                    )?;
+                    result.messages.push(format!(
                     "Exported RNA-read exon abundance '{}' to '{}' (selection={}, selected_reads={}, exon_rows={}, transition_rows={}, selected_record_indices={})",
                     export.report_id,
                     export.path,
@@ -13337,22 +13521,22 @@ impl GentleEngine {
                     export.transition_row_count,
                     selected_record_indices.len()
                 ));
-            }
-            Operation::ExportRnaReadScoreDensitySvg {
-                report_id,
-                path,
-                scale,
-                variant,
-                seed_filter_override,
-            } => {
-                let export = self.export_rna_read_score_density_svg(
-                    &report_id,
-                    &path,
+                }
+                Operation::ExportRnaReadScoreDensitySvg {
+                    report_id,
+                    path,
                     scale,
                     variant,
-                    seed_filter_override.as_ref(),
-                )?;
-                result.messages.push(format!(
+                    seed_filter_override,
+                } => {
+                    let export = self.export_rna_read_score_density_svg(
+                        &report_id,
+                        &path,
+                        scale,
+                        variant,
+                        seed_filter_override.as_ref(),
+                    )?;
+                    result.messages.push(format!(
                     "Exported RNA-read score-density SVG '{}' to '{}' (scale={}, variant={}, bins={}, max_bin_count={})",
                     export.report_id,
                     export.path,
@@ -13361,34 +13545,34 @@ impl GentleEngine {
                     export.bin_count,
                     export.max_bin_count
                 ));
-                if export.derived_from_report_hits_only {
-                    result.warnings.push(format!(
+                    if export.derived_from_report_hits_only {
+                        result.warnings.push(format!(
                         "Report '{}' did not persist score_density_bins; derived bins from retained hits only",
                         export.report_id
                     ));
+                    }
                 }
-            }
-            Operation::ExportRnaReadAlignmentsTsv {
-                report_id,
-                path,
-                selection,
-                limit,
-                selected_record_indices,
-                subset_spec,
-            } => {
-                let export = self.export_rna_read_alignments_tsv(
-                    &report_id,
-                    &path,
+                Operation::ExportRnaReadAlignmentsTsv {
+                    report_id,
+                    path,
                     selection,
                     limit,
-                    &selected_record_indices,
-                    subset_spec.as_deref(),
-                )?;
-                let limit_text = export
-                    .limit
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "all".to_string());
-                result.messages.push(format!(
+                    selected_record_indices,
+                    subset_spec,
+                } => {
+                    let export = self.export_rna_read_alignments_tsv(
+                        &report_id,
+                        &path,
+                        selection,
+                        limit,
+                        &selected_record_indices,
+                        subset_spec.as_deref(),
+                    )?;
+                    let limit_text = export
+                        .limit
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "all".to_string());
+                    result.messages.push(format!(
                     "Exported RNA-read alignment TSV '{}' to '{}' (selection={}, rows={}, aligned_total={}, limit={}, selected_record_indices={})",
                     export.report_id,
                     export.path,
@@ -13398,17 +13582,17 @@ impl GentleEngine {
                     limit_text,
                     selected_record_indices.len()
                 ));
-            }
-            Operation::ExportRnaReadAlignmentDotplotSvg {
-                report_id,
-                path,
-                selection,
-                max_points,
-            } => {
-                let export = self.export_rna_read_alignment_dotplot_svg(
-                    &report_id, &path, selection, max_points,
-                )?;
-                result.messages.push(format!(
+                }
+                Operation::ExportRnaReadAlignmentDotplotSvg {
+                    report_id,
+                    path,
+                    selection,
+                    max_points,
+                } => {
+                    let export = self.export_rna_read_alignment_dotplot_svg(
+                        &report_id, &path, selection, max_points,
+                    )?;
+                    result.messages.push(format!(
                     "Exported RNA-read alignment dotplot SVG '{}' to '{}' (selection={}, rendered_points={}, total_points={}, max_points={})",
                     export.report_id,
                     export.path,
@@ -13417,77 +13601,77 @@ impl GentleEngine {
                     export.point_count,
                     export.max_points
                 ));
-            }
-            Operation::MaterializeRnaReadHitSequences {
-                report_id,
-                selection,
-                selected_record_indices,
-                output_prefix,
-            } => {
-                let report = self.get_rna_read_report(&report_id)?;
-                parent_seq_ids.push(report.seq_id.clone());
-                let mut explicit_record_indices = selected_record_indices.clone();
-                explicit_record_indices.sort_unstable();
-                explicit_record_indices.dedup();
-                let explicit_selection = !explicit_record_indices.is_empty();
-                let prefix = output_prefix
-                    .as_deref()
-                    .map(Self::normalize_id_token)
-                    .filter(|value| !value.is_empty())
-                    .unwrap_or_else(|| {
-                        format!(
-                            "{}_rna_read_{}",
-                            Self::normalize_id_token(&report.seq_id),
-                            Self::normalize_id_token(&report.report_id)
-                        )
-                    });
-                let selected_hits = if explicit_selection {
-                    report
-                        .hits
-                        .iter()
-                        .filter(|hit| {
-                            explicit_record_indices
-                                .binary_search(&hit.record_index)
-                                .is_ok()
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    report
-                        .hits
-                        .iter()
-                        .filter(|hit| Self::include_rna_read_hit_by_selection(hit, selection))
-                        .collect::<Vec<_>>()
-                };
-                if selected_hits.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::NotFound,
-                        message: if explicit_selection {
-                            format!(
-                                "MaterializeRnaReadHitSequences did not find any hits for report '{}' and record_indices={:?}",
-                                report.report_id, explicit_record_indices
-                            )
-                        } else {
-                            format!(
-                                "MaterializeRnaReadHitSequences found no hits for report '{}' with selection '{}'",
-                                report.report_id,
-                                selection.as_str()
-                            )
-                        },
-                    });
                 }
-                let mut created = Vec::<String>::with_capacity(selected_hits.len());
-                for hit in selected_hits {
-                    let header_token = {
-                        let normalized = Self::normalize_id_token(&hit.header_id);
-                        if normalized.is_empty() {
-                            "read".to_string()
-                        } else {
-                            normalized
-                        }
+                Operation::MaterializeRnaReadHitSequences {
+                    report_id,
+                    selection,
+                    selected_record_indices,
+                    output_prefix,
+                } => {
+                    let report = self.get_rna_read_report(&report_id)?;
+                    parent_seq_ids.push(report.seq_id.clone());
+                    let mut explicit_record_indices = selected_record_indices.clone();
+                    explicit_record_indices.sort_unstable();
+                    explicit_record_indices.dedup();
+                    let explicit_selection = !explicit_record_indices.is_empty();
+                    let prefix = output_prefix
+                        .as_deref()
+                        .map(Self::normalize_id_token)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or_else(|| {
+                            format!(
+                                "{}_rna_read_{}",
+                                Self::normalize_id_token(&report.seq_id),
+                                Self::normalize_id_token(&report.report_id)
+                            )
+                        });
+                    let selected_hits = if explicit_selection {
+                        report
+                            .hits
+                            .iter()
+                            .filter(|hit| {
+                                explicit_record_indices
+                                    .binary_search(&hit.record_index)
+                                    .is_ok()
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
+                        report
+                            .hits
+                            .iter()
+                            .filter(|hit| Self::include_rna_read_hit_by_selection(hit, selection))
+                            .collect::<Vec<_>>()
                     };
-                    let base = format!("{}_r{}_{}", prefix, hit.record_index + 1, header_token);
-                    let seq_id = self.unique_seq_id(&base);
-                    let mut dna =
+                    if selected_hits.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: if explicit_selection {
+                                format!(
+                                    "MaterializeRnaReadHitSequences did not find any hits for report '{}' and record_indices={:?}",
+                                    report.report_id, explicit_record_indices
+                                )
+                            } else {
+                                format!(
+                                    "MaterializeRnaReadHitSequences found no hits for report '{}' with selection '{}'",
+                                    report.report_id,
+                                    selection.as_str()
+                                )
+                            },
+                        });
+                    }
+                    let mut created = Vec::<String>::with_capacity(selected_hits.len());
+                    for hit in selected_hits {
+                        let header_token = {
+                            let normalized = Self::normalize_id_token(&hit.header_id);
+                            if normalized.is_empty() {
+                                "read".to_string()
+                            } else {
+                                normalized
+                            }
+                        };
+                        let base = format!("{}_r{}_{}", prefix, hit.record_index + 1, header_token);
+                        let seq_id = self.unique_seq_id(&base);
+                        let mut dna =
                         DNAsequence::from_sequence(&hit.sequence).map_err(|e| EngineError {
                             code: ErrorCode::Internal,
                             message: format!(
@@ -13495,445 +13679,454 @@ impl GentleEngine {
                                 hit.header_id, report.report_id
                             ),
                         })?;
-                    dna.set_name(seq_id.clone());
-                    dna.set_circular(false);
-                    Self::prepare_sequence(&mut dna);
-                    self.state.sequences.insert(seq_id.clone(), dna);
-                    self.add_lineage_node(
-                        &seq_id,
-                        SequenceOrigin::InSilicoSelection,
-                        Some(&result.op_id),
-                    );
-                    result.created_seq_ids.push(seq_id.clone());
-                    created.push(seq_id);
-                }
-                if explicit_selection && created.len() < explicit_record_indices.len() {
-                    result.warnings.push(format!(
+                        dna.set_name(seq_id.clone());
+                        dna.set_circular(false);
+                        Self::prepare_sequence(&mut dna);
+                        self.state.sequences.insert(seq_id.clone(), dna);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::InSilicoSelection,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(seq_id.clone());
+                        created.push(seq_id);
+                    }
+                    if explicit_selection && created.len() < explicit_record_indices.len() {
+                        result.warnings.push(format!(
                         "Requested {} explicit record_index values but materialized {} retained hits from report '{}'",
                         explicit_record_indices.len(),
                         created.len(),
                         report.report_id
                     ));
-                }
-                let preview = created
-                    .iter()
-                    .take(4)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let suffix = if created.len() > 4 {
-                    format!(" (+{} more)", created.len() - 4)
-                } else {
-                    String::new()
-                };
-                result.messages.push(format!(
-                    "Materialized {} RNA-read hit sequence(s) from report '{}' into {}{}",
-                    created.len(),
-                    report.report_id,
-                    preview,
-                    suffix
-                ));
-            }
-            Operation::ExtractRegion {
-                input,
-                from,
-                to,
-                output_id,
-            } => {
-                parent_seq_ids.push(input.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&input)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{input}' not found"),
-                    })?
-                    .clone();
-
-                if from == to {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ExtractRegion requires from != to".to_string(),
-                    });
-                }
-                let mut out = dna
-                    .extract_region_preserving_features(from, to)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Could not extract region {}..{} from sequence '{}'",
-                            from, to, input
-                        ),
-                    })?;
-                if out.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Could not extract region {}..{} from sequence '{}'",
-                            from, to, input
-                        ),
-                    });
-                }
-                out.set_circular(false);
-                Self::prepare_sequence(&mut out);
-
-                let base = output_id
-                    .unwrap_or_else(|| Self::derive_extract_region_default_base(&input, from, to));
-                let seq_id = self.unique_seq_id(&base);
-                self.state.sequences.insert(seq_id.clone(), out);
-                self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                result.created_seq_ids.push(seq_id.clone());
-                result.messages.push(format!(
-                    "Extracted region {}..{} from '{}' into '{}'",
-                    from, to, input, seq_id
-                ));
-            }
-            Operation::ExtractAnchoredRegion {
-                input,
-                anchor,
-                direction,
-                target_length_bp,
-                length_tolerance_bp,
-                required_re_sites,
-                required_tf_motifs,
-                forward_primer,
-                reverse_primer,
-                output_prefix,
-                unique,
-                max_candidates,
-            } => {
-                parent_seq_ids.push(input.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&input)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{input}' not found"),
-                    })?
-                    .clone();
-
-                if target_length_bp == 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ExtractAnchoredRegion requires target_length_bp >= 1".to_string(),
-                    });
-                }
-
-                let anchor_pos = Self::resolve_sequence_anchor_position(&dna, &anchor, "anchor")?;
-                let min_len = target_length_bp.saturating_sub(length_tolerance_bp).max(1);
-                let max_len = target_length_bp
-                    .saturating_add(length_tolerance_bp)
-                    .max(min_len);
-
-                let forward_primer = match forward_primer {
-                    Some(p) => {
-                        let v = Self::normalize_iupac_text(&p)?;
-                        if v.is_empty() { None } else { Some(v) }
                     }
-                    None => None,
-                };
-                let reverse_primer = match reverse_primer {
-                    Some(p) => {
-                        let v = Self::normalize_iupac_text(&p)?;
-                        if v.is_empty() { None } else { Some(v) }
-                    }
-                    None => None,
-                };
-                let reverse_primer_rc = reverse_primer
-                    .as_ref()
-                    .map(|p| Self::reverse_complement_iupac(p))
-                    .transpose()?;
-
-                let mut tf_motifs = Vec::new();
-                for motif in required_tf_motifs {
-                    let m = Self::resolve_tf_motif_or_iupac(&motif)?;
-                    if !m.is_empty() {
-                        tf_motifs.push(m);
-                    }
-                }
-
-                let (required_enzymes, missing_enzymes) = if required_re_sites.is_empty() {
-                    (Vec::new(), Vec::new())
-                } else {
-                    self.resolve_enzymes(&required_re_sites)?
-                };
-                if !missing_enzymes.is_empty() {
-                    result.warnings.push(format!(
-                        "Unknown anchored-region enzymes ignored: {}",
-                        missing_enzymes.join(",")
-                    ));
-                }
-
-                #[derive(Clone)]
-                struct Candidate {
-                    start: usize,
-                    end: usize,
-                    len: usize,
-                    sequence: String,
-                    score: usize,
-                }
-
-                let mut candidates = Vec::new();
-                for len in min_len..=max_len {
-                    let Some((start, end)) = Self::anchored_range(
-                        anchor_pos,
-                        len,
-                        &direction,
-                        dna.len(),
-                        dna.is_circular(),
-                    ) else {
-                        continue;
+                    let preview = created
+                        .iter()
+                        .take(4)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let suffix = if created.len() > 4 {
+                        format!(" (+{} more)", created.len() - 4)
+                    } else {
+                        String::new()
                     };
-                    let Some(fragment) = dna.get_range_safe(start..end) else {
-                        continue;
-                    };
-                    if fragment.is_empty() {
-                        continue;
-                    }
-                    let fragment_text = String::from_utf8_lossy(&fragment).to_string();
-                    let fragment_bytes = fragment_text.as_bytes();
-
-                    if let Some(fwd) = &forward_primer {
-                        if !Self::iupac_match_at(fragment_bytes, fwd.as_bytes(), 0) {
-                            continue;
-                        }
-                    }
-                    if let Some(rev_rc) = &reverse_primer_rc {
-                        if rev_rc.len() > fragment_bytes.len() {
-                            continue;
-                        }
-                        let start_idx = fragment_bytes.len() - rev_rc.len();
-                        if !Self::iupac_match_at(fragment_bytes, rev_rc.as_bytes(), start_idx) {
-                            continue;
-                        }
-                    }
-
-                    let mut motif_ok = true;
-                    for motif in &tf_motifs {
-                        if !Self::contains_motif_any_strand(fragment_bytes, motif)? {
-                            motif_ok = false;
-                            break;
-                        }
-                    }
-                    if !motif_ok {
-                        continue;
-                    }
-
-                    if !required_enzymes.is_empty() {
-                        let frag_dna = DNAsequence::from_sequence(&fragment_text).map_err(|e| {
-                            EngineError {
-                                code: ErrorCode::Internal,
-                                message: format!(
-                                    "Could not evaluate anchored-region enzyme constraints: {e}"
-                                ),
-                            }
-                        })?;
-                        let mut enzymes_ok = true;
-                        for enzyme in &required_enzymes {
-                            if enzyme.get_sites(&frag_dna, None).is_empty() {
-                                enzymes_ok = false;
-                                break;
-                            }
-                        }
-                        if !enzymes_ok {
-                            continue;
-                        }
-                    }
-
-                    candidates.push(Candidate {
-                        start,
-                        end,
-                        len,
-                        sequence: fragment_text,
-                        score: len.abs_diff(target_length_bp),
-                    });
-                }
-
-                if candidates.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message:
-                            "No anchored-region candidate satisfied the configured constraints"
-                                .to_string(),
-                    });
-                }
-
-                candidates.sort_by(|a, b| {
-                    a.score
-                        .cmp(&b.score)
-                        .then(a.start.cmp(&b.start))
-                        .then(a.end.cmp(&b.end))
-                });
-
-                let require_unique = unique.unwrap_or(false);
-                if require_unique && candidates.len() != 1 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "ExtractAnchoredRegion unique=true requires exactly one candidate, found {}",
-                            candidates.len()
-                        ),
-                    });
-                }
-
-                let limit = max_candidates
-                    .unwrap_or(candidates.len())
-                    .min(self.max_fragments_per_container());
-                if limit == 0 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "ExtractAnchoredRegion max_candidates must be >= 1".to_string(),
-                    });
-                }
-                if candidates.len() > limit {
-                    result.warnings.push(format!(
-                        "Anchored-region candidates truncated from {} to {} by max_candidates/max_fragments_per_container",
-                        candidates.len(),
-                        limit
-                    ));
-                    candidates.truncate(limit);
-                }
-
-                let prefix = output_prefix.unwrap_or_else(|| format!("{input}_anchored"));
-                for (idx, cand) in candidates.into_iter().enumerate() {
-                    let mut out =
-                        DNAsequence::from_sequence(&cand.sequence).map_err(|e| EngineError {
-                            code: ErrorCode::Internal,
-                            message: format!("Could not create anchored-region sequence: {e}"),
-                        })?;
-                    out.set_circular(false);
-                    Self::prepare_sequence(&mut out);
-                    let seq_id = self.unique_seq_id(&format!("{}_{}", prefix, idx + 1));
-                    self.state.sequences.insert(seq_id.clone(), out);
-                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                    result.created_seq_ids.push(seq_id.clone());
                     result.messages.push(format!(
-                        "Anchored-region candidate '{}' [{}..{}, {} bp] score={}",
-                        seq_id, cand.start, cand.end, cand.len, cand.score
+                        "Materialized {} RNA-read hit sequence(s) from report '{}' into {}{}",
+                        created.len(),
+                        report.report_id,
+                        preview,
+                        suffix
                     ));
                 }
-            }
-            Operation::SelectCandidate {
-                input,
-                criterion,
-                output_id,
-            } => {
-                parent_seq_ids.push(input.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&input)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{input}' not found"),
-                    })?
-                    .clone();
-
-                let base = output_id.unwrap_or_else(|| format!("{input}_selected"));
-                let seq_id = self.unique_seq_id(&base);
-                self.state.sequences.insert(seq_id.clone(), dna);
-                self.add_lineage_node(
-                    &seq_id,
-                    SequenceOrigin::InSilicoSelection,
-                    Some(&result.op_id),
-                );
-                result.created_seq_ids.push(seq_id.clone());
-                result.warnings.push(
-                    "Selection operation is in-silico and may not directly correspond to a unique wet-lab product"
-                        .to_string(),
-                );
-                result.messages.push(format!(
-                    "Selected candidate '{}' from '{}' using criterion '{}'",
-                    seq_id, input, criterion
-                ));
-            }
-            Operation::FilterByMolecularWeight {
-                inputs,
-                min_bp,
-                max_bp,
-                error,
-                unique,
-                output_prefix,
-            } => {
-                if inputs.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "FilterByMolecularWeight requires at least one input sequence"
-                            .to_string(),
-                    });
-                }
-                if min_bp > max_bp {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("min_bp ({min_bp}) must be <= max_bp ({max_bp})"),
-                    });
-                }
-                if !(0.0..=1.0).contains(&error) {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "error must be between 0.0 and 1.0".to_string(),
-                    });
-                }
-
-                let min_allowed = ((min_bp as f64) * (1.0 - error)).floor() as usize;
-                let max_allowed = ((max_bp as f64) * (1.0 + error)).ceil() as usize;
-
-                let mut matches: Vec<(SeqId, DNAsequence)> = vec![];
-                for input in &inputs {
+                Operation::ExtractRegion {
+                    input,
+                    from,
+                    to,
+                    output_id,
+                } => {
                     parent_seq_ids.push(input.clone());
                     let dna = self
                         .state
                         .sequences
-                        .get(input)
+                        .get(&input)
                         .ok_or_else(|| EngineError {
                             code: ErrorCode::NotFound,
                             message: format!("Sequence '{input}' not found"),
                         })?
                         .clone();
-                    let bp = dna.len();
-                    if bp >= min_allowed && bp <= max_allowed {
-                        matches.push((input.clone(), dna));
+
+                    if from == to {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ExtractRegion requires from != to".to_string(),
+                        });
+                    }
+                    let mut out = dna
+                        .extract_region_preserving_features(from, to)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not extract region {}..{} from sequence '{}'",
+                                from, to, input
+                            ),
+                        })?;
+                    if out.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not extract region {}..{} from sequence '{}'",
+                                from, to, input
+                            ),
+                        });
+                    }
+                    out.set_circular(false);
+                    Self::prepare_sequence(&mut out);
+
+                    let base = output_id.unwrap_or_else(|| {
+                        Self::derive_extract_region_default_base(&input, from, to)
+                    });
+                    let seq_id = self.unique_seq_id(&base);
+                    self.state.sequences.insert(seq_id.clone(), out);
+                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                    result.created_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Extracted region {}..{} from '{}' into '{}'",
+                        from, to, input, seq_id
+                    ));
+                }
+                Operation::ExtractAnchoredRegion {
+                    input,
+                    anchor,
+                    direction,
+                    target_length_bp,
+                    length_tolerance_bp,
+                    required_re_sites,
+                    required_tf_motifs,
+                    forward_primer,
+                    reverse_primer,
+                    output_prefix,
+                    unique,
+                    max_candidates,
+                } => {
+                    parent_seq_ids.push(input.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&input)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{input}' not found"),
+                        })?
+                        .clone();
+
+                    if target_length_bp == 0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ExtractAnchoredRegion requires target_length_bp >= 1"
+                                .to_string(),
+                        });
+                    }
+
+                    let anchor_pos =
+                        Self::resolve_sequence_anchor_position(&dna, &anchor, "anchor")?;
+                    let min_len = target_length_bp.saturating_sub(length_tolerance_bp).max(1);
+                    let max_len = target_length_bp
+                        .saturating_add(length_tolerance_bp)
+                        .max(min_len);
+
+                    let forward_primer = match forward_primer {
+                        Some(p) => {
+                            let v = Self::normalize_iupac_text(&p)?;
+                            if v.is_empty() { None } else { Some(v) }
+                        }
+                        None => None,
+                    };
+                    let reverse_primer = match reverse_primer {
+                        Some(p) => {
+                            let v = Self::normalize_iupac_text(&p)?;
+                            if v.is_empty() { None } else { Some(v) }
+                        }
+                        None => None,
+                    };
+                    let reverse_primer_rc = reverse_primer
+                        .as_ref()
+                        .map(|p| Self::reverse_complement_iupac(p))
+                        .transpose()?;
+
+                    let mut tf_motifs = Vec::new();
+                    for motif in required_tf_motifs {
+                        let m = Self::resolve_tf_motif_or_iupac(&motif)?;
+                        if !m.is_empty() {
+                            tf_motifs.push(m);
+                        }
+                    }
+
+                    let (required_enzymes, missing_enzymes) = if required_re_sites.is_empty() {
+                        (Vec::new(), Vec::new())
+                    } else {
+                        self.resolve_enzymes(&required_re_sites)?
+                    };
+                    if !missing_enzymes.is_empty() {
+                        result.warnings.push(format!(
+                            "Unknown anchored-region enzymes ignored: {}",
+                            missing_enzymes.join(",")
+                        ));
+                    }
+
+                    #[derive(Clone)]
+                    struct Candidate {
+                        start: usize,
+                        end: usize,
+                        len: usize,
+                        sequence: String,
+                        score: usize,
+                    }
+
+                    let mut candidates = Vec::new();
+                    for len in min_len..=max_len {
+                        let Some((start, end)) = Self::anchored_range(
+                            anchor_pos,
+                            len,
+                            &direction,
+                            dna.len(),
+                            dna.is_circular(),
+                        ) else {
+                            continue;
+                        };
+                        let Some(fragment) = dna.get_range_safe(start..end) else {
+                            continue;
+                        };
+                        if fragment.is_empty() {
+                            continue;
+                        }
+                        let fragment_text = String::from_utf8_lossy(&fragment).to_string();
+                        let fragment_bytes = fragment_text.as_bytes();
+
+                        if let Some(fwd) = &forward_primer {
+                            if !Self::iupac_match_at(fragment_bytes, fwd.as_bytes(), 0) {
+                                continue;
+                            }
+                        }
+                        if let Some(rev_rc) = &reverse_primer_rc {
+                            if rev_rc.len() > fragment_bytes.len() {
+                                continue;
+                            }
+                            let start_idx = fragment_bytes.len() - rev_rc.len();
+                            if !Self::iupac_match_at(fragment_bytes, rev_rc.as_bytes(), start_idx) {
+                                continue;
+                            }
+                        }
+
+                        let mut motif_ok = true;
+                        for motif in &tf_motifs {
+                            if !Self::contains_motif_any_strand(fragment_bytes, motif)? {
+                                motif_ok = false;
+                                break;
+                            }
+                        }
+                        if !motif_ok {
+                            continue;
+                        }
+
+                        if !required_enzymes.is_empty() {
+                            let frag_dna = DNAsequence::from_sequence(&fragment_text).map_err(
+                                |e| EngineError {
+                                    code: ErrorCode::Internal,
+                                    message: format!(
+                                        "Could not evaluate anchored-region enzyme constraints: {e}"
+                                    ),
+                                },
+                            )?;
+                            let mut enzymes_ok = true;
+                            for enzyme in &required_enzymes {
+                                if enzyme.get_sites(&frag_dna, None).is_empty() {
+                                    enzymes_ok = false;
+                                    break;
+                                }
+                            }
+                            if !enzymes_ok {
+                                continue;
+                            }
+                        }
+
+                        candidates.push(Candidate {
+                            start,
+                            end,
+                            len,
+                            sequence: fragment_text,
+                            score: len.abs_diff(target_length_bp),
+                        });
+                    }
+
+                    if candidates.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message:
+                                "No anchored-region candidate satisfied the configured constraints"
+                                    .to_string(),
+                        });
+                    }
+
+                    candidates.sort_by(|a, b| {
+                        a.score
+                            .cmp(&b.score)
+                            .then(a.start.cmp(&b.start))
+                            .then(a.end.cmp(&b.end))
+                    });
+
+                    let require_unique = unique.unwrap_or(false);
+                    if require_unique && candidates.len() != 1 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "ExtractAnchoredRegion unique=true requires exactly one candidate, found {}",
+                                candidates.len()
+                            ),
+                        });
+                    }
+
+                    let limit = max_candidates
+                        .unwrap_or(candidates.len())
+                        .min(self.max_fragments_per_container());
+                    if limit == 0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ExtractAnchoredRegion max_candidates must be >= 1"
+                                .to_string(),
+                        });
+                    }
+                    if candidates.len() > limit {
+                        result.warnings.push(format!(
+                        "Anchored-region candidates truncated from {} to {} by max_candidates/max_fragments_per_container",
+                        candidates.len(),
+                        limit
+                    ));
+                        candidates.truncate(limit);
+                    }
+
+                    let prefix = output_prefix.unwrap_or_else(|| format!("{input}_anchored"));
+                    for (idx, cand) in candidates.into_iter().enumerate() {
+                        let mut out = DNAsequence::from_sequence(&cand.sequence).map_err(|e| {
+                            EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!("Could not create anchored-region sequence: {e}"),
+                            }
+                        })?;
+                        out.set_circular(false);
+                        Self::prepare_sequence(&mut out);
+                        let seq_id = self.unique_seq_id(&format!("{}_{}", prefix, idx + 1));
+                        self.state.sequences.insert(seq_id.clone(), out);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(seq_id.clone());
+                        result.messages.push(format!(
+                            "Anchored-region candidate '{}' [{}..{}, {} bp] score={}",
+                            seq_id, cand.start, cand.end, cand.len, cand.score
+                        ));
                     }
                 }
+                Operation::SelectCandidate {
+                    input,
+                    criterion,
+                    output_id,
+                } => {
+                    parent_seq_ids.push(input.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&input)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{input}' not found"),
+                        })?
+                        .clone();
 
-                if matches.len() > self.max_fragments_per_container() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "FilterByMolecularWeight produced {} candidates, exceeding max_fragments_per_container={}",
-                            matches.len(),
-                            self.max_fragments_per_container()
-                        ),
-                    });
-                }
-
-                if unique && matches.len() != 1 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "unique=true requires exactly one match, found {}",
-                            matches.len()
-                        ),
-                    });
-                }
-
-                let prefix = output_prefix.unwrap_or_else(|| "mw_filter".to_string());
-                for (i, (_source_id, mut dna)) in matches.into_iter().enumerate() {
-                    Self::prepare_sequence(&mut dna);
-                    let candidate = format!("{}_{}", prefix, i + 1);
-                    let seq_id = self.unique_seq_id(&candidate);
+                    let base = output_id.unwrap_or_else(|| format!("{input}_selected"));
+                    let seq_id = self.unique_seq_id(&base);
                     self.state.sequences.insert(seq_id.clone(), dna);
                     self.add_lineage_node(
                         &seq_id,
                         SequenceOrigin::InSilicoSelection,
                         Some(&result.op_id),
                     );
-                    result.created_seq_ids.push(seq_id);
+                    result.created_seq_ids.push(seq_id.clone());
+                    result.warnings.push(
+                    "Selection operation is in-silico and may not directly correspond to a unique wet-lab product"
+                        .to_string(),
+                );
+                    result.messages.push(format!(
+                        "Selected candidate '{}' from '{}' using criterion '{}'",
+                        seq_id, input, criterion
+                    ));
                 }
+                Operation::FilterByMolecularWeight {
+                    inputs,
+                    min_bp,
+                    max_bp,
+                    error,
+                    unique,
+                    output_prefix,
+                } => {
+                    if inputs.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "FilterByMolecularWeight requires at least one input sequence"
+                                .to_string(),
+                        });
+                    }
+                    if min_bp > max_bp {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("min_bp ({min_bp}) must be <= max_bp ({max_bp})"),
+                        });
+                    }
+                    if !(0.0..=1.0).contains(&error) {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "error must be between 0.0 and 1.0".to_string(),
+                        });
+                    }
 
-                result.messages.push(format!(
+                    let min_allowed = ((min_bp as f64) * (1.0 - error)).floor() as usize;
+                    let max_allowed = ((max_bp as f64) * (1.0 + error)).ceil() as usize;
+
+                    let mut matches: Vec<(SeqId, DNAsequence)> = vec![];
+                    for input in &inputs {
+                        parent_seq_ids.push(input.clone());
+                        let dna = self
+                            .state
+                            .sequences
+                            .get(input)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!("Sequence '{input}' not found"),
+                            })?
+                            .clone();
+                        let bp = dna.len();
+                        if bp >= min_allowed && bp <= max_allowed {
+                            matches.push((input.clone(), dna));
+                        }
+                    }
+
+                    if matches.len() > self.max_fragments_per_container() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "FilterByMolecularWeight produced {} candidates, exceeding max_fragments_per_container={}",
+                                matches.len(),
+                                self.max_fragments_per_container()
+                            ),
+                        });
+                    }
+
+                    if unique && matches.len() != 1 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "unique=true requires exactly one match, found {}",
+                                matches.len()
+                            ),
+                        });
+                    }
+
+                    let prefix = output_prefix.unwrap_or_else(|| "mw_filter".to_string());
+                    for (i, (_source_id, mut dna)) in matches.into_iter().enumerate() {
+                        Self::prepare_sequence(&mut dna);
+                        let candidate = format!("{}_{}", prefix, i + 1);
+                        let seq_id = self.unique_seq_id(&candidate);
+                        self.state.sequences.insert(seq_id.clone(), dna);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::InSilicoSelection,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(seq_id);
+                    }
+
+                    result.messages.push(format!(
                     "Molecular-weight filter kept {} sequence(s) in effective range {}-{} bp (requested {}-{} bp, error={:.3})",
                     result.created_seq_ids.len(),
                     min_allowed,
@@ -13942,190 +14135,193 @@ impl GentleEngine {
                     max_bp,
                     error
                 ));
-            }
-            Operation::FilterByDesignConstraints {
-                inputs,
-                gc_min,
-                gc_max,
-                max_homopolymer_run,
-                reject_ambiguous_bases,
-                avoid_u6_terminator_tttt,
-                forbidden_motifs,
-                unique,
-                output_prefix,
-            } => {
-                if inputs.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "FilterByDesignConstraints requires at least one input sequence"
-                            .to_string(),
-                    });
                 }
-
-                if let Some(min) = gc_min {
-                    if !(0.0..=1.0).contains(&min) {
+                Operation::FilterByDesignConstraints {
+                    inputs,
+                    gc_min,
+                    gc_max,
+                    max_homopolymer_run,
+                    reject_ambiguous_bases,
+                    avoid_u6_terminator_tttt,
+                    forbidden_motifs,
+                    unique,
+                    output_prefix,
+                } => {
+                    if inputs.is_empty() {
                         return Err(EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: format!("gc_min ({min}) must be between 0.0 and 1.0"),
+                            message:
+                                "FilterByDesignConstraints requires at least one input sequence"
+                                    .to_string(),
                         });
                     }
-                }
-                if let Some(max) = gc_max {
-                    if !(0.0..=1.0).contains(&max) {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!("gc_max ({max}) must be between 0.0 and 1.0"),
-                        });
-                    }
-                }
-                if let (Some(min), Some(max)) = (gc_min, gc_max) {
-                    if min > max {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!("gc_min ({min}) must be <= gc_max ({max})"),
-                        });
-                    }
-                }
-                if let Some(max_run) = max_homopolymer_run {
-                    if max_run == 0 {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "max_homopolymer_run must be >= 1".to_string(),
-                        });
-                    }
-                }
 
-                let reject_ambiguous_bases = reject_ambiguous_bases.unwrap_or(true);
-                let avoid_u6_terminator_tttt = avoid_u6_terminator_tttt.unwrap_or(true);
-                let mut forbidden_motifs_normalized: Vec<String> = vec![];
-                for motif in forbidden_motifs {
-                    let normalized = Self::normalize_iupac_text(&motif)?;
-                    if !normalized.is_empty() {
-                        forbidden_motifs_normalized.push(normalized);
-                    }
-                }
-
-                let mut matches: Vec<(SeqId, DNAsequence)> = vec![];
-                let mut rejected = 0usize;
-                let mut rejection_warnings_left = 32usize;
-                let input_count = inputs.len();
-
-                for input in &inputs {
-                    parent_seq_ids.push(input.clone());
-                    let dna = self
-                        .state
-                        .sequences
-                        .get(input)
-                        .ok_or_else(|| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!("Sequence '{input}' not found"),
-                        })?
-                        .clone();
-                    let sequence = Self::normalized_sequence_for_quality(&dna);
-                    let mut reasons: Vec<String> = vec![];
-
-                    if reject_ambiguous_bases && Self::has_ambiguous_bases(&sequence) {
-                        reasons.push("contains_ambiguous_base".to_string());
-                    }
-
-                    if gc_min.is_some() || gc_max.is_some() {
-                        match Self::sequence_gc_fraction(&sequence) {
-                            Some(gc) => {
-                                if let Some(min) = gc_min {
-                                    if gc < min {
-                                        reasons.push(format!("gc_too_low({gc:.3}<{min:.3})"));
-                                    }
-                                }
-                                if let Some(max) = gc_max {
-                                    if gc > max {
-                                        reasons.push(format!("gc_too_high({gc:.3}>{max:.3})"));
-                                    }
-                                }
-                            }
-                            None => reasons.push("gc_not_computable".to_string()),
+                    if let Some(min) = gc_min {
+                        if !(0.0..=1.0).contains(&min) {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!("gc_min ({min}) must be between 0.0 and 1.0"),
+                            });
                         }
                     }
-
+                    if let Some(max) = gc_max {
+                        if !(0.0..=1.0).contains(&max) {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!("gc_max ({max}) must be between 0.0 and 1.0"),
+                            });
+                        }
+                    }
+                    if let (Some(min), Some(max)) = (gc_min, gc_max) {
+                        if min > max {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!("gc_min ({min}) must be <= gc_max ({max})"),
+                            });
+                        }
+                    }
                     if let Some(max_run) = max_homopolymer_run {
-                        let observed = Self::max_homopolymer_run(&sequence);
-                        if observed > max_run {
-                            reasons.push(format!("homopolymer_run_exceeded({observed}>{max_run})"));
+                        if max_run == 0 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "max_homopolymer_run must be >= 1".to_string(),
+                            });
                         }
                     }
 
-                    if avoid_u6_terminator_tttt && Self::contains_u6_terminator_t4(&sequence) {
-                        reasons.push("u6_terminator_t4".to_string());
-                    }
-
-                    for motif in &forbidden_motifs_normalized {
-                        if Self::contains_motif_any_strand(&sequence, motif)? {
-                            reasons.push(format!("forbidden_motif_present({motif})"));
+                    let reject_ambiguous_bases = reject_ambiguous_bases.unwrap_or(true);
+                    let avoid_u6_terminator_tttt = avoid_u6_terminator_tttt.unwrap_or(true);
+                    let mut forbidden_motifs_normalized: Vec<String> = vec![];
+                    for motif in forbidden_motifs {
+                        let normalized = Self::normalize_iupac_text(&motif)?;
+                        if !normalized.is_empty() {
+                            forbidden_motifs_normalized.push(normalized);
                         }
                     }
 
-                    if reasons.is_empty() {
-                        matches.push((input.clone(), dna));
-                    } else {
-                        rejected += 1;
-                        if rejection_warnings_left > 0 {
-                            result.warnings.push(format!(
-                                "Sequence '{}' rejected by design constraints: {}",
-                                input,
-                                reasons.join(", ")
-                            ));
-                            rejection_warnings_left -= 1;
+                    let mut matches: Vec<(SeqId, DNAsequence)> = vec![];
+                    let mut rejected = 0usize;
+                    let mut rejection_warnings_left = 32usize;
+                    let input_count = inputs.len();
+
+                    for input in &inputs {
+                        parent_seq_ids.push(input.clone());
+                        let dna = self
+                            .state
+                            .sequences
+                            .get(input)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!("Sequence '{input}' not found"),
+                            })?
+                            .clone();
+                        let sequence = Self::normalized_sequence_for_quality(&dna);
+                        let mut reasons: Vec<String> = vec![];
+
+                        if reject_ambiguous_bases && Self::has_ambiguous_bases(&sequence) {
+                            reasons.push("contains_ambiguous_base".to_string());
+                        }
+
+                        if gc_min.is_some() || gc_max.is_some() {
+                            match Self::sequence_gc_fraction(&sequence) {
+                                Some(gc) => {
+                                    if let Some(min) = gc_min {
+                                        if gc < min {
+                                            reasons.push(format!("gc_too_low({gc:.3}<{min:.3})"));
+                                        }
+                                    }
+                                    if let Some(max) = gc_max {
+                                        if gc > max {
+                                            reasons.push(format!("gc_too_high({gc:.3}>{max:.3})"));
+                                        }
+                                    }
+                                }
+                                None => reasons.push("gc_not_computable".to_string()),
+                            }
+                        }
+
+                        if let Some(max_run) = max_homopolymer_run {
+                            let observed = Self::max_homopolymer_run(&sequence);
+                            if observed > max_run {
+                                reasons.push(format!(
+                                    "homopolymer_run_exceeded({observed}>{max_run})"
+                                ));
+                            }
+                        }
+
+                        if avoid_u6_terminator_tttt && Self::contains_u6_terminator_t4(&sequence) {
+                            reasons.push("u6_terminator_t4".to_string());
+                        }
+
+                        for motif in &forbidden_motifs_normalized {
+                            if Self::contains_motif_any_strand(&sequence, motif)? {
+                                reasons.push(format!("forbidden_motif_present({motif})"));
+                            }
+                        }
+
+                        if reasons.is_empty() {
+                            matches.push((input.clone(), dna));
+                        } else {
+                            rejected += 1;
+                            if rejection_warnings_left > 0 {
+                                result.warnings.push(format!(
+                                    "Sequence '{}' rejected by design constraints: {}",
+                                    input,
+                                    reasons.join(", ")
+                                ));
+                                rejection_warnings_left -= 1;
+                            }
                         }
                     }
-                }
 
-                if matches.len() > self.max_fragments_per_container() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "FilterByDesignConstraints produced {} candidates, exceeding max_fragments_per_container={}",
-                            matches.len(),
-                            self.max_fragments_per_container()
-                        ),
-                    });
-                }
+                    if matches.len() > self.max_fragments_per_container() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "FilterByDesignConstraints produced {} candidates, exceeding max_fragments_per_container={}",
+                                matches.len(),
+                                self.max_fragments_per_container()
+                            ),
+                        });
+                    }
 
-                if unique && matches.len() != 1 {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "unique=true requires exactly one match, found {}",
-                            matches.len()
-                        ),
-                    });
-                }
+                    if unique && matches.len() != 1 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "unique=true requires exactly one match, found {}",
+                                matches.len()
+                            ),
+                        });
+                    }
 
-                let prefix = output_prefix.unwrap_or_else(|| "design_filter".to_string());
-                for (i, (_source_id, mut dna)) in matches.into_iter().enumerate() {
-                    Self::prepare_sequence(&mut dna);
-                    let candidate = format!("{}_{}", prefix, i + 1);
-                    let seq_id = self.unique_seq_id(&candidate);
-                    self.state.sequences.insert(seq_id.clone(), dna);
-                    self.add_lineage_node(
-                        &seq_id,
-                        SequenceOrigin::InSilicoSelection,
-                        Some(&result.op_id),
-                    );
-                    result.created_seq_ids.push(seq_id);
-                }
+                    let prefix = output_prefix.unwrap_or_else(|| "design_filter".to_string());
+                    for (i, (_source_id, mut dna)) in matches.into_iter().enumerate() {
+                        Self::prepare_sequence(&mut dna);
+                        let candidate = format!("{}_{}", prefix, i + 1);
+                        let seq_id = self.unique_seq_id(&candidate);
+                        self.state.sequences.insert(seq_id.clone(), dna);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::InSilicoSelection,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(seq_id);
+                    }
 
-                if rejected > 32 {
-                    result.warnings.push(format!(
-                        "{} additional sequence(s) were rejected (warning output truncated)",
-                        rejected - 32
+                    if rejected > 32 {
+                        result.warnings.push(format!(
+                            "{} additional sequence(s) were rejected (warning output truncated)",
+                            rejected - 32
+                        ));
+                    }
+
+                    result.messages.push(format!(
+                        "Design-constraint filter kept {} of {} sequence(s)",
+                        result.created_seq_ids.len(),
+                        input_count
                     ));
-                }
-
-                result.messages.push(format!(
-                    "Design-constraint filter kept {} of {} sequence(s)",
-                    result.created_seq_ids.len(),
-                    input_count
-                ));
-                result.messages.push(format!(
+                    result.messages.push(format!(
                     "Applied filters: gc_min={:?}, gc_max={:?}, max_homopolymer_run={:?}, reject_ambiguous_bases={}, avoid_u6_terminator_tttt={}, forbidden_motifs={}",
                     gc_min,
                     gc_max,
@@ -14134,21 +14330,8 @@ impl GentleEngine {
                     avoid_u6_terminator_tttt,
                     forbidden_motifs_normalized.len()
                 ));
-            }
-            Operation::GenerateCandidateSet {
-                set_name,
-                seq_id,
-                length_bp,
-                step_bp,
-                feature_kinds,
-                feature_label_regex,
-                max_distance_bp,
-                feature_geometry_mode,
-                feature_boundary_mode,
-                feature_strand_relation,
-                limit,
-            } => {
-                self.op_generate_candidate_set(
+                }
+                Operation::GenerateCandidateSet {
                     set_name,
                     seq_id,
                     length_bp,
@@ -14160,19 +14343,23 @@ impl GentleEngine {
                     feature_boundary_mode,
                     feature_strand_relation,
                     limit,
-                    &mut result,
-                )?;
-            }
-            Operation::GenerateCandidateSetBetweenAnchors {
-                set_name,
-                seq_id,
-                anchor_a,
-                anchor_b,
-                length_bp,
-                step_bp,
-                limit,
-            } => {
-                self.op_generate_candidate_set_between_anchors(
+                } => {
+                    self.op_generate_candidate_set(
+                        set_name,
+                        seq_id,
+                        length_bp,
+                        step_bp,
+                        feature_kinds,
+                        feature_label_regex,
+                        max_distance_bp,
+                        feature_geometry_mode,
+                        feature_boundary_mode,
+                        feature_strand_relation,
+                        limit,
+                        &mut result,
+                    )?;
+                }
+                Operation::GenerateCandidateSetBetweenAnchors {
                     set_name,
                     seq_id,
                     anchor_a,
@@ -14180,94 +14367,103 @@ impl GentleEngine {
                     length_bp,
                     step_bp,
                     limit,
-                    &mut result,
-                )?;
-            }
-            Operation::DeleteCandidateSet { set_name } => {
-                self.op_delete_candidate_set(set_name, &mut result)?;
-            }
-            Operation::UpsertGuideSet {
-                guide_set_id,
-                guides,
-            } => {
-                self.op_upsert_guide_set(guide_set_id, guides, &mut result)?;
-            }
-            Operation::DeleteGuideSet { guide_set_id } => {
-                self.op_delete_guide_set(guide_set_id, &mut result)?;
-            }
-            Operation::FilterGuidesPractical {
-                guide_set_id,
-                config,
-                output_guide_set_id,
-            } => {
-                self.op_filter_guides_practical(
+                } => {
+                    self.op_generate_candidate_set_between_anchors(
+                        set_name,
+                        seq_id,
+                        anchor_a,
+                        anchor_b,
+                        length_bp,
+                        step_bp,
+                        limit,
+                        &mut result,
+                    )?;
+                }
+                Operation::DeleteCandidateSet { set_name } => {
+                    self.op_delete_candidate_set(set_name, &mut result)?;
+                }
+                Operation::UpsertGuideSet {
+                    guide_set_id,
+                    guides,
+                } => {
+                    self.op_upsert_guide_set(guide_set_id, guides, &mut result)?;
+                }
+                Operation::DeleteGuideSet { guide_set_id } => {
+                    self.op_delete_guide_set(guide_set_id, &mut result)?;
+                }
+                Operation::FilterGuidesPractical {
                     guide_set_id,
                     config,
                     output_guide_set_id,
-                    &mut result,
-                )?;
-            }
-            Operation::GenerateGuideOligos {
-                guide_set_id,
-                template_id,
-                apply_5prime_g_extension,
-                output_oligo_set_id,
-                passed_only,
-            } => {
-                self.op_generate_guide_oligos(
+                } => {
+                    self.op_filter_guides_practical(
+                        guide_set_id,
+                        config,
+                        output_guide_set_id,
+                        &mut result,
+                    )?;
+                }
+                Operation::GenerateGuideOligos {
                     guide_set_id,
                     template_id,
                     apply_5prime_g_extension,
                     output_oligo_set_id,
                     passed_only,
-                    &mut result,
-                )?;
-            }
-            Operation::ExportGuideOligos {
-                guide_set_id,
-                oligo_set_id,
-                format,
-                path,
-                plate_format,
-            } => {
-                self.op_export_guide_oligos(
+                } => {
+                    self.op_generate_guide_oligos(
+                        guide_set_id,
+                        template_id,
+                        apply_5prime_g_extension,
+                        output_oligo_set_id,
+                        passed_only,
+                        &mut result,
+                    )?;
+                }
+                Operation::ExportGuideOligos {
                     guide_set_id,
                     oligo_set_id,
                     format,
                     path,
                     plate_format,
-                    &mut result,
-                )?;
-            }
-            Operation::ExportGuideProtocolText {
-                guide_set_id,
-                oligo_set_id,
-                path,
-                include_qc_checklist,
-            } => {
-                self.op_export_guide_protocol_text(
+                } => {
+                    self.op_export_guide_oligos(
+                        guide_set_id,
+                        oligo_set_id,
+                        format,
+                        path,
+                        plate_format,
+                        &mut result,
+                    )?;
+                }
+                Operation::ExportGuideProtocolText {
                     guide_set_id,
                     oligo_set_id,
                     path,
                     include_qc_checklist,
-                    &mut result,
-                )?;
-            }
-            Operation::ExportFeaturesBed {
-                query,
-                path,
-                coordinate_mode,
-                include_restriction_sites,
-                restriction_enzymes,
-            } => {
-                let report = self.export_sequence_features_bed(
-                    query.clone(),
-                    path.as_str(),
-                    coordinate_mode.unwrap_or_default(),
-                    include_restriction_sites.unwrap_or(false),
-                    restriction_enzymes.as_slice(),
-                )?;
-                result.messages.push(format!(
+                } => {
+                    self.op_export_guide_protocol_text(
+                        guide_set_id,
+                        oligo_set_id,
+                        path,
+                        include_qc_checklist,
+                        &mut result,
+                    )?;
+                }
+                Operation::ExportFeaturesBed {
+                    query,
+                    path,
+                    coordinate_mode,
+                    include_restriction_sites,
+                    restriction_enzymes,
+                } => {
+                    let report = self.export_sequence_features_bed(
+                        query.clone(),
+                        path.as_str(),
+                        coordinate_mode.unwrap_or_default(),
+                        include_restriction_sites.unwrap_or(false),
+                        restriction_enzymes.as_slice(),
+                    )?;
+                    result.messages.push(format!(
                     "Wrote BED feature export for '{}' with {} row(s) to '{}' (sequence_features={}, restriction_sites={}, coordinate_mode={})",
                     report.seq_id,
                     report.exported_row_count,
@@ -14276,24 +14472,20 @@ impl GentleEngine {
                     report.matched_restriction_site_count,
                     report.coordinate_mode
                 ));
-            }
-            Operation::ScoreCandidateSetExpression {
-                set_name,
-                metric,
-                expression,
-            } => {
-                self.op_score_candidate_set_expression(set_name, metric, expression, &mut result)?;
-            }
-            Operation::ScoreCandidateSetDistance {
-                set_name,
-                metric,
-                feature_kinds,
-                feature_label_regex,
-                feature_geometry_mode,
-                feature_boundary_mode,
-                feature_strand_relation,
-            } => {
-                self.op_score_candidate_set_distance(
+                }
+                Operation::ScoreCandidateSetExpression {
+                    set_name,
+                    metric,
+                    expression,
+                } => {
+                    self.op_score_candidate_set_expression(
+                        set_name,
+                        metric,
+                        expression,
+                        &mut result,
+                    )?;
+                }
+                Operation::ScoreCandidateSetDistance {
                     set_name,
                     metric,
                     feature_kinds,
@@ -14301,19 +14493,19 @@ impl GentleEngine {
                     feature_geometry_mode,
                     feature_boundary_mode,
                     feature_strand_relation,
-                    &mut result,
-                )?;
-            }
-            Operation::FilterCandidateSet {
-                input_set,
-                output_set,
-                metric,
-                min,
-                max,
-                min_quantile,
-                max_quantile,
-            } => {
-                self.op_filter_candidate_set(
+                } => {
+                    self.op_score_candidate_set_distance(
+                        set_name,
+                        metric,
+                        feature_kinds,
+                        feature_label_regex,
+                        feature_geometry_mode,
+                        feature_boundary_mode,
+                        feature_strand_relation,
+                        &mut result,
+                    )?;
+                }
+                Operation::FilterCandidateSet {
                     input_set,
                     output_set,
                     metric,
@@ -14321,75 +14513,75 @@ impl GentleEngine {
                     max,
                     min_quantile,
                     max_quantile,
-                    &mut result,
-                )?;
-            }
-            Operation::CandidateSetOp {
-                op,
-                left_set,
-                right_set,
-                output_set,
-            } => {
-                self.op_candidate_set_op(op, left_set, right_set, output_set, &mut result)?;
-            }
-            Operation::ScoreCandidateSetWeightedObjective {
-                set_name,
-                metric,
-                objectives,
-                normalize_metrics,
-            } => {
-                self.op_score_candidate_set_weighted_objective(
+                } => {
+                    self.op_filter_candidate_set(
+                        input_set,
+                        output_set,
+                        metric,
+                        min,
+                        max,
+                        min_quantile,
+                        max_quantile,
+                        &mut result,
+                    )?;
+                }
+                Operation::CandidateSetOp {
+                    op,
+                    left_set,
+                    right_set,
+                    output_set,
+                } => {
+                    self.op_candidate_set_op(op, left_set, right_set, output_set, &mut result)?;
+                }
+                Operation::ScoreCandidateSetWeightedObjective {
                     set_name,
                     metric,
                     objectives,
                     normalize_metrics,
-                    &mut result,
-                )?;
-            }
-            Operation::TopKCandidateSet {
-                input_set,
-                output_set,
-                metric,
-                k,
-                direction,
-                tie_break,
-            } => {
-                self.op_top_k_candidate_set(
+                } => {
+                    self.op_score_candidate_set_weighted_objective(
+                        set_name,
+                        metric,
+                        objectives,
+                        normalize_metrics,
+                        &mut result,
+                    )?;
+                }
+                Operation::TopKCandidateSet {
                     input_set,
                     output_set,
                     metric,
                     k,
                     direction,
                     tie_break,
-                    &mut result,
-                )?;
-            }
-            Operation::ParetoFrontierCandidateSet {
-                input_set,
-                output_set,
-                objectives,
-                max_candidates,
-                tie_break,
-            } => {
-                self.op_pareto_frontier_candidate_set(
+                } => {
+                    self.op_top_k_candidate_set(
+                        input_set,
+                        output_set,
+                        metric,
+                        k,
+                        direction,
+                        tie_break,
+                        &mut result,
+                    )?;
+                }
+                Operation::ParetoFrontierCandidateSet {
                     input_set,
                     output_set,
                     objectives,
                     max_candidates,
                     tie_break,
-                    &mut result,
-                )?;
-            }
-            Operation::UpsertWorkflowMacroTemplate {
-                name,
-                description,
-                details_url,
-                parameters,
-                input_ports,
-                output_ports,
-                script,
-            } => {
-                self.op_upsert_workflow_macro_template(
+                } => {
+                    self.op_pareto_frontier_candidate_set(
+                        input_set,
+                        output_set,
+                        objectives,
+                        max_candidates,
+                        tie_break,
+                        &mut result,
+                    )?;
+                }
+                Operation::UpsertWorkflowMacroTemplate {
                     name,
                     description,
                     details_url,
@@ -14397,866 +14589,869 @@ impl GentleEngine {
                     input_ports,
                     output_ports,
                     script,
-                    &mut result,
-                )?;
-            }
-            Operation::DeleteWorkflowMacroTemplate { name } => {
-                self.op_delete_workflow_macro_template(name, &mut result)?;
-            }
-            Operation::UpsertCandidateMacroTemplate {
-                name,
-                description,
-                details_url,
-                parameters,
-                script,
-            } => {
-                self.op_upsert_candidate_macro_template(
+                } => {
+                    self.op_upsert_workflow_macro_template(
+                        name,
+                        description,
+                        details_url,
+                        parameters,
+                        input_ports,
+                        output_ports,
+                        script,
+                        &mut result,
+                    )?;
+                }
+                Operation::DeleteWorkflowMacroTemplate { name } => {
+                    self.op_delete_workflow_macro_template(name, &mut result)?;
+                }
+                Operation::UpsertCandidateMacroTemplate {
                     name,
                     description,
                     details_url,
                     parameters,
                     script,
-                    &mut result,
-                )?;
-            }
-            Operation::DeleteCandidateMacroTemplate { name } => {
-                self.op_delete_candidate_macro_template(name, &mut result)?;
-            }
-            Operation::Reverse { input, output_id } => {
-                parent_seq_ids.push(input.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&input)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{input}' not found"),
-                    })?
-                    .clone();
-                let mut text = dna.get_forward_string();
-                text = text.chars().rev().collect();
-                let mut out = DNAsequence::from_sequence(&text).map_err(|e| EngineError {
-                    code: ErrorCode::Internal,
-                    message: format!("Could not create reverse sequence: {e}"),
-                })?;
-                out.set_circular(dna.is_circular());
-                Self::prepare_sequence(&mut out);
-
-                let base = output_id.unwrap_or_else(|| format!("{input}_rev"));
-                let seq_id = self.unique_seq_id(&base);
-                self.state.sequences.insert(seq_id.clone(), out);
-                self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                result.created_seq_ids.push(seq_id.clone());
-                result.messages.push(format!(
-                    "Created reverse sequence '{}' from '{}'",
-                    seq_id, input
-                ));
-            }
-            Operation::Complement { input, output_id } => {
-                parent_seq_ids.push(input.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&input)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{input}' not found"),
-                    })?
-                    .clone();
-                let text: String = dna
-                    .get_forward_string()
-                    .as_bytes()
-                    .iter()
-                    .map(|c| IupacCode::letter_complement(*c))
-                    .map(char::from)
-                    .collect();
-                let mut out = DNAsequence::from_sequence(&text).map_err(|e| EngineError {
-                    code: ErrorCode::Internal,
-                    message: format!("Could not create complement sequence: {e}"),
-                })?;
-                out.set_circular(dna.is_circular());
-                Self::prepare_sequence(&mut out);
-
-                let base = output_id.unwrap_or_else(|| format!("{input}_comp"));
-                let seq_id = self.unique_seq_id(&base);
-                self.state.sequences.insert(seq_id.clone(), out);
-                self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                result.created_seq_ids.push(seq_id.clone());
-                result.messages.push(format!(
-                    "Created complement sequence '{}' from '{}'",
-                    seq_id, input
-                ));
-            }
-            Operation::ReverseComplement { input, output_id } => {
-                parent_seq_ids.push(input.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&input)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{input}' not found"),
-                    })?
-                    .clone();
-                let text = Self::reverse_complement(&dna.get_forward_string());
-                let mut out = DNAsequence::from_sequence(&text).map_err(|e| EngineError {
-                    code: ErrorCode::Internal,
-                    message: format!("Could not create reverse-complement sequence: {e}"),
-                })?;
-                out.set_circular(dna.is_circular());
-                Self::prepare_sequence(&mut out);
-
-                let base = output_id.unwrap_or_else(|| format!("{input}_revcomp"));
-                let seq_id = self.unique_seq_id(&base);
-                self.state.sequences.insert(seq_id.clone(), out);
-                self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                result.created_seq_ids.push(seq_id.clone());
-                result.messages.push(format!(
-                    "Created reverse-complement sequence '{}' from '{}'",
-                    seq_id, input
-                ));
-            }
-            Operation::Branch { input, output_id } => {
-                parent_seq_ids.push(input.clone());
-                let dna = self
-                    .state
-                    .sequences
-                    .get(&input)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{input}' not found"),
-                    })?
-                    .clone();
-
-                let base = output_id.unwrap_or_else(|| format!("{input}_branch"));
-                let seq_id = self.unique_seq_id(&base);
-                self.state.sequences.insert(seq_id.clone(), dna);
-                self.add_lineage_node(&seq_id, SequenceOrigin::Branch, Some(&result.op_id));
-                result.created_seq_ids.push(seq_id.clone());
-                result
-                    .messages
-                    .push(format!("Branched '{}' into '{}'", input, seq_id));
-            }
-            Operation::SetDisplayVisibility { target, visible } => {
-                let (name, slot): (&str, &mut bool) = match target {
-                    DisplayTarget::SequencePanel => (
-                        "sequence_panel",
-                        &mut self.state.display.show_sequence_panel,
-                    ),
-                    DisplayTarget::MapPanel => {
-                        ("map_panel", &mut self.state.display.show_map_panel)
-                    }
-                    DisplayTarget::Features => ("features", &mut self.state.display.show_features),
-                    DisplayTarget::CdsFeatures => {
-                        ("cds_features", &mut self.state.display.show_cds_features)
-                    }
-                    DisplayTarget::GeneFeatures => {
-                        ("gene_features", &mut self.state.display.show_gene_features)
-                    }
-                    DisplayTarget::MrnaFeatures => {
-                        ("mrna_features", &mut self.state.display.show_mrna_features)
-                    }
-                    DisplayTarget::ConstructReasoningOverlay => (
-                        "construct_reasoning_overlay",
-                        &mut self.state.display.show_construct_reasoning_overlay,
-                    ),
-                    DisplayTarget::Tfbs => ("tfbs", &mut self.state.display.show_tfbs),
-                    DisplayTarget::RestrictionEnzymes => (
-                        "restriction_enzymes",
-                        &mut self.state.display.show_restriction_enzymes,
-                    ),
-                    DisplayTarget::GcContents => {
-                        ("gc_contents", &mut self.state.display.show_gc_contents)
-                    }
-                    DisplayTarget::OpenReadingFrames => (
-                        "open_reading_frames",
-                        &mut self.state.display.show_open_reading_frames,
-                    ),
-                    DisplayTarget::MethylationSites => (
-                        "methylation_sites",
-                        &mut self.state.display.show_methylation_sites,
-                    ),
-                };
-                *slot = visible;
-                if matches!(target, DisplayTarget::SequencePanel) {
-                    self.state.display.show_linear_sequence_panel = visible;
+                } => {
+                    self.op_upsert_candidate_macro_template(
+                        name,
+                        description,
+                        details_url,
+                        parameters,
+                        script,
+                        &mut result,
+                    )?;
                 }
-                result
-                    .messages
-                    .push(format!("Set display target '{name}' to {visible}"));
-            }
-            Operation::SetLinearViewport { start_bp, span_bp } => {
-                self.state.display.linear_view_start_bp = start_bp;
-                self.state.display.linear_view_span_bp = span_bp;
-                result.messages.push(format!(
-                    "Set linear viewport start_bp={start_bp}, span_bp={span_bp}"
-                ));
-            }
-            Operation::SetTopology { seq_id, circular } => {
-                let _ = self.ensure_lineage_node(&seq_id);
-                let dna = self
-                    .state
-                    .sequences
-                    .get_mut(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
+                Operation::DeleteCandidateMacroTemplate { name } => {
+                    self.op_delete_candidate_macro_template(name, &mut result)?;
+                }
+                Operation::Reverse { input, output_id } => {
+                    parent_seq_ids.push(input.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&input)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{input}' not found"),
+                        })?
+                        .clone();
+                    let mut text = dna.get_forward_string();
+                    text = text.chars().rev().collect();
+                    let mut out = DNAsequence::from_sequence(&text).map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not create reverse sequence: {e}"),
                     })?;
-                dna.set_circular(circular);
-                dna.update_computed_features();
-                result.changed_seq_ids.push(seq_id.clone());
-                result.messages.push(format!(
-                    "Set topology of '{seq_id}' to {}",
-                    if circular { "circular" } else { "linear" }
-                ));
-            }
-            Operation::RecomputeFeatures { seq_id } => {
-                let _ = self.ensure_lineage_node(&seq_id);
-                let dna = self
-                    .state
-                    .sequences
-                    .get_mut(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
+                    out.set_circular(dna.is_circular());
+                    Self::prepare_sequence(&mut out);
+
+                    let base = output_id.unwrap_or_else(|| format!("{input}_rev"));
+                    let seq_id = self.unique_seq_id(&base);
+                    self.state.sequences.insert(seq_id.clone(), out);
+                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                    result.created_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Created reverse sequence '{}' from '{}'",
+                        seq_id, input
+                    ));
+                }
+                Operation::Complement { input, output_id } => {
+                    parent_seq_ids.push(input.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&input)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{input}' not found"),
+                        })?
+                        .clone();
+                    let text: String = dna
+                        .get_forward_string()
+                        .as_bytes()
+                        .iter()
+                        .map(|c| IupacCode::letter_complement(*c))
+                        .map(char::from)
+                        .collect();
+                    let mut out = DNAsequence::from_sequence(&text).map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not create complement sequence: {e}"),
                     })?;
-                dna.update_computed_features();
-                result.changed_seq_ids.push(seq_id.clone());
-                result
-                    .messages
-                    .push(format!("Recomputed features for '{seq_id}'"));
-            }
-            Operation::AnnotateTfbs {
-                seq_id,
-                motifs,
-                min_llr_bits,
-                min_llr_quantile,
-                per_tf_thresholds,
-                clear_existing,
-                max_hits,
-            } => {
-                const DEFAULT_MAX_TFBS_HITS: usize = 500;
-                let motifs = if motifs.len() == 1
-                    && matches!(motifs[0].trim().to_ascii_uppercase().as_str(), "ALL" | "*")
-                {
-                    tf_motifs::all_motif_ids()
-                } else {
-                    motifs
-                };
+                    out.set_circular(dna.is_circular());
+                    Self::prepare_sequence(&mut out);
 
-                if motifs.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "AnnotateTfbs requires at least one motif".to_string(),
-                    });
+                    let base = output_id.unwrap_or_else(|| format!("{input}_comp"));
+                    let seq_id = self.unique_seq_id(&base);
+                    self.state.sequences.insert(seq_id.clone(), out);
+                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                    result.created_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Created complement sequence '{}' from '{}'",
+                        seq_id, input
+                    ));
                 }
-                let default_min_llr_bits = min_llr_bits.unwrap_or(f64::NEG_INFINITY);
-                let default_min_llr_quantile = min_llr_quantile.unwrap_or(0.0);
-                Self::validate_tf_thresholds(default_min_llr_quantile)?;
-
-                let mut override_map: HashMap<String, (Option<f64>, Option<f64>)> = HashMap::new();
-                for o in &per_tf_thresholds {
-                    let key = o.tf.trim().to_ascii_uppercase();
-                    if key.is_empty() {
-                        continue;
-                    }
-                    if let Some(q) = o.min_llr_quantile {
-                        Self::validate_tf_thresholds(q)?;
-                    }
-                    override_map.insert(key, (o.min_llr_bits, o.min_llr_quantile));
-                }
-
-                let _ = self.ensure_lineage_node(&seq_id);
-                let dna = self
-                    .state
-                    .sequences
-                    .get_mut(&seq_id)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::NotFound,
-                        message: format!("Sequence '{seq_id}' not found"),
+                Operation::ReverseComplement { input, output_id } => {
+                    parent_seq_ids.push(input.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&input)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{input}' not found"),
+                        })?
+                        .clone();
+                    let text = Self::reverse_complement(&dna.get_forward_string());
+                    let mut out = DNAsequence::from_sequence(&text).map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!("Could not create reverse-complement sequence: {e}"),
                     })?;
-                let seq_text = dna.get_forward_string();
-                let seq_bytes = seq_text.as_bytes();
+                    out.set_circular(dna.is_circular());
+                    Self::prepare_sequence(&mut out);
 
-                if clear_existing.unwrap_or(true) {
-                    Self::remove_generated_tfbs_features(dna.features_mut());
+                    let base = output_id.unwrap_or_else(|| format!("{input}_revcomp"));
+                    let seq_id = self.unique_seq_id(&base);
+                    self.state.sequences.insert(seq_id.clone(), out);
+                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                    result.created_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Created reverse-complement sequence '{}' from '{}'",
+                        seq_id, input
+                    ));
                 }
+                Operation::Branch { input, output_id } => {
+                    parent_seq_ids.push(input.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&input)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{input}' not found"),
+                        })?
+                        .clone();
 
-                let mut added = 0usize;
-                let max_hits = match max_hits {
-                    Some(0) => None,
-                    Some(v) => Some(v),
-                    None => Some(DEFAULT_MAX_TFBS_HITS),
-                };
-                let motif_count = motifs.len();
-                let mut motifs_scanned = 0usize;
-                let mut cap_reached = false;
-                'motif_loop: for (motif_idx, token) in motifs.into_iter().enumerate() {
-                    let token_key = token.trim().to_ascii_uppercase();
-                    if token_key.is_empty() {
-                        continue;
+                    let base = output_id.unwrap_or_else(|| format!("{input}_branch"));
+                    let seq_id = self.unique_seq_id(&base);
+                    self.state.sequences.insert(seq_id.clone(), dna);
+                    self.add_lineage_node(&seq_id, SequenceOrigin::Branch, Some(&result.op_id));
+                    result.created_seq_ids.push(seq_id.clone());
+                    result
+                        .messages
+                        .push(format!("Branched '{}' into '{}'", input, seq_id));
+                }
+                Operation::SetDisplayVisibility { target, visible } => {
+                    let (name, slot): (&str, &mut bool) = match target {
+                        DisplayTarget::SequencePanel => (
+                            "sequence_panel",
+                            &mut self.state.display.show_sequence_panel,
+                        ),
+                        DisplayTarget::MapPanel => {
+                            ("map_panel", &mut self.state.display.show_map_panel)
+                        }
+                        DisplayTarget::Features => {
+                            ("features", &mut self.state.display.show_features)
+                        }
+                        DisplayTarget::CdsFeatures => {
+                            ("cds_features", &mut self.state.display.show_cds_features)
+                        }
+                        DisplayTarget::GeneFeatures => {
+                            ("gene_features", &mut self.state.display.show_gene_features)
+                        }
+                        DisplayTarget::MrnaFeatures => {
+                            ("mrna_features", &mut self.state.display.show_mrna_features)
+                        }
+                        DisplayTarget::ConstructReasoningOverlay => (
+                            "construct_reasoning_overlay",
+                            &mut self.state.display.show_construct_reasoning_overlay,
+                        ),
+                        DisplayTarget::Tfbs => ("tfbs", &mut self.state.display.show_tfbs),
+                        DisplayTarget::RestrictionEnzymes => (
+                            "restriction_enzymes",
+                            &mut self.state.display.show_restriction_enzymes,
+                        ),
+                        DisplayTarget::GcContents => {
+                            ("gc_contents", &mut self.state.display.show_gc_contents)
+                        }
+                        DisplayTarget::OpenReadingFrames => (
+                            "open_reading_frames",
+                            &mut self.state.display.show_open_reading_frames,
+                        ),
+                        DisplayTarget::MethylationSites => (
+                            "methylation_sites",
+                            &mut self.state.display.show_methylation_sites,
+                        ),
+                    };
+                    *slot = visible;
+                    if matches!(target, DisplayTarget::SequencePanel) {
+                        self.state.display.show_linear_sequence_panel = visible;
                     }
-                    let (tf_id, tf_name, _consensus, matrix_counts) =
-                        Self::resolve_tf_motif_for_scoring(&token)?;
-                    let (llr_matrix, true_log_odds_matrix) =
-                        Self::prepare_scoring_matrices(&matrix_counts);
-                    if llr_matrix.is_empty() || llr_matrix.len() > seq_bytes.len() {
-                        result.warnings.push(format!(
-                            "TF '{}' skipped: motif length {} exceeds sequence length {}",
-                            tf_id,
-                            llr_matrix.len(),
-                            seq_bytes.len()
-                        ));
-                        continue;
-                    }
+                    result
+                        .messages
+                        .push(format!("Set display target '{name}' to {visible}"));
+                }
+                Operation::SetLinearViewport { start_bp, span_bp } => {
+                    self.state.display.linear_view_start_bp = start_bp;
+                    self.state.display.linear_view_span_bp = span_bp;
+                    result.messages.push(format!(
+                        "Set linear viewport start_bp={start_bp}, span_bp={span_bp}"
+                    ));
+                }
+                Operation::SetTopology { seq_id, circular } => {
+                    let _ = self.ensure_lineage_node(&seq_id);
+                    let dna = self
+                        .state
+                        .sequences
+                        .get_mut(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    dna.set_circular(circular);
+                    dna.update_computed_features();
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Set topology of '{seq_id}' to {}",
+                        if circular { "circular" } else { "linear" }
+                    ));
+                }
+                Operation::RecomputeFeatures { seq_id } => {
+                    let _ = self.ensure_lineage_node(&seq_id);
+                    let dna = self
+                        .state
+                        .sequences
+                        .get_mut(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    dna.update_computed_features();
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result
+                        .messages
+                        .push(format!("Recomputed features for '{seq_id}'"));
+                }
+                Operation::AnnotateTfbs {
+                    seq_id,
+                    motifs,
+                    min_llr_bits,
+                    min_llr_quantile,
+                    per_tf_thresholds,
+                    clear_existing,
+                    max_hits,
+                } => {
+                    const DEFAULT_MAX_TFBS_HITS: usize = 500;
+                    let motifs = if motifs.len() == 1
+                        && matches!(motifs[0].trim().to_ascii_uppercase().as_str(), "ALL" | "*")
+                    {
+                        tf_motifs::all_motif_ids()
+                    } else {
+                        motifs
+                    };
 
-                    let mut eff_bits = default_min_llr_bits;
-                    let mut eff_quantile = default_min_llr_quantile;
-                    let id_key = tf_id.to_ascii_uppercase();
-                    let name_key = tf_name
-                        .as_ref()
-                        .map(|n| n.trim().to_ascii_uppercase())
-                        .unwrap_or_default();
-                    for key in [token_key.as_str(), id_key.as_str(), name_key.as_str()] {
+                    if motifs.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "AnnotateTfbs requires at least one motif".to_string(),
+                        });
+                    }
+                    let default_min_llr_bits = min_llr_bits.unwrap_or(f64::NEG_INFINITY);
+                    let default_min_llr_quantile = min_llr_quantile.unwrap_or(0.0);
+                    Self::validate_tf_thresholds(default_min_llr_quantile)?;
+
+                    let mut override_map: HashMap<String, (Option<f64>, Option<f64>)> =
+                        HashMap::new();
+                    for o in &per_tf_thresholds {
+                        let key = o.tf.trim().to_ascii_uppercase();
                         if key.is_empty() {
                             continue;
                         }
-                        if let Some((b, q)) = override_map.get(key) {
-                            if let Some(v) = b {
-                                eff_bits = *v;
-                            }
-                            if let Some(v) = q {
-                                eff_quantile = *v;
-                            }
-                            break;
+                        if let Some(q) = o.min_llr_quantile {
+                            Self::validate_tf_thresholds(q)?;
                         }
+                        override_map.insert(key, (o.min_llr_bits, o.min_llr_quantile));
                     }
 
-                    motifs_scanned += 1;
-                    let seq_id_for_progress = seq_id.clone();
-                    let tf_id_for_progress = tf_id.clone();
-                    let motif_index = motif_idx + 1;
-                    let hits = Self::scan_tf_scores(
-                        seq_bytes,
-                        &llr_matrix,
-                        &true_log_odds_matrix,
-                        |scanned_steps, total_steps| {
-                            let motif_fraction = if total_steps == 0 {
-                                1.0
-                            } else {
-                                (scanned_steps as f64 / total_steps as f64).clamp(0.0, 1.0)
-                            };
-                            let total_fraction = if motif_count == 0 {
-                                1.0
-                            } else {
-                                ((motif_index - 1) as f64 + motif_fraction) / motif_count as f64
-                            }
-                            .clamp(0.0, 1.0);
-                            on_progress(OperationProgress::Tfbs(TfbsProgress {
-                                seq_id: seq_id_for_progress.clone(),
-                                motif_id: tf_id_for_progress.clone(),
-                                motif_index,
-                                motif_count,
-                                scanned_steps,
-                                total_steps,
-                                motif_percent: motif_fraction * 100.0,
-                                total_percent: total_fraction * 100.0,
-                                task_kind: Some("annotation".to_string()),
-                                stage_label: Some("scan".to_string()),
-                                detail: None,
-                                stage_percent: Some(motif_fraction * 100.0),
-                            }));
-                        },
-                    );
-                    let mut kept = 0usize;
-                    for (
-                        start,
-                        reverse,
-                        llr_bits,
-                        llr_quantile,
-                        true_log_odds_bits,
-                        true_log_odds_quantile,
-                    ) in hits
-                    {
-                        if llr_bits < eff_bits || llr_quantile < eff_quantile {
+                    let _ = self.ensure_lineage_node(&seq_id);
+                    let dna = self
+                        .state
+                        .sequences
+                        .get_mut(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    let seq_text = dna.get_forward_string();
+                    let seq_bytes = seq_text.as_bytes();
+
+                    if clear_existing.unwrap_or(true) {
+                        Self::remove_generated_tfbs_features(dna.features_mut());
+                    }
+
+                    let mut added = 0usize;
+                    let max_hits = match max_hits {
+                        Some(0) => None,
+                        Some(v) => Some(v),
+                        None => Some(DEFAULT_MAX_TFBS_HITS),
+                    };
+                    let motif_count = motifs.len();
+                    let mut motifs_scanned = 0usize;
+                    let mut cap_reached = false;
+                    'motif_loop: for (motif_idx, token) in motifs.into_iter().enumerate() {
+                        let token_key = token.trim().to_ascii_uppercase();
+                        if token_key.is_empty() {
                             continue;
                         }
-                        let end = start + llr_matrix.len();
-                        dna.features_mut().push(Self::build_tfbs_feature(
+                        let (tf_id, tf_name, _consensus, matrix_counts) =
+                            Self::resolve_tf_motif_for_scoring(&token)?;
+                        let (llr_matrix, true_log_odds_matrix) =
+                            Self::prepare_scoring_matrices(&matrix_counts);
+                        if llr_matrix.is_empty() || llr_matrix.len() > seq_bytes.len() {
+                            result.warnings.push(format!(
+                                "TF '{}' skipped: motif length {} exceeds sequence length {}",
+                                tf_id,
+                                llr_matrix.len(),
+                                seq_bytes.len()
+                            ));
+                            continue;
+                        }
+
+                        let mut eff_bits = default_min_llr_bits;
+                        let mut eff_quantile = default_min_llr_quantile;
+                        let id_key = tf_id.to_ascii_uppercase();
+                        let name_key = tf_name
+                            .as_ref()
+                            .map(|n| n.trim().to_ascii_uppercase())
+                            .unwrap_or_default();
+                        for key in [token_key.as_str(), id_key.as_str(), name_key.as_str()] {
+                            if key.is_empty() {
+                                continue;
+                            }
+                            if let Some((b, q)) = override_map.get(key) {
+                                if let Some(v) = b {
+                                    eff_bits = *v;
+                                }
+                                if let Some(v) = q {
+                                    eff_quantile = *v;
+                                }
+                                break;
+                            }
+                        }
+
+                        motifs_scanned += 1;
+                        let seq_id_for_progress = seq_id.clone();
+                        let tf_id_for_progress = tf_id.clone();
+                        let motif_index = motif_idx + 1;
+                        let hits = Self::scan_tf_scores(
+                            seq_bytes,
+                            &llr_matrix,
+                            &true_log_odds_matrix,
+                            |scanned_steps, total_steps| {
+                                let motif_fraction = if total_steps == 0 {
+                                    1.0
+                                } else {
+                                    (scanned_steps as f64 / total_steps as f64).clamp(0.0, 1.0)
+                                };
+                                let total_fraction = if motif_count == 0 {
+                                    1.0
+                                } else {
+                                    ((motif_index - 1) as f64 + motif_fraction) / motif_count as f64
+                                }
+                                .clamp(0.0, 1.0);
+                                on_progress(OperationProgress::Tfbs(TfbsProgress {
+                                    seq_id: seq_id_for_progress.clone(),
+                                    motif_id: tf_id_for_progress.clone(),
+                                    motif_index,
+                                    motif_count,
+                                    scanned_steps,
+                                    total_steps,
+                                    motif_percent: motif_fraction * 100.0,
+                                    total_percent: total_fraction * 100.0,
+                                    task_kind: Some("annotation".to_string()),
+                                    stage_label: Some("scan".to_string()),
+                                    detail: None,
+                                    stage_percent: Some(motif_fraction * 100.0),
+                                }));
+                            },
+                        );
+                        let mut kept = 0usize;
+                        for (
                             start,
-                            end,
                             reverse,
-                            llr_matrix.len(),
-                            &tf_id,
-                            tf_name.as_deref(),
                             llr_bits,
                             llr_quantile,
                             true_log_odds_bits,
                             true_log_odds_quantile,
-                        ));
-                        kept += 1;
-                        added += 1;
-                        if let Some(limit) = max_hits {
-                            if added >= limit {
-                                cap_reached = true;
-                                break;
+                        ) in hits
+                        {
+                            if llr_bits < eff_bits || llr_quantile < eff_quantile {
+                                continue;
                             }
+                            let end = start + llr_matrix.len();
+                            dna.features_mut().push(Self::build_tfbs_feature(
+                                start,
+                                end,
+                                reverse,
+                                llr_matrix.len(),
+                                &tf_id,
+                                tf_name.as_deref(),
+                                llr_bits,
+                                llr_quantile,
+                                true_log_odds_bits,
+                                true_log_odds_quantile,
+                            ));
+                            kept += 1;
+                            added += 1;
+                            if let Some(limit) = max_hits {
+                                if added >= limit {
+                                    cap_reached = true;
+                                    break;
+                                }
+                            }
+                        }
+                        result.messages.push(format!(
+                            "TF '{}' annotated {} hit(s){}",
+                            tf_id,
+                            kept,
+                            Self::format_tf_threshold_summary(eff_bits, eff_quantile)
+                        ));
+                        on_progress(OperationProgress::Tfbs(TfbsProgress {
+                            seq_id: seq_id.clone(),
+                            motif_id: tf_id,
+                            motif_index,
+                            motif_count,
+                            scanned_steps: 1,
+                            total_steps: 1,
+                            motif_percent: 100.0,
+                            total_percent: (motif_index as f64 / motif_count.max(1) as f64) * 100.0,
+                            task_kind: Some("annotation".to_string()),
+                            stage_label: Some("scan".to_string()),
+                            detail: None,
+                            stage_percent: Some(100.0),
+                        }));
+                        if cap_reached {
+                            if let Some(limit) = max_hits {
+                                result.warnings.push(format!(
+                                "TFBS hit cap ({limit}) reached after scanning {motifs_scanned}/{motif_count} motif(s); skipping remaining motif scans"
+                            ));
+                            }
+                            break 'motif_loop;
                         }
                     }
                     result.messages.push(format!(
-                        "TF '{}' annotated {} hit(s){}",
-                        tf_id,
-                        kept,
-                        Self::format_tf_threshold_summary(eff_bits, eff_quantile)
+                        "TFBS motif scan coverage: {motifs_scanned}/{motif_count} motif(s)"
                     ));
-                    on_progress(OperationProgress::Tfbs(TfbsProgress {
-                        seq_id: seq_id.clone(),
-                        motif_id: tf_id,
-                        motif_index,
-                        motif_count,
-                        scanned_steps: 1,
-                        total_steps: 1,
-                        motif_percent: 100.0,
-                        total_percent: (motif_index as f64 / motif_count.max(1) as f64) * 100.0,
-                        task_kind: Some("annotation".to_string()),
-                        stage_label: Some("scan".to_string()),
-                        detail: None,
-                        stage_percent: Some(100.0),
-                    }));
-                    if cap_reached {
-                        if let Some(limit) = max_hits {
-                            result.warnings.push(format!(
-                                "TFBS hit cap ({limit}) reached after scanning {motifs_scanned}/{motif_count} motif(s); skipping remaining motif scans"
-                            ));
-                        }
-                        break 'motif_loop;
-                    }
-                }
-                result.messages.push(format!(
-                    "TFBS motif scan coverage: {motifs_scanned}/{motif_count} motif(s)"
-                ));
 
-                result.changed_seq_ids.push(seq_id.clone());
-                result.messages.push(format!(
-                    "Annotated {} TFBS feature(s) on '{}'",
-                    added, seq_id
-                ));
-            }
-            Operation::SetParameter { name, value } => match name.as_str() {
-                "max_fragments_per_container" => {
-                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Annotated {} TFBS feature(s) on '{}'",
+                        added, seq_id
+                    ));
+                }
+                Operation::SetParameter { name, value } => match name.as_str() {
+                    "max_fragments_per_container" => {
+                        let raw = value.as_u64().ok_or_else(|| {
+                            EngineError {
                         code: ErrorCode::InvalidInput,
                         message:
                             "SetParameter max_fragments_per_container requires a positive integer"
                                 .to_string(),
-                    })?;
-                    if raw == 0 {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "max_fragments_per_container must be >= 1".to_string(),
-                        });
                     }
-                    self.state.parameters.max_fragments_per_container = raw as usize;
-                    result.messages.push(format!(
-                        "Set parameter '{}' to {}",
-                        name, self.state.parameters.max_fragments_per_container
-                    ));
-                }
-                "genome_anchor_prepared_fallback_policy"
-                | "genome_anchor_fallback_mode"
-                | "genome_anchor_prepared_mode" => {
-                    let raw = value.as_str().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a string value"),
-                    })?;
-                    let normalized = raw.trim().to_ascii_lowercase().replace('-', "_");
-                    let policy = match normalized.as_str() {
-                        "off" | "disabled" | "none" => GenomeAnchorPreparedFallbackPolicy::Off,
-                        "single_compatible" | "single" | "auto" => {
-                            GenomeAnchorPreparedFallbackPolicy::SingleCompatible
-                        }
-                        "always_explicit" | "explicit" => {
-                            GenomeAnchorPreparedFallbackPolicy::AlwaysExplicit
-                        }
-                        other => {
+                        })?;
+                        if raw == 0 {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Unsupported {name} '{other}' (expected off|single_compatible|always_explicit)"
-                                ),
+                                message: "max_fragments_per_container must be >= 1".to_string(),
                             });
                         }
-                    };
-                    self.state.parameters.genome_anchor_prepared_fallback_policy = policy;
-                    result.messages.push(format!(
-                        "Set parameter 'genome_anchor_prepared_fallback_policy' to {}",
-                        policy.as_str()
-                    ));
-                }
-                "require_verified_genome_anchor_for_extension"
-                | "strict_genome_anchor_verification"
-                | "strict_anchor_verification" => {
-                    let raw = value.as_bool().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a boolean"),
-                    })?;
-                    self.state
-                        .parameters
-                        .require_verified_genome_anchor_for_extension = raw;
-                    result.messages.push(format!(
-                        "Set parameter 'require_verified_genome_anchor_for_extension' to {}",
-                        self.state
-                            .parameters
-                            .require_verified_genome_anchor_for_extension
-                    ));
-                }
-                "primer_design_backend" | "primers_design_backend" => {
-                    let raw = value.as_str().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a string value"),
-                    })?;
-                    let normalized = raw.trim().to_ascii_lowercase();
-                    let backend = match normalized.as_str() {
-                        "auto" => PrimerDesignBackend::Auto,
-                        "internal" | "baseline" => PrimerDesignBackend::Internal,
-                        "primer3" | "primer3_core" | "external_primer3" | "external-primer3" => {
-                            PrimerDesignBackend::Primer3
-                        }
-                        other => {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Unsupported primer_design_backend '{other}' (expected auto|internal|primer3)"
-                                ),
-                            });
-                        }
-                    };
-                    self.state.parameters.primer_design_backend = backend;
-                    result.messages.push(format!(
-                        "Set parameter 'primer_design_backend' to {}",
-                        backend.as_str()
-                    ));
-                }
-                "primer3_executable" | "primer3_backend_executable" | "primer3_path" => {
-                    if value.is_null() {
-                        self.state.parameters.primer3_executable = "primer3_core".to_string();
-                        result.messages.push(
-                            "Reset parameter 'primer3_executable' to default 'primer3_core'"
-                                .to_string(),
-                        );
-                    } else {
+                        self.state.parameters.max_fragments_per_container = raw as usize;
+                        result.messages.push(format!(
+                            "Set parameter '{}' to {}",
+                            name, self.state.parameters.max_fragments_per_container
+                        ));
+                    }
+                    "genome_anchor_prepared_fallback_policy"
+                    | "genome_anchor_fallback_mode"
+                    | "genome_anchor_prepared_mode" => {
                         let raw = value.as_str().ok_or_else(|| EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: format!("SetParameter {name} requires a string or null value"),
+                            message: format!("SetParameter {name} requires a string value"),
                         })?;
-                        let trimmed = raw.trim();
-                        if trimmed.is_empty() {
+                        let normalized = raw.trim().to_ascii_lowercase().replace('-', "_");
+                        let policy = match normalized.as_str() {
+                            "off" | "disabled" | "none" => GenomeAnchorPreparedFallbackPolicy::Off,
+                            "single_compatible" | "single" | "auto" => {
+                                GenomeAnchorPreparedFallbackPolicy::SingleCompatible
+                            }
+                            "always_explicit" | "explicit" => {
+                                GenomeAnchorPreparedFallbackPolicy::AlwaysExplicit
+                            }
+                            other => {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "Unsupported {name} '{other}' (expected off|single_compatible|always_explicit)"
+                                    ),
+                                });
+                            }
+                        };
+                        self.state.parameters.genome_anchor_prepared_fallback_policy = policy;
+                        result.messages.push(format!(
+                            "Set parameter 'genome_anchor_prepared_fallback_policy' to {}",
+                            policy.as_str()
+                        ));
+                    }
+                    "require_verified_genome_anchor_for_extension"
+                    | "strict_genome_anchor_verification"
+                    | "strict_anchor_verification" => {
+                        let raw = value.as_bool().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a boolean"),
+                        })?;
+                        self.state
+                            .parameters
+                            .require_verified_genome_anchor_for_extension = raw;
+                        result.messages.push(format!(
+                            "Set parameter 'require_verified_genome_anchor_for_extension' to {}",
+                            self.state
+                                .parameters
+                                .require_verified_genome_anchor_for_extension
+                        ));
+                    }
+                    "primer_design_backend" | "primers_design_backend" => {
+                        let raw = value.as_str().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a string value"),
+                        })?;
+                        let normalized = raw.trim().to_ascii_lowercase();
+                        let backend = match normalized.as_str() {
+                            "auto" => PrimerDesignBackend::Auto,
+                            "internal" | "baseline" => PrimerDesignBackend::Internal,
+                            "primer3" | "primer3_core" | "external_primer3"
+                            | "external-primer3" => PrimerDesignBackend::Primer3,
+                            other => {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "Unsupported primer_design_backend '{other}' (expected auto|internal|primer3)"
+                                    ),
+                                });
+                            }
+                        };
+                        self.state.parameters.primer_design_backend = backend;
+                        result.messages.push(format!(
+                            "Set parameter 'primer_design_backend' to {}",
+                            backend.as_str()
+                        ));
+                    }
+                    "primer3_executable" | "primer3_backend_executable" | "primer3_path" => {
+                        if value.is_null() {
                             self.state.parameters.primer3_executable = "primer3_core".to_string();
                             result.messages.push(
                                 "Reset parameter 'primer3_executable' to default 'primer3_core'"
                                     .to_string(),
                             );
                         } else {
-                            self.state.parameters.primer3_executable = trimmed.to_string();
-                            result.messages.push(format!(
-                                "Set parameter 'primer3_executable' to '{}'",
-                                trimmed
-                            ));
+                            let raw = value.as_str().ok_or_else(|| EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "SetParameter {name} requires a string or null value"
+                                ),
+                            })?;
+                            let trimmed = raw.trim();
+                            if trimmed.is_empty() {
+                                self.state.parameters.primer3_executable =
+                                    "primer3_core".to_string();
+                                result.messages.push(
+                                "Reset parameter 'primer3_executable' to default 'primer3_core'"
+                                    .to_string(),
+                            );
+                            } else {
+                                self.state.parameters.primer3_executable = trimmed.to_string();
+                                result.messages.push(format!(
+                                    "Set parameter 'primer3_executable' to '{}'",
+                                    trimmed
+                                ));
+                            }
                         }
                     }
-                }
-                "feature_details_font_size" | "feature_detail_font_size" => {
-                    let raw = value.as_f64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "SetParameter feature_details_font_size requires a number"
-                            .to_string(),
-                    })?;
-                    if !raw.is_finite() {
-                        return Err(EngineError {
+                    "feature_details_font_size" | "feature_detail_font_size" => {
+                        let raw = value.as_f64().ok_or_else(|| EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: "feature_details_font_size must be a finite number"
+                            message: "SetParameter feature_details_font_size requires a number"
                                 .to_string(),
-                        });
+                        })?;
+                        if !raw.is_finite() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "feature_details_font_size must be a finite number"
+                                    .to_string(),
+                            });
+                        }
+                        if !(8.0..=24.0).contains(&raw) {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "feature_details_font_size must be between 8.0 and 24.0"
+                                    .to_string(),
+                            });
+                        }
+                        self.state.display.feature_details_font_size = raw as f32;
+                        result.messages.push(format!(
+                            "Set parameter 'feature_details_font_size' to {:.2}",
+                            self.state.display.feature_details_font_size
+                        ));
                     }
-                    if !(8.0..=24.0).contains(&raw) {
-                        return Err(EngineError {
+                    "linear_external_feature_label_font_size"
+                    | "linear_feature_label_font_size"
+                    | "feature_label_font_size" => {
+                        let raw = value.as_f64().ok_or_else(|| EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: "feature_details_font_size must be between 8.0 and 24.0"
-                                .to_string(),
-                        });
-                    }
-                    self.state.display.feature_details_font_size = raw as f32;
-                    result.messages.push(format!(
-                        "Set parameter 'feature_details_font_size' to {:.2}",
-                        self.state.display.feature_details_font_size
-                    ));
-                }
-                "linear_external_feature_label_font_size"
-                | "linear_feature_label_font_size"
-                | "feature_label_font_size" => {
-                    let raw = value.as_f64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a number"),
-                    })?;
-                    if !raw.is_finite() {
-                        return Err(EngineError {
+                            message: format!("SetParameter {name} requires a number"),
+                        })?;
+                        if !raw.is_finite() {
+                            return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message:
                                 "linear_external_feature_label_font_size must be a finite number"
                                     .to_string(),
                         });
-                    }
-                    if !(8.0..=24.0).contains(&raw) {
-                        return Err(EngineError {
+                        }
+                        if !(8.0..=24.0).contains(&raw) {
+                            return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "linear_external_feature_label_font_size must be between 8.0 and 24.0".to_string(),
                         });
+                        }
+                        self.state.display.linear_external_feature_label_font_size = raw as f32;
+                        result.messages.push(format!(
+                            "Set parameter 'linear_external_feature_label_font_size' to {:.2}",
+                            self.state.display.linear_external_feature_label_font_size
+                        ));
                     }
-                    self.state.display.linear_external_feature_label_font_size = raw as f32;
-                    result.messages.push(format!(
-                        "Set parameter 'linear_external_feature_label_font_size' to {:.2}",
-                        self.state.display.linear_external_feature_label_font_size
-                    ));
-                }
-                "linear_external_feature_label_background_opacity"
-                | "linear_feature_label_background_opacity"
-                | "feature_label_background_opacity" => {
-                    let raw = value.as_f64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a number"),
-                    })?;
-                    if !raw.is_finite() {
-                        return Err(EngineError {
+                    "linear_external_feature_label_background_opacity"
+                    | "linear_feature_label_background_opacity"
+                    | "feature_label_background_opacity" => {
+                        let raw = value.as_f64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a number"),
+                        })?;
+                        if !raw.is_finite() {
+                            return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "linear_external_feature_label_background_opacity must be a finite number".to_string(),
                         });
-                    }
-                    if !(0.0..=1.0).contains(&raw) {
-                        return Err(EngineError {
+                        }
+                        if !(0.0..=1.0).contains(&raw) {
+                            return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "linear_external_feature_label_background_opacity must be between 0.0 and 1.0".to_string(),
                         });
-                    }
-                    self.state
-                        .display
-                        .linear_external_feature_label_background_opacity = raw as f32;
-                    result.messages.push(format!(
+                        }
+                        self.state
+                            .display
+                            .linear_external_feature_label_background_opacity = raw as f32;
+                        result.messages.push(format!(
                         "Set parameter 'linear_external_feature_label_background_opacity' to {:.3}",
                         self.state
                             .display
                             .linear_external_feature_label_background_opacity
                     ));
-                }
-                "reverse_strand_visual_opacity"
-                | "linear_reverse_strand_visual_opacity"
-                | "linear_reverse_strand_letter_opacity"
-                | "reverse_strand_letter_opacity" => {
-                    let raw = value.as_f64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a number"),
-                    })?;
-                    if !raw.is_finite() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "reverse_strand_visual_opacity must be a finite number"
-                                .to_string(),
-                        });
                     }
-                    if !(0.2..=1.0).contains(&raw) {
-                        return Err(EngineError {
+                    "reverse_strand_visual_opacity"
+                    | "linear_reverse_strand_visual_opacity"
+                    | "linear_reverse_strand_letter_opacity"
+                    | "reverse_strand_letter_opacity" => {
+                        let raw = value.as_f64().ok_or_else(|| EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: "reverse_strand_visual_opacity must be between 0.2 and 1.0"
-                                .to_string(),
-                        });
-                    }
-                    self.state.display.reverse_strand_visual_opacity = raw as f32;
-                    result.messages.push(format!(
-                        "Set parameter 'reverse_strand_visual_opacity' to {:.3}",
-                        self.state.display.reverse_strand_visual_opacity
-                    ));
-                }
-                "regulatory_feature_max_view_span_bp"
-                | "regulatory_max_view_span_bp"
-                | "regulatory_max_span_bp" => {
-                    let raw = value.as_u64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a non-negative integer"),
-                    })?;
-                    self.state.display.regulatory_feature_max_view_span_bp = raw as usize;
-                    result.messages.push(format!(
-                        "Set parameter 'regulatory_feature_max_view_span_bp' to {}",
-                        self.state.display.regulatory_feature_max_view_span_bp
-                    ));
-                }
-                "sequence_panel_max_text_length_bp"
-                | "sequence_text_panel_max_length_bp"
-                | "sequence_panel_max_length_bp" => {
-                    let raw = value.as_u64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a non-negative integer"),
-                    })?;
-                    self.state.display.sequence_panel_max_text_length_bp = raw as usize;
-                    let mode = if self.state.display.sequence_panel_max_text_length_bp == 0 {
-                        "unlimited".to_string()
-                    } else {
-                        format!(
-                            "{} bp",
-                            self.state.display.sequence_panel_max_text_length_bp
-                        )
-                    };
-                    result.messages.push(format!(
-                        "Set parameter 'sequence_panel_max_text_length_bp' to {mode}"
-                    ));
-                }
-                "linear_sequence_base_text_max_view_span_bp"
-                | "linear_base_text_max_view_span_bp"
-                | "sequence_base_text_max_view_span_bp" => {
-                    // See docs/architecture.md (single shared rendering contract):
-                    // fixed bp thresholds are compatibility-only while adaptive
-                    // viewport-density routing is authoritative.
-                    let _raw = value.as_u64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a non-negative integer"),
-                    })?;
-                    result.messages.push(format!(
-                        "Set parameter '{}' accepted as deprecated no-op under adaptive linear DNA letter routing",
-                        name
-                    ));
-                }
-                "gc_content_bin_size_bp" | "gc_bin_size_bp" => {
-                    let raw = value.as_u64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a positive integer"),
-                    })?;
-                    if raw == 0 {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "gc_content_bin_size_bp must be >= 1".to_string(),
-                        });
-                    }
-                    self.state.display.gc_content_bin_size_bp = raw as usize;
-                    result.messages.push(format!(
-                        "Set parameter 'gc_content_bin_size_bp' to {}",
-                        self.state.display.gc_content_bin_size_bp
-                    ));
-                }
-                "linear_sequence_helical_max_view_span_bp" | "linear_helical_max_view_span_bp" => {
-                    let _raw = value.as_u64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a non-negative integer"),
-                    })?;
-                    result.messages.push(format!(
-                        "Set parameter '{}' accepted as deprecated no-op under adaptive linear DNA letter routing",
-                        name
-                    ));
-                }
-                "linear_sequence_condensed_max_view_span_bp"
-                | "linear_condensed_max_view_span_bp" => {
-                    let _raw = value.as_u64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a non-negative integer"),
-                    })?;
-                    result.messages.push(format!(
-                        "Set parameter '{}' accepted as deprecated no-op under adaptive linear DNA letter routing",
-                        name
-                    ));
-                }
-                "linear_sequence_letter_layout_mode" | "linear_helical_letter_layout_mode" => {
-                    let raw = value.as_str().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a string value"),
-                    })?;
-                    let normalized = raw.trim().to_ascii_lowercase();
-                    let layout_mode = match normalized.as_str() {
-                        "auto_adaptive" | "auto-adaptive" | "auto" | "adaptive" => {
-                            LinearSequenceLetterLayoutMode::AutoAdaptive
-                        }
-                        "standard_linear" | "standard-linear" | "standard" => {
-                            LinearSequenceLetterLayoutMode::StandardLinear
-                        }
-                        "helical" | "continuous_helical" | "continuous-helical" | "continuous" => {
-                            LinearSequenceLetterLayoutMode::ContinuousHelical
-                        }
-                        "condensed_10_row" | "condensed-10-row" | "condensed10row"
-                        | "condensed" | "10_row" | "10-row" => {
-                            LinearSequenceLetterLayoutMode::Condensed10Row
-                        }
-                        _ => {
+                            message: format!("SetParameter {name} requires a number"),
+                        })?;
+                        if !raw.is_finite() {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Unsupported linear sequence letter layout mode '{raw}' (expected auto|adaptive|standard|helical|condensed_10_row; legacy aliases accepted)"
-                                ),
+                                message: "reverse_strand_visual_opacity must be a finite number"
+                                    .to_string(),
                             });
                         }
-                    };
-                    self.state.display.linear_sequence_letter_layout_mode = layout_mode;
-                    result.messages.push(format!(
-                        "Set parameter 'linear_sequence_letter_layout_mode' to {:?}",
-                        self.state.display.linear_sequence_letter_layout_mode
+                        if !(0.2..=1.0).contains(&raw) {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message:
+                                    "reverse_strand_visual_opacity must be between 0.2 and 1.0"
+                                        .to_string(),
+                            });
+                        }
+                        self.state.display.reverse_strand_visual_opacity = raw as f32;
+                        result.messages.push(format!(
+                            "Set parameter 'reverse_strand_visual_opacity' to {:.3}",
+                            self.state.display.reverse_strand_visual_opacity
+                        ));
+                    }
+                    "regulatory_feature_max_view_span_bp"
+                    | "regulatory_max_view_span_bp"
+                    | "regulatory_max_span_bp" => {
+                        let raw = value.as_u64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a non-negative integer"),
+                        })?;
+                        self.state.display.regulatory_feature_max_view_span_bp = raw as usize;
+                        result.messages.push(format!(
+                            "Set parameter 'regulatory_feature_max_view_span_bp' to {}",
+                            self.state.display.regulatory_feature_max_view_span_bp
+                        ));
+                    }
+                    "sequence_panel_max_text_length_bp"
+                    | "sequence_text_panel_max_length_bp"
+                    | "sequence_panel_max_length_bp" => {
+                        let raw = value.as_u64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a non-negative integer"),
+                        })?;
+                        self.state.display.sequence_panel_max_text_length_bp = raw as usize;
+                        let mode = if self.state.display.sequence_panel_max_text_length_bp == 0 {
+                            "unlimited".to_string()
+                        } else {
+                            format!(
+                                "{} bp",
+                                self.state.display.sequence_panel_max_text_length_bp
+                            )
+                        };
+                        result.messages.push(format!(
+                            "Set parameter 'sequence_panel_max_text_length_bp' to {mode}"
+                        ));
+                    }
+                    "linear_sequence_base_text_max_view_span_bp"
+                    | "linear_base_text_max_view_span_bp"
+                    | "sequence_base_text_max_view_span_bp" => {
+                        // See docs/architecture.md (single shared rendering contract):
+                        // fixed bp thresholds are compatibility-only while adaptive
+                        // viewport-density routing is authoritative.
+                        let _raw = value.as_u64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a non-negative integer"),
+                        })?;
+                        result.messages.push(format!(
+                        "Set parameter '{}' accepted as deprecated no-op under adaptive linear DNA letter routing",
+                        name
                     ));
-                }
-                "linear_sequence_helical_phase_offset_bp" | "linear_helical_phase_offset_bp" => {
-                    let raw = value.as_u64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a non-negative integer"),
-                    })?;
-                    if raw > 9 {
-                        return Err(EngineError {
+                    }
+                    "gc_content_bin_size_bp" | "gc_bin_size_bp" => {
+                        let raw = value.as_u64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a positive integer"),
+                        })?;
+                        if raw == 0 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "gc_content_bin_size_bp must be >= 1".to_string(),
+                            });
+                        }
+                        self.state.display.gc_content_bin_size_bp = raw as usize;
+                        result.messages.push(format!(
+                            "Set parameter 'gc_content_bin_size_bp' to {}",
+                            self.state.display.gc_content_bin_size_bp
+                        ));
+                    }
+                    "linear_sequence_helical_max_view_span_bp"
+                    | "linear_helical_max_view_span_bp" => {
+                        let _raw = value.as_u64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a non-negative integer"),
+                        })?;
+                        result.messages.push(format!(
+                        "Set parameter '{}' accepted as deprecated no-op under adaptive linear DNA letter routing",
+                        name
+                    ));
+                    }
+                    "linear_sequence_condensed_max_view_span_bp"
+                    | "linear_condensed_max_view_span_bp" => {
+                        let _raw = value.as_u64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a non-negative integer"),
+                        })?;
+                        result.messages.push(format!(
+                        "Set parameter '{}' accepted as deprecated no-op under adaptive linear DNA letter routing",
+                        name
+                    ));
+                    }
+                    "linear_sequence_letter_layout_mode" | "linear_helical_letter_layout_mode" => {
+                        let raw = value.as_str().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a string value"),
+                        })?;
+                        let normalized = raw.trim().to_ascii_lowercase();
+                        let layout_mode = match normalized.as_str() {
+                            "auto_adaptive" | "auto-adaptive" | "auto" | "adaptive" => {
+                                LinearSequenceLetterLayoutMode::AutoAdaptive
+                            }
+                            "standard_linear" | "standard-linear" | "standard" => {
+                                LinearSequenceLetterLayoutMode::StandardLinear
+                            }
+                            "helical" | "continuous_helical" | "continuous-helical"
+                            | "continuous" => LinearSequenceLetterLayoutMode::ContinuousHelical,
+                            "condensed_10_row" | "condensed-10-row" | "condensed10row"
+                            | "condensed" | "10_row" | "10-row" => {
+                                LinearSequenceLetterLayoutMode::Condensed10Row
+                            }
+                            _ => {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "Unsupported linear sequence letter layout mode '{raw}' (expected auto|adaptive|standard|helical|condensed_10_row; legacy aliases accepted)"
+                                    ),
+                                });
+                            }
+                        };
+                        self.state.display.linear_sequence_letter_layout_mode = layout_mode;
+                        result.messages.push(format!(
+                            "Set parameter 'linear_sequence_letter_layout_mode' to {:?}",
+                            self.state.display.linear_sequence_letter_layout_mode
+                        ));
+                    }
+                    "linear_sequence_helical_phase_offset_bp"
+                    | "linear_helical_phase_offset_bp" => {
+                        let raw = value.as_u64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a non-negative integer"),
+                        })?;
+                        if raw > 9 {
+                            return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message:
                                 "linear_sequence_helical_phase_offset_bp must be between 0 and 9"
                                     .to_string(),
                         });
+                        }
+                        self.state.display.linear_sequence_helical_phase_offset_bp = raw as usize;
+                        result.messages.push(format!(
+                            "Set parameter 'linear_sequence_helical_phase_offset_bp' to {}",
+                            self.state.display.linear_sequence_helical_phase_offset_bp
+                        ));
                     }
-                    self.state.display.linear_sequence_helical_phase_offset_bp = raw as usize;
-                    result.messages.push(format!(
-                        "Set parameter 'linear_sequence_helical_phase_offset_bp' to {}",
-                        self.state.display.linear_sequence_helical_phase_offset_bp
-                    ));
-                }
-                "blast_options_override" => {
-                    if value.is_null() {
-                        self.state
-                            .metadata
-                            .remove(BLAST_OPTIONS_OVERRIDE_METADATA_KEY);
-                        result
-                            .messages
-                            .push("Cleared parameter 'blast_options_override'".to_string());
-                    } else {
-                        let parsed =
-                            Self::parse_blast_run_options_from_value(&value, "SetParameter")?;
-                        self.state.metadata.insert(
-                            BLAST_OPTIONS_OVERRIDE_METADATA_KEY.to_string(),
-                            serde_json::to_value(parsed).map_err(|e| EngineError {
-                                code: ErrorCode::Internal,
-                                message: format!(
-                                    "Could not serialize blast_options_override metadata: {e}"
-                                ),
-                            })?,
-                        );
-                        result
-                            .messages
-                            .push("Set parameter 'blast_options_override'".to_string());
+                    "blast_options_override" => {
+                        if value.is_null() {
+                            self.state
+                                .metadata
+                                .remove(BLAST_OPTIONS_OVERRIDE_METADATA_KEY);
+                            result
+                                .messages
+                                .push("Cleared parameter 'blast_options_override'".to_string());
+                        } else {
+                            let parsed =
+                                Self::parse_blast_run_options_from_value(&value, "SetParameter")?;
+                            self.state.metadata.insert(
+                                BLAST_OPTIONS_OVERRIDE_METADATA_KEY.to_string(),
+                                serde_json::to_value(parsed).map_err(|e| EngineError {
+                                    code: ErrorCode::Internal,
+                                    message: format!(
+                                        "Could not serialize blast_options_override metadata: {e}"
+                                    ),
+                                })?,
+                            );
+                            result
+                                .messages
+                                .push("Set parameter 'blast_options_override'".to_string());
+                        }
                     }
-                }
-                "blast_options_defaults_path" => {
-                    if value.is_null() {
-                        self.state
-                            .metadata
-                            .remove(BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY);
-                        result
-                            .messages
-                            .push("Cleared parameter 'blast_options_defaults_path'".to_string());
-                    } else {
-                        let raw = value.as_str().ok_or_else(|| EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message:
-                                "SetParameter blast_options_defaults_path requires a string or null"
-                                    .to_string(),
-                        })?;
-                        let trimmed = raw.trim();
-                        if trimmed.is_empty() {
+                    "blast_options_defaults_path" => {
+                        if value.is_null() {
                             self.state
                                 .metadata
                                 .remove(BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY);
@@ -15264,287 +15459,309 @@ impl GentleEngine {
                                 "Cleared parameter 'blast_options_defaults_path'".to_string(),
                             );
                         } else {
-                            self.state.metadata.insert(
-                                BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY.to_string(),
-                                serde_json::Value::String(trimmed.to_string()),
-                            );
-                            result.messages.push(format!(
-                                "Set parameter 'blast_options_defaults_path' to '{}'",
-                                trimmed
-                            ));
+                            let raw = value.as_str().ok_or_else(|| {
+                                EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message:
+                                "SetParameter blast_options_defaults_path requires a string or null"
+                                    .to_string(),
+                        }
+                            })?;
+                            let trimmed = raw.trim();
+                            if trimmed.is_empty() {
+                                self.state
+                                    .metadata
+                                    .remove(BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY);
+                                result.messages.push(
+                                    "Cleared parameter 'blast_options_defaults_path'".to_string(),
+                                );
+                            } else {
+                                self.state.metadata.insert(
+                                    BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY.to_string(),
+                                    serde_json::Value::String(trimmed.to_string()),
+                                );
+                                result.messages.push(format!(
+                                    "Set parameter 'blast_options_defaults_path' to '{}'",
+                                    trimmed
+                                ));
+                            }
                         }
                     }
-                }
-                "restriction_enzyme_display_mode" | "restriction_display_mode" => {
-                    let raw = value.as_str().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {name} requires a string value"),
-                    })?;
-                    let normalized = raw.trim().to_ascii_lowercase().replace('-', "_");
-                    let mode = match normalized.as_str() {
-                        "preferred_only" | "preferred" => {
-                            RestrictionEnzymeDisplayMode::PreferredOnly
+                    "restriction_enzyme_display_mode" | "restriction_display_mode" => {
+                        let raw = value.as_str().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {name} requires a string value"),
+                        })?;
+                        let normalized = raw.trim().to_ascii_lowercase().replace('-', "_");
+                        let mode = match normalized.as_str() {
+                            "preferred_only" | "preferred" => {
+                                RestrictionEnzymeDisplayMode::PreferredOnly
+                            }
+                            "preferred_and_unique" | "preferred_unique" | "preferred+unique" => {
+                                RestrictionEnzymeDisplayMode::PreferredAndUnique
+                            }
+                            "unique_only" | "unique" => RestrictionEnzymeDisplayMode::UniqueOnly,
+                            "all_in_view" | "all" => RestrictionEnzymeDisplayMode::AllInView,
+                            _ => {
+                                return Err(EngineError {
+                                    code: ErrorCode::InvalidInput,
+                                    message: format!(
+                                        "Unsupported restriction enzyme display mode '{raw}' (expected preferred_only|preferred_and_unique|unique_only|all_in_view; legacy aliases accepted)"
+                                    ),
+                                });
+                            }
+                        };
+                        self.state.display.restriction_enzyme_display_mode = mode;
+                        result.messages.push(format!(
+                            "Set parameter 'restriction_enzyme_display_mode' to {}",
+                            self.state.display.restriction_enzyme_display_mode.label()
+                        ));
+                    }
+                    "vcf_display_show_snp"
+                    | "vcf_display_show_ins"
+                    | "vcf_display_show_del"
+                    | "vcf_display_show_sv"
+                    | "vcf_display_show_other"
+                    | "vcf_display_pass_only"
+                    | "vcf_display_use_min_qual"
+                    | "vcf_display_use_max_qual"
+                    | "show_tfbs"
+                    | "show_restriction_enzymes"
+                    | "show_restriction_enzyme_sites"
+                    | "tfbs_display_use_llr_bits"
+                    | "tfbs_display_use_llr_quantile"
+                    | "tfbs_display_use_true_log_odds_bits"
+                    | "tfbs_display_use_true_log_odds_quantile"
+                    | "auto_hide_sequence_panel_when_linear_bases_visible"
+                    | "linear_show_double_strand_bases"
+                    | "linear_show_reverse_strand_bases"
+                    | "show_linear_double_strand_bases"
+                    | "show_linear_reverse_strand_bases"
+                    | "linear_helical_parallel_strands"
+                    | "linear_sequence_helical_parallel_strands"
+                    | "linear_hide_backbone_when_sequence_bases_visible"
+                    | "hide_linear_backbone_when_bases_visible"
+                    | "linear_sequence_helical_letters_enabled"
+                    | "linear_reverse_strand_use_upside_down_letters"
+                    | "linear_reverse_strand_upside_down_letters" => {
+                        let raw = value.as_bool().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {} requires a boolean", name),
+                        })?;
+                        match name.as_str() {
+                            "vcf_display_show_snp" => self.state.display.vcf_display_show_snp = raw,
+                            "vcf_display_show_ins" => self.state.display.vcf_display_show_ins = raw,
+                            "vcf_display_show_del" => self.state.display.vcf_display_show_del = raw,
+                            "vcf_display_show_sv" => self.state.display.vcf_display_show_sv = raw,
+                            "vcf_display_show_other" => {
+                                self.state.display.vcf_display_show_other = raw
+                            }
+                            "vcf_display_pass_only" => {
+                                self.state.display.vcf_display_pass_only = raw
+                            }
+                            "vcf_display_use_min_qual" => {
+                                self.state.display.vcf_display_use_min_qual = raw
+                            }
+                            "vcf_display_use_max_qual" => {
+                                self.state.display.vcf_display_use_max_qual = raw
+                            }
+                            "show_tfbs" => self.state.display.show_tfbs = raw,
+                            "show_restriction_enzymes" | "show_restriction_enzyme_sites" => {
+                                self.state.display.show_restriction_enzymes = raw
+                            }
+                            "tfbs_display_use_llr_bits" => {
+                                self.state.display.tfbs_display_use_llr_bits = raw
+                            }
+                            "tfbs_display_use_llr_quantile" => {
+                                self.state.display.tfbs_display_use_llr_quantile = raw
+                            }
+                            "tfbs_display_use_true_log_odds_bits" => {
+                                self.state.display.tfbs_display_use_true_log_odds_bits = raw
+                            }
+                            "tfbs_display_use_true_log_odds_quantile" => {
+                                self.state.display.tfbs_display_use_true_log_odds_quantile = raw
+                            }
+                            "auto_hide_sequence_panel_when_linear_bases_visible" => {
+                                self.state
+                                    .display
+                                    .auto_hide_sequence_panel_when_linear_bases_visible = raw
+                            }
+                            "linear_show_double_strand_bases"
+                            | "linear_show_reverse_strand_bases"
+                            | "show_linear_double_strand_bases"
+                            | "show_linear_reverse_strand_bases" => {
+                                self.state.display.linear_show_double_strand_bases = raw
+                            }
+                            "linear_helical_parallel_strands"
+                            | "linear_sequence_helical_parallel_strands" => {
+                                self.state.display.linear_helical_parallel_strands = raw
+                            }
+                            "linear_hide_backbone_when_sequence_bases_visible"
+                            | "hide_linear_backbone_when_bases_visible" => {
+                                self.state
+                                    .display
+                                    .linear_hide_backbone_when_sequence_bases_visible = raw
+                            }
+                            "linear_sequence_helical_letters_enabled" => {
+                                self.state.display.linear_sequence_helical_letters_enabled = raw
+                            }
+                            "linear_reverse_strand_use_upside_down_letters"
+                            | "linear_reverse_strand_upside_down_letters" => {
+                                self.state
+                                    .display
+                                    .linear_reverse_strand_use_upside_down_letters = raw
+                            }
+                            _ => unreachable!(),
                         }
-                        "preferred_and_unique" | "preferred_unique" | "preferred+unique" => {
-                            RestrictionEnzymeDisplayMode::PreferredAndUnique
-                        }
-                        "unique_only" | "unique" => RestrictionEnzymeDisplayMode::UniqueOnly,
-                        "all_in_view" | "all" => RestrictionEnzymeDisplayMode::AllInView,
-                        _ => {
+                        result
+                            .messages
+                            .push(format!("Set parameter '{}' to {}", name, raw));
+                    }
+                    "tfbs_display_min_llr_bits" | "tfbs_display_min_true_log_odds_bits" => {
+                        let raw = value.as_f64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {} requires a number", name),
+                        })?;
+                        if !raw.is_finite() {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Unsupported restriction enzyme display mode '{raw}' (expected preferred_only|preferred_and_unique|unique_only|all_in_view; legacy aliases accepted)"
-                                ),
+                                message: format!("{} must be a finite number", name),
                             });
                         }
-                    };
-                    self.state.display.restriction_enzyme_display_mode = mode;
-                    result.messages.push(format!(
-                        "Set parameter 'restriction_enzyme_display_mode' to {}",
-                        self.state.display.restriction_enzyme_display_mode.label()
-                    ));
-                }
-                "vcf_display_show_snp"
-                | "vcf_display_show_ins"
-                | "vcf_display_show_del"
-                | "vcf_display_show_sv"
-                | "vcf_display_show_other"
-                | "vcf_display_pass_only"
-                | "vcf_display_use_min_qual"
-                | "vcf_display_use_max_qual"
-                | "show_tfbs"
-                | "show_restriction_enzymes"
-                | "show_restriction_enzyme_sites"
-                | "tfbs_display_use_llr_bits"
-                | "tfbs_display_use_llr_quantile"
-                | "tfbs_display_use_true_log_odds_bits"
-                | "tfbs_display_use_true_log_odds_quantile"
-                | "auto_hide_sequence_panel_when_linear_bases_visible"
-                | "linear_show_double_strand_bases"
-                | "linear_show_reverse_strand_bases"
-                | "show_linear_double_strand_bases"
-                | "show_linear_reverse_strand_bases"
-                | "linear_helical_parallel_strands"
-                | "linear_sequence_helical_parallel_strands"
-                | "linear_hide_backbone_when_sequence_bases_visible"
-                | "hide_linear_backbone_when_bases_visible"
-                | "linear_sequence_helical_letters_enabled"
-                | "linear_reverse_strand_use_upside_down_letters"
-                | "linear_reverse_strand_upside_down_letters" => {
-                    let raw = value.as_bool().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {} requires a boolean", name),
-                    })?;
-                    match name.as_str() {
-                        "vcf_display_show_snp" => self.state.display.vcf_display_show_snp = raw,
-                        "vcf_display_show_ins" => self.state.display.vcf_display_show_ins = raw,
-                        "vcf_display_show_del" => self.state.display.vcf_display_show_del = raw,
-                        "vcf_display_show_sv" => self.state.display.vcf_display_show_sv = raw,
-                        "vcf_display_show_other" => self.state.display.vcf_display_show_other = raw,
-                        "vcf_display_pass_only" => self.state.display.vcf_display_pass_only = raw,
-                        "vcf_display_use_min_qual" => {
-                            self.state.display.vcf_display_use_min_qual = raw
+                        if name == "tfbs_display_min_llr_bits" {
+                            self.state.display.tfbs_display_min_llr_bits = raw;
+                        } else {
+                            self.state.display.tfbs_display_min_true_log_odds_bits = raw;
                         }
-                        "vcf_display_use_max_qual" => {
-                            self.state.display.vcf_display_use_max_qual = raw
-                        }
-                        "show_tfbs" => self.state.display.show_tfbs = raw,
-                        "show_restriction_enzymes" | "show_restriction_enzyme_sites" => {
-                            self.state.display.show_restriction_enzymes = raw
-                        }
-                        "tfbs_display_use_llr_bits" => {
-                            self.state.display.tfbs_display_use_llr_bits = raw
-                        }
-                        "tfbs_display_use_llr_quantile" => {
-                            self.state.display.tfbs_display_use_llr_quantile = raw
-                        }
-                        "tfbs_display_use_true_log_odds_bits" => {
-                            self.state.display.tfbs_display_use_true_log_odds_bits = raw
-                        }
-                        "tfbs_display_use_true_log_odds_quantile" => {
-                            self.state.display.tfbs_display_use_true_log_odds_quantile = raw
-                        }
-                        "auto_hide_sequence_panel_when_linear_bases_visible" => {
-                            self.state
-                                .display
-                                .auto_hide_sequence_panel_when_linear_bases_visible = raw
-                        }
-                        "linear_show_double_strand_bases"
-                        | "linear_show_reverse_strand_bases"
-                        | "show_linear_double_strand_bases"
-                        | "show_linear_reverse_strand_bases" => {
-                            self.state.display.linear_show_double_strand_bases = raw
-                        }
-                        "linear_helical_parallel_strands"
-                        | "linear_sequence_helical_parallel_strands" => {
-                            self.state.display.linear_helical_parallel_strands = raw
-                        }
-                        "linear_hide_backbone_when_sequence_bases_visible"
-                        | "hide_linear_backbone_when_bases_visible" => {
-                            self.state
-                                .display
-                                .linear_hide_backbone_when_sequence_bases_visible = raw
-                        }
-                        "linear_sequence_helical_letters_enabled" => {
-                            self.state.display.linear_sequence_helical_letters_enabled = raw
-                        }
-                        "linear_reverse_strand_use_upside_down_letters"
-                        | "linear_reverse_strand_upside_down_letters" => {
-                            self.state
-                                .display
-                                .linear_reverse_strand_use_upside_down_letters = raw
-                        }
-                        _ => unreachable!(),
+                        result
+                            .messages
+                            .push(format!("Set parameter '{}' to {:.6}", name, raw));
                     }
-                    result
-                        .messages
-                        .push(format!("Set parameter '{}' to {}", name, raw));
-                }
-                "tfbs_display_min_llr_bits" | "tfbs_display_min_true_log_odds_bits" => {
-                    let raw = value.as_f64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {} requires a number", name),
-                    })?;
-                    if !raw.is_finite() {
-                        return Err(EngineError {
+                    "tfbs_display_min_llr_quantile" | "tfbs_display_min_true_log_odds_quantile" => {
+                        let raw = value.as_f64().ok_or_else(|| EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: format!("{} must be a finite number", name),
-                        });
+                            message: format!("SetParameter {} requires a number", name),
+                        })?;
+                        if !raw.is_finite() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!("{} must be a finite number", name),
+                            });
+                        }
+                        Self::validate_tf_thresholds(raw)?;
+                        if name == "tfbs_display_min_llr_quantile" {
+                            self.state.display.tfbs_display_min_llr_quantile = raw;
+                        } else {
+                            self.state.display.tfbs_display_min_true_log_odds_quantile = raw;
+                        }
+                        result
+                            .messages
+                            .push(format!("Set parameter '{}' to {:.6}", name, raw));
                     }
-                    if name == "tfbs_display_min_llr_bits" {
-                        self.state.display.tfbs_display_min_llr_bits = raw;
-                    } else {
-                        self.state.display.tfbs_display_min_true_log_odds_bits = raw;
-                    }
-                    result
-                        .messages
-                        .push(format!("Set parameter '{}' to {:.6}", name, raw));
-                }
-                "tfbs_display_min_llr_quantile" | "tfbs_display_min_true_log_odds_quantile" => {
-                    let raw = value.as_f64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {} requires a number", name),
-                    })?;
-                    if !raw.is_finite() {
-                        return Err(EngineError {
+                    "vcf_display_min_qual" | "vcf_display_max_qual" => {
+                        let raw = value.as_f64().ok_or_else(|| EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: format!("{} must be a finite number", name),
-                        });
+                            message: format!("SetParameter {} requires a number", name),
+                        })?;
+                        if !raw.is_finite() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!("{} must be a finite number", name),
+                            });
+                        }
+                        if name == "vcf_display_min_qual" {
+                            self.state.display.vcf_display_min_qual = raw;
+                        } else {
+                            self.state.display.vcf_display_max_qual = raw;
+                        }
+                        result
+                            .messages
+                            .push(format!("Set parameter '{}' to {:.6}", name, raw));
                     }
-                    Self::validate_tf_thresholds(raw)?;
-                    if name == "tfbs_display_min_llr_quantile" {
-                        self.state.display.tfbs_display_min_llr_quantile = raw;
-                    } else {
-                        self.state.display.tfbs_display_min_true_log_odds_quantile = raw;
-                    }
-                    result
-                        .messages
-                        .push(format!("Set parameter '{}' to {:.6}", name, raw));
-                }
-                "vcf_display_min_qual" | "vcf_display_max_qual" => {
-                    let raw = value.as_f64().ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("SetParameter {} requires a number", name),
-                    })?;
-                    if !raw.is_finite() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!("{} must be a finite number", name),
-                        });
-                    }
-                    if name == "vcf_display_min_qual" {
-                        self.state.display.vcf_display_min_qual = raw;
-                    } else {
-                        self.state.display.vcf_display_max_qual = raw;
-                    }
-                    result
-                        .messages
-                        .push(format!("Set parameter '{}' to {:.6}", name, raw));
-                }
-                "vcf_display_required_info_keys"
-                | "vcf_display_required_info_keys_csv"
-                | "vcf_display_required_info" => {
-                    let mut keys = if let Some(array) = value.as_array() {
-                        let mut values = Vec::with_capacity(array.len());
-                        for entry in array {
-                            let Some(raw) = entry.as_str() else {
-                                return Err(EngineError {
+                    "vcf_display_required_info_keys"
+                    | "vcf_display_required_info_keys_csv"
+                    | "vcf_display_required_info" => {
+                        let mut keys = if let Some(array) = value.as_array() {
+                            let mut values = Vec::with_capacity(array.len());
+                            for entry in array {
+                                let Some(raw) = entry.as_str() else {
+                                    return Err(EngineError {
                                         code: ErrorCode::InvalidInput,
                                         message: "vcf_display_required_info_keys array entries must be strings".to_string(),
                                     });
-                            };
-                            values.push(raw.to_string());
-                        }
-                        values
-                    } else if let Some(raw) = value.as_str() {
-                        raw.split(',')
-                            .map(str::trim)
-                            .filter(|v| !v.is_empty())
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                    } else {
-                        return Err(EngineError {
+                                };
+                                values.push(raw.to_string());
+                            }
+                            values
+                        } else if let Some(raw) = value.as_str() {
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|v| !v.is_empty())
+                                .map(|v| v.to_string())
+                                .collect::<Vec<_>>()
+                        } else {
+                            return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "SetParameter vcf_display_required_info_keys requires a string (CSV) or string array".to_string(),
                             });
-                    };
-                    for key in &mut keys {
-                        *key = key.trim().to_ascii_uppercase();
+                        };
+                        for key in &mut keys {
+                            *key = key.trim().to_ascii_uppercase();
+                        }
+                        keys.retain(|key| !key.is_empty());
+                        keys.sort();
+                        keys.dedup();
+                        self.state.display.vcf_display_required_info_keys = keys.clone();
+                        result.messages.push(format!(
+                            "Set parameter 'vcf_display_required_info_keys' to [{}]",
+                            keys.join(",")
+                        ));
                     }
-                    keys.retain(|key| !key.is_empty());
-                    keys.sort();
-                    keys.dedup();
-                    self.state.display.vcf_display_required_info_keys = keys.clone();
-                    result.messages.push(format!(
-                        "Set parameter 'vcf_display_required_info_keys' to [{}]",
-                        keys.join(",")
-                    ));
-                }
-                "preferred_restriction_enzymes"
-                | "preferred_restriction_enzymes_csv"
-                | "restriction_preferred_enzymes" => {
-                    let values = if let Some(array) = value.as_array() {
-                        let mut values = Vec::with_capacity(array.len());
-                        for entry in array {
-                            let Some(raw) = entry.as_str() else {
-                                return Err(EngineError {
+                    "preferred_restriction_enzymes"
+                    | "preferred_restriction_enzymes_csv"
+                    | "restriction_preferred_enzymes" => {
+                        let values = if let Some(array) = value.as_array() {
+                            let mut values = Vec::with_capacity(array.len());
+                            for entry in array {
+                                let Some(raw) = entry.as_str() else {
+                                    return Err(EngineError {
                                     code: ErrorCode::InvalidInput,
                                     message: "preferred_restriction_enzymes array entries must be strings".to_string(),
                                 });
-                            };
-                            values.push(raw.to_string());
-                        }
-                        values
-                    } else if let Some(raw) = value.as_str() {
-                        raw.split(',')
-                            .map(str::trim)
-                            .filter(|v| !v.is_empty())
-                            .map(|v| v.to_string())
-                            .collect::<Vec<_>>()
-                    } else {
-                        return Err(EngineError {
+                                };
+                                values.push(raw.to_string());
+                            }
+                            values
+                        } else if let Some(raw) = value.as_str() {
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|v| !v.is_empty())
+                                .map(|v| v.to_string())
+                                .collect::<Vec<_>>()
+                        } else {
+                            return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: "SetParameter preferred_restriction_enzymes requires a string (CSV) or string array".to_string(),
                         });
-                    };
-                    let normalized =
-                        crate::dna_display::DnaDisplay::normalize_preferred_restriction_enzymes(
-                            &values,
-                        );
-                    self.state.display.preferred_restriction_enzymes = normalized.clone();
-                    result.messages.push(format!(
-                        "Set parameter 'preferred_restriction_enzymes' to [{}]",
-                        normalized.join(",")
-                    ));
-                }
-                _ => {
-                    return Err(EngineError {
-                        code: ErrorCode::Unsupported,
-                        message: format!("Unknown parameter '{}'", name),
-                    });
-                }
-            },
+                        };
+                        let normalized =
+                            crate::dna_display::DnaDisplay::normalize_preferred_restriction_enzymes(
+                                &values,
+                            );
+                        self.state.display.preferred_restriction_enzymes = normalized.clone();
+                        result.messages.push(format!(
+                            "Set parameter 'preferred_restriction_enzymes' to [{}]",
+                            normalized.join(",")
+                        ));
+                    }
+                    _ => {
+                        return Err(EngineError {
+                            code: ErrorCode::Unsupported,
+                            message: format!("Unknown parameter '{}'", name),
+                        });
+                    }
+                },
+            }
         }
 
         self.add_lineage_edges(

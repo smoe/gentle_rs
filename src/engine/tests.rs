@@ -16185,11 +16185,11 @@ fn test_interpret_cutrun_reads_builds_paired_end_roi_report_with_orphans() {
     assert_eq!(report.orphan_r1_count, 1);
     assert_eq!(report.orphan_r2_count, 1);
     assert_eq!(report.unmatched_pair_count, 0);
+    assert_eq!(report.coverage, vec![1, 2, 2, 2, 3, 2, 2, 2, 1, 1, 1, 1]);
     assert_eq!(
-        report.coverage,
-        vec![1, 2, 2, 2, 3, 2, 2, 2, 1, 1, 1, 1]
+        report.cut_site_counts,
+        vec![1, 1, 0, 0, 2, 0, 0, 1, 0, 0, 0, 1]
     );
-    assert_eq!(report.cut_site_counts, vec![1, 1, 0, 0, 2, 0, 0, 1, 0, 0, 0, 1]);
     assert_eq!(report.support_clusters.len(), 1);
     assert_eq!(report.support_clusters[0].local_start_1based, 1);
     assert_eq!(report.support_clusters[0].local_end_1based, 12);

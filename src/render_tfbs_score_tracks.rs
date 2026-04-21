@@ -1177,16 +1177,9 @@ pub fn render_tfbs_score_track_correlation_svg(
                         cross_row_lookup
                             .get(&key)
                             .and_then(|row| {
-                                cross_strand_lookup_cell(
-                                    row,
-                                    row_is_left,
-                                    *row_strand,
-                                    *col_strand,
-                                )
+                                cross_strand_lookup_cell(row, row_is_left, *row_strand, *col_strand)
                             })
-                            .map(|cell| {
-                                cross_strand_correlation_value(cell, metric, is_smoothed)
-                            })
+                            .map(|cell| cross_strand_correlation_value(cell, metric, is_smoothed))
                             .unwrap_or(0.0)
                     };
                     svg.push_str(&format!(

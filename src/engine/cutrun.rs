@@ -1207,7 +1207,9 @@ impl GentleEngine {
             mapped_units: report.mapped_units,
             fragment_count: report.fragment_count,
             concordant_pair_count: report.concordant_pair_count,
-            orphan_unit_count: report.orphan_r1_count.saturating_add(report.orphan_r2_count),
+            orphan_unit_count: report
+                .orphan_r1_count
+                .saturating_add(report.orphan_r2_count),
             mean_read_length_bp: report.mean_read_length_bp,
         }
     }
@@ -1322,7 +1324,10 @@ impl GentleEngine {
             })? == 0
                 || reader.read_line(&mut plus).map_err(|e| EngineError {
                     code: ErrorCode::Io,
-                    message: format!("Could not read CUT&RUN FASTQ separator line '{}': {e}", path),
+                    message: format!(
+                        "Could not read CUT&RUN FASTQ separator line '{}': {e}",
+                        path
+                    ),
                 })? == 0
                 || reader.read_line(&mut qualities).map_err(|e| EngineError {
                     code: ErrorCode::Io,
@@ -1526,10 +1531,7 @@ impl GentleEngine {
             )
             .map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Could not load CUT&RUN ROI window for '{}': {}",
-                    seq_id, e
-                ),
+                message: format!("Could not load CUT&RUN ROI window for '{}': {}", seq_id, e),
             })?;
         let forward_window_bytes = Self::normalize_cutrun_input_sequence(forward_window.as_bytes());
         let anchor_offset_start = anchor.start_1based.saturating_sub(window_start_1based);
@@ -1561,7 +1563,9 @@ impl GentleEngine {
                 (
                     Self::reverse_complement_bytes(&forward_window_bytes),
                     CutRunReadOrientation::Reverse,
-                    window_len.saturating_sub(anchor_offset_end).saturating_add(1),
+                    window_len
+                        .saturating_sub(anchor_offset_end)
+                        .saturating_add(1),
                     window_len.saturating_sub(anchor_offset_start),
                 )
             } else {
@@ -1591,13 +1595,14 @@ impl GentleEngine {
         })
     }
 
-    fn cutrun_local_pos_to_genomic(window: &CutRunReferenceWindow, local_pos_1based: usize) -> usize {
+    fn cutrun_local_pos_to_genomic(
+        window: &CutRunReferenceWindow,
+        local_pos_1based: usize,
+    ) -> usize {
         match window.orientation {
-            CutRunReadOrientation::Forward => {
-                window
-                    .window_start_1based
-                    .saturating_add(local_pos_1based.saturating_sub(1))
-            }
+            CutRunReadOrientation::Forward => window
+                .window_start_1based
+                .saturating_add(local_pos_1based.saturating_sub(1)),
             CutRunReadOrientation::Reverse => window
                 .window_end_1based
                 .saturating_sub(local_pos_1based.saturating_sub(1)),
@@ -1661,12 +1666,7 @@ impl GentleEngine {
             .into_iter()
             .filter(|(_, seed_matches)| *seed_matches >= seed_filter.min_seed_matches.max(1))
             .collect::<Vec<_>>();
-        out.sort_by(|left, right| {
-            right
-                .1
-                .cmp(&left.1)
-                .then_with(|| left.0.cmp(&right.0))
-        });
+        out.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
         out
     }
 
@@ -1688,8 +1688,12 @@ impl GentleEngine {
         ];
         let mut best: Option<CutRunReadPlacement> = None;
         for (orientation, oriented_read) in candidates {
-            let mut candidate_starts =
-                Self::cutrun_candidate_starts(&oriented_read, seed_filter, &seed_index, window.sequence.len());
+            let mut candidate_starts = Self::cutrun_candidate_starts(
+                &oriented_read,
+                seed_filter,
+                &seed_index,
+                window.sequence.len(),
+            );
             if candidate_starts.is_empty() {
                 candidate_starts = (0..=window.sequence.len() - oriented_read.len())
                     .map(|start| (start, 0usize))
@@ -1706,19 +1710,17 @@ impl GentleEngine {
                 if mismatches > align_config.max_mismatches {
                     continue;
                 }
-                let identity_fraction =
-                    1.0 - mismatches as f64 / oriented_read.len().max(1) as f64;
+                let identity_fraction = 1.0 - mismatches as f64 / oriented_read.len().max(1) as f64;
                 if identity_fraction + f64::EPSILON < align_config.min_identity_fraction {
                     continue;
                 }
                 let local_start_1based = start_0based + 1;
                 let local_end_1based = end_0based_exclusive;
-                let (genomic_start_1based, genomic_end_1based) =
-                    Self::cutrun_local_span_to_genomic(
-                        window,
-                        local_start_1based,
-                        local_end_1based,
-                    );
+                let (genomic_start_1based, genomic_end_1based) = Self::cutrun_local_span_to_genomic(
+                    window,
+                    local_start_1based,
+                    local_end_1based,
+                );
                 let placement = CutRunReadPlacement {
                     orientation,
                     local_start_1based,
@@ -1769,7 +1771,9 @@ impl GentleEngine {
             local_end_1based,
             genomic_start_1based,
             genomic_end_1based,
-            length_bp: local_end_1based.saturating_sub(local_start_1based).saturating_add(1),
+            length_bp: local_end_1based
+                .saturating_sub(local_start_1based)
+                .saturating_add(1),
             left_cut_site_local_1based: local_start_1based,
             right_cut_site_local_1based: local_end_1based,
             duplicate_count: row.duplicate_count.max(1),
@@ -1937,8 +1941,12 @@ impl GentleEngine {
                 )
             })
             .count();
-        let support_clusters =
-            Self::summarize_cutrun_support_clusters(&coverage, &cut_site_counts, &fragments, window);
+        let support_clusters = Self::summarize_cutrun_support_clusters(
+            &coverage,
+            &cut_site_counts,
+            &fragments,
+            window,
+        );
         CutRunReadReport {
             schema: CUTRUN_READ_REPORT_SCHEMA.to_string(),
             report_id: report_id.to_string(),
@@ -1986,7 +1994,10 @@ impl GentleEngine {
     ) -> Result<(), EngineError> {
         let text = serde_json::to_string_pretty(report).map_err(|e| EngineError {
             code: ErrorCode::Internal,
-            message: format!("Could not serialize CUT&RUN report snapshot '{}': {e}", path),
+            message: format!(
+                "Could not serialize CUT&RUN report snapshot '{}': {e}",
+                path
+            ),
         })?;
         fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -2055,7 +2066,10 @@ impl GentleEngine {
         };
         let checkpoint_every_reads = checkpoint_every_reads.max(1);
         let mut warnings = Vec::<String>::new();
-        if let Some(path) = checkpoint_path.map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(path) = checkpoint_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             warnings.push(format!(
                 "checkpoint snapshots enabled every {} unit(s) at '{}'",
                 checkpoint_every_reads, path
@@ -2064,12 +2078,17 @@ impl GentleEngine {
         let window = self.build_cutrun_reference_window(seq_id, roi_flank_bp)?;
         warnings.extend(window.warnings.clone());
         let input_r1_records = Self::parse_cutrun_input_records(input_r1_path, input_format)?;
-        let input_r2_records = match input_r2_path.map(str::trim).filter(|value| !value.is_empty()) {
+        let input_r2_records = match input_r2_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             Some(path) => Self::parse_cutrun_input_records(path, input_format)?,
             None => vec![],
         };
-        let total_record_count =
-            input_r1_records.len().saturating_add(input_r2_records.len()).max(1) as f64;
+        let total_record_count = input_r1_records
+            .len()
+            .saturating_add(input_r2_records.len())
+            .max(1) as f64;
         let total_read_bases = input_r1_records
             .iter()
             .chain(input_r2_records.iter())
@@ -2145,10 +2164,12 @@ impl GentleEngine {
                         row.r2_record_index.is_some(),
                     ) {
                         (Some(left), Some(right), true, true) => {
-                            let fragment_start = left.local_start_1based.min(right.local_start_1based);
+                            let fragment_start =
+                                left.local_start_1based.min(right.local_start_1based);
                             let fragment_end = left.local_end_1based.max(right.local_end_1based);
-                            let fragment_span_bp =
-                                fragment_end.saturating_sub(fragment_start).saturating_add(1);
+                            let fragment_span_bp = fragment_end
+                                .saturating_sub(fragment_start)
+                                .saturating_add(1);
                             let opposite_orientation = left.orientation != right.orientation;
                             if opposite_orientation
                                 && fragment_span_bp <= align_config.max_fragment_span_bp
@@ -2176,14 +2197,16 @@ impl GentleEngine {
                             row.status = CutRunReadUnitStatus::R1OnlyMapped;
                             row.fragment_local_start_1based = Some(placement.local_start_1based);
                             row.fragment_local_end_1based = Some(placement.local_end_1based);
-                            row.fragment_genomic_start_1based = Some(placement.genomic_start_1based);
+                            row.fragment_genomic_start_1based =
+                                Some(placement.genomic_start_1based);
                             row.fragment_genomic_end_1based = Some(placement.genomic_end_1based);
                         }
                         (None, Some(placement), true, true) => {
                             row.status = CutRunReadUnitStatus::R2OnlyMapped;
                             row.fragment_local_start_1based = Some(placement.local_start_1based);
                             row.fragment_local_end_1based = Some(placement.local_end_1based);
-                            row.fragment_genomic_start_1based = Some(placement.genomic_start_1based);
+                            row.fragment_genomic_start_1based =
+                                Some(placement.genomic_start_1based);
                             row.fragment_genomic_end_1based = Some(placement.genomic_end_1based);
                         }
                         (None, None, true, true) => {
@@ -2193,30 +2216,37 @@ impl GentleEngine {
                             row.status = CutRunReadUnitStatus::OrphanR1;
                             row.fragment_local_start_1based = Some(placement.local_start_1based);
                             row.fragment_local_end_1based = Some(placement.local_end_1based);
-                            row.fragment_genomic_start_1based = Some(placement.genomic_start_1based);
+                            row.fragment_genomic_start_1based =
+                                Some(placement.genomic_start_1based);
                             row.fragment_genomic_end_1based = Some(placement.genomic_end_1based);
                         }
                         (None, _, true, false) => {
                             row.status = CutRunReadUnitStatus::OrphanR1;
-                            row.notes.push("orphan R1 did not map inside the ROI window".to_string());
+                            row.notes
+                                .push("orphan R1 did not map inside the ROI window".to_string());
                         }
                         (_, Some(placement), false, true) => {
                             row.status = CutRunReadUnitStatus::OrphanR2;
                             row.fragment_local_start_1based = Some(placement.local_start_1based);
                             row.fragment_local_end_1based = Some(placement.local_end_1based);
-                            row.fragment_genomic_start_1based = Some(placement.genomic_start_1based);
+                            row.fragment_genomic_start_1based =
+                                Some(placement.genomic_start_1based);
                             row.fragment_genomic_end_1based = Some(placement.genomic_end_1based);
                         }
                         (_, None, false, true) => {
                             row.status = CutRunReadUnitStatus::OrphanR2;
-                            row.notes.push("orphan R2 did not map inside the ROI window".to_string());
+                            row.notes
+                                .push("orphan R2 did not map inside the ROI window".to_string());
                         }
                         _ => {}
                     }
                 }
             }
             rows.push(row);
-            if let Some(path) = checkpoint_path.map(str::trim).filter(|value| !value.is_empty()) {
+            if let Some(path) = checkpoint_path
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
                 if rows.len() % checkpoint_every_reads == 0 {
                     let snapshot = Self::build_cutrun_report_from_units(
                         &report_id,
@@ -2265,7 +2295,10 @@ impl GentleEngine {
             mean_mapped_read_length_bp,
             &warnings,
         );
-        if let Some(path) = checkpoint_path.map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(path) = checkpoint_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             Self::write_cutrun_report_snapshot(&report, path)?;
         }
         self.upsert_cutrun_read_report(report.clone())?;
@@ -2294,9 +2327,7 @@ impl GentleEngine {
                             .reference_window_start_1based
                             .saturating_add(local_pos_1based.saturating_sub(1))
                     };
-                    lines.push(format!(
-                        "{local_pos_1based}\t{genomic_pos_1based}\t{value}"
-                    ));
+                    lines.push(format!("{local_pos_1based}\t{genomic_pos_1based}\t{value}"));
                 }
             }
             CutRunCoverageKind::CutSites => {
@@ -2312,9 +2343,7 @@ impl GentleEngine {
                             .reference_window_start_1based
                             .saturating_add(local_pos_1based.saturating_sub(1))
                     };
-                    lines.push(format!(
-                        "{local_pos_1based}\t{genomic_pos_1based}\t{value}"
-                    ));
+                    lines.push(format!("{local_pos_1based}\t{genomic_pos_1based}\t{value}"));
                 }
             }
             CutRunCoverageKind::Fragments => {
