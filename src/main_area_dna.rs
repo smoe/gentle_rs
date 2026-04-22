@@ -7745,6 +7745,7 @@ mod tests {
         area.open_rna_read_mapping_workspace_for_view(&view);
         assert!(area.show_rna_read_mapping_window);
         assert!(area.rna_read_mapping_window_pending_initial_render);
+        assert!(area.rna_read_mapping_window_focus_requested);
         assert_eq!(area.rna_read_mapping_window_feature_id, Some(17));
         assert_eq!(area.rna_reads_ui.report_id, "tp73_saved");
     }
@@ -7778,6 +7779,7 @@ mod tests {
             .expect("open RNA-read Mapping from current selection");
 
         assert!(area.show_rna_read_mapping_window);
+        assert!(area.rna_read_mapping_window_focus_requested);
         assert_eq!(view.seq_id, "seq_gene");
         assert_eq!(view.target_feature_id, 0);
         assert_eq!(view.group_label, "GENE1");
@@ -7815,6 +7817,7 @@ mod tests {
             .expect("open RNA-read Mapping from current selection without cached expert view");
 
         assert!(area.show_rna_read_mapping_window);
+        assert!(area.rna_read_mapping_window_focus_requested);
         assert_eq!(view.seq_id, "seq_gene");
         assert_eq!(view.target_feature_id, 0);
         assert_eq!(view.group_label, "GENE1");
@@ -11915,6 +11918,7 @@ pub struct MainAreaDna {
     splicing_expert_selected_intron_signal_key: Option<SplicingIntronSignalKey>,
     show_rna_read_mapping_window: bool,
     rna_read_mapping_window_pending_initial_render: bool,
+    rna_read_mapping_window_focus_requested: bool,
     rna_read_mapping_window_feature_id: Option<usize>,
     rna_read_mapping_window_view: Option<Arc<SplicingExpertView>>,
     show_variant_followup_window: bool,
@@ -12539,6 +12543,7 @@ impl MainAreaDna {
             splicing_expert_selected_intron_signal_key: None,
             show_rna_read_mapping_window: false,
             rna_read_mapping_window_pending_initial_render: false,
+            rna_read_mapping_window_focus_requested: false,
             rna_read_mapping_window_feature_id: None,
             rna_read_mapping_window_view: None,
             show_variant_followup_window: false,
@@ -12617,6 +12622,7 @@ impl MainAreaDna {
     ) {
         self.show_rna_read_mapping_window = true;
         self.rna_read_mapping_window_pending_initial_render = false;
+        self.rna_read_mapping_window_focus_requested = false;
         self.rna_read_mapping_window_feature_id = Some(feature_id);
         self.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: seq_id.to_string(),
@@ -27728,6 +27734,10 @@ impl MainAreaDna {
                 self.show_rna_read_mapping_window = false;
             }
         });
+        if self.rna_read_mapping_window_focus_requested {
+            self.focus_rna_read_mapping_workspace_view(ctx, &view);
+            self.rna_read_mapping_window_focus_requested = false;
+        }
     }
 
     fn rna_read_mapping_workspace_matches_task(

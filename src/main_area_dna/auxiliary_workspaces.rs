@@ -6230,6 +6230,7 @@ impl MainAreaDna {
         self.rna_read_mapping_window_feature_id = Some(view.target_feature_id);
         self.rna_read_mapping_window_view = Some(Arc::new(view.clone()));
         self.rna_read_mapping_window_pending_initial_render = true;
+        self.rna_read_mapping_window_focus_requested = true;
         self.show_rna_read_mapping_window = true;
         self.rna_read_mapping_status.clear();
         self.log_rna_read_mapping_status(view, "window state stored", true);
