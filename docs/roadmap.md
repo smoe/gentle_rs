@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -478,6 +478,11 @@ order. Durable architecture constraints and decisions remain in
   - hosted DNA sequence windows and hosted auxiliary workspaces now also reset
     legacy title-derived embedded layers, so reopening sequence or RNA-read
     mapping windows no longer leaves detached non-functional title bars behind
+  - hosted RNA-read Mapping now renders a single workspace-intro block instead
+    of stacking duplicate guide/header rows inside the embedded shell
+  - short RNA-read score-bin preview tables now expand before allocating an
+    inner vertical scrollbar, reducing the macOS hosted-window "double
+    scrollbar" trap while keeping larger tables capped
   - the hosted help body now reserves the remaining viewport height before
     opening its vertical scroll area so wheel scrolling stays inside the help
     content instead of falling through to the background workspace

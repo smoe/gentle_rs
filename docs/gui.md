@@ -100,6 +100,10 @@ macOS auxiliary-window stability note:
   RNA-read Mapping now also clear older legacy title-derived embedded layers,
   so reopening those windows no longer leaves detached non-functional title
   bars behind.
+- The hosted RNA-read Mapping shell now renders its workspace intro only once,
+  and short saved-report preview tables expand a little further before opening
+  an inner vertical scrollbar so wheel scrolling is less likely to get trapped
+  in a tiny nested pane.
 - The hosted help body now reserves the full remaining window height before its
   vertical scroll area is built so mouse-wheel scrolling stays with the help
   content instead of falling through to the background workspace.
@@ -1139,8 +1143,12 @@ Feature tree grouping:
         - the current histogram population count (`All scored` or
           `Composite gate`)
         - retained saved-report rows in the bin
-    - the preview table now reserves about 12 visible rows before scrolling
-      and starts with `Ret.rank`, so orientation is easier to keep while
+    - the preview table now reserves about 12 visible rows by default and can
+      grow up to roughly 16 rows for shorter saved-report lists before opening
+      an inner vertical scrollbar; this keeps compact score-bin previews from
+      showing a second inactive-looking vertical scrollbar beside the workspace
+      scrollbar
+    - the table starts with `Ret.rank`, so orientation is easier to keep while
       triaging
     - the `align selection` summary now distinguishes the stricter saved-report
       composite seed-pass count from the raw red `min_hit` line in the

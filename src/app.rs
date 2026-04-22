@@ -7156,8 +7156,8 @@ Error: `{err}`"
             .add_filter(
                 "Supported sequence files",
                 &[
-                    "dna", "gb", "gbk", "gbff", "genbank", "embl", "emb", "fa", "fasta",
-                    "fna", "fas", "xml",
+                    "dna", "gb", "gbk", "gbff", "genbank", "embl", "emb", "fa", "fasta", "fna",
+                    "fas", "xml",
                 ],
             )
             .add_filter("SnapGene DNA", &["dna"])
@@ -50223,7 +50223,10 @@ mod tests {
             .get(&viewport_id)
             .cloned()
             .expect("registered sequence window");
-        let title = window.read().map(|guard| guard.name()).expect("window name");
+        let title = window
+            .read()
+            .map(|guard| guard.name())
+            .expect("window name");
         let hosted_layer_id = egui::LayerId::new(
             egui::Order::Middle,
             egui::Id::new(("hosted_sequence_window", viewport_id)),
@@ -50237,12 +50240,7 @@ mod tests {
         assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
 
         let initial_position = app.pending_window_initial_positions.remove(&viewport_id);
-        app.show_window(
-            &ctx,
-            viewport_id,
-            window,
-            initial_position,
-        );
+        app.show_window(&ctx, viewport_id, window, initial_position);
         assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
         let _ = ctx.end_pass();
@@ -50264,22 +50262,22 @@ mod tests {
             "closing the parent sequence window should remove the visible DNA viewport"
         );
         assert!(
-            app.detached_auxiliary_window_hosts.contains_key(&viewport_id),
+            app.detached_auxiliary_window_hosts
+                .contains_key(&viewport_id),
             "an open RNA-read Mapping workspace should keep a detached auxiliary host alive"
         );
         let entries = app.collect_open_window_entries();
         assert!(
-            entries.iter().any(|entry| {
-                entry
-                    .title
-                    .contains("RNA-read Mapping - TP73 (seq1)")
-            }),
+            entries
+                .iter()
+                .any(|entry| { entry.title.contains("RNA-read Mapping - TP73 (seq1)") }),
             "detached auxiliary hosts should keep RNA-read Mapping listed in the Windows menu"
         );
         let mapping_viewport_id =
             egui::ViewportId::from_hash_of(("rna_read_mapping_viewport", "seq1", 17usize));
         assert_eq!(
-            app.embedded_window_layer_id_for_viewport(mapping_viewport_id).is_some(),
+            app.embedded_window_layer_id_for_viewport(mapping_viewport_id)
+                .is_some(),
             true,
             "detached auxiliary hosts should still resolve embedded layer ids for focus routing"
         );

@@ -17113,18 +17113,13 @@ fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_
             .all(|window| window.occupancy_interpretation
                 == CutRunMotifAbsentOccupancyInterpretation::ContextSupportedByOtherMotifs)
     );
-    assert!(
-        report
-            .motif_absent_supported_windows
-            .iter()
-            .all(|window| {
-                window.motifs_inside_window.is_empty()
-                    || window
-                        .motifs_inside_window
-                        .iter()
-                        .any(|hit| hit.motif_label.as_deref() == Some("SP1"))
-            })
-    );
+    assert!(report.motif_absent_supported_windows.iter().all(|window| {
+        window.motifs_inside_window.is_empty()
+            || window
+                .motifs_inside_window
+                .iter()
+                .any(|hit| hit.motif_label.as_deref() == Some("SP1"))
+    }));
     assert!(report.motif_absent_supported_windows.iter().all(|window| {
         window
             .motifs_in_neighbor_window

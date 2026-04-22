@@ -83,9 +83,15 @@ fn test_unknown_packets_are_retained() {
     ]);
     let parsed = parse_bytes(&bytes).expect("parse unknown packets");
     assert_eq!(parsed.extra_packets.len(), 2);
-    assert_eq!(parsed.extra_packets[0].packet_type, PacketType::Unknown(0x03));
+    assert_eq!(
+        parsed.extra_packets[0].packet_type,
+        PacketType::Unknown(0x03)
+    );
     assert_eq!(parsed.extra_packets[0].payload, b"enzyme-state");
-    assert_eq!(parsed.extra_packets[1].packet_type, PacketType::Unknown(0x0D));
+    assert_eq!(
+        parsed.extra_packets[1].packet_type,
+        PacketType::Unknown(0x0D)
+    );
     assert_eq!(parsed.extra_packets[1].payload, b"display-state");
 }
 
@@ -93,18 +99,29 @@ fn test_unknown_packets_are_retained() {
 #[test]
 fn test_joined_feature_segments_roundtrip_to_gb_io() {
     let features_xml = r##"<?xml version="1.0"?><Features><Feature name="joined" type="gene" directionality="1"><Segment range="5-10" color="#ffffff" type="standard"/><Segment range="20-30" color="#ffffff" type="standard"/><Q name="gene"><V text="joinedA"/></Q></Feature></Features>"##;
-    let bytes = assemble(&[cookie(), dna(&"A".repeat(60), false), xml_packet(0x0A, features_xml)]);
+    let bytes = assemble(&[
+        cookie(),
+        dna(&"A".repeat(60), false),
+        xml_packet(0x0A, features_xml),
+    ]);
     let parsed = parse_bytes(&bytes).expect("parse joined feature");
     let seq = gb_io::seq::Seq::try_from(&parsed).expect("adapt to gb_io");
     assert_eq!(seq.features.len(), 1);
-    assert_eq!(seq.features[0].location.to_gb_format(), "join(5..10,20..30)");
+    assert_eq!(
+        seq.features[0].location.to_gb_format(),
+        "join(5..10,20..30)"
+    );
 }
 
 #[cfg(feature = "gb-io")]
 #[test]
 fn test_reverse_joined_feature_segments_roundtrip_to_gb_io() {
     let features_xml = r##"<?xml version="1.0"?><Features><Feature name="joined_reverse" type="gene" directionality="2"><Segment range="5-10" color="#ffffff" type="standard"/><Segment range="20-30" color="#ffffff" type="standard"/><Q name="gene"><V text="joinedRev"/></Q></Feature></Features>"##;
-    let bytes = assemble(&[cookie(), dna(&"A".repeat(60), false), xml_packet(0x0A, features_xml)]);
+    let bytes = assemble(&[
+        cookie(),
+        dna(&"A".repeat(60), false),
+        xml_packet(0x0A, features_xml),
+    ]);
     let parsed = parse_bytes(&bytes).expect("parse reverse joined feature");
     let seq = gb_io::seq::Seq::try_from(&parsed).expect("adapt to gb_io");
     assert_eq!(
@@ -117,7 +134,11 @@ fn test_reverse_joined_feature_segments_roundtrip_to_gb_io() {
 #[test]
 fn test_wraparound_feature_segments_roundtrip_to_gb_io() {
     let features_xml = r##"<?xml version="1.0"?><Features><Feature name="wrap" type="misc_feature" directionality="1"><Segment range="110-10" color="#ffffff" type="standard"/></Feature></Features>"##;
-    let bytes = assemble(&[cookie(), dna(&"A".repeat(120), true), xml_packet(0x0A, features_xml)]);
+    let bytes = assemble(&[
+        cookie(),
+        dna(&"A".repeat(120), true),
+        xml_packet(0x0A, features_xml),
+    ]);
     let parsed = parse_bytes(&bytes).expect("parse wrap feature");
     let seq = gb_io::seq::Seq::try_from(&parsed).expect("adapt to gb_io");
     let text = seq.features[0].location.to_gb_format();
@@ -128,7 +149,11 @@ fn test_wraparound_feature_segments_roundtrip_to_gb_io() {
 #[test]
 fn test_primer_binding_visibility_helper_filters_hidden_sites() {
     let primers_xml = r#"<?xml version="1.0"?><Primers><HybridizationParams minContinuousMatchLen="10" minMeltingTemperature="40" allowMismatch="1" showAdditionalFivePrimeMatches="1"/><Primer name="p1" sequence="ATGCATGCATGC" description="demo"><BindingSite location="5-20" boundStrand="0" simplified="1" annealedBases="AAAAAAAAAAAA" meltingTemperature="55"/><BindingSite location="5-20" boundStrand="0" simplified="1" annealedBases="AAAAAAAAAAAA" meltingTemperature="55"/><BindingSite location="30-40" boundStrand="1" simplified="0" annealedBases="AAAAA" meltingTemperature="30"/></Primer></Primers>"#;
-    let bytes = assemble(&[cookie(), dna(&"A".repeat(80), false), xml_packet(0x05, primers_xml)]);
+    let bytes = assemble(&[
+        cookie(),
+        dna(&"A".repeat(80), false),
+        xml_packet(0x05, primers_xml),
+    ]);
     let parsed = parse_bytes(&bytes).expect("parse primers");
     let primer: &PrimerRecord = parsed.primers.first().expect("one primer");
     let visible = primer.visible_binding_sites(parsed.primer_hybridization_params.as_ref());

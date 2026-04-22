@@ -117,21 +117,24 @@ impl GENtleApp {
                 viewport_id,
             ))));
         }
-        self.windows.values().find_map(|window| {
-            window
-                .read()
-                .ok()
-                .and_then(|guard| guard.embedded_auxiliary_window_layer_id(viewport_id))
-        }).or_else(|| {
-            self.detached_auxiliary_window_hosts
-                .values()
-                .find_map(|window| {
-                    window
-                        .read()
-                        .ok()
-                        .and_then(|guard| guard.embedded_auxiliary_window_layer_id(viewport_id))
-                })
-        })
+        self.windows
+            .values()
+            .find_map(|window| {
+                window
+                    .read()
+                    .ok()
+                    .and_then(|guard| guard.embedded_auxiliary_window_layer_id(viewport_id))
+            })
+            .or_else(|| {
+                self.detached_auxiliary_window_hosts
+                    .values()
+                    .find_map(|window| {
+                        window
+                            .read()
+                            .ok()
+                            .and_then(|guard| guard.embedded_auxiliary_window_layer_id(viewport_id))
+                    })
+            })
     }
 
     pub(super) fn collect_open_window_entries(&self) -> Vec<OpenWindowEntry> {
@@ -397,7 +400,8 @@ impl GENtleApp {
                 .map(|guard| guard.has_open_auxiliary_windows())
                 .unwrap_or(false);
             if keep_auxiliary_host_alive {
-                self.detached_auxiliary_window_hosts.insert(viewport_id, window);
+                self.detached_auxiliary_window_hosts
+                    .insert(viewport_id, window);
             }
         }
     }

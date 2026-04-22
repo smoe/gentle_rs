@@ -18,4 +18,3 @@ pub use model::{
     QualifierRecord, QualifierValue, RawPacket, SequenceTopology, SnapGeneFile,
 };
 pub use parser::{parse_bytes, parse_path, parse_reader};
-

@@ -2,11 +2,7 @@ use crate::{
     AdditionalSequenceProperties, DnaPacket, FeatureRecord, HybridizationParams, NotesRecord,
     PacketType, PrimerRecord, RawPacket, SequenceTopology, SnapGeneError, SnapGeneFile, xml,
 };
-use std::{
-    fs,
-    io::Read,
-    path::Path,
-};
+use std::{fs, io::Read, path::Path};
 
 pub fn parse_path<P: AsRef<Path>>(path: P) -> Result<SnapGeneFile, SnapGeneError> {
     let path_ref = path.as_ref();
@@ -180,12 +176,11 @@ fn parse_dna_packet(data: &[u8]) -> Result<DnaPacket, SnapGeneError> {
         });
     }
     let flags = data[0];
-    let sequence = String::from_utf8(data[1..].to_vec()).map_err(|source| {
-        SnapGeneError::InvalidUtf8 {
+    let sequence =
+        String::from_utf8(data[1..].to_vec()).map_err(|source| SnapGeneError::InvalidUtf8 {
             packet_type: PacketType::Dna,
             source,
-        }
-    })?;
+        })?;
     let topology = if flags & 0x01 == 0x01 {
         SequenceTopology::Circular
     } else {
@@ -197,4 +192,3 @@ fn parse_dna_packet(data: &[u8]) -> Result<DnaPacket, SnapGeneError> {
         topology,
     })
 }
-

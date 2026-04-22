@@ -432,7 +432,10 @@ impl WindowDna {
     }
 
     pub fn has_open_auxiliary_windows(&self) -> bool {
-        !self.main_area.collect_open_auxiliary_window_entries().is_empty()
+        !self
+            .main_area
+            .collect_open_auxiliary_window_entries()
+            .is_empty()
     }
 
     pub fn embedded_auxiliary_window_layer_id(

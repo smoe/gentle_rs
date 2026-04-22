@@ -52,10 +52,11 @@ pub(crate) fn parse_features_packet(xml: &str) -> Result<Vec<FeatureRecord>, Sna
 
         let mut segments = Vec::new();
         for segment_node in feature_node.children_named("Segment") {
-            let range = get_optional_attr(segment_node, "range")
-                .ok_or_else(|| SnapGeneError::MissingFeatureRange {
+            let range = get_optional_attr(segment_node, "range").ok_or_else(|| {
+                SnapGeneError::MissingFeatureRange {
                     feature_name: display_name.clone(),
-                })?;
+                }
+            })?;
             let (start_1based, end_1based) = parse_range_attr(&range)?;
             let translated = get_optional_attr(segment_node, "translated")
                 .map(|value| value == "1")
@@ -105,7 +106,9 @@ pub(crate) fn parse_primers_packet(
     xml: &str,
 ) -> Result<(Option<HybridizationParams>, Vec<PrimerRecord>), SnapGeneError> {
     let root = parse_xml_document(xml, "primers")?;
-    let params = root.child("HybridizationParams").map(parse_hybridization_params);
+    let params = root
+        .child("HybridizationParams")
+        .map(parse_hybridization_params);
     let mut primers = Vec::new();
     for primer_node in root.children_named("Primer") {
         let mut binding_sites = Vec::new();

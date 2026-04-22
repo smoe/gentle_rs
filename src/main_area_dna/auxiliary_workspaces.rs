@@ -6131,39 +6131,6 @@ impl MainAreaDna {
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
                         ui.set_min_size(content_min_size);
-                        ui.horizontal_wrapped(|ui| {
-                            ui.label(
-                                egui::RichText::new("Workspace guide [?]")
-                                    .size(9.0)
-                                    .color(egui::Color32::from_rgb(71, 85, 105)),
-                            )
-                            .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
-                            ui.label(
-                                egui::RichText::new(
-                                    "This dedicated workspace owns RNA-read mapping controls, workflow staging, and report exports for the current splicing locus.",
-                                )
-                                .size(9.0)
-                                .color(egui::Color32::from_rgb(100, 116, 139)),
-                            );
-                        });
-                        ui.horizontal_wrapped(|ui| {
-                            if ui
-                                .button("Show in Splicing Expert")
-                                .on_hover_text(
-                                    "Jump back to the Splicing Expert with the current mapping report selected.",
-                                )
-                                .clicked()
-                            {
-                                self.show_splicing_expert_for_rna_read_mapping_view();
-                            }
-                            ui.small(
-                                egui::RichText::new(format!(
-                                    "Locus: {} | feature n-{}",
-                                    view.seq_id, view.target_feature_id
-                                ))
-                                .color(egui::Color32::from_rgb(100, 116, 139)),
-                            );
-                        });
                         self.render_rna_read_mapping_window_body(
                             ctx,
                             ui,
@@ -6175,12 +6142,10 @@ impl MainAreaDna {
         self.show_rna_read_mapping_window = open;
     }
 
-    pub(super) fn render_rna_read_mapping_window_body(
+    fn render_rna_read_mapping_window_intro(
         &mut self,
-        ctx: &egui::Context,
         ui: &mut egui::Ui,
         view: &SplicingExpertView,
-        pending_initial_render: bool,
     ) {
         ui.horizontal_wrapped(|ui| {
             ui.label(
@@ -6209,12 +6174,22 @@ impl MainAreaDna {
             }
             ui.small(
                 egui::RichText::new(format!(
-                    "Locus: {} | feature n-{}",
-                    view.seq_id, view.target_feature_id
+                    "Locus: {} | feature n-{} | group '{}' | transcripts={}",
+                    view.seq_id, view.target_feature_id, view.group_label, view.transcript_count
                 ))
                 .color(egui::Color32::from_rgb(100, 116, 139)),
             );
         });
+    }
+
+    pub(super) fn render_rna_read_mapping_window_body(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+        pending_initial_render: bool,
+    ) {
+        self.render_rna_read_mapping_window_intro(ui, view);
         if pending_initial_render {
             self.log_rna_read_mapping_status(view, "first frame deferred", true);
             ui.add_space(6.0);

@@ -1351,6 +1351,32 @@ mod tests {
         fs::write(path, line).expect("write fasta index");
     }
 
+    fn collect_rendered_text_from_shape(shape: &egui::epaint::Shape, out: &mut Vec<String>) {
+        match shape {
+            egui::epaint::Shape::Text(text) => {
+                let raw = text.galley.job.text.trim();
+                if !raw.is_empty() {
+                    out.push(raw.to_string());
+                }
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    collect_rendered_text_from_shape(shape, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_pass_texts(ctx: &egui::Context) -> Vec<String> {
+        let full_output = ctx.end_pass();
+        let mut texts = Vec::new();
+        for clipped in full_output.shapes {
+            collect_rendered_text_from_shape(&clipped.shape, &mut texts);
+        }
+        texts
+    }
+
     fn make_area_with_unique_compatible_anchor(
         fallback_policy: &str,
     ) -> (MainAreaDna, TempDir, String, String) {
@@ -7201,6 +7227,65 @@ mod tests {
     }
 
     #[test]
+    fn rna_read_mapping_embedded_window_renders_intro_only_once() {
+        let ctx = egui::Context::default();
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: "mapping".to_string(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+        let intro_summary = format!(
+            "Locus: {} | feature n-{} | group '{}' | transcripts={}",
+            view.seq_id, view.target_feature_id, view.group_label, view.transcript_count
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
+            area.render_rna_read_mapping_window_body(&ctx, ui, &view, false);
+        });
+        let texts = collect_pass_texts(&ctx);
+        assert_eq!(
+            texts
+                .iter()
+                .filter(|text| text.contains("Workspace guide"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            texts
+                .iter()
+                .filter(|text| text.contains(&intro_summary))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn rna_read_preview_table_row_budget_grows_for_short_lists() {
+        assert_eq!(MainAreaDna::target_rna_read_preview_body_rows(0), 12);
+        assert_eq!(MainAreaDna::target_rna_read_preview_body_rows(12), 12);
+        assert_eq!(MainAreaDna::target_rna_read_preview_body_rows(13), 13);
+        assert_eq!(MainAreaDna::target_rna_read_preview_body_rows(16), 16);
+        assert_eq!(MainAreaDna::target_rna_read_preview_body_rows(24), 16);
+    }
+
+    #[test]
     fn collect_open_auxiliary_window_entries_includes_dotplot_window() {
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -9051,7 +9136,8 @@ mod tests {
         ctx.begin_pass(egui::RawInput::default());
         egui::Area::new("rna_read_table_height_probe".into()).show(&ctx, |ui| {
             let support_height = MainAreaDna::default_rna_read_support_table_height(ui);
-            let preview_height = MainAreaDna::default_rna_read_preview_table_height(ui);
+            let preview_height =
+                MainAreaDna::default_rna_read_preview_table_height_for_rows(ui, 12);
 
             assert!(
                 support_height >= 170.0,
@@ -24968,31 +25054,6 @@ impl MainAreaDna {
     ) {
         let previous_op_status = self.op_status.clone();
         let mut persist_ui_state = false;
-        ui.horizontal_wrapped(|ui| {
-            ui.label(
-                egui::RichText::new("Workspace guide [?]")
-                    .size(9.0)
-                    .color(egui::Color32::from_rgb(71, 85, 105)),
-            )
-            .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
-            ui.label(
-                egui::RichText::new(
-                    "This workspace holds the RNA-read mapping controls, workflow staging, and report exports for the selected splicing group.",
-                )
-                .size(9.0)
-                .color(egui::Color32::from_rgb(100, 116, 139)),
-            );
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.label(
-                egui::RichText::new(format!(
-                    "Locus: {} | feature n-{} | group '{}' | transcripts={}",
-                    view.seq_id, view.target_feature_id, view.group_label, view.transcript_count
-                ))
-                .size(9.0)
-                .color(egui::Color32::from_rgb(100, 116, 139)),
-            );
-        });
         self.render_rna_read_mapping_status(ui);
         let workspace_saved_report = self
             .current_rna_read_mapping_workspace_report_id()
@@ -31409,9 +31470,14 @@ impl MainAreaDna {
         (row_height * 8.0 + 36.0).clamp(180.0, 260.0)
     }
 
-    fn default_rna_read_preview_table_height(ui: &egui::Ui) -> f32 {
+    fn target_rna_read_preview_body_rows(row_count: usize) -> usize {
+        row_count.clamp(12, 16)
+    }
+
+    fn default_rna_read_preview_table_height_for_rows(ui: &egui::Ui, row_count: usize) -> f32 {
         let row_height = ui.text_style_height(&egui::TextStyle::Monospace).max(14.0) + 4.0;
-        (row_height * 12.0 + 36.0).clamp(260.0, 460.0)
+        let visible_rows = Self::target_rna_read_preview_body_rows(row_count) as f32 + 1.0;
+        (row_height * visible_rows + 36.0).clamp(260.0, 520.0)
     }
 
     fn format_rna_read_target_coverage_summary(
@@ -34070,10 +34136,12 @@ impl MainAreaDna {
                 ui.small(
                     "Rows are sorted by phase-1 Score. Ret.rank is retention rank. Id%=phase-2 alignment identity. Cov%=query coverage.",
                 );
+                let preview_table_height =
+                    Self::default_rna_read_preview_table_height_for_rows(ui, preview_rows.len());
                 egui::ScrollArea::both()
                     .id_salt(format!("rna_top_hits_scroll_{}", progress.seq_id))
-                    .max_height(Self::default_rna_read_preview_table_height(ui))
-                    .min_scrolled_height(Self::default_rna_read_preview_table_height(ui))
+                    .max_height(preview_table_height)
+                    .min_scrolled_height(preview_table_height)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         egui::Grid::new(format!("rna_top_hits_grid_{}", progress.seq_id))

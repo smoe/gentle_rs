@@ -1,6 +1,6 @@
 use crate::{
-    FeatureDirectionality, FeatureRecord, NotesRecord, PrimerRecord, PrimerStrand,
-    QualifierValue, SequenceTopology, SnapGeneError, SnapGeneFile,
+    FeatureDirectionality, FeatureRecord, NotesRecord, PrimerRecord, PrimerStrand, QualifierValue,
+    SequenceTopology, SnapGeneError, SnapGeneFile,
 };
 use gb_io::seq::{Feature, Location, Seq, Source, Topology};
 
@@ -10,7 +10,9 @@ impl TryFrom<&SnapGeneFile> for Seq {
     fn try_from(file: &SnapGeneFile) -> Result<Self, Self::Error> {
         let mut seq = Seq::empty();
         let notes = file.notes.as_ref();
-        seq.name = notes.and_then(NotesRecord::effective_name).map(ToString::to_string);
+        seq.name = notes
+            .and_then(NotesRecord::effective_name)
+            .map(ToString::to_string);
         seq.definition = notes.and_then(|notes| notes.description.clone());
         seq.accession = notes.and_then(|notes| notes.accession_number.clone());
         seq.source = notes.and_then(|notes| {
@@ -42,7 +44,11 @@ impl TryFrom<&SnapGeneFile> for Seq {
             seq.features.push(feature_to_gb(feature, seq.seq.len())?);
         }
         for primer in &file.primers {
-            for feature in primer_to_gb(primer, file.primer_hybridization_params.as_ref(), seq.seq.len())? {
+            for feature in primer_to_gb(
+                primer,
+                file.primer_hybridization_params.as_ref(),
+                seq.seq.len(),
+            )? {
                 seq.features.push(feature);
             }
         }
@@ -67,13 +73,12 @@ fn feature_to_gb(feature: &FeatureRecord, sequence_len: usize) -> Result<Feature
     }
 
     let location_text = feature_location_text(feature, sequence_len, false);
-    let location = Location::from_gb_format(&location_text).map_err(|err| {
-        SnapGeneError::InvalidLocation {
+    let location =
+        Location::from_gb_format(&location_text).map_err(|err| SnapGeneError::InvalidLocation {
             context: "feature",
             location: location_text.clone(),
             message: err.to_string(),
-        }
-    })?;
+        })?;
 
     Ok(Feature {
         kind: feature.feature_type.clone().into(),
@@ -91,7 +96,11 @@ fn primer_to_gb(
     for site in primer.visible_binding_sites(params) {
         let strand_is_reverse = matches!(site.bound_strand, PrimerStrand::Reverse);
         let mut location_text = if site.location_start_1based <= site.location_end_1based {
-            primer_piece_text(site.location_start_1based, site.location_end_1based, sequence_len)
+            primer_piece_text(
+                site.location_start_1based,
+                site.location_end_1based,
+                sequence_len,
+            )
         } else {
             primer_piece_text(site.location_start_1based, sequence_len, sequence_len)
                 + ","
@@ -127,11 +136,7 @@ fn primer_to_gb(
     Ok(out)
 }
 
-fn feature_location_text(
-    feature: &FeatureRecord,
-    sequence_len: usize,
-    is_primer: bool,
-) -> String {
+fn feature_location_text(feature: &FeatureRecord, sequence_len: usize, is_primer: bool) -> String {
     let mut pieces = Vec::new();
     for segment in &feature.segments {
         if segment.start_1based <= segment.end_1based {
@@ -148,7 +153,12 @@ fn feature_location_text(
                 sequence_len,
                 is_primer,
             ));
-            pieces.push(range_piece_text(1, segment.end_1based, sequence_len, is_primer));
+            pieces.push(range_piece_text(
+                1,
+                segment.end_1based,
+                sequence_len,
+                is_primer,
+            ));
         }
     }
 

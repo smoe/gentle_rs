@@ -46,4 +46,3 @@ pub enum SnapGeneError {
         message: String,
     },
 }
-

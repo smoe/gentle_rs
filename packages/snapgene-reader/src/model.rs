@@ -236,4 +236,3 @@ pub struct AdditionalSequenceProperties {
     pub upstream_modification: Option<String>,
     pub downstream_modification: Option<String>,
 }
-
