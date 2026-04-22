@@ -3611,6 +3611,9 @@ Status:
   - GUI RNA-read mapping now includes a dedicated `Read length distributions`
     panel (auto-binned from exact engine counts) and an `FL` marker column in
     mapped read-effects tables with full-length detail in the selected-row pane.
+  - Those read-length histograms now also expose a compact mean + five-number
+    summary (`min / q25 / median / q75 / max`) derived deterministically from
+    the same exact engine counts used for binning.
   - The RNA-read length panel now also exposes target-fragment quality
     distributions from the shared `SummarizeRnaReadGeneSupport` engine route:
     - target-positive share by total read length

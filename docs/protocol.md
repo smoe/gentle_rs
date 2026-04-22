@@ -5411,7 +5411,11 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - each length summary carries:
         - `sample_count`
         - `mean_length_bp`
+        - `min_length_bp`
+        - `q25_length_bp`
         - `median_length_bp`
+        - `q75_length_bp`
+        - `max_length_bp`
         - `p95_length_bp`
         - exact `length_counts[]`
       - each fraction summary carries:

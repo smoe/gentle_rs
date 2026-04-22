@@ -25447,6 +25447,25 @@ fn test_summarize_read_lengths_reports_mean_median_and_p95() {
 }
 
 #[test]
+fn test_summarize_read_length_distribution_reports_five_number_summary_and_mean() {
+    let mut counts = vec![0u64; 12];
+    for len in [4usize, 4, 5, 8, 8, 10] {
+        GentleEngine::update_read_length_counts(&mut counts, len);
+    }
+
+    let summary = GentleEngine::summarize_read_length_distribution(&counts);
+
+    assert_eq!(summary.sample_count, 6);
+    assert!((summary.mean_length_bp - (39.0 / 6.0)).abs() < 1e-12);
+    assert_eq!(summary.min_length_bp, 4);
+    assert_eq!(summary.q25_length_bp, 4);
+    assert_eq!(summary.median_length_bp, 5);
+    assert_eq!(summary.q75_length_bp, 8);
+    assert_eq!(summary.max_length_bp, 10);
+    assert_eq!(summary.p95_length_bp, 10);
+}
+
+#[test]
 fn test_rna_read_sequence_scoring_from_seed_index_is_deterministic() {
     let read = b"ACGTTGCAACGT";
     let kmer_len = 3usize;

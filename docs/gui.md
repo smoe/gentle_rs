@@ -1093,6 +1093,8 @@ Feature tree grouping:
         - accepted target-fragment / total-read coverage fractions
         - the engine stores exact per-bp counts; GUI bins are presentation-only
           and deterministic from those exact counts
+        - each read-length histogram now also shows a compact mean + five-number
+          summary (`min / q25 / median / q75 / max`)
         - target-positive quality plots are derived from the shared
           `SummarizeRnaReadGeneSupport` engine payload, so the GUI is not using
           a second frontend-only definition of "TP73-positive"

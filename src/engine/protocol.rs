@@ -191,7 +191,11 @@ pub struct RnaReadGeneSupportCohortSummary {
 pub struct RnaReadLengthDistributionSummary {
     pub sample_count: usize,
     pub mean_length_bp: f64,
+    pub min_length_bp: usize,
+    pub q25_length_bp: usize,
     pub median_length_bp: usize,
+    pub q75_length_bp: usize,
+    pub max_length_bp: usize,
     pub p95_length_bp: usize,
     pub length_counts: Vec<u64>,
 }

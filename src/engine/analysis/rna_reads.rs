@@ -6506,6 +6506,12 @@ impl GentleEngine {
     fn build_rna_read_length_distribution_summary(
         length_counts: &[u64],
     ) -> RnaReadLengthDistributionSummary {
+        Self::summarize_read_length_distribution(length_counts)
+    }
+
+    pub(crate) fn summarize_read_length_distribution(
+        length_counts: &[u64],
+    ) -> RnaReadLengthDistributionSummary {
         let sample_count = Self::sum_read_length_counts(length_counts);
         let total_bases = Self::sum_read_length_bases(length_counts);
         let (mean_length_bp, median_length_bp, p95_length_bp) =
@@ -6513,7 +6519,19 @@ impl GentleEngine {
         RnaReadLengthDistributionSummary {
             sample_count,
             mean_length_bp,
+            min_length_bp: Self::quantile_read_length_from_counts(length_counts, sample_count, 0.0),
+            q25_length_bp: Self::quantile_read_length_from_counts(
+                length_counts,
+                sample_count,
+                0.25,
+            ),
             median_length_bp,
+            q75_length_bp: Self::quantile_read_length_from_counts(
+                length_counts,
+                sample_count,
+                0.75,
+            ),
+            max_length_bp: Self::quantile_read_length_from_counts(length_counts, sample_count, 1.0),
             p95_length_bp,
             length_counts: length_counts.to_vec(),
         }

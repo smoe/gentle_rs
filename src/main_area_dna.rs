@@ -89,19 +89,20 @@ use crate::{
         RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
         RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
         RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
-        RnaReadJunctionSupportFrequency, RnaReadOriginMode, RnaReadPairwiseAlignmentDetail,
-        RnaReadReportMode, RnaReadScoreDensityScale, RnaReadScoreDensityVariant,
-        RnaReadSeedFilterConfig, RnaReadTopHitPreview, RnaSeedHashCatalogEntry,
-        RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
-        SequenceScanTarget, SequencingConfirmationDiscrepancy, SequencingConfirmationReadResult,
-        SequencingConfirmationReport, SequencingConfirmationReportSummary,
-        SequencingConfirmationStatus, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetResult, SequencingConfirmationTargetSpec,
-        SequencingConfirmationVariantClassification, SequencingConfirmationVariantRow,
-        SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
-        SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
-        SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsHitScanReport, TfbsProgress, TfbsScoreTrackCorrelationMetric,
+        RnaReadJunctionSupportFrequency, RnaReadLengthDistributionSummary, RnaReadOriginMode,
+        RnaReadPairwiseAlignmentDetail, RnaReadReportMode, RnaReadScoreDensityScale,
+        RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
+        RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport,
+        SequenceGenomeAnchorSummary, SequenceScanTarget, SequencingConfirmationDiscrepancy,
+        SequencingConfirmationReadResult, SequencingConfirmationReport,
+        SequencingConfirmationReportSummary, SequencingConfirmationStatus,
+        SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
+        SequencingConfirmationTargetSpec, SequencingConfirmationVariantClassification,
+        SequencingConfirmationVariantRow, SequencingPrimerOverlayReport,
+        SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
+        SequencingPrimerProposalRow, SequencingReadOrientation, SequencingTraceRecord,
+        SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
+        TfbsHitScanReport, TfbsProgress, TfbsScoreTrackCorrelationMetric,
         TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
         TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport, TfbsTrackSimilarityRow,
         VariantAlleleChoice, VariantPromoterContextReport, Workflow,
@@ -31537,19 +31538,15 @@ impl MainAreaDna {
         gene_ids
     }
 
-    fn format_length_distribution_stats_line(
-        label: &str,
-        sample_count: usize,
-        mean_length_bp: f64,
-        median_length_bp: usize,
-        p95_length_bp: usize,
-    ) -> String {
+    fn format_length_distribution_stats_line(summary: &RnaReadLengthDistributionSummary) -> String {
         format!(
-            "{label}: n={} mean={:.1} bp median={} bp p95={} bp",
-            Self::format_count_compact_km(sample_count as u64),
-            mean_length_bp,
-            median_length_bp,
-            p95_length_bp
+            "mean={:.1} bp | q0={} bp | q25={} bp | q50={} bp | q75={} bp | q100={} bp",
+            summary.mean_length_bp,
+            summary.min_length_bp,
+            summary.q25_length_bp,
+            summary.median_length_bp,
+            summary.q75_length_bp,
+            summary.max_length_bp,
         )
     }
 
@@ -31828,20 +31825,6 @@ impl MainAreaDna {
                     ))
                     .color(egui::Color32::from_rgb(30, 41, 59)),
                 );
-                ui.small(Self::format_length_distribution_stats_line(
-                    "Target-positive reads",
-                    target_summary.accepted_target_read_lengths.sample_count,
-                    target_summary.accepted_target_read_lengths.mean_length_bp,
-                    target_summary.accepted_target_read_lengths.median_length_bp,
-                    target_summary.accepted_target_read_lengths.p95_length_bp,
-                ));
-                ui.small(Self::format_length_distribution_stats_line(
-                    "Target fragment lengths",
-                    target_summary.accepted_target_fragment_lengths.sample_count,
-                    target_summary.accepted_target_fragment_lengths.mean_length_bp,
-                    target_summary.accepted_target_fragment_lengths.median_length_bp,
-                    target_summary.accepted_target_fragment_lengths.p95_length_bp,
-                ));
                 ui.small(format!(
                     "Target fragment/read coverage: n={} mean={:.1}% median={:.1}% p95={:.1}%",
                     Self::format_count_compact_km(
@@ -31899,7 +31882,7 @@ impl MainAreaDna {
         length_counts: &[u64],
         bar_color: egui::Color32,
     ) {
-        let total = length_counts.iter().copied().skip(1).sum::<u64>();
+        let summary = GentleEngine::summarize_read_length_distribution(length_counts);
         let bins = GentleEngine::auto_bin_read_length_counts(length_counts, 24);
         let compact = GentleEngine::format_read_length_distribution_compact(length_counts, 24, 8);
         ui.horizontal_wrapped(|ui| {
@@ -31909,7 +31892,10 @@ impl MainAreaDna {
                     .color(egui::Color32::from_rgb(51, 65, 85)),
             );
             ui.separator();
-            ui.small(format!("reads={}", Self::format_count_compact_km(total)));
+            ui.small(format!(
+                "reads={}",
+                Self::format_count_compact_km(summary.sample_count as u64)
+            ));
             if let (Some(first), Some(last)) = (bins.first(), bins.last()) {
                 ui.separator();
                 ui.small(format!("range={}..{} bp", first.0, last.1));
@@ -31922,6 +31908,7 @@ impl MainAreaDna {
             ui.add_space(2.0);
             return;
         }
+        ui.small(Self::format_length_distribution_stats_line(&summary));
 
         let desired = Vec2::new(ui.available_width().max(300.0), 52.0);
         let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
