@@ -50,6 +50,7 @@ WORKDIR /opt/gentle
 
 COPY Cargo.toml Cargo.lock build.rs ./
 COPY vendor ./vendor
+COPY packages ./packages
 COPY crates ./crates
 COPY src ./src
 COPY assets ./assets
