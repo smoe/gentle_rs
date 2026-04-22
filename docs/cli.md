@@ -1367,6 +1367,7 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 
 Current CLI workflows rely on sequence files supported by internal loaders:
 
+- SnapGene DNA (`.dna`)
 - GenBank
 - EMBL
 - FASTA

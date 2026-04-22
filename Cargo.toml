@@ -20,6 +20,7 @@ members = [
     "crates/gentle-shell",
     "crates/gentle-gui",
 ]
+exclude = ["packages/snapgene-reader"]
 
 [workspace.package]
 version = "0.1.0-internal.5"
@@ -82,6 +83,7 @@ gentle-gui = { path = "crates/gentle-gui" }
 gentle-protocol = { path = "crates/gentle-protocol" }
 gentle-render = { path = "crates/gentle-render" }
 gentle-shell = { path = "crates/gentle-shell" }
+snapgene-reader = { path = "packages/snapgene-reader", features = ["gb-io"] }
 serde = { version = "^1", features = ["derive"] }
 serde_json = "^1"
 serde_with = "*"

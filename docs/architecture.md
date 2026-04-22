@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-18
+Last updated: 2026-04-22
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -153,6 +153,11 @@ Import-format policy (GenBank-first, XML additive):
   diagnostics.
 - Cross-format fixtures must remain small and paired (same biological content
   across `.fa`, `.gb`, `.xml`) so parity tests can detect semantic drift.
+- Proprietary or binary parser logic that has value beyond GENtle itself
+  should live in a headless reusable crate whenever practical.
+- GENtle should then depend on that crate only through a thin adapter boundary
+  into shared engine state instead of re-embedding parser behavior inside GUI
+  or engine adapters.
 
 Information-preserving transfer default (decision):
 

@@ -5321,6 +5321,13 @@ Error: `{err}`"
         Ok(dna)
     }
 
+    fn load_dna_from_snapgene_file(filename: &str) -> Result<DNAsequence> {
+        let dna = dna_sequence::DNAsequence::from_snapgene_file(filename)?
+            .pop()
+            .ok_or_else(|| anyhow!("Could not read SnapGene file {filename}"))?;
+        Ok(dna)
+    }
+
     fn format_open_sequence_import_status(
         imported_seq_ids: &[String],
         failures: &[String],
@@ -6179,6 +6186,7 @@ Error: `{err}`"
             .and_then(|value| value.to_str())
             .map(|value| value.to_ascii_lowercase());
         match extension.as_deref() {
+            Some("dna") => return Self::load_dna_from_snapgene_file(path),
             Some("embl") | Some("emb") => return Self::load_dna_from_embl_file(path),
             Some("gb") | Some("gbk") | Some("genbank") => {
                 return Self::load_dna_from_genbank_file(path);
@@ -6191,6 +6199,7 @@ Error: `{err}`"
         }
 
         for loader in [
+            Self::load_dna_from_snapgene_file,
             Self::load_dna_from_genbank_file,
             Self::load_dna_from_embl_file,
             Self::load_dna_from_fasta_file,
@@ -7132,10 +7141,11 @@ Error: `{err}`"
             .add_filter(
                 "Supported sequence files",
                 &[
-                    "gb", "gbk", "gbff", "genbank", "embl", "emb", "fa", "fasta", "fna", "fas",
-                    "xml",
+                    "dna", "gb", "gbk", "gbff", "genbank", "embl", "emb", "fa", "fasta",
+                    "fna", "fas", "xml",
                 ],
             )
+            .add_filter("SnapGene DNA", &["dna"])
             .add_filter("GenBank", &["gb", "gbk", "gbff", "genbank"])
             .add_filter("EMBL", &["embl", "emb"])
             .add_filter("FASTA", &["fa", "fasta", "fna", "fas"])

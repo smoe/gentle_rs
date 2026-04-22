@@ -1,6 +1,6 @@
 # Workspace / Crate Split Plan
 
-Last updated: 2026-03-31
+Last updated: 2026-04-22
 
 Purpose: describe the intended multi-crate end state for GENtle and the order
 in which the current monocrate should be split without breaking the
@@ -10,6 +10,13 @@ This is an implementation plan, not yet a statement that the split is already
 in place. Durable architectural invariants remain in
 [`docs/architecture.md`](architecture.md); execution status remains in
 [`docs/roadmap.md`](roadmap.md).
+
+Adjacent publishable utility crates may also live outside the core
+`crates/gentle-*` workspace members when they are intentionally designed for
+later extraction or broader ecosystem reuse. Those crates should stay
+headless, keep their own publish/license metadata, and connect back into
+GENtle through thin adapter boundaries rather than inheriting internal-only
+workspace settings by default.
 
 Current status:
 

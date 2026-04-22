@@ -4339,6 +4339,7 @@ Resource import behavior:
 
 Supported in the current flow:
 
+- SnapGene DNA files (`.dna`)
 - GenBank files (`.gb`, `.gbk` and similar)
 - EMBL files (`.embl`, `.emb`)
 - FASTA files (`.fa`, `.fasta`)

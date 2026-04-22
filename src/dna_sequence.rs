@@ -218,6 +218,20 @@ impl DNAsequence {
             .collect())
     }
 
+    pub fn from_snapgene_file(filename: &str) -> Result<Vec<DNAsequence>> {
+        let parsed = snapgene_reader::parse_path(filename)?;
+        let mut seq = gb_io::seq::Seq::try_from(&parsed)
+            .map_err(|e| anyhow::anyhow!("Could not adapt SnapGene file '{filename}': {e}"))?;
+        for feature in &mut seq.features {
+            feature.location = canonicalize_location(feature.location.clone()).map_err(|e| {
+                anyhow::anyhow!(
+                    "Could not canonicalize SnapGene feature location in '{filename}': {e}"
+                )
+            })?;
+        }
+        Ok(vec![DNAsequence::from_genbank_seq(seq)])
+    }
+
     pub fn write_genbank_file(&self, filename: &str) -> Result<()> {
         let file = File::create(filename)?;
         let mut seq = self.seq.clone();
@@ -1319,14 +1333,19 @@ mod tests {
             "test_files/fixtures/import_parity/toy.small.gbseq.xml",
         )
         .unwrap();
+        let snapgene =
+            DNAsequence::from_snapgene_file("packages/snapgene-reader/tests/data/toy.small.dna")
+                .unwrap();
         let fasta = fasta.first().unwrap();
         let genbank = genbank.first().unwrap();
         let embl = embl.first().unwrap();
         let xml = xml.first().unwrap();
+        let snapgene = snapgene.first().unwrap();
         assert_eq!(fasta.len(), 120);
         assert_eq!(genbank.len(), 120);
         assert_eq!(embl.len(), 120);
         assert_eq!(xml.len(), 120);
+        assert_eq!(snapgene.len(), 120);
         assert_eq!(
             fasta.get_forward_string().to_ascii_uppercase(),
             genbank.get_forward_string().to_ascii_uppercase()
@@ -1338,6 +1357,10 @@ mod tests {
         assert_eq!(
             genbank.get_forward_string().to_ascii_uppercase(),
             xml.get_forward_string().to_ascii_uppercase()
+        );
+        assert_eq!(
+            genbank.get_forward_string().to_ascii_uppercase(),
+            snapgene.get_forward_string().to_ascii_uppercase()
         );
         let gene_names: Vec<String> = genbank
             .features()
@@ -1352,6 +1375,19 @@ mod tests {
             .collect();
         assert!(gene_names.iter().any(|name| name == "toyA"));
         assert!(gene_names.iter().any(|name| name == "toyB"));
+        let snapgene_gene_names: Vec<String> = snapgene
+            .features()
+            .iter()
+            .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .filter_map(|feature| {
+                feature
+                    .qualifier_values("gene")
+                    .next()
+                    .map(|value| value.to_string())
+            })
+            .collect();
+        assert!(snapgene_gene_names.iter().any(|name| name == "toyA"));
+        assert!(snapgene_gene_names.iter().any(|name| name == "toyB"));
     }
 
     #[test]
@@ -1383,6 +1419,38 @@ mod tests {
         assert_eq!(
             fallback_loaded.get_forward_string().to_ascii_uppercase(),
             xml_loaded.get_forward_string().to_ascii_uppercase()
+        );
+    }
+
+    #[test]
+    fn test_toy_small_snapgene_load_from_file_by_extension_and_fallback() {
+        let snapgene_path = "packages/snapgene-reader/tests/data/toy.small.dna";
+        let snapgene_loaded =
+            GENtleApp::load_from_file(snapgene_path).expect("load SnapGene by extension");
+        assert_eq!(snapgene_loaded.len(), 120);
+        assert!(
+            snapgene_loaded
+                .features()
+                .iter()
+                .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+        );
+
+        let raw = fs::read(snapgene_path).expect("read SnapGene fixture");
+        let mut tmp = Builder::new()
+            .suffix(".bin")
+            .tempfile()
+            .expect("temp disguised SnapGene");
+        tmp.write_all(&raw).expect("write disguised SnapGene");
+        let fallback_loaded = GENtleApp::load_from_file(
+            tmp.path()
+                .to_str()
+                .expect("temp path should be valid UTF-8"),
+        )
+        .expect("load SnapGene via fallback probe");
+        assert_eq!(fallback_loaded.len(), 120);
+        assert_eq!(
+            fallback_loaded.get_forward_string().to_ascii_uppercase(),
+            snapgene_loaded.get_forward_string().to_ascii_uppercase()
         );
     }
 

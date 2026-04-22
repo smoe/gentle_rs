@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-19
+Last updated: 2026-04-22
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -152,6 +152,15 @@ order. Durable architecture constraints and decisions remain in
     egui-bound `render_dna*` / `sequence_rows*` stack stays with the future GUI
     crate while the first headless render candidates are
     `lineage_export`, `protocol_cartoon`, `pool_gel`, and `render_export`
+- Proprietary-format interoperability is now improved by a new reusable
+  headless SnapGene parser crate at `packages/snapgene-reader`:
+  - shared `LoadFile` import now accepts SnapGene `.dna` files through that
+    externalizable crate plus a thin `gb_io::Seq` adapter back into GENtle
+  - committed synthetic parser fixtures now cover SnapGene alongside the
+    existing GenBank/EMBL/XML toy parity set
+  - remaining follow-up stays explicit:
+    richer SnapGene-only presentation metadata, end-chemistry/additional
+    property mapping, and possible future `.dna` export support
 - The source-documentation pilot pass has now deepened `src/genomes.rs`
   beyond a module summary:
   - key public reports/records and catalog methods now describe their role,
