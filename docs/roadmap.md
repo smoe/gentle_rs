@@ -1208,10 +1208,21 @@ order. Durable architecture constraints and decisions remain in
           restrict candidates through the cached JASPAR remote-metadata
           snapshot, so “rank all first” and “species-of-interest subset” can
           share one deterministic report path
+        - DNA-window GUI parity is now in place for the first user-facing
+          slice:
+          - toolbar entry points for current selection / visible span / whole
+            sequence
+          - one cached ranked-table inspector beside the existing TFBS scan and
+            score-track inspectors
+          - one shared JSON export route that replays the cached report through
+            `SummarizeTfbsTrackSimilarity`
+          - GUI controls for anchor motif, candidate scope, ranking metric,
+            optional cached remote-metadata enrichment, species filters, and
+            optional row limit
         - still open on that track:
-          GUI-side ranked-table inspection, explicit pre-rank vs post-rank
-          species filtering controls, and richer metadata facets such as TF
-          family/class/tax-group pivots
+          explicit pre-rank vs post-rank species-filtering controls, richer
+          metadata facets such as TF family/class/tax-group pivots, and the
+          same ranked-table surface inside the dedicated promoter-design window
         - the same shared score-track renderer now labels tracks as
           `TF (JASPAR id)` when possible and can recover one explicit TSS
           marker from promoter-slice provenance even when the extracted span

@@ -1859,9 +1859,7 @@ impl MainAreaDna {
                         );
                     } else if ui
                         .button(format!("Cancel {}", task.operation_label))
-                        .on_hover_text(
-                            "Request cancellation of the running TFBS score-track computation.",
-                        )
+                        .on_hover_text("Request cancellation of the running TFBS computation.")
                         .clicked()
                     {
                         cancel_clicked = true;
@@ -3039,11 +3037,7 @@ impl MainAreaDna {
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
                         ui.set_min_size(content_min_size);
-                        self.render_variant_followup_window_body(
-                            ctx,
-                            ui,
-                            pending_initial_render,
-                        );
+                        self.render_variant_followup_window_body(ctx, ui, pending_initial_render);
                     });
             });
 

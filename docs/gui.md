@@ -1897,7 +1897,28 @@ Controls:
    - Uses the shared `SummarizeTfbsScoreTracks` engine operation rather than a
      GUI-only painter, and the cached view can be exported from the same panel
      through `RenderTfbsScoreTracksSvg`.
-22. Selection formula
+22. TFBS similarity
+   - Toolbar menu for direct non-mutating anchor-vs-candidate TFBS/JASPAR
+     score-track ranking on the current active DNA window.
+   - Available entry points:
+     - current selection
+     - current visible linear span
+     - whole active sequence
+   - Reuses the score-family/clipping mode from the `TFBS annotation` panel
+     and keeps one explicit similarity subpanel there for:
+     - anchor motif
+     - candidate scope (`all JASPAR motifs` or an explicit/current subset)
+     - ranking metric
+     - optional cached remote-metadata enrichment
+     - optional species filters
+     - optional output row cap
+   - Uses the shared `SummarizeTfbsTrackSimilarity` engine operation rather
+     than a GUI-only ranking table, and the cached report can be exported from
+     the same panel as JSON.
+   - Current semantics are intentionally explicit: species filters restrict the
+     candidate set before ranking; a future post-rank visibility filter is
+     still tracked separately.
+23. Selection formula
    - Toolbar input for formula-driven selection ranges in the DNA window.
    - Drag-selecting on the linear map now also updates this field to the
      current `=start .. end_exclusive` range, and existing map selections can

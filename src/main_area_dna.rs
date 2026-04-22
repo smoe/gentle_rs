@@ -71,10 +71,11 @@ use crate::{
         DisplaySettings, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EngineError, ErrorCode,
         EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
-        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
-        LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
-        OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
-        PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
+        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine,
+        JasparCatalogRemoteSummary, LigationProtocol, LinearSequenceLetterLayoutMode,
+        MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
+        PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
+        PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
         PrimerDesignSideConstraint, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
         ProtocolCartoonPreviewTelemetry, QpcrDesignReport, RenderSvgMode,
         RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
@@ -102,6 +103,7 @@ use crate::{
         SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset,
         TfThresholdOverride, TfbsHitScanReport, TfbsProgress, TfbsScoreTrackCorrelationMetric,
         TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
+        TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport, TfbsTrackSimilarityRow,
         VariantAlleleChoice, VariantPromoterContextReport, Workflow,
         resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
@@ -1086,6 +1088,20 @@ struct EngineOpsUiState {
     tfbs_score_track_value_kind: TfbsScoreTrackValueKind,
     #[serde(default = "default_true")]
     tfbs_score_track_clip_negative: bool,
+    #[serde(default)]
+    tfbs_track_similarity_anchor_motif: String,
+    #[serde(default = "default_true")]
+    tfbs_track_similarity_all_candidates: bool,
+    #[serde(default)]
+    tfbs_track_similarity_candidate_motifs: String,
+    #[serde(default)]
+    tfbs_track_similarity_species_filters: String,
+    #[serde(default)]
+    tfbs_track_similarity_include_remote_metadata: bool,
+    #[serde(default)]
+    tfbs_track_similarity_limit: String,
+    #[serde(default)]
+    tfbs_track_similarity_ranking_metric: TfbsTrackSimilarityRankingMetric,
     #[serde(default = "default_true")]
     tfbs_display_use_llr_bits: bool,
     #[serde(default = "default_zero_f64")]
@@ -1188,11 +1204,11 @@ struct EngineOpsUiState {
 mod tests {
     use super::{
         DnaPresentationMode, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP, MainAreaDna,
-        PcrDesignerMode, PcrPaintRole, PrimaryMapMode,
-        RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
-        RnaReadTaskOutcome, SequencingConfirmationOverviewSelection,
+        PcrDesignerMode, PcrPaintRole, PrimaryMapMode, RnaReadConcatemerSubsetMode,
+        RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage, RnaReadTaskOutcome,
+        SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD, SequencingConfirmationOverviewSelection,
         SequencingConfirmationReviewFocusKind, SplicingIntronSignalKey, SplicingIntronSignalRow,
-        SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD, ViewSvgExportProfile,
+        ViewSvgExportProfile,
     };
     use crate::{
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
@@ -1218,8 +1234,8 @@ mod tests {
             SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
             SequencingPrimerProposalRow, SequencingTraceChannelData, SequencingTraceFormat,
             SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
-            TfbsScoreTrackValueKind, VariantPromoterContextReport,
-            parse_required_usize_or_formula_text_on_sequence,
+            TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+            VariantPromoterContextReport, parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -2874,6 +2890,33 @@ mod tests {
     }
 
     #[test]
+    fn current_engine_ops_state_records_tfbs_track_similarity_controls() {
+        let dna = DNAsequence::from_sequence("TTTTATAAAGGGTATAAATTT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.tfbs_track_similarity_anchor_motif = "TP53".to_string();
+        area.tfbs_track_similarity_all_candidates = false;
+        area.tfbs_track_similarity_candidate_motifs = "TP63,TP73".to_string();
+        area.tfbs_track_similarity_species_filters = "human,mouse".to_string();
+        area.tfbs_track_similarity_include_remote_metadata = true;
+        area.tfbs_track_similarity_limit = "15".to_string();
+        area.tfbs_track_similarity_ranking_metric =
+            TfbsTrackSimilarityRankingMetric::SmoothedPearson;
+
+        let state = area.current_engine_ops_state();
+
+        assert_eq!(state.tfbs_track_similarity_anchor_motif, "TP53");
+        assert!(!state.tfbs_track_similarity_all_candidates);
+        assert_eq!(state.tfbs_track_similarity_candidate_motifs, "TP63,TP73");
+        assert_eq!(state.tfbs_track_similarity_species_filters, "human,mouse");
+        assert!(state.tfbs_track_similarity_include_remote_metadata);
+        assert_eq!(state.tfbs_track_similarity_limit, "15");
+        assert_eq!(
+            state.tfbs_track_similarity_ranking_metric,
+            TfbsTrackSimilarityRankingMetric::SmoothedPearson
+        );
+    }
+
+    #[test]
     fn tfbs_score_track_controls_default_when_missing_in_serialized_engine_ops_state() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
@@ -2894,6 +2937,34 @@ mod tests {
             TfbsScoreTrackValueKind::LlrBits
         );
         assert!(decoded.tfbs_score_track_clip_negative);
+    }
+
+    #[test]
+    fn tfbs_track_similarity_controls_default_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("tfbs_track_similarity_anchor_motif");
+        object.remove("tfbs_track_similarity_all_candidates");
+        object.remove("tfbs_track_similarity_candidate_motifs");
+        object.remove("tfbs_track_similarity_species_filters");
+        object.remove("tfbs_track_similarity_include_remote_metadata");
+        object.remove("tfbs_track_similarity_limit");
+        object.remove("tfbs_track_similarity_ranking_metric");
+
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+
+        assert!(decoded.tfbs_track_similarity_anchor_motif.is_empty());
+        assert!(decoded.tfbs_track_similarity_all_candidates);
+        assert!(decoded.tfbs_track_similarity_candidate_motifs.is_empty());
+        assert!(decoded.tfbs_track_similarity_species_filters.is_empty());
+        assert!(!decoded.tfbs_track_similarity_include_remote_metadata);
+        assert!(decoded.tfbs_track_similarity_limit.is_empty());
+        assert_eq!(
+            decoded.tfbs_track_similarity_ranking_metric,
+            TfbsTrackSimilarityRankingMetric::SmoothedSpearman
+        );
     }
 
     #[test]
@@ -2990,6 +3061,52 @@ mod tests {
         assert_eq!(report.view_start_0based, 0);
         assert_eq!(report.view_end_0based_exclusive, 21);
         assert_eq!(report.motifs_requested, vec!["TATAAA".to_string()]);
+    }
+
+    #[test]
+    fn whole_sequence_tfbs_track_similarity_uses_shared_engine_report_path() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(64)).expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.tfbs_track_similarity_anchor_motif = "TP53".to_string();
+        area.tfbs_track_similarity_all_candidates = false;
+        area.tfbs_track_similarity_candidate_motifs = "TP63,TP73".to_string();
+
+        area.show_whole_sequence_tfbs_track_similarity();
+        assert!(area.tfbs_task.is_some());
+
+        let ctx = eframe::egui::Context::default();
+        let wait_started = Instant::now();
+        while area.tfbs_task.is_some() && wait_started.elapsed() < Duration::from_secs(5) {
+            area.poll_tfbs_task(&ctx);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            area.tfbs_task.is_none(),
+            "tfbs similarity task should finish"
+        );
+        assert!(
+            area.op_status
+                .contains("TFBS similarity for whole sequence")
+        );
+        let report = area
+            .cached_tfbs_track_similarity
+            .as_ref()
+            .expect("cached TFBS similarity report");
+        assert_eq!(report.view_start_0based, 0);
+        assert_eq!(report.view_end_0based_exclusive, 256);
+        assert_eq!(report.anchor_requested, "TP53");
+        assert_eq!(
+            report.candidates_requested,
+            vec!["TP63".to_string(), "TP73".to_string()]
+        );
+        assert_eq!(
+            report.ranking_metric,
+            TfbsTrackSimilarityRankingMetric::SmoothedSpearman
+        );
+        assert!(!report.rows.is_empty());
     }
 
     #[test]
@@ -11435,6 +11552,7 @@ enum TfbsTaskMessage {
 enum TfbsTaskKind {
     Annotation,
     ActiveSequenceScoreTracks { source_label: String },
+    ActiveSequenceTrackSimilarity { source_label: String },
     VariantFollowupScoreTracks,
 }
 
@@ -11692,9 +11810,17 @@ pub struct MainAreaDna {
     tfbs_clear_existing: bool,
     tfbs_score_track_value_kind: TfbsScoreTrackValueKind,
     tfbs_score_track_clip_negative: bool,
+    tfbs_track_similarity_anchor_motif: String,
+    tfbs_track_similarity_all_candidates: bool,
+    tfbs_track_similarity_candidate_motifs: String,
+    tfbs_track_similarity_species_filters: String,
+    tfbs_track_similarity_include_remote_metadata: bool,
+    tfbs_track_similarity_limit: String,
+    tfbs_track_similarity_ranking_metric: TfbsTrackSimilarityRankingMetric,
     cached_restriction_site_scan: Option<RestrictionSiteScanReport>,
     cached_tfbs_hit_scan: Option<TfbsHitScanReport>,
     cached_tfbs_score_tracks: Option<TfbsScoreTrackReport>,
+    cached_tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     tfbs_task: Option<TfbsTask>,
     tfbs_progress: Option<TfbsProgress>,
     primer_design_task: Option<PrimerDesignTask>,
@@ -12307,9 +12433,18 @@ impl MainAreaDna {
             tfbs_clear_existing: true,
             tfbs_score_track_value_kind: TfbsScoreTrackValueKind::LlrBits,
             tfbs_score_track_clip_negative: true,
+            tfbs_track_similarity_anchor_motif: String::new(),
+            tfbs_track_similarity_all_candidates: true,
+            tfbs_track_similarity_candidate_motifs: String::new(),
+            tfbs_track_similarity_species_filters: String::new(),
+            tfbs_track_similarity_include_remote_metadata: false,
+            tfbs_track_similarity_limit: "25".to_string(),
+            tfbs_track_similarity_ranking_metric:
+                TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
             cached_restriction_site_scan: None,
             cached_tfbs_hit_scan: None,
             cached_tfbs_score_tracks: None,
+            cached_tfbs_track_similarity: None,
             tfbs_task: None,
             tfbs_progress: None,
             primer_design_task: None,
@@ -12788,6 +12923,7 @@ impl MainAreaDna {
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;
         self.cached_tfbs_score_tracks = None;
+        self.cached_tfbs_track_similarity = None;
         self.mark_dna_layout_dirty();
         if topology_changed {
             self.log_topology_transition_status("replace_active_dna: caches invalidated");
@@ -15459,6 +15595,81 @@ impl MainAreaDna {
                         ui.close();
                     }
                 });
+                let tfbs_similarity_ready = self.has_tfbs_track_similarity_seed_configured();
+                ui.menu_button("TFBS similarity", |ui| {
+                    ui.small(
+                        "Ranks other TFBS/JASPAR motifs against one anchor motif over the same DNA span using the shared score-track similarity report.",
+                    );
+                    let selection_response = ui.add_enabled(
+                        selection_roi.is_some() && tfbs_similarity_ready,
+                        egui::Button::new("Rank similarity in selection"),
+                    );
+                    let selection_response = if !tfbs_similarity_ready {
+                        selection_response.on_hover_text(
+                            "Provide an anchor motif here or keep at least one TFBS motif selected in the TFBS annotation panel",
+                        )
+                    } else if selection_roi.is_some() {
+                        selection_response.on_hover_text(
+                            "Rank anchor-vs-candidate TFBS score-track similarity for the current map/text selection",
+                        )
+                    } else {
+                        selection_response.on_hover_text(
+                            "Requires a non-empty map/text selection; drag-select a region or click `Select visible` first",
+                        )
+                    };
+                    if selection_response.clicked() {
+                        self.show_current_selection_tfbs_track_similarity();
+                        ui.close();
+                    }
+
+                    let visible_response = ui.add_enabled(
+                        visible_span_roi.is_some() && tfbs_similarity_ready,
+                        egui::Button::new("Rank similarity in visible span"),
+                    );
+                    let visible_response = if !tfbs_similarity_ready {
+                        visible_response.on_hover_text(
+                            "Provide an anchor motif here or keep at least one TFBS motif selected in the TFBS annotation panel",
+                        )
+                    } else if visible_span_roi.is_some() {
+                        visible_response.on_hover_text(
+                            "Rank anchor-vs-candidate TFBS score-track similarity for the current visible linear map span",
+                        )
+                    } else {
+                        visible_response.on_hover_text(
+                            "Requires a non-empty linear map view; unavailable in circular view",
+                        )
+                    };
+                    if visible_response.clicked() {
+                        self.show_visible_span_tfbs_track_similarity();
+                        ui.close();
+                    }
+
+                    let whole_sequence_response = ui.add_enabled(
+                        self.seq_id.as_deref().is_some_and(|seq_id| !seq_id.trim().is_empty())
+                            && tfbs_similarity_ready,
+                        egui::Button::new("Rank similarity in whole sequence"),
+                    );
+                    let whole_sequence_response = if !tfbs_similarity_ready {
+                        whole_sequence_response.on_hover_text(
+                            "Provide an anchor motif here or keep at least one TFBS motif selected in the TFBS annotation panel",
+                        )
+                    } else if self
+                        .seq_id
+                        .as_deref()
+                        .is_some_and(|seq_id| !seq_id.trim().is_empty())
+                    {
+                        whole_sequence_response.on_hover_text(
+                            "Rank anchor-vs-candidate TFBS score-track similarity for the full active sequence",
+                        )
+                    } else {
+                        whole_sequence_response
+                            .on_hover_text("Requires an active sequence in the current DNA window")
+                    };
+                    if whole_sequence_response.clicked() {
+                        self.show_whole_sequence_tfbs_track_similarity();
+                        ui.close();
+                    }
+                });
                 let active_pcr_roi_source = self.active_pcr_roi_source_0based();
                 let set_roi_response =
                     ui.add_enabled(active_pcr_roi_source.is_some(), egui::Button::new("Set PCR ROI"));
@@ -16805,6 +17016,7 @@ impl MainAreaDna {
                 let mut tfbs_panel_state_changed = false;
                 let mut tfbs_hit_scan_settings_changed = false;
                 let mut tfbs_score_track_settings_changed = false;
+                let mut tfbs_similarity_settings_changed = false;
                 ui.horizontal(|ui| {
                     if ui
                         .checkbox(&mut self.tfbs_use_all_motifs, "All known JASPAR motifs")
@@ -16813,6 +17025,7 @@ impl MainAreaDna {
                         tfbs_panel_state_changed = true;
                         tfbs_hit_scan_settings_changed = true;
                         tfbs_score_track_settings_changed = true;
+                        tfbs_similarity_settings_changed = true;
                     }
                     if self.tfbs_use_all_motifs {
                         let motif_count = tf_motifs::all_motif_ids().len();
@@ -16826,6 +17039,7 @@ impl MainAreaDna {
                             tfbs_panel_state_changed = true;
                             tfbs_hit_scan_settings_changed = true;
                             tfbs_score_track_settings_changed = true;
+                            tfbs_similarity_settings_changed = true;
                         }
                     });
                     ui.horizontal(|ui| {
@@ -16842,6 +17056,7 @@ impl MainAreaDna {
                             tfbs_panel_state_changed = true;
                             tfbs_hit_scan_settings_changed = true;
                             tfbs_score_track_settings_changed = true;
+                            tfbs_similarity_settings_changed = true;
                         }
                     });
 
@@ -16880,6 +17095,7 @@ impl MainAreaDna {
                                         tfbs_panel_state_changed = true;
                                         tfbs_hit_scan_settings_changed = true;
                                         tfbs_score_track_settings_changed = true;
+                                        tfbs_similarity_settings_changed = true;
                                     }
                                     if let Some(name) = &motif.name {
                                         ui.label(format!("{} ({})", motif.id, name));
@@ -17081,6 +17297,7 @@ impl MainAreaDna {
                 }
                 if tfbs_score_track_settings_changed {
                     self.cached_tfbs_score_tracks = None;
+                    self.cached_tfbs_track_similarity = None;
                 }
                 if let Some(task) = self.tfbs_task.as_ref().filter(|task| {
                     matches!(task.task_kind, TfbsTaskKind::ActiveSequenceScoreTracks { .. })
@@ -17127,6 +17344,160 @@ impl MainAreaDna {
                     None,
                     None,
                 );
+                ui.separator();
+                ui.label("TFBS similarity ranking (shared report)");
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("anchor motif");
+                    if ui
+                        .text_edit_singleline(&mut self.tfbs_track_similarity_anchor_motif)
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                        tfbs_similarity_settings_changed = true;
+                    }
+                    ui.label("metric");
+                    egui::ComboBox::from_id_salt((
+                        "dna_window_tfbs_track_similarity_metric",
+                        self.panel_scope_key(),
+                    ))
+                    .selected_text(self.tfbs_track_similarity_ranking_metric.display_label())
+                    .show_ui(ui, |ui| {
+                        for metric in Self::tfbs_track_similarity_ranking_metric_options() {
+                            if ui
+                                .selectable_value(
+                                    &mut self.tfbs_track_similarity_ranking_metric,
+                                    metric,
+                                    metric.display_label(),
+                                )
+                                .changed()
+                            {
+                                tfbs_panel_state_changed = true;
+                                tfbs_similarity_settings_changed = true;
+                            }
+                        }
+                    });
+                });
+                ui.small(
+                    egui::RichText::new(
+                        "Leave `anchor motif` empty to reuse the first motif from the TFBS panel selection above.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .checkbox(
+                            &mut self.tfbs_track_similarity_all_candidates,
+                            "all JASPAR motifs",
+                        )
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                        tfbs_similarity_settings_changed = true;
+                    }
+                    if ui
+                        .checkbox(
+                            &mut self.tfbs_track_similarity_include_remote_metadata,
+                            "include cached remote metadata",
+                        )
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                        tfbs_similarity_settings_changed = true;
+                    }
+                    ui.label("limit");
+                    if ui
+                        .text_edit_singleline(&mut self.tfbs_track_similarity_limit)
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                        tfbs_similarity_settings_changed = true;
+                    }
+                });
+                if !self.tfbs_track_similarity_all_candidates {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("candidate motifs");
+                        if ui
+                            .text_edit_singleline(
+                                &mut self.tfbs_track_similarity_candidate_motifs,
+                            )
+                            .changed()
+                        {
+                            tfbs_panel_state_changed = true;
+                            tfbs_similarity_settings_changed = true;
+                        }
+                    });
+                    ui.small(
+                        egui::RichText::new(
+                            "If `candidate motifs` is empty, the ranking falls back to the current TFBS motif selection above, minus the anchor motif.",
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                } else {
+                    ui.small(
+                        egui::RichText::new(
+                            "With `all JASPAR motifs` enabled, explicit candidate tokens are ignored and the ranking scans the whole local registry.",
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("species filters");
+                    if ui
+                        .text_edit_singleline(&mut self.tfbs_track_similarity_species_filters)
+                        .changed()
+                    {
+                        tfbs_panel_state_changed = true;
+                        tfbs_similarity_settings_changed = true;
+                    }
+                });
+                ui.small(
+                    egui::RichText::new(
+                        "Current semantics are pre-rank: species filters restrict the candidate set before ranking. Post-rank filtering remains a follow-up so the distinction stays explicit.",
+                    )
+                    .color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+                if tfbs_similarity_settings_changed {
+                    self.cached_tfbs_track_similarity = None;
+                }
+                if let Some(task) = self.tfbs_task.as_ref().filter(|task| {
+                    matches!(
+                        task.task_kind,
+                        TfbsTaskKind::ActiveSequenceTrackSimilarity { .. }
+                    )
+                }) {
+                    if Self::render_tfbs_task_progress_panel(
+                        ui,
+                        task,
+                        self.tfbs_progress.as_ref(),
+                        true,
+                    ) {
+                        task.cancel_requested.store(true, AtomicOrdering::Relaxed);
+                        self.op_status = format!("Cancel requested for {}", task.operation_label);
+                    }
+                }
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.cached_tfbs_track_similarity.is_some() && self.tfbs_task.is_none(),
+                            egui::Button::new("Export cached TFBS similarity JSON..."),
+                        )
+                        .on_hover_text(
+                            "Write the currently cached TFBS similarity ranking through the shared SummarizeTfbsTrackSimilarity engine route.",
+                        )
+                        .clicked()
+                    {
+                        self.export_cached_tfbs_track_similarity_json();
+                    }
+                    if self.cached_tfbs_track_similarity.is_none() {
+                        ui.small(
+                            egui::RichText::new(
+                                "Use the toolbar menu `TFBS similarity` for current selection, visible span, or whole sequence, then inspect or export the cached ranked report here.",
+                            )
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
+                });
+                self.render_tfbs_track_similarity_summary_panel(ui);
                 if tfbs_panel_state_changed {
                     self.save_engine_ops_state();
                 }
@@ -19173,6 +19544,82 @@ impl MainAreaDna {
         ]
     }
 
+    fn tfbs_track_similarity_ranking_metric_options() -> [TfbsTrackSimilarityRankingMetric; 4] {
+        [
+            TfbsTrackSimilarityRankingMetric::RawPearson,
+            TfbsTrackSimilarityRankingMetric::SmoothedPearson,
+            TfbsTrackSimilarityRankingMetric::RawSpearman,
+            TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
+        ]
+    }
+
+    fn has_tfbs_track_similarity_seed_configured(&self) -> bool {
+        !self.tfbs_track_similarity_anchor_motif.trim().is_empty()
+            || self.has_tfbs_scan_motifs_configured()
+    }
+
+    fn resolve_tfbs_track_similarity_anchor_motif(&self) -> Result<String, String> {
+        let anchor = self.tfbs_track_similarity_anchor_motif.trim();
+        if !anchor.is_empty() {
+            return Ok(anchor.to_string());
+        }
+        self.collect_tfbs_motifs()
+            .into_iter()
+            .find(|token| !token.trim().is_empty())
+            .ok_or_else(|| {
+                "Provide an anchor TF motif, or select at least one motif in the TFBS annotation panel".to_string()
+            })
+    }
+
+    fn collect_tfbs_track_similarity_candidate_tokens(
+        &self,
+        anchor_motif: &str,
+    ) -> Result<Vec<String>, String> {
+        if self.tfbs_track_similarity_all_candidates {
+            return Ok(vec!["ALL".to_string()]);
+        }
+
+        let mut tokens = Self::parse_ids(&self.tfbs_track_similarity_candidate_motifs);
+        if tokens.is_empty() {
+            tokens = self.collect_tfbs_motifs();
+        }
+
+        let mut seen = BTreeSet::new();
+        let anchor_upper = anchor_motif.trim().to_ascii_uppercase();
+        let filtered = tokens
+            .into_iter()
+            .filter_map(|token| {
+                let trimmed = token.trim();
+                if trimmed.is_empty() || trimmed.eq_ignore_ascii_case(anchor_upper.as_str()) {
+                    return None;
+                }
+                let normalized = trimmed.to_ascii_uppercase();
+                if seen.insert(normalized) {
+                    Some(trimmed.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if filtered.is_empty() {
+            Err(
+                "Provide at least one candidate TF motif, keep non-anchor motifs selected in the TFBS annotation panel, or enable `all JASPAR motifs`".to_string(),
+            )
+        } else {
+            Ok(filtered)
+        }
+    }
+
+    fn parse_tfbs_track_similarity_limit(&self) -> Result<Option<usize>, String> {
+        let trimmed = self.tfbs_track_similarity_limit.trim();
+        if trimmed.is_empty() {
+            Ok(None)
+        } else {
+            Self::parse_positive_usize_text(trimmed, "similarity limit").map(Some)
+        }
+    }
+
     fn collect_tfbs_score_track_request_for_active_sequence(
         &self,
         span: Option<(usize, usize)>,
@@ -19201,6 +19648,50 @@ impl MainAreaDna {
             motifs,
             self.tfbs_score_track_value_kind,
             self.tfbs_score_track_clip_negative,
+        ))
+    }
+
+    fn collect_tfbs_track_similarity_request_for_active_sequence(
+        &self,
+        span: Option<(usize, usize)>,
+    ) -> Result<
+        (
+            String,
+            SequenceScanTarget,
+            String,
+            Vec<String>,
+            TfbsTrackSimilarityRankingMetric,
+            TfbsScoreTrackValueKind,
+            bool,
+            Vec<String>,
+            bool,
+            Option<usize>,
+        ),
+        String,
+    > {
+        let seq_id = self.seq_id.clone().unwrap_or_default();
+        if seq_id.trim().is_empty() {
+            return Err("No active template sequence".to_string());
+        }
+        let anchor_motif = self.resolve_tfbs_track_similarity_anchor_motif()?;
+        let candidate_motifs =
+            self.collect_tfbs_track_similarity_candidate_tokens(&anchor_motif)?;
+        let species_filters = Self::parse_ids(&self.tfbs_track_similarity_species_filters);
+        Ok((
+            seq_id.clone(),
+            SequenceScanTarget::SeqId {
+                seq_id,
+                span_start_0based: span.map(|(start, _)| start),
+                span_end_0based_exclusive: span.map(|(_, end_exclusive)| end_exclusive),
+            },
+            anchor_motif,
+            candidate_motifs,
+            self.tfbs_track_similarity_ranking_metric,
+            self.tfbs_score_track_value_kind,
+            self.tfbs_score_track_clip_negative,
+            species_filters,
+            self.tfbs_track_similarity_include_remote_metadata,
+            self.parse_tfbs_track_similarity_limit()?,
         ))
     }
 
@@ -19244,6 +19735,73 @@ impl MainAreaDna {
         }
     }
 
+    fn tfbs_track_similarity_metric_value(
+        row: &TfbsTrackSimilarityRow,
+        metric: TfbsTrackSimilarityRankingMetric,
+    ) -> f64 {
+        match metric {
+            TfbsTrackSimilarityRankingMetric::RawPearson => row.raw_pearson,
+            TfbsTrackSimilarityRankingMetric::SmoothedPearson => row.smoothed_pearson,
+            TfbsTrackSimilarityRankingMetric::RawSpearman => row.raw_spearman,
+            TfbsTrackSimilarityRankingMetric::SmoothedSpearman => row.smoothed_spearman,
+        }
+    }
+
+    fn summarize_tfbs_track_similarity_report_status(
+        report: &TfbsTrackSimilarityReport,
+        source_label: &str,
+    ) -> String {
+        let target_label = if report.target_label.trim().is_empty() {
+            report.seq_id.as_str()
+        } else {
+            report.target_label.trim()
+        };
+        let preview = report
+            .rows
+            .iter()
+            .take(3)
+            .map(|row| {
+                let label = Self::promoter_design_track_label(
+                    &row.candidate_tf_id,
+                    row.candidate_tf_name.as_deref(),
+                );
+                format!(
+                    "{} {:.3}",
+                    label,
+                    Self::tfbs_track_similarity_metric_value(row, report.ranking_metric)
+                )
+            })
+            .collect::<Vec<_>>();
+        let filter_suffix = if report.species_filters.is_empty() {
+            String::new()
+        } else {
+            format!(" | species {}", report.species_filters.join(","))
+        };
+        if preview.is_empty() {
+            format!(
+                "TFBS similarity for {source_label} on '{}' ranked no candidates against {} across {}..{} [{}]{}",
+                target_label,
+                report.anchor_tf_id,
+                report.view_start_0based,
+                report.view_end_0based_exclusive,
+                report.ranking_metric.as_str(),
+                filter_suffix
+            )
+        } else {
+            format!(
+                "TFBS similarity for {source_label} on '{}' ranked {} candidate motif(s) against {} across {}..{} [{}]: {}{}",
+                target_label,
+                report.returned_candidate_count,
+                report.anchor_tf_id,
+                report.view_start_0based,
+                report.view_end_0based_exclusive,
+                report.ranking_metric.as_str(),
+                preview.join(", "),
+                filter_suffix
+            )
+        }
+    }
+
     fn start_tfbs_score_tracks_for_active_sequence(
         &mut self,
         span: Option<(usize, usize)>,
@@ -19272,6 +19830,49 @@ impl MainAreaDna {
         );
     }
 
+    fn start_tfbs_track_similarity_for_active_sequence(
+        &mut self,
+        span: Option<(usize, usize)>,
+        source_label: &str,
+    ) {
+        let (
+            _seq_id,
+            target,
+            anchor_motif,
+            candidate_motifs,
+            ranking_metric,
+            score_kind,
+            clip_negative,
+            species_filters,
+            include_remote_metadata,
+            limit,
+        ) = match self.collect_tfbs_track_similarity_request_for_active_sequence(span) {
+            Ok(request) => request,
+            Err(message) => {
+                self.op_status = message;
+                return;
+            }
+        };
+        self.start_tfbs_operation(
+            Operation::SummarizeTfbsTrackSimilarity {
+                target,
+                anchor_motif,
+                candidate_motifs,
+                ranking_metric,
+                score_kind,
+                clip_negative,
+                species_filters,
+                include_remote_metadata,
+                limit,
+                path: None,
+            },
+            TfbsTaskKind::ActiveSequenceTrackSimilarity {
+                source_label: source_label.to_string(),
+            },
+            &format!("TFBS similarity ({source_label})"),
+        );
+    }
+
     fn show_current_selection_tfbs_score_tracks(&mut self) {
         let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
             self.op_status =
@@ -19297,6 +19898,33 @@ impl MainAreaDna {
 
     fn show_whole_sequence_tfbs_score_tracks(&mut self) {
         self.start_tfbs_score_tracks_for_active_sequence(None, "whole sequence");
+    }
+
+    fn show_current_selection_tfbs_track_similarity(&mut self) {
+        let Some((start, end_exclusive)) = self.current_selection_range_0based() else {
+            self.op_status =
+                "No non-empty linear selection available for TFBS similarity".to_string();
+            return;
+        };
+        self.start_tfbs_track_similarity_for_active_sequence(
+            Some((start, end_exclusive)),
+            "current selection",
+        );
+    }
+
+    fn show_visible_span_tfbs_track_similarity(&mut self) {
+        let Some((start, end_exclusive)) = self.current_visible_linear_span_range_0based() else {
+            self.op_status = "Visible linear span is unavailable for TFBS similarity".to_string();
+            return;
+        };
+        self.start_tfbs_track_similarity_for_active_sequence(
+            Some((start, end_exclusive)),
+            "visible span",
+        );
+    }
+
+    fn show_whole_sequence_tfbs_track_similarity(&mut self) {
+        self.start_tfbs_track_similarity_for_active_sequence(None, "whole sequence");
     }
 
     fn scan_target_summary_line(
@@ -19581,6 +20209,157 @@ impl MainAreaDna {
         }
     }
 
+    fn tfbs_track_similarity_remote_summary_label(
+        summary: Option<&JasparCatalogRemoteSummary>,
+    ) -> String {
+        let Some(summary) = summary else {
+            return "n/a".to_string();
+        };
+        let mut parts = vec![];
+        if let Some(tax_group) = summary.tax_group.as_deref().map(str::trim)
+            && !tax_group.is_empty()
+        {
+            parts.push(tax_group.to_string());
+        }
+        if let Some(tf_family) = summary.tf_family.as_deref().map(str::trim)
+            && !tf_family.is_empty()
+        {
+            parts.push(tf_family.to_string());
+        }
+        if let Some(tf_class) = summary.tf_class.as_deref().map(str::trim)
+            && !tf_class.is_empty()
+        {
+            parts.push(tf_class.to_string());
+        }
+        if !summary.species_preview.is_empty() {
+            parts.push(format!("species {}", summary.species_preview.join("/")));
+        } else if summary.species_count > 0 {
+            parts.push(format!("{} species", summary.species_count));
+        }
+        if parts.is_empty() {
+            "remote metadata loaded".to_string()
+        } else {
+            parts.join(" | ")
+        }
+    }
+
+    fn render_tfbs_track_similarity_summary_panel(&mut self, ui: &mut egui::Ui) {
+        let Some(report) = self.cached_tfbs_track_similarity.as_ref() else {
+            ui.small(
+                egui::RichText::new(
+                    "No TFBS similarity ranking cached yet. Use the toolbar menu `TFBS similarity` for current selection, visible span, or whole sequence, then inspect or export the ranked report here.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("TFBS similarity ranking").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "anchor {} | {} returned of {} scanned candidate(s) across {}..{} | {} | score {}{}",
+                    Self::promoter_design_track_label(
+                        &report.anchor_tf_id,
+                        report.anchor_tf_name.as_deref(),
+                    ),
+                    report.returned_candidate_count,
+                    report.scanned_candidate_count,
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.ranking_metric.display_label(),
+                    report.score_kind.as_str(),
+                    if report.clip_negative {
+                        " | clipped"
+                    } else {
+                        " | unclipped"
+                    }
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ui.small(
+                egui::RichText::new(Self::scan_target_summary_line(
+                    &report.target_kind,
+                    &report.target_label,
+                    report.source_sequence_length_bp,
+                    report.scan_topology,
+                ))
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            if !report.species_filters.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Species filter currently restricts the candidate set before ranking: {}",
+                        report.species_filters.join(", ")
+                    ))
+                    .color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            if !report.warnings.is_empty() {
+                for warning in &report.warnings {
+                    ui.small(
+                        egui::RichText::new(warning)
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+            }
+            if report.rows.is_empty() {
+                ui.small(
+                    egui::RichText::new(
+                        "The cached similarity ranking finished successfully but returned no candidate motifs for the selected settings.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .id_salt(("tfbs_track_similarity_summary_scroll", report.target_label.as_str()))
+                .max_height(240.0)
+                .show(ui, |ui| {
+                    egui::Grid::new((
+                        "tfbs_track_similarity_summary_grid",
+                        report.target_label.as_str(),
+                    ))
+                    .num_columns(6)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("#").strong());
+                        ui.small(egui::RichText::new("candidate").strong());
+                        ui.small(
+                            egui::RichText::new(report.ranking_metric.display_label()).strong(),
+                        );
+                        ui.small(egui::RichText::new("Smoothed Pearson").strong());
+                        ui.small(egui::RichText::new("Peak offset").strong());
+                        ui.small(egui::RichText::new("Metadata").strong());
+                        ui.end_row();
+                        for (index, row) in report.rows.iter().enumerate() {
+                            ui.small((index + 1).to_string());
+                            ui.small(Self::promoter_design_track_label(
+                                &row.candidate_tf_id,
+                                row.candidate_tf_name.as_deref(),
+                            ));
+                            ui.monospace(format!(
+                                "{:+.3}",
+                                Self::tfbs_track_similarity_metric_value(
+                                    row,
+                                    report.ranking_metric,
+                                )
+                            ));
+                            ui.monospace(format!("{:+.3}", row.smoothed_pearson));
+                            ui.monospace(
+                                row.signed_primary_peak_offset_bp
+                                    .map(|value| format!("{value:+} bp"))
+                                    .unwrap_or_else(|| "n/a".to_string()),
+                            );
+                            ui.small(Self::tfbs_track_similarity_remote_summary_label(
+                                row.remote_summary.as_ref(),
+                            ));
+                            ui.end_row();
+                        }
+                    });
+                });
+        });
+    }
+
     fn default_cached_tfbs_score_tracks_svg_file_name(report: &TfbsScoreTrackReport) -> String {
         let target_label = if report.target_label.trim().is_empty() {
             report.seq_id.as_str()
@@ -19593,6 +20372,23 @@ impl MainAreaDna {
             report.view_start_0based,
             report.view_end_0based_exclusive,
             report.score_kind.as_str()
+        )
+    }
+
+    fn default_cached_tfbs_track_similarity_json_file_name(
+        report: &TfbsTrackSimilarityReport,
+    ) -> String {
+        let target_label = if report.target_label.trim().is_empty() {
+            "tfbs_similarity"
+        } else {
+            report.target_label.trim()
+        };
+        format!(
+            "{}_tfbs_similarity_{}_{}-{}.json",
+            Self::sanitize_export_name_component(target_label, "tfbs_similarity"),
+            Self::sanitize_export_name_component(&report.anchor_tf_id, "anchor"),
+            report.view_start_0based,
+            report.view_end_0based_exclusive
         )
     }
 
@@ -19727,6 +20523,47 @@ impl MainAreaDna {
             });
         if let Some(updated_report) = result.and_then(|row| row.tfbs_score_tracks) {
             self.cached_tfbs_score_tracks = Some(updated_report);
+        }
+    }
+
+    fn export_cached_tfbs_track_similarity_json(&mut self) {
+        let Some(report) = self.cached_tfbs_track_similarity.clone() else {
+            self.op_status =
+                "No cached TFBS similarity ranking available for JSON export".to_string();
+            return;
+        };
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        };
+        let default_name = Self::default_cached_tfbs_track_similarity_json_file_name(&report);
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "TFBS similarity export canceled".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizeTfbsTrackSimilarity {
+                target: SequenceScanTarget::SeqId {
+                    seq_id,
+                    span_start_0based: Some(report.view_start_0based),
+                    span_end_0based_exclusive: Some(report.view_end_0based_exclusive),
+                },
+                anchor_motif: report.anchor_requested.clone(),
+                candidate_motifs: report.candidates_requested.clone(),
+                ranking_metric: report.ranking_metric,
+                score_kind: report.score_kind,
+                clip_negative: report.clip_negative,
+                species_filters: report.species_filters.clone(),
+                include_remote_metadata: report.include_remote_metadata,
+                limit: Some(report.returned_candidate_count),
+                path: Some(path.display().to_string()),
+            },
+        );
+        if let Some(updated_report) = result.and_then(|row| row.tfbs_track_similarity) {
+            self.cached_tfbs_track_similarity = Some(updated_report);
         }
     }
 
@@ -34154,6 +34991,7 @@ impl MainAreaDna {
         match task_kind {
             TfbsTaskKind::Annotation => "TFBS annotation",
             TfbsTaskKind::ActiveSequenceScoreTracks { .. } => "TFBS score tracks",
+            TfbsTaskKind::ActiveSequenceTrackSimilarity { .. } => "TFBS similarity ranking",
             TfbsTaskKind::VariantFollowupScoreTracks => "Promoter TF score tracks",
         }
     }
@@ -34234,6 +35072,9 @@ impl MainAreaDna {
         let motif_count = match &op {
             Operation::AnnotateTfbs { motifs, .. } => motifs.len(),
             Operation::SummarizeTfbsScoreTracks { motifs, .. } => motifs.len(),
+            Operation::SummarizeTfbsTrackSimilarity {
+                candidate_motifs, ..
+            } => candidate_motifs.len().saturating_add(1).max(1),
             _ => 0,
         };
         let (tx, rx) = mpsc::channel::<TfbsTaskMessage>();
@@ -34296,6 +35137,15 @@ impl MainAreaDna {
         result: OpResult,
         started: Instant,
     ) {
+        if let Some(report) = result.tfbs_track_similarity.clone() {
+            if let TfbsTaskKind::ActiveSequenceTrackSimilarity { source_label } = task_kind {
+                self.cached_tfbs_track_similarity = Some(report.clone());
+                self.op_status =
+                    Self::summarize_tfbs_track_similarity_report_status(&report, &source_label);
+                self.op_error_popup = None;
+                return;
+            }
+        }
         if let Some(report) = result.tfbs_score_tracks.clone() {
             match task_kind {
                 TfbsTaskKind::Annotation => {}
@@ -34318,6 +35168,7 @@ impl MainAreaDna {
                     self.op_error_popup = None;
                     return;
                 }
+                TfbsTaskKind::ActiveSequenceTrackSimilarity { .. } => {}
             }
         }
         self.handle_operation_success(result, started);
@@ -46206,6 +47057,18 @@ impl MainAreaDna {
             tfbs_clear_existing: self.tfbs_clear_existing,
             tfbs_score_track_value_kind: self.tfbs_score_track_value_kind,
             tfbs_score_track_clip_negative: self.tfbs_score_track_clip_negative,
+            tfbs_track_similarity_anchor_motif: self.tfbs_track_similarity_anchor_motif.clone(),
+            tfbs_track_similarity_all_candidates: self.tfbs_track_similarity_all_candidates,
+            tfbs_track_similarity_candidate_motifs: self
+                .tfbs_track_similarity_candidate_motifs
+                .clone(),
+            tfbs_track_similarity_species_filters: self
+                .tfbs_track_similarity_species_filters
+                .clone(),
+            tfbs_track_similarity_include_remote_metadata: self
+                .tfbs_track_similarity_include_remote_metadata,
+            tfbs_track_similarity_limit: self.tfbs_track_similarity_limit.clone(),
+            tfbs_track_similarity_ranking_metric: self.tfbs_track_similarity_ranking_metric,
             tfbs_display_use_llr_bits: tfbs_display.use_llr_bits,
             tfbs_display_min_llr_bits: tfbs_display.min_llr_bits,
             tfbs_display_use_llr_quantile: tfbs_display.use_llr_quantile,
@@ -46431,9 +47294,22 @@ impl MainAreaDna {
         self.tfbs_clear_existing = s.tfbs_clear_existing;
         self.tfbs_score_track_value_kind = s.tfbs_score_track_value_kind;
         self.tfbs_score_track_clip_negative = s.tfbs_score_track_clip_negative;
+        self.tfbs_track_similarity_anchor_motif = s.tfbs_track_similarity_anchor_motif;
+        self.tfbs_track_similarity_all_candidates = s.tfbs_track_similarity_all_candidates;
+        self.tfbs_track_similarity_candidate_motifs = s.tfbs_track_similarity_candidate_motifs;
+        self.tfbs_track_similarity_species_filters = s.tfbs_track_similarity_species_filters;
+        self.tfbs_track_similarity_include_remote_metadata =
+            s.tfbs_track_similarity_include_remote_metadata;
+        self.tfbs_track_similarity_limit = if s.tfbs_track_similarity_limit.trim().is_empty() {
+            "25".to_string()
+        } else {
+            s.tfbs_track_similarity_limit
+        };
+        self.tfbs_track_similarity_ranking_metric = s.tfbs_track_similarity_ranking_metric;
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;
         self.cached_tfbs_score_tracks = None;
+        self.cached_tfbs_track_similarity = None;
         self.vcf_display_required_info_keys = s.vcf_display_required_info_keys;
         self.isoform_panel_path = s.isoform_panel_path;
         self.isoform_panel_id = s.isoform_panel_id;

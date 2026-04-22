@@ -741,6 +741,15 @@ impl TfbsTrackSimilarityRankingMetric {
             Self::SmoothedSpearman => "smoothed_spearman",
         }
     }
+
+    pub fn display_label(self) -> &'static str {
+        match self {
+            Self::RawPearson => "Raw Pearson r",
+            Self::SmoothedPearson => "Smoothed Pearson r",
+            Self::RawSpearman => "Raw Spearman rho",
+            Self::SmoothedSpearman => "Smoothed Spearman rho",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
