@@ -3619,6 +3619,13 @@ Status:
   - Those read-length histograms now also expose a compact mean + five-number
     summary (`min / q25 / median / q75 / max`) derived deterministically from
     the same exact engine counts used for binning.
+  - RNA-read Mapping repaint stability was tightened for large saved reports:
+    - saved alignment-inspection failures are now cached instead of being
+      recomputed on every repaint
+    - the selected read's pairwise alignment display is now cached across
+      scroll/repaint cycles
+    - saved-progress synthesis skips alignment inspection entirely when the
+      report does not contain any phase-2 mappings yet
   - The RNA-read length panel now also exposes target-fragment quality
     distributions from the shared `SummarizeRnaReadGeneSupport` engine route:
     - target-positive share by total read length

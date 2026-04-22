@@ -8963,6 +8963,147 @@ mod tests {
     }
 
     #[test]
+    fn unaligned_saved_report_progress_skips_alignment_inspection() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let report = RnaReadInterpretationReport {
+            report_id: "rna_unaligned_demo".to_string(),
+            seq_id: "seq1".to_string(),
+            seed_feature_id: 9,
+            read_count_total: 1,
+            read_count_seed_passed: 1,
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "read0".to_string(),
+                sequence: "ACGTACGT".to_string(),
+                read_length_bp: 8,
+                tested_kmers: 8,
+                matched_kmers: 8,
+                seed_hit_fraction: 1.0,
+                passed_seed_filter: true,
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        };
+        engine
+            .write()
+            .expect("engine")
+            .commit_rna_read_report(report.clone())
+            .expect("commit report");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.rna_read_evidence_ui.selected_report_id = report.report_id.clone();
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 9,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: "demo".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 8,
+            transcript_count: 1,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        let saved_report = area.current_saved_rna_read_report().expect("saved report");
+        let progress = area
+            .current_rna_read_evidence_progress_for_view(&view, Some(saved_report.as_ref()))
+            .expect("saved progress");
+
+        assert!(progress.mapped_exon_support_frequencies.is_empty());
+        assert!(progress.mapped_junction_support_frequencies.is_empty());
+        assert!(area.cached_rna_read_alignment_inspections.is_empty());
+    }
+
+    #[test]
+    fn rna_read_alignment_inspection_errors_are_cached() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+
+        let err_a = area
+            .saved_rna_read_alignment_inspection_for_report_id("missing_report", 1, None)
+            .expect_err("missing report should fail");
+        assert_eq!(area.cached_rna_read_alignment_inspections.len(), 1);
+        match &area.cached_rna_read_alignment_inspections[0].result {
+            Err(cached) => assert_eq!(cached, &err_a),
+            Ok(_) => panic!("expected cached alignment inspection error"),
+        }
+
+        let err_b = area
+            .saved_rna_read_alignment_inspection_for_report_id("missing_report", 1, None)
+            .expect_err("missing report should still fail");
+        assert_eq!(err_a, err_b);
+        assert_eq!(area.cached_rna_read_alignment_inspections.len(), 1);
+    }
+
+    #[test]
+    fn rna_read_alignment_display_errors_are_cached() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let report = RnaReadInterpretationReport {
+            report_id: "rna_alignment_display_err".to_string(),
+            seq_id: "seq1".to_string(),
+            seed_feature_id: 9,
+            read_count_total: 1,
+            read_count_seed_passed: 1,
+            hits: vec![RnaReadInterpretationHit {
+                record_index: 0,
+                header_id: "read0".to_string(),
+                sequence: "ACGTACGT".to_string(),
+                read_length_bp: 8,
+                tested_kmers: 8,
+                matched_kmers: 8,
+                seed_hit_fraction: 1.0,
+                passed_seed_filter: true,
+                ..RnaReadInterpretationHit::default()
+            }],
+            ..RnaReadInterpretationReport::default()
+        };
+        engine
+            .write()
+            .expect("engine")
+            .commit_rna_read_report(report.clone())
+            .expect("commit report");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.rna_read_evidence_ui.selected_report_id = report.report_id.clone();
+
+        let err_a = area
+            .current_rna_read_alignment_display(0)
+            .expect_err("unaligned row should not have a pairwise display");
+        let cached = area
+            .cached_rna_read_alignment_display
+            .as_ref()
+            .expect("alignment display error should be cached");
+        assert_eq!(
+            cached.cache_key,
+            MainAreaDna::rna_read_alignment_display_cache_key(&report.report_id, 0)
+        );
+        match &cached.result {
+            Err(cached_err) => assert_eq!(cached_err, &err_a),
+            Ok(_) => panic!("expected cached alignment display error"),
+        }
+
+        let err_b = area
+            .current_rna_read_alignment_display(0)
+            .expect_err("unaligned row should still not have a pairwise display");
+        assert_eq!(err_a, err_b);
+    }
+
+    #[test]
     fn select_rna_read_report_score_bin_record_indices_matches_requested_bin() {
         let report = RnaReadInterpretationReport {
             hits: vec![
@@ -11985,6 +12126,7 @@ pub struct MainAreaDna {
     cached_rna_read_gene_support_summary: Option<CachedRnaReadGeneSupportSummary>,
     cached_rna_read_alignment_inspections: Vec<CachedRnaReadAlignmentInspection>,
     cached_rna_read_alignment_detail: Option<CachedRnaReadAlignmentDetail>,
+    cached_rna_read_alignment_display: Option<CachedRnaReadAlignmentDisplay>,
     cached_rna_read_concatemer_inspection: Option<CachedRnaReadConcatemerInspection>,
     attract_evidence_ui: AttractEvidenceUiState,
     cached_splicing_attract_evidence: Option<CachedSplicingAttractEvidence>,
@@ -12610,6 +12752,7 @@ impl MainAreaDna {
             cached_rna_read_gene_support_summary: None,
             cached_rna_read_alignment_inspections: vec![],
             cached_rna_read_alignment_detail: None,
+            cached_rna_read_alignment_display: None,
             cached_rna_read_concatemer_inspection: None,
             attract_evidence_ui: AttractEvidenceUiState::default(),
             cached_splicing_attract_evidence: None,
@@ -28938,21 +29081,13 @@ impl MainAreaDna {
     fn current_rna_read_alignment_display(
         &mut self,
         record_index: usize,
-    ) -> Result<RnaReadAlignmentDisplay, String> {
+    ) -> Result<Arc<RnaReadAlignmentDisplay>, String> {
         let Some(report) = self.current_saved_rna_read_report() else {
             return Err(
                 "Load/save a Report ID before inspecting phase-2 pairwise alignment".to_string(),
             );
         };
-        let Some(engine) = self.engine.as_ref() else {
-            return Err("No engine attached while building RNA-read alignment detail".to_string());
-        };
-        let guard = engine.read().map_err(|_| {
-            "Engine lock poisoned while building RNA-read alignment detail".to_string()
-        })?;
-        guard
-            .build_rna_read_alignment_display(&report.report_id, record_index)
-            .map_err(|err| err.message)
+        self.saved_rna_read_alignment_display_for_report_id(&report.report_id, record_index)
     }
 
     fn dotplot_parameter_tag(

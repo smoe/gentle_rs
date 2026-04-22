@@ -378,6 +378,12 @@ pub(super) struct CachedRnaReadAlignmentDetail {
 }
 
 #[derive(Clone, Debug)]
+pub(super) struct CachedRnaReadAlignmentDisplay {
+    pub(super) cache_key: String,
+    pub(super) result: Result<Arc<RnaReadAlignmentDisplay>, String>,
+}
+
+#[derive(Clone, Debug)]
 pub(super) struct CachedRnaReadConcatemerInspection {
     pub(super) cache_key: String,
     pub(super) result: Result<Arc<RnaReadConcatemerInspection>, String>,
@@ -422,6 +428,7 @@ impl MainAreaDna {
         self.cached_rna_read_gene_support_summary = None;
         self.cached_rna_read_alignment_inspections.clear();
         self.cached_rna_read_alignment_detail = None;
+        self.cached_rna_read_alignment_display = None;
         self.cached_rna_read_concatemer_inspection = None;
         self.rna_read_alignment_detail_visible_key = None;
     }
@@ -715,15 +722,13 @@ impl MainAreaDna {
                 .map(Arc::new)
                 .map_err(|error| error.message)
         };
-        if let Ok(inspection) = &result {
-            self.cached_rna_read_alignment_inspections
-                .push(CachedRnaReadAlignmentInspection {
-                    cache_key,
-                    result: Ok(inspection.clone()),
-                });
-            if self.cached_rna_read_alignment_inspections.len() > 8 {
-                self.cached_rna_read_alignment_inspections.remove(0);
-            }
+        self.cached_rna_read_alignment_inspections
+            .push(CachedRnaReadAlignmentInspection {
+                cache_key,
+                result: result.clone(),
+            });
+        if self.cached_rna_read_alignment_inspections.len() > 8 {
+            self.cached_rna_read_alignment_inspections.remove(0);
         }
         result
     }
@@ -740,6 +745,13 @@ impl MainAreaDna {
     }
 
     pub(super) fn rna_read_alignment_detail_cache_key(
+        report_id: &str,
+        record_index: usize,
+    ) -> String {
+        format!("{}|{}", report_id.trim(), record_index)
+    }
+
+    pub(super) fn rna_read_alignment_display_cache_key(
         report_id: &str,
         record_index: usize,
     ) -> String {
@@ -777,6 +789,47 @@ impl MainAreaDna {
                 .map_err(|error| error.message)
         };
         self.cached_rna_read_alignment_detail = Some(CachedRnaReadAlignmentDetail {
+            cache_key,
+            result: result.clone(),
+        });
+        result
+    }
+
+    pub(super) fn saved_rna_read_alignment_display_for_report_id(
+        &mut self,
+        report_id: &str,
+        record_index: usize,
+    ) -> Result<Arc<RnaReadAlignmentDisplay>, String> {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            return Err(
+                "Select a Report first before inspecting phase-2 pairwise alignment".to_string(),
+            );
+        }
+        let cache_key = Self::rna_read_alignment_display_cache_key(report_id, record_index);
+        if let Some(cached) = self
+            .cached_rna_read_alignment_display
+            .as_ref()
+            .filter(|cached| cached.cache_key == cache_key)
+        {
+            return cached.result.as_ref().map(Arc::clone).map_err(Clone::clone);
+        }
+        let result = {
+            let Some(engine) = &self.engine else {
+                return Err(
+                    "No engine attached while building RNA-read alignment detail".to_string(),
+                );
+            };
+            engine
+                .read()
+                .map_err(|_| {
+                    "Engine lock poisoned while building RNA-read alignment detail".to_string()
+                })?
+                .build_rna_read_alignment_display(report_id, record_index)
+                .map(Arc::new)
+                .map_err(|error| error.message)
+        };
+        self.cached_rna_read_alignment_display = Some(CachedRnaReadAlignmentDisplay {
             cache_key,
             result: result.clone(),
         });
@@ -954,13 +1007,18 @@ impl MainAreaDna {
             .take(256)
             .map(Self::rna_read_top_hit_preview_from_hit)
             .collect::<Vec<_>>();
-        let inspection = self
-            .saved_rna_read_alignment_inspection_for_report_id(
+        let has_saved_alignments = report.read_count_aligned > 0
+            || report.hits.iter().any(|hit| hit.best_mapping.is_some());
+        let inspection = if has_saved_alignments {
+            self.saved_rna_read_alignment_inspection_for_report_id(
                 &report.report_id,
                 report.hits.len().max(1),
                 None,
             )
-            .ok();
+            .ok()
+        } else {
+            None
+        };
         let (mapped_exon_support_frequencies, mapped_junction_support_frequencies) = inspection
             .as_ref()
             .map(|inspection| Self::mapped_support_frequencies_from_inspection(inspection.as_ref()))
