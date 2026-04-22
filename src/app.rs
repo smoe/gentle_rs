@@ -50215,6 +50215,39 @@ mod tests {
     }
 
     #[test]
+    fn detached_rna_mapping_host_is_removed_when_visible_window_owns_same_workspace() {
+        let ctx = egui::Context::default();
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+
+        let mut detached = Window::new_dna(dna.clone(), "seq1".to_string(), app.engine.clone());
+        detached.seed_rna_read_mapping_window_for_tests("seq1", 17, "TP73");
+        let detached_viewport_id = app.register_window(detached);
+        let detached_host = app
+            .windows
+            .remove(&detached_viewport_id)
+            .expect("registered detached host");
+        app.detached_auxiliary_window_hosts
+            .insert(detached_viewport_id, detached_host);
+
+        let mut visible = Window::new_dna(dna, "seq1".to_string(), app.engine.clone());
+        visible.seed_rna_read_mapping_window_for_tests("seq1", 17, "TP73");
+        let visible_viewport_id = app.register_window(visible);
+
+        app.render_detached_auxiliary_window_hosts(&ctx);
+
+        assert!(
+            app.windows.contains_key(&visible_viewport_id),
+            "visible sequence window should remain registered"
+        );
+        assert!(
+            !app.detached_auxiliary_window_hosts
+                .contains_key(&detached_viewport_id),
+            "detached host should be discarded once a visible sequence window renders the same RNA-read Mapping workspace"
+        );
+    }
+
+    #[test]
     fn embedded_help_viewport_renders_without_nested_help_window_area() {
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);

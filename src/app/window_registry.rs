@@ -403,6 +403,23 @@ impl GENtleApp {
     }
 
     pub(super) fn render_detached_auxiliary_window_hosts(&mut self, ctx: &egui::Context) {
+        let visible_auxiliary_viewports = self
+            .windows
+            .values()
+            .flat_map(|window| {
+                window
+                    .read()
+                    .ok()
+                    .map(|guard| {
+                        guard
+                            .collect_open_auxiliary_window_entries()
+                            .into_iter()
+                            .map(|(viewport_id, _, _)| viewport_id)
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            })
+            .collect::<HashSet<_>>();
         let detached_hosts = self
             .detached_auxiliary_window_hosts
             .iter()
@@ -410,6 +427,24 @@ impl GENtleApp {
             .collect::<Vec<_>>();
         let mut stale_hosts = Vec::new();
         for (viewport_id, window) in detached_hosts {
+            let detached_auxiliary_viewports = window
+                .read()
+                .ok()
+                .map(|guard| {
+                    guard
+                        .collect_open_auxiliary_window_entries()
+                        .into_iter()
+                        .map(|(aux_viewport_id, _, _)| aux_viewport_id)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            if detached_auxiliary_viewports
+                .iter()
+                .any(|aux_viewport_id| visible_auxiliary_viewports.contains(aux_viewport_id))
+            {
+                stale_hosts.push(viewport_id);
+                continue;
+            }
             let update_result = catch_unwind(AssertUnwindSafe(|| {
                 if let Ok(mut guard) = window.write() {
                     guard.update_auxiliary_windows_only(ctx);
