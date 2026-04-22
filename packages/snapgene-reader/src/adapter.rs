@@ -152,19 +152,15 @@ fn feature_location_text(
         }
     }
 
-    let mut pieces: Vec<String> = match feature.directionality {
-        FeatureDirectionality::Reverse => pieces
-            .into_iter()
-            .map(|piece| format!("complement({piece})"))
-            .collect(),
-        _ => pieces,
-    };
-
-    if pieces.len() == 1 {
+    let mut location_text = if pieces.len() == 1 {
         pieces.pop().unwrap_or_default()
     } else {
         format!("join({})", pieces.join(","))
+    };
+    if matches!(feature.directionality, FeatureDirectionality::Reverse) {
+        location_text = format!("complement({location_text})");
     }
+    location_text
 }
 
 fn range_piece_text(

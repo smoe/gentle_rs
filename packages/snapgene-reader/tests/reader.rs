@@ -102,6 +102,19 @@ fn test_joined_feature_segments_roundtrip_to_gb_io() {
 
 #[cfg(feature = "gb-io")]
 #[test]
+fn test_reverse_joined_feature_segments_roundtrip_to_gb_io() {
+    let features_xml = r##"<?xml version="1.0"?><Features><Feature name="joined_reverse" type="gene" directionality="2"><Segment range="5-10" color="#ffffff" type="standard"/><Segment range="20-30" color="#ffffff" type="standard"/><Q name="gene"><V text="joinedRev"/></Q></Feature></Features>"##;
+    let bytes = assemble(&[cookie(), dna(&"A".repeat(60), false), xml_packet(0x0A, features_xml)]);
+    let parsed = parse_bytes(&bytes).expect("parse reverse joined feature");
+    let seq = gb_io::seq::Seq::try_from(&parsed).expect("adapt to gb_io");
+    assert_eq!(
+        seq.features[0].location.to_gb_format(),
+        "complement(join(5..10,20..30))"
+    );
+}
+
+#[cfg(feature = "gb-io")]
+#[test]
 fn test_wraparound_feature_segments_roundtrip_to_gb_io() {
     let features_xml = r##"<?xml version="1.0"?><Features><Feature name="wrap" type="misc_feature" directionality="1"><Segment range="110-10" color="#ffffff" type="standard"/></Feature></Features>"##;
     let bytes = assemble(&[cookie(), dna(&"A".repeat(120), true), xml_packet(0x0A, features_xml)]);
