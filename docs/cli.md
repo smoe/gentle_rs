@@ -557,11 +557,13 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads align-report`
   - `rna-reads list-reports`
   - `rna-reads show-report`
+  - `rna-reads show-alignment`
   - `rna-reads summarize-gene-support`
   - `rna-reads inspect-gene-support`
   - `rna-reads inspect-alignments`
   - `rna-reads inspect-concatemers`
   - `rna-reads build-transcript-index`
+  - `rna-reads materialize-hits`
   - `rna-reads export-report`
   - `rna-reads export-hits-fasta`
   - `rna-reads export-sample-sheet`
@@ -574,11 +576,13 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   backed by `InterpretRnaReads`, `AlignRnaReadReport`,
   `ListRnaReadReports`, `ShowRnaReadReport`,
   `SummarizeRnaReadGeneSupport`, `InspectRnaReadGeneSupport`,
-  `ExportRnaReadReport`,
+  `MaterializeRnaReadHitSequences`, `ExportRnaReadReport`,
   `ExportRnaReadHitsFasta`, `ExportRnaReadSampleSheet`,
   `ExportRnaReadTargetQuality`,
   `ExportRnaReadExonPathsTsv`, `ExportRnaReadExonAbundanceTsv`, `ExportRnaReadScoreDensitySvg`,
-  `ExportRnaReadAlignmentsTsv`, and `ExportRnaReadAlignmentDotplotSvg`.
+  `ExportRnaReadAlignmentsTsv`, and `ExportRnaReadAlignmentDotplotSvg`, plus
+  the shared engine alignment-display helper used by the GUI `Show alignment`
+  pane.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
   Concatenated gzip members are accepted for gzipped FASTA input as well.
   Progress output includes periodic `progress rna-reads ...` lines during
@@ -626,12 +630,18 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
       ordinals, ordered exon pairs, neighboring direct transitions, phase-2
       score/identity/coverage, and `passed_seed_filter`.
   - `inspect-alignments`: non-mutating ranked alignment inspection
+  - `show-alignment`: non-mutating exact phase-2 pairwise alignment detail for
+    one saved `record_index`, returning the same machine-readable
+    `RnaReadAlignmentDisplay` contract used by the GUI detail pane.
   - `inspect-concatemers`: non-mutating fragment/concatemer suspicion audit
     over persisted report hits, with optional structured subset controls:
     `--effect-filter`, `--sort`, `--search`, and `--record-indices`.
   - `build-transcript-index`: prepares a reusable external transcript catalog
     JSON for later concatemer audits, with precomputed per-template k-mer
     positions and preserved source-path provenance.
+  - `materialize-hits`: materializes saved-report read sequences back into
+    project state for downstream shell/CLI dotplots or other sequence-centric
+    analysis without reopening the original FASTA input.
   - `export-target-quality`: exports the target-fragment quality summary for
     one saved report and one or more requested genes/groups.
     - `.json` output creates or extends a comparison bundle so repeated runs
@@ -1839,14 +1849,16 @@ Shared shell command:
     - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
     - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
     - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
-    - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+    - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
+    - `rna-reads show-alignment REPORT_ID RECORD_INDEX`
     - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
     - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
     - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
     - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
+    - `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`

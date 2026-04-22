@@ -5610,11 +5610,13 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
+  - `rna-reads show-alignment REPORT_ID RECORD_INDEX`
   - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
   - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
   - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
   - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
+  - `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
@@ -5630,6 +5632,12 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       ROI-capture flag, read counters)
     - `rna-reads show-report` includes `summary` with the same provenance
       framing for one report
+    - `rna-reads show-alignment` returns a `gentle.rna_read_alignment_display.v1`
+      wrapper with:
+      - `report_id`
+      - exact saved `record_index`
+      - `alignment` = the portable `RnaReadAlignmentDisplay` detail record used
+        by the GUI `Show alignment` pane
     - `rna-reads summarize-gene-support` returns the full
       `gentle.rna_read_gene_support_summary.v1` payload directly, including
       `requested_gene_ids`, `matched_gene_ids`, `missing_gene_ids`,
@@ -5668,11 +5676,25 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `rna-reads build-transcript-index` returns the full
       `gentle.rna_read_transcript_catalog_index.v1` payload directly and also
       writes the same JSON to the requested output path
+    - `rna-reads materialize-hits` returns a
+      `gentle.rna_read_hit_materialization.v1` wrapper with:
+      - the mutating `result` (`OpResult`) from
+        `MaterializeRnaReadHitSequences`
+      - `created_sequence_count`
+      - `created_sequences[]` with per-sequence `seq_id`, `name`, and
+        `length_bp`
     - `rna-reads export-target-quality` returns the full
       `gentle.rna_read_target_quality_export.v1` payload directly, including
       `requested_path`, `written_path`, optional `bundle_path`, `entry_count`,
       and append/reuse flags so adapters can tell whether the export extended
       an existing comparison artifact or started a fresh one
+- Alignment-detail inspection:
+  - shared shell:
+    `rna-reads show-alignment REPORT_ID RECORD_INDEX`
+  - output:
+    - exact saved-report pairwise alignment detail for one retained read
+    - non-mutating; intended for cluster/headless review of the same
+      read-vs-template evidence the GUI exposes under `Show alignment`
 - Alignment-TSV export:
   - operation:
     `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices?, subset_spec? }`
@@ -5706,6 +5728,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - output: SVG scatter of query coverage vs identity for aligned hits with
     score-colored points and report-config threshold guide.
 - Read-sequence materialization:
+  - shared shell:
+    `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
   - operation:
     `MaterializeRnaReadHitSequences { report_id, selection, selected_record_indices?, output_prefix? }`
   - output:

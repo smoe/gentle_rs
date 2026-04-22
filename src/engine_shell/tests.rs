@@ -17572,6 +17572,16 @@ fn parse_rna_reads_commands() {
         ShellCommand::RnaReadsShowReport { report_id } if report_id == "tp73_reads"
     ));
 
+    let show_alignment = parse_shell_line("rna-reads show-alignment tp73_reads 7")
+        .expect("parse rna-reads show-alignment");
+    assert!(matches!(
+        show_alignment,
+        ShellCommand::RnaReadsShowAlignment {
+            report_id,
+            record_index
+        } if report_id == "tp73_reads" && record_index == 7
+    ));
+
     let summarize = parse_shell_line(
         "rna-reads summarize-gene-support tp73_reads --gene TP73 --gene TP53 --record-indices 6,8 --complete-rule strict --output tp53_support.json",
     )
@@ -17677,6 +17687,23 @@ fn parse_rna_reads_commands() {
                     "data/transcriptome_cdna.fa.gz".to_string(),
                     "data/transcriptome_ncrna.fa.gz".to_string(),
                 ]
+    ));
+
+    let materialize_hits = parse_shell_line(
+        "rna-reads materialize-hits tp73_reads --selection aligned --record-indices 4,9 --output-prefix tp73_saved_reads",
+    )
+    .expect("parse rna-reads materialize-hits");
+    assert!(matches!(
+        materialize_hits,
+        ShellCommand::RnaReadsMaterializeHits {
+            report_id,
+            selection,
+            selected_record_indices,
+            output_prefix
+        } if report_id == "tp73_reads"
+            && selection == RnaReadHitSelection::Aligned
+            && selected_record_indices == vec![4, 9]
+            && output_prefix.as_deref() == Some("tp73_saved_reads")
     ));
 
     let export = parse_shell_line("rna-reads export-report tp73_reads out.json")
@@ -18327,6 +18354,72 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         shown.output["summary"]
             .as_str()
             .is_some_and(|line| line.contains("mode=full") && line.contains("origin=single_gene"))
+    );
+
+    let shown_alignment = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsShowAlignment {
+            report_id: report_id.clone(),
+            record_index: 0,
+        },
+    )
+    .expect("show rna-read alignment detail");
+    assert!(!shown_alignment.state_changed);
+    assert_eq!(
+        shown_alignment.output["schema"].as_str(),
+        Some("gentle.rna_read_alignment_display.v1")
+    );
+    assert_eq!(
+        shown_alignment.output["report_id"].as_str(),
+        Some(report_id.as_str())
+    );
+    assert_eq!(shown_alignment.output["record_index"].as_u64(), Some(0));
+    assert!(
+        shown_alignment.output["alignment"]["aligned_query"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+    assert!(
+        shown_alignment.output["alignment"]["aligned_target"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+
+    let materialized = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsMaterializeHits {
+            report_id: report_id.clone(),
+            selection: RnaReadHitSelection::Aligned,
+            selected_record_indices: vec![0],
+            output_prefix: Some("shell_reads".to_string()),
+        },
+    )
+    .expect("materialize rna-read hits");
+    assert!(materialized.state_changed);
+    assert_eq!(
+        materialized.output["schema"].as_str(),
+        Some("gentle.rna_read_hit_materialization.v1")
+    );
+    assert_eq!(materialized.output["selection"].as_str(), Some("aligned"));
+    assert_eq!(
+        materialized.output["created_sequence_count"].as_u64(),
+        Some(1)
+    );
+    let created_seq_id = materialized.output["result"]["created_seq_ids"][0]
+        .as_str()
+        .expect("created seq id")
+        .to_string();
+    assert!(created_seq_id.starts_with("shell_reads_r1_"));
+    assert_eq!(
+        materialized.output["created_sequences"][0]["seq_id"].as_str(),
+        Some(created_seq_id.as_str())
+    );
+    assert!(
+        engine
+            .state()
+            .sequences
+            .contains_key(created_seq_id.as_str()),
+        "materialized sequence should exist in project state"
     );
 
     let inspected = execute_shell_command(

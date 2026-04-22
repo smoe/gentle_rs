@@ -1938,6 +1938,10 @@ pub enum ShellCommand {
     RnaReadsShowReport {
         report_id: String,
     },
+    RnaReadsShowAlignment {
+        report_id: String,
+        record_index: usize,
+    },
     RnaReadsSummarizeGeneSupport {
         report_id: String,
         gene_ids: Vec<String>,
@@ -1976,6 +1980,12 @@ pub enum ShellCommand {
         path: String,
         seed_kmer_len: usize,
         transcript_fasta_paths: Vec<String>,
+    },
+    RnaReadsMaterializeHits {
+        report_id: String,
+        selection: RnaReadHitSelection,
+        selected_record_indices: Vec<usize>,
+        output_prefix: Option<String>,
     },
     RnaReadsExportReport {
         report_id: String,
@@ -8627,6 +8637,13 @@ impl ShellCommand {
             Self::RnaReadsShowReport { report_id } => {
                 format!("show stored RNA-read report '{}'", report_id)
             }
+            Self::RnaReadsShowAlignment {
+                report_id,
+                record_index,
+            } => format!(
+                "show exact RNA-read phase-2 alignment detail for '{}' record_index={}",
+                report_id, record_index
+            ),
             Self::RnaReadsSummarizeGeneSupport {
                 report_id,
                 gene_ids,
@@ -8742,6 +8759,18 @@ impl ShellCommand {
                 } else {
                     transcript_fasta_paths.join(",")
                 }
+            ),
+            Self::RnaReadsMaterializeHits {
+                report_id,
+                selection,
+                selected_record_indices,
+                output_prefix,
+            } => format!(
+                "materialize RNA-read hit sequences from '{}' (selection={}, selected_record_indices={}, output_prefix='{}')",
+                report_id,
+                selection.as_str(),
+                selected_record_indices.len(),
+                output_prefix.as_deref().unwrap_or("rna_read")
             ),
             Self::RnaReadsExportReport { report_id, path } => format!(
                 "export stored RNA-read report '{}' to '{}'",
@@ -24672,6 +24701,23 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsShowAlignment {
+            report_id,
+            record_index,
+        } => {
+            let alignment = engine
+                .build_rna_read_alignment_display(report_id, *record_index)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.rna_read_alignment_display.v1",
+                    "report_id": report_id,
+                    "record_index": record_index,
+                    "alignment": alignment,
+                }),
+            })
+        }
         ShellCommand::RnaReadsSummarizeGeneSupport {
             report_id,
             gene_ids,
@@ -24799,6 +24845,49 @@ fn execute_rna_reads_command(
                 output: json!({
                     "index": index,
                     "path": path,
+                }),
+            })
+        }
+        ShellCommand::RnaReadsMaterializeHits {
+            report_id,
+            selection,
+            selected_record_indices,
+            output_prefix,
+        } => {
+            let op_result = engine
+                .apply(Operation::MaterializeRnaReadHitSequences {
+                    report_id: report_id.clone(),
+                    selection: *selection,
+                    selected_record_indices: selected_record_indices.clone(),
+                    output_prefix: output_prefix.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let created_sequences = op_result
+                .created_seq_ids
+                .iter()
+                .filter_map(|seq_id| {
+                    engine.state().sequences.get(seq_id).map(|dna| {
+                        json!({
+                            "seq_id": seq_id,
+                            "name": dna.name(),
+                            "length_bp": dna.len(),
+                        })
+                    })
+                })
+                .collect::<Vec<_>>();
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({
+                    "schema": "gentle.rna_read_hit_materialization.v1",
+                    "report_id": report_id,
+                    "selection": selection.as_str(),
+                    "selected_record_indices": selected_record_indices,
+                    "output_prefix": output_prefix,
+                    "created_sequence_count": created_sequences.len(),
+                    "created_sequences": created_sequences,
+                    "result": op_result,
                 }),
             })
         }
@@ -25927,11 +26016,13 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::RnaReadsAlignReport { .. }
             | ShellCommand::RnaReadsListReports { .. }
             | ShellCommand::RnaReadsShowReport { .. }
+            | ShellCommand::RnaReadsShowAlignment { .. }
             | ShellCommand::RnaReadsSummarizeGeneSupport { .. }
             | ShellCommand::RnaReadsInspectGeneSupport { .. }
             | ShellCommand::RnaReadsInspectAlignments { .. }
             | ShellCommand::RnaReadsInspectConcatemers { .. }
             | ShellCommand::RnaReadsBuildTranscriptIndex { .. }
+            | ShellCommand::RnaReadsMaterializeHits { .. }
             | ShellCommand::RnaReadsExportReport { .. }
             | ShellCommand::RnaReadsExportHitsFasta { .. }
             | ShellCommand::RnaReadsExportSampleSheet { .. }
@@ -27326,11 +27417,13 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsAlignReport { .. }
         | ShellCommand::RnaReadsListReports { .. }
         | ShellCommand::RnaReadsShowReport { .. }
+        | ShellCommand::RnaReadsShowAlignment { .. }
         | ShellCommand::RnaReadsSummarizeGeneSupport { .. }
         | ShellCommand::RnaReadsInspectGeneSupport { .. }
         | ShellCommand::RnaReadsInspectAlignments { .. }
         | ShellCommand::RnaReadsInspectConcatemers { .. }
         | ShellCommand::RnaReadsBuildTranscriptIndex { .. }
+        | ShellCommand::RnaReadsMaterializeHits { .. }
         | ShellCommand::RnaReadsExportReport { .. }
         | ShellCommand::RnaReadsExportHitsFasta { .. }
         | ShellCommand::RnaReadsExportSampleSheet { .. }

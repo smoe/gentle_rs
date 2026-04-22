@@ -1056,6 +1056,9 @@ Feature tree grouping:
           - `Show alignment`
           - `Open interactive dotplot`
           - `Export dotplot...`
+          - headless parity now exists through:
+            `rna-reads materialize-hits` for saved-read sequence creation and
+            `rna-reads show-alignment` for the exact phase-2 pairwise detail
         - the inline dotplot preview was removed; use `Open interactive dotplot`
           for on-demand visual comparison in the full shared workspace
         - `Open interactive dotplot` opens the shared dotplot workspace on the

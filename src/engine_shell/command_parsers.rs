@@ -6178,7 +6178,7 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
@@ -6643,6 +6643,25 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             }
             Ok(ShellCommand::RnaReadsShowReport {
                 report_id: tokens[2].clone(),
+            })
+        }
+        "show-alignment" => {
+            if tokens.len() != 4 {
+                return Err("rna-reads show-alignment requires REPORT_ID RECORD_INDEX".to_string());
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err("rna-reads show-alignment REPORT_ID must not be empty".to_string());
+            }
+            let record_index = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid RECORD_INDEX '{}' for rna-reads show-alignment: {e}",
+                    tokens[3]
+                )
+            })?;
+            Ok(ShellCommand::RnaReadsShowAlignment {
+                report_id,
+                record_index,
             })
         }
         "summarize-gene-support" => {
@@ -7230,6 +7249,70 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 transcript_fasta_paths,
             })
         }
+        "materialize-hits" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads materialize-hits requires REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].trim().to_string();
+            if report_id.is_empty() {
+                return Err("rna-reads materialize-hits REPORT_ID must not be empty".to_string());
+            }
+            let mut selection = RnaReadHitSelection::All;
+            let mut selected_record_indices: Vec<usize> = vec![];
+            let mut output_prefix: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads materialize-hits",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--record-indices" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--record-indices",
+                            "rna-reads materialize-hits",
+                        )?;
+                        selected_record_indices = parse_rna_read_record_indices(&raw)?;
+                    }
+                    "--output-prefix" | "--prefix" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "rna-reads materialize-hits",
+                        )?;
+                        let trimmed = raw.trim();
+                        output_prefix = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads materialize-hits"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsMaterializeHits {
+                report_id,
+                selection,
+                selected_record_indices,
+                output_prefix,
+            })
+        }
         "export-report" => {
             if tokens.len() != 4 {
                 return Err("rna-reads export-report requires REPORT_ID OUTPUT.json".to_string());
@@ -7710,7 +7793,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

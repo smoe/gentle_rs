@@ -3335,6 +3335,11 @@ Status:
     pairwise alignment for the saved phase-2 hit and shows a consistent
     `|`/`.`/gap legend plus explicit query orientation (`as stored` vs
     reverse-complemented).
+    The same saved-row detail is now available headlessly through
+    `rna-reads show-alignment REPORT_ID RECORD_INDEX`, and GUI
+    `Materialize highlighted` now has shared shell parity through
+    `rna-reads materialize-hits REPORT_ID ...`, so cluster workflows no longer
+    have to fall back to GUI-only RNA-read inspection/materialization.
     Saved-report report lists, synthesized progress payloads, and aligned-row
     inspection subsets are now memoized in the GUI window controller so the
     foreground RNA-read mapping/splicing windows do not repeatedly deserialize
