@@ -16288,7 +16288,7 @@ fn execute_ensembl_gene_list_show_and_import() {
     let listed = execute_shell_command(&mut engine, &ShellCommand::EnsemblGeneList)
         .expect("execute ensembl-gene list");
     assert!(!listed.state_changed);
-    assert_eq!(listed.output[0]["entry_id"].as_str(), Some("TP53_GENE"));
+    assert_eq!(listed.output[0]["entry_id"].as_str(), Some("tp53_gene"));
 
     let shown = execute_shell_command(
         &mut engine,
