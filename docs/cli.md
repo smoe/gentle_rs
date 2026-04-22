@@ -61,6 +61,24 @@ Optional GUI diagnostics when launching `gentle` from a terminal:
   - writes stage summaries to stderr and mirrors them into the sequence-window
     status line while enabled
   - useful when a topology switch appears to hang or repaint-loop
+- `GENTLE_TRACE_SPLICING_EXPERT=1`
+  - enables coarse Splicing Expert open/render trace logging from sequence
+    windows
+  - writes stage summaries to stderr and mirrors them into the sequence-window
+    status line while enabled
+  - useful when opening the Splicing Expert appears to hang or stall
+- `GENTLE_TRACE_RNA_READ_MAPPING=1`
+  - enables coarse RNA-read Mapping open/render trace logging from sequence
+    windows
+  - writes stage summaries to stderr and mirrors them into the sequence-window
+    status line while enabled
+  - useful when opening the RNA-read Mapping workspace appears to hang or stall
+- `GENTLE_TRACE_PROMOTER_DESIGN=1`
+  - enables coarse Promoter design open/render trace logging from sequence
+    windows
+  - writes stage summaries to stderr and mirrors them into the sequence-window
+    status line while enabled
+  - useful when opening the Promoter design workspace appears to hang or stall
 
 Architecture invariant: all adapters/frontends above route cloning/business
 behavior through the same shared engine.

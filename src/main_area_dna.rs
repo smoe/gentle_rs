@@ -1193,7 +1193,7 @@ mod tests {
         RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
         RnaReadTaskOutcome, SequencingConfirmationOverviewSelection,
         SequencingConfirmationReviewFocusKind, SplicingIntronSignalKey, SplicingIntronSignalRow,
-        ViewSvgExportProfile,
+        SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD, ViewSvgExportProfile,
     };
     use crate::{
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
@@ -7027,6 +7027,7 @@ mod tests {
             &view,
             MainAreaDna::rna_read_mapping_window_default_size(),
             MainAreaDna::rna_read_mapping_window_content_min_size(),
+            false,
         );
         assert!(ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
         let _ = ctx.end_pass();
@@ -7627,6 +7628,7 @@ mod tests {
 
         area.open_rna_read_mapping_workspace_for_view(&view);
         assert!(area.show_rna_read_mapping_window);
+        assert!(area.rna_read_mapping_window_pending_initial_render);
         assert_eq!(area.rna_read_mapping_window_feature_id, Some(17));
         assert_eq!(area.rna_reads_ui.report_id, "tp73_saved");
     }
@@ -7664,6 +7666,42 @@ mod tests {
         assert_eq!(view.target_feature_id, 0);
         assert_eq!(view.group_label, "GENE1");
         assert_eq!(area.rna_read_mapping_window_feature_id, Some(0));
+    }
+
+    #[test]
+    fn open_current_rna_read_mapping_workspace_falls_back_when_description_cache_is_empty() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: Location::Join(vec![
+                Location::simple_range(2, 8),
+                Location::simple_range(12, 20),
+                Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_1".to_string())),
+                ("label".into(), Some("NM_TEST_1".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq_gene".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), Some(engine));
+
+        area.focus_feature(0);
+        area.description_cache_expert_view = None;
+        area.description_cache_expert_error = None;
+
+        let view = area
+            .open_current_rna_read_mapping_workspace()
+            .expect("open RNA-read Mapping from current selection without cached expert view");
+
+        assert!(area.show_rna_read_mapping_window);
+        assert_eq!(view.seq_id, "seq_gene");
+        assert_eq!(view.target_feature_id, 0);
+        assert_eq!(view.group_label, "GENE1");
     }
 
     #[test]
@@ -7729,6 +7767,7 @@ mod tests {
 
         assert!(opened);
         assert!(area.show_variant_followup_window);
+        assert!(area.variant_followup_window_pending_initial_render);
         assert_eq!(area.variant_followup_ui.source_seq_id, "vkorc1_context");
         assert_eq!(area.variant_followup_ui.source_feature_id, Some(0));
         assert_eq!(area.variant_followup_ui.variant_label_or_id, "rs9923231");
@@ -7800,6 +7839,7 @@ mod tests {
 
         assert!(opened);
         assert!(area.show_variant_followup_window);
+        assert!(area.variant_followup_window_pending_initial_render);
         assert_eq!(area.variant_followup_ui.source_seq_id, "tp73_context");
         assert_eq!(area.variant_followup_ui.source_feature_id, Some(0));
         assert_eq!(area.variant_followup_ui.variant_label_or_id, "");
@@ -9943,6 +9983,52 @@ mod tests {
     }
 
     #[test]
+    fn large_splicing_attract_section_defaults_to_collapsed() {
+        let small_view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 1,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 100,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+        let mut large_view = small_view.clone();
+        large_view.boundaries = (0..(SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD + 1))
+            .map(|idx| SplicingBoundaryMarker {
+                transcript_feature_id: idx,
+                transcript_id: format!("tx{idx}"),
+                side: "donor".to_string(),
+                position_1based: idx + 1,
+                motif_2bp: "GT".to_string(),
+                canonical: true,
+                canonical_pair: true,
+                partner_position_1based: idx + 2,
+                paired_motif_signature: "GT-AG".to_string(),
+                motif_class: "gt_ag_major_canonical".to_string(),
+                annotation: String::new(),
+            })
+            .collect();
+
+        assert!(!MainAreaDna::splicing_attract_should_default_collapsed(
+            &small_view
+        ));
+        assert!(MainAreaDna::splicing_attract_should_default_collapsed(
+            &large_view
+        ));
+    }
+
+    #[test]
     fn splicing_map_placeholder_svg_mentions_selected_sequence() {
         let svg = MainAreaDna::render_splicing_map_placeholder_svg("tp53.seq");
         assert!(svg.contains("tp53.seq"));
@@ -10808,7 +10894,39 @@ mod tests {
 
         assert!(opened);
         assert!(area.show_splicing_expert_window);
+        assert!(area.splicing_expert_window_pending_initial_render);
         assert_eq!(area.splicing_expert_window_feature_id, Some(0));
+    }
+
+    #[test]
+    fn open_splicing_expert_window_marks_initial_render_pending() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        area.open_splicing_expert_window_for_view(&view);
+
+        assert!(area.show_splicing_expert_window);
+        assert!(area.splicing_expert_window_pending_initial_render);
+        assert_eq!(area.splicing_expert_window_feature_id, Some(17));
     }
 
     #[test]
@@ -10963,6 +11081,8 @@ const FEATURE_TREE_MAX_WIDTH_PX: f32 = 680.0;
 const FEATURE_TREE_DEFAULT_SPLIT_FRACTION: f32 = 0.62;
 const SPLICING_MATRIX_EAGER_CELL_THRESHOLD: usize = 16_000;
 const SPLICING_TRANSITION_EAGER_CELL_THRESHOLD: usize = 6_400;
+const SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD: usize = 128;
+const SPLICING_ATTRACT_EAGER_INTRON_SIGNAL_THRESHOLD: usize = 96;
 const DECLUTTER_NOISE_SCORE_THRESHOLD: usize = 100;
 const DECLUTTER_VISIBLE_FEATURE_THRESHOLD: usize = 70;
 const DOTPLOT_RENDER_MAX_POINTS: usize = 120_000;
@@ -10971,6 +11091,9 @@ const DOTPLOT_SPARSE_POINT_HINT_THRESHOLD: usize = 80;
 const DOTPLOT_HIT_ENVELOPE_PADDING_BP: usize = 250;
 const LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP: usize = 50_000;
 const TOPOLOGY_TRANSITION_TRACE_ENV: &str = "GENTLE_TRACE_TOPOLOGY_TRANSITIONS";
+const SPLICING_EXPERT_TRACE_ENV: &str = "GENTLE_TRACE_SPLICING_EXPERT";
+const RNA_READ_MAPPING_TRACE_ENV: &str = "GENTLE_TRACE_RNA_READ_MAPPING";
+const PROMOTER_DESIGN_TRACE_ENV: &str = "GENTLE_TRACE_PROMOTER_DESIGN";
 const GUI_TFBS_SCAN_MAX_HITS: usize = 200;
 const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
     ("Auto", ""),
@@ -11660,14 +11783,17 @@ pub struct MainAreaDna {
     construct_reasoning_overlay_sync_key: Option<ConstructReasoningOverlaySyncKey>,
     show_dotplot_window: bool,
     show_splicing_expert_window: bool,
+    splicing_expert_window_pending_initial_render: bool,
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<Arc<SplicingExpertView>>,
     splicing_expert_selected_transcript_feature_id: Option<usize>,
     splicing_expert_selected_intron_signal_key: Option<SplicingIntronSignalKey>,
     show_rna_read_mapping_window: bool,
+    rna_read_mapping_window_pending_initial_render: bool,
     rna_read_mapping_window_feature_id: Option<usize>,
     rna_read_mapping_window_view: Option<Arc<SplicingExpertView>>,
     show_variant_followup_window: bool,
+    variant_followup_window_pending_initial_render: bool,
     variant_followup_ui: VariantFollowupUiState,
     show_isoform_expert_window: bool,
     isoform_expert_window_panel_id: Option<String>,
@@ -12272,14 +12398,17 @@ impl MainAreaDna {
             construct_reasoning_overlay_sync_key: None,
             show_dotplot_window: false,
             show_splicing_expert_window: false,
+            splicing_expert_window_pending_initial_render: false,
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
             splicing_expert_selected_transcript_feature_id: None,
             splicing_expert_selected_intron_signal_key: None,
             show_rna_read_mapping_window: false,
+            rna_read_mapping_window_pending_initial_render: false,
             rna_read_mapping_window_feature_id: None,
             rna_read_mapping_window_view: None,
             show_variant_followup_window: false,
+            variant_followup_window_pending_initial_render: false,
             variant_followup_ui: VariantFollowupUiState::default(),
             show_isoform_expert_window: false,
             isoform_expert_window_panel_id: None,
@@ -12760,6 +12889,117 @@ impl MainAreaDna {
                     && normalized != "no"
             })
             .unwrap_or(false)
+    }
+
+    fn splicing_expert_tracing_enabled() -> bool {
+        env::var(SPLICING_EXPERT_TRACE_ENV)
+            .map(|value| {
+                let normalized = value.trim().to_ascii_lowercase();
+                !normalized.is_empty()
+                    && normalized != "0"
+                    && normalized != "false"
+                    && normalized != "off"
+                    && normalized != "no"
+            })
+            .unwrap_or(false)
+    }
+
+    fn log_splicing_expert_status(
+        &mut self,
+        view: &SplicingExpertView,
+        stage: &str,
+        pending_initial_render: bool,
+    ) {
+        if !Self::splicing_expert_tracing_enabled() {
+            return;
+        }
+        let status = format!(
+            "Splicing Expert [{stage}] | seq={} | feature=n-{} | group={} | region={}..{} | transcripts={} | exons={} | introns={} | boundaries={} | pending_initial_render={}",
+            view.seq_id,
+            view.target_feature_id,
+            view.group_label,
+            view.region_start_1based,
+            view.region_end_1based,
+            view.transcript_count,
+            view.unique_exon_count,
+            view.intron_signals.len(),
+            view.boundaries.len(),
+            pending_initial_render,
+        );
+        self.op_status = status.clone();
+        eprintln!("{status}");
+    }
+
+    fn rna_read_mapping_tracing_enabled() -> bool {
+        env::var(RNA_READ_MAPPING_TRACE_ENV)
+            .map(|value| {
+                let normalized = value.trim().to_ascii_lowercase();
+                !normalized.is_empty()
+                    && normalized != "0"
+                    && normalized != "false"
+                    && normalized != "off"
+                    && normalized != "no"
+            })
+            .unwrap_or(false)
+    }
+
+    fn log_rna_read_mapping_status(
+        &mut self,
+        view: &SplicingExpertView,
+        stage: &str,
+        pending_initial_render: bool,
+    ) {
+        if !Self::rna_read_mapping_tracing_enabled() {
+            return;
+        }
+        let status = format!(
+            "RNA-read Mapping [{stage}] | seq={} | feature=n-{} | group={} | region={}..{} | transcripts={} | exons={} | introns={} | pending_initial_render={}",
+            view.seq_id,
+            view.target_feature_id,
+            view.group_label,
+            view.region_start_1based,
+            view.region_end_1based,
+            view.transcript_count,
+            view.unique_exon_count,
+            view.intron_signals.len(),
+            pending_initial_render,
+        );
+        self.rna_read_mapping_status = status.clone();
+        self.op_status = status.clone();
+        eprintln!("{status}");
+    }
+
+    fn promoter_design_tracing_enabled() -> bool {
+        env::var(PROMOTER_DESIGN_TRACE_ENV)
+            .map(|value| {
+                let normalized = value.trim().to_ascii_lowercase();
+                !normalized.is_empty()
+                    && normalized != "0"
+                    && normalized != "false"
+                    && normalized != "off"
+                    && normalized != "no"
+            })
+            .unwrap_or(false)
+    }
+
+    fn log_promoter_design_status(&mut self, stage: &str, pending_initial_render: bool) {
+        if !Self::promoter_design_tracing_enabled() {
+            return;
+        }
+        let status = format!(
+            "Promoter design [{stage}] | seq={} | feature={} | gene={} | variant={} | motifs={} | pending_initial_render={}",
+            self.variant_followup_ui.source_seq_id,
+            self.variant_followup_ui
+                .source_feature_id
+                .map(|value| format!("n-{value}"))
+                .unwrap_or_else(|| "<none>".to_string()),
+            self.variant_followup_ui.gene_label,
+            self.variant_followup_ui.variant_label_or_id,
+            self.variant_followup_ui.score_track_motifs,
+            pending_initial_render,
+        );
+        self.op_status = status.clone();
+        eprintln!("{status}");
     }
 
     pub fn refresh_from_engine_settings(&mut self) {
@@ -23213,6 +23453,11 @@ impl MainAreaDna {
         exon_count.saturating_mul(exon_count) > SPLICING_TRANSITION_EAGER_CELL_THRESHOLD
     }
 
+    fn splicing_attract_should_default_collapsed(view: &SplicingExpertView) -> bool {
+        view.boundaries.len() > SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD
+            || view.intron_signals.len() > SPLICING_ATTRACT_EAGER_INTRON_SIGNAL_THRESHOLD
+    }
+
     fn mix_rgb(from: [u8; 3], to: [u8; 3], t: f32) -> [u8; 3] {
         let t = t.clamp(0.0, 1.0);
         let lerp = |a: u8, b: u8| -> u8 {
@@ -23307,10 +23552,13 @@ impl MainAreaDna {
 
     fn current_splicing_expert_view_for_primary_map(&mut self) -> Option<SplicingExpertView> {
         self.refresh_description_cache();
-        match self.description_cache_expert_view.clone() {
-            Some(FeatureExpertView::Splicing(view)) => Some(view),
-            _ => None,
+        if let Some(FeatureExpertView::Splicing(view)) = self.description_cache_expert_view.clone()
+        {
+            return Some(view);
         }
+        self.get_selected_feature_id()
+            .filter(|feature_id| self.feature_supports_splicing_expert(*feature_id))
+            .and_then(|feature_id| self.splicing_expert_view_for_feature(feature_id).ok())
     }
 
     fn rna_read_mapping_button_hover_text(seed_view: Option<&SplicingExpertView>) -> String {
@@ -23336,11 +23584,16 @@ impl MainAreaDna {
     }
 
     fn focus_rna_read_mapping_workspace_view(
-        &self,
+        &mut self,
         ctx: &egui::Context,
         view: &SplicingExpertView,
     ) {
         let viewport_id = Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id);
+        self.log_rna_read_mapping_status(
+            view,
+            "focus requested",
+            self.rna_read_mapping_window_pending_initial_render,
+        );
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
     }
@@ -23528,6 +23781,8 @@ impl MainAreaDna {
             self.show_splicing_expert_window = false;
             return;
         };
+        let pending_initial_render = self.splicing_expert_window_pending_initial_render;
+        self.log_splicing_expert_status(&view, "render begin", pending_initial_render);
         let title = Self::splicing_expert_window_title(&view);
         let viewport_id = Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id);
         let default_size = Self::splicing_expert_window_default_size();
@@ -23563,13 +23818,12 @@ impl MainAreaDna {
                                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                                 );
                                 ui.set_min_size(content_min_size);
-                                self.render_splicing_expert_transcript_quick_actions(ui, &view);
-                                self.render_splicing_attract_evidence_section(ui, &view);
-                                self.render_splicing_rna_read_evidence_section(ui, &view);
-                                self.render_splicing_expert_view_ui(
+                                self.render_splicing_expert_window_body(
+                                    ctx,
                                     ui,
                                     &view,
                                     "splicing_window_embedded",
+                                    pending_initial_render,
                                 );
                             });
                     });
@@ -23592,10 +23846,13 @@ impl MainAreaDna {
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
                         ui.set_min_size(content_min_size);
-                        self.render_splicing_expert_transcript_quick_actions(ui, &view);
-                        self.render_splicing_attract_evidence_section(ui, &view);
-                        self.render_splicing_rna_read_evidence_section(ui, &view);
-                        self.render_splicing_expert_view_ui(ui, &view, "splicing_window_viewport");
+                        self.render_splicing_expert_window_body(
+                            ctx,
+                            ui,
+                            &view,
+                            "splicing_window_viewport",
+                            pending_initial_render,
+                        );
                     });
             });
 
@@ -23603,6 +23860,39 @@ impl MainAreaDna {
                 self.show_splicing_expert_window = false;
             }
         });
+    }
+
+    fn render_splicing_expert_window_body(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+        id_namespace: &str,
+        pending_initial_render: bool,
+    ) {
+        self.render_splicing_expert_transcript_quick_actions(ui, view);
+        if pending_initial_render {
+            self.log_splicing_expert_status(view, "first frame deferred", true);
+            ui.add_space(6.0);
+            ui.label(
+                egui::RichText::new(
+                    "Preparing the Splicing Expert workspace. Detailed lane rendering will appear on the next repaint.",
+                )
+                .size(10.0)
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ctx.request_repaint();
+            self.splicing_expert_window_pending_initial_render = false;
+            self.log_splicing_expert_status(view, "first frame queued repaint", false);
+            return;
+        }
+        self.log_splicing_expert_status(view, "rendering ATtRACT evidence", false);
+        self.render_splicing_attract_evidence_section(ui, view);
+        self.log_splicing_expert_status(view, "rendering RNA-read evidence", false);
+        self.render_splicing_rna_read_evidence_section(ui, view);
+        self.log_splicing_expert_status(view, "rendering detailed view", false);
+        self.render_splicing_expert_view_ui(ui, view, id_namespace);
+        self.log_splicing_expert_status(view, "render complete", false);
     }
 
     fn render_splicing_expert_transcript_quick_actions(
@@ -26058,6 +26348,8 @@ impl MainAreaDna {
         let Some(engine) = self.engine.clone() else {
             return Err("No engine attached".to_string());
         };
+        self.log_splicing_expert_status(view, "ATtRACT inspect begin", false);
+        let inspect_started = std::time::Instant::now();
         let inspected = match engine.read() {
             Ok(guard) => guard.inspect_splicing_attract_evidence(
                 view.seq_id.as_str(),
@@ -26070,6 +26362,14 @@ impl MainAreaDna {
             }),
         }
         .map_err(|e| e.message)?;
+        self.log_splicing_expert_status(
+            view,
+            &format!(
+                "ATtRACT inspect finished in {} ms",
+                inspect_started.elapsed().as_millis()
+            ),
+            false,
+        );
         let cached = Arc::new(inspected);
         self.cached_splicing_attract_evidence = Some(CachedSplicingAttractEvidence {
             seq_id: view.seq_id.clone(),
@@ -26087,7 +26387,7 @@ impl MainAreaDna {
         view: &SplicingExpertView,
     ) {
         egui::CollapsingHeader::new("ATtRACT / RBP evidence")
-            .default_open(true)
+            .default_open(!Self::splicing_attract_should_default_collapsed(view))
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(
@@ -26098,6 +26398,14 @@ impl MainAreaDna {
                         .color(egui::Color32::from_rgb(100, 116, 139)),
                     );
                 });
+                if Self::splicing_attract_should_default_collapsed(view) {
+                    ui.small(
+                        egui::RichText::new(
+                            "Large loci keep this section collapsed by default so opening the Splicing Expert window stays responsive.",
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Organism");
                     ui.text_edit_singleline(&mut self.attract_evidence_ui.requested_organism);
@@ -26477,6 +26785,8 @@ impl MainAreaDna {
             self.show_rna_read_mapping_window = false;
             return;
         };
+        let pending_initial_render = self.rna_read_mapping_window_pending_initial_render;
+        self.log_rna_read_mapping_status(&view, "render begin", pending_initial_render);
         let title = Self::rna_read_mapping_window_title(&view);
         let viewport_id = Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id);
         let default_size = Self::rna_read_mapping_window_default_size();
@@ -26495,6 +26805,7 @@ impl MainAreaDna {
                     &view,
                     default_size,
                     content_min_size,
+                    pending_initial_render,
                 );
                 if self.active_rna_read_task_matches_splicing_view(&view) {
                     ctx.request_repaint_after(repaint_delay);
@@ -26517,25 +26828,12 @@ impl MainAreaDna {
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
                         ui.set_min_size(content_min_size);
-                        ui.horizontal_wrapped(|ui| {
-                            if ui
-                                .button("Show in Splicing Expert")
-                                .on_hover_text(
-                                    "Jump back to the Splicing Expert with the current mapping report selected.",
-                                )
-                                .clicked()
-                            {
-                                self.show_splicing_expert_for_rna_read_mapping_view();
-                            }
-                            ui.small(
-                                egui::RichText::new(format!(
-                                    "Locus: {} | feature n-{}",
-                                    view.seq_id, view.target_feature_id
-                                ))
-                                .color(egui::Color32::from_rgb(100, 116, 139)),
-                            );
-                        });
-                        self.render_rna_read_mapping_workspace_controls(ui, &view);
+                        self.render_rna_read_mapping_window_body(
+                            ctx,
+                            ui,
+                            &view,
+                            pending_initial_render,
+                        );
                     });
             });
             if self.active_rna_read_task_matches_splicing_view(&view) {

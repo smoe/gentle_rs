@@ -492,9 +492,27 @@ Feature tree grouping:
   is scrollable in both directions, so wide RNA-read tables can be inspected
   without stretching the window and very large transcript sets no longer hide
   the `Transcript x exon matrix` section.
+- The first Splicing Expert frame now opens in a lightweight warm-up state
+  before painting the full expert body on the next repaint, which keeps
+  context-menu launches responsive on heavier loci.
+- The same lightweight warm-up behavior now also applies to the dedicated
+  `RNA-read Mapping` workspace so heavy loci do not try to paint the full
+  mapping control surface in the same frame that opens the window.
+- The same lightweight warm-up behavior now also applies to the dedicated
+  `Promoter design` workspace so its full control surface is not rendered in
+  the same frame that opens the window.
 - Very large `Transcript x exon` or `Exon -> exon` matrices may open collapsed
   by default to reduce idle CPU usage; expand the section header to render the
   full table.
+- For debugging Splicing Expert launch stalls, launching GENtle with
+  `GENTLE_TRACE_SPLICING_EXPERT=1` emits coarse open/render stage tracing to
+  the terminal and mirrors it into the sequence-window status line.
+- For debugging RNA-read Mapping launch stalls, launching GENtle with
+  `GENTLE_TRACE_RNA_READ_MAPPING=1` emits coarse open/render stage tracing to
+  the terminal and mirrors it into the sequence-window status line.
+- For debugging Promoter design launch stalls, launching GENtle with
+  `GENTLE_TRACE_PROMOTER_DESIGN=1` emits coarse open/render stage tracing to
+  the terminal and mirrors it into the sequence-window status line.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - Splicing support frequencies are shown explicitly:
@@ -573,6 +591,8 @@ Feature tree grouping:
 - The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:
   - engine-owned, splice-aware motif interpretation over the selected splicing
     group; the GUI is only a viewer/filter for the shared payload
+  - on large loci this section now opens collapsed by default so the Splicing
+    Expert window itself stays responsive during launch
   - settings exposed in-panel:
     - requested organism
     - minimum ATtRACT quality score

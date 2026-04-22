@@ -46,17 +46,29 @@ impl MainAreaDna {
     }
 
     pub(super) fn open_splicing_expert_window_for_view(&mut self, view: &SplicingExpertView) {
+        self.log_splicing_expert_status(
+            view,
+            "open requested",
+            self.splicing_expert_window_pending_initial_render,
+        );
         self.splicing_expert_window_feature_id = Some(view.target_feature_id);
         self.splicing_expert_window_view = Some(Arc::new(view.clone()));
+        self.splicing_expert_window_pending_initial_render = true;
         self.show_splicing_expert_window = true;
+        self.log_splicing_expert_status(view, "window state stored", true);
     }
 
     pub(super) fn focus_splicing_expert_window_view(
-        &self,
+        &mut self,
         ctx: &egui::Context,
         view: &SplicingExpertView,
     ) {
         let viewport_id = Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id);
+        self.log_splicing_expert_status(
+            view,
+            "focus requested",
+            self.splicing_expert_window_pending_initial_render,
+        );
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
     }

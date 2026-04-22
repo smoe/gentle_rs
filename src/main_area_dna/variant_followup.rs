@@ -54,7 +54,13 @@ impl MainAreaDna {
             self.op_error_popup = Some(err);
             return false;
         }
+        self.log_promoter_design_status(
+            "open requested",
+            self.variant_followup_window_pending_initial_render,
+        );
+        self.variant_followup_window_pending_initial_render = true;
         self.show_variant_followup_window = true;
+        self.log_promoter_design_status("window state stored", true);
         self.op_status = format!("Opened Promoter design from {source}");
         self.op_error_popup = None;
         true
@@ -2955,6 +2961,8 @@ impl MainAreaDna {
             self.show_variant_followup_window = false;
             return;
         }
+        let pending_initial_render = self.variant_followup_window_pending_initial_render;
+        self.log_promoter_design_status("render begin", pending_initial_render);
         let title = Self::variant_followup_window_title(&self.variant_followup_ui);
         let viewport_id = Self::variant_followup_viewport_id(
             &self.variant_followup_ui.source_seq_id,
@@ -3001,7 +3009,11 @@ impl MainAreaDna {
                                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                                 );
                                 ui.set_min_size(content_min_size);
-                                self.render_variant_followup_window_contents(ui);
+                                self.render_variant_followup_window_body(
+                                    ctx,
+                                    ui,
+                                    pending_initial_render,
+                                );
                             });
                     });
                 self.show_variant_followup_window = open;
@@ -3027,7 +3039,11 @@ impl MainAreaDna {
                             scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                         );
                         ui.set_min_size(content_min_size);
-                        self.render_variant_followup_window_contents(ui);
+                        self.render_variant_followup_window_body(
+                            ctx,
+                            ui,
+                            pending_initial_render,
+                        );
                     });
             });
 
@@ -3035,5 +3051,31 @@ impl MainAreaDna {
                 self.show_variant_followup_window = false;
             }
         });
+    }
+
+    fn render_variant_followup_window_body(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        pending_initial_render: bool,
+    ) {
+        if pending_initial_render {
+            self.log_promoter_design_status("first frame deferred", true);
+            ui.add_space(6.0);
+            ui.label(
+                egui::RichText::new(
+                    "Preparing the Promoter design workspace. Detailed controls will appear on the next repaint.",
+                )
+                .size(10.0)
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ctx.request_repaint();
+            self.variant_followup_window_pending_initial_render = false;
+            self.log_promoter_design_status("first frame queued repaint", false);
+            return;
+        }
+        self.log_promoter_design_status("rendering detailed view", false);
+        self.render_variant_followup_window_contents(ui);
+        self.log_promoter_design_status("render complete", false);
     }
 }

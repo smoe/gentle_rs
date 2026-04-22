@@ -6007,7 +6007,7 @@ impl MainAreaDna {
     }
 
     pub(super) fn sync_splicing_expert_window_state(&mut self) {
-        if let Some(FeatureExpertView::Splicing(view)) = self.description_cache_expert_view.as_ref()
+        if let Some(FeatureExpertView::Splicing(view)) = self.description_cache_expert_view.clone()
         {
             if !self.show_splicing_expert_window {
                 return;
@@ -6027,6 +6027,8 @@ impl MainAreaDna {
             if needs_refresh {
                 self.splicing_expert_window_feature_id = Some(view.target_feature_id);
                 self.splicing_expert_window_view = Some(Arc::new(view.clone()));
+                self.splicing_expert_window_pending_initial_render = true;
+                self.log_splicing_expert_status(&view, "window state refreshed", true);
             }
         }
     }
@@ -6088,6 +6090,7 @@ impl MainAreaDna {
         view: &SplicingExpertView,
         default_size: Vec2,
         content_min_size: Vec2,
+        pending_initial_render: bool,
     ) {
         let mut open = self.show_rna_read_mapping_window;
         egui::Window::new(title)
@@ -6143,10 +6146,75 @@ impl MainAreaDna {
                                 .color(egui::Color32::from_rgb(100, 116, 139)),
                             );
                         });
-                        self.render_rna_read_mapping_workspace_controls(ui, view);
+                        self.render_rna_read_mapping_window_body(
+                            ctx,
+                            ui,
+                            view,
+                            pending_initial_render,
+                        );
                     });
             });
         self.show_rna_read_mapping_window = open;
+    }
+
+    pub(super) fn render_rna_read_mapping_window_body(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+        pending_initial_render: bool,
+    ) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                egui::RichText::new("Workspace guide [?]")
+                    .size(9.0)
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+            )
+            .on_hover_text(Self::splicing_nanopore_cdna_panel_help_text());
+            ui.label(
+                egui::RichText::new(
+                    "This dedicated workspace owns RNA-read mapping controls, workflow staging, and report exports for the current splicing locus.",
+                )
+                .size(9.0)
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Show in Splicing Expert")
+                .on_hover_text(
+                    "Jump back to the Splicing Expert with the current mapping report selected.",
+                )
+                .clicked()
+            {
+                self.show_splicing_expert_for_rna_read_mapping_view();
+            }
+            ui.small(
+                egui::RichText::new(format!(
+                    "Locus: {} | feature n-{}",
+                    view.seq_id, view.target_feature_id
+                ))
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        });
+        if pending_initial_render {
+            self.log_rna_read_mapping_status(view, "first frame deferred", true);
+            ui.add_space(6.0);
+            ui.label(
+                egui::RichText::new(
+                    "Preparing the RNA-read Mapping workspace. Detailed controls will appear on the next repaint.",
+                )
+                .size(10.0)
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            ctx.request_repaint();
+            self.rna_read_mapping_window_pending_initial_render = false;
+            self.log_rna_read_mapping_status(view, "first frame queued repaint", false);
+            return;
+        }
+        self.log_rna_read_mapping_status(view, "rendering workspace controls", false);
+        self.render_rna_read_mapping_workspace_controls(ui, view);
+        self.log_rna_read_mapping_status(view, "render complete", false);
     }
 
     pub(super) fn open_rna_read_mapping_workspace_for_view(&mut self, view: &SplicingExpertView) {
@@ -6154,10 +6222,17 @@ impl MainAreaDna {
             .selected_rna_read_evidence_report_id()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| self.latest_rna_read_report_id_for_splicing_view(view));
+        self.log_rna_read_mapping_status(
+            view,
+            "open requested",
+            self.rna_read_mapping_window_pending_initial_render,
+        );
         self.rna_read_mapping_window_feature_id = Some(view.target_feature_id);
         self.rna_read_mapping_window_view = Some(Arc::new(view.clone()));
+        self.rna_read_mapping_window_pending_initial_render = true;
         self.show_rna_read_mapping_window = true;
         self.rna_read_mapping_status.clear();
+        self.log_rna_read_mapping_status(view, "window state stored", true);
         if self.rna_reads_ui.report_id.trim().is_empty()
             && let Some(report_id) = desired_report_id
         {

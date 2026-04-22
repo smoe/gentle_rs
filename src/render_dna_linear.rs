@@ -88,7 +88,7 @@ const CONSTRUCT_REASONING_TRACK_GAP: f32 = 10.0;
 const CONSTRUCT_REASONING_LABEL_FONT_SIZE: f32 = 8.5;
 const CONSTRUCT_REASONING_LABEL_MAX_BP_PER_PX: f32 = 20.0;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LinearViewport {
     start: usize,
     end: usize,
@@ -229,6 +229,9 @@ pub struct RenderDnaLinear {
     hover_enzyme: Option<RestrictionEnzymePosition>,
     hovered_reasoning_evidence_id: Option<String>,
     external_labeled_feature_numbers: BTreeSet<usize>,
+    cached_construct_reasoning_overlay_positions: Vec<ConstructReasoningOverlayPosition>,
+    last_hover_probe_pos: Option<Pos2>,
+    last_hover_probe_viewport: Option<LinearViewport>,
 }
 
 impl RenderDnaLinear {
@@ -313,6 +316,9 @@ impl RenderDnaLinear {
             hover_enzyme: None,
             hovered_reasoning_evidence_id: None,
             external_labeled_feature_numbers: BTreeSet::new(),
+            cached_construct_reasoning_overlay_positions: Vec::new(),
+            last_hover_probe_pos: None,
+            last_hover_probe_viewport: None,
         }
     }
 
@@ -383,7 +389,7 @@ impl RenderDnaLinear {
                 include_span(y - ORF_HEIGHT * 0.5, y + ORF_HEIGHT * 0.5);
             }
         }
-        for overlay in self.construct_reasoning_overlay_positions(viewport) {
+        for overlay in self.compute_construct_reasoning_overlay_positions(viewport) {
             include_span(overlay.rect.top(), overlay.rect.bottom());
         }
 
@@ -633,7 +639,7 @@ impl RenderDnaLinear {
         Self::truncate_label(raw, 32)
     }
 
-    fn construct_reasoning_overlay_positions(
+    fn compute_construct_reasoning_overlay_positions(
         &self,
         viewport: LinearViewport,
     ) -> Vec<ConstructReasoningOverlayPosition> {
@@ -741,6 +747,11 @@ impl RenderDnaLinear {
             });
         }
         positions
+    }
+
+    fn refresh_construct_reasoning_overlay_positions(&mut self, viewport: LinearViewport) {
+        self.cached_construct_reasoning_overlay_positions =
+            self.compute_construct_reasoning_overlay_positions(viewport);
     }
 
     fn feature_external_label_fill(fill: Color32, alpha: u8, emphasize: bool) -> Color32 {
@@ -1516,7 +1527,9 @@ impl RenderDnaLinear {
         &self,
         pos: Pos2,
     ) -> Option<ConstructReasoningOverlayPosition> {
-        self.construct_reasoning_overlay_positions(self.viewport())
+        self.cached_construct_reasoning_overlay_positions
+            .iter()
+            .cloned()
             .into_iter()
             .find(|overlay| overlay.rect.contains(pos))
     }
@@ -1580,6 +1593,21 @@ impl RenderDnaLinear {
 
     pub fn on_hover(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
+            let viewport = self.viewport();
+            if self.last_hover_probe_viewport == Some(viewport)
+                && self
+                    .last_hover_probe_pos
+                    .map(|last| {
+                        let dx = last.x - pos.x;
+                        let dy = last.y - pos.y;
+                        dx * dx + dy * dy <= 0.01
+                    })
+                    .unwrap_or(false)
+            {
+                return;
+            }
+            self.last_hover_probe_pos = Some(pos);
+            self.last_hover_probe_viewport = Some(viewport);
             self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
             self.hovered_reasoning_evidence_id = if self.hovered_feature_number.is_none() {
                 self.get_clicked_construct_reasoning_overlay(pos)
@@ -2421,7 +2449,7 @@ impl RenderDnaLinear {
 
     fn draw_construct_reasoning_overlay(&self, painter: &egui::Painter, viewport: LinearViewport) {
         let show_labels = self.bp_per_px(viewport) <= CONSTRUCT_REASONING_LABEL_MAX_BP_PER_PX;
-        for overlay in self.construct_reasoning_overlay_positions(viewport) {
+        for overlay in &self.cached_construct_reasoning_overlay_positions {
             painter.rect_filled(overlay.rect, 2.5, overlay.fill);
             painter.rect_stroke(overlay.rect, 2.5, overlay.stroke, StrokeKind::Inside);
             if !show_labels || overlay.label.is_empty() {
@@ -2434,7 +2462,7 @@ impl RenderDnaLinear {
             painter.text(
                 overlay.rect.center(),
                 Align2::CENTER_CENTER,
-                overlay.label,
+                &overlay.label,
                 FontId {
                     size: CONSTRUCT_REASONING_LABEL_FONT_SIZE,
                     family: FontFamily::Monospace,
@@ -2950,14 +2978,18 @@ impl RenderDnaLinear {
         self.area = area;
         let viewport = self.viewport();
         let detail = self.detail_level(viewport);
+        let layout_needs_recomputing = self.layout_needs_recomputing();
 
-        if (area_changed || self.layout_needs_recomputing()) && Self::is_rect_usable(self.area) {
+        if (area_changed || layout_needs_recomputing) && Self::is_rect_usable(self.area) {
             self.layout_features(viewport);
             self.layout_was_updated();
+            self.last_hover_probe_pos = None;
+            self.last_hover_probe_viewport = None;
         }
         if !Self::is_rect_usable(self.area) {
             return;
         }
+        self.refresh_construct_reasoning_overlay_positions(viewport);
 
         let painter = ui.painter_at(self.area);
         self.draw_name_and_length(&painter, viewport);
@@ -3168,7 +3200,7 @@ mod tests {
             span: 1000,
         };
         renderer.layout_features(viewport);
-        let positions = renderer.construct_reasoning_overlay_positions(viewport);
+        let positions = renderer.compute_construct_reasoning_overlay_positions(viewport);
         assert_eq!(positions.len(), 2);
         let baseline = renderer.baseline_y();
         let forward = positions
@@ -3267,8 +3299,68 @@ mod tests {
             span: 1000,
         };
         renderer.layout_features(viewport);
-        let positions = renderer.construct_reasoning_overlay_positions(viewport);
+        let positions = renderer.compute_construct_reasoning_overlay_positions(viewport);
         assert!(positions.is_empty());
+    }
+
+    #[test]
+    fn cached_construct_reasoning_overlay_hit_test_uses_rendered_geometry() {
+        let mut renderer = test_renderer(1000);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_construct_reasoning_overlay(Some(ConstructReasoningOverlay {
+                graph_id: "graph1".to_string(),
+                seq_id: "seq1".to_string(),
+                objective_title: "Inspect construct".to_string(),
+                objective_goal: "Hit test cached overlay".to_string(),
+                evidence: vec![ConstructReasoningOverlaySpan {
+                    annotation_id: "annotation_promoter".to_string(),
+                    evidence_id: "promoter".to_string(),
+                    summary_id: "summary_promoter".to_string(),
+                    summary_title: "Promoter".to_string(),
+                    summary_subtitle: "Promoter candidate".to_string(),
+                    summary_candidate_count: 1,
+                    summary_review_status: "draft".to_string(),
+                    start_0based: 100,
+                    end_0based_exclusive: 180,
+                    strand: Some("+".to_string()),
+                    role: ConstructRole::Promoter,
+                    evidence_class: EvidenceClass::ReliableAnnotation,
+                    label: "Promoter".to_string(),
+                    rationale: String::new(),
+                    score: None,
+                    confidence: None,
+                    context_tags: vec![],
+                    provenance_kind: String::new(),
+                    provenance_refs: vec![],
+                    source_kind: "generated_annotation".to_string(),
+                    supporting_fact_labels: vec![],
+                    supporting_decision_titles: vec![],
+                    transcript_context_status: None,
+                    effect_tags: vec![],
+                    editable_status: crate::engine::EditableStatus::Draft,
+                    warnings: vec![],
+                    notes: vec![],
+                }],
+            }));
+            display.set_show_construct_reasoning_overlay(true);
+        }
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        };
+        renderer.layout_features(viewport);
+        renderer.refresh_construct_reasoning_overlay_positions(viewport);
+        let overlay = renderer
+            .cached_construct_reasoning_overlay_positions
+            .first()
+            .cloned()
+            .expect("cached overlay");
+        let hit = renderer
+            .get_clicked_construct_reasoning_overlay(overlay.rect.center())
+            .expect("cached hit");
+        assert_eq!(hit.evidence_id, "promoter");
     }
 
     #[test]
