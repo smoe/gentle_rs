@@ -6076,6 +6076,23 @@ impl MainAreaDna {
         format!("RNA-read Mapping - {} ({})", view.group_label, view.seq_id)
     }
 
+    pub(super) fn stale_auxiliary_window_title_layer_id(title: &str) -> egui::LayerId {
+        egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string()))
+    }
+
+    pub(super) fn reset_auxiliary_window_areas_if_legacy_title_layer_visible(
+        ctx: &egui::Context,
+        title: &str,
+    ) -> bool {
+        let stale_title_layer = Self::stale_auxiliary_window_title_layer_id(title);
+        if ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)) {
+            ctx.memory_mut(|mem| mem.reset_areas());
+            true
+        } else {
+            false
+        }
+    }
+
     pub(super) fn rna_read_mapping_embedded_window_id(view: &SplicingExpertView) -> egui::Id {
         egui::Id::new(format!(
             "rna_read_mapping_window_embedded_{}_{}",
@@ -6093,6 +6110,7 @@ impl MainAreaDna {
         pending_initial_render: bool,
     ) {
         let mut open = self.show_rna_read_mapping_window;
+        Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(ctx, title);
         egui::Window::new(title)
             .id(Self::rna_read_mapping_embedded_window_id(view))
             .open(&mut open)
@@ -6557,6 +6575,10 @@ impl MainAreaDna {
             .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::EmbeddedWindow {
+                Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(
+                    ctx,
+                    title.as_str(),
+                );
                 let mut open = self.show_dotplot_window;
                 egui::Window::new(title.clone())
                     .id(egui::Id::new(format!(

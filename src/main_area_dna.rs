@@ -7150,6 +7150,57 @@ mod tests {
     }
 
     #[test]
+    fn rna_read_mapping_embedded_window_clears_legacy_title_bar_area() {
+        let ctx = egui::Context::default();
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: "mapping".to_string(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+        let title = MainAreaDna::rna_read_mapping_window_title(&view);
+        let hosted_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            MainAreaDna::rna_read_mapping_embedded_window_id(&view),
+        );
+        let stale_title_layer_id = MainAreaDna::stale_auxiliary_window_title_layer_id(&title);
+
+        ctx.begin_pass(egui::RawInput::default());
+        egui::Window::new(title.clone()).show(&ctx, |ui| {
+            ui.label("legacy mapping title shell");
+        });
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+
+        area.show_rna_read_mapping_window = true;
+        area.render_rna_read_mapping_embedded_window_shell(
+            &ctx,
+            &title,
+            &view,
+            MainAreaDna::rna_read_mapping_window_default_size(),
+            MainAreaDna::rna_read_mapping_window_content_min_size(),
+            false,
+        );
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
     fn collect_open_auxiliary_window_entries_includes_dotplot_window() {
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -24684,6 +24735,10 @@ impl MainAreaDna {
             .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::EmbeddedWindow {
+                Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(
+                    ctx,
+                    title.as_str(),
+                );
                 let mut open = self.show_splicing_expert_window;
                 egui::Window::new(title.clone())
                     .id(egui::Id::new(format!(
@@ -34332,6 +34387,10 @@ impl MainAreaDna {
             .with_min_inner_size([840.0, 460.0]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::EmbeddedWindow {
+                Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(
+                    ctx,
+                    title.as_str(),
+                );
                 let mut open = self.show_isoform_expert_window;
                 egui::Window::new(title.clone())
                     .id(egui::Id::new(format!(

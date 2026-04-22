@@ -2828,18 +2828,30 @@ impl GENtleApp {
         )]
     }
 
-    fn stale_help_title_layer_id(title: &str) -> egui::LayerId {
+    fn stale_hosted_window_title_layer_id(title: &str) -> egui::LayerId {
         egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string()))
     }
 
-    fn reset_help_areas_if_legacy_title_layer_visible(ctx: &egui::Context, title: &str) -> bool {
-        let stale_title_layer = Self::stale_help_title_layer_id(title);
+    #[cfg(test)]
+    fn stale_help_title_layer_id(title: &str) -> egui::LayerId {
+        Self::stale_hosted_window_title_layer_id(title)
+    }
+
+    fn reset_hosted_window_areas_if_legacy_title_layer_visible(
+        ctx: &egui::Context,
+        title: &str,
+    ) -> bool {
+        let stale_title_layer = Self::stale_hosted_window_title_layer_id(title);
         if ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)) {
             ctx.memory_mut(|mem| mem.reset_areas());
             true
         } else {
             false
         }
+    }
+
+    fn reset_help_areas_if_legacy_title_layer_visible(ctx: &egui::Context, title: &str) -> bool {
+        Self::reset_hosted_window_areas_if_legacy_title_layer_visible(ctx, title)
     }
 
     fn reset_root_help_areas_if_legacy_layers_visible(ctx: &egui::Context, title: &str) -> bool {
@@ -32421,6 +32433,8 @@ Error: `{err}`"
             .read()
             .map(|w| w.name())
             .unwrap_or_else(|_| "GENtle".to_string());
+        let reset_embedded_areas_on_first_frame =
+            self.pending_window_open_timestamps.contains_key(&id);
         let builder = egui::ViewportBuilder::default().with_title(window_title.clone());
         let initial_commands = Self::deferred_window_initial_commands(initial_position);
         if Self::use_immediate_sequence_viewports() {
@@ -32441,6 +32455,17 @@ Error: `{err}`"
                 let update_result = catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut w) = window.write() {
                         if class == egui::ViewportClass::EmbeddedWindow {
+                            if reset_embedded_areas_on_first_frame
+                                || Self::reset_hosted_window_areas_if_legacy_title_layer_visible(
+                                    ui.ctx(),
+                                    window_title.as_str(),
+                                )
+                            {
+                                // Older hosted sequence windows used the visible title as the
+                                // implicit egui::Window id, which can leave a detached title bar
+                                // behind when reopening under the stable hosted id.
+                                ui.ctx().memory_mut(|mem| mem.reset_areas());
+                            }
                             let mut open = true;
                             let constrain_rect =
                                 crate::egui_compat::hosted_window_safe_rect(ui.ctx());
@@ -32524,6 +32549,14 @@ Error: `{err}`"
                 let update_result = catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut w) = window.write() {
                         if class == egui::ViewportClass::EmbeddedWindow {
+                            if reset_embedded_areas_on_first_frame
+                                || Self::reset_hosted_window_areas_if_legacy_title_layer_visible(
+                                    ctx,
+                                    window_title.as_str(),
+                                )
+                            {
+                                ctx.memory_mut(|mem| mem.reset_areas());
+                            }
                             let mut open = true;
                             let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
                             let min_size = Vec2::new(820.0, 520.0);
@@ -50175,6 +50208,44 @@ mod tests {
                 egui::Id::new(("hosted_sequence_window", viewport_id)),
             ))
         );
+    }
+
+    #[test]
+    fn embedded_sequence_viewport_renders_without_legacy_title_bar_window() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+        let viewport_id =
+            app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
+        let window = app
+            .windows
+            .get(&viewport_id)
+            .cloned()
+            .expect("registered sequence window");
+        let title = window.read().map(|guard| guard.name()).expect("window name");
+        let hosted_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(("hosted_sequence_window", viewport_id)),
+        );
+        let stale_title_layer_id = GENtleApp::stale_hosted_window_title_layer_id(&title);
+
+        ctx.begin_pass(egui::RawInput::default());
+        egui::Window::new(title.clone()).show(&ctx, |ui| {
+            ui.label("legacy title shell");
+        });
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+
+        let initial_position = app.pending_window_initial_positions.remove(&viewport_id);
+        app.show_window(
+            &ctx,
+            viewport_id,
+            window,
+            initial_position,
+        );
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        let _ = ctx.end_pass();
     }
 
     #[test]

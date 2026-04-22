@@ -475,6 +475,9 @@ order. Durable architecture constraints and decisions remain in
     deriving its identity from the visible topic title; stale legacy
     help-window layers are reset both in the help viewport and in the root
     workspace so detached title bars self-heal instead of persisting
+  - hosted DNA sequence windows and hosted auxiliary workspaces now also reset
+    legacy title-derived embedded layers, so reopening sequence or RNA-read
+    mapping windows no longer leaves detached non-functional title bars behind
   - the hosted help body now reserves the remaining viewport height before
     opening its vertical scroll area so wheel scrolling stays inside the help
     content instead of falling through to the background workspace

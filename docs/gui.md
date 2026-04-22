@@ -96,6 +96,10 @@ macOS auxiliary-window stability note:
 - When older legacy help-window layers are still visible, GENtle now resets
   those stale area states both in the hosted help viewport and in the main/root
   workspace so stray detached help title bars self-heal on reopen.
+- Hosted DNA sequence windows and hosted auxiliary workspaces such as
+  RNA-read Mapping now also clear older legacy title-derived embedded layers,
+  so reopening those windows no longer leaves detached non-functional title
+  bars behind.
 - The hosted help body now reserves the full remaining window height before its
   vertical scroll area is built so mouse-wheel scrolling stays with the help
   content instead of falling through to the background workspace.
