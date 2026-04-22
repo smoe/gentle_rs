@@ -366,6 +366,8 @@ const ISOFORM_PANEL_RESOURCE_SCHEMA: &str = "gentle.isoform_panel_resource.v1";
 const ISOFORM_PANEL_VALIDATION_REPORT_SCHEMA: &str = "gentle.isoform_panel_validation_report.v1";
 const UNIPROT_ENTRIES_METADATA_KEY: &str = "uniprot_entries";
 const UNIPROT_ENTRIES_SCHEMA: &str = "gentle.uniprot_entries.v1";
+const ENSEMBL_GENE_ENTRIES_METADATA_KEY: &str = "ensembl_gene_entries";
+const ENSEMBL_GENE_ENTRIES_SCHEMA: &str = "gentle.ensembl_gene_entries.v1";
 const ENSEMBL_PROTEIN_ENTRIES_METADATA_KEY: &str = "ensembl_protein_entries";
 const ENSEMBL_PROTEIN_ENTRIES_SCHEMA: &str = "gentle.ensembl_protein_entries.v1";
 const UNIPROT_GENOME_PROJECTIONS_METADATA_KEY: &str = "uniprot_genome_projections";
@@ -3036,6 +3038,12 @@ pub enum Operation {
         query: String,
         entry_id: Option<String>,
     },
+    FetchEnsemblGene {
+        query: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        species: Option<String>,
+        entry_id: Option<String>,
+    },
     FetchEnsemblProtein {
         query: String,
         entry_id: Option<String>,
@@ -3062,6 +3070,10 @@ pub enum Operation {
         as_id: Option<SeqId>,
     },
     ImportUniprotEntrySequence {
+        entry_id: String,
+        output_id: Option<SeqId>,
+    },
+    ImportEnsemblGeneSequence {
         entry_id: String,
         output_id: Option<SeqId>,
     },
@@ -4916,11 +4928,13 @@ impl GentleEngine {
                 "ImportIsoformPanel".to_string(),
                 "ImportUniprotSwissProt".to_string(),
                 "FetchUniprotSwissProt".to_string(),
+                "FetchEnsemblGene".to_string(),
                 "FetchEnsemblProtein".to_string(),
                 "FetchGenBankAccession".to_string(),
                 "FetchDbSnpRegion".to_string(),
                 "FetchUniprotLinkedGenBank".to_string(),
                 "ImportUniprotEntrySequence".to_string(),
+                "ImportEnsemblGeneSequence".to_string(),
                 "ImportEnsemblProteinSequence".to_string(),
                 "ProjectUniprotToGenome".to_string(),
                 "AuditUniprotProjectionConsistency".to_string(),

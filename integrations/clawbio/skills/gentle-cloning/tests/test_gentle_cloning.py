@@ -963,6 +963,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "genbank fetch J01749 --as-id pbr322_refseq",
             300,
         ),
+        "request_ensembl_gene_fetch_tp53_human.json": (
+            "shell",
+            "ensembl-gene fetch TP53 --species homo_sapiens --entry-id tp53_ensembl_gene",
+            300,
+        ),
+        "request_ensembl_gene_import_sequence_tp53.json": (
+            "shell",
+            "ensembl-gene import-sequence tp53_ensembl_gene --output-id tp53_ensembl_gene_seq",
+            300,
+        ),
         "request_dbsnp_fetch_rs9923231.json": (
             "shell",
             'dbsnp fetch rs9923231 "Human GRCh38 Ensembl 116" --flank-bp 3000 --output-id rs9923231_vkorc1 --annotation-scope core',
@@ -1105,6 +1115,8 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         if name in {
             "request_shell_state_summary.json",
             "request_genbank_fetch_pbr322.json",
+            "request_ensembl_gene_fetch_tp53_human.json",
+            "request_ensembl_gene_import_sequence_tp53.json",
             "request_dbsnp_fetch_rs9923231.json",
             "request_inspect_sequence_context_rs9923231_vkorc1.json",
             "request_export_sequence_context_bundle_rs9923231_vkorc1.json",

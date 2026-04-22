@@ -1,0 +1,7 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "ensembl-gene import-sequence tp53_ensembl_gene --output-id tp53_ensembl_gene_seq",
+  "timeout_secs": 300
+}

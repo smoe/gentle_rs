@@ -7739,8 +7739,7 @@ Error: `{err}`"
     fn refresh_rack_labels_preview_svg(&mut self) {
         let rack_id = self.rack_labels_preview.rack_id.trim().to_string();
         if rack_id.is_empty() {
-            self.rack_labels_preview.status =
-                "No rack is selected for label preview.".to_string();
+            self.rack_labels_preview.status = "No rack is selected for label preview.".to_string();
             self.rack_labels_preview.svg_uri.clear();
             return;
         }
@@ -26622,9 +26621,7 @@ Error: `{err}`"
             }
             if ui
                 .button("Export SVG...")
-                .on_hover_text(
-                    "Export the same rack labels SVG that is shown in this preview",
-                )
+                .on_hover_text("Export the same rack labels SVG that is shown in this preview")
                 .clicked()
             {
                 let stem = self
@@ -26724,10 +26721,7 @@ Error: `{err}`"
             Self::rack_labels_preview_viewport_id(),
             builder,
             |ctx, class| {
-                self.note_viewport_focus_if_active(
-                    ctx,
-                    Self::rack_labels_preview_viewport_id(),
-                );
+                self.note_viewport_focus_if_active(ctx, Self::rack_labels_preview_viewport_id());
                 if class == egui::ViewportClass::EmbeddedWindow {
                     let mut close_requested = false;
                     egui::Window::new(title.clone())
@@ -26739,8 +26733,7 @@ Error: `{err}`"
                             egui::ScrollArea::vertical()
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| {
-                                    close_requested =
-                                        self.render_rack_labels_preview_contents(ui);
+                                    close_requested = self.render_rack_labels_preview_contents(ui);
                                 });
                         });
                     if close_requested {
@@ -26755,8 +26748,7 @@ Error: `{err}`"
                             egui::ScrollArea::vertical()
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| {
-                                    close_requested =
-                                        self.render_rack_labels_preview_contents(ui);
+                                    close_requested = self.render_rack_labels_preview_contents(ui);
                                 });
                         },
                     );
@@ -49209,7 +49201,10 @@ mod tests {
         app.open_arrangement_labels_preview_dialog("arr-1");
 
         assert!(app.show_rack_labels_preview_dialog);
-        assert_eq!(app.rack_labels_preview.arrangement_id.as_deref(), Some("arr-1"));
+        assert_eq!(
+            app.rack_labels_preview.arrangement_id.as_deref(),
+            Some("arr-1")
+        );
         assert_eq!(
             app.rack_labels_preview.arrangement_title.as_deref(),
             Some("Demo labels")

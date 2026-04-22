@@ -621,6 +621,11 @@ pub enum ShellCommand {
         query: String,
         entry_id: Option<String>,
     },
+    EnsemblGeneFetch {
+        query: String,
+        species: Option<String>,
+        entry_id: Option<String>,
+    },
     EnsemblProteinFetch {
         query: String,
         entry_id: Option<String>,
@@ -644,8 +649,12 @@ pub enum ShellCommand {
         entry_id: Option<String>,
     },
     UniprotList,
+    EnsemblGeneList,
     EnsemblProteinList,
     UniprotShow {
+        entry_id: String,
+    },
+    EnsemblGeneShow {
         entry_id: String,
     },
     EnsemblProteinShow {
@@ -658,6 +667,10 @@ pub enum ShellCommand {
         transcript_id: Option<String>,
     },
     EnsemblProteinImportSequence {
+        entry_id: String,
+        output_id: Option<String>,
+    },
+    EnsemblGeneImportSequence {
         entry_id: String,
         output_id: Option<String>,
     },
@@ -5089,6 +5102,22 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto")
             ),
+            Self::EnsemblGeneFetch {
+                query,
+                species,
+                entry_id,
+            } => format!(
+                "fetch Ensembl gene '{}' (species={}, entry_id={})",
+                query,
+                species
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+                entry_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
             Self::EnsemblProteinFetch { query, entry_id } => format!(
                 "fetch Ensembl protein '{}' (entry_id={})",
                 query,
@@ -5132,8 +5161,12 @@ impl ShellCommand {
                     .unwrap_or("auto")
             ),
             Self::UniprotList => "list imported UniProt entries".to_string(),
+            Self::EnsemblGeneList => "list imported Ensembl gene entries".to_string(),
             Self::EnsemblProteinList => "list imported Ensembl protein entries".to_string(),
             Self::UniprotShow { entry_id } => format!("show imported UniProt entry '{}'", entry_id),
+            Self::EnsemblGeneShow { entry_id } => {
+                format!("show imported Ensembl gene entry '{}'", entry_id)
+            }
             Self::EnsemblProteinShow { entry_id } => {
                 format!("show imported Ensembl protein entry '{}'", entry_id)
             }
@@ -5160,6 +5193,17 @@ impl ShellCommand {
                 output_id,
             } => format!(
                 "import Ensembl protein entry '{}' as a first-class protein sequence (output_id={})",
+                entry_id,
+                output_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
+            Self::EnsemblGeneImportSequence {
+                entry_id,
+                output_id,
+            } => format!(
+                "import Ensembl gene entry '{}' as a first-class DNA sequence (output_id={})",
                 entry_id,
                 output_id
                     .as_deref()
@@ -8673,10 +8717,12 @@ impl ShellCommand {
                 | Self::TracksTrackedClear
                 | Self::TracksTrackedApply { .. }
                 | Self::UniprotFetch { .. }
+                | Self::EnsemblGeneFetch { .. }
                 | Self::EnsemblProteinFetch { .. }
                 | Self::GenbankFetch { .. }
                 | Self::DbsnpFetch { .. }
                 | Self::UniprotImportSwissProt { .. }
+                | Self::EnsemblGeneImportSequence { .. }
                 | Self::EnsemblProteinImportSequence { .. }
                 | Self::UniprotMap { .. }
                 | Self::UniprotAuditProjection { .. }
@@ -13082,6 +13128,112 @@ fn parse_ensembl_protein_command(tokens: &[String]) -> Result<ShellCommand, Stri
     }
 }
 
+fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "ensembl-gene requires a subcommand: fetch, list, show, import-sequence".to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "fetch" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "ensembl-gene fetch requires QUERY [--species NAME] [--entry-id ID]"
+                        .to_string(),
+                );
+            }
+            let query = tokens[2].trim().to_string();
+            if query.is_empty() {
+                return Err("ensembl-gene fetch QUERY must not be empty".to_string());
+            }
+            let mut species: Option<String> = None;
+            let mut entry_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--species" => {
+                        species = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--species",
+                            "ensembl-gene fetch",
+                        )?);
+                    }
+                    "--entry-id" => {
+                        entry_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--entry-id",
+                            "ensembl-gene fetch",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for ensembl-gene fetch"));
+                    }
+                }
+            }
+            Ok(ShellCommand::EnsemblGeneFetch {
+                query,
+                species,
+                entry_id,
+            })
+        }
+        "list" => {
+            if tokens.len() > 2 {
+                return Err("ensembl-gene list takes no options".to_string());
+            }
+            Ok(ShellCommand::EnsemblGeneList)
+        }
+        "show" => {
+            if tokens.len() != 3 {
+                return Err("ensembl-gene show requires ENTRY_ID".to_string());
+            }
+            let entry_id = tokens[2].trim().to_string();
+            if entry_id.is_empty() {
+                return Err("ensembl-gene show ENTRY_ID must not be empty".to_string());
+            }
+            Ok(ShellCommand::EnsemblGeneShow { entry_id })
+        }
+        "import-sequence" | "import-entry-sequence" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "ensembl-gene import-sequence requires ENTRY_ID [--output-id ID]".to_string(),
+                );
+            }
+            let entry_id = tokens[2].trim().to_string();
+            if entry_id.is_empty() {
+                return Err("ensembl-gene import-sequence ENTRY_ID must not be empty".to_string());
+            }
+            let mut output_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--output-id" => {
+                        output_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-id",
+                            "ensembl-gene import-sequence",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for ensembl-gene import-sequence"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::EnsemblGeneImportSequence {
+                entry_id,
+                output_id,
+            })
+        }
+        other => Err(format!(
+            "Unknown ensembl-gene subcommand '{other}' (expected fetch|list|show|import-sequence)"
+        )),
+    }
+}
+
 fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err("agents requires a subcommand: list or ask".to_string());
@@ -15858,6 +16010,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "dbsnp" => parse_dbsnp_command(tokens),
         "variant" => parse_variant_command(tokens),
         "uniprot" => parse_uniprot_command(tokens),
+        "ensembl-gene" | "ensembl_gene" => parse_ensembl_gene_command(tokens),
         "ensembl-protein" | "ensembl_protein" => parse_ensembl_protein_command(tokens),
         "macros" => parse_macros_command(tokens),
         "candidates" => parse_candidates_command(tokens),
@@ -22879,6 +23032,23 @@ fn execute_protein_sequence_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::EnsemblGeneFetch {
+            query,
+            species,
+            entry_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::FetchEnsemblGene {
+                    query: query.clone(),
+                    species: species.clone(),
+                    entry_id: entry_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
         ShellCommand::EnsemblProteinFetch { query, entry_id } => {
             let op_result = engine
                 .apply(Operation::FetchEnsemblProtein {
@@ -22911,6 +23081,14 @@ fn execute_protein_sequence_command(
                     .map_err(|e| format!("Could not serialize UniProt entry list: {e}"))?,
             })
         }
+        ShellCommand::EnsemblGeneList => {
+            let rows = engine.list_ensembl_gene_entries();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(rows)
+                    .map_err(|e| format!("Could not serialize Ensembl gene entry list: {e}"))?,
+            })
+        }
         ShellCommand::EnsemblProteinList => {
             let rows = engine.list_ensembl_protein_entries();
             Ok(ShellRunResult {
@@ -22927,6 +23105,16 @@ fn execute_protein_sequence_command(
                 state_changed: false,
                 output: serde_json::to_value(entry)
                     .map_err(|e| format!("Could not serialize UniProt entry: {e}"))?,
+            })
+        }
+        ShellCommand::EnsemblGeneShow { entry_id } => {
+            let entry = engine
+                .get_ensembl_gene_entry(entry_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(entry)
+                    .map_err(|e| format!("Could not serialize Ensembl gene entry: {e}"))?,
             })
         }
         ShellCommand::EnsemblProteinShow { entry_id } => {
@@ -22964,6 +23152,21 @@ fn execute_protein_sequence_command(
         } => {
             let op_result = engine
                 .apply(Operation::ImportEnsemblProteinSequence {
+                    entry_id: entry_id.clone(),
+                    output_id: output_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::EnsemblGeneImportSequence {
+            entry_id,
+            output_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportEnsemblGeneSequence {
                     entry_id: entry_id.clone(),
                     output_id: output_id.clone(),
                 })
@@ -24721,13 +24924,17 @@ pub fn execute_shell_command_with_options(
     if matches!(
         command,
         ShellCommand::UniprotFetch { .. }
+            | ShellCommand::EnsemblGeneFetch { .. }
             | ShellCommand::EnsemblProteinFetch { .. }
             | ShellCommand::UniprotImportSwissProt { .. }
             | ShellCommand::UniprotList
+            | ShellCommand::EnsemblGeneList
             | ShellCommand::EnsemblProteinList
             | ShellCommand::UniprotShow { .. }
+            | ShellCommand::EnsemblGeneShow { .. }
             | ShellCommand::EnsemblProteinShow { .. }
             | ShellCommand::UniprotMap { .. }
+            | ShellCommand::EnsemblGeneImportSequence { .. }
             | ShellCommand::EnsemblProteinImportSequence { .. }
             | ShellCommand::UniprotProjectionList { .. }
             | ShellCommand::UniprotProjectionShow { .. }
@@ -24927,13 +25134,17 @@ fn execute_shell_command_with_options_inner(
             execute_external_sequence_fetch_command(engine, command)?
         }
         ShellCommand::UniprotFetch { .. }
+        | ShellCommand::EnsemblGeneFetch { .. }
         | ShellCommand::EnsemblProteinFetch { .. }
         | ShellCommand::UniprotImportSwissProt { .. }
         | ShellCommand::UniprotList
+        | ShellCommand::EnsemblGeneList
         | ShellCommand::EnsemblProteinList
         | ShellCommand::UniprotShow { .. }
+        | ShellCommand::EnsemblGeneShow { .. }
         | ShellCommand::EnsemblProteinShow { .. }
         | ShellCommand::UniprotMap { .. }
+        | ShellCommand::EnsemblGeneImportSequence { .. }
         | ShellCommand::EnsemblProteinImportSequence { .. }
         | ShellCommand::UniprotProjectionList { .. }
         | ShellCommand::UniprotProjectionShow { .. }

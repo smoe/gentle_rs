@@ -38,6 +38,7 @@ metadata:
       - jaspar motif
       - sequence context
       - extract gene from ensembl
+      - fetch ensembl gene
       - promoter sequence
       - prepare genome
       - blast sequence
@@ -159,12 +160,15 @@ Use a status-first answer shape:
    - currently being prepared / indexed, if that is known from the active run
 6. if the user asks for a concrete gene/region export rather than generic
    availability, distinguish the current supported path from the missing one:
-   - supported today: extract from a prepared local Ensembl-backed reference,
-     optionally in one request by pairing `ensure_reference_prepared` with
-     `genomes extract-gene`, `genomes extract-region`, or
-     `genomes extract-promoter`
-   - not yet a first-class GENtle/ClawBio route: one-off live remote Ensembl
-     gene/region fetch that avoids whole-reference preparation
+   - supported today:
+     - one-off live Ensembl gene fetch/import via `ensembl-gene fetch ...`
+       and `ensembl-gene import-sequence ...`
+     - extract from a prepared local Ensembl-backed reference, optionally in
+       one request by pairing `ensure_reference_prepared` with
+       `genomes extract-gene`, `genomes extract-region`, or
+       `genomes extract-promoter`
+   - still missing as a first-class GENtle/ClawBio route: one-off live remote
+     Ensembl region/ROI fetch that avoids whole-reference preparation
 
 Preferred wording pattern:
 
@@ -831,6 +835,10 @@ Apply the following methodology:
     - same `genomes extract-gene` route, but as one ClawBio request that first
       checks/prepares `Human GRCh38 Ensembl 116` when the local cache is
       missing
+  - `examples/request_ensembl_gene_fetch_tp53_human.json`
+    - one-off live Ensembl REST gene fetch for `TP53` in `homo_sapiens`
+  - `examples/request_ensembl_gene_import_sequence_tp53.json`
+    - follow-on import route after the live Ensembl gene fetch example
   - `examples/request_export_bed_grch38_tp53_gene_models.json`
     - follow-on route after `examples/request_genomes_extract_gene_tp53.json`
     - exports the extracted TP53 gene/mRNA/exon/CDS table to one BED6+4

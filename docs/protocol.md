@@ -1743,6 +1743,12 @@ Sequencing-trace evidence notes:
 - `ImportEnsemblProteinSequence { entry_id, output_id? }`
   - imports one stored Ensembl protein entry as a first-class protein sequence
     with imported Ensembl protein-feature annotations.
+- `FetchEnsemblGene { query, species?, entry_id? }`
+  - fetches one Ensembl gene entry from Ensembl REST and persists it in
+    `gentle.ensembl_gene_entries.v1`.
+- `ImportEnsemblGeneSequence { entry_id, output_id? }`
+  - imports one stored Ensembl gene entry as a first-class DNA sequence with a
+    top-level imported `gene` feature and Ensembl provenance qualifiers.
 - `FetchGenBankAccession { accession, as_id? }`
 - `FetchDbSnpRegion { rs_id, genome_id, flank_bp?, output_id?, annotation_scope?, max_annotation_features?, catalog_path?, cache_dir? }`
 - `DeriveProteinSequences { seq_id, feature_ids[], scope?, output_prefix? }`
@@ -1927,6 +1933,11 @@ external coding agent runtime, see:
   - `ensembl-protein list`
   - `ensembl-protein show ENTRY_ID`
   - `ensembl-protein import-sequence ENTRY_ID [--output-id ID]`
+- shared-shell Ensembl gene routes:
+  - `ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]`
+  - `ensembl-gene list`
+  - `ensembl-gene show ENTRY_ID`
+  - `ensembl-gene import-sequence ENTRY_ID [--output-id ID]`
 - shared feature-expert route now also accepts transcript-first protein
   comparison with optional stored external evidence plus persisted UniProt
   projections as direct targets:

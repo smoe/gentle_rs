@@ -70,10 +70,13 @@ ClawBio/OpenClaw answer pattern is:
 - if the reference is not prepared yet, say so explicitly and offer the local
   prepare path rather than presenting the request as a dead end
 - if the user asks for a concrete gene/region export, be clear that the
-  supported route today is extraction from a prepared local Ensembl-backed
-  reference, optionally preceded by `ensure_reference_prepared`
-- do not imply that a one-off live remote Ensembl gene/region fetch already
-  exists as a first-class ClawBio route; that remains a gap
+  supported routes today are:
+  - one-off live Ensembl gene fetch/import through `ensembl-gene fetch ...`
+    and `ensembl-gene import-sequence ...`
+  - extraction from a prepared local Ensembl-backed reference, optionally
+    preceded by `ensure_reference_prepared`
+- still be explicit that a one-off live remote Ensembl region/ROI fetch is not
+  yet a first-class ClawBio route
 
 This keeps the answer truthful while still surfacing the practical path
 forward.
@@ -369,6 +372,8 @@ Included first-run bootstrap requests:
 Included follow-on analysis/planning/graphics requests:
 
 - `examples/request_genbank_fetch_pbr322.json`
+- `examples/request_ensembl_gene_fetch_tp53_human.json`
+- `examples/request_ensembl_gene_import_sequence_tp53.json`
 - `examples/request_dbsnp_fetch_rs9923231.json`
 - `examples/request_inspect_sequence_context_rs9923231_vkorc1.json`
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
@@ -405,6 +410,11 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_genomes_extract_gene_tp53_auto_prepare.json`
   - same `genomes extract-gene` route, but as one ClawBio request that first
     checks/prepares `Human GRCh38 Ensembl 116` when the local cache is missing
+- `examples/request_ensembl_gene_fetch_tp53_human.json`
+  - one-off live Ensembl REST gene fetch for `TP53` in `homo_sapiens`
+- `examples/request_ensembl_gene_import_sequence_tp53.json`
+  - follow-on import route that materializes the stored live Ensembl gene
+    entry as a first-class DNA sequence
 - `examples/request_export_bed_grch38_tp53_gene_models.json`
   - follow-on route after `examples/request_genomes_extract_gene_tp53.json`
   - exports the extracted TP53 gene/mRNA/exon/CDS table to one BED6+4 artifact

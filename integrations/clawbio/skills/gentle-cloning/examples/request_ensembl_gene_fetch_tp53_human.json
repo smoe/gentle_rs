@@ -1,0 +1,7 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "ensembl-gene fetch TP53 --species homo_sapiens --entry-id tp53_ensembl_gene",
+  "timeout_secs": 300
+}

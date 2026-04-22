@@ -1611,7 +1611,9 @@ impl GentleEngine {
         if !current.is_empty() && lines.len() < max_lines {
             lines.push(current);
         }
-        if idx < words.len() && let Some(last) = lines.last_mut() {
+        if idx < words.len()
+            && let Some(last) = lines.last_mut()
+        {
             *last = Self::truncate_rack_label_text(last, max_chars);
         }
         lines.truncate(max_lines);

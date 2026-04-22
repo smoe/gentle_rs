@@ -12,6 +12,7 @@ use super::*;
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
 };
+use crate::ensembl_gene::{EnsemblGeneEntry, EnsemblGeneTranscriptSummary};
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
@@ -27,6 +28,7 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 use tempfile::tempdir;
 
 const EXTERNAL_PRIMER_BINARY_TEST_ENV: &str = "GENTLE_TEST_EXTERNAL_BINARIES";
@@ -66,6 +68,24 @@ fn find_local_prepared_human_grch38_catalog_and_cache() -> Option<(String, Strin
 fn attract_test_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn internet_access_available() -> bool {
+    static INTERNET_OK: OnceLock<bool> = OnceLock::new();
+    *INTERNET_OK.get_or_init(|| {
+        let client = match reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+        {
+            Ok(client) => client,
+            Err(_) => return false,
+        };
+        client
+            .get("https://rest.ensembl.org/info/ping?content-type=application/json")
+            .send()
+            .map(|response| response.status().is_success())
+            .unwrap_or(false)
+    })
 }
 
 fn seq(s: &str) -> DNAsequence {
@@ -166,6 +186,51 @@ fn synthetic_ensembl_entry(
         raw_protein_lookup_json: Some("{}".to_string()),
         raw_sequence_json: "{}".to_string(),
         raw_feature_json: "[]".to_string(),
+    }
+}
+
+fn synthetic_ensembl_gene_entry(
+    entry_id: &str,
+    gene_id: &str,
+    gene_symbol: &str,
+) -> EnsemblGeneEntry {
+    EnsemblGeneEntry {
+        schema: "gentle.ensembl_gene_entry.v1".to_string(),
+        entry_id: entry_id.to_string(),
+        gene_id: gene_id.to_string(),
+        gene_version: Some(1),
+        gene_symbol: Some(gene_symbol.to_string()),
+        gene_display_name: Some(format!("{gene_symbol} synthetic gene")),
+        species: Some("homo_sapiens".to_string()),
+        assembly_name: Some("GRCh38".to_string()),
+        biotype: Some("protein_coding".to_string()),
+        strand: Some(-1),
+        seq_region_name: Some("17".to_string()),
+        genomic_start_1based: Some(7668402),
+        genomic_end_1based: Some(7668513),
+        sequence: "ACGT".repeat(28),
+        sequence_length: 112,
+        transcripts: vec![EnsemblGeneTranscriptSummary {
+            transcript_id: "ENSTTOYGENE1".to_string(),
+            transcript_version: Some(1),
+            display_name: Some(format!("{gene_symbol}-201")),
+            biotype: Some("protein_coding".to_string()),
+            start_1based: Some(7668402),
+            end_1based: Some(7668513),
+            strand: Some(-1),
+        }],
+        aliases: vec![],
+        source: "ensembl_rest".to_string(),
+        source_query: Some(gene_symbol.to_string()),
+        imported_at_unix_ms: 0,
+        lookup_source_url:
+            "https://rest.ensembl.org/lookup/symbol/homo_sapiens/TP53?content-type=application/json;expand=1"
+                .to_string(),
+        sequence_source_url:
+            "https://rest.ensembl.org/sequence/id/ENSG00000141510?content-type=application/json;type=genomic"
+                .to_string(),
+        raw_lookup_json: "{\"id\":\"ENSG00000141510\"}".to_string(),
+        raw_sequence_json: "{\"id\":\"ENSG00000141510\",\"seq\":\"ACGT\"}".to_string(),
     }
 }
 
@@ -1234,7 +1299,10 @@ impl Drop for FileRestoreGuard {
     }
 }
 
-fn install_cutrun_test_jaspar_snapshot(motif_names: &[&str], species_name: &str) -> FileRestoreGuard {
+fn install_cutrun_test_jaspar_snapshot(
+    motif_names: &[&str],
+    species_name: &str,
+) -> FileRestoreGuard {
     let rows = motif_names
         .iter()
         .map(|motif_name| {
@@ -1286,8 +1354,10 @@ fn cutrun_test_tfbs_feature(
     gb_io::seq::Feature {
         kind: "TFBS".into(),
         location: gb_io::seq::Location::simple_range(
-            start_0based as i64,
-            end_0based_exclusive as i64,
+            start_0based.try_into().expect("TFBS start should fit i64"),
+            end_0based_exclusive
+                .try_into()
+                .expect("TFBS end should fit i64"),
         ),
         qualifiers: vec![
             ("bound_moiety".into(), Some(factor.to_string())),
@@ -5432,6 +5502,38 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
 }
 
 #[test]
+fn test_fetch_ensembl_gene_live_tp53_skips_without_internet() {
+    if !internet_access_available() {
+        eprintln!("Skipping live Ensembl gene fetch test because internet access is unavailable.");
+        return;
+    }
+
+    let mut engine = GentleEngine::new();
+    let result = engine
+        .apply(Operation::FetchEnsemblGene {
+            query: "TP53".to_string(),
+            species: Some("homo_sapiens".to_string()),
+            entry_id: Some("tp53_live".to_string()),
+        })
+        .expect("fetch live Ensembl TP53 gene");
+
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("Fetched Ensembl gene 'tp53_live'")),
+        "messages were: {:?}",
+        result.messages
+    );
+    let entry = engine
+        .get_ensembl_gene_entry("tp53_live")
+        .expect("stored Ensembl gene entry");
+    assert_eq!(entry.gene_symbol.as_deref(), Some("TP53"));
+    assert_eq!(entry.species.as_deref(), Some("homo_sapiens"));
+    assert!(!entry.sequence.is_empty());
+}
+
+#[test]
 fn test_fetch_dbsnp_region_operation_emits_staged_progress_updates() {
     let _guard = crate::genomes::genbank_env_lock()
         .lock()
@@ -6348,6 +6450,61 @@ fn test_ensembl_protein_entry_store_and_import_sequence() {
         seq.features()
             .iter()
             .any(|feature| feature.kind.eq_ignore_ascii_case("Pfam"))
+    );
+}
+
+#[test]
+fn test_ensembl_gene_entry_store_and_import_sequence() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_ensembl_gene_entry(synthetic_ensembl_gene_entry(
+            "tp53_ensembl_gene",
+            "ENSG00000141510",
+            "TP53",
+        ))
+        .expect("upsert Ensembl gene entry");
+
+    let listed = engine.list_ensembl_gene_entries();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].entry_id, "tp53_ensembl_gene");
+    assert_eq!(listed[0].gene_id, "ENSG00000141510");
+    assert_eq!(listed[0].gene_symbol.as_deref(), Some("TP53"));
+
+    let by_alias = engine
+        .get_ensembl_gene_entry("ensg00000141510")
+        .expect("resolve Ensembl gene entry by gene alias");
+    assert_eq!(by_alias.entry_id, "tp53_ensembl_gene");
+
+    let import = engine
+        .apply(Operation::ImportEnsemblGeneSequence {
+            entry_id: "tp53_ensembl_gene".to_string(),
+            output_id: Some("tp53_ensembl_gene_seq".to_string()),
+        })
+        .expect("import Ensembl gene sequence");
+    assert!(
+        import
+            .messages
+            .iter()
+            .any(|message| message.contains("Imported Ensembl gene"))
+    );
+    let seq = engine
+        .state()
+        .sequences
+        .get("tp53_ensembl_gene_seq")
+        .expect("imported Ensembl gene sequence");
+    assert_eq!(seq.len(), 112);
+    let gene_feature = seq
+        .features()
+        .iter()
+        .find(|feature| feature.kind.eq_ignore_ascii_case("gene"))
+        .expect("imported gene feature");
+    assert_eq!(
+        gene_feature
+            .qualifiers
+            .iter()
+            .find(|(key, _)| key == "gene")
+            .and_then(|(_, value)| value.as_deref()),
+        Some("TP53")
     );
 }
 
@@ -16571,17 +16728,22 @@ fn test_inspect_cutrun_regulatory_support_read_report_only_produces_strong_suppo
     let supported_prefix = "TTGACCAA";
     let filler = "AACCGGTTAACCGGTT";
     let unsupported_prefix = "CCGTAACC";
-    let sequence = format!(
-        "{supported_prefix}{sp1_consensus}{filler}{unsupported_prefix}{sp1_consensus}TTAA"
-    );
+    let sequence =
+        format!("{supported_prefix}{sp1_consensus}{filler}{unsupported_prefix}{sp1_consensus}TTAA");
     let reference_catalog_path =
         write_cutrun_test_reference_catalog_with_sequence(root, "ToyGenome", &sequence);
     let reads_path = root.join("reads.fasta");
     write_cutrun_test_fasta_reads(
         &reads_path,
         &[
-            ("supported_read_a", &format!("{supported_prefix}{sp1_consensus}")),
-            ("supported_read_b", &format!("{supported_prefix}{sp1_consensus}")),
+            (
+                "supported_read_a",
+                &format!("{supported_prefix}{sp1_consensus}"),
+            ),
+            (
+                "supported_read_b",
+                &format!("{supported_prefix}{sp1_consensus}"),
+            ),
         ],
     );
     let _makeblastdb_guard = EnvVarGuard::set(
@@ -16612,7 +16774,10 @@ fn test_inspect_cutrun_regulatory_support_read_report_only_produces_strong_suppo
                 "SP1",
             ),
             cutrun_test_tfbs_feature(
-                supported_prefix.len() + sp1_consensus.len() + filler.len() + unsupported_prefix.len(),
+                supported_prefix.len()
+                    + sp1_consensus.len()
+                    + filler.len()
+                    + unsupported_prefix.len(),
                 supported_prefix.len()
                     + sp1_consensus.len()
                     + filler.len()
@@ -16684,17 +16849,22 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
     let supported_prefix = "TTGACCAA";
     let filler = "AACCGGTTAACCGGTT";
     let unsupported_prefix = "CCGTAACC";
-    let sequence = format!(
-        "{supported_prefix}{sp1_consensus}{filler}{unsupported_prefix}{sp1_consensus}TTAA"
-    );
+    let sequence =
+        format!("{supported_prefix}{sp1_consensus}{filler}{unsupported_prefix}{sp1_consensus}TTAA");
     let reference_catalog_path =
         write_cutrun_test_reference_catalog_with_sequence(root, "ToyGenome", &sequence);
     let reads_path = root.join("reads.fasta");
     write_cutrun_test_fasta_reads(
         &reads_path,
         &[
-            ("supported_read_a", &format!("{supported_prefix}{sp1_consensus}")),
-            ("supported_read_b", &format!("{supported_prefix}{sp1_consensus}")),
+            (
+                "supported_read_a",
+                &format!("{supported_prefix}{sp1_consensus}"),
+            ),
+            (
+                "supported_read_b",
+                &format!("{supported_prefix}{sp1_consensus}"),
+            ),
         ],
     );
     let _makeblastdb_guard = EnvVarGuard::set(
@@ -16773,7 +16943,10 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
         )
         .expect("inspect CUT&RUN regulatory support");
 
-    let confirmed = report.confirmed_tfbs_rows.first().expect("confirmed TFBS row");
+    let confirmed = report
+        .confirmed_tfbs_rows
+        .first()
+        .expect("confirmed TFBS row");
     assert_eq!(
         confirmed.confirmation_status,
         CutRunRegulatoryTfbsConfirmationStatus::Confirmed
@@ -16799,7 +16972,7 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
 
 #[test]
 fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_common_neighbor_motifs()
-{
+ {
     let _serial = cutrun_test_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -16933,24 +17106,33 @@ fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_
 
     assert_eq!(report.support_windows.len(), 2);
     assert_eq!(report.motif_absent_supported_windows.len(), 2);
-    assert!(report
-        .motif_absent_supported_windows
-        .iter()
-        .all(|window| window.occupancy_interpretation
-            == CutRunMotifAbsentOccupancyInterpretation::ContextSupportedByOtherMotifs));
-    assert!(report
-        .motif_absent_supported_windows
-        .iter()
-        .all(|window| window
-            .motifs_inside_window
+    assert!(
+        report
+            .motif_absent_supported_windows
             .iter()
-            .chain(window.motifs_in_neighbor_window.iter())
-            .any(|hit| hit.motif_label.as_deref() == Some("SP1"))));
+            .all(|window| window.occupancy_interpretation
+                == CutRunMotifAbsentOccupancyInterpretation::ContextSupportedByOtherMotifs)
+    );
+    assert!(
+        report
+            .motif_absent_supported_windows
+            .iter()
+            .all(|window| window.motifs_inside_window.is_empty())
+    );
+    assert!(report.motif_absent_supported_windows.iter().all(|window| {
+        window
+            .motifs_in_neighbor_window
+            .iter()
+            .any(|hit| hit.motif_label.as_deref() == Some("SP1"))
+    }));
     let near_summary = report
         .common_motifs_near_supported_windows
         .first()
         .expect("neighbor-window summary");
-    assert_eq!(near_summary.context_scope, CutRunMotifContextScope::NeighborWindow);
+    assert_eq!(
+        near_summary.context_scope,
+        CutRunMotifContextScope::NeighborWindow
+    );
     assert_eq!(near_summary.window_count, 2);
     assert_eq!(near_summary.window_fraction, 1.0);
     assert_eq!(near_summary.motif_label.as_deref(), Some("SP1"));

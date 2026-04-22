@@ -2251,6 +2251,14 @@ Isoform architecture panel workflow:
     - fetch/import keep Ensembl as optional external evidence plus an ordinary
       first-class protein import path; they do not replace transcript-native
       derivation as the authoritative product model
+  - direct Ensembl gene metadata routes:
+    - `ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]`
+    - `ensembl-gene list`
+    - `ensembl-gene show ENTRY_ID`
+    - `ensembl-gene import-sequence ENTRY_ID [--output-id ID]`
+    - these are useful for one-off live Ensembl gene retrieval without whole
+      reference preparation; prepared `genomes extract-gene|region|promoter`
+      remains the preferred route for reproducible locus-context work
   - direct coding-DNA query for one projected UniProt feature:
     - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
     - returns one structured report per matching transcript feature span, including:

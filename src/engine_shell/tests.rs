@@ -24,6 +24,7 @@ use crate::engine::{
     SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
     TfbsTrackSimilarityRankingMetric,
 };
+use crate::ensembl_gene::{EnsemblGeneEntry, EnsemblGeneTranscriptSummary};
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
@@ -14269,7 +14270,10 @@ fn execute_cutrun_inspect_regulatory_support_writes_json_payload() {
         inspected.output["evidence_sources"][0]["report_id"].as_str(),
         Some("toy_cutrun_reads")
     );
-    assert_eq!(inspected.output["support_windows"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        inspected.output["support_windows"].as_array().map(Vec::len),
+        Some(1)
+    );
     let written = fs::read_to_string(&output_path).expect("read written regulatory-support JSON");
     assert!(written.contains("\"schema\": \"gentle.cutrun_regulatory_support.v1\""));
     assert!(written.contains("\"report_id\": \"toy_cutrun_reads\""));
@@ -15442,6 +15446,45 @@ fn parse_ensembl_protein_commands() {
     }
 }
 
+#[test]
+fn parse_ensembl_gene_commands() {
+    let fetch =
+        parse_shell_line("ensembl-gene fetch TP53 --species homo_sapiens --entry-id tp53_gene")
+            .expect("parse ensembl-gene fetch");
+    match fetch {
+        ShellCommand::EnsemblGeneFetch {
+            query,
+            species,
+            entry_id,
+        } => {
+            assert_eq!(query, "TP53");
+            assert_eq!(species.as_deref(), Some("homo_sapiens"));
+            assert_eq!(entry_id.as_deref(), Some("tp53_gene"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let show = parse_shell_line("ensembl-gene show TP53_GENE").expect("parse ensembl-gene show");
+    assert!(matches!(show, ShellCommand::EnsemblGeneShow { .. }));
+
+    let list = parse_shell_line("ensembl-gene list").expect("parse ensembl-gene list");
+    assert!(matches!(list, ShellCommand::EnsemblGeneList));
+
+    let import =
+        parse_shell_line("ensembl-gene import-sequence TP53_GENE --output-id tp53_gene_seq")
+            .expect("parse ensembl-gene import-sequence");
+    match import {
+        ShellCommand::EnsemblGeneImportSequence {
+            entry_id,
+            output_id,
+        } => {
+            assert_eq!(entry_id, "TP53_GENE");
+            assert_eq!(output_id.as_deref(), Some("tp53_gene_seq"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
 fn tp53_isoform_test_sequence() -> DNAsequence {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(800)).expect("valid dna");
     dna.features_mut().push(Feature {
@@ -15544,6 +15587,47 @@ fn synthetic_ensembl_entry() -> EnsemblProteinEntry {
         raw_protein_lookup_json: Some("{}".to_string()),
         raw_sequence_json: "{}".to_string(),
         raw_feature_json: "[]".to_string(),
+    }
+}
+
+fn synthetic_ensembl_gene_entry() -> EnsemblGeneEntry {
+    EnsemblGeneEntry {
+        schema: "gentle.ensembl_gene_entry.v1".to_string(),
+        entry_id: "TP53_GENE".to_string(),
+        gene_id: "ENSG00000141510".to_string(),
+        gene_version: Some(19),
+        gene_symbol: Some("TP53".to_string()),
+        gene_display_name: Some("tumor protein p53".to_string()),
+        species: Some("homo_sapiens".to_string()),
+        assembly_name: Some("GRCh38".to_string()),
+        biotype: Some("protein_coding".to_string()),
+        strand: Some(-1),
+        seq_region_name: Some("17".to_string()),
+        genomic_start_1based: Some(7668402),
+        genomic_end_1based: Some(7668513),
+        sequence: "ACGT".repeat(28),
+        sequence_length: 112,
+        transcripts: vec![EnsemblGeneTranscriptSummary {
+            transcript_id: "ENST00000269305".to_string(),
+            transcript_version: Some(9),
+            display_name: Some("TP53-201".to_string()),
+            biotype: Some("protein_coding".to_string()),
+            start_1based: Some(7668402),
+            end_1based: Some(7668513),
+            strand: Some(-1),
+        }],
+        aliases: vec![],
+        source: "ensembl_rest".to_string(),
+        source_query: Some("TP53".to_string()),
+        imported_at_unix_ms: 0,
+        lookup_source_url:
+            "https://rest.ensembl.org/lookup/symbol/homo_sapiens/TP53?content-type=application/json;expand=1"
+                .to_string(),
+        sequence_source_url:
+            "https://rest.ensembl.org/sequence/id/ENSG00000141510?content-type=application/json;type=genomic"
+                .to_string(),
+        raw_lookup_json: "{\"id\":\"ENSG00000141510\"}".to_string(),
+        raw_sequence_json: "{\"id\":\"ENSG00000141510\",\"seq\":\"ACGT\"}".to_string(),
     }
 }
 
@@ -16191,6 +16275,43 @@ fn execute_ensembl_protein_list_show_import_and_compare() {
                 .map(|name| name.contains("synthetic Ensembl domain"))
                 .unwrap_or(false)))
             .unwrap_or(false)
+    );
+}
+
+#[test]
+fn execute_ensembl_gene_list_show_and_import() {
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_ensembl_gene_entry(synthetic_ensembl_gene_entry())
+        .expect("upsert Ensembl gene entry");
+
+    let listed = execute_shell_command(&mut engine, &ShellCommand::EnsemblGeneList)
+        .expect("execute ensembl-gene list");
+    assert!(!listed.state_changed);
+    assert_eq!(listed.output[0]["entry_id"].as_str(), Some("TP53_GENE"));
+
+    let shown = execute_shell_command(
+        &mut engine,
+        &ShellCommand::EnsemblGeneShow {
+            entry_id: "TP53_GENE".to_string(),
+        },
+    )
+    .expect("execute ensembl-gene show");
+    assert!(!shown.state_changed);
+    assert_eq!(shown.output["gene_id"].as_str(), Some("ENSG00000141510"));
+
+    let imported = execute_shell_command(
+        &mut engine,
+        &ShellCommand::EnsemblGeneImportSequence {
+            entry_id: "TP53_GENE".to_string(),
+            output_id: Some("tp53_gene_seq".to_string()),
+        },
+    )
+    .expect("execute ensembl-gene import-sequence");
+    assert!(imported.state_changed);
+    assert!(
+        engine.state().sequences.contains_key("tp53_gene_seq"),
+        "imported Ensembl gene sequence should exist in state"
     );
 }
 

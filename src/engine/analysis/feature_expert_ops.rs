@@ -11,6 +11,12 @@
 
 use super::*;
 use crate::attract_motifs;
+use crate::ensembl_gene::{
+    EnsemblGeneEntry, EnsemblGeneEntryStore, EnsemblGeneEntrySummary,
+    build_entry_from_rest_payloads as build_ensembl_gene_entry_from_rest_payloads,
+    normalize_entry_id as normalize_ensembl_gene_entry_id,
+    resolve_query as resolve_ensembl_gene_query,
+};
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinEntrySummary, build_entry_from_rest_payloads,
     normalize_entry_id as normalize_ensembl_protein_entry_id,
@@ -1307,6 +1313,145 @@ impl GentleEngine {
             });
         }
         Ok(normalized)
+    }
+
+    pub(super) fn load_ensembl_gene_entry_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> EnsemblGeneEntryStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<EnsemblGeneEntryStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = ENSEMBL_GENE_ENTRIES_SCHEMA.to_string();
+        }
+        store
+    }
+
+    pub(super) fn read_ensembl_gene_entry_store(&self) -> EnsemblGeneEntryStore {
+        Self::load_ensembl_gene_entry_store_from_metadata(
+            self.state.metadata.get(ENSEMBL_GENE_ENTRIES_METADATA_KEY),
+        )
+    }
+
+    pub(super) fn write_ensembl_gene_entry_store(
+        &mut self,
+        mut store: EnsemblGeneEntryStore,
+    ) -> Result<(), EngineError> {
+        if store.entries.is_empty() {
+            self.state
+                .metadata
+                .remove(ENSEMBL_GENE_ENTRIES_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = ENSEMBL_GENE_ENTRIES_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize Ensembl gene entry metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(ENSEMBL_GENE_ENTRIES_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    pub(crate) fn upsert_ensembl_gene_entry(
+        &mut self,
+        mut entry: EnsemblGeneEntry,
+    ) -> Result<(), EngineError> {
+        let normalized = normalize_ensembl_gene_entry_id(&entry.entry_id);
+        if normalized.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Ensembl gene entry_id cannot be empty".to_string(),
+            });
+        }
+        entry.entry_id = normalized.clone();
+        if entry.schema.trim().is_empty() {
+            entry.schema = "gentle.ensembl_gene_entry.v1".to_string();
+        }
+        entry.imported_at_unix_ms = Self::now_unix_ms();
+        let mut aliases = BTreeSet::new();
+        for value in std::iter::once(entry.entry_id.clone())
+            .chain(std::iter::once(entry.gene_id.clone()))
+            .chain(entry.aliases.clone().into_iter())
+            .chain(entry.gene_symbol.clone().into_iter())
+            .chain(entry.gene_display_name.clone().into_iter())
+            .chain(
+                entry
+                    .transcripts
+                    .iter()
+                    .map(|row| row.transcript_id.clone()),
+            )
+        {
+            let normalized_alias = normalize_ensembl_gene_entry_id(&value);
+            if !normalized_alias.is_empty() {
+                aliases.insert(normalized_alias);
+            }
+        }
+        entry.aliases = aliases.into_iter().collect::<Vec<_>>();
+
+        let mut store = self.read_ensembl_gene_entry_store();
+        store.entries.insert(entry.entry_id.clone(), entry);
+        self.write_ensembl_gene_entry_store(store)
+    }
+
+    pub(super) fn get_ensembl_gene_entry_from_store(
+        store: &EnsemblGeneEntryStore,
+        entry_id: &str,
+    ) -> Option<EnsemblGeneEntry> {
+        let probe = normalize_ensembl_gene_entry_id(entry_id);
+        if probe.is_empty() {
+            return None;
+        }
+        if let Some(entry) = store.entries.get(&probe) {
+            return Some(entry.clone());
+        }
+        store
+            .entries
+            .values()
+            .find(|entry| {
+                entry
+                    .aliases
+                    .iter()
+                    .any(|alias| normalize_ensembl_gene_entry_id(alias) == probe)
+            })
+            .cloned()
+    }
+
+    pub fn get_ensembl_gene_entry(&self, entry_id: &str) -> Result<EnsemblGeneEntry, EngineError> {
+        let store = self.read_ensembl_gene_entry_store();
+        Self::get_ensembl_gene_entry_from_store(&store, entry_id).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "Ensembl gene entry '{}' not found in project metadata",
+                entry_id.trim()
+            ),
+        })
+    }
+
+    pub fn list_ensembl_gene_entries(&self) -> Vec<EnsemblGeneEntrySummary> {
+        let store = self.read_ensembl_gene_entry_store();
+        let mut rows = store
+            .entries
+            .values()
+            .map(|entry| EnsemblGeneEntrySummary {
+                entry_id: entry.entry_id.clone(),
+                gene_id: entry.gene_id.clone(),
+                gene_symbol: entry.gene_symbol.clone(),
+                species: entry.species.clone(),
+                seq_region_name: entry.seq_region_name.clone(),
+                genomic_start_1based: entry.genomic_start_1based,
+                genomic_end_1based: entry.genomic_end_1based,
+                transcript_count: entry.transcripts.len(),
+                sequence_length: entry.sequence_length,
+                imported_at_unix_ms: entry.imported_at_unix_ms,
+                source_query: entry.source_query.clone(),
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|a, b| a.entry_id.cmp(&b.entry_id));
+        rows
     }
 
     pub(super) fn load_ensembl_protein_entry_store_from_metadata(
@@ -3472,6 +3617,77 @@ impl GentleEngine {
         })
     }
 
+    pub(super) fn fetch_ensembl_gene_entry_from_rest(
+        query: &str,
+        species: Option<&str>,
+        entry_id_override: Option<&str>,
+    ) -> Result<EnsemblGeneEntry, EngineError> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Ensembl gene query cannot be empty".to_string(),
+            });
+        }
+        let resolved_query = resolve_ensembl_gene_query(query).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: e,
+        })?;
+        let base_url = Self::ensembl_rest_base_url();
+        let (lookup_url, lookup_label) = match resolved_query.kind {
+            crate::ensembl_gene::EnsemblGeneQueryKind::StableId => (
+                format!(
+                    "{base_url}/lookup/id/{}?content-type=application/json;expand=1",
+                    resolved_query.normalized_query
+                ),
+                "gene lookup",
+            ),
+            crate::ensembl_gene::EnsemblGeneQueryKind::GeneSymbol => {
+                let species = species
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Ensembl gene symbol query '{}' requires --species (for example homo_sapiens)",
+                            query
+                        ),
+                    })?;
+                (
+                    format!(
+                        "{base_url}/lookup/symbol/{species}/{}?content-type=application/json;expand=1",
+                        resolved_query.normalized_query
+                    ),
+                    "gene symbol lookup",
+                )
+            }
+        };
+        let lookup_json = Self::fetch_ensembl_rest_text(&lookup_url, lookup_label, query)?;
+        let lookup =
+            crate::ensembl_gene::parse_gene_lookup_json(&lookup_json).map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not parse Ensembl gene lookup for '{query}': {e}"),
+            })?;
+        let sequence_url = format!(
+            "{base_url}/sequence/id/{}?content-type=application/json;type=genomic",
+            lookup.gene_id
+        );
+        let sequence_json =
+            Self::fetch_ensembl_rest_text(&sequence_url, "gene genomic sequence", query)?;
+        build_ensembl_gene_entry_from_rest_payloads(
+            query,
+            &lookup_url,
+            &lookup_json,
+            &sequence_url,
+            &sequence_json,
+            entry_id_override,
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not assemble Ensembl gene entry for '{query}': {e}"),
+        })
+    }
+
     pub(super) fn fetch_ensembl_protein_entry_from_rest(
         query: &str,
         entry_id_override: Option<&str>,
@@ -3569,6 +3785,108 @@ impl GentleEngine {
             code: ErrorCode::InvalidInput,
             message: format!("Could not assemble Ensembl protein entry for '{query}': {e}"),
         })
+    }
+
+    pub(super) fn import_ensembl_gene_entry_sequence(
+        &mut self,
+        result: &mut OpResult,
+        entry_id: &str,
+        output_id: Option<&str>,
+    ) -> Result<SeqId, EngineError> {
+        let entry = self.get_ensembl_gene_entry(entry_id)?;
+        let base_seq_id = output_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| {
+                let normalized = normalize_ensembl_gene_entry_id(&entry.entry_id);
+                if normalized.is_empty() {
+                    format!(
+                        "ensembl_{}",
+                        normalize_ensembl_gene_entry_id(&entry.gene_id)
+                    )
+                } else {
+                    normalized
+                }
+            });
+        let seq_id = self.unique_seq_id(&base_seq_id);
+        let mut dna = DNAsequence::from_sequence(&entry.sequence).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not construct DNA sequence for Ensembl gene entry '{}': {e}",
+                entry.entry_id
+            ),
+        })?;
+        dna.set_name(
+            entry
+                .gene_symbol
+                .clone()
+                .or_else(|| entry.gene_display_name.clone())
+                .unwrap_or_else(|| entry.entry_id.clone()),
+        );
+        dna.set_molecule_type("dsDNA");
+        if dna.len() > 0 {
+            let mut qualifiers = vec![
+                ("entry_id".into(), Some(entry.entry_id.clone())),
+                ("gene_id".into(), Some(entry.gene_id.clone())),
+                (
+                    "sequence_length_bp".into(),
+                    Some(entry.sequence_length.to_string()),
+                ),
+                (
+                    "synthetic_origin".into(),
+                    Some("ensembl_gene_import".to_string()),
+                ),
+            ];
+            if let Some(symbol) = entry.gene_symbol.as_ref() {
+                qualifiers.push(("gene".into(), Some(symbol.clone())));
+                qualifiers.push(("label".into(), Some(symbol.clone())));
+            } else {
+                qualifiers.push(("label".into(), Some(entry.entry_id.clone())));
+            }
+            if let Some(display_name) = entry.gene_display_name.as_ref() {
+                qualifiers.push(("note".into(), Some(display_name.clone())));
+            }
+            if let Some(species) = entry.species.as_ref() {
+                qualifiers.push(("organism".into(), Some(species.clone())));
+            }
+            if let Some(seq_region_name) = entry.seq_region_name.as_ref() {
+                qualifiers.push(("chromosome".into(), Some(seq_region_name.clone())));
+                qualifiers.push(("seq_region_name".into(), Some(seq_region_name.clone())));
+            }
+            if let Some(start) = entry.genomic_start_1based {
+                qualifiers.push(("genomic_start_1based".into(), Some(start.to_string())));
+            }
+            if let Some(end) = entry.genomic_end_1based {
+                qualifiers.push(("genomic_end_1based".into(), Some(end.to_string())));
+            }
+            if let Some(strand) = entry.strand {
+                qualifiers.push(("strand".into(), Some(strand.to_string())));
+            }
+            if let Some(biotype) = entry.biotype.as_ref() {
+                qualifiers.push(("biotype".into(), Some(biotype.clone())));
+            }
+            if let Some(assembly_name) = entry.assembly_name.as_ref() {
+                qualifiers.push(("assembly_name".into(), Some(assembly_name.clone())));
+            }
+            qualifiers.push((
+                "transcript_count".into(),
+                Some(entry.transcripts.len().to_string()),
+            ));
+            let dna_len = dna.len() as i64;
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "gene".into(),
+                location: gb_io::seq::Location::simple_range(0, dna_len),
+                qualifiers,
+            });
+        }
+        self.state.sequences.insert(seq_id.clone(), dna);
+        result.changed_seq_ids.push(seq_id.clone());
+        result.messages.push(format!(
+            "Imported Ensembl gene '{}' into sequence '{}'",
+            entry.entry_id, seq_id
+        ));
+        Ok(seq_id)
     }
 
     pub(super) fn import_ensembl_protein_entry_sequence(

@@ -147,8 +147,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, RwLock,

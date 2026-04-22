@@ -1329,11 +1329,16 @@ order. Durable architecture constraints and decisions remain in
           detection) and deeper ATtRACT runtime detail (for example active
           snapshot version/content hash), not only best-effort phase/progress
           hints
-        - a direct one-off remote Ensembl gene/region fetch route is still
-          missing:
-          current ClawBio/GENtle gene/region export remains the prepared-local
-          reference path, so users who explicitly want ROI-only Ensembl access
-          without full reference preparation still hit a real capability gap
+        - direct one-off remote Ensembl **gene** fetch is now implemented
+          through the shared `ensembl-gene fetch|list|show|import-sequence`
+          route, so ClawBio can do lightweight live gene retrieval without
+          whole-reference preparation
+        - live Ensembl retrieval smoke coverage now uses an explicit internet
+          probe and skips cleanly when offline instead of failing local test
+          runs that have no network access
+        - direct one-off remote Ensembl **region/ROI** fetch is still missing,
+          so users who explicitly want locus slices without prepared local
+          references still hit a real capability gap
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text
@@ -2899,9 +2904,11 @@ Planned work:
      - public record fetch (`genbank fetch`, `dbsnp fetch`)
      - single-request local Ensembl-backed gene/region extraction with
        `ensure_reference_prepared`
+     - one-off live Ensembl gene fetch/import without whole-reference
+       preparation
      - sequence-map graphics from a known state
      - common stateful figure-generation and planning/report flows
-   - treat direct remote Ensembl ROI/gene fetch that avoids whole-reference
+   - treat direct remote Ensembl ROI/region fetch that avoids whole-reference
      preparation as a separate missing capability, not as something the skill
      should imply already exists
 5. Plan the terminology move from `helper genomes` to `helper constructs` as

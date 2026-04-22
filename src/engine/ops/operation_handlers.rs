@@ -9017,6 +9017,41 @@ impl GentleEngine {
                         resolved_entry_id, protein_id, transcript_id
                     ));
                 }
+                Operation::FetchEnsemblGene {
+                    query,
+                    species,
+                    entry_id,
+                } => {
+                    let query_trimmed = query.trim();
+                    if query_trimmed.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "FetchEnsemblGene requires a non-empty query".to_string(),
+                        });
+                    }
+                    let entry = Self::fetch_ensembl_gene_entry_from_rest(
+                        query_trimmed,
+                        species.as_deref(),
+                        entry_id.as_deref(),
+                    )?;
+                    let resolved_entry_id = entry.entry_id.clone();
+                    let gene_id = entry.gene_id.clone();
+                    let gene_symbol = entry.gene_symbol.clone();
+                    self.upsert_ensembl_gene_entry(entry)?;
+                    result.messages.push(format!(
+                        "Fetched Ensembl gene '{}' (gene '{}'{}{})",
+                        resolved_entry_id,
+                        gene_id,
+                        gene_symbol
+                            .as_deref()
+                            .map(|value| format!(", symbol '{}'", value))
+                            .unwrap_or_default(),
+                        species
+                            .as_deref()
+                            .map(|value| format!(", species '{}'", value))
+                            .unwrap_or_default()
+                    ));
+                }
                 Operation::FetchGenBankAccession { accession, as_id } => {
                     let accession_trimmed = accession.trim();
                     if accession_trimmed.is_empty() {
@@ -9100,6 +9135,24 @@ impl GentleEngine {
                         });
                     }
                     let _ = self.import_ensembl_protein_entry_sequence(
+                        &mut result,
+                        entry_id,
+                        output_id.as_deref(),
+                    )?;
+                }
+                Operation::ImportEnsemblGeneSequence {
+                    entry_id,
+                    output_id,
+                } => {
+                    let entry_id = entry_id.trim();
+                    if entry_id.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ImportEnsemblGeneSequence requires a non-empty entry_id"
+                                .to_string(),
+                        });
+                    }
+                    let _ = self.import_ensembl_gene_entry_sequence(
                         &mut result,
                         entry_id,
                         output_id.as_deref(),

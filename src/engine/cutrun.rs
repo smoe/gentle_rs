@@ -2504,7 +2504,9 @@ impl GentleEngine {
                         seq_id,
                         &resolved_input_r1_path,
                         resolved_input_r2_path.clone(),
-                        source_dataset_status.as_ref().map(|status| status.dataset_id.clone()),
+                        source_dataset_status
+                            .as_ref()
+                            .map(|status| status.dataset_id.clone()),
                         source_dataset_status
                             .as_ref()
                             .and_then(|status| status.target_factor.clone()),
@@ -2541,7 +2543,9 @@ impl GentleEngine {
             seq_id,
             &resolved_input_r1_path,
             resolved_input_r2_path,
-            source_dataset_status.as_ref().map(|status| status.dataset_id.clone()),
+            source_dataset_status
+                .as_ref()
+                .map(|status| status.dataset_id.clone()),
             source_dataset_status
                 .as_ref()
                 .and_then(|status| status.target_factor.clone()),
@@ -2673,10 +2677,7 @@ impl GentleEngine {
             candidate.signal_value_sum = value * span_bp as f64;
             candidate.signal_span_bp = span_bp;
         }
-        if let Some(dataset_id) = dataset_id
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
+        if let Some(dataset_id) = dataset_id.map(str::trim).filter(|value| !value.is_empty()) {
             candidate
                 .contributing_dataset_ids
                 .insert(dataset_id.to_string());
@@ -2776,11 +2777,12 @@ impl GentleEngine {
             .into_iter()
             .enumerate()
             .map(|(idx, candidate)| {
-                let (genomic_start_1based, genomic_end_1based) = Self::cutrun_seq_local_span_to_genomic(
-                    anchor,
-                    candidate.local_start_1based,
-                    candidate.local_end_1based,
-                );
+                let (genomic_start_1based, genomic_end_1based) =
+                    Self::cutrun_seq_local_span_to_genomic(
+                        anchor,
+                        candidate.local_start_1based,
+                        candidate.local_end_1based,
+                    );
                 CutRunSupportWindowRecord {
                     window_id: format!("window_{}", idx + 1),
                     local_start_0based: candidate.local_start_1based.saturating_sub(1),
@@ -2914,12 +2916,12 @@ impl GentleEngine {
             return Ok(vec![]);
         };
         let signal_path_lower = path.to_ascii_lowercase();
-        let converted = if signal_path_lower.ends_with(".bw") || signal_path_lower.ends_with(".bigwig")
-        {
-            Some(Self::convert_bigwig_to_bedgraph(&path)?)
-        } else {
-            None
-        };
+        let converted =
+            if signal_path_lower.ends_with(".bw") || signal_path_lower.ends_with(".bigwig") {
+                Some(Self::convert_bigwig_to_bedgraph(&path)?)
+            } else {
+                None
+            };
         let reader_path = converted
             .as_ref()
             .map(|file| file.path().to_string_lossy().to_string())
@@ -2963,7 +2965,10 @@ impl GentleEngine {
             if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
                 continue;
             }
-            let Some(score) = record.score.filter(|value| value.is_finite() && *value > 0.0) else {
+            let Some(score) = record
+                .score
+                .filter(|value| value.is_finite() && *value > 0.0)
+            else {
                 continue;
             };
             let Some((local_start_1based, local_end_1based)) =
@@ -2985,10 +2990,8 @@ impl GentleEngine {
             else {
                 continue;
             };
-            let start_idx = local_start_1based
-                .saturating_sub(span_start_0based.saturating_add(1));
-            let end_idx = local_end_1based
-                .saturating_sub(span_start_0based.saturating_add(1));
+            let start_idx = local_start_1based.saturating_sub(span_start_0based.saturating_add(1));
+            let end_idx = local_end_1based.saturating_sub(span_start_0based.saturating_add(1));
             for idx in start_idx..=end_idx.min(signal_values.len().saturating_sub(1)) {
                 signal_values[idx] = signal_values[idx].max(score);
             }
@@ -3016,7 +3019,9 @@ impl GentleEngine {
             if span_bp < CUTRUN_SIGNAL_ISLAND_MIN_WIDTH_BP {
                 continue;
             }
-            let local_start_1based = span_start_0based.saturating_add(start_idx).saturating_add(1);
+            let local_start_1based = span_start_0based
+                .saturating_add(start_idx)
+                .saturating_add(1);
             let local_end_1based = local_start_1based.saturating_add(span_bp).saturating_sub(1);
             let mean_signal = if span_bp == 0 {
                 None
@@ -3184,9 +3189,7 @@ impl GentleEngine {
         })
     }
 
-    fn cutrun_aggregate_motif_context_hits(
-        hits: &[TfbsHitScanRow],
-    ) -> Vec<CutRunMotifContextHit> {
+    fn cutrun_aggregate_motif_context_hits(hits: &[TfbsHitScanRow]) -> Vec<CutRunMotifContextHit> {
         let mut grouped = BTreeMap::<String, CutRunMotifContextHit>::new();
         for hit in hits {
             let entry = grouped
@@ -3200,9 +3203,8 @@ impl GentleEngine {
                 });
             entry.hit_count = entry.hit_count.saturating_add(1);
             entry.best_llr_bits = entry.best_llr_bits.max(hit.llr_bits);
-            entry.best_true_log_odds_bits = entry
-                .best_true_log_odds_bits
-                .max(hit.true_log_odds_bits);
+            entry.best_true_log_odds_bits =
+                entry.best_true_log_odds_bits.max(hit.true_log_odds_bits);
             if entry.motif_label.is_none() {
                 entry.motif_label = hit.tf_name.clone();
             }
@@ -3335,17 +3337,19 @@ impl GentleEngine {
         let denominator = windows.len().max(1) as f64;
         let mut rows = grouped
             .into_iter()
-            .map(|(motif_id, (motif_label, window_count, score_sum, max_best_score))| {
-                CutRunMotifContextSummaryRow {
-                    motif_id,
-                    motif_label,
-                    context_scope: scope,
-                    window_count,
-                    window_fraction: window_count as f64 / denominator,
-                    mean_best_score: score_sum / window_count.max(1) as f64,
-                    max_best_score,
-                }
-            })
+            .map(
+                |(motif_id, (motif_label, window_count, score_sum, max_best_score))| {
+                    CutRunMotifContextSummaryRow {
+                        motif_id,
+                        motif_label,
+                        context_scope: scope,
+                        window_count,
+                        window_fraction: window_count as f64 / denominator,
+                        mean_best_score: score_sum / window_count.max(1) as f64,
+                        max_best_score,
+                    }
+                },
+            )
             .collect::<Vec<_>>();
         rows.sort_by(|left, right| {
             right
@@ -3562,8 +3566,11 @@ impl GentleEngine {
             let clipped_end_0based_exclusive = end_0based_exclusive.min(span_end_0based_exclusive);
             let local_start_1based = clipped_start_0based.saturating_add(1);
             let local_end_1based = clipped_end_0based_exclusive;
-            let (genomic_start_1based, genomic_end_1based) =
-                Self::cutrun_seq_local_span_to_genomic(&anchor, local_start_1based, local_end_1based);
+            let (genomic_start_1based, genomic_end_1based) = Self::cutrun_seq_local_span_to_genomic(
+                &anchor,
+                local_start_1based,
+                local_end_1based,
+            );
             let strongest_support_window = support_windows
                 .iter()
                 .filter(|window| {
@@ -3691,17 +3698,18 @@ impl GentleEngine {
                         ),
                     })?
                     .get_forward_string();
-                let target_motif_present = resolved_target_motif_consensus
-                    .iter()
-                    .any(|(_, _, consensus)| {
-                        Self::contains_motif_any_strand(window_sequence.as_bytes(), consensus)
-                            .unwrap_or(false)
-                    });
+                let target_motif_present =
+                    resolved_target_motif_consensus
+                        .iter()
+                        .any(|(_, _, consensus)| {
+                            Self::contains_motif_any_strand(window_sequence.as_bytes(), consensus)
+                                .unwrap_or(false)
+                        });
                 if target_motif_present {
                     continue;
                 }
-                let (motifs_inside_window, motifs_in_neighbor_window) =
-                    self.cutrun_collect_strong_window_motif_context(
+                let (motifs_inside_window, motifs_in_neighbor_window) = self
+                    .cutrun_collect_strong_window_motif_context(
                         dna,
                         support_window,
                         &context_motif_tokens,
@@ -3736,13 +3744,19 @@ impl GentleEngine {
         confirmed_tfbs_rows.sort_by(|left, right| {
             left.local_start_0based
                 .cmp(&right.local_start_0based)
-                .then(left.local_end_0based_exclusive.cmp(&right.local_end_0based_exclusive))
+                .then(
+                    left.local_end_0based_exclusive
+                        .cmp(&right.local_end_0based_exclusive),
+                )
                 .then(left.feature_id.cmp(&right.feature_id))
         });
         unconfirmed_tfbs_rows.sort_by(|left, right| {
             left.local_start_0based
                 .cmp(&right.local_start_0based)
-                .then(left.local_end_0based_exclusive.cmp(&right.local_end_0based_exclusive))
+                .then(
+                    left.local_end_0based_exclusive
+                        .cmp(&right.local_end_0based_exclusive),
+                )
                 .then(left.feature_id.cmp(&right.feature_id))
         });
 
