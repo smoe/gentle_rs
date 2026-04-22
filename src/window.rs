@@ -30,6 +30,12 @@ impl Window {
         }
     }
 
+    pub fn update_auxiliary_windows_only(&mut self, ctx: &egui::Context) {
+        match self {
+            Self::Dna(window) => window.update_auxiliary_windows_only(ctx),
+        }
+    }
+
     pub fn name(&self) -> String {
         match self {
             Self::Dna(window) => window.name(),
@@ -147,6 +153,12 @@ impl Window {
         }
     }
 
+    pub fn has_open_auxiliary_windows(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.has_open_auxiliary_windows(),
+        }
+    }
+
     pub fn embedded_auxiliary_window_layer_id(
         &self,
         viewport_id: egui::ViewportId,
@@ -193,6 +205,20 @@ impl Window {
     pub fn set_window_scope_id(&mut self, scope_id: String) {
         match self {
             Self::Dna(window) => window.set_window_scope_id(scope_id),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn seed_rna_read_mapping_window_for_tests(
+        &mut self,
+        seq_id: &str,
+        feature_id: usize,
+        group_label: &str,
+    ) {
+        match self {
+            Self::Dna(window) => {
+                window.seed_rna_read_mapping_window_for_tests(seq_id, feature_id, group_label)
+            }
         }
     }
 }

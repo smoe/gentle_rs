@@ -122,6 +122,15 @@ impl GENtleApp {
                 .read()
                 .ok()
                 .and_then(|guard| guard.embedded_auxiliary_window_layer_id(viewport_id))
+        }).or_else(|| {
+            self.detached_auxiliary_window_hosts
+                .values()
+                .find_map(|window| {
+                    window
+                        .read()
+                        .ok()
+                        .and_then(|guard| guard.embedded_auxiliary_window_layer_id(viewport_id))
+                })
         })
     }
 
@@ -341,6 +350,20 @@ impl GENtleApp {
                 });
             }
         }
+        for window in self.detached_auxiliary_window_hosts.values() {
+            let Ok(window_guard) = window.read() else {
+                continue;
+            };
+            for (viewport_id, title, detail) in window_guard.collect_open_auxiliary_window_entries()
+            {
+                auxiliary_windows.push(OpenWindowEntry {
+                    native_menu_key: Self::native_menu_key_for_viewport(viewport_id),
+                    viewport_id,
+                    title,
+                    detail,
+                });
+            }
+        }
         auxiliary_windows.sort_by(|left, right| {
             left.title
                 .cmp(&right.title)
@@ -348,6 +371,70 @@ impl GENtleApp {
         });
         entries.extend(auxiliary_windows);
         entries
+    }
+
+    pub(super) fn process_window_close_queue(&mut self) {
+        let Ok(mut to_close) = self.windows_to_close.write() else {
+            eprintln!("W GENtleApp: close-queue lock poisoned");
+            return;
+        };
+        let queued_ids: Vec<ViewportId> = to_close.drain(..).collect();
+        drop(to_close);
+
+        for viewport_id in queued_ids {
+            self.pending_focus_viewports.retain(|id| *id != viewport_id);
+            self.pending_window_initial_positions.remove(&viewport_id);
+            self.pending_window_open_timestamps.remove(&viewport_id);
+            self.pending_viewport_focus_timestamps.remove(&viewport_id);
+
+            let Some(window) = self.windows.remove(&viewport_id) else {
+                self.detached_auxiliary_window_hosts.remove(&viewport_id);
+                continue;
+            };
+            let keep_auxiliary_host_alive = window
+                .read()
+                .ok()
+                .map(|guard| guard.has_open_auxiliary_windows())
+                .unwrap_or(false);
+            if keep_auxiliary_host_alive {
+                self.detached_auxiliary_window_hosts.insert(viewport_id, window);
+            }
+        }
+    }
+
+    pub(super) fn render_detached_auxiliary_window_hosts(&mut self, ctx: &egui::Context) {
+        let detached_hosts = self
+            .detached_auxiliary_window_hosts
+            .iter()
+            .map(|(viewport_id, window)| (*viewport_id, window.clone()))
+            .collect::<Vec<_>>();
+        let mut stale_hosts = Vec::new();
+        for (viewport_id, window) in detached_hosts {
+            let update_result = catch_unwind(AssertUnwindSafe(|| {
+                if let Ok(mut guard) = window.write() {
+                    guard.update_auxiliary_windows_only(ctx);
+                } else {
+                    eprintln!("W GENtleApp: detached auxiliary host lock poisoned");
+                }
+            }));
+            if update_result.is_err() {
+                eprintln!(
+                    "E GENtleApp: recovered from panic while updating detached auxiliary host"
+                );
+            }
+            let keep_host = window
+                .read()
+                .ok()
+                .map(|guard| guard.has_open_auxiliary_windows())
+                .unwrap_or(false);
+            if !keep_host {
+                stale_hosts.push(viewport_id);
+            }
+        }
+        for viewport_id in stale_hosts {
+            self.detached_auxiliary_window_hosts.remove(&viewport_id);
+            self.pending_focus_viewports.retain(|id| *id != viewport_id);
+        }
     }
 
     pub(super) fn focus_window_viewport(&mut self, ctx: &egui::Context, viewport_id: ViewportId) {

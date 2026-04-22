@@ -390,6 +390,21 @@ impl WindowDna {
         }
     }
 
+    /// Keep detached auxiliary workspaces alive without redrawing the parent
+    /// sequence viewport that originally spawned them.
+    pub fn update_auxiliary_windows_only(&mut self, ctx: &egui::Context) {
+        self.poll_deferred_load();
+        if self.pending_dna_load.is_some() || self.deferred_load_message.is_some() {
+            return;
+        }
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            self.main_area.render_auxiliary_windows_only(ctx);
+        }));
+        if result.is_err() {
+            eprintln!("E WindowDna: recovered from panic while rendering detached auxiliaries");
+        }
+    }
+
     pub fn name(&self) -> String {
         self.main_area.window_title()
     }
@@ -416,6 +431,10 @@ impl WindowDna {
         self.main_area.collect_open_auxiliary_window_entries()
     }
 
+    pub fn has_open_auxiliary_windows(&self) -> bool {
+        !self.main_area.collect_open_auxiliary_window_entries().is_empty()
+    }
+
     pub fn embedded_auxiliary_window_layer_id(
         &self,
         viewport_id: egui::ViewportId,
@@ -435,6 +454,17 @@ impl WindowDna {
     ) {
         self.main_area
             .render_sequencing_confirmation_specialist(ui, ctx);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn seed_rna_read_mapping_window_for_tests(
+        &mut self,
+        seq_id: &str,
+        feature_id: usize,
+        group_label: &str,
+    ) {
+        self.main_area
+            .seed_rna_read_mapping_window_for_tests(seq_id, feature_id, group_label);
     }
 
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {

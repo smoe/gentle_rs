@@ -12473,6 +12473,37 @@ impl MainAreaDna {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn seed_rna_read_mapping_window_for_tests(
+        &mut self,
+        seq_id: &str,
+        feature_id: usize,
+        group_label: &str,
+    ) {
+        self.show_rna_read_mapping_window = true;
+        self.rna_read_mapping_window_pending_initial_render = false;
+        self.rna_read_mapping_window_feature_id = Some(feature_id);
+        self.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
+            seq_id: seq_id.to_string(),
+            target_feature_id: feature_id,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: group_label.to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: self.dna.read().map(|dna| dna.len().max(1)).unwrap_or(1),
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: "test".to_string(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        }));
+    }
+
     pub fn dna(&self) -> &Arc<RwLock<DNAsequence>> {
         &self.dna
     }
@@ -13971,6 +14002,23 @@ impl MainAreaDna {
         }
         self.render_error_popup(ui.ctx());
         self.render_anchor_prepared_choice_popup(ui.ctx());
+    }
+
+    /// Poll shared background jobs and drive only the detached auxiliary
+    /// workspaces that may outlive the parent sequence viewport.
+    pub fn render_auxiliary_windows_only(&mut self, ctx: &egui::Context) {
+        self.prefill_container_ids();
+        self.poll_tfbs_task(ctx);
+        self.poll_primer_design_task(ctx);
+        self.poll_rna_read_task(ctx);
+        self.sync_from_engine_display();
+        self.render_dotplot_window(ctx);
+        self.render_splicing_expert_window(ctx);
+        self.render_rna_read_mapping_window(ctx);
+        self.render_variant_followup_window(ctx);
+        self.render_isoform_expert_window(ctx);
+        self.render_error_popup(ctx);
+        self.render_anchor_prepared_choice_popup(ctx);
     }
 
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {

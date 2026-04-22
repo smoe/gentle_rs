@@ -720,6 +720,7 @@ pub struct GENtleApp {
     engine: Arc<RwLock<GentleEngine>>,
     new_windows: Vec<Window>,
     windows: HashMap<ViewportId, Arc<RwLock<Window>>>,
+    detached_auxiliary_window_hosts: HashMap<ViewportId, Arc<RwLock<Window>>>,
     windows_to_close: Arc<RwLock<Vec<ViewportId>>>,
     pending_focus_viewports: Vec<ViewportId>,
     pending_window_initial_positions: HashMap<ViewportId, Pos2>,
@@ -2397,6 +2398,7 @@ impl Default for GENtleApp {
             engine: Arc::new(RwLock::new(GentleEngine::new())),
             new_windows: vec![],
             windows: HashMap::new(),
+            detached_auxiliary_window_hosts: HashMap::new(),
             windows_to_close: Arc::new(RwLock::new(vec![])),
             pending_focus_viewports: vec![],
             pending_window_initial_positions: HashMap::new(),
@@ -6555,6 +6557,7 @@ Error: `{err}`"
         self.lineage_node_remove_target_id = None;
         self.new_windows.clear();
         self.windows.clear();
+        self.detached_auxiliary_window_hosts.clear();
         self.windows_to_close.write().unwrap().clear();
         self.pending_focus_viewports.clear();
         self.viewport_id_counter = 0;
@@ -31184,6 +31187,7 @@ Error: `{err}`"
         self.tutorial_project_status.clear();
         self.new_windows.clear();
         self.windows.clear();
+        self.detached_auxiliary_window_hosts.clear();
         self.windows_to_close.write().unwrap().clear();
         self.pending_focus_viewports.clear();
         self.show_gibson_dialog = false;
@@ -44016,13 +44020,7 @@ impl GENtleApp {
             }
 
             // Close windows
-            if let Ok(mut to_close) = self.windows_to_close.write() {
-                for id in to_close.drain(..) {
-                    self.windows.remove(&id);
-                }
-            } else {
-                eprintln!("W GENtleApp: close-queue lock poisoned");
-            }
+            self.process_window_close_queue();
 
             // Show windows
             let windows_to_show = self
@@ -44040,6 +44038,8 @@ impl GENtleApp {
                 self.show_window(ctx, id, window, initial_position);
                 self.finalize_viewport_open_probe(id, "Sequence");
             }
+
+            self.render_detached_auxiliary_window_hosts(ctx);
 
             if !self.pending_focus_viewports.is_empty() {
                 let to_focus: Vec<ViewportId> = self.pending_focus_viewports.drain(..).collect();
@@ -50174,6 +50174,43 @@ mod tests {
                 egui::Order::Middle,
                 egui::Id::new(("hosted_sequence_window", viewport_id)),
             ))
+        );
+    }
+
+    #[test]
+    fn closing_sequence_window_with_open_rna_mapping_detaches_auxiliary_host() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+        let mut window = Window::new_dna(dna, "seq1".to_string(), app.engine.clone());
+        window.seed_rna_read_mapping_window_for_tests("seq1", 17, "TP73");
+        let viewport_id = app.register_window(window);
+
+        app.windows_to_close.write().unwrap().push(viewport_id);
+        app.process_window_close_queue();
+
+        assert!(
+            !app.windows.contains_key(&viewport_id),
+            "closing the parent sequence window should remove the visible DNA viewport"
+        );
+        assert!(
+            app.detached_auxiliary_window_hosts.contains_key(&viewport_id),
+            "an open RNA-read Mapping workspace should keep a detached auxiliary host alive"
+        );
+        let entries = app.collect_open_window_entries();
+        assert!(
+            entries.iter().any(|entry| {
+                entry
+                    .title
+                    .contains("RNA-read Mapping - TP73 (seq1)")
+            }),
+            "detached auxiliary hosts should keep RNA-read Mapping listed in the Windows menu"
+        );
+        let mapping_viewport_id =
+            egui::ViewportId::from_hash_of(("rna_read_mapping_viewport", "seq1", 17usize));
+        assert_eq!(
+            app.embedded_window_layer_id_for_viewport(mapping_viewport_id).is_some(),
+            true,
+            "detached auxiliary hosts should still resolve embedded layer ids for focus routing"
         );
     }
 

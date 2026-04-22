@@ -588,6 +588,8 @@ Feature tree grouping:
     `Open RNA-read Mapping Workspace...`
   - saved reports drive score density, thresholded cDNA support, mapped cDNA
     support, read-effects inspection, and report-driven review
+  - the dedicated `RNA-read Mapping` workspace now stays open if you close the
+    parent DNA sequence window that originally spawned it
 - The Splicing Expert now also includes an `ATtRACT / RBP evidence` section:
   - engine-owned, splice-aware motif interpretation over the selected splicing
     group; the GUI is only a viewer/filter for the shared payload
@@ -2367,6 +2369,9 @@ GENtle tracks open native windows and can raise a selected one to front.
   - `Main`: raises the main project window
 - `Cmd+W` closes the focused native window (sequence and auxiliary viewports,
   including Configuration/Help/BLAST/Track Import/Planning/Agent Assistant/History).
+- Closing a sequence window no longer force-closes an already-open
+  `RNA-read Mapping` auxiliary workspace; close that workspace directly when
+  you are done with it.
 - Help shortcuts:
   - `F1` (Windows/Linux)
   - `Ctrl+F1` (fallback in function-key reserved environments)
