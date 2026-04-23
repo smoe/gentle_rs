@@ -5793,6 +5793,73 @@ impl GentleEngine {
     }
 
     #[inline(never)]
+    fn apply_rack_mutation_operation(
+        &mut self,
+        op: Operation,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        match op {
+            Operation::SetRackProfile { rack_id, profile } => {
+                self.set_rack_profile(&rack_id, profile)?;
+                result.messages.push(format!(
+                    "Updated rack '{}' profile to '{}'",
+                    rack_id.trim(),
+                    profile.as_str()
+                ));
+            }
+            Operation::ApplyRackTemplate { rack_id, template } => {
+                self.apply_rack_template(&rack_id, template)?;
+                result.messages.push(format!(
+                    "Applied rack template '{}' to '{}'",
+                    template.as_str(),
+                    rack_id.trim()
+                ));
+            }
+            Operation::SetRackFillDirection {
+                rack_id,
+                fill_direction,
+            } => {
+                self.set_rack_fill_direction(&rack_id, fill_direction)?;
+                result.messages.push(format!(
+                    "Updated rack '{}' fill direction to '{}'",
+                    rack_id.trim(),
+                    fill_direction.as_str()
+                ));
+            }
+            Operation::SetRackProfileCustom {
+                rack_id,
+                rows,
+                columns,
+            } => {
+                self.set_rack_profile_custom(&rack_id, rows, columns)?;
+                result.messages.push(format!(
+                    "Updated rack '{}' profile to custom {}x{}",
+                    rack_id.trim(),
+                    rows,
+                    columns
+                ));
+            }
+            Operation::SetRackBlockedCoordinates {
+                rack_id,
+                blocked_coordinates,
+            } => {
+                self.set_rack_blocked_coordinates(&rack_id, blocked_coordinates.clone())?;
+                result.messages.push(if blocked_coordinates.is_empty() {
+                    format!("Cleared blocked rack positions on '{}'", rack_id.trim())
+                } else {
+                    format!(
+                        "Updated blocked rack positions on '{}' ({})",
+                        rack_id.trim(),
+                        blocked_coordinates.join(", ")
+                    )
+                });
+            }
+            _ => unreachable!("non-rack-mutation operation passed to helper"),
+        }
+        Ok(())
+    }
+
+    #[inline(never)]
     fn apply_arrangement_rack_and_ladder_operation(
         &mut self,
         op: Operation,
@@ -5939,60 +6006,12 @@ impl GentleEngine {
                     to_coordinate.trim()
                 ));
             }
-            Operation::SetRackProfile { rack_id, profile } => {
-                self.set_rack_profile(&rack_id, profile)?;
-                result.messages.push(format!(
-                    "Updated rack '{}' profile to '{}'",
-                    rack_id.trim(),
-                    profile.as_str()
-                ));
-            }
-            Operation::ApplyRackTemplate { rack_id, template } => {
-                self.apply_rack_template(&rack_id, template)?;
-                result.messages.push(format!(
-                    "Applied rack template '{}' to '{}'",
-                    template.as_str(),
-                    rack_id.trim()
-                ));
-            }
-            Operation::SetRackFillDirection {
-                rack_id,
-                fill_direction,
-            } => {
-                self.set_rack_fill_direction(&rack_id, fill_direction)?;
-                result.messages.push(format!(
-                    "Updated rack '{}' fill direction to '{}'",
-                    rack_id.trim(),
-                    fill_direction.as_str()
-                ));
-            }
-            Operation::SetRackProfileCustom {
-                rack_id,
-                rows,
-                columns,
-            } => {
-                self.set_rack_profile_custom(&rack_id, rows, columns)?;
-                result.messages.push(format!(
-                    "Updated rack '{}' profile to custom {}x{}",
-                    rack_id.trim(),
-                    rows,
-                    columns
-                ));
-            }
-            Operation::SetRackBlockedCoordinates {
-                rack_id,
-                blocked_coordinates,
-            } => {
-                self.set_rack_blocked_coordinates(&rack_id, blocked_coordinates.clone())?;
-                result.messages.push(if blocked_coordinates.is_empty() {
-                    format!("Cleared blocked rack positions on '{}'", rack_id.trim())
-                } else {
-                    format!(
-                        "Updated blocked rack positions on '{}' ({})",
-                        rack_id.trim(),
-                        blocked_coordinates.join(", ")
-                    )
-                });
+            op @ Operation::SetRackProfile { .. }
+            | op @ Operation::ApplyRackTemplate { .. }
+            | op @ Operation::SetRackFillDirection { .. }
+            | op @ Operation::SetRackProfileCustom { .. }
+            | op @ Operation::SetRackBlockedCoordinates { .. } => {
+                self.apply_rack_mutation_operation(op, result)?;
             }
             Operation::ExportRackLabelsSvg {
                 rack_id,
@@ -6294,6 +6313,15 @@ impl GentleEngine {
 
         if matches!(
             &op,
+            Operation::SetRackProfile { .. }
+                | Operation::ApplyRackTemplate { .. }
+                | Operation::SetRackFillDirection { .. }
+                | Operation::SetRackProfileCustom { .. }
+                | Operation::SetRackBlockedCoordinates { .. }
+        ) {
+            self.apply_rack_mutation_operation(op, &mut result)?;
+        } else if matches!(
+            &op,
             Operation::CreateArrangementSerial { .. }
                 | Operation::SetArrangementLadders { .. }
                 | Operation::SetContainerDeclaredContentsExclusive { .. }
@@ -6302,11 +6330,6 @@ impl GentleEngine {
                 | Operation::MoveRackPlacement { .. }
                 | Operation::MoveRackSamples { .. }
                 | Operation::MoveRackArrangementBlocks { .. }
-                | Operation::SetRackProfile { .. }
-                | Operation::ApplyRackTemplate { .. }
-                | Operation::SetRackFillDirection { .. }
-                | Operation::SetRackProfileCustom { .. }
-                | Operation::SetRackBlockedCoordinates { .. }
                 | Operation::ExportRackLabelsSvg { .. }
                 | Operation::ExportRackFabricationSvg { .. }
                 | Operation::ExportRackIsometricSvg { .. }
@@ -7118,11 +7141,6 @@ impl GentleEngine {
                 | op @ Operation::MoveRackPlacement { .. }
                 | op @ Operation::MoveRackSamples { .. }
                 | op @ Operation::MoveRackArrangementBlocks { .. }
-                | op @ Operation::SetRackProfile { .. }
-                | op @ Operation::ApplyRackTemplate { .. }
-                | op @ Operation::SetRackFillDirection { .. }
-                | op @ Operation::SetRackProfileCustom { .. }
-                | op @ Operation::SetRackBlockedCoordinates { .. }
                 | op @ Operation::ExportRackLabelsSvg { .. }
                 | op @ Operation::ExportRackFabricationSvg { .. }
                 | op @ Operation::ExportRackIsometricSvg { .. }
@@ -7133,6 +7151,13 @@ impl GentleEngine {
                 | op @ Operation::ExportDnaLadders { .. }
                 | op @ Operation::ExportRnaLadders { .. } => {
                     self.apply_arrangement_rack_and_ladder_operation(op, &mut result)?;
+                }
+                op @ Operation::SetRackProfile { .. }
+                | op @ Operation::ApplyRackTemplate { .. }
+                | op @ Operation::SetRackFillDirection { .. }
+                | op @ Operation::SetRackProfileCustom { .. }
+                | op @ Operation::SetRackBlockedCoordinates { .. } => {
+                    self.apply_rack_mutation_operation(op, &mut result)?;
                 }
                 Operation::ExportPool {
                     inputs,

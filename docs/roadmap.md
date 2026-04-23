@@ -274,6 +274,11 @@ order. Durable architecture constraints and decisions remain in
     `#[inline(never)]` helper before the large engine matcher, while the inner
     branch still delegates back to that helper so there remains one
     implementation path
+  - rack mutation operations now mirror that extra split as well:
+    `ApplyRackTemplate` and the neighboring rack-profile mutations dispatch
+    through their own smaller helper before the broader
+    arrangement/rack/ladder branch, and the exhaustive matcher delegates back
+    into the same helper
 - Engine-shell export/import/resource commands now use the same split-helper
   pattern:
   - `ExportRunBundle` previously still entered the monolithic inner matcher and
