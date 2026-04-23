@@ -2670,6 +2670,18 @@ pub enum Operation {
         #[serde(default)]
         conditions: Option<GelRunConditions>,
     },
+    RenderProteinGelSvg {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        ladders: Option<Vec<String>>,
+    },
+    RenderProtein2dGelSvg {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        ladders: Option<Vec<String>>,
+    },
     RenderProtocolCartoonSvg {
         protocol: ProtocolCartoonKind,
         path: String,
@@ -3273,10 +3285,14 @@ pub enum Operation {
         seq_id: SeqId,
         #[serde(default)]
         feature_ids: Vec<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        feature_query: Option<SequenceFeatureQuery>,
         #[serde(default)]
         scope: Option<SplicingScopePreset>,
         #[serde(default)]
         output_prefix: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        report_id: Option<String>,
     },
     ReverseTranslateProteinSequence {
         seq_id: SeqId,
@@ -4879,6 +4895,8 @@ impl GentleEngine {
                 "RenderRnaStructureSvg".to_string(),
                 "RenderLineageSvg".to_string(),
                 "RenderPoolGelSvg".to_string(),
+                "RenderProteinGelSvg".to_string(),
+                "RenderProtein2dGelSvg".to_string(),
                 "RenderProtocolCartoonSvg".to_string(),
                 "RenderProtocolCartoonTemplateSvg".to_string(),
                 "ValidateProtocolCartoonTemplate".to_string(),
@@ -6879,6 +6897,8 @@ impl GentleEngine {
                 | Operation::RenderRnaStructureSvg { .. }
                 | Operation::RenderLineageSvg { .. }
                 | Operation::RenderPoolGelSvg { .. }
+                | Operation::RenderProteinGelSvg { .. }
+                | Operation::RenderProtein2dGelSvg { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
                 | Operation::ValidateProtocolCartoonTemplate { .. }

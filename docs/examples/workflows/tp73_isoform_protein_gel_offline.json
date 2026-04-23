@@ -1,0 +1,74 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tp73_isoform_protein_gel_offline",
+  "title": "TP73 isoform protein gel (offline)",
+  "summary": "Loads the bundled TP73 GenBank asset, derives curated transcript-native protein isoforms, and renders a protein molecular-weight gel with a deterministic kDa ladder.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/tp73.ncbi.gb"
+  ],
+  "tags": [
+    "tp73",
+    "protein",
+    "isoform",
+    "gel",
+    "offline",
+    "clawbio"
+  ],
+  "workflow": {
+    "run_id": "example_tp73_isoform_protein_gel_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/tp73.ncbi.gb",
+          "as_id": "tp73_locus"
+        }
+      },
+      {
+        "DeriveProteinSequences": {
+          "seq_id": "tp73_locus",
+          "feature_query": {
+            "seq_id": "tp73_locus",
+            "include_source": false,
+            "include_qualifiers": false,
+            "kind_in": [
+              "mRNA"
+            ],
+            "kind_not_in": [],
+            "range_relation": "overlap",
+            "strand": "any",
+            "label_regex": "^tumor protein p73, transcript variant [0-9]+$",
+            "qualifier_filters": [
+              {
+                "key": "gene",
+                "value_contains": "TP73",
+                "value_regex": "^TP73$",
+                "case_sensitive": true
+              },
+              {
+                "key": "transcript_id",
+                "value_contains": "NM_",
+                "value_regex": "^NM_",
+                "case_sensitive": true
+              }
+            ],
+            "sort_by": "feature_id",
+            "descending": false,
+            "offset": 0
+          },
+          "output_prefix": "tp73_isoform_protein",
+          "report_id": "tp73_isoform_protein_gel"
+        }
+      },
+      {
+        "RenderProteinGelSvg": {
+          "report_id": "tp73_isoform_protein_gel",
+          "path": "exports/tp73_isoform_protein_gel.svg",
+          "ladders": [
+            "Protein Ladder 10-100 kDa"
+          ]
+        }
+      }
+    ]
+  }
+}

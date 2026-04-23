@@ -72,6 +72,8 @@ pub mod ncbi_genbank_xml;
 pub mod open_reading_frame;
 /// Virtual pool gel model and rendering primitives.
 pub mod pool_gel;
+/// Protein molecular-weight gel model and rendering primitives.
+pub mod protein_gel;
 /// Protease digest definitions and helpers.
 pub mod protease;
 /// Protocol-cartoon catalog and deterministic SVG rendering helpers.

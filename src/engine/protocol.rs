@@ -3975,6 +3975,8 @@ pub struct ProteinDerivationReport {
     #[serde(default)]
     pub selected_feature_ids: Vec<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_query: Option<SequenceFeatureQuery>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<SplicingScopePreset>,
     pub effective_output_prefix: String,
     pub derived_count: usize,

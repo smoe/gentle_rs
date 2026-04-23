@@ -1086,6 +1086,8 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 - `docs/examples/generated/digest_ligation_extract_region_minimal.md`
 - `docs/examples/generated/contribute_gentle_development_baseline.md`
 - `docs/examples/generated/guides_export_csv_and_protocol.md`
+- `docs/examples/generated/tp73_isoform_protein_gel_offline.md`
+- `docs/examples/generated/tp73_isoform_protein_2d_gel_offline.md`
 
 ## `gentle_mcp` (MCP stdio server)
 
@@ -1385,6 +1387,8 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 - `docs/examples/generated/digest_ligation_extract_region_minimal.md`
 - `docs/examples/generated/contribute_gentle_development_baseline.md`
 - `docs/examples/generated/guides_export_csv_and_protocol.md`
+- `docs/examples/generated/tp73_isoform_protein_gel_offline.md`
+- `docs/examples/generated/tp73_isoform_protein_2d_gel_offline.md`
 
 ## File format expectations
 

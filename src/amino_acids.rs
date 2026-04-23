@@ -10,6 +10,11 @@ use crate::iupac_code::IupacCode;
 const DEFAULT_TRANSLATION_TABLE: usize = 1;
 pub const UNKNOWN_CODON: char = '?';
 pub const STOP_CODON: char = '|';
+const PROTEIN_PKA_N_TERM: f64 = 9.69;
+const PROTEIN_PKA_C_TERM: f64 = 2.34;
+const PROTEIN_PKA_SIDECHAIN_ACIDIC: &[(char, f64)] =
+    &[('D', 3.86), ('E', 4.25), ('C', 8.33), ('Y', 10.07)];
+const PROTEIN_PKA_SIDECHAIN_BASIC: &[(char, f64)] = &[('H', 6.00), ('K', 10.53), ('R', 12.48)];
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CodonTable {
@@ -189,6 +194,62 @@ impl AminoAcids {
             .map(|codon| codon.to_ascii_uppercase())
             .filter(|codon| codon.len() == 3)
     }
+
+    /// Estimate a protein's isoelectric point from its amino-acid sequence.
+    ///
+    /// The estimate uses a deterministic Henderson-Hasselbalch charge balance
+    /// model with standard terminal and side-chain pKa values. It is intended
+    /// for renderer placement and other reproducible UI summaries, not for
+    /// wet-lab-grade pI calibration.
+    pub fn protein_isoelectric_point(&self, sequence: &str) -> Option<f32> {
+        let mut residues: HashMap<char, usize> = HashMap::new();
+        let mut residue_count = 0usize;
+        for aa in sequence.trim().chars() {
+            let aa = aa.to_ascii_uppercase();
+            if aa == STOP_CODON {
+                continue;
+            }
+            if self.aas.contains_key(&aa) {
+                residue_count += 1;
+                *residues.entry(aa).or_insert(0) += 1;
+            }
+        }
+        if residue_count == 0 {
+            return None;
+        }
+
+        fn positive_fraction(ph: f64, pka: f64) -> f64 {
+            1.0 / (1.0 + 10f64.powf(ph - pka))
+        }
+        fn negative_fraction(ph: f64, pka: f64) -> f64 {
+            1.0 / (1.0 + 10f64.powf(pka - ph))
+        }
+        fn net_charge(residues: &HashMap<char, usize>, ph: f64) -> f64 {
+            let mut charge = positive_fraction(ph, PROTEIN_PKA_N_TERM)
+                - negative_fraction(ph, PROTEIN_PKA_C_TERM);
+            for (aa, pka) in PROTEIN_PKA_SIDECHAIN_BASIC {
+                let count = residues.get(aa).copied().unwrap_or(0) as f64;
+                charge += count * positive_fraction(ph, *pka);
+            }
+            for (aa, pka) in PROTEIN_PKA_SIDECHAIN_ACIDIC {
+                let count = residues.get(aa).copied().unwrap_or(0) as f64;
+                charge -= count * negative_fraction(ph, *pka);
+            }
+            charge
+        }
+
+        let mut lo = 0.0f64;
+        let mut hi = 14.0f64;
+        for _ in 0..80 {
+            let mid = (lo + hi) * 0.5;
+            if net_charge(&residues, mid) > 0.0 {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        Some(((lo + hi) * 0.5) as f32)
+    }
 }
 
 impl Default for AminoAcids {
@@ -250,5 +311,19 @@ mod tests {
         // SIUPAC codon
         assert_eq!(aas.codon2aa([b'G', b'C', b'N'], None), 'A');
         assert_eq!(aas.codon2aa([b'G', b'A', b'N'], None), UNKNOWN_CODON);
+    }
+
+    #[test]
+    fn protein_isoelectric_point_distinguishes_basic_and_acidic_sequences() {
+        let aas = AminoAcids::default();
+        let acidic = aas
+            .protein_isoelectric_point("EEEEEEEE")
+            .expect("acidic peptide pI");
+        let basic = aas
+            .protein_isoelectric_point("KKKKKKKK")
+            .expect("basic peptide pI");
+        assert!(basic > acidic);
+        assert!(acidic < 5.0);
+        assert!(basic > 9.0);
     }
 }

@@ -71,6 +71,7 @@ order. Durable architecture constraints and decisions remain in
   - `src/engine/analysis/rna_reads.rs` (RNA-read report parsing, scoring, and export helper routines)
   - `src/engine/state/feature_coordinate_formulas.rs` (shared feature-relative coordinate formula parsing/resolution helpers for GUI and future shell/CLI reuse)
   - `src/engine/state/sequence_ops.rs` (sequence digestion, enzyme resolution, FASTA/pool export, and primer/overhang utilities)
+  - `crates/gentle-render/src/protein_gel.rs` (protein molecular-weight and 2D pI-vs-kDa gel layout/export primitives used by the TP73 isoform gel routes)
 - Multi-crate destination is now documented in
   [`docs/workspace_split_plan.md`](workspace_split_plan.md):
   - intended extraction order:
@@ -80,7 +81,8 @@ order. Durable architecture constraints and decisions remain in
     although `crates/gentle-render` now already owns the feature-expert SVG
     renderer, the shared splicing transition-matrix helper, the
     protocol-cartoon catalog/rendering layer, and the virtual pool-gel
-    layout/export layer, and
+    layout/export layer, plus the new protein-gel and protein-2D-gel
+    layout/export layers, and
     `crates/gentle-shell` now already owns the glossary-driven shell help
     rendering layer, while `crates/gentle-gui` now already owns the
     window-backdrop configuration/rendering helper and embedded icon/resource

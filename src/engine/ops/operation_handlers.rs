@@ -17,6 +17,10 @@ use crate::{
     dna_ladder::default_dna_ladders,
     genomes::{default_catalog_discovery_label, default_catalog_discovery_token},
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
+    protein_gel::{
+        Protein2dGelSpot, ProteinGelSample, build_protein_2d_gel_layout,
+        build_protein_gel_layout, export_protein_2d_gel_svg, export_protein_gel_svg,
+    },
     uniprot::UniprotNucleotideXref,
 };
 
@@ -129,6 +133,88 @@ impl GentleEngine {
             .replace('>', "&gt;")
             .replace('"', "&quot;")
             .replace('\'', "&apos;")
+    }
+
+    fn estimate_protein_molecular_weight_kda(sequence: &str) -> f32 {
+        const WATER_MASS_DA: f32 = 18.015_28;
+        let residues = sequence
+            .trim()
+            .chars()
+            .filter_map(|aa| {
+                let aa = aa.to_ascii_uppercase();
+                if aa == STOP_CODON {
+                    return None;
+                }
+                Some(AMINO_ACIDS.get(aa).map(|entry| entry.mw).unwrap_or(110.0))
+            })
+            .collect::<Vec<_>>();
+        if residues.is_empty() {
+            return 0.0;
+        }
+        let total_da = residues.iter().sum::<f32>()
+            - WATER_MASS_DA * (residues.len().saturating_sub(1) as f32);
+        (total_da / 1_000.0).max(0.0)
+    }
+
+    fn estimate_protein_isoelectric_point(sequence: &str) -> Option<f32> {
+        AMINO_ACIDS.protein_isoelectric_point(sequence)
+    }
+
+    fn summarize_feature_query_for_notes(query: &SequenceFeatureQuery) -> Vec<String> {
+        let mut clauses: Vec<String> = vec![];
+        if !query.kind_in.is_empty() {
+            clauses.push(format!("kinds={}", query.kind_in.join(", ")));
+        }
+        if !query.kind_not_in.is_empty() {
+            clauses.push(format!("exclude={}", query.kind_not_in.join(", ")));
+        }
+        if let Some(label_contains) = query
+            .label_contains
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            clauses.push(format!("label contains '{}'", label_contains));
+        }
+        if let Some(label_regex) = query
+            .label_regex
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            clauses.push(format!("label =~ /{}/", label_regex));
+        }
+        for filter in &query.qualifier_filters {
+            let mut bits: Vec<String> = vec![];
+            if let Some(value_contains) = filter
+                .value_contains
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                bits.push(format!("contains '{}'", value_contains));
+            }
+            if let Some(value_regex) = filter
+                .value_regex
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                bits.push(format!("matches /{}/", value_regex));
+            }
+            if bits.is_empty() {
+                clauses.push(filter.key.trim().to_string());
+            } else {
+                clauses.push(format!("{} {}", filter.key.trim(), bits.join(" & ")));
+            }
+        }
+        let mut notes = vec![];
+        if !clauses.is_empty() {
+            notes.push(format!("Selection: {}", clauses.join("; ")));
+        }
+        notes.push(format!("Sort order: {}", query.sort_by.as_str()));
+        notes.push(format!("Strand filter: {}", query.strand.as_str()));
+        notes
     }
 
     fn derive_extract_region_default_base(input: &str, from: usize, to: usize) -> String {
@@ -6553,6 +6639,196 @@ impl GentleEngine {
                         .messages
                         .push(format!("Wrote lineage SVG to '{}'", path));
                 }
+                Operation::RenderProteinGelSvg {
+                    report_id,
+                    path,
+                    ladders,
+                } => {
+                    let report = self.get_protein_derivation_report(&report_id)?;
+                    if report.rows.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Protein derivation report '{}' did not contain any protein rows",
+                                report.report_id
+                            ),
+                        });
+                    }
+                    let mut notes = vec![
+                        format!("Source: {}", report.seq_id),
+                        format!("Report: {}", report.report_id),
+                        format!("Proteins: {}", report.derived_count),
+                    ];
+                    if let Some(query) = report.feature_query.as_ref() {
+                        notes.extend(Self::summarize_feature_query_for_notes(query));
+                    } else {
+                        notes.push("Selection: explicit feature_ids / scope".to_string());
+                    }
+                    let mut samples: Vec<ProteinGelSample> = vec![];
+                    for row in &report.rows {
+                        let protein = self
+                            .state
+                            .sequences
+                            .get(&row.protein_seq_id)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!(
+                                    "Protein '{}' from report '{}' was not found in state",
+                                    row.protein_seq_id, report.report_id
+                                ),
+                            })?;
+                        if !protein.is_protein_sequence() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Protein '{}' from report '{}' is not a protein sequence",
+                                    row.protein_seq_id, report.report_id
+                                ),
+                            });
+                        }
+                        let sequence = protein.get_forward_string();
+                        let molecular_weight_kda =
+                            Self::estimate_protein_molecular_weight_kda(&sequence);
+                        if molecular_weight_kda <= 0.0 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Could not estimate molecular weight for protein '{}'",
+                                    row.protein_seq_id
+                                ),
+                            });
+                        }
+                        samples.push(ProteinGelSample {
+                            name: row.derivation.transcript_id.clone(),
+                            detail: Some(format!("{} aa", row.derivation.protein_length_aa)),
+                            molecular_weight_kda,
+                        });
+                    }
+                    let requested_ladders: &[String] = ladders.as_deref().unwrap_or(&[]);
+                    let layout = build_protein_gel_layout(&samples, requested_ladders, notes)
+                        .map_err(|message| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message,
+                        })?;
+                    let svg = export_protein_gel_svg(&layout);
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write SVG output '{path}': {e}"),
+                    })?;
+                    let ladders_used = if layout.selected_ladders.is_empty() {
+                        "auto".to_string()
+                    } else {
+                        layout.selected_ladders.join(" + ")
+                    };
+                    result.messages.push(format!(
+                        "Wrote protein gel SVG for report '{}' with {} protein lane(s) to '{}' (ladders: {})",
+                        report.report_id,
+                        layout.sample_count,
+                        path,
+                        ladders_used
+                    ));
+                }
+                Operation::RenderProtein2dGelSvg {
+                    report_id,
+                    path,
+                    ladders,
+                } => {
+                    let report = self.get_protein_derivation_report(&report_id)?;
+                    if report.rows.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Protein derivation report '{}' did not contain any protein rows",
+                                report.report_id
+                            ),
+                        });
+                    }
+                    let mut notes = vec![
+                        format!("Source: {}", report.seq_id),
+                        format!("Report: {}", report.report_id),
+                        format!("Proteins: {}", report.derived_count),
+                        "Projection: x=pI, y=log(kDa)".to_string(),
+                        "pI model: deterministic Henderson-Hasselbalch charge balance".to_string(),
+                    ];
+                    if let Some(query) = report.feature_query.as_ref() {
+                        notes.extend(Self::summarize_feature_query_for_notes(query));
+                    } else {
+                        notes.push("Selection: explicit feature_ids / scope".to_string());
+                    }
+                    let mut spots: Vec<Protein2dGelSpot> = vec![];
+                    for row in &report.rows {
+                        let protein = self
+                            .state
+                            .sequences
+                            .get(&row.protein_seq_id)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!(
+                                    "Protein '{}' from report '{}' was not found in state",
+                                    row.protein_seq_id, report.report_id
+                                ),
+                            })?;
+                        if !protein.is_protein_sequence() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Protein '{}' from report '{}' is not a protein sequence",
+                                    row.protein_seq_id, report.report_id
+                                ),
+                            });
+                        }
+                        let sequence = protein.get_forward_string();
+                        let molecular_weight_kda =
+                            Self::estimate_protein_molecular_weight_kda(&sequence);
+                        if molecular_weight_kda <= 0.0 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Could not estimate molecular weight for protein '{}'",
+                                    row.protein_seq_id
+                                ),
+                            });
+                        }
+                        let isoelectric_point = Self::estimate_protein_isoelectric_point(&sequence)
+                            .filter(|pi| pi.is_finite() && *pi > 0.0)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Could not estimate isoelectric point for protein '{}'",
+                                    row.protein_seq_id
+                                ),
+                            })?;
+                        spots.push(Protein2dGelSpot {
+                            name: row.derivation.transcript_id.clone(),
+                            detail: Some(format!("{} aa", row.derivation.protein_length_aa)),
+                            molecular_weight_kda,
+                            isoelectric_point,
+                        });
+                    }
+                    let requested_ladders: &[String] = ladders.as_deref().unwrap_or(&[]);
+                    let layout = build_protein_2d_gel_layout(&spots, requested_ladders, notes)
+                        .map_err(|message| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message,
+                        })?;
+                    let svg = export_protein_2d_gel_svg(&layout);
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write SVG output '{path}': {e}"),
+                    })?;
+                    let ladders_used = if layout.selected_ladders.is_empty() {
+                        "auto".to_string()
+                    } else {
+                        layout.selected_ladders.join(" + ")
+                    };
+                    result.messages.push(format!(
+                        "Wrote protein 2D gel SVG for report '{}' with {} protein spot(s) to '{}' (axis refs: {})",
+                        report.report_id,
+                        layout.sample_count,
+                        path,
+                        ladders_used
+                    ));
+                }
                 Operation::RenderProtocolCartoonSvg { protocol, path } => {
                     let svg = crate::protocol_cartoon::render_protocol_cartoon_svg(&protocol);
                     std::fs::write(&path, svg).map_err(|e| EngineError {
@@ -11173,8 +11449,10 @@ impl GentleEngine {
                 Operation::DeriveProteinSequences {
                     seq_id,
                     feature_ids,
+                    feature_query,
                     scope,
                     output_prefix,
+                    report_id,
                 } => {
                     let source_sequence_upper = self
                         .state
@@ -11197,8 +11475,52 @@ impl GentleEngine {
                         })?
                         .features()
                         .to_vec();
-                    let transcript_feature_ids =
-                        self.transcript_feature_ids_for_derivation(&seq_id, &feature_ids, scope)?;
+                    let requested_feature_ids = feature_ids.clone();
+                    let (transcript_feature_ids, resolved_feature_query) = if let Some(feature_query) = feature_query.clone() {
+                        let mut query = feature_query;
+                        if query.seq_id.trim().is_empty() {
+                            query.seq_id = seq_id.clone();
+                        } else if query.seq_id.trim() != seq_id.trim() {
+                            result.warnings.push(format!(
+                                "DeriveProteinSequences feature_query seq_id '{}' was overridden by op seq_id '{}'",
+                                query.seq_id, seq_id
+                            ));
+                            query.seq_id = seq_id.clone();
+                        }
+                        let query_result = self.query_sequence_features(query.clone())?;
+                        let mut ids = query_result
+                            .rows
+                            .iter()
+                            .map(|row| row.feature_id)
+                            .collect::<Vec<_>>();
+                        if !feature_ids.is_empty() {
+                            let requested = feature_ids.iter().copied().collect::<BTreeSet<_>>();
+                            ids.retain(|feature_id| requested.contains(feature_id));
+                        }
+                        if ids.is_empty() {
+                            return Err(EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!(
+                                    "DeriveProteinSequences feature_query did not match any transcript features for '{}'",
+                                    seq_id
+                                ),
+                            });
+                        }
+                        result.messages.push(format!(
+                            "Selected {} transcript feature(s) for protein derivation via feature_query.",
+                            ids.len()
+                        ));
+                        (ids, Some(query))
+                    } else {
+                        (
+                            self.transcript_feature_ids_for_derivation(
+                                &seq_id,
+                                &feature_ids,
+                                scope,
+                            )?,
+                            None,
+                        )
+                    };
                     parent_seq_ids.push(seq_id.clone());
                     let normalized_prefix = output_prefix
                         .as_deref()
@@ -11206,8 +11528,11 @@ impl GentleEngine {
                         .filter(|value| !value.is_empty())
                         .map(|value| value.to_string())
                         .unwrap_or_else(|| format!("{seq_id}__protein"));
-                    let report_id = result.op_id.clone();
-                    let requested_feature_ids = feature_ids.clone();
+                    let report_id = report_id
+                        .as_deref()
+                        .map(Self::normalize_protein_derivation_report_id)
+                        .transpose()?
+                        .unwrap_or_else(|| result.op_id.clone());
                     let selected_feature_ids = transcript_feature_ids.clone();
                     let mut report_rows: Vec<ProteinDerivationReportRow> = vec![];
                     for transcript_feature_id in transcript_feature_ids {
@@ -11359,6 +11684,7 @@ impl GentleEngine {
                         run_id: Some(run_id.to_string()),
                         requested_feature_ids,
                         selected_feature_ids,
+                        feature_query: resolved_feature_query,
                         scope,
                         effective_output_prefix: normalized_prefix.clone(),
                         derived_count: report_rows.len(),

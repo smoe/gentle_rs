@@ -637,6 +637,12 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_svg.json \
   --output /tmp/gentle_clawbio_tp73_tfbs_score_tracks_svg
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_gel.json \
+  --output /tmp/gentle_clawbio_tp73_isoform_protein_gel
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_2d_gel.json \
+  --output /tmp/gentle_clawbio_tp73_isoform_protein_2d_gel
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_resources_summarize_jaspar_sp1_rest.json \
   --output /tmp/gentle_clawbio_jaspar_sp1_rest
 python clawbio.py run gentle-cloning \
@@ -978,6 +984,16 @@ Apply the following methodology:
   - `examples/request_workflow_tp73_tfbs_score_tracks_svg.json`
     - matching workflow-backed TFBS presentation example that exports the same
       TP73 promoter score-track view as one stacked SVG figure
+  - `examples/request_workflow_tp73_isoform_protein_gel.json`
+    - offline TP73 isoform protein-gel demo: loads the bundled TP73 GenBank
+      asset, derives curated `NM_` protein isoforms, renders one protein
+      molecular-weight gel with a deterministic kDa ladder, and lets ClawBio
+      rasterize the SVG into the PNG-first bundle contract
+  - `examples/request_workflow_tp73_isoform_protein_2d_gel.json`
+    - matching offline TP73 protein 2D-gel demo: reuses the same curated
+      isoform derivation, renders a protein spot map with pI on the X axis
+      and molecular weight on the Y axis, and lets ClawBio rasterize the SVG
+      into the PNG-first bundle contract
   - `examples/request_resources_summarize_jaspar_sp1_rest.json`
     - motif-presentation example: summarizes local JASPAR entries for SP1 and
       REST into one deterministic background/max/min report

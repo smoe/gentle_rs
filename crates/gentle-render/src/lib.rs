@@ -1,12 +1,12 @@
 //! Headless GENtle export and rendering helpers.
 //!
-//! This crate now owns the feature-expert SVG renderer and related shared
-//! helper logic, and remains the intended home for further reusable non-egui
-//! render/export paths such as lineage SVG, protocol cartoons, gel exports,
-//! and similar adapter-neutral figure generation.
+//! This crate owns the reusable non-egui render/export paths that should stay
+//! adapter-neutral: feature-expert SVG, lineage SVG, protocol cartoons, and
+//! the shared gel-figure renderers used by workflow-driven demos.
 
 mod feature_expert;
 pub mod pool_gel;
+pub mod protein_gel;
 pub mod protocol_cartoon;
 
 pub use feature_expert::{

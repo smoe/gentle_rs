@@ -1357,6 +1357,120 @@ def test_shipped_graphics_example_emits_png_first_artifacts(tmp_path: Path) -> N
     ).exists()
 
 
+def test_tp73_isoform_protein_gel_request_promotes_png_first_artifact(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        _fake_cli_with_svg_png(
+            f"mkdir -p {shlex.quote('exports')}\n"
+            "cat > exports/tp73_isoform_protein_gel.svg <<'SVG'\n"
+            '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32">\n'
+            '  <rect width="64" height="32" fill="#f8fafc"/>\n'
+            '  <rect x="8" y="6" width="48" height="20" fill="#f59e0b"/>\n'
+            "</svg>\n"
+            "SVG\n"
+            "cat <<'JSON'\n"
+            '{"schema":"gentle.workflow_run.v1","run_id":"example_tp73_isoform_protein_gel_offline"}\n'
+            "JSON\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str((_examples_dir() / "request_workflow_tp73_isoform_protein_gel.json").resolve()),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["artifacts"]["collected"][0]["declared_path"] == (
+        "exports/tp73_isoform_protein_gel.svg"
+    )
+    assert result["artifacts"]["collected"][1]["declared_path"] == (
+        "exports/tp73_isoform_protein_gel.png"
+    )
+    preferred = result["preferred_artifacts"]
+    assert preferred[0]["artifact_id"] == "tp73_isoform_protein_gel_png"
+    assert preferred[0]["path"] == "generated/exports/tp73_isoform_protein_gel.png"
+    assert preferred[0]["is_best_first_artifact"] is True
+    assert preferred[0]["derived_from"] == "exports/tp73_isoform_protein_gel.svg"
+    assert (output_dir / "generated" / "exports" / "tp73_isoform_protein_gel.png").exists()
+
+
+def test_tp73_isoform_protein_2d_gel_request_promotes_png_first_artifact(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        _fake_cli_with_svg_png(
+            f"mkdir -p {shlex.quote('exports')}\n"
+            "cat > exports/tp73_isoform_protein_2d_gel.svg <<'SVG'\n"
+            '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32">\n'
+            '  <rect width="64" height="32" fill="#f8fafc"/>\n'
+            '  <circle cx="32" cy="16" r="10" fill="#2563eb"/>\n'
+            "</svg>\n"
+            "SVG\n"
+            "cat <<'JSON'\n"
+            '{"schema":"gentle.workflow_run.v1","run_id":"example_tp73_isoform_protein_2d_gel_offline"}\n'
+            "JSON\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(
+                (_examples_dir() / "request_workflow_tp73_isoform_protein_2d_gel.json").resolve()
+            ),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["artifacts"]["collected"][0]["declared_path"] == (
+        "exports/tp73_isoform_protein_2d_gel.svg"
+    )
+    assert result["artifacts"]["collected"][1]["declared_path"] == (
+        "exports/tp73_isoform_protein_2d_gel.png"
+    )
+    preferred = result["preferred_artifacts"]
+    assert preferred[0]["artifact_id"] == "tp73_isoform_protein_2d_gel_png"
+    assert preferred[0]["path"] == "generated/exports/tp73_isoform_protein_2d_gel.png"
+    assert preferred[0]["is_best_first_artifact"] is True
+    assert preferred[0]["derived_from"] == "exports/tp73_isoform_protein_2d_gel.svg"
+    assert (
+        output_dir / "generated" / "exports" / "tp73_isoform_protein_2d_gel.png"
+    ).exists()
+
+
 def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(
@@ -1783,6 +1897,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             300,
         ),
+        "request_workflow_tp73_isoform_protein_gel.json": (
+            "workflow",
+            None,
+            300,
+        ),
+        "request_workflow_tp73_isoform_protein_2d_gel.json": (
+            "workflow",
+            None,
+            300,
+        ),
         "request_resources_summarize_jaspar_sp1_rest.json": (
             "shell",
             "resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output artifacts/jaspar_sp1_rest.presentation.json",
@@ -2016,6 +2140,26 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["expected_artifacts"] == [
                 "artifacts/tp73_upstream_tfbs_score_tracks.svg"
             ]
+        if name == "request_workflow_tp73_isoform_protein_gel.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "docs/examples/workflows/tp73_isoform_protein_gel_offline.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "exports/tp73_isoform_protein_gel.svg"
+            ]
+            assert payload["timeout_secs"] == 300
+        if name == "request_workflow_tp73_isoform_protein_2d_gel.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "docs/examples/workflows/tp73_isoform_protein_2d_gel_offline.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "exports/tp73_isoform_protein_2d_gel.svg"
+            ]
+            assert payload["timeout_secs"] == 300
         if name == "request_resources_summarize_jaspar_sp1_rest.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/jaspar_sp1_rest.presentation.json"

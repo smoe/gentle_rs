@@ -1384,6 +1384,16 @@ fn rewrite_example_paths_for_execution(
             ensure_parent_exists(path)?;
             continue;
         }
+        if let Operation::RenderProteinGelSvg { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
+        if let Operation::RenderProtein2dGelSvg { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
         if let Operation::ExportDnaLadders { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
@@ -2459,6 +2469,43 @@ mod tests {
             }
         }
         assert!(always_count > 0, "Expected at least one always example");
+    }
+
+    #[test]
+    fn workflow_examples_tp73_isoform_protein_gel_writes_svg() {
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "tp73_isoform_protein_gel_offline")
+            .expect("tp73 isoform protein gel example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+            .expect("tp73 protein-gel workflow should execute");
+        let svg_path = run_dir.path().join("exports/tp73_isoform_protein_gel.svg");
+        assert!(svg_path.exists());
+        let svg = fs::read_to_string(&svg_path).expect("read tp73 protein gel svg");
+        assert!(svg.contains("Protein Gel Preview"));
+        assert!(svg.contains("Protein Ladder 10-100 kDa"));
+        assert!(svg.contains("Selection notes"));
+    }
+
+    #[test]
+    fn workflow_examples_tp73_isoform_protein_2d_gel_writes_svg() {
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "tp73_isoform_protein_2d_gel_offline")
+            .expect("tp73 isoform protein 2D gel example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+            .expect("tp73 protein 2D gel workflow should execute");
+        let svg_path = run_dir.path().join("exports/tp73_isoform_protein_2d_gel.svg");
+        assert!(svg_path.exists());
+        let svg = fs::read_to_string(&svg_path).expect("read tp73 protein 2D gel svg");
+        assert!(svg.contains("Protein 2D Gel Preview"));
+        assert!(svg.contains("Protein Ladder 10-100 kDa"));
+        assert!(svg.contains("Selection notes"));
+        assert!(svg.contains("Spot details"));
     }
 
     #[test]

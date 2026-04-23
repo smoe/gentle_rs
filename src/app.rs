@@ -53618,8 +53618,10 @@ SQ   SEQUENCE   81 AA;  900 MW;  ABC CRC64;
                 .apply(Operation::DeriveProteinSequences {
                     seq_id: "protein_source".to_string(),
                     feature_ids: vec![1],
+                    feature_query: None,
                     scope: None,
                     output_prefix: Some("tp73_protein".to_string()),
+                    report_id: None,
                 })
                 .expect("derive proteins")
                 .op_id

@@ -202,6 +202,8 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_inline_sequence_inspection_stateless.json --output /tmp/gentle_inline_sequence_inspection
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_summary.json --output /tmp/gentle_tp73_tfbs_score_tracks_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_svg.json --output /tmp/gentle_tp73_tfbs_score_tracks_svg
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_gel.json --output /tmp/gentle_tp73_isoform_protein_gel
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_2d_gel.json --output /tmp/gentle_tp73_isoform_protein_2d_gel
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_resources_summarize_jaspar_sp1_rest.json --output /tmp/gentle_jaspar_sp1_rest
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json --output /tmp/gentle_vkorc1_planning
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_circular.json --output /tmp/gentle_pgex_map
@@ -313,6 +315,15 @@ cargo run --locked --bin gentle_cli -- --version
   `request_workflow_tp73_tfbs_score_tracks_svg.json` expose the newer TFBS
   presentation layer for ClawBio: one JSON score-track summary and one stacked
   SVG figure over the promoter-proximal TP73 window
+- `request_workflow_tp73_isoform_protein_gel.json` is the canonical offline
+  TP73 protein-gel demo: it loads the bundled TP73 GenBank asset, derives
+  curated `NM_` isoform proteins, renders one protein molecular-weight gel
+  with a deterministic kDa ladder, and lets the wrapper promote the SVG into
+  the PNG-first bundle contract
+- `request_workflow_tp73_isoform_protein_2d_gel.json` is the matching 2D
+  offline TP73 demo: it reuses the same curated isoform derivation and
+  renders one protein spot map with pI on the X axis and molecular weight on
+  the Y axis before promoting the SVG into the PNG-first bundle contract
 - `request_resources_summarize_jaspar_sp1_rest.json` exposes the newer
   motif-presentation layer as one deterministic JASPAR background/max/min
   summary for SP1 and REST
@@ -518,6 +529,16 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_workflow_tp73_tfbs_score_tracks_svg.json`
   - matching workflow-backed TFBS presentation example that exports the same
     TP73 promoter score-track view as one stacked SVG figure
+- `examples/request_workflow_tp73_isoform_protein_gel.json`
+  - offline TP73 isoform protein-gel demo that loads the bundled TP73 GenBank
+    asset, derives curated `NM_` protein isoforms, renders one protein
+    molecular-weight gel with a deterministic kDa ladder, and lets ClawBio
+    rasterize the SVG into the PNG-first bundle contract
+- `examples/request_workflow_tp73_isoform_protein_2d_gel.json`
+  - offline TP73 isoform protein spot-map demo that reuses the same curated
+    protein isoforms, renders one protein 2D gel with pI on the X axis and
+    molecular weight on the Y axis, and lets ClawBio rasterize the SVG into
+    the PNG-first bundle contract
 - `examples/request_resources_summarize_jaspar_sp1_rest.json`
   - motif-presentation example that summarizes local JASPAR entries for SP1
     and REST into one deterministic background/max/min report

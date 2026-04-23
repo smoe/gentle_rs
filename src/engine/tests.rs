@@ -9143,8 +9143,10 @@ fn test_derive_protein_sequences_creates_first_class_protein_sequence() {
         .apply(Operation::DeriveProteinSequences {
             seq_id: "s".to_string(),
             feature_ids: vec![1],
+            feature_query: None,
             scope: None,
             output_prefix: Some("prot".to_string()),
+            report_id: None,
         })
         .expect("derive protein");
     assert_eq!(result.created_seq_ids.len(), 1);
@@ -9208,8 +9210,10 @@ fn test_derive_protein_sequences_falls_back_to_inferred_orf_without_cds() {
         .apply(Operation::DeriveProteinSequences {
             seq_id: "s".to_string(),
             feature_ids: vec![1],
+            feature_query: None,
             scope: None,
             output_prefix: Some("prot".to_string()),
+            report_id: None,
         })
         .expect("derive protein without cds");
     assert_eq!(result.created_seq_ids.len(), 1);
@@ -9261,8 +9265,10 @@ fn test_derive_protein_sequences_persists_protein_derivation_report() {
         .apply(Operation::DeriveProteinSequences {
             seq_id: "s".to_string(),
             feature_ids: vec![1],
+            feature_query: None,
             scope: None,
             output_prefix: Some("prot".to_string()),
+            report_id: None,
         })
         .expect("derive protein");
 
@@ -9299,6 +9305,192 @@ fn test_derive_protein_sequences_persists_protein_derivation_report() {
             .map(|report| report.report_id.as_str()),
         Some(result.op_id.as_str())
     );
+}
+
+#[test]
+fn test_tp73_isoform_protein_gel_route_loads_derives_and_renders() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73_locus".to_string()),
+        })
+        .expect("load bundled tp73 locus");
+    let loaded = engine
+        .state()
+        .sequences
+        .get("tp73_locus")
+        .expect("tp73 locus should be present after load");
+    assert!(
+        loaded
+            .features()
+            .iter()
+            .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA")),
+        "bundled tp73 locus should expose transcript features"
+    );
+
+    let feature_query = SequenceFeatureQuery {
+        seq_id: "tp73_locus".to_string(),
+        kind_in: vec!["mRNA".to_string()],
+        label_regex: Some("^tumor protein p73, transcript variant [0-9]+$".to_string()),
+        qualifier_filters: vec![
+            SequenceFeatureQualifierFilter {
+                key: "gene".to_string(),
+                value_contains: Some("TP73".to_string()),
+                value_regex: Some("^TP73$".to_string()),
+                case_sensitive: true,
+            },
+            SequenceFeatureQualifierFilter {
+                key: "transcript_id".to_string(),
+                value_contains: Some("NM_".to_string()),
+                value_regex: Some("^NM_".to_string()),
+                case_sensitive: true,
+            },
+        ],
+        sort_by: SequenceFeatureSortBy::FeatureId,
+        ..SequenceFeatureQuery::default()
+    };
+
+    let derive_result = engine
+        .apply(Operation::DeriveProteinSequences {
+            seq_id: "tp73_locus".to_string(),
+            feature_ids: vec![],
+            feature_query: Some(feature_query),
+            scope: None,
+            output_prefix: Some("tp73_isoform_protein".to_string()),
+            report_id: Some("tp73_isoform_protein_gel".to_string()),
+        })
+        .expect("derive tp73 proteins");
+    assert_eq!(derive_result.created_seq_ids.len(), 13);
+    assert!(
+        derive_result
+            .created_seq_ids
+            .iter()
+            .all(|seq_id| engine.state().sequences[seq_id].is_protein_sequence())
+    );
+
+    let report = engine
+        .get_protein_derivation_report("tp73_isoform_protein_gel")
+        .expect("tp73 protein derivation report");
+    assert_eq!(report.report_id, "tp73_isoform_protein_gel");
+    assert_eq!(report.seq_id, "tp73_locus");
+    assert_eq!(report.derived_count, 13);
+    assert_eq!(report.selected_feature_ids.len(), 13);
+    assert_eq!(report.rows.len(), 13);
+    assert!(report.feature_query.is_some());
+
+    let svg_dir = tempdir().expect("tempdir");
+    let svg_path = svg_dir.path().join("tp73_isoform_protein_gel.svg");
+    engine
+        .apply(Operation::RenderProteinGelSvg {
+            report_id: "tp73_isoform_protein_gel".to_string(),
+            path: svg_path.display().to_string(),
+            ladders: Some(vec!["Protein Ladder 10-100 kDa".to_string()]),
+        })
+        .expect("render tp73 protein gel");
+
+    let svg = fs::read_to_string(&svg_path).expect("rendered protein gel svg");
+    assert!(svg.contains("Protein Gel Preview"));
+    assert!(svg.contains("Selection notes"));
+    assert!(svg.contains("Lane details"));
+    assert!(svg.contains("tp73_isoform_protein_gel"));
+    assert!(svg.contains("Protein Ladder 10-100 kDa"));
+    assert!(svg.contains("NM_005427.4"));
+    assert!(svg.contains("kDa"));
+}
+
+#[test]
+fn test_tp73_isoform_protein_2d_gel_route_loads_derives_and_renders() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73_locus".to_string()),
+        })
+        .expect("load bundled tp73 locus");
+    let loaded = engine
+        .state()
+        .sequences
+        .get("tp73_locus")
+        .expect("tp73 locus should be present after load");
+    assert!(
+        loaded
+            .features()
+            .iter()
+            .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA")),
+        "bundled tp73 locus should expose transcript features"
+    );
+
+    let feature_query = SequenceFeatureQuery {
+        seq_id: "tp73_locus".to_string(),
+        kind_in: vec!["mRNA".to_string()],
+        label_regex: Some("^tumor protein p73, transcript variant [0-9]+$".to_string()),
+        qualifier_filters: vec![
+            SequenceFeatureQualifierFilter {
+                key: "gene".to_string(),
+                value_contains: Some("TP73".to_string()),
+                value_regex: Some("^TP73$".to_string()),
+                case_sensitive: true,
+            },
+            SequenceFeatureQualifierFilter {
+                key: "transcript_id".to_string(),
+                value_contains: Some("NM_".to_string()),
+                value_regex: Some("^NM_".to_string()),
+                case_sensitive: true,
+            },
+        ],
+        sort_by: SequenceFeatureSortBy::FeatureId,
+        ..SequenceFeatureQuery::default()
+    };
+
+    let derive_result = engine
+        .apply(Operation::DeriveProteinSequences {
+            seq_id: "tp73_locus".to_string(),
+            feature_ids: vec![],
+            feature_query: Some(feature_query),
+            scope: None,
+            output_prefix: Some("tp73_isoform_protein".to_string()),
+            report_id: Some("tp73_isoform_protein_2d_gel".to_string()),
+        })
+        .expect("derive tp73 proteins");
+    assert_eq!(derive_result.created_seq_ids.len(), 13);
+    assert!(
+        derive_result
+            .created_seq_ids
+            .iter()
+            .all(|seq_id| engine.state().sequences[seq_id].is_protein_sequence())
+    );
+
+    let report = engine
+        .get_protein_derivation_report("tp73_isoform_protein_2d_gel")
+        .expect("tp73 protein derivation report");
+    assert_eq!(report.report_id, "tp73_isoform_protein_2d_gel");
+    assert_eq!(report.seq_id, "tp73_locus");
+    assert_eq!(report.derived_count, 13);
+    assert_eq!(report.selected_feature_ids.len(), 13);
+    assert_eq!(report.rows.len(), 13);
+    assert!(report.feature_query.is_some());
+    assert_eq!(report.rows[0].derivation.transcript_id, "NM_005427.4");
+
+    let svg_dir = tempdir().expect("tempdir");
+    let svg_path = svg_dir.path().join("tp73_isoform_protein_2d_gel.svg");
+    engine
+        .apply(Operation::RenderProtein2dGelSvg {
+            report_id: "tp73_isoform_protein_2d_gel".to_string(),
+            path: svg_path.display().to_string(),
+            ladders: Some(vec!["Protein Ladder 10-100 kDa".to_string()]),
+        })
+        .expect("render tp73 protein 2D gel");
+
+    let svg = fs::read_to_string(&svg_path).expect("rendered protein 2D gel svg");
+    assert!(svg.contains("Protein 2D Gel Preview"));
+    assert!(svg.contains("Selection notes"));
+    assert!(svg.contains("Spot details"));
+    assert!(svg.contains("tp73_isoform_protein_2d_gel"));
+    assert!(svg.contains("Protein Ladder 10-100 kDa"));
+    assert!(svg.contains("NM_005427.4"));
+    assert!(svg.contains("pI"));
+    assert!(svg.contains("kDa"));
 }
 
 #[test]
@@ -9470,8 +9662,10 @@ fn build_protein_to_dna_handoff_reasoning_prefers_transcript_native_reuse_over_r
         .apply(Operation::DeriveProteinSequences {
             seq_id: "handoff_seq".to_string(),
             feature_ids: vec![1],
+            feature_query: None,
             scope: None,
             output_prefix: Some("handoff_protein".to_string()),
+            report_id: None,
         })
         .expect("derive protein")
         .created_seq_ids[0]

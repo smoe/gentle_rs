@@ -1506,6 +1506,8 @@ Current draft operations:
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
 - `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id?, conditions? }`
+- `RenderProteinGelSvg { report_id, path, ladders? }`
+- `RenderProtein2dGelSvg { report_id, path, ladders? }`
 - `CreateArrangementSerial { container_ids, arrangement_id?, name?, ladders? }`
 - `SetArrangementLadders { arrangement_id, ladders? }`
 - `SetContainerDeclaredContentsExclusive { container_id, exclusive }`
@@ -1759,7 +1761,7 @@ Sequencing-trace evidence notes:
     top-level imported `gene` feature and Ensembl provenance qualifiers.
 - `FetchGenBankAccession { accession, as_id? }`
 - `FetchDbSnpRegion { rs_id, genome_id, flank_bp?, output_id?, annotation_scope?, max_annotation_features?, catalog_path?, cache_dir? }`
-- `DeriveProteinSequences { seq_id, feature_ids[], scope?, output_prefix? }`
+- `DeriveProteinSequences { seq_id, feature_ids[], feature_query?, scope?, output_prefix?, report_id? }`
   - this operation is self-sufficient and transcript-first: it does not depend
     on UniProt or any other external protein evidence source to decide what
     protein products exist
@@ -3023,6 +3025,39 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   `Merged-band notes` block that explains observed band position vs the
   underlying actual source-size span.
 
+`RenderProteinGelSvg` semantics:
+
+- Accepts one persisted `ProteinDerivationReport` id plus an output `path`.
+- Reuses the first-class protein sequence entries already created by
+  `DeriveProteinSequences`; it does not re-derive proteins from DNA at render
+  time.
+- Computes molecular weight from amino-acid sequence content and plots bands
+  on a log-scaled kDa axis.
+- Chooses one or two protein ladders deterministically, or honors the explicit
+  `ladders` override when provided.
+- Renders one lane per derived protein plus the selected ladder lane(s), with
+  transcript labels and a provenance panel that records the source report and
+  selection summary.
+- This is the canonical protein-gel route for transcript-native demos such as
+  the TP73 isoform workflow; `RenderPoolGelSvg` remains DNA/bp-based.
+
+`RenderProtein2dGelSvg` semantics:
+
+- Accepts one persisted `ProteinDerivationReport` id plus an output `path`.
+- Reuses the same first-class protein sequence entries created by
+  `DeriveProteinSequences`; it does not re-derive proteins at render time.
+- Estimates isoelectric point from amino-acid composition using the shared
+  deterministic Henderson-Hasselbalch model in `AminoAcids`.
+- Places one protein spot per derived protein on a 2D gel with pI on the
+  X axis and log-scaled molecular weight on the Y axis.
+- Uses the same deterministic ladder-selection logic for Y-axis references as
+  the 1D protein-gel renderer, or honors the explicit `ladders` override.
+- Renders transcript labels and a provenance panel recording the source report
+  and transcript-selection summary.
+- This is the canonical 2D protein-gel route for transcript-native spot-map
+  demos such as the TP73 isoform workflow; `RenderProteinGelSvg` remains the
+  1D lane-based route and `RenderPoolGelSvg` remains DNA/bp-based.
+
 `CreateArrangementSerial` semantics:
 
 - Persists an ordered serial-lane setup over stored containers.
@@ -3401,6 +3436,10 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     provenance for lineage/reopen flows
   - deterministic warnings when CDS annotation is missing or heuristic
     inference had to be used
+  - when `feature_query` is supplied, the engine deterministically admits only
+    the matched transcript features before translation and stores that query on
+    the persisted report so later protein-gel exports can reopen the same
+    selection without guessing
 
 `ReverseTranslateProteinSequence` semantics:
 

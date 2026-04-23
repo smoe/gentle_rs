@@ -1308,6 +1308,8 @@ impl GentleEngine {
             | Operation::RenderRnaStructureSvg { path, .. }
             | Operation::RenderLineageSvg { path }
             | Operation::RenderPoolGelSvg { path, .. }
+            | Operation::RenderProteinGelSvg { path, .. }
+            | Operation::RenderProtein2dGelSvg { path, .. }
             | Operation::RenderProtocolCartoonSvg { path, .. }
             | Operation::RenderProtocolCartoonTemplateSvg { path, .. }
             | Operation::RenderProtocolCartoonTemplateWithBindingsSvg { path, .. }
