@@ -4003,6 +4003,13 @@ Operation progress/cancellation semantics:
   - genome preparation supports cooperative cancellation plus optional
     `timeout_seconds` timeboxing and reports deterministic cancellation/timeout
     outcomes.
+  - shared reference/helper prepare is now duplicate-safe at the semantic
+    target level:
+    - one target may actively prepare at a time
+    - duplicate callers reuse the active run and observe `lifecycle_status =
+      "running"` instead of starting redundant work
+    - stale heartbeat markers are converted into `lifecycle_status = "stale"`
+      and can then be retried safely
   - genome-track imports support cooperative cancellation and return partial
     import warnings.
   - dbSNP fetch currently emits staged progress events (`validate_input`,

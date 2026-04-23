@@ -12718,6 +12718,16 @@ fn execute_services_status_reports_combined_readiness() {
         out.output["references"][0]["genome_id"].as_str(),
         Some("Human GRCh38 Ensembl 116")
     );
+    assert!(
+        out.output["references"][0]["resource_key"]
+            .as_str()
+            .is_some()
+    );
+    assert!(
+        out.output["references"][0]["lifecycle_status"]
+            .as_str()
+            .is_some()
+    );
     assert_eq!(
         out.output["helpers"][0]["genome_id"].as_str(),
         Some("Plasmid pUC19 (online)")
@@ -14796,6 +14806,99 @@ fn execute_genomes_status_reports_effective_cache_dir_and_prepare_hint_when_unpr
     assert!(prepare_command.contains("genomes prepare"));
     assert!(prepare_command.contains("ToyGenome"));
     assert!(prepare_command.contains(shared_cache.to_string_lossy().as_ref()));
+    assert_eq!(out.output["lifecycle_status"].as_str(), Some("missing"));
+}
+
+#[test]
+fn execute_genomes_status_reports_running_lifecycle_and_suppresses_prepare_hint() {
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    let cache = td.path().join("cache");
+    fs::write(&fasta, ">chr1\nACGT\n").expect("write fasta");
+    fs::write(
+        &gtf,
+        "chr1\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("catalog.json");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache.display()
+        ),
+    )
+    .expect("write catalog");
+    let install_dir = cache.join("toygenome");
+    fs::create_dir_all(&install_dir).expect("install dir");
+    let status_path = install_dir.join(".prepare_activity.json");
+    let lock_path = install_dir.join(".prepare_activity.lock");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("now")
+        .as_millis();
+    let activity = serde_json::json!({
+        "genome_id": "ToyGenome",
+        "status_path": status_path.display().to_string(),
+        "lock_path": lock_path.display().to_string(),
+        "lifecycle_status": "running",
+        "prepare_mode": "prepare_or_reuse",
+        "phase": "download_sequence",
+        "item": "toy.fa",
+        "bytes_done": 10,
+        "bytes_total": 100,
+        "percent": 10.0,
+        "step_id": null,
+        "step_label": null,
+        "started_at_unix_ms": now.saturating_sub(10),
+        "updated_at_unix_ms": now,
+        "finished_at_unix_ms": null,
+        "last_error": null,
+        "owner_pid": 12345
+    });
+    fs::write(
+        &status_path,
+        serde_json::to_string_pretty(&activity).expect("serialize activity"),
+    )
+    .expect("status");
+    fs::write(
+        &lock_path,
+        serde_json::to_string_pretty(&activity).expect("serialize activity lock"),
+    )
+    .expect("lock");
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferenceStatus {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: None,
+        },
+    )
+    .expect("execute status");
+
+    assert_eq!(out.output["lifecycle_status"].as_str(), Some("running"));
+    assert_eq!(
+        out.output["current_activity"]["phase"].as_str(),
+        Some("download_sequence")
+    );
+    assert!(out.output["prepare_command"].is_null());
+    assert!(
+        out.output["status_message"]
+            .as_str()
+            .is_some_and(|value| value.contains("already being prepared"))
+    );
 }
 
 #[test]

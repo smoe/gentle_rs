@@ -1156,15 +1156,21 @@ def _extract_suggested_actions(
     actions: list[dict[str, Any]] = []
 
     if stdout_json.get("schema") == "gentle.service_readiness.v1":
+        has_running_prepare = False
         for reference in stdout_json.get("references", []):
             if not isinstance(reference, dict):
                 continue
             genome_id = str(reference.get("genome_id", "")).strip()
-            availability_status = str(reference.get("availability_status", "")).strip()
+            lifecycle_status = str(
+                reference.get("lifecycle_status")
+                or reference.get("availability_status")
+                or ""
+            ).strip()
             if not genome_id:
                 continue
-            if availability_status in {"not_prepared", "failed", "cancelled"}:
-                status_phrase = availability_status.replace("_", " ") or "not prepared"
+            if lifecycle_status == "running":
+                has_running_prepare = True
+            if lifecycle_status in {"missing", "not_prepared"}:
                 actions.append(
                     _suggested_action(
                         label=f"Prepare {genome_id}",
@@ -1172,8 +1178,21 @@ def _extract_suggested_actions(
                         shell_line=f'genomes prepare "{genome_id}" --timeout-secs 7200',
                         timeout_secs=7500,
                         rationale=(
-                            f"Reference '{genome_id}' is currently {status_phrase} locally "
+                            f"Reference '{genome_id}' is currently not prepared locally "
                             "and genome-backed analysis will need a prepared cache."
+                        ),
+                    )
+                )
+            elif lifecycle_status in {"failed", "cancelled", "stale"}:
+                actions.append(
+                    _suggested_action(
+                        label=f"Retry prepare for {genome_id}",
+                        kind="prepare_reference",
+                        shell_line=f'genomes prepare "{genome_id}" --timeout-secs 7200',
+                        timeout_secs=7500,
+                        rationale=(
+                            f"Reference '{genome_id}' last ended as {lifecycle_status} and is "
+                            "safe to retry when you want to restore genome-backed analysis."
                         ),
                     )
                 )
@@ -1181,11 +1200,16 @@ def _extract_suggested_actions(
             if not isinstance(helper, dict):
                 continue
             helper_id = str(helper.get("genome_id", "")).strip()
-            availability_status = str(helper.get("availability_status", "")).strip()
+            lifecycle_status = str(
+                helper.get("lifecycle_status")
+                or helper.get("availability_status")
+                or ""
+            ).strip()
             if not helper_id:
                 continue
-            if availability_status in {"not_prepared", "failed", "cancelled"}:
-                status_phrase = availability_status.replace("_", " ") or "not prepared"
+            if lifecycle_status == "running":
+                has_running_prepare = True
+            if lifecycle_status in {"missing", "not_prepared"}:
                 actions.append(
                     _suggested_action(
                         label=f"Prepare {helper_id}",
@@ -1193,8 +1217,21 @@ def _extract_suggested_actions(
                         shell_line=f'helpers prepare "{helper_id}" --timeout-secs 1800',
                         timeout_secs=2100,
                         rationale=(
-                            f"Helper '{helper_id}' is currently {status_phrase} locally "
+                            f"Helper '{helper_id}' is currently not prepared locally "
                             "and helper-backed vector/plasmid workflows will need it prepared."
+                        ),
+                    )
+                )
+            elif lifecycle_status in {"failed", "cancelled", "stale"}:
+                actions.append(
+                    _suggested_action(
+                        label=f"Retry prepare for {helper_id}",
+                        kind="prepare_helper",
+                        shell_line=f'helpers prepare "{helper_id}" --timeout-secs 1800',
+                        timeout_secs=2100,
+                        rationale=(
+                            f"Helper '{helper_id}' last ended as {lifecycle_status} and is "
+                            "safe to retry when helper-backed workflows need it again."
                         ),
                     )
                 )
@@ -1217,9 +1254,28 @@ def _extract_suggested_actions(
                             ),
                         )
                     )
+        if has_running_prepare:
+            actions.append(
+                _suggested_action(
+                    label="Re-check services status",
+                    kind="refresh_status",
+                    shell_line="services status",
+                    timeout_secs=180,
+                    rationale=(
+                        "A shared prepare action is already running, so refresh the combined "
+                        "readiness view instead of starting a duplicate long-running task."
+                    ),
+                    requires_confirmation=False,
+                )
+            )
 
     prepare_command = stdout_json.get("prepare_command")
-    if isinstance(prepare_command, str) and prepare_command.strip():
+    lifecycle_status = str(stdout_json.get("lifecycle_status") or "").strip()
+    if (
+        isinstance(prepare_command, str)
+        and prepare_command.strip()
+        and lifecycle_status not in {"running", "ready"}
+    ):
         requested_key = str(
             stdout_json.get("requested_catalog_key")
             or stdout_json.get("genome_id")
@@ -1237,6 +1293,32 @@ def _extract_suggested_actions(
                 ),
             )
         )
+    elif (
+        lifecycle_status == "running"
+        and isinstance(request, Request)
+        and request.mode == "shell"
+        and (request.shell_line or "").strip().startswith(("genomes status ", "helpers status "))
+    ):
+        requested_key = str(
+            stdout_json.get("requested_catalog_key")
+            or stdout_json.get("genome_id")
+            or "selected genome"
+        ).strip()
+        refresh_shell = (request.shell_line or "").strip()
+        if refresh_shell:
+            actions.append(
+                _suggested_action(
+                    label=f"Re-check {requested_key} status",
+                    kind="refresh_status",
+                    shell_line=refresh_shell,
+                    timeout_secs=180,
+                    rationale=(
+                        f"'{requested_key}' is already being prepared, so the next useful step "
+                        "is to refresh its status rather than launch another prepare."
+                    ),
+                    requires_confirmation=False,
+                )
+            )
 
     if isinstance(request, Request) and request.mode == "shell":
         shell_line = (request.shell_line or "").strip()

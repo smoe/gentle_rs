@@ -258,8 +258,8 @@ def test_services_status_promotes_prepare_and_sync_suggested_actions(
         "#!/usr/bin/env bash\n"
         "cat <<'JSON'\n"
         '{"schema":"gentle.service_readiness.v1",'
-        '"references":[{"genome_id":"Human GRCh38 Ensembl 116","availability_status":"not_prepared"}],'
-        '"helpers":[{"genome_id":"Plasmid pUC19 (online)","availability_status":"not_prepared"}],'
+        '"references":[{"genome_id":"Human GRCh38 Ensembl 116","lifecycle_status":"missing","availability_status":"not_prepared"}],'
+        '"helpers":[{"genome_id":"Plasmid pUC19 (online)","lifecycle_status":"missing","availability_status":"not_prepared"}],'
         '"resources":{"schema":"gentle.resource_status.v1","attract":{"support_status":"known_external_only"}},'
         '"summary_lines":["Reference not prepared","Helper not prepared","ATtRACT unavailable"]}\n'
         "JSON\n",
@@ -341,6 +341,75 @@ def test_services_status_promotes_prepare_and_sync_suggested_actions(
     assert 'resources sync-attract ATtRACT.zip' in report
 
 
+def test_services_status_running_suppresses_prepare_and_suggests_refresh(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "services status",
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.service_readiness.v1",'
+        '"references":[{"genome_id":"Human GRCh38 Ensembl 116","lifecycle_status":"running","availability_status":"preparing"}],'
+        '"helpers":[{"genome_id":"Plasmid pUC19 (online)","lifecycle_status":"ready","availability_status":"prepared"}],'
+        '"resources":{"schema":"gentle.resource_status.v1","attract":{"support_status":"ready_runtime"}}}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["suggested_actions"] == [
+        {
+            "action_id": "re_check_services_status",
+            "label": "Re-check services status",
+            "kind": "refresh_status",
+            "shell_line": "services status",
+            "timeout_secs": 180,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "services status",
+                "timeout_secs": 180,
+            },
+            "rationale": "A shared prepare action is already running, so refresh the combined readiness view instead of starting a duplicate long-running task.",
+            "requires_confirmation": False,
+        }
+    ]
+
+
 def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(
@@ -401,6 +470,70 @@ def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: P
             },
             "rationale": "Status inspection for 'Human GRCh38 Ensembl 116' already provided a ready-to-run prepare command.",
             "requires_confirmation": True,
+        }
+    ]
+
+
+def test_genomes_status_running_suggests_refresh_instead_of_prepare(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": 'genomes status "Human GRCh38 Ensembl 116"',
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"requested_catalog_key":"Human GRCh38 Ensembl 116","genome_id":"Human GRCh38 Ensembl 116","lifecycle_status":"running","prepare_command":null}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["suggested_actions"] == [
+        {
+            "action_id": "re_check_human_grch38_ensembl_116_status",
+            "label": "Re-check Human GRCh38 Ensembl 116 status",
+            "kind": "refresh_status",
+            "shell_line": 'genomes status "Human GRCh38 Ensembl 116"',
+            "timeout_secs": 180,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": 'genomes status "Human GRCh38 Ensembl 116"',
+                "timeout_secs": 180,
+            },
+            "rationale": "'Human GRCh38 Ensembl 116' is already being prepared, so the next useful step is to refresh its status rather than launch another prepare.",
+            "requires_confirmation": False,
         }
     ]
 

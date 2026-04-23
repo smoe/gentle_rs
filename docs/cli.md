@@ -2609,9 +2609,21 @@ Resource sync commands:
   - Covers canonical reference genomes (currently `Human GRCh38 Ensembl 116`),
     helper backbones (currently `Plasmid pUC19 (online)`), and active external
     resource snapshots in one record.
-  - When a prepare/reindex run is active, it also surfaces live dependency
-    activity (`running`, `failed`, `cancelled`) plus the current prepare phase
-    and progress hints instead of only saying `prepared`/`not_prepared`.
+  - Reference/helper rows now expose canonical lifecycle fields:
+    - `resource_key`
+    - `display_name`
+    - `prepared`
+    - `lifecycle_status = missing|running|ready|failed|cancelled|stale`
+    - `current_activity` (when present)
+  - `availability_status` remains as the chat/backward-compat alias
+    (`not_prepared|preparing|prepared|failed|cancelled|stale`).
+  - When a prepare/reindex run is active, it surfaces the live dependency
+    activity plus the current phase/progress hints instead of only saying
+    `prepared`/`not_prepared`.
+  - Reference/helper prepare is now duplicate-safe at the shared-target level:
+    one semantic target may actively prepare at a time, stale heartbeat markers
+    are superseded safely, and follow-up callers see `running` instead of
+    launching redundant work.
   - Includes compact `summary_lines` that chat/report layers such as
     ClawBio/OpenClaw can surface directly before deciding whether they should
     fetch, prepare, or render.
@@ -2853,12 +2865,20 @@ Genome convenience commands:
     required so the updated catalog can be written as a copy.
 - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
   - Shows whether the genome cache is prepared/indexed.
+  - Also reports stable lifecycle fields:
+    - `resource_key`
+    - `display_name`
+    - `prepared`
+    - `lifecycle_status = missing|running|ready|failed|cancelled|stale`
+    - `current_activity` when a recent or active prepare marker exists
   - Also reports `effective_cache_dir`, `requested_catalog_key`,
     `requested_family`, and `compatible_prepared_options` so "not prepared"
     states explain exactly which cache root was inspected and whether a
     same-family prepared install already exists.
-  - When the selected cache root does not contain the requested genome, output
+  - When lifecycle is `missing`, `failed`, `cancelled`, or `stale`, output
     also includes a ready-to-run `prepare_command` hint.
+  - When lifecycle is `running` or `ready`, `prepare_command` is suppressed so
+    callers do not accidentally trigger redundant parallel prepares.
   - Also reports resolved source details: `sequence_source_type`,
     `annotation_source_type`, `sequence_source`, `annotation_source`.
   - Also reports optional mass metadata:

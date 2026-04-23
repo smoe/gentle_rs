@@ -1109,6 +1109,11 @@ For status/readiness outputs, `result.json` may additionally include:
 - `preferred_artifacts[]` for best-first figures
 - `suggested_actions[]` with deterministic follow-up commands and nested
   request objects that ClawBio can offer to execute after confirmation
+  - those suggestions now follow GENtle's lifecycle state directly:
+    - `missing` -> prepare
+    - `running` -> refresh status
+    - `failed|cancelled|stale` -> retry
+    - `ready` -> no redundant prepare offer
 
 ## Dependencies
 

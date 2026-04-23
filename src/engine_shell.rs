@@ -18931,6 +18931,22 @@ fn execute_reference_and_track_command(
             } else {
                 None
             };
+            let current_activity = if *helper_mode {
+                GentleEngine::inspect_helper_genome_prepare_activity(
+                    genome_id,
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::inspect_reference_genome_prepare_activity(
+                    resolved_catalog,
+                    genome_id,
+                    cache_dir.as_deref(),
+                )
+            }
+            .map_err(|e| e.to_string())?;
+            let lifecycle_status =
+                GenomeCatalog::derive_prepare_lifecycle_status(prepared, current_activity.as_ref());
             let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
             let cli_label = if *helper_mode { "helpers" } else { "genomes" };
             let effective_cache_arg = cache_dir
@@ -18945,17 +18961,53 @@ fn execute_reference_and_track_command(
                 .filter(|value| !value.is_empty())
                 .map(|value| format!(" --catalog {}", quote_shell_arg(value)))
                 .unwrap_or_default();
-            let prepare_command = format!(
-                "cargo run --bin gentle_cli -- {} prepare {}{} --cache-dir {}",
-                cli_label,
-                quote_shell_arg(genome_id),
-                catalog_arg,
-                quote_shell_arg(&effective_cache_arg)
+            let prepare_command = if lifecycle_status == "running" || lifecycle_status == "ready" {
+                None
+            } else {
+                Some(format!(
+                    "cargo run --bin gentle_cli -- {} prepare {}{} --cache-dir {}",
+                    cli_label,
+                    quote_shell_arg(genome_id),
+                    catalog_arg,
+                    quote_shell_arg(&effective_cache_arg)
+                ))
+            };
+            let resource_key = format!(
+                "{}:{}",
+                if *helper_mode {
+                    "helper_genome"
+                } else {
+                    "reference_genome"
+                },
+                genome_id
             );
-            let status_message = if prepared {
+            let status_message = if lifecycle_status == "running" {
+                let activity_brief = current_activity
+                    .as_ref()
+                    .and_then(|activity| activity.phase.as_ref())
+                    .map(|phase| format!(" Current phase: {phase}."))
+                    .unwrap_or_default();
+                format!(
+                    "Genome '{}' is already being prepared in '{}' and does not need another parallel prepare run.{}",
+                    compatibility.requested_catalog_key, effective_cache_dir, activity_brief
+                )
+            } else if prepared {
                 format!(
                     "Genome '{}' is prepared in '{}'.",
                     compatibility.requested_catalog_key, effective_cache_dir
+                )
+            } else if matches!(lifecycle_status.as_str(), "failed" | "cancelled" | "stale") {
+                let last_error = current_activity
+                    .as_ref()
+                    .and_then(|activity| activity.last_error.as_ref())
+                    .map(|error| format!(" Last outcome: {error}."))
+                    .unwrap_or_default();
+                format!(
+                    "Genome '{}' is not prepared in '{}'; the last prepare attempt ended as '{}'.{} Retry with prepare when ready.",
+                    compatibility.requested_catalog_key,
+                    effective_cache_dir,
+                    lifecycle_status,
+                    last_error
                 )
             } else if compatibility.compatible_prepared_options.is_empty() {
                 format!(
@@ -18979,10 +19031,14 @@ fn execute_reference_and_track_command(
                 state_changed: false,
                 output: json!({
                     "genome_id": genome_id,
+                    "display_name": genome_id,
+                    "resource_key": resource_key,
                     "catalog_path": effective_catalog,
                     "cache_dir": cache_dir,
                     "effective_cache_dir": effective_cache_dir,
                     "prepared": prepared,
+                    "lifecycle_status": lifecycle_status,
+                    "current_activity": current_activity,
                     "requested_catalog_key": compatibility.requested_catalog_key,
                     "requested_family": compatibility.requested_family,
                     "compatible_prepared_options": compatibility.compatible_prepared_options,

@@ -1312,6 +1312,18 @@ order. Durable architecture constraints and decisions remain in
           can distinguish `currently preparing/indexing` from plain
           `not prepared` and can see recent `failed` / `cancelled` prepare
           outcomes
+        - reference/helper prepare now also owns a concurrency-safe shared
+          activity lease:
+          only one semantic target prepare runs at a time, duplicate callers
+          reuse the active run instead of starting another one, stale activity
+          markers are detected from heartbeat age, and status routes now expose
+          a canonical lifecycle vocabulary
+          (`missing|running|ready|failed|cancelled|stale`) plus stable
+          `resource_key` / `display_name` fields
+        - the ClawBio wrapper now consumes those lifecycle fields directly:
+          `missing` suggests prepare, `running` suggests refresh/status,
+          `failed|cancelled|stale` suggest retry, and `ready` suppresses
+          redundant prepare offers
         - the first concrete wrapper-side automation slice is now in place:
           `gentle-cloning` requests can opt into
           `ensure_reference_prepared`, which runs
@@ -1363,6 +1375,10 @@ order. Durable architecture constraints and decisions remain in
           detection) and deeper ATtRACT runtime detail (for example active
           snapshot version/content hash), not only best-effort phase/progress
           hints
+        - extend the same shared lease/lifecycle model from
+          reference/helper prepares into resource sync/setup paths such as
+          `resources sync-attract`, so shared runtime snapshot downloads cannot
+          be triggered redundantly by multiple callers
         - the ClawBio `gentle-cloning` skill wording should stay explicitly
           execution-first:
           it should nudge ClawBio/OpenClaw to run GENtle status/fetch/prepare

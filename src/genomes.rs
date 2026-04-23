@@ -83,6 +83,8 @@ const BLAST_CANCELLED_BY_CALLER: &str = "BLAST search cancelled by caller";
 const ANNOTATION_PARSE_ISSUE_LIMIT: usize = 12;
 const ANNOTATION_PARSE_CONTEXT_CHARS: usize = 140;
 const PREPARE_ACTIVITY_STATUS_FILE: &str = ".prepare_activity.json";
+const PREPARE_ACTIVITY_LOCK_FILE: &str = ".prepare_activity.lock";
+const PREPARE_ACTIVITY_STALE_AFTER_MS: u128 = 6 * 60 * 60 * 1000;
 
 #[cfg(test)]
 pub(crate) fn genbank_env_lock() -> &'static std::sync::Mutex<()> {
@@ -555,7 +557,11 @@ struct GenomeInstallManifest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrepareGenomeReport {
     pub genome_id: String,
+    #[serde(default = "default_prepare_lifecycle_ready")]
+    pub lifecycle_status: String,
     pub reused_existing: bool,
+    #[serde(default)]
+    pub reused_existing_activity: bool,
     pub sequence_path: String,
     pub annotation_path: String,
     pub fasta_index_path: String,
@@ -580,6 +586,8 @@ pub struct PrepareGenomeReport {
     pub warnings: Vec<String>,
     #[serde(default)]
     pub annotation_parse_report: Option<AnnotationParseReport>,
+    #[serde(default)]
+    pub current_activity: Option<PrepareGenomeActivityStatus>,
 }
 
 /// One planned or applied Ensembl-catalog rewrite.
@@ -985,6 +993,14 @@ struct PreparedSequenceCacheSummary {
     contig_preview: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+struct PrepareGenomeExpectedPaths {
+    sequence_path: PathBuf,
+    annotation_path: PathBuf,
+    fasta_index_path: PathBuf,
+    blast_prefix_path: PathBuf,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PrepareGenomeMode {
     PrepareOrReuse,
@@ -1120,6 +1136,10 @@ pub struct GenomeBlastReport {
     pub effective_options_json: Option<serde_json::Value>,
 }
 
+fn default_prepare_lifecycle_ready() -> String {
+    "ready".to_string()
+}
+
 /// Cooperative progress event emitted during prepare/reindex/reinstall runs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrepareGenomeProgress {
@@ -1140,6 +1160,8 @@ pub struct PrepareGenomeProgress {
 pub struct PrepareGenomeActivityStatus {
     pub genome_id: String,
     pub status_path: String,
+    #[serde(default)]
+    pub lock_path: Option<String>,
     pub lifecycle_status: String,
     pub prepare_mode: String,
     pub phase: Option<String>,
@@ -1155,6 +1177,8 @@ pub struct PrepareGenomeActivityStatus {
     pub updated_at_unix_ms: u128,
     pub finished_at_unix_ms: Option<u128>,
     pub last_error: Option<String>,
+    #[serde(default)]
+    pub owner_pid: Option<u32>,
 }
 
 /// One representative malformed/skipped annotation line.
@@ -2568,10 +2592,8 @@ impl GenomeCatalog {
         let entry = self.entry(genome_id)?;
         let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
         let status_path = prepare_activity_status_path(&install_dir);
-        if !status_path.exists() {
-            return Ok(None);
-        }
-        Ok(Some(load_prepare_activity_status(&status_path)?))
+        let lock_path = prepare_activity_lock_path(&install_dir);
+        inspect_prepare_activity_status_paths(&status_path, &lock_path)
     }
 
     /// Inspect prepared-install metadata and filesystem state.
@@ -2975,6 +2997,93 @@ impl GenomeCatalog {
         })
     }
 
+    pub(crate) fn derive_prepare_lifecycle_status(
+        prepared: bool,
+        activity: Option<&PrepareGenomeActivityStatus>,
+    ) -> String {
+        match activity {
+            Some(activity) => activity.lifecycle_status.clone(),
+            None if prepared => "ready".to_string(),
+            None => "missing".to_string(),
+        }
+    }
+
+    fn expected_prepare_paths(
+        install_dir: &Path,
+        existing_manifest: Option<&GenomeInstallManifest>,
+        annotation_source: &str,
+        force_refresh_from_sources: bool,
+    ) -> PrepareGenomeExpectedPaths {
+        let existing_paths = if force_refresh_from_sources {
+            None
+        } else {
+            existing_manifest
+        };
+        let sequence_path = existing_paths
+            .map(|manifest| PathBuf::from(&manifest.sequence_path))
+            .unwrap_or_else(|| install_dir.join("sequence.fa"));
+        let annotation_ext = infer_annotation_extension(annotation_source);
+        let annotation_path = existing_paths
+            .map(|manifest| PathBuf::from(&manifest.annotation_path))
+            .unwrap_or_else(|| install_dir.join(format!("annotation.{annotation_ext}")));
+        let fasta_index_path = existing_paths
+            .map(|manifest| PathBuf::from(&manifest.fasta_index_path))
+            .unwrap_or_else(|| install_dir.join("sequence.fa.fai"));
+        let blast_prefix_path = existing_paths
+            .and_then(|manifest| manifest.blast_db_prefix.as_deref().map(PathBuf::from))
+            .unwrap_or_else(|| default_blast_db_prefix(install_dir));
+        PrepareGenomeExpectedPaths {
+            sequence_path,
+            annotation_path,
+            fasta_index_path,
+            blast_prefix_path,
+        }
+    }
+
+    fn build_running_prepare_report(
+        genome_id: &str,
+        current_activity: PrepareGenomeActivityStatus,
+        expected_paths: &PrepareGenomeExpectedPaths,
+        existing_manifest: Option<&GenomeInstallManifest>,
+        sequence_source: &str,
+        annotation_source: &str,
+        sequence_source_type: &str,
+        annotation_source_type: &str,
+    ) -> PrepareGenomeReport {
+        let blast_db_prefix = existing_manifest
+            .and_then(|manifest| manifest.blast_db_prefix.clone())
+            .or_else(|| Some(canonical_or_display(&expected_paths.blast_prefix_path)));
+        let blast_index_executable =
+            existing_manifest.and_then(|manifest| manifest.blast_index_executable.clone());
+        let blast_index_ready = existing_manifest
+            .and_then(|manifest| manifest.blast_indexed_at_unix_ms)
+            .is_some();
+        PrepareGenomeReport {
+            genome_id: genome_id.to_string(),
+            lifecycle_status: "running".to_string(),
+            reused_existing: false,
+            reused_existing_activity: true,
+            sequence_path: canonical_or_display(&expected_paths.sequence_path),
+            annotation_path: canonical_or_display(&expected_paths.annotation_path),
+            fasta_index_path: canonical_or_display(&expected_paths.fasta_index_path),
+            sequence_source: Some(sequence_source.to_string()),
+            annotation_source: Some(annotation_source.to_string()),
+            sequence_source_type: Some(sequence_source_type.to_string()),
+            annotation_source_type: Some(annotation_source_type.to_string()),
+            blast_db_prefix,
+            blast_index_ready,
+            blast_index_executable,
+            cached_contig_count: 0,
+            cached_total_span_bp: 0,
+            cached_longest_contig: None,
+            cached_longest_contig_bp: None,
+            cached_contig_preview: vec![],
+            warnings: vec![],
+            annotation_parse_report: None,
+            current_activity: Some(current_activity),
+        }
+    }
+
     fn prepare_genome_once_with_progress_options(
         &self,
         genome_id: &str,
@@ -3032,6 +3141,28 @@ impl GenomeCatalog {
                 genome_id
             ));
         }
+        let expected_paths = Self::expected_prepare_paths(
+            &install_dir,
+            existing_manifest.as_ref(),
+            &annotation_source,
+            force_refresh_from_sources,
+        );
+        let sequence_source_type = if reindex_from_cached_files {
+            existing_manifest
+                .as_ref()
+                .and_then(|manifest| manifest.sequence_source_type.clone())
+                .unwrap_or_else(|| source_type_label(sequence_resolution.source_type).to_string())
+        } else {
+            source_type_label(sequence_resolution.source_type).to_string()
+        };
+        let annotation_source_type = if reindex_from_cached_files {
+            existing_manifest
+                .as_ref()
+                .and_then(|manifest| manifest.annotation_source_type.clone())
+                .unwrap_or_else(|| source_type_label(annotation_resolution.source_type).to_string())
+        } else {
+            source_type_label(annotation_resolution.source_type).to_string()
+        };
 
         if force_refresh_from_sources {
             reset_genome_install_dir(&install_dir)?;
@@ -3043,7 +3174,21 @@ impl GenomeCatalog {
             )
         })?;
         let mut activity_tracker =
-            PrepareGenomeActivityTracker::start(&install_dir, genome_id, mode);
+            match PrepareGenomeActivityTracker::start(&install_dir, genome_id, mode)? {
+                PrepareGenomeActivityStart::Acquired(tracker) => tracker,
+                PrepareGenomeActivityStart::Running(activity) => {
+                    return Ok(Self::build_running_prepare_report(
+                        genome_id,
+                        activity,
+                        &expected_paths,
+                        existing_manifest.as_ref(),
+                        &sequence_source,
+                        &annotation_source,
+                        &sequence_source_type,
+                        &annotation_source_type,
+                    ));
+                }
+            };
         let mut tracked_on_progress = |progress: PrepareGenomeProgress| -> bool {
             activity_tracker.update_progress(&progress);
             on_progress(progress)
@@ -3288,7 +3433,9 @@ impl GenomeCatalog {
                     let cache_summary = summarize_fasta_index(&fasta_index);
                     return Ok(PrepareGenomeReport {
                         genome_id: genome_id.to_string(),
+                        lifecycle_status: "ready".to_string(),
                         reused_existing: true,
+                        reused_existing_activity: false,
                         sequence_path: manifest.sequence_path,
                         annotation_path: manifest.annotation_path,
                         fasta_index_path: manifest.fasta_index_path,
@@ -3306,6 +3453,7 @@ impl GenomeCatalog {
                         cached_contig_preview: cache_summary.contig_preview,
                         warnings,
                         annotation_parse_report,
+                        current_activity: None,
                     });
                 }
             }
@@ -3686,7 +3834,9 @@ impl GenomeCatalog {
 
             Ok(PrepareGenomeReport {
                 genome_id: genome_id.to_string(),
+                lifecycle_status: "ready".to_string(),
                 reused_existing: reindex_from_cached_files,
+                reused_existing_activity: false,
                 sequence_path: manifest.sequence_path,
                 annotation_path: manifest.annotation_path,
                 fasta_index_path: manifest.fasta_index_path,
@@ -3704,6 +3854,7 @@ impl GenomeCatalog {
                 cached_contig_preview: cache_summary.contig_preview,
                 warnings,
                 annotation_parse_report,
+                current_activity: None,
             })
         })();
 
@@ -5312,6 +5463,10 @@ fn prepare_activity_status_path(install_dir: &Path) -> PathBuf {
     install_dir.join(PREPARE_ACTIVITY_STATUS_FILE)
 }
 
+fn prepare_activity_lock_path(install_dir: &Path) -> PathBuf {
+    install_dir.join(PREPARE_ACTIVITY_LOCK_FILE)
+}
+
 fn load_prepare_activity_status(path: &Path) -> Result<PrepareGenomeActivityStatus, String> {
     let text = fs::read_to_string(path).map_err(|e| {
         format!(
@@ -5373,24 +5528,163 @@ fn write_prepare_activity_status(
     Ok(())
 }
 
+fn write_prepare_activity_lock(
+    path: &Path,
+    status: &PrepareGenomeActivityStatus,
+) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(status)
+        .map_err(|e| format!("Could not serialize prepare-activity lock: {e}"))?;
+    fs::write(path, text).map_err(|e| {
+        format!(
+            "Could not update prepare-activity lock '{}': {e}",
+            path.display()
+        )
+    })
+}
+
+fn create_prepare_activity_lock(
+    path: &Path,
+    status: &PrepareGenomeActivityStatus,
+) -> Result<bool, String> {
+    let parent = path.parent().ok_or_else(|| {
+        format!(
+            "Prepare-activity lock '{}' has no parent directory",
+            path.display()
+        )
+    })?;
+    fs::create_dir_all(parent).map_err(|e| {
+        format!(
+            "Could not create prepare-activity lock parent dir '{}': {e}",
+            parent.display()
+        )
+    })?;
+    let text = serde_json::to_string_pretty(status)
+        .map_err(|e| format!("Could not serialize prepare-activity lock: {e}"))?;
+    match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(mut file) => {
+            file.write_all(text.as_bytes()).map_err(|e| {
+                format!(
+                    "Could not write prepare-activity lock '{}': {e}",
+                    path.display()
+                )
+            })?;
+            file.flush().map_err(|e| {
+                format!(
+                    "Could not flush prepare-activity lock '{}': {e}",
+                    path.display()
+                )
+            })?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(error) => Err(format!(
+            "Could not create prepare-activity lock '{}': {error}",
+            path.display()
+        )),
+    }
+}
+
 fn remove_prepare_activity_status(path: &Path) {
     let _ = fs::remove_file(path);
 }
 
+fn remove_prepare_activity_lock(path: &Path) {
+    let _ = fs::remove_file(path);
+}
+
+fn prepare_activity_is_stale(status: &PrepareGenomeActivityStatus, now: u128) -> bool {
+    if status.lifecycle_status != "running" {
+        return false;
+    }
+    now.saturating_sub(status.updated_at_unix_ms) > PREPARE_ACTIVITY_STALE_AFTER_MS
+}
+
+fn mark_prepare_activity_stale(
+    status_path: &Path,
+    lock_path: &Path,
+    mut status: PrepareGenomeActivityStatus,
+    reason: &str,
+) -> PrepareGenomeActivityStatus {
+    let now = now_unix_ms();
+    status.lifecycle_status = "stale".to_string();
+    status.last_error = Some(reason.to_string());
+    status.finished_at_unix_ms = Some(now);
+    let _ = write_prepare_activity_status(status_path, &status);
+    remove_prepare_activity_lock(lock_path);
+    status
+}
+
+fn inspect_prepare_activity_status_paths(
+    status_path: &Path,
+    lock_path: &Path,
+) -> Result<Option<PrepareGenomeActivityStatus>, String> {
+    let status_exists = status_path.exists();
+    let lock_exists = lock_path.exists();
+    if !status_exists && !lock_exists {
+        return Ok(None);
+    }
+    let status = if status_exists {
+        load_prepare_activity_status(status_path)?
+    } else if lock_exists {
+        load_prepare_activity_status(lock_path)?
+    } else {
+        return Ok(None);
+    };
+    if status.lifecycle_status == "running" {
+        if !lock_exists {
+            return Ok(Some(mark_prepare_activity_stale(
+                status_path,
+                lock_path,
+                status,
+                "Prepare activity lost its active lock and is treated as stale",
+            )));
+        }
+        if prepare_activity_is_stale(&status, now_unix_ms()) {
+            return Ok(Some(mark_prepare_activity_stale(
+                status_path,
+                lock_path,
+                status,
+                "Prepare activity heartbeat is stale and can be retried safely",
+            )));
+        }
+    } else if lock_exists {
+        remove_prepare_activity_lock(lock_path);
+    }
+    Ok(Some(status))
+}
+
+#[derive(Debug)]
+enum PrepareGenomeActivityStart {
+    Acquired(PrepareGenomeActivityTracker),
+    Running(PrepareGenomeActivityStatus),
+}
+
 #[derive(Debug, Clone)]
 struct PrepareGenomeActivityTracker {
-    path: PathBuf,
+    status_path: PathBuf,
+    lock_path: PathBuf,
     status: PrepareGenomeActivityStatus,
 }
 
 impl PrepareGenomeActivityTracker {
-    fn start(install_dir: &Path, genome_id: &str, mode: PrepareGenomeMode) -> Self {
-        let path = prepare_activity_status_path(install_dir);
+    fn start(
+        install_dir: &Path,
+        genome_id: &str,
+        mode: PrepareGenomeMode,
+    ) -> Result<PrepareGenomeActivityStart, String> {
+        let status_path = prepare_activity_status_path(install_dir);
+        let lock_path = prepare_activity_lock_path(install_dir);
+        if let Some(existing) = inspect_prepare_activity_status_paths(&status_path, &lock_path)? {
+            if existing.lifecycle_status == "running" {
+                return Ok(PrepareGenomeActivityStart::Running(existing));
+            }
+        }
         let now = now_unix_ms();
         let tracker = Self {
             status: PrepareGenomeActivityStatus {
                 genome_id: genome_id.to_string(),
-                status_path: canonical_or_display(&path),
+                status_path: canonical_or_display(&status_path),
+                lock_path: Some(canonical_or_display(&lock_path)),
                 lifecycle_status: "running".to_string(),
                 prepare_mode: mode.label().to_string(),
                 phase: Some("queued".to_string()),
@@ -5404,11 +5698,26 @@ impl PrepareGenomeActivityTracker {
                 updated_at_unix_ms: now,
                 finished_at_unix_ms: None,
                 last_error: None,
+                owner_pid: Some(std::process::id()),
             },
-            path,
+            status_path,
+            lock_path,
         };
+        if !create_prepare_activity_lock(&tracker.lock_path, &tracker.status)? {
+            if let Some(existing) =
+                inspect_prepare_activity_status_paths(&tracker.status_path, &tracker.lock_path)?
+            {
+                if existing.lifecycle_status == "running" {
+                    return Ok(PrepareGenomeActivityStart::Running(existing));
+                }
+            }
+            return Err(format!(
+                "Could not acquire a fresh prepare-activity lock for '{}'",
+                genome_id
+            ));
+        }
         tracker.write_best_effort();
-        tracker
+        Ok(PrepareGenomeActivityStart::Acquired(tracker))
     }
 
     fn update_progress(&mut self, progress: &PrepareGenomeProgress) {
@@ -5436,14 +5745,17 @@ impl PrepareGenomeActivityTracker {
         self.status.finished_at_unix_ms = Some(self.status.updated_at_unix_ms);
         self.status.last_error = Some(error.to_string());
         self.write_best_effort();
+        remove_prepare_activity_lock(&self.lock_path);
     }
 
     fn finish_success(&mut self) {
-        remove_prepare_activity_status(&self.path);
+        remove_prepare_activity_status(&self.status_path);
+        remove_prepare_activity_lock(&self.lock_path);
     }
 
     fn write_best_effort(&self) {
-        let _ = write_prepare_activity_status(&self.path, &self.status);
+        let _ = write_prepare_activity_status(&self.status_path, &self.status);
+        let _ = write_prepare_activity_lock(&self.lock_path, &self.status);
     }
 }
 
@@ -9567,7 +9879,8 @@ mod tests {
     use std::env;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::{Mutex, OnceLock, mpsc};
+    use std::thread;
     use tempfile::tempdir;
 
     struct EnvVarGuard {
@@ -11361,6 +11674,10 @@ mod tests {
         assert_eq!(after.lifecycle_status, "cancelled");
         assert!(after.finished_at_unix_ms.is_some());
         assert!(
+            !prepare_activity_lock_path(&cache_dir.join("toygenome")).exists(),
+            "cancelled runs should release the active lock"
+        );
+        assert!(
             after
                 .last_error
                 .as_deref()
@@ -11412,6 +11729,174 @@ mod tests {
                 .expect("inspect prepare activity after success"),
             None
         );
+        assert!(
+            !prepare_activity_lock_path(&cache_dir.join("toygenome")).exists(),
+            "successful runs should remove transient prepare locks"
+        );
+    }
+
+    #[test]
+    fn test_prepare_duplicate_run_reuses_existing_running_activity() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGT\nACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let background_catalog = catalog.clone();
+        let background = thread::spawn(move || {
+            let mut first_progress = true;
+            background_catalog
+                .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                    if first_progress {
+                        first_progress = false;
+                        entered_tx.send(progress.phase.clone()).unwrap();
+                        release_rx.recv().unwrap();
+                    }
+                    true
+                })
+                .expect("background prepare should finish")
+        });
+
+        let first_phase = entered_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("background prepare should start");
+        assert!(
+            !first_phase.is_empty(),
+            "background prepare should report a visible phase"
+        );
+
+        let reused = catalog
+            .prepare_genome_once("ToyGenome")
+            .expect("second prepare should reuse the active run");
+        assert_eq!(reused.lifecycle_status, "running");
+        assert!(reused.reused_existing_activity);
+        assert!(
+            reused
+                .current_activity
+                .as_ref()
+                .map(|activity| activity.lifecycle_status.as_str())
+                == Some("running")
+        );
+
+        release_tx.send(()).unwrap();
+        let completed = background.join().expect("join background prepare");
+        assert_eq!(completed.lifecycle_status, "ready");
+        assert!(!completed.reused_existing_activity);
+    }
+
+    #[test]
+    fn test_stale_prepare_activity_can_be_superseded_by_new_prepare() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGT\nACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let install_dir = cache_dir.join("toygenome");
+        fs::create_dir_all(&install_dir).unwrap();
+        let status_path = prepare_activity_status_path(&install_dir);
+        let lock_path = prepare_activity_lock_path(&install_dir);
+        let stale_updated_at = now_unix_ms().saturating_sub(PREPARE_ACTIVITY_STALE_AFTER_MS + 1);
+        let stale_status = PrepareGenomeActivityStatus {
+            genome_id: "ToyGenome".to_string(),
+            status_path: canonical_or_display(&status_path),
+            lock_path: Some(canonical_or_display(&lock_path)),
+            lifecycle_status: "running".to_string(),
+            prepare_mode: PrepareGenomeMode::PrepareOrReuse.label().to_string(),
+            phase: Some("download_sequence".to_string()),
+            item: Some("stale".to_string()),
+            bytes_done: 1,
+            bytes_total: Some(10),
+            percent: Some(10.0),
+            step_id: None,
+            step_label: None,
+            started_at_unix_ms: stale_updated_at.saturating_sub(10),
+            updated_at_unix_ms: stale_updated_at,
+            finished_at_unix_ms: None,
+            last_error: None,
+            owner_pid: Some(424242),
+        };
+        write_prepare_activity_status(&status_path, &stale_status).unwrap();
+        assert!(create_prepare_activity_lock(&lock_path, &stale_status).unwrap());
+
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+
+        let inspected = catalog
+            .inspect_prepare_activity_status("ToyGenome", None)
+            .unwrap()
+            .expect("stale activity should still be inspectable");
+        assert_eq!(inspected.lifecycle_status, "stale");
+        assert!(
+            inspected
+                .last_error
+                .as_deref()
+                .is_some_and(|value| value.contains("stale"))
+        );
+        assert!(
+            !lock_path.exists(),
+            "stale inspection should release abandoned locks"
+        );
+
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        let report = catalog.prepare_genome_once("ToyGenome").unwrap();
+        assert_eq!(report.lifecycle_status, "ready");
+        assert!(!report.reused_existing_activity);
     }
 
     #[test]

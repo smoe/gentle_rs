@@ -6764,6 +6764,23 @@ impl GentleEngine {
         cache_dir: Option<&str>,
         report: &PrepareGenomeReport,
     ) -> String {
+        if report.lifecycle_status == "running" && report.reused_existing_activity {
+            let cache_suffix = cache_dir
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| format!(" in '{}'", value))
+                .unwrap_or_default();
+            let phase_suffix = report
+                .current_activity
+                .as_ref()
+                .and_then(|activity| activity.phase.as_ref())
+                .map(|phase| format!(" (phase: {phase})"))
+                .unwrap_or_default();
+            return format!(
+                "Genome preparation for '{}' is already running{}{}.",
+                genome_id, cache_suffix, phase_suffix
+            );
+        }
         let status = if report.reused_existing {
             "reused existing local cache"
         } else {

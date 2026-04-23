@@ -410,6 +410,13 @@ Each entry contains:
 That gives chat layers a deterministic way to offer "Would you like me to run
 this next?" without scraping the human-readable report.
 
+For shared runtime setup, those suggestions are now lifecycle-aware:
+
+- `missing` -> offer `prepare`
+- `running` -> offer a status refresh instead of a duplicate prepare
+- `failed`, `cancelled`, or `stale` -> offer retry
+- `ready` -> suppress redundant prepare offers
+
 Relative `workflow_path` values are resolved in this order:
 
 1. current working directory

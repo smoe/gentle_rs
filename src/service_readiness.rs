@@ -6,7 +6,7 @@
 
 use crate::{
     engine::GentleEngine,
-    genomes::PrepareGenomeActivityStatus,
+    genomes::{GenomeCatalog, PrepareGenomeActivityStatus},
     resource_status::{ResourceCatalogReport, resource_catalog_status},
 };
 use serde::Serialize;
@@ -29,9 +29,12 @@ pub struct ServiceReadinessReport {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ServiceDependencyStatus {
+    pub resource_key: String,
+    pub display_name: String,
     pub dependency_kind: String,
     pub genome_id: String,
     pub prepared: bool,
+    pub lifecycle_status: String,
     pub availability_status: String,
     pub sequence_source_type: String,
     pub annotation_source_type: String,
@@ -52,17 +55,12 @@ fn now_unix_ms() -> u128 {
         .unwrap_or(0)
 }
 
-fn summarize_availability_status(
-    prepared: bool,
-    activity: Option<&PrepareGenomeActivityStatus>,
-) -> String {
-    match activity {
-        Some(activity) if activity.lifecycle_status == "running" => "preparing".to_string(),
-        Some(activity) if activity.lifecycle_status == "failed" => "failed".to_string(),
-        Some(activity) if activity.lifecycle_status == "cancelled" => "cancelled".to_string(),
-        Some(activity) => activity.lifecycle_status.clone(),
-        None if prepared => "prepared".to_string(),
-        None => "not_prepared".to_string(),
+fn summarize_availability_status(lifecycle_status: &str) -> String {
+    match lifecycle_status {
+        "running" => "preparing".to_string(),
+        "ready" => "prepared".to_string(),
+        "missing" => "not_prepared".to_string(),
+        other => other.to_string(),
     }
 }
 
@@ -87,11 +85,16 @@ fn inspect_reference_status(genome_id: &str) -> Result<ServiceDependencyStatus, 
     let current_activity =
         GentleEngine::inspect_reference_genome_prepare_activity(None, genome_id, None)
             .map_err(|e| e.to_string())?;
+    let lifecycle_status =
+        GenomeCatalog::derive_prepare_lifecycle_status(prepared, current_activity.as_ref());
     Ok(ServiceDependencyStatus {
+        resource_key: format!("reference_genome:{genome_id}"),
+        display_name: genome_id.to_string(),
         dependency_kind: "reference".to_string(),
         genome_id: genome_id.to_string(),
         prepared,
-        availability_status: summarize_availability_status(prepared, current_activity.as_ref()),
+        lifecycle_status: lifecycle_status.clone(),
+        availability_status: summarize_availability_status(&lifecycle_status),
         sequence_source_type: source_plan.sequence_source_type,
         annotation_source_type: source_plan.annotation_source_type,
         sequence_source: Some(source_plan.sequence_source),
@@ -120,11 +123,16 @@ fn inspect_helper_status(genome_id: &str) -> Result<ServiceDependencyStatus, Str
         .map(|record| serde_json::to_value(record))
         .transpose()
         .map_err(|e| format!("Could not serialize helper interpretation: {e}"))?;
+    let lifecycle_status =
+        GenomeCatalog::derive_prepare_lifecycle_status(prepared, current_activity.as_ref());
     Ok(ServiceDependencyStatus {
+        resource_key: format!("helper_genome:{genome_id}"),
+        display_name: genome_id.to_string(),
         dependency_kind: "helper".to_string(),
         genome_id: genome_id.to_string(),
         prepared,
-        availability_status: summarize_availability_status(prepared, current_activity.as_ref()),
+        lifecycle_status: lifecycle_status.clone(),
+        availability_status: summarize_availability_status(&lifecycle_status),
         sequence_source_type: source_plan.sequence_source_type,
         annotation_source_type: source_plan.annotation_source_type,
         sequence_source: Some(source_plan.sequence_source),
@@ -145,36 +153,38 @@ fn build_summary_lines(
 ) -> Vec<String> {
     let mut lines = vec![];
     for reference in references {
-        if let Some(activity) = reference.current_activity.as_ref() {
-            if activity.lifecycle_status == "running" {
-                if reference.prepared {
-                    lines.push(format!(
-                        "Reference '{}' is prepared locally; a prepare/reindex run is currently active{}.",
-                        reference.genome_id,
-                        format_activity_brief(activity)
-                    ));
-                } else {
-                    lines.push(format!(
-                        "Reference '{}' is currently being prepared locally{}.",
-                        reference.genome_id,
-                        format_activity_brief(activity)
-                    ));
-                }
-                continue;
+        if reference.lifecycle_status == "running" {
+            let activity_suffix = reference
+                .current_activity
+                .as_ref()
+                .map(format_activity_brief)
+                .unwrap_or_default();
+            if reference.prepared {
+                lines.push(format!(
+                    "Reference '{}' is prepared locally; a prepare/reindex run is currently active{}.",
+                    reference.genome_id, activity_suffix
+                ));
+            } else {
+                lines.push(format!(
+                    "Reference '{}' is currently being prepared locally{}.",
+                    reference.genome_id, activity_suffix
+                ));
             }
+        } else if matches!(
+            reference.lifecycle_status.as_str(),
+            "failed" | "cancelled" | "stale"
+        ) {
+            let activity = reference.current_activity.as_ref();
             lines.push(format!(
-                "Reference '{}' is {} locally; the most recent prepare run ended as '{}'{}{}.",
+                "Reference '{}' is {} locally; the most recent prepare run ended as '{}'{}{} Retry with `genomes prepare` when ready.",
                 reference.genome_id,
-                if reference.prepared {
-                    "prepared"
-                } else {
-                    "not ready"
-                },
-                activity.lifecycle_status,
-                format_activity_brief(activity),
+                if reference.prepared { "prepared" } else { "not ready" },
+                reference.lifecycle_status,
                 activity
-                    .last_error
-                    .as_ref()
+                    .map(format_activity_brief)
+                    .unwrap_or_default(),
+                activity
+                    .and_then(|status| status.last_error.as_ref())
                     .map(|err| format!(" ({err})"))
                     .unwrap_or_default()
             ));
@@ -191,36 +201,38 @@ fn build_summary_lines(
         }
     }
     for helper in helpers {
-        if let Some(activity) = helper.current_activity.as_ref() {
-            if activity.lifecycle_status == "running" {
-                if helper.prepared {
-                    lines.push(format!(
-                        "Helper '{}' is prepared locally; a prepare/reindex run is currently active{}.",
-                        helper.genome_id,
-                        format_activity_brief(activity)
-                    ));
-                } else {
-                    lines.push(format!(
-                        "Helper '{}' is currently being prepared locally{}.",
-                        helper.genome_id,
-                        format_activity_brief(activity)
-                    ));
-                }
-                continue;
+        if helper.lifecycle_status == "running" {
+            let activity_suffix = helper
+                .current_activity
+                .as_ref()
+                .map(format_activity_brief)
+                .unwrap_or_default();
+            if helper.prepared {
+                lines.push(format!(
+                    "Helper '{}' is prepared locally; a prepare/reindex run is currently active{}.",
+                    helper.genome_id, activity_suffix
+                ));
+            } else {
+                lines.push(format!(
+                    "Helper '{}' is currently being prepared locally{}.",
+                    helper.genome_id, activity_suffix
+                ));
             }
+        } else if matches!(
+            helper.lifecycle_status.as_str(),
+            "failed" | "cancelled" | "stale"
+        ) {
+            let activity = helper.current_activity.as_ref();
             lines.push(format!(
-                "Helper '{}' is {} locally; the most recent prepare run ended as '{}'{}{}.",
+                "Helper '{}' is {} locally; the most recent prepare run ended as '{}'{}{} Retry with `helpers prepare` when ready.",
                 helper.genome_id,
-                if helper.prepared {
-                    "prepared"
-                } else {
-                    "not ready"
-                },
-                activity.lifecycle_status,
-                format_activity_brief(activity),
+                if helper.prepared { "prepared" } else { "not ready" },
+                helper.lifecycle_status,
                 activity
-                    .last_error
-                    .as_ref()
+                    .map(format_activity_brief)
+                    .unwrap_or_default(),
+                activity
+                    .and_then(|status| status.last_error.as_ref())
                     .map(|err| format!(" ({err})"))
                     .unwrap_or_default()
             ));
@@ -288,6 +300,7 @@ mod tests {
         PrepareGenomeActivityStatus {
             genome_id: "Human GRCh38 Ensembl 116".to_string(),
             status_path: "/tmp/.prepare_activity.json".to_string(),
+            lock_path: Some("/tmp/.prepare_activity.lock".to_string()),
             lifecycle_status: status.to_string(),
             prepare_mode: "prepare_or_reuse".to_string(),
             phase: Some(phase.to_string()),
@@ -301,19 +314,23 @@ mod tests {
             updated_at_unix_ms: 2,
             finished_at_unix_ms: None,
             last_error: None,
+            owner_pid: Some(12345),
         }
     }
 
     fn fake_dependency(
         prepared: bool,
-        availability_status: &str,
+        lifecycle_status: &str,
         current_activity: Option<PrepareGenomeActivityStatus>,
     ) -> ServiceDependencyStatus {
         ServiceDependencyStatus {
+            resource_key: "reference_genome:Human GRCh38 Ensembl 116".to_string(),
+            display_name: "Human GRCh38 Ensembl 116".to_string(),
             dependency_kind: "reference".to_string(),
             genome_id: "Human GRCh38 Ensembl 116".to_string(),
             prepared,
-            availability_status: availability_status.to_string(),
+            lifecycle_status: lifecycle_status.to_string(),
+            availability_status: summarize_availability_status(lifecycle_status),
             sequence_source_type: "remote_url".to_string(),
             annotation_source_type: "remote_url".to_string(),
             sequence_source: Some("https://example.invalid/sequence.fa.gz".to_string()),
@@ -333,7 +350,7 @@ mod tests {
         let lines = build_summary_lines(
             &[fake_dependency(
                 false,
-                "preparing",
+                "running",
                 Some(fake_activity("running", "download_sequence", 42.0)),
             )],
             &[],
