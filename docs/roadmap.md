@@ -257,6 +257,12 @@ order. Durable architecture constraints and decisions remain in
     `racks apply-template` and similar rack-template/state commands no longer
     pay for the neighboring pool-gel/ladder frame on smaller-stack test
     threads
+  - rack commands are now split one level further again:
+    rack mutation/state-update routes (`apply-template`, `set-fill-direction`,
+    `set-custom-profile`, blocked/profile updates, and placement mutations)
+    dispatch through a smaller helper than rack inspect/export routes, so the
+    most stack-sensitive rack-template tests do not also pay for rack SVG/JSON
+    export handling
 - Engine operation dispatch now applies the same arrangement/rack/ladder
   split-helper pattern:
   - shell-side helper dispatch alone was not sufficient because

@@ -16708,20 +16708,25 @@ pub fn execute_shell_command(
             | ShellCommand::RacksMove { .. }
             | ShellCommand::RacksMoveSamples { .. }
             | ShellCommand::RacksMoveBlocks { .. }
-            | ShellCommand::RacksShow { .. }
-            | ShellCommand::RacksLabelsSvg { .. }
-            | ShellCommand::RacksFabricationSvg { .. }
-            | ShellCommand::RacksIsometricSvg { .. }
-            | ShellCommand::RacksOpenScad { .. }
-            | ShellCommand::RacksCarrierLabelsSvg { .. }
-            | ShellCommand::RacksSimulationJson { .. }
             | ShellCommand::RacksSetProfile { .. }
             | ShellCommand::RacksApplyTemplate { .. }
             | ShellCommand::RacksSetFillDirection { .. }
             | ShellCommand::RacksSetCustomProfile { .. }
             | ShellCommand::RacksSetBlocked { .. }
     ) {
-        return execute_rack_command(engine, command);
+        return execute_rack_mutation_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::RacksShow { .. }
+            | ShellCommand::RacksLabelsSvg { .. }
+            | ShellCommand::RacksFabricationSvg { .. }
+            | ShellCommand::RacksIsometricSvg { .. }
+            | ShellCommand::RacksOpenScad { .. }
+            | ShellCommand::RacksCarrierLabelsSvg { .. }
+            | ShellCommand::RacksSimulationJson { .. }
+    ) {
+        return execute_rack_export_command(engine, command);
     }
     if matches!(
         command,
@@ -17981,7 +17986,7 @@ fn execute_pool_gel_and_ladder_command(
 }
 
 #[inline(never)]
-fn execute_rack_command(
+fn execute_rack_mutation_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
@@ -18068,6 +18073,82 @@ fn execute_rack_command(
                     .map_err(|e| e.to_string())?
             }),
         }),
+        ShellCommand::RacksSetProfile { rack_id, profile } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetRackProfile {
+                        rack_id: rack_id.clone(),
+                        profile: *profile,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksApplyTemplate { rack_id, template } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::ApplyRackTemplate {
+                        rack_id: rack_id.clone(),
+                        template: *template,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksSetFillDirection {
+            rack_id,
+            fill_direction,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetRackFillDirection {
+                        rack_id: rack_id.clone(),
+                        fill_direction: *fill_direction,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksSetCustomProfile {
+            rack_id,
+            rows,
+            columns,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetRackProfileCustom {
+                        rack_id: rack_id.clone(),
+                        rows: *rows,
+                        columns: *columns,
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        ShellCommand::RacksSetBlocked {
+            rack_id,
+            blocked_coordinates,
+        } => Ok(ShellRunResult {
+            state_changed: true,
+            output: json!({
+                "result": engine
+                    .apply(Operation::SetRackBlockedCoordinates {
+                        rack_id: rack_id.clone(),
+                        blocked_coordinates: blocked_coordinates.clone(),
+                    })
+                    .map_err(|e| e.to_string())?
+            }),
+        }),
+        _ => unreachable!("non-rack-mutation command passed to helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_rack_export_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
         ShellCommand::RacksShow { rack_id } => {
             let rack = engine
                 .state()
@@ -18218,73 +18299,7 @@ fn execute_rack_command(
                     .map_err(|e| e.to_string())?
             }),
         }),
-        ShellCommand::RacksSetProfile { rack_id, profile } => Ok(ShellRunResult {
-            state_changed: true,
-            output: json!({
-                "result": engine
-                    .apply(Operation::SetRackProfile {
-                        rack_id: rack_id.clone(),
-                        profile: *profile,
-                    })
-                    .map_err(|e| e.to_string())?
-            }),
-        }),
-        ShellCommand::RacksApplyTemplate { rack_id, template } => Ok(ShellRunResult {
-            state_changed: true,
-            output: json!({
-                "result": engine
-                    .apply(Operation::ApplyRackTemplate {
-                        rack_id: rack_id.clone(),
-                        template: *template,
-                    })
-                    .map_err(|e| e.to_string())?
-            }),
-        }),
-        ShellCommand::RacksSetFillDirection {
-            rack_id,
-            fill_direction,
-        } => Ok(ShellRunResult {
-            state_changed: true,
-            output: json!({
-                "result": engine
-                    .apply(Operation::SetRackFillDirection {
-                        rack_id: rack_id.clone(),
-                        fill_direction: *fill_direction,
-                    })
-                    .map_err(|e| e.to_string())?
-            }),
-        }),
-        ShellCommand::RacksSetCustomProfile {
-            rack_id,
-            rows,
-            columns,
-        } => Ok(ShellRunResult {
-            state_changed: true,
-            output: json!({
-                "result": engine
-                    .apply(Operation::SetRackProfileCustom {
-                        rack_id: rack_id.clone(),
-                        rows: *rows,
-                        columns: *columns,
-                    })
-                    .map_err(|e| e.to_string())?
-            }),
-        }),
-        ShellCommand::RacksSetBlocked {
-            rack_id,
-            blocked_coordinates,
-        } => Ok(ShellRunResult {
-            state_changed: true,
-            output: json!({
-                "result": engine
-                    .apply(Operation::SetRackBlockedCoordinates {
-                        rack_id: rack_id.clone(),
-                        blocked_coordinates: blocked_coordinates.clone(),
-                    })
-                    .map_err(|e| e.to_string())?
-            }),
-        }),
-        _ => unreachable!("non-rack command passed to helper"),
+        _ => unreachable!("non-rack-export command passed to helper"),
     }
 }
 
@@ -24670,20 +24685,25 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::RacksMove { .. }
             | ShellCommand::RacksMoveSamples { .. }
             | ShellCommand::RacksMoveBlocks { .. }
-            | ShellCommand::RacksShow { .. }
-            | ShellCommand::RacksLabelsSvg { .. }
-            | ShellCommand::RacksFabricationSvg { .. }
-            | ShellCommand::RacksIsometricSvg { .. }
-            | ShellCommand::RacksOpenScad { .. }
-            | ShellCommand::RacksCarrierLabelsSvg { .. }
-            | ShellCommand::RacksSimulationJson { .. }
             | ShellCommand::RacksSetProfile { .. }
             | ShellCommand::RacksApplyTemplate { .. }
             | ShellCommand::RacksSetFillDirection { .. }
             | ShellCommand::RacksSetCustomProfile { .. }
             | ShellCommand::RacksSetBlocked { .. }
     ) {
-        return execute_rack_command(engine, command);
+        return execute_rack_mutation_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::RacksShow { .. }
+            | ShellCommand::RacksLabelsSvg { .. }
+            | ShellCommand::RacksFabricationSvg { .. }
+            | ShellCommand::RacksIsometricSvg { .. }
+            | ShellCommand::RacksOpenScad { .. }
+            | ShellCommand::RacksCarrierLabelsSvg { .. }
+            | ShellCommand::RacksSimulationJson { .. }
+    ) {
+        return execute_rack_export_command(engine, command);
     }
     if matches!(
         command,
@@ -25348,18 +25368,18 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RacksMove { .. }
         | ShellCommand::RacksMoveSamples { .. }
         | ShellCommand::RacksMoveBlocks { .. }
-        | ShellCommand::RacksShow { .. }
+        | ShellCommand::RacksSetProfile { .. }
+        | ShellCommand::RacksApplyTemplate { .. }
+        | ShellCommand::RacksSetFillDirection { .. }
+        | ShellCommand::RacksSetCustomProfile { .. }
+        | ShellCommand::RacksSetBlocked { .. } => execute_rack_mutation_command(engine, command)?,
+        ShellCommand::RacksShow { .. }
         | ShellCommand::RacksLabelsSvg { .. }
         | ShellCommand::RacksFabricationSvg { .. }
         | ShellCommand::RacksIsometricSvg { .. }
         | ShellCommand::RacksOpenScad { .. }
         | ShellCommand::RacksCarrierLabelsSvg { .. }
-        | ShellCommand::RacksSimulationJson { .. }
-        | ShellCommand::RacksSetProfile { .. }
-        | ShellCommand::RacksApplyTemplate { .. }
-        | ShellCommand::RacksSetFillDirection { .. }
-        | ShellCommand::RacksSetCustomProfile { .. }
-        | ShellCommand::RacksSetBlocked { .. } => execute_rack_command(engine, command)?,
+        | ShellCommand::RacksSimulationJson { .. } => execute_rack_export_command(engine, command)?,
         ShellCommand::LaddersList { .. } | ShellCommand::LaddersExport { .. } => {
             execute_pool_gel_and_ladder_command(engine, command)?
         }

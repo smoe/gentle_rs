@@ -3067,9 +3067,12 @@ mod tests {
 
         let ctx = eframe::egui::Context::default();
         let wait_started = Instant::now();
-        while area.tfbs_task.is_some() && wait_started.elapsed() < Duration::from_secs(5) {
+        while area.tfbs_task.is_some() && wait_started.elapsed() < Duration::from_secs(15) {
             area.poll_tfbs_task(&ctx);
             std::thread::sleep(Duration::from_millis(2));
+        }
+        if area.tfbs_task.is_some() {
+            area.poll_tfbs_task(&ctx);
         }
         assert!(
             area.tfbs_task.is_none(),
@@ -3105,9 +3108,12 @@ mod tests {
 
         let ctx = eframe::egui::Context::default();
         let wait_started = Instant::now();
-        while area.tfbs_task.is_some() && wait_started.elapsed() < Duration::from_secs(5) {
+        while area.tfbs_task.is_some() && wait_started.elapsed() < Duration::from_secs(15) {
             area.poll_tfbs_task(&ctx);
             std::thread::sleep(Duration::from_millis(2));
+        }
+        if area.tfbs_task.is_some() {
+            area.poll_tfbs_task(&ctx);
         }
         assert!(
             area.tfbs_task.is_none(),

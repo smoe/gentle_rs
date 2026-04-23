@@ -2674,6 +2674,11 @@ fn execute_racks_move_blocks_updates_snapshot() {
 
 #[test]
 fn execute_racks_apply_template_updates_snapshot() {
+    execute_racks_apply_template_updates_snapshot_impl();
+}
+
+#[inline(never)]
+fn execute_racks_apply_template_updates_snapshot_impl() {
     let mut state = ProjectState::default();
     state.sequences.insert(
         "seq_a".to_string(),
