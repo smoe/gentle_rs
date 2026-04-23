@@ -331,7 +331,7 @@ Expected outputs:
   - and when the bundle exposes ranked artifact metadata, the wrapper lifts it
     into `result.json.preferred_artifacts[]` so chat/report layers can choose
     one best-first figure deterministically
-- one SVG map
+- one SVG provenance map plus the messenger-facing PNG companion
 - one BED/tabular coordinate export
 - one extracted region/gene/promoter slice from a prepared local reference
 - one reproducibility bundle from the ClawBio wrapper
@@ -452,7 +452,7 @@ Expected outputs:
 - reporter-fragment candidates
 - paired allele inserts
 - construct previews and handoff bundle artifacts
-- one best-first storyboard-style SVG when the wrapper collects multiple
+- one best-first storyboard-style PNG when the wrapper collects multiple
   variant-analysis figures from the same run
 
 ## Core Capabilities
@@ -939,6 +939,7 @@ Apply the following methodology:
     - lowest-hanging graphical demo for remote ClawBio/OpenClaw installs
     - auto-checks/prepares `Human GRCh38 Ensembl 116`, fetches `rs9923231`,
       and exports a compact linear genomic-context SVG into the wrapper bundle
+      plus the messenger-facing PNG companion
   - `examples/request_resources_status.json`
     - reports which integrated external resource snapshots are active right
       now (`REBASE`, `JASPAR`) and records `ATtRACT` explicitly as
@@ -985,8 +986,9 @@ Apply the following methodology:
       variations" in the current scaffold
     - replays the VKORC1 / rs9923231 promoter-luciferase workflow and copies
       the promoter-context plus paired reporter SVGs into the wrapper bundle
-    - the wrapper then synthesizes one best-first
-      `generated/clawbio_storyboard.svg` artifact from those figures
+    - the wrapper then synthesizes one provenance
+      `generated/clawbio_storyboard.svg` plus the best-first
+      `generated/clawbio_storyboard.png` artifact from those figures
     - present this as a variant-to-synthetic-biology handoff, not just a
       variant-annotation figure: the output shows how one locus becomes one
       engineered reporter-design plan
@@ -1107,6 +1109,12 @@ For status/readiness outputs, `result.json` may additionally include:
 
 - `chat_summary_lines[]` for concise first replies
 - `preferred_artifacts[]` for best-first figures
+  - graphics now use a PNG-first outward contract for messenger consumers
+  - declared SVG engine outputs are rasterized into deterministic PNG bundle
+    artifacts at fixed scale `2.0`
+  - multi-figure runs now promote `generated/clawbio_storyboard.png` first
+    while keeping the SVG storyboard/source figures available as supporting
+    provenance artifacts
 - `suggested_actions[]` with deterministic follow-up commands and nested
   request objects that ClawBio can offer to execute after confirmation
   - those suggestions now follow GENtle's lifecycle state directly:
