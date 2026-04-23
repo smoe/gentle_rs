@@ -18658,6 +18658,230 @@ fn execute_protocol_cartoon_command(
 }
 
 #[inline(never)]
+fn execute_cutrun_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::CutRunList {
+            filter,
+            catalog_path,
+        } => {
+            let report =
+                GentleEngine::list_cutrun_datasets(filter.as_deref(), catalog_path.as_deref())
+                    .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize CUT&RUN dataset list: {e}"))?,
+            })
+        }
+        ShellCommand::CutRunStatus {
+            dataset_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let status = engine
+                .show_cutrun_dataset_status(
+                    dataset_id,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&status)
+                    .map_err(|e| format!("Could not serialize CUT&RUN dataset status: {e}"))?,
+            })
+        }
+        ShellCommand::CutRunPrepare {
+            dataset_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::PrepareCutRunDataset {
+                    dataset_id: dataset_id.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let status = op_result.cutrun_dataset_status.ok_or_else(|| {
+                "PrepareCutRunDataset did not return a dataset-status payload".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&status)
+                    .map_err(|e| format!("Could not serialize prepared CUT&RUN status: {e}"))?,
+            })
+        }
+        ShellCommand::CutRunProject {
+            seq_id,
+            dataset_id,
+            include_peaks,
+            include_signal,
+            clear_existing,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::ProjectCutRunDataset {
+                    seq_id: seq_id.clone(),
+                    dataset_id: dataset_id.clone(),
+                    include_peaks: Some(*include_peaks),
+                    include_signal: Some(*include_signal),
+                    clear_existing: Some(*clear_existing),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.cutrun_dataset_projection.ok_or_else(|| {
+                "ProjectCutRunDataset did not return a projection payload".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize CUT&RUN projection report: {e}"))?,
+            })
+        }
+        ShellCommand::CutRunInterpret {
+            seq_id,
+            input_r1_path,
+            input_r2_path,
+            dataset_id,
+            catalog_path,
+            cache_dir,
+            input_format,
+            read_layout,
+            roi_flank_bp,
+            seed_filter,
+            align_config,
+            deduplicate_fragments,
+            report_id,
+            checkpoint_path,
+            checkpoint_every_reads,
+        } => {
+            let op_result = engine
+                .apply(Operation::InterpretCutRunReads {
+                    seq_id: seq_id.clone(),
+                    input_r1_path: input_r1_path.clone(),
+                    input_r2_path: input_r2_path.clone(),
+                    dataset_id: dataset_id.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    input_format: *input_format,
+                    read_layout: *read_layout,
+                    roi_flank_bp: *roi_flank_bp,
+                    seed_filter: seed_filter.clone(),
+                    align_config: align_config.clone(),
+                    deduplicate_fragments: *deduplicate_fragments,
+                    report_id: report_id.clone(),
+                    checkpoint_path: checkpoint_path.clone(),
+                    checkpoint_every_reads: *checkpoint_every_reads,
+                })
+                .map_err(|e| e.to_string())?;
+            let report = if let Some(id) = report_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine.get_cutrun_read_report(id).ok()
+            } else {
+                engine
+                    .list_cutrun_read_reports(Some(seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+                    .and_then(|row| engine.get_cutrun_read_report(row.report_id.as_str()).ok())
+            };
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::CutRunListReadReports { seq_id } => {
+            let reports = engine.list_cutrun_read_reports(seq_id.as_deref());
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.cutrun_read_report_list.v1",
+                    "report_count": reports.len(),
+                    "reports": reports,
+                }),
+            })
+        }
+        ShellCommand::CutRunShowReadReport { report_id } => {
+            let report = engine
+                .get_cutrun_read_report(report_id)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::CutRunExportCoverage {
+            report_id,
+            path,
+            kind,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportCutRunReadCoverage {
+                    report_id: report_id.clone(),
+                    path: path.clone(),
+                    kind: *kind,
+                })
+                .map_err(|e| e.to_string())?;
+            let export = op_result.cutrun_read_coverage_export.ok_or_else(|| {
+                "ExportCutRunReadCoverage did not return an export payload".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&export)
+                    .map_err(|e| format!("Could not serialize CUT&RUN coverage export: {e}"))?,
+            })
+        }
+        ShellCommand::CutRunInspectRegulatorySupport {
+            seq_id,
+            dataset_ids,
+            read_report_ids,
+            promoter_search_start_0based,
+            promoter_search_end_0based_exclusive,
+            neighbor_window_bp,
+            species_filters,
+            output_path,
+        } => {
+            let result = engine
+                .apply(Operation::InspectCutRunRegulatorySupport {
+                    seq_id: seq_id.clone(),
+                    dataset_ids: dataset_ids.clone(),
+                    read_report_ids: read_report_ids.clone(),
+                    promoter_search_start_0based: *promoter_search_start_0based,
+                    promoter_search_end_0based_exclusive: *promoter_search_end_0based_exclusive,
+                    neighbor_window_bp: *neighbor_window_bp,
+                    species_filters: species_filters.clone(),
+                    path: output_path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.cutrun_regulatory_support.ok_or_else(|| {
+                "InspectCutRunRegulatorySupport did not return a regulatory-support payload"
+                    .to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report).map_err(|e| {
+                    format!("Could not serialize CUT&RUN regulatory-support report: {e}")
+                })?,
+            })
+        }
+        _ => unreachable!("non-CUT&RUN command passed to CUT&RUN helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_reference_and_track_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -19599,220 +19823,6 @@ fn execute_reference_and_track_command(
             Ok(ShellRunResult {
                 state_changed,
                 output: json!({ "result": op_result }),
-            })
-        }
-        ShellCommand::CutRunList {
-            filter,
-            catalog_path,
-        } => {
-            let report =
-                GentleEngine::list_cutrun_datasets(filter.as_deref(), catalog_path.as_deref())
-                    .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(&report)
-                    .map_err(|e| format!("Could not serialize CUT&RUN dataset list: {e}"))?,
-            })
-        }
-        ShellCommand::CutRunStatus {
-            dataset_id,
-            catalog_path,
-            cache_dir,
-        } => {
-            let status = engine
-                .show_cutrun_dataset_status(
-                    dataset_id,
-                    catalog_path.as_deref(),
-                    cache_dir.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(&status)
-                    .map_err(|e| format!("Could not serialize CUT&RUN dataset status: {e}"))?,
-            })
-        }
-        ShellCommand::CutRunPrepare {
-            dataset_id,
-            catalog_path,
-            cache_dir,
-        } => {
-            let op_result = engine
-                .apply(Operation::PrepareCutRunDataset {
-                    dataset_id: dataset_id.clone(),
-                    catalog_path: catalog_path.clone(),
-                    cache_dir: cache_dir.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let status = op_result.cutrun_dataset_status.ok_or_else(|| {
-                "PrepareCutRunDataset did not return a dataset-status payload".to_string()
-            })?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(&status)
-                    .map_err(|e| format!("Could not serialize prepared CUT&RUN status: {e}"))?,
-            })
-        }
-        ShellCommand::CutRunProject {
-            seq_id,
-            dataset_id,
-            include_peaks,
-            include_signal,
-            clear_existing,
-            catalog_path,
-            cache_dir,
-        } => {
-            let op_result = engine
-                .apply(Operation::ProjectCutRunDataset {
-                    seq_id: seq_id.clone(),
-                    dataset_id: dataset_id.clone(),
-                    include_peaks: Some(*include_peaks),
-                    include_signal: Some(*include_signal),
-                    clear_existing: Some(*clear_existing),
-                    catalog_path: catalog_path.clone(),
-                    cache_dir: cache_dir.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let report = op_result.cutrun_dataset_projection.ok_or_else(|| {
-                "ProjectCutRunDataset did not return a projection payload".to_string()
-            })?;
-            Ok(ShellRunResult {
-                state_changed: true,
-                output: serde_json::to_value(&report)
-                    .map_err(|e| format!("Could not serialize CUT&RUN projection report: {e}"))?,
-            })
-        }
-        ShellCommand::CutRunInterpret {
-            seq_id,
-            input_r1_path,
-            input_r2_path,
-            dataset_id,
-            catalog_path,
-            cache_dir,
-            input_format,
-            read_layout,
-            roi_flank_bp,
-            seed_filter,
-            align_config,
-            deduplicate_fragments,
-            report_id,
-            checkpoint_path,
-            checkpoint_every_reads,
-        } => {
-            let op_result = engine
-                .apply(Operation::InterpretCutRunReads {
-                    seq_id: seq_id.clone(),
-                    input_r1_path: input_r1_path.clone(),
-                    input_r2_path: input_r2_path.clone(),
-                    dataset_id: dataset_id.clone(),
-                    catalog_path: catalog_path.clone(),
-                    cache_dir: cache_dir.clone(),
-                    input_format: *input_format,
-                    read_layout: *read_layout,
-                    roi_flank_bp: *roi_flank_bp,
-                    seed_filter: seed_filter.clone(),
-                    align_config: align_config.clone(),
-                    deduplicate_fragments: *deduplicate_fragments,
-                    report_id: report_id.clone(),
-                    checkpoint_path: checkpoint_path.clone(),
-                    checkpoint_every_reads: *checkpoint_every_reads,
-                })
-                .map_err(|e| e.to_string())?;
-            let report = if let Some(id) = report_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                engine.get_cutrun_read_report(id).ok()
-            } else {
-                engine
-                    .list_cutrun_read_reports(Some(seq_id.as_str()))
-                    .into_iter()
-                    .max_by_key(|row| row.generated_at_unix_ms)
-                    .and_then(|row| engine.get_cutrun_read_report(row.report_id.as_str()).ok())
-            };
-            Ok(ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "result": op_result,
-                    "report": report,
-                }),
-            })
-        }
-        ShellCommand::CutRunListReadReports { seq_id } => {
-            let reports = engine.list_cutrun_read_reports(seq_id.as_deref());
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "schema": "gentle.cutrun_read_report_list.v1",
-                    "report_count": reports.len(),
-                    "reports": reports,
-                }),
-            })
-        }
-        ShellCommand::CutRunShowReadReport { report_id } => {
-            let report = engine
-                .get_cutrun_read_report(report_id)
-                .map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "report": report,
-                }),
-            })
-        }
-        ShellCommand::CutRunExportCoverage {
-            report_id,
-            path,
-            kind,
-        } => {
-            let op_result = engine
-                .apply(Operation::ExportCutRunReadCoverage {
-                    report_id: report_id.clone(),
-                    path: path.clone(),
-                    kind: *kind,
-                })
-                .map_err(|e| e.to_string())?;
-            let export = op_result.cutrun_read_coverage_export.ok_or_else(|| {
-                "ExportCutRunReadCoverage did not return an export payload".to_string()
-            })?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(&export)
-                    .map_err(|e| format!("Could not serialize CUT&RUN coverage export: {e}"))?,
-            })
-        }
-        ShellCommand::CutRunInspectRegulatorySupport {
-            seq_id,
-            dataset_ids,
-            read_report_ids,
-            promoter_search_start_0based,
-            promoter_search_end_0based_exclusive,
-            neighbor_window_bp,
-            species_filters,
-            output_path,
-        } => {
-            let result = engine
-                .apply(Operation::InspectCutRunRegulatorySupport {
-                    seq_id: seq_id.clone(),
-                    dataset_ids: dataset_ids.clone(),
-                    read_report_ids: read_report_ids.clone(),
-                    promoter_search_start_0based: *promoter_search_start_0based,
-                    promoter_search_end_0based_exclusive: *promoter_search_end_0based_exclusive,
-                    neighbor_window_bp: *neighbor_window_bp,
-                    species_filters: species_filters.clone(),
-                    path: output_path.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let report = result.cutrun_regulatory_support.ok_or_else(|| {
-                "InspectCutRunRegulatorySupport did not return a regulatory-support payload"
-                    .to_string()
-            })?;
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(&report).map_err(|e| {
-                    format!("Could not serialize CUT&RUN regulatory-support report: {e}")
-                })?,
             })
         }
         ShellCommand::TracksImportBed {
@@ -24812,6 +24822,20 @@ pub fn execute_shell_command_with_options(
     }
     if matches!(
         command,
+        ShellCommand::CutRunList { .. }
+            | ShellCommand::CutRunStatus { .. }
+            | ShellCommand::CutRunPrepare { .. }
+            | ShellCommand::CutRunProject { .. }
+            | ShellCommand::CutRunInterpret { .. }
+            | ShellCommand::CutRunListReadReports { .. }
+            | ShellCommand::CutRunShowReadReport { .. }
+            | ShellCommand::CutRunExportCoverage { .. }
+            | ShellCommand::CutRunInspectRegulatorySupport { .. }
+    ) {
+        return execute_cutrun_command(engine, command);
+    }
+    if matches!(
+        command,
         ShellCommand::HostsList { .. }
             | ShellCommand::ReferenceList { .. }
             | ShellCommand::ReferenceEnsemblAvailable { .. }
@@ -24837,15 +24861,6 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ReferenceVerifyAnchor { .. }
             | ShellCommand::TracksImportBed { .. }
             | ShellCommand::TracksImportBigWig { .. }
-            | ShellCommand::CutRunList { .. }
-            | ShellCommand::CutRunStatus { .. }
-            | ShellCommand::CutRunPrepare { .. }
-            | ShellCommand::CutRunProject { .. }
-            | ShellCommand::CutRunInterpret { .. }
-            | ShellCommand::CutRunListReadReports { .. }
-            | ShellCommand::CutRunShowReadReport { .. }
-            | ShellCommand::CutRunExportCoverage { .. }
-            | ShellCommand::CutRunInspectRegulatorySupport { .. }
             | ShellCommand::TracksImportVcf { .. }
             | ShellCommand::TracksTrackedList
             | ShellCommand::TracksTrackedAdd { .. }
@@ -25523,6 +25538,17 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::UiIntent { .. }
         | ShellCommand::UiPreparedGenomes { .. }
         | ShellCommand::UiLatestPrepared { .. } => execute_ui_command(engine, command, options)?,
+        ShellCommand::CutRunList { .. }
+        | ShellCommand::CutRunStatus { .. }
+        | ShellCommand::CutRunPrepare { .. }
+        | ShellCommand::CutRunProject { .. }
+        | ShellCommand::CutRunInterpret { .. }
+        | ShellCommand::CutRunListReadReports { .. }
+        | ShellCommand::CutRunShowReadReport { .. }
+        | ShellCommand::CutRunExportCoverage { .. }
+        | ShellCommand::CutRunInspectRegulatorySupport { .. } => {
+            execute_cutrun_command(engine, command)?
+        }
         ShellCommand::HostsList { .. }
         | ShellCommand::ReferenceList { .. }
         | ShellCommand::ReferenceEnsemblAvailable { .. }
@@ -25548,15 +25574,6 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReferenceVerifyAnchor { .. }
         | ShellCommand::TracksImportBed { .. }
         | ShellCommand::TracksImportBigWig { .. }
-        | ShellCommand::CutRunList { .. }
-        | ShellCommand::CutRunStatus { .. }
-        | ShellCommand::CutRunPrepare { .. }
-        | ShellCommand::CutRunProject { .. }
-        | ShellCommand::CutRunInterpret { .. }
-        | ShellCommand::CutRunListReadReports { .. }
-        | ShellCommand::CutRunShowReadReport { .. }
-        | ShellCommand::CutRunExportCoverage { .. }
-        | ShellCommand::CutRunInspectRegulatorySupport { .. }
         | ShellCommand::TracksImportVcf { .. }
         | ShellCommand::TracksTrackedList
         | ShellCommand::TracksTrackedAdd { .. }

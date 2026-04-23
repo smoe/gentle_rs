@@ -196,6 +196,10 @@ order. Durable architecture constraints and decisions remain in
   - macro/template and `op`/`workflow` execution hot paths are now also split
     through dedicated helpers so small-stack test threads do not have to enter
     the full monolithic dispatch frame for common macro/candidate execution
+  - CUT&RUN shell commands now dispatch through their own dedicated helper
+    before the broader reference/track helper so
+    `execute_cutrun_inspect_regulatory_support_writes_json_payload` and nearby
+    CUT&RUN shell tests no longer overflow smaller-stack test threads
   - `execute_shell_command_with_options(...)` now also early-dispatches the
     `routines`, `planning`, `guides`, `primers`, `transcripts/features/dotplot`
     analysis, external `genbank`/`dbsnp` fetch, `sequencing`, `rna-reads`,
