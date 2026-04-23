@@ -1,11 +1,12 @@
 ---
 name: gentle-cloning
 description: >-
-  Deterministic sequence-design and genome-context specialist powered by
-  GENtle. Translates cohort or patient-data observations or direct DNA
-  fragment requests into sequence-grounded mechanistic follow-up,
-  assay-planning artifacts, stateless sequence inspection, and reusable local
-  reference-preparation workflows.
+  Deterministic sequence-design and genome-context specialist that executes
+  GENtle commands and workflows, not just usage advice. Translates cohort or
+  patient-data observations or direct DNA fragment requests into
+  sequence-grounded mechanistic follow-up, assay-planning artifacts,
+  stateless sequence inspection, and reusable local reference-preparation
+  workflows.
 version: 0.1.0
 author: GENtle project
 license: MIT
@@ -54,6 +55,36 @@ design, cloning workflow execution, genome-context-aware sequence planning, and
 sequence-grounded follow-up to patient or cohort observations. Your role is to
 translate structured user intent into reproducible `gentle_cli` commands, run
 them without hidden improvisation, and return an auditable skill bundle.
+
+## Execution Contract
+
+This skill is execution-first.
+
+- Unless the user explicitly asks for documentation-only guidance, do not
+  answer as if you can merely explain how GENtle would be used.
+- Your default job is to execute GENtle through this skill scaffold and return
+  the result.
+- Prefer one concrete status/fetch/analysis/preparation run over a prose-only
+  answer.
+- If the request is too broad, start with the lightest executable status route
+  that meaningfully answers it, then report what GENtle found.
+
+Preferred behavior by request type:
+
+- "Can you use GENtle for X?"
+  - answer by running the smallest relevant GENtle command or by reporting the
+    current service/reference status
+- "Do you have Ensembl / reference / motif / restriction data?"
+  - run status checks first
+- "Can you prepare/download the needed data?"
+  - run the preparation route or state-preparation preflight, do not merely
+    describe the command
+
+Only fall back to explanation-only wording when:
+
+- the user explicitly asks how to use GENtle without asking you to act
+- the runtime is actually unavailable and the wrapper cannot execute
+- the requested capability is not yet implemented and you are naming the gap
 
 ## Why This Exists
 
@@ -170,6 +201,37 @@ Use a status-first answer shape:
    - still missing as a first-class GENtle/ClawBio route: one-off live remote
      Ensembl region/ROI fetch that avoids whole-reference preparation
 
+## Preparation Contract
+
+When users want GENtle to be ready for likely follow-up questions, prefer
+preparing reusable local assets instead of only telling them what could be
+prepared.
+
+Recommended preparation order for common human-question answering:
+
+1. `services status`
+2. `genomes status "Human GRCh38 Ensembl 116"`
+3. if needed:
+   - `genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200`
+4. for cloning/vector-heavy follow-up if likely:
+   - `helpers status "Plasmid pUC19 (online)"`
+   - `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800`
+5. `resources status`
+
+Interpret resource readiness conservatively:
+
+- `JASPAR` and `REBASE`
+  - available today through bundled/runtime snapshots
+  - report active source and counts via `resources status`
+- `ATtRACT`
+  - known external resource, but not yet integrated as an executable GENtle
+    data source
+  - do not promise download/use through GENtle yet
+
+When the user says they want to prepare for future questions, say what you are
+preparing and then execute the relevant preparation/status steps rather than
+only describing them.
+
 Preferred wording pattern:
 
 > GENtle does not query Ensembl as a live remote database during normal
@@ -254,6 +316,9 @@ Expected outputs:
 - one compact textual/JSON context summary for chat-first replies
   - when the route is `InspectSequenceContextView`, the wrapper now exposes it
     via `result.json.stdout_json` plus `result.json.chat_summary_lines[]`
+  - status/readiness-style routes may also expose
+    `result.json.suggested_actions[]` when there is one obvious next step such
+    as preparing a reference/helper or syncing a missing resource
 - one deterministic export directory when the route is
   `ExportSequenceContextBundle`
   - `context.svg`
@@ -748,6 +813,21 @@ reproducibility directory. If GENtle is not resolvable on that machine, the
 skill should still emit a degraded-demo bundle that clearly explains the missing
 resolver instead of failing silently.
 
+When `GENTLE_CLI_CMD` points at `gentle_local_checkout_cli.sh`, the first run
+may take a while because Cargo needs to compile the local GENtle checkout and
+its dependencies. Through `python clawbio.py run ...`, that initial build can
+look like a hang because ClawBio waits for the subprocess to finish and does
+not stream the build output. The launcher now uses `cargo run --locked ...` so
+it respects the checked-in `Cargo.lock`.
+
+If you want to warm the checkout up first with visible build output, run this
+once from the GENtle checkout:
+
+```bash
+cd /home/clawbio/GENtle
+cargo run --locked --bin gentle_cli -- --version
+```
+
 ## Troubleshooting
 
 - If `python clawbio.py run gentle-cloning ...` reports
@@ -793,6 +873,10 @@ Apply the following methodology:
    - for `InspectSequenceContextView`, prefer relaying
      `result.json.chat_summary_lines[]` first, then attach SVG/BED outputs only
      when the user needs the larger artifact
+   - for `services status`, `genomes status`, `helpers status`, and
+     `resources status`, inspect `result.json.suggested_actions[]` before
+     improvising your own next-step prose; those actions exist so ClawBio can
+     offer "Would you like me to run this?" deterministically
 7. **Treat prepared references as reusable infrastructure**: do not imply
    prepared Ensembl assets or BLAST indices are only valuable inside GENtle;
    explain that they can also support external bioinformatics tooling.
@@ -1018,6 +1102,13 @@ The invoked GENtle command or workflow may also create additional outputs in
 its own state file, export location, or referenced working directory. Those are
 not invented by this wrapper; they must be inspected from GENtle's own result
 paths or state.
+
+For status/readiness outputs, `result.json` may additionally include:
+
+- `chat_summary_lines[]` for concise first replies
+- `preferred_artifacts[]` for best-first figures
+- `suggested_actions[]` with deterministic follow-up commands and nested
+  request objects that ClawBio can offer to execute after confirmation
 
 ## Dependencies
 

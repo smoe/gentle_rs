@@ -236,6 +236,239 @@ def test_result_payload_promotes_bundle_nested_sequence_context_chat_summary(
     assert "- Visible classes: gene, mrna, variation" in report
 
 
+def test_services_status_promotes_prepare_and_sync_suggested_actions(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "services status",
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.service_readiness.v1",'
+        '"references":[{"genome_id":"Human GRCh38 Ensembl 116","availability_status":"not_prepared"}],'
+        '"helpers":[{"genome_id":"Plasmid pUC19 (online)","availability_status":"not_prepared"}],'
+        '"resources":{"schema":"gentle.resource_status.v1","attract":{"support_status":"known_external_only"}},'
+        '"summary_lines":["Reference not prepared","Helper not prepared","ATtRACT unavailable"]}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "ok"
+    assert result["suggested_actions"] == [
+        {
+            "action_id": "prepare_human_grch38_ensembl_116",
+            "label": "Prepare Human GRCh38 Ensembl 116",
+            "kind": "prepare_reference",
+            "shell_line": 'genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200',
+            "timeout_secs": 7500,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": 'genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200',
+                "timeout_secs": 7500,
+            },
+            "rationale": "Reference 'Human GRCh38 Ensembl 116' is currently not prepared locally and genome-backed analysis will need a prepared cache.",
+            "requires_confirmation": True,
+        },
+        {
+            "action_id": "prepare_plasmid_puc19_online",
+            "label": "Prepare Plasmid pUC19 (online)",
+            "kind": "prepare_helper",
+            "shell_line": 'helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800',
+            "timeout_secs": 2100,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": 'helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800',
+                "timeout_secs": 2100,
+            },
+            "rationale": "Helper 'Plasmid pUC19 (online)' is currently not prepared locally and helper-backed vector/plasmid workflows will need it prepared.",
+            "requires_confirmation": True,
+        },
+        {
+            "action_id": "sync_attract_runtime_snapshot",
+            "label": "Sync ATtRACT runtime snapshot",
+            "kind": "sync_resource",
+            "shell_line": "resources sync-attract ATtRACT.zip",
+            "timeout_secs": 900,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "resources sync-attract ATtRACT.zip",
+                "timeout_secs": 900,
+            },
+            "rationale": "ATtRACT is known to GENtle, but no valid runtime snapshot is active yet.",
+            "requires_confirmation": True,
+        },
+    ]
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Suggested Actions" in report
+    assert 'Prepare Human GRCh38 Ensembl 116' in report
+    assert 'resources sync-attract ATtRACT.zip' in report
+
+
+def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": 'genomes status "Human GRCh38 Ensembl 116"',
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"requested_catalog_key":"Human GRCh38 Ensembl 116","effective_cache_dir":"/tmp/g","prepare_command":"genomes prepare \\"Human GRCh38 Ensembl 116\\" --cache-dir /tmp/g --timeout-secs 7200"}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["suggested_actions"] == [
+        {
+            "action_id": "prepare_human_grch38_ensembl_116",
+            "label": "Prepare Human GRCh38 Ensembl 116",
+            "kind": "prepare_reference",
+            "shell_line": 'genomes prepare "Human GRCh38 Ensembl 116" --cache-dir /tmp/g --timeout-secs 7200',
+            "timeout_secs": 7500,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": 'genomes prepare "Human GRCh38 Ensembl 116" --cache-dir /tmp/g --timeout-secs 7200',
+                "timeout_secs": 7500,
+            },
+            "rationale": "Status inspection for 'Human GRCh38 Ensembl 116' already provided a ready-to-run prepare command.",
+            "requires_confirmation": True,
+        }
+    ]
+
+
+def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": 'genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200',
+                "timeout_secs": 7500,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"status":"prepared"}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["suggested_actions"] == [
+        {
+            "action_id": "re_check_services_status",
+            "label": "Re-check services status",
+            "kind": "refresh_status",
+            "shell_line": "services status",
+            "timeout_secs": 180,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "services status",
+                "timeout_secs": 180,
+            },
+            "rationale": "After a prepare or resource-sync step, refresh the combined readiness view to confirm the installation state.",
+            "requires_confirmation": False,
+        }
+    ]
+
+
 def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(

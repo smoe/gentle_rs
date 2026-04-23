@@ -1111,6 +1111,164 @@ def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
     return None
 
 
+def _action_id_from_label(label: str) -> str:
+    token = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+    return token or "action"
+
+
+def _make_shell_request(shell_line: str, timeout_secs: int) -> dict[str, Any]:
+    return {
+        "schema": REQUEST_SCHEMA,
+        "mode": "shell",
+        "shell_line": shell_line,
+        "timeout_secs": timeout_secs,
+    }
+
+
+def _suggested_action(
+    *,
+    label: str,
+    kind: str,
+    shell_line: str,
+    timeout_secs: int,
+    rationale: str,
+    requires_confirmation: bool = True,
+) -> dict[str, Any]:
+    return {
+        "action_id": _action_id_from_label(label),
+        "label": label,
+        "kind": kind,
+        "shell_line": shell_line,
+        "timeout_secs": timeout_secs,
+        "request": _make_shell_request(shell_line, timeout_secs),
+        "rationale": rationale,
+        "requires_confirmation": requires_confirmation,
+    }
+
+
+def _extract_suggested_actions(
+    stdout_json: Any,
+    request: Request | None,
+) -> list[dict[str, Any]] | None:
+    if not isinstance(stdout_json, dict):
+        return None
+
+    actions: list[dict[str, Any]] = []
+
+    if stdout_json.get("schema") == "gentle.service_readiness.v1":
+        for reference in stdout_json.get("references", []):
+            if not isinstance(reference, dict):
+                continue
+            genome_id = str(reference.get("genome_id", "")).strip()
+            availability_status = str(reference.get("availability_status", "")).strip()
+            if not genome_id:
+                continue
+            if availability_status in {"not_prepared", "failed", "cancelled"}:
+                status_phrase = availability_status.replace("_", " ") or "not prepared"
+                actions.append(
+                    _suggested_action(
+                        label=f"Prepare {genome_id}",
+                        kind="prepare_reference",
+                        shell_line=f'genomes prepare "{genome_id}" --timeout-secs 7200',
+                        timeout_secs=7500,
+                        rationale=(
+                            f"Reference '{genome_id}' is currently {status_phrase} locally "
+                            "and genome-backed analysis will need a prepared cache."
+                        ),
+                    )
+                )
+        for helper in stdout_json.get("helpers", []):
+            if not isinstance(helper, dict):
+                continue
+            helper_id = str(helper.get("genome_id", "")).strip()
+            availability_status = str(helper.get("availability_status", "")).strip()
+            if not helper_id:
+                continue
+            if availability_status in {"not_prepared", "failed", "cancelled"}:
+                status_phrase = availability_status.replace("_", " ") or "not prepared"
+                actions.append(
+                    _suggested_action(
+                        label=f"Prepare {helper_id}",
+                        kind="prepare_helper",
+                        shell_line=f'helpers prepare "{helper_id}" --timeout-secs 1800',
+                        timeout_secs=2100,
+                        rationale=(
+                            f"Helper '{helper_id}' is currently {status_phrase} locally "
+                            "and helper-backed vector/plasmid workflows will need it prepared."
+                        ),
+                    )
+                )
+
+        resources = stdout_json.get("resources")
+        if isinstance(resources, dict):
+            attract = resources.get("attract")
+            if isinstance(attract, dict):
+                support_status = str(attract.get("support_status", "")).strip()
+                if support_status in {"known_external_only", "runtime_invalid"}:
+                    actions.append(
+                        _suggested_action(
+                            label="Sync ATtRACT runtime snapshot",
+                            kind="sync_resource",
+                            shell_line="resources sync-attract ATtRACT.zip",
+                            timeout_secs=900,
+                            rationale=(
+                                "ATtRACT is known to GENtle, but no valid runtime snapshot "
+                                "is active yet."
+                            ),
+                        )
+                    )
+
+    prepare_command = stdout_json.get("prepare_command")
+    if isinstance(prepare_command, str) and prepare_command.strip():
+        requested_key = str(
+            stdout_json.get("requested_catalog_key")
+            or stdout_json.get("genome_id")
+            or "selected genome"
+        ).strip()
+        actions.append(
+            _suggested_action(
+                label=f"Prepare {requested_key}",
+                kind="prepare_reference",
+                shell_line=prepare_command.strip(),
+                timeout_secs=7500,
+                rationale=(
+                    f"Status inspection for '{requested_key}' already provided a ready-to-run "
+                    "prepare command."
+                ),
+            )
+        )
+
+    if isinstance(request, Request) and request.mode == "shell":
+        shell_line = (request.shell_line or "").strip()
+        if shell_line.startswith(("genomes prepare ", "helpers prepare ", "resources sync-")):
+            actions.append(
+                _suggested_action(
+                    label="Re-check services status",
+                    kind="refresh_status",
+                    shell_line="services status",
+                    timeout_secs=180,
+                    rationale=(
+                        "After a prepare or resource-sync step, refresh the combined readiness "
+                        "view to confirm the installation state."
+                    ),
+                    requires_confirmation=False,
+                )
+            )
+
+    if not actions:
+        return None
+
+    unique: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for action in actions:
+        key = (str(action.get("kind", "")), str(action.get("shell_line", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(action)
+    return unique
+
+
 def _write_report(
     path: Path,
     request: Request | None,
@@ -1128,6 +1286,7 @@ def _write_report(
     error_message: str | None,
     failure_summary: dict[str, Any] | None,
     preferred_artifacts: list[dict[str, Any]] | None,
+    suggested_actions: list[dict[str, Any]] | None,
 ) -> None:
     command_text = _format_command_text(command)
     stdout = run_result.stdout if run_result else ""
@@ -1193,6 +1352,20 @@ def _write_report(
                 lines.append(f"  Caption: `{artifact['caption']}`")
             if artifact.get("recommended_use"):
                 lines.append(f"  Recommended use: `{artifact['recommended_use']}`")
+    if suggested_actions:
+        lines.extend(["", "## Suggested Actions", ""])
+        for action in suggested_actions:
+            lines.append(
+                f"- `{action.get('label', 'Action')}`: `{action.get('shell_line', '(unknown)')}`"
+            )
+            if action.get("rationale"):
+                lines.append(f"  Why: `{action['rationale']}`")
+            if action.get("requires_confirmation") is not None:
+                lines.append(
+                    "  Confirmation: `required`"
+                    if action["requires_confirmation"]
+                    else "  Confirmation: `not required`"
+                )
     if failure_summary:
         lines.extend(
             [
@@ -1359,6 +1532,7 @@ def main() -> int:
     stdout_json: Any | None = None
     chat_summary_lines: list[str] | None = None
     preferred_artifacts: list[dict[str, Any]] | None = None
+    suggested_actions: list[dict[str, Any]] | None = None
 
     try:
         if args.demo:
@@ -1413,6 +1587,7 @@ def main() -> int:
         stdout_json = _parse_stdout_json(run_result.stdout)
         chat_summary_lines = _extract_chat_summary_lines(stdout_json)
         preferred_artifacts = _extract_preferred_artifacts(stdout_json)
+        suggested_actions = _extract_suggested_actions(stdout_json, request)
         collected_artifacts = _copy_collected_artifacts(
             request, output_dir, execution_cwd
         )
@@ -1466,6 +1641,7 @@ def main() -> int:
         error_message=error_message,
         failure_summary=failure_summary,
         preferred_artifacts=preferred_artifacts,
+        suggested_actions=suggested_actions,
     )
 
     command_lines = [
@@ -1506,6 +1682,7 @@ def main() -> int:
         "stderr": (run_result.stderr if run_result else ""),
         "chat_summary_lines": chat_summary_lines,
         "preferred_artifacts": preferred_artifacts,
+        "suggested_actions": suggested_actions,
         "error": error_message,
         "failure_summary": failure_summary,
         "preflight": {

@@ -1345,6 +1345,12 @@ order. Durable architecture constraints and decisions remain in
           one explicit best-first artifact selection, and the ClawBio wrapper
           lifts that into `result.json.preferred_artifacts[]` so chat layers
           can choose a first figure without path heuristics
+        - the same wrapper now also emits execution-aware
+          `result.json.suggested_actions[]` for status/readiness replies, so
+          ClawBio can offer deterministic follow-up commands such as
+          `genomes prepare`, `helpers prepare`, `resources sync-attract`, or a
+          post-prepare `services status` refresh instead of stopping at static
+          prose
       - remaining gap on this track:
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo
@@ -1357,6 +1363,10 @@ order. Durable architecture constraints and decisions remain in
           detection) and deeper ATtRACT runtime detail (for example active
           snapshot version/content hash), not only best-effort phase/progress
           hints
+        - the ClawBio `gentle-cloning` skill wording should stay explicitly
+          execution-first:
+          it should nudge ClawBio/OpenClaw to run GENtle status/fetch/prepare
+          routes instead of replying as if it can only explain usage
         - direct one-off remote Ensembl **gene** fetch is now implemented
           through the shared `ensembl-gene fetch|list|show|import-sequence`
           route, so ClawBio can do lightweight live gene retrieval without
@@ -5476,6 +5486,77 @@ Purpose:
 
 Current parking-lot ideas:
 
+- Supplemental restriction-enzyme usage annotations on top of REBASE:
+  - current position:
+    - keep REBASE as the authoritative baseline for recognition sites,
+      cut geometry, supplier presence, and related core enzyme facts
+    - do not start implementing tooltip/help-style usage annotations yet
+      during the current delivery track
+  - if revisited later, likely scope includes:
+    - a small sidecar catalog keyed by enzyme name for curated operational
+      notes such as multi-site requirements, unusual cleavage-efficiency
+      caveats, or other vendor/manual guidance that is not represented in
+      standard REBASE exports
+    - provenance fields that distinguish REBASE-derived facts from
+      vendor-curated or literature-curated usage notes
+    - GUI surfaces such as hover help/tooltips that can expose those notes
+      without changing the underlying enzyme-resolution contract
+  - note:
+    - keep this in the parking lot until a concrete workflow or UI pass needs
+      enriched restriction-enzyme annotations beyond the current REBASE data
+- Restriction-site inspector and shared site-detail records:
+  - current position:
+    - restriction-site rendering and hover hit-testing exist, but GENtle does
+      not yet expose a richer per-site inspection record comparable to the
+      “selected enzyme/site” tooltip style seen in mature plasmid-map tools
+    - do not start implementation during the current delivery track
+  - if revisited later, likely staged implementation is:
+    1. define one engine-owned restriction-site detail record that can be
+       derived deterministically from sequence + enzyme metadata and reused by
+       GUI/CLI/MCP/JS/Lua instead of inventing adapter-local tooltip state
+    2. include in that record:
+       - enzyme name / isoschizomer grouping label when relevant
+       - recognition sequence with explicit cleavage markers on both strands
+       - cut geometry summary (blunt / 5' overhang / 3' overhang)
+       - site count for the active sequence / viewport context
+       - later optional links to methylation-sensitivity or sidecar usage notes
+    3. add GUI selection/highlight + popover/inspector surfaces on top of that
+       shared record, then optionally expose shell/CLI/MCP inspection routes
+       for the same data contract
+    4. add focused regression coverage for crowded maps, selected-site
+       highlighting, and deterministic cut-geometry presentation
+  - note:
+    - keep this deferred until the map-presentation/UI polish track needs a
+      richer enzyme-site inspection surface
+- SnapGene-style plasmid-map presentation parity (deferred UX polish):
+  - current position:
+    - GENtle already renders circular maps, enzyme labels, and collision-aware
+      text placement, but it does not yet pursue close presentation parity with
+      SnapGene-style selected-site emphasis and dense enzyme-label ergonomics
+    - imported SnapGene files should continue to feed shared sequence/feature
+      state first; do not promote SnapGene-specific visual/editor state into
+      engine contracts prematurely
+  - if revisited later, likely staged implementation is:
+    1. deepen label-selection/ranking rules for dense maps:
+       - clearer prioritization for selected sites, unique cutters, and
+         high-value feature labels
+       - better collision/routing behavior for crowded enzyme labels
+       - stable group-label formatting for enzyme synonym/isoschizomer cases
+    2. add explicit selected-site rendering polish:
+       - selected label emphasis
+       - trace/highlight styling from label to ring position
+       - coordinated inspector/selection state so map clicks and detail views
+         stay in sync
+    3. expand visual benchmark fixtures and screenshot/snapshot regression
+       gates around crowded plasmid maps so presentation improvements remain
+       deterministic
+    4. only after the above, evaluate whether any imported SnapGene-side
+       presentation hints map cleanly into optional, tool-agnostic display
+       metadata without leaking proprietary editor-specific state into core
+       engine models
+  - note:
+    - keep this in the parking lot until core import/rendering priorities are
+      complete and there is bandwidth for map-ergonomics polish
 - Cross-platform findings/artifact inspection for agent-driven work:
   - treat user-facing "findings" (interpretation notes, rationale summaries,
     evidence callouts, suggested next steps, and explanation artifacts) as

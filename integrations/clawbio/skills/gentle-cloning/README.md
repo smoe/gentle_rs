@@ -9,6 +9,19 @@ planning. It also makes clear that prepared Ensembl/reference assets and
 BLAST-capable indices are reusable local infrastructure, not GENtle-only
 byproducts.
 
+## Execution-first expectation
+
+This skill should make ClawBio execute GENtle, not merely explain how GENtle
+could be used.
+
+- If the user asks whether GENtle can do something, prefer proving it by
+  running the smallest relevant command or status route.
+- If the user asks whether data are available, run the status route.
+- If the user asks to prepare for likely follow-up questions, run the
+  preparation route.
+- Only answer in documentation-only mode when the user explicitly asks for
+  instructions rather than action, or when the runtime is actually unavailable.
+
 ## Logical capability split
 
 The runtime alias is still `gentle-cloning`, but the intended ClawBio-facing
@@ -80,6 +93,28 @@ ClawBio/OpenClaw answer pattern is:
 
 This keeps the answer truthful while still surfacing the practical path
 forward.
+
+### Preparation for likely user questions
+
+When ClawBio/OpenClaw is being readied for broader user questions, the intended
+order is:
+
+1. `services status`
+2. `genomes status "Human GRCh38 Ensembl 116"`
+3. `genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200` if needed
+4. `helpers status "Plasmid pUC19 (online)"`
+5. `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800` if likely
+   cloning/vector work is expected
+6. `resources status`
+
+Interpret resource preparation honestly:
+
+- `JASPAR` / `REBASE`
+  - already surfaced through built-in/runtime snapshots
+  - not a mandatory "download first" path for baseline GENtle use
+- `ATtRACT`
+  - known and worth surfacing in readiness answers
+  - not yet an executable download/use path in GENtle
 
 ### Investigating stale Ensembl answers
 
@@ -190,6 +225,22 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 
 Notes:
 
+- when `GENTLE_CLI_CMD` points at `gentle_local_checkout_cli.sh`, the first
+  invocation may take a while because Cargo needs to compile the local GENtle
+  checkout and its dependencies
+- through `python clawbio.py run ...`, that initial build can look like a hang
+  because ClawBio waits for the subprocess to finish and does not stream the
+  build output
+- the launcher now uses `cargo run --locked ...`, so it respects the checked-in
+  `Cargo.lock` instead of silently resolving fresher dependency versions
+- if you want to warm the checkout up first with visible build output, run this
+  once from the GENtle checkout:
+
+```bash
+cd /home/clawbio/GENtle
+cargo run --locked --bin gentle_cli -- --version
+```
+
 - examples carrying `state_path: ".gentle_state.json"` expect a project state
   file in the working directory
 - `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics
@@ -220,6 +271,9 @@ Notes:
   - the wrapper now promotes that report into `result.json.stdout_json` and
     `result.json.chat_summary_lines[]` so OpenClaw/ClawBio can relay the
     summary directly
+  - and status-style outputs now also promote execution-aware
+    `result.json.suggested_actions[]` entries when there is an obvious next
+    step such as preparing a reference/helper or syncing a missing resource
 - `request_export_sequence_context_bundle_rs9923231_vkorc1.json` is the
   matching one-shot bundle route after `request_dbsnp_fetch_rs9923231.json`;
   it writes the SVG, summary JSON/text, BED companion, and bundle manifest into
@@ -343,6 +397,18 @@ When present, the wrapper runs `genomes status ...` first and only runs
 `genomes prepare ...` when the requested reference is not yet prepared. The
 before/after status payloads and exact preflight commands are then written into
 `report.md`, `result.json`, and `reproducibility/commands.sh`.
+
+For status-like requests, the wrapper may also emit `result.json.suggested_actions[]`.
+Each entry contains:
+
+- a short label
+- an exact `shell_line`
+- a ready-to-submit nested ClawBio request object
+- rationale text
+- whether confirmation should be required before execution
+
+That gives chat layers a deterministic way to offer "Would you like me to run
+this next?" without scraping the human-readable report.
 
 Relative `workflow_path` values are resolved in this order:
 

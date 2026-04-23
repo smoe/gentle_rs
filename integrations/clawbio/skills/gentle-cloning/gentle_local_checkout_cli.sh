@@ -19,7 +19,14 @@ Environment overrides:
 
 This launcher resolves a local GENtle checkout and then executes:
 
-  cargo run --quiet --manifest-path REPO/Cargo.toml --bin gentle_cli -- ...
+  cargo run --locked --quiet --manifest-path REPO/Cargo.toml --bin gentle_cli -- ...
+
+Notes:
+  - The first invocation may take a while because Cargo needs to compile the
+    local GENtle checkout and its dependencies.
+  - For interactive warm-up with visible build output, run from the GENtle
+    checkout directly:
+      cargo run --locked --bin gentle_cli -- --version
 
 Typical ClawBio/OpenClaw usage:
 
@@ -66,4 +73,4 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${repo_root}/target}"
 export GENTLE_REFERENCE_CACHE_DIR="${GENTLE_REFERENCE_CACHE_DIR:-${repo_root}/data/genomes}"
 export GENTLE_HELPER_CACHE_DIR="${GENTLE_HELPER_CACHE_DIR:-${repo_root}/data/helper_genomes}"
 
-exec cargo run --quiet --manifest-path "${manifest_path}" --bin gentle_cli -- "$@"
+exec cargo run --locked --quiet --manifest-path "${manifest_path}" --bin gentle_cli -- "$@"
