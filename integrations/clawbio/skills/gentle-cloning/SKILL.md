@@ -5,12 +5,13 @@ description: >-
   GENtle commands and workflows, not just usage advice. Translates cohort or
   patient-data observations or direct DNA fragment requests into
   sequence-grounded mechanistic follow-up, assay-planning artifacts,
-  stateless sequence inspection, and reusable local reference-preparation
-  workflows.
+  stateless sequence inspection, reusable local reference-preparation
+  workflows, and transcript-native protein-gel / protein 2D-gel figures for
+  isoform demos such as TP73.
 version: 0.1.0
 author: GENtle project
 license: MIT
-tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, genome-context, reproducibility, tfbs, restriction-sites, ensembl]
+    tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis]
 metadata:
   openclaw:
     requires:
@@ -46,6 +47,11 @@ metadata:
       - genome anchor
       - fetch genbank
       - design assay
+      - protein gel
+      - protein 2d gel
+      - protein isoform
+      - tp73 isoform
+      - isoelectric point
 ---
 
 # 🧬 GENtle Cloning
@@ -134,6 +140,9 @@ capability-led language:
   useful to other bioinformatics tools. GENtle's added value is deterministic
   preparation, cataloging, provenance, and downstream reuse in the same
   workflow.
+- GENtle now also covers transcript-native protein-gel rendering for curated
+  isoform sets, including the 1D molecular-weight lane route and the 2D pI vs
+  molecular-weight spot-map route used by the TP73 demos.
 - Never jump from association to mechanism without naming the experimental test
   or validation class still required.
 

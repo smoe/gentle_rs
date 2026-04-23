@@ -2513,3 +2513,6 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "extract gene from ensembl" in trigger_keywords
     assert "tfbs score tracks" in trigger_keywords
     assert "jaspar motif" in trigger_keywords
+    assert "protein gel" in trigger_keywords
+    assert "protein 2d gel" in trigger_keywords
+    assert "tp73 isoform" in trigger_keywords
