@@ -31628,6 +31628,10 @@ impl MainAreaDna {
         (row_height * visible_rows + 36.0).clamp(260.0, 520.0)
     }
 
+    fn virtual_rna_read_table_row_height(ui: &egui::Ui) -> f32 {
+        ui.spacing().interact_size.y.max(18.0)
+    }
+
     fn format_rna_read_target_coverage_summary(
         aligned_target_bp: usize,
         target_length_bp: usize,
@@ -32648,127 +32652,195 @@ impl MainAreaDna {
             return;
         }
 
-        egui::ScrollArea::both()
-            .id_salt(format!("rna_alignment_effects_scroll_{}", report.report_id))
-            .max_height(Self::default_rna_read_effect_table_height(ui))
+        let mut select_filtered_rows =
+            self.rna_read_record_indices_all_selected(displayed_record_indices.iter().copied());
+        let row_height = Self::virtual_rna_read_table_row_height(ui);
+        let table_height = Self::default_rna_read_effect_table_height(ui);
+        egui_extras::TableBuilder::new(ui)
+            .id_salt(format!("rna_alignment_effects_table_{}", report.report_id))
+            .striped(true)
+            .max_scroll_height(table_height)
+            .min_scrolled_height(table_height)
             .auto_shrink([false, false])
-            .show(ui, |ui| {
-                egui::Grid::new(format!("rna_alignment_effects_grid_{}", report.report_id))
-                    .striped(true)
-                    .num_columns(15)
-                    .show(ui, |ui| {
-                        let mut select_filtered_rows = self
-                            .rna_read_record_indices_all_selected(
-                                displayed_record_indices.iter().copied(),
-                            );
-                        if ui
-                            .checkbox(&mut select_filtered_rows, "")
-                            .on_hover_text(
-                                "Select or clear all aligned rows currently shown by the active filter/search.",
+            .column(egui_extras::Column::exact(28.0))
+            .column(egui_extras::Column::exact(44.0))
+            .column(egui_extras::Column::exact(220.0))
+            .column(egui_extras::Column::exact(48.0))
+            .column(egui_extras::Column::exact(120.0))
+            .column(egui_extras::Column::exact(96.0))
+            .column(egui_extras::Column::exact(150.0))
+            .column(egui_extras::Column::exact(44.0))
+            .column(egui_extras::Column::exact(52.0))
+            .column(egui_extras::Column::exact(52.0))
+            .column(egui_extras::Column::exact(52.0))
+            .column(egui_extras::Column::exact(74.0))
+            .column(egui_extras::Column::exact(56.0))
+            .column(egui_extras::Column::exact(46.0))
+            .column(egui_extras::Column::exact(40.0))
+            .header(row_height, |mut header| {
+                header.col(|ui| {
+                    if ui
+                        .checkbox(&mut select_filtered_rows, "")
+                        .on_hover_text(
+                            "Select or clear all aligned rows currently shown by the active filter/search.",
+                        )
+                        .changed()
+                    {
+                        let affected = self.set_rna_read_record_indices_selected(
+                            displayed_record_indices.iter().copied(),
+                            select_filtered_rows,
+                        );
+                        self.op_status = if select_filtered_rows {
+                            format!(
+                                "Selected {affected} aligned read(s) from the current filtered subset"
                             )
-                            .changed()
-                        {
-                            let affected = self.set_rna_read_record_indices_selected(
-                                displayed_record_indices.iter().copied(),
-                                select_filtered_rows,
-                            );
-                            self.op_status = if select_filtered_rows {
-                                format!(
-                                    "Selected {affected} aligned read(s) from the current filtered subset"
-                                )
-                            } else {
-                                format!(
-                                    "Cleared {affected} aligned read(s) from the current filtered subset"
-                                )
-                            };
-                        }
-                        ui.small("Rank");
-                        ui.small("Read");
-                        ui.small("Len");
-                        ui.small("Phase 1");
-                        ui.small("Effect");
-                        ui.small("Phase 2");
-                        ui.small("Str");
-                        ui.small("Id%");
-                        ui.small("Cov%");
-                        ui.small("Tx%");
-                        ui.label("FL")
-                            .on_hover_text(Self::rna_read_full_length_tooltip());
-                        ui.small("Score");
-                        ui.small("Exons");
-                        ui.small("Jx");
-                        ui.end_row();
-                        for row in &displayed_rows {
-                            let mut include_for_copy = self
-                                .rna_seed_selected_record_indices
-                                .contains(&row.record_index);
-                            if ui.checkbox(&mut include_for_copy, "").changed() {
-                                if include_for_copy {
-                                    self.rna_seed_selected_record_indices.insert(row.record_index);
-                                } else {
-                                    self.rna_seed_selected_record_indices.remove(&row.record_index);
-                                }
-                            }
-                            ui.monospace(row.rank.to_string());
-                            let selected =
-                                self.rna_seed_highlight_record_index == Some(row.record_index);
-                            let response = ui.selectable_label(
-                                selected,
-                                format!("#{} {}", row.record_index + 1, row.header_id),
-                            );
-                            if response.clicked() {
-                                self.rna_seed_highlight_record_index = Some(row.record_index);
-                            }
-                            response.on_hover_text(
-                                "Select this aligned read to inspect its phase-1 and phase-2 details below.",
-                            );
-                            let read_len = hits_by_record_index
-                                .get(&row.record_index)
-                                .map(|hit| hit.read_length_bp)
-                                .unwrap_or(0);
-                            ui.monospace(read_len.to_string());
-                            ui.monospace(if row.phase1_primary_transcript_id.trim().is_empty() {
-                                "none".to_string()
-                            } else {
-                                row.phase1_primary_transcript_id.clone()
-                            });
-                            ui.monospace(Self::rna_read_alignment_effect_label(
-                                row.alignment_effect,
-                            ));
-                            ui.monospace(Self::compact_rna_read_transcript_label(
-                                &row.transcript_id,
-                                &row.transcript_label,
-                            ));
-                            ui.monospace(if row.strand.trim().is_empty() {
-                                "na".to_string()
-                            } else {
-                                row.strand.clone()
-                            });
-                            ui.monospace(format!("{:.1}", row.identity_fraction * 100.0));
-                            ui.monospace(format!(
-                                "{:.1}",
-                                row.query_coverage_fraction * 100.0
-                            ));
-                            ui.monospace(format!(
-                                "{:.1}",
-                                row.target_coverage_fraction * 100.0
-                            ));
-                            let full_length_class = GentleEngine::rna_read_full_length_class_label(
-                                row.full_length_exact,
-                                row.full_length_near,
-                                row.full_length_strict,
-                            );
-                            ui.colored_label(
-                                Self::rna_read_full_length_class_color(full_length_class),
-                                full_length_class,
+                        } else {
+                            format!(
+                                "Cleared {affected} aligned read(s) from the current filtered subset"
                             )
-                            .on_hover_text(Self::rna_read_full_length_tooltip());
-                            ui.monospace(row.score.to_string());
-                            ui.monospace(row.mapped_exon_support.len().to_string());
-                            ui.monospace(row.mapped_junction_support.len().to_string());
-                            ui.end_row();
+                        };
+                    }
+                });
+                header.col(|ui| {
+                    ui.small("Rank");
+                });
+                header.col(|ui| {
+                    ui.small("Read");
+                });
+                header.col(|ui| {
+                    ui.small("Len");
+                });
+                header.col(|ui| {
+                    ui.small("Phase 1");
+                });
+                header.col(|ui| {
+                    ui.small("Effect");
+                });
+                header.col(|ui| {
+                    ui.small("Phase 2");
+                });
+                header.col(|ui| {
+                    ui.small("Str");
+                });
+                header.col(|ui| {
+                    ui.small("Id%");
+                });
+                header.col(|ui| {
+                    ui.small("Cov%");
+                });
+                header.col(|ui| {
+                    ui.small("Tx%");
+                });
+                header.col(|ui| {
+                    ui.label("FL")
+                        .on_hover_text(Self::rna_read_full_length_tooltip());
+                });
+                header.col(|ui| {
+                    ui.small("Score");
+                });
+                header.col(|ui| {
+                    ui.small("Exons");
+                });
+                header.col(|ui| {
+                    ui.small("Jx");
+                });
+            })
+            .body(|body| {
+                body.rows(row_height, displayed_rows.len(), |mut table_row| {
+                    let row = displayed_rows[table_row.index()];
+                    table_row.col(|ui| {
+                        let mut include_for_copy = self
+                            .rna_seed_selected_record_indices
+                            .contains(&row.record_index);
+                        if ui.checkbox(&mut include_for_copy, "").changed() {
+                            if include_for_copy {
+                                self.rna_seed_selected_record_indices.insert(row.record_index);
+                            } else {
+                                self.rna_seed_selected_record_indices.remove(&row.record_index);
+                            }
                         }
                     });
+                    table_row.col(|ui| {
+                        ui.monospace(row.rank.to_string());
+                    });
+                    table_row.col(|ui| {
+                        let selected =
+                            self.rna_seed_highlight_record_index == Some(row.record_index);
+                        let response = ui
+                            .selectable_label(
+                                selected,
+                                format!("#{} {}", row.record_index + 1, row.header_id),
+                            )
+                            .on_hover_text(
+                                "Select this aligned read to inspect its phase-1 and phase-2 details below.",
+                            );
+                        if response.clicked() {
+                            self.rna_seed_highlight_record_index = Some(row.record_index);
+                        }
+                    });
+                    table_row.col(|ui| {
+                        let read_len = hits_by_record_index
+                            .get(&row.record_index)
+                            .map(|hit| hit.read_length_bp)
+                            .unwrap_or(0);
+                        ui.monospace(read_len.to_string());
+                    });
+                    table_row.col(|ui| {
+                        ui.monospace(if row.phase1_primary_transcript_id.trim().is_empty() {
+                            "none".to_string()
+                        } else {
+                            row.phase1_primary_transcript_id.clone()
+                        });
+                    });
+                    table_row.col(|ui| {
+                        ui.monospace(Self::rna_read_alignment_effect_label(
+                            row.alignment_effect,
+                        ));
+                    });
+                    table_row.col(|ui| {
+                        ui.monospace(Self::compact_rna_read_transcript_label(
+                            &row.transcript_id,
+                            &row.transcript_label,
+                        ));
+                    });
+                    table_row.col(|ui| {
+                        ui.monospace(if row.strand.trim().is_empty() {
+                            "na".to_string()
+                        } else {
+                            row.strand.clone()
+                        });
+                    });
+                    table_row.col(|ui| {
+                        ui.monospace(format!("{:.1}", row.identity_fraction * 100.0));
+                    });
+                    table_row.col(|ui| {
+                        ui.monospace(format!("{:.1}", row.query_coverage_fraction * 100.0));
+                    });
+                    table_row.col(|ui| {
+                        ui.monospace(format!("{:.1}", row.target_coverage_fraction * 100.0));
+                    });
+                    table_row.col(|ui| {
+                        let full_length_class = GentleEngine::rna_read_full_length_class_label(
+                            row.full_length_exact,
+                            row.full_length_near,
+                            row.full_length_strict,
+                        );
+                        ui.colored_label(
+                            Self::rna_read_full_length_class_color(full_length_class),
+                            full_length_class,
+                        )
+                        .on_hover_text(Self::rna_read_full_length_tooltip());
+                    });
+                    table_row.col(|ui| {
+                        ui.monospace(row.score.to_string());
+                    });
+                    table_row.col(|ui| {
+                        ui.monospace(row.mapped_exon_support.len().to_string());
+                    });
+                    table_row.col(|ui| {
+                        ui.monospace(row.mapped_junction_support.len().to_string());
+                    });
+                });
             });
 
         if displayed_rows.is_empty() {
@@ -34270,236 +34342,281 @@ impl MainAreaDna {
                 ui.small(
                     "Rows are sorted by phase-1 Score. Ret.rank is retention rank. Id%=phase-2 alignment identity. Cov%=query coverage.",
                 );
-                let preview_table_height =
+                let mut select_listed_rows = self
+                    .rna_read_record_indices_all_selected(visible_record_indices.iter().copied());
+                let row_height = Self::virtual_rna_read_table_row_height(ui);
+                let table_height =
                     Self::default_rna_read_preview_table_height_for_rows(ui, preview_rows.len());
-                egui::ScrollArea::both()
-                    .id_salt(format!("rna_top_hits_scroll_{}", progress.seq_id))
-                    .max_height(preview_table_height)
-                    .min_scrolled_height(preview_table_height)
+                egui_extras::TableBuilder::new(ui)
+                    .id_salt(format!("rna_top_hits_table_{}", progress.seq_id))
+                    .striped(true)
+                    .max_scroll_height(table_height)
+                    .min_scrolled_height(table_height)
                     .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        egui::Grid::new(format!("rna_top_hits_grid_{}", progress.seq_id))
-                            .striped(true)
-                            .num_columns(11)
-                            .show(ui, |ui| {
-                                let mut select_listed_rows = self
-                                    .rna_read_record_indices_all_selected(
-                                        visible_record_indices.iter().copied(),
-                                    );
-                                if ui
-                                    .checkbox(&mut select_listed_rows, "")
-                                    .on_hover_text(
-                                        "Select or clear all currently listed top-hit rows without affecting hidden selections.",
-                                    )
-                                    .changed()
-                                {
-                                    let affected = self.set_rna_read_record_indices_selected(
-                                        visible_record_indices.iter().copied(),
-                                        select_listed_rows,
-                                    );
-                                    self.op_status = if select_listed_rows {
-                                        format!(
-                                            "Selected {affected} listed top-hit read(s)"
-                                        )
+                    .column(egui_extras::Column::exact(28.0))
+                    .column(egui_extras::Column::exact(44.0))
+                    .column(egui_extras::Column::exact(56.0))
+                    .column(egui_extras::Column::exact(220.0))
+                    .column(egui_extras::Column::exact(58.0))
+                    .column(egui_extras::Column::exact(130.0))
+                    .column(egui_extras::Column::exact(52.0))
+                    .column(egui_extras::Column::exact(52.0))
+                    .column(egui_extras::Column::exact(46.0))
+                    .column(egui_extras::Column::exact(150.0))
+                    .column(egui_extras::Column::exact(48.0))
+                    .header(row_height, |mut header| {
+                        header.col(|ui| {
+                            if ui
+                                .checkbox(&mut select_listed_rows, "")
+                                .on_hover_text(
+                                    "Select or clear all currently listed top-hit rows without affecting hidden selections.",
+                                )
+                                .changed()
+                            {
+                                let affected = self.set_rna_read_record_indices_selected(
+                                    visible_record_indices.iter().copied(),
+                                    select_listed_rows,
+                                );
+                                self.op_status = if select_listed_rows {
+                                    format!("Selected {affected} listed top-hit read(s)")
+                                } else {
+                                    format!("Cleared {affected} listed top-hit read(s)")
+                                };
+                            }
+                        });
+                        header.col(|ui| {
+                            ui.small("Run");
+                        });
+                        header.col(|ui| {
+                            ui.small("Ret.rank");
+                        });
+                        header.col(|ui| {
+                            ui.small("Read");
+                        });
+                        header.col(|ui| {
+                            ui.small("Score");
+                        });
+                        header.col(|ui| {
+                            ui.small("Phase 1 tx");
+                        });
+                        header.col(|ui| {
+                            ui.small("Id%");
+                        });
+                        header.col(|ui| {
+                            ui.small("Cov%");
+                        });
+                        header.col(|ui| {
+                            ui.small("Pass");
+                        });
+                        header.col(|ui| {
+                            ui.small("Phase 2");
+                        });
+                        header.col(|ui| {
+                            ui.small("Len");
+                        });
+                    })
+                    .body(|body| {
+                        body.rows(row_height, preview_rows.len(), |mut table_row| {
+                            let display_idx = table_row.index();
+                            let row = &preview_rows[display_idx];
+                            let selected =
+                                self.rna_seed_highlight_record_index == Some(row.record_index);
+                            let rank = rank_by_record_index
+                                .get(&row.record_index)
+                                .copied()
+                                .unwrap_or(display_idx + 1);
+                            let phase1_tx = if row.seed_chain_transcript_id.is_empty() {
+                                "none".to_string()
+                            } else {
+                                row.seed_chain_transcript_id.clone()
+                            };
+                            let phase2_tx = if row.aligned {
+                                Self::compact_rna_read_transcript_label(
+                                    &row.best_alignment_transcript_id,
+                                    &row.best_alignment_transcript_label,
+                                )
+                            } else {
+                                "none".to_string()
+                            };
+                            let alignment_summary = Self::rna_top_hit_alignment_summary(row);
+                            let gap_median = if row.seed_transcript_gap_count == 0 {
+                                "na".to_string()
+                            } else {
+                                format!("{:.2}", row.seed_median_transcript_gap)
+                            };
+                            let hover_text = format!(
+                                "rank={rank} score={:.3} wscore={:.4} wsupport={:.2} gap-med={} gap-n={} chain={:.2}/{} phase1_tx={} class={} oconf={:.2} sconf={:.2} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa={} align={} len={} seq={}",
+                                row.seed_hit_fraction,
+                                row.weighted_seed_hit_fraction,
+                                row.weighted_matched_kmers,
+                                gap_median,
+                                row.seed_transcript_gap_count,
+                                row.seed_chain_support_fraction,
+                                row.seed_chain_support_kmers,
+                                phase1_tx,
+                                row.origin_class.as_str(),
+                                row.origin_confidence,
+                                row.strand_confidence,
+                                if row.selected_strand.is_empty() {
+                                    "na"
+                                } else {
+                                    row.selected_strand.as_str()
+                                },
+                                row.competing_opposite_strand,
+                                row.ambiguous_strand_tie,
+                                row.matched_kmers,
+                                row.tested_kmers,
+                                row.passed_seed_filter,
+                                row.reverse_complement_applied,
+                                row.msa_eligible,
+                                alignment_summary,
+                                row.read_length_bp,
+                                row.sequence_preview,
+                            );
+                            table_row.col(|ui| {
+                                let mut include_for_copy = self
+                                    .rna_seed_selected_record_indices
+                                    .contains(&row.record_index);
+                                if ui.checkbox(&mut include_for_copy, "").changed() {
+                                    if include_for_copy {
+                                        self.rna_seed_selected_record_indices
+                                            .insert(row.record_index);
                                     } else {
-                                        format!(
-                                            "Cleared {affected} listed top-hit read(s)"
-                                        )
-                                    };
-                                }
-                                ui.small("Run");
-                                ui.small("Ret.rank");
-                                ui.small("Read");
-                                ui.small("Score");
-                                ui.small("Phase 1 tx");
-                                ui.small("Id%");
-                                ui.small("Cov%");
-                                ui.small("Pass");
-                                ui.small("Phase 2");
-                                ui.small("Len");
-                                ui.end_row();
-                                for (display_idx, row) in preview_rows.iter().enumerate() {
-                                    let selected =
-                                        self.rna_seed_highlight_record_index
-                                            == Some(row.record_index);
-                                    let mut include_for_copy = self
-                                        .rna_seed_selected_record_indices
-                                        .contains(&row.record_index);
-                                    if ui.checkbox(&mut include_for_copy, "").changed() {
-                                        if include_for_copy {
-                                            self.rna_seed_selected_record_indices
-                                                .insert(row.record_index);
-                                        } else {
-                                            self.rna_seed_selected_record_indices
-                                                .remove(&row.record_index);
-                                        }
+                                        self.rna_seed_selected_record_indices
+                                            .remove(&row.record_index);
                                     }
-                                    if ui
-                                        .add_enabled(
-                                            self.rna_read_task.is_none(),
-                                            egui::Button::new("Run"),
-                                        )
-                                        .on_hover_text(
-                                            "Align only this saved-report row by record_index and refresh phase-2 columns.",
-                                        )
-                                        .clicked()
-                                    {
+                                }
+                            });
+                            table_row.col(|ui| {
+                                if ui
+                                    .add_enabled(
+                                        self.rna_read_task.is_none(),
+                                        egui::Button::new("Run"),
+                                    )
+                                    .on_hover_text(
+                                        "Align only this saved-report row by record_index and refresh phase-2 columns.",
+                                    )
+                                    .clicked()
+                                {
+                                    self.rna_seed_selected_record_indices
+                                        .insert(row.record_index);
+                                    next_selection = Some(Some(row.record_index));
+                                    self.run_splicing_rna_read_alignment_phase_for_selected(vec![
+                                        row.record_index,
+                                    ]);
+                                }
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(rank.to_string());
+                            });
+                            table_row.col(|ui| {
+                                let response = ui
+                                    .selectable_label(
+                                        selected,
+                                        format!("#{} {}", row.record_index + 1, row.header_id),
+                                    )
+                                    .on_hover_text(hover_text.clone());
+                                if response.clicked() {
+                                    next_selection = Some(Some(row.record_index));
+                                }
+                                response.context_menu(|ui| {
+                                    if ui.button("Evaluate this read (phase-2)").clicked() {
                                         self.rna_seed_selected_record_indices
                                             .insert(row.record_index);
                                         next_selection = Some(Some(row.record_index));
                                         self.run_splicing_rna_read_alignment_phase_for_selected(
                                             vec![row.record_index],
                                         );
+                                        ui.close();
                                     }
-                                    let rank = rank_by_record_index
-                                        .get(&row.record_index)
-                                        .copied()
-                                        .unwrap_or(display_idx + 1);
-                                    ui.monospace(rank.to_string());
-                                    let response = ui.selectable_label(
-                                        selected,
-                                        format!("#{} {}", row.record_index + 1, row.header_id),
-                                    );
-                                    let phase1_tx = if row.seed_chain_transcript_id.is_empty() {
-                                        "none".to_string()
-                                    } else {
-                                        row.seed_chain_transcript_id.clone()
-                                    };
-                                    let phase2_tx = if row.aligned {
-                                        Self::compact_rna_read_transcript_label(
-                                            &row.best_alignment_transcript_id,
-                                            &row.best_alignment_transcript_label,
-                                        )
-                                    } else {
-                                        "none".to_string()
-                                    };
-                                    let alignment_summary = Self::rna_top_hit_alignment_summary(row);
-                                    let gap_median = if row.seed_transcript_gap_count == 0 {
-                                        "na".to_string()
-                                    } else {
-                                        format!("{:.2}", row.seed_median_transcript_gap)
-                                    };
-                                    let hover_text = format!(
-                                        "rank={rank} score={:.3} wscore={:.4} wsupport={:.2} gap-med={} gap-n={} chain={:.2}/{} phase1_tx={} class={} oconf={:.2} sconf={:.2} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} msa={} align={} len={} seq={}",
-                                        row.seed_hit_fraction,
-                                        row.weighted_seed_hit_fraction,
-                                        row.weighted_matched_kmers,
-                                        gap_median,
-                                        row.seed_transcript_gap_count,
-                                        row.seed_chain_support_fraction,
-                                        row.seed_chain_support_kmers,
-                                        phase1_tx,
-                                        row.origin_class.as_str(),
-                                        row.origin_confidence,
-                                        row.strand_confidence,
-                                        if row.selected_strand.is_empty() {
-                                            "na"
-                                        } else {
-                                            row.selected_strand.as_str()
-                                        },
-                                        row.competing_opposite_strand,
-                                        row.ambiguous_strand_tie,
-                                        row.matched_kmers,
-                                        row.tested_kmers,
-                                        row.passed_seed_filter,
-                                        row.reverse_complement_applied,
-                                        row.msa_eligible,
-                                        alignment_summary,
-                                        row.read_length_bp,
-                                        row.sequence_preview,
-                                    );
-                                    ui.monospace(format!("{:.3}", row.seed_hit_fraction));
-                                    ui.monospace(phase1_tx);
-                                    ui.monospace(if row.aligned {
-                                        format!(
-                                            "{:.1}",
-                                            row.best_alignment_identity_fraction * 100.0
-                                        )
-                                    } else {
-                                        "na".to_string()
-                                    });
-                                    ui.monospace(if row.aligned {
-                                        format!(
-                                            "{:.1}",
-                                            row.best_alignment_query_coverage_fraction * 100.0
-                                        )
-                                    } else {
-                                        "na".to_string()
-                                    });
-                                    ui.monospace(if row.passed_seed_filter {
-                                        "yes".to_string()
-                                    } else {
-                                        "no".to_string()
-                                    });
-                                    ui.monospace(phase2_tx);
-                                    ui.monospace(row.read_length_bp.to_string());
-                                    ui.end_row();
-                                    let response = response.on_hover_text(hover_text);
-                                    if response.clicked() {
-                                        next_selection = Some(Some(row.record_index));
+                                    if ui.button("Copy FASTA (this read)").clicked() {
+                                        self.copy_rna_top_hit_previews_as_fasta(
+                                            ui,
+                                            std::slice::from_ref(row),
+                                            "context-menu top read",
+                                        );
+                                        ui.close();
                                     }
-                                    response.context_menu(|ui| {
-                                        if ui.button("Evaluate this read (phase-2)").clicked() {
-                                            self.rna_seed_selected_record_indices
-                                                .insert(row.record_index);
-                                            next_selection = Some(Some(row.record_index));
-                                            self.run_splicing_rna_read_alignment_phase_for_selected(
-                                                vec![row.record_index],
+                                    if ui.button("Copy FASTA (selected reads)").clicked() {
+                                        if let Some(report) = saved_report.as_ref() {
+                                            let hits = Self::selected_rna_report_hits(
+                                                report,
+                                                &self.rna_seed_selected_record_indices,
                                             );
-                                            ui.close();
-                                        }
-                                        if ui.button("Copy FASTA (this read)").clicked() {
+                                            self.copy_rna_report_hits_as_fasta(
+                                                ui,
+                                                &hits,
+                                                "context-menu selected report reads",
+                                            );
+                                        } else {
+                                            let rows = preview_rows
+                                                .iter()
+                                                .filter(|candidate| {
+                                                    self.rna_seed_selected_record_indices
+                                                        .contains(&candidate.record_index)
+                                                })
+                                                .cloned()
+                                                .collect::<Vec<_>>();
                                             self.copy_rna_top_hit_previews_as_fasta(
                                                 ui,
-                                                std::slice::from_ref(row),
-                                                "context-menu top read",
+                                                &rows,
+                                                "context-menu selected top reads",
                                             );
-                                            ui.close();
                                         }
-                                        if ui.button("Copy FASTA (selected reads)").clicked() {
-                                            if let Some(report) = saved_report.as_ref() {
-                                                let hits = Self::selected_rna_report_hits(
-                                                    report,
-                                                    &self.rna_seed_selected_record_indices,
-                                                );
-                                                self.copy_rna_report_hits_as_fasta(
-                                                    ui,
-                                                    &hits,
-                                                    "context-menu selected report reads",
-                                                );
-                                            } else {
-                                                let rows = preview_rows
-                                                    .iter()
-                                                    .filter(|candidate| {
-                                                        self.rna_seed_selected_record_indices
-                                                            .contains(&candidate.record_index)
-                                                    })
-                                                    .cloned()
-                                                    .collect::<Vec<_>>();
-                                                self.copy_rna_top_hit_previews_as_fasta(
-                                                    ui,
-                                                    &rows,
-                                                    "context-menu selected top reads",
-                                                );
-                                            }
-                                            ui.close();
+                                        ui.close();
+                                    }
+                                    if ui.button("Toggle selected").clicked() {
+                                        if self
+                                            .rna_seed_selected_record_indices
+                                            .contains(&row.record_index)
+                                        {
+                                            self.rna_seed_selected_record_indices
+                                                .remove(&row.record_index);
+                                        } else {
+                                            self.rna_seed_selected_record_indices
+                                                .insert(row.record_index);
                                         }
-                                        if ui.button("Toggle selected").clicked() {
-                                            if self
-                                                .rna_seed_selected_record_indices
-                                                .contains(&row.record_index)
-                                            {
-                                                self.rna_seed_selected_record_indices
-                                                    .remove(&row.record_index);
-                                            } else {
-                                                self.rna_seed_selected_record_indices
-                                                    .insert(row.record_index);
-                                            }
-                                            ui.close();
-                                        }
-                                    });
-                                }
+                                        ui.close();
+                                    }
+                                });
                             });
+                            table_row.col(|ui| {
+                                ui.monospace(format!("{:.3}", row.seed_hit_fraction));
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(phase1_tx);
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(if row.aligned {
+                                    format!("{:.1}", row.best_alignment_identity_fraction * 100.0)
+                                } else {
+                                    "na".to_string()
+                                });
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(if row.aligned {
+                                    format!(
+                                        "{:.1}",
+                                        row.best_alignment_query_coverage_fraction * 100.0
+                                    )
+                                } else {
+                                    "na".to_string()
+                                });
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(if row.passed_seed_filter {
+                                    "yes".to_string()
+                                } else {
+                                    "no".to_string()
+                                });
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(phase2_tx);
+                            });
+                            table_row.col(|ui| {
+                                ui.monospace(row.read_length_bp.to_string());
+                            });
+                        });
                     });
                 let arrow_down = ui.input(|i| i.key_pressed(egui::Key::ArrowDown));
                 let arrow_up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp));

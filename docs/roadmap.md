@@ -3626,6 +3626,9 @@ Status:
       scroll/repaint cycles
     - saved-progress synthesis skips alignment inspection entirely when the
       report does not contain any phase-2 mappings yet
+    - the largest RNA review tables (`Mapped cDNA -> Read effects` and the
+      retained top-hit preview) now use virtualized row rendering instead of
+      repainting every row on scroll
   - The RNA-read length panel now also exposes target-fragment quality
     distributions from the shared `SummarizeRnaReadGeneSupport` engine route:
     - target-positive share by total read length
