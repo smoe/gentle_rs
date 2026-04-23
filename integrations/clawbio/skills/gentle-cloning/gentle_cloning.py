@@ -25,6 +25,8 @@ import xml.etree.ElementTree as ET
 REQUEST_SCHEMA = "gentle.clawbio_skill_request.v1"
 RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
 SVG_DIMENSION_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)")
+CLAWBIO_GRAPHICS_SCALE = 2.0
+CLAWBIO_SVG_PNG_TIMEOUT_SECS = 300
 
 
 class SkillError(RuntimeError):
@@ -457,12 +459,38 @@ def _safe_artifact_destination(raw_path: str) -> Path:
     return Path(*parts)
 
 
+def _bundle_relative_path(output_dir: Path, destination: Path) -> str:
+    try:
+        return destination.resolve().relative_to(output_dir.resolve()).as_posix()
+    except ValueError:
+        return destination.name
+
+
+def _artifact_record(
+    *,
+    declared_path: str,
+    source_path: Path,
+    destination: Path,
+    output_dir: Path,
+    derived_from: str | None = None,
+) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "declared_path": declared_path,
+        "bundle_path": _bundle_relative_path(output_dir, destination),
+        "source_path": str(source_path.resolve()),
+        "copied_path": str(destination.resolve()),
+    }
+    if derived_from:
+        record["derived_from"] = derived_from
+    return record
+
+
 def _copy_collected_artifacts(
     request: Request,
     output_dir: Path,
     execution_cwd: Path,
-) -> list[dict[str, str]]:
-    collected: list[dict[str, str]] = []
+) -> list[dict[str, Any]]:
+    collected: list[dict[str, Any]] = []
     if not request.expected_artifacts:
         return collected
 
@@ -476,13 +504,158 @@ def _copy_collected_artifacts(
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, destination)
         collected.append(
-            {
-                "declared_path": raw_path,
-                "source_path": str(source_path.resolve()),
-                "copied_path": str(destination.resolve()),
-            }
+            _artifact_record(
+                declared_path=raw_path,
+                source_path=source_path,
+                destination=destination,
+                output_dir=output_dir,
+            )
         )
     return collected
+
+
+def _png_declared_path_from_svg(raw_path: str) -> str:
+    normalized = raw_path.replace("\\", "/")
+    return str(Path(normalized).with_suffix(".png")).replace("\\", "/")
+
+
+def _preferred_artifact_id_for_png(raw_id: str | None, bundle_path: str) -> str:
+    candidate = (raw_id or "").strip()
+    if candidate:
+        if candidate.endswith("_svg"):
+            return candidate[:-4] + "_png"
+        if candidate.endswith(".svg"):
+            return candidate[:-4] + ".png"
+        if not candidate.endswith("_png"):
+            return candidate + "_png"
+        return candidate
+    stem = Path(bundle_path).stem
+    return stem if stem.endswith("_png") else stem + "_png"
+
+
+def _rasterize_collected_svg_artifacts(
+    collected_artifacts: list[dict[str, Any]],
+    resolution: CliResolution,
+    execution_cwd: Path,
+    output_dir: Path,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    updated_collected = list(collected_artifacts)
+    rasterized_pngs: list[dict[str, Any]] = []
+    for artifact in collected_artifacts:
+        copied_path = Path(str(artifact.get("copied_path", "")))
+        if copied_path.suffix.lower() != ".svg":
+            continue
+        png_path = copied_path.with_suffix(".png")
+        run_result, step = _run_cli_command(
+            resolution,
+            [
+                "svg-png",
+                str(copied_path),
+                str(png_path),
+                "--scale",
+                str(CLAWBIO_GRAPHICS_SCALE),
+            ],
+            execution_cwd,
+            CLAWBIO_SVG_PNG_TIMEOUT_SECS,
+        )
+        if run_result.returncode != 0:
+            failure_summary = _build_failure_summary(
+                stage="artifact_svg_png",
+                step=step,
+                execution_cwd=execution_cwd,
+            )
+            raise SkillError(
+                _build_failure_message(
+                    headline=(
+                        f"Failed to rasterize SVG artifact '{artifact.get('declared_path', copied_path.name)}' "
+                        "into the PNG-first ClawBio bundle contract."
+                    ),
+                    failure_summary=failure_summary,
+                )
+            )
+        png_artifact = _artifact_record(
+            declared_path=_png_declared_path_from_svg(
+                str(artifact.get("declared_path", copied_path.name))
+            ),
+            source_path=png_path,
+            destination=png_path,
+            output_dir=output_dir,
+            derived_from=str(artifact.get("declared_path", copied_path.name)),
+        )
+        updated_collected.append(png_artifact)
+        rasterized_pngs.append(png_artifact)
+    return updated_collected, rasterized_pngs
+
+
+def _rewrite_preferred_artifacts_for_png(
+    collected_artifacts: list[dict[str, Any]],
+    preferred_artifacts: list[dict[str, Any]] | None,
+    rasterized_pngs: list[dict[str, Any]],
+) -> list[dict[str, Any]] | None:
+    if not rasterized_pngs:
+        return preferred_artifacts
+
+    svg_by_declared: dict[str, dict[str, Any]] = {
+        str(artifact.get("declared_path", "")): artifact
+        for artifact in collected_artifacts
+        if str(artifact.get("copied_path", "")).lower().endswith(".svg")
+    }
+    png_by_source_path: dict[str, dict[str, Any]] = {}
+    for artifact in rasterized_pngs:
+        derived_from = str(artifact.get("derived_from", "")).strip()
+        if not derived_from:
+            continue
+        png_by_source_path[derived_from] = artifact
+        source_svg = svg_by_declared.get(derived_from)
+        if source_svg is not None:
+            png_by_source_path[str(source_svg.get("bundle_path", ""))] = artifact
+
+    rewritten: list[dict[str, Any]] = []
+    for artifact in preferred_artifacts or []:
+        if not isinstance(artifact, dict):
+            continue
+        path = artifact.get("path")
+        if not isinstance(path, str) or not path.strip():
+            continue
+        replacement = png_by_source_path.get(path)
+        if replacement is not None:
+            updated = dict(artifact)
+            updated["path"] = replacement["bundle_path"]
+            updated["artifact_id"] = _preferred_artifact_id_for_png(
+                (
+                    str(updated["artifact_id"])
+                    if isinstance(updated.get("artifact_id"), str)
+                    else None
+                ),
+                replacement["bundle_path"],
+            )
+            updated["derived_from"] = path
+            rewritten.append(updated)
+            continue
+        if not path.lower().endswith(".svg"):
+            rewritten.append(dict(artifact))
+
+    if rewritten:
+        return rewritten
+
+    synthesized: list[dict[str, Any]] = []
+    for idx, artifact in enumerate(rasterized_pngs):
+        synthesized.append(
+            {
+                "artifact_id": _preferred_artifact_id_for_png(
+                    None, str(artifact["bundle_path"])
+                ),
+                "path": artifact["bundle_path"],
+                "caption": Path(str(artifact["bundle_path"]))
+                .stem.replace("_", " ")
+                .replace(".", " "),
+                "recommended_use": "best_first_figure" if idx == 0 else "supporting_figure",
+                "presentation_rank": idx,
+                "is_best_first_artifact": idx == 0,
+                "derived_from": artifact.get("derived_from"),
+            }
+        )
+    return synthesized or None
 
 
 def _parse_svg_dimension(value: str | None) -> float | None:
@@ -529,7 +702,7 @@ def _storyboard_panel_priority(raw_path: str) -> tuple[int, str]:
 
 
 def _storyboard_panel_record(
-    copied_artifact: dict[str, str],
+    copied_artifact: dict[str, Any],
     preferred: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     copied_path = Path(copied_artifact["copied_path"])
@@ -689,9 +862,9 @@ def _write_storyboard_svg(
 def _augment_artifacts_with_storyboard(
     request: Request,
     output_dir: Path,
-    collected_artifacts: list[dict[str, str]],
+    collected_artifacts: list[dict[str, Any]],
     preferred_artifacts: list[dict[str, Any]] | None,
-) -> tuple[list[dict[str, str]], list[dict[str, Any]] | None]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
     preferred_by_path = {
         artifact["path"]: artifact
         for artifact in (preferred_artifacts or [])
@@ -734,11 +907,12 @@ def _augment_artifacts_with_storyboard(
     storyboard_path.parent.mkdir(parents=True, exist_ok=True)
     _write_storyboard_svg(title, subtitle, panels[:4], storyboard_path)
 
-    storyboard_artifact = {
-        "declared_path": "generated/clawbio_storyboard.svg",
-        "source_path": str(storyboard_path.resolve()),
-        "copied_path": str(storyboard_path.resolve()),
-    }
+    storyboard_artifact = _artifact_record(
+        declared_path="generated/clawbio_storyboard.svg",
+        source_path=storyboard_path,
+        destination=storyboard_path,
+        output_dir=output_dir,
+    )
     updated_collected = [*collected_artifacts, storyboard_artifact]
 
     storyboard_entry = {
@@ -1437,7 +1611,7 @@ def _write_report(
     run_result: subprocess.CompletedProcess[str] | None,
     stdout_json: Any | None,
     chat_summary_lines: list[str] | None,
-    collected_artifacts: list[dict[str, str]],
+    collected_artifacts: list[dict[str, Any]],
     reference_preflight: dict[str, Any] | None,
     started_utc: str,
     ended_utc: str,
@@ -1477,9 +1651,13 @@ def _write_report(
     if collected_artifacts:
         lines.append("- Collected artifacts:")
         for artifact in collected_artifacts:
-            lines.append(
-                f"  - `{artifact['declared_path']}` -> `{artifact['copied_path']}`"
+            line = (
+                f"  - `{artifact['declared_path']}` -> `{artifact['bundle_path']}` "
+                f"(`{artifact['copied_path']}`)"
             )
+            if artifact.get("derived_from"):
+                line += f" derived from `{artifact['derived_from']}`"
+            lines.append(line)
     if preferred_artifacts:
         best_first = next(
             (
@@ -1686,7 +1864,7 @@ def main() -> int:
     status = "failed"
     error_message: str | None = None
     failure_summary: dict[str, Any] | None = None
-    collected_artifacts: list[dict[str, str]] = []
+    collected_artifacts: list[dict[str, Any]] = []
     reference_preflight: dict[str, Any] | None = None
     stdout_json: Any | None = None
     chat_summary_lines: list[str] | None = None
@@ -1755,6 +1933,17 @@ def main() -> int:
             output_dir,
             collected_artifacts,
             preferred_artifacts,
+        )
+        collected_artifacts, rasterized_pngs = _rasterize_collected_svg_artifacts(
+            collected_artifacts,
+            resolution,
+            execution_cwd,
+            output_dir,
+        )
+        preferred_artifacts = _rewrite_preferred_artifacts_for_png(
+            collected_artifacts,
+            preferred_artifacts,
+            rasterized_pngs,
         )
     except subprocess.TimeoutExpired as e:
         request = request if request is not None else _default_demo_request()

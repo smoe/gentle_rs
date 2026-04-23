@@ -8,8 +8,7 @@ use gentle::workflow_examples::{
     generate_workflow_example_docs, load_workflow_examples, validate_example_required_files,
     write_tutorial_catalog_from_sources, write_tutorial_manifest_from_sources,
 };
-use regex::Regex;
-use resvg::{self, tiny_skia, usvg};
+use gentle::svg_png::{SvgPngRenderOptions, render_svg_file_to_png};
 use serde_json::json;
 use std::{
     env,
@@ -258,80 +257,29 @@ fn run_generate_mode(source_dir: &Path, output_dir: &Path) -> Result<(), String>
     Ok(())
 }
 
-fn strip_dotplot_metadata_text(svg: &str) -> Result<String, String> {
-    let metadata_re = Regex::new(
-        r#"<text\b[^>]*>(?:Dotplot workspace export:[^<]*|rendered_cells=[^<]*|x:\s[^<]*|y:\s[^<]*|GENtle dotplot SVG export)</text>"#,
-    )
-    .map_err(|e| format!("Could not compile dotplot metadata regex: {e}"))?;
-    Ok(metadata_re.replace_all(svg, "").into_owned())
-}
-
 fn run_svg_png_mode(
     input_path: &Path,
     output_path: &Path,
     scale: f32,
     drop_dotplot_metadata: bool,
 ) -> Result<(), String> {
-    if input_path.as_os_str().is_empty() {
-        return Err("svg-png requires INPUT.svg".to_string());
-    }
-    if output_path.as_os_str().is_empty() {
-        return Err("svg-png requires OUTPUT.png".to_string());
-    }
-    if !(scale.is_finite() && scale > 0.0) {
-        return Err(format!(
-            "svg-png requires a positive finite --scale value, got {scale}"
-        ));
-    }
-
-    let mut svg_text = std::fs::read_to_string(input_path)
-        .map_err(|e| format!("Could not read SVG '{}': {e}", input_path.display()))?;
-    if drop_dotplot_metadata {
-        svg_text = strip_dotplot_metadata_text(&svg_text)?;
-    }
-
-    let mut opt = usvg::Options {
-        resources_dir: std::fs::canonicalize(input_path)
-            .ok()
-            .and_then(|path| path.parent().map(|parent| parent.to_path_buf())),
-        ..usvg::Options::default()
-    };
-    opt.fontdb_mut().load_system_fonts();
-
-    let tree = usvg::Tree::from_str(&svg_text, &opt)
-        .map_err(|e| format!("Could not parse SVG '{}': {e}", input_path.display()))?;
-    let pixmap_size = tree
-        .size()
-        .to_int_size()
-        .scale_by(scale)
-        .ok_or_else(|| format!("Could not scale SVG size by {scale}"))?;
-    let mut pixmap =
-        tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).ok_or_else(|| {
-            format!(
-                "Could not allocate PNG canvas {}x{}",
-                pixmap_size.width(),
-                pixmap_size.height()
-            )
-        })?;
-    let transform = if (scale - 1.0).abs() <= f32::EPSILON {
-        tiny_skia::Transform::default()
-    } else {
-        tiny_skia::Transform::from_scale(scale, scale)
-    };
-    resvg::render(&tree, transform, &mut pixmap.as_mut());
-    pixmap
-        .save_png(output_path)
-        .map_err(|e| format!("Could not write PNG '{}': {e}", output_path.display()))?;
-
+    let summary = render_svg_file_to_png(
+        input_path,
+        output_path,
+        SvgPngRenderOptions {
+            scale,
+            drop_dotplot_metadata,
+        },
+    )?;
     let summary = json!({
         "status": "ok",
         "mode": "svg-png",
-        "input_path": input_path.to_string_lossy(),
-        "output_path": output_path.to_string_lossy(),
-        "scale": scale,
-        "drop_dotplot_metadata": drop_dotplot_metadata,
-        "width": pixmap_size.width(),
-        "height": pixmap_size.height(),
+        "input_path": summary.input_path,
+        "output_path": summary.output_path,
+        "scale": summary.scale,
+        "drop_dotplot_metadata": summary.drop_dotplot_metadata,
+        "width": summary.width,
+        "height": summary.height,
     });
     let pretty = serde_json::to_string_pretty(&summary)
         .map_err(|e| format!("Could not serialize svg-png summary: {e}"))?;
@@ -518,7 +466,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{Mode, parse_args, strip_dotplot_metadata_text};
+    use super::{Mode, parse_args};
 
     #[test]
     fn parse_svg_png_mode_with_cleanup_flag() {
@@ -538,26 +486,4 @@ mod tests {
         assert!(parsed.drop_dotplot_metadata);
     }
 
-    #[test]
-    fn strip_dotplot_metadata_preserves_axis_labels() {
-        let svg = concat!(
-            "<svg>",
-            "<text>Dotplot workspace export: dotplot_primary</text>",
-            "<text>rendered_cells=42 sampled_points=77 sample_stride=1</text>",
-            "<text>x: tp73_cdna</text>",
-            "<text>y: tp73_genomic</text>",
-            "<text>1</text>",
-            "<text>5026</text>",
-            "<text>GENtle dotplot SVG export</text>",
-            "</svg>"
-        );
-        let cleaned = strip_dotplot_metadata_text(svg).expect("strip metadata");
-        assert!(!cleaned.contains("Dotplot workspace export:"));
-        assert!(!cleaned.contains("rendered_cells="));
-        assert!(!cleaned.contains("x: tp73_cdna"));
-        assert!(!cleaned.contains("y: tp73_genomic"));
-        assert!(!cleaned.contains("GENtle dotplot SVG export"));
-        assert!(cleaned.contains("<text>1</text>"));
-        assert!(cleaned.contains("<text>5026</text>"));
-    }
 }

@@ -131,6 +131,8 @@ pub mod window_backdrop;
 pub mod window_dna;
 /// Curated workflow example payloads and templates.
 pub mod workflow_examples;
+/// Deterministic SVG-to-PNG rasterization helpers for headless adapters.
+pub mod svg_png;
 
 // Restriction enzymes and proteases
 pub static ENZYMES: LazyLock<Enzymes> = LazyLock::new(Enzymes::default);

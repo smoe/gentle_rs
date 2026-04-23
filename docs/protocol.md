@@ -2638,6 +2638,9 @@ ClawBio/OpenClaw integration scaffold schemas:
     - wrapper-declared output files to copy into the ClawBio output bundle
       after command execution
     - relative paths resolve from the actual execution working directory
+    - declared `.svg` paths remain the internal render/provenance source, but
+      the wrapper now also rasterizes them into messenger-ready PNG artifacts
+      in the output bundle at fixed deterministic scale `2.0`
   - mode-specific:
     - `shell`: `shell_line`
     - `op`: `operation` (JSON object/string)
@@ -2656,7 +2659,17 @@ ClawBio/OpenClaw integration scaffold schemas:
     `gentle.sequence_context_view.v1`, so ClawBio/OpenClaw can relay the
     compact sequence-context summary before attaching larger SVG/BED artifacts
   - `artifacts.collected[]` may enumerate declared output files copied into the
-    wrapper bundle with `declared_path`, `source_path`, and `copied_path`
+    wrapper bundle with `declared_path`, `bundle_path`, `source_path`,
+    `copied_path`, and optional `derived_from`
+  - figure-oriented `preferred_artifacts[]` now points at PNG bundle outputs
+    rather than SVG paths
+    - single-figure runs promote one rasterized `generated/...png`
+    - multi-figure runs promote one best-first
+      `generated/clawbio_storyboard.png`
+    - original SVGs may still remain in the bundle as provenance/supporting
+      artifacts, but messenger-facing consumers should prefer the PNG outputs
+  - browser/OpenClaw inline image display remains a later ClawBio-side task;
+    this phase is limited to PNG-first bundle production inside `gentle_rs`
 - reproducibility outputs:
   - `report.md`
   - `result.json`
@@ -2675,7 +2688,8 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `request_workflow_vkorc1_planning.json`
   - `request_protocol_cartoon_gibson_svg.json`
     - declares `expected_artifacts[]` so the generated SVG is copied into the
-      output bundle under `generated/...`
+      output bundle under `generated/...` and rasterized into the PNG-first
+      ClawBio contract
 
 Planned operation refinements:
 

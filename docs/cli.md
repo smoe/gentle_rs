@@ -259,6 +259,17 @@ Notes:
   offline splicing-expert workflow from the bundled
   `docs/figures/tp53_ensembl116_panel_source.gb` source asset and collects the
   rendered expert SVG into the output bundle
+- graphics contract for ClawBio/OpenClaw:
+  - graphics requests still declare SVG engine outputs in `expected_artifacts[]`
+  - the wrapper now rasterizes those SVGs into deterministic PNG bundle
+    artifacts at fixed scale `2.0`
+  - `result.json.preferred_artifacts[]` now points at the PNG bundle paths for
+    figures, including `generated/clawbio_storyboard.png` when one run yields
+    multiple related graphics
+  - the source SVGs may still remain in the bundle as provenance/supporting
+    artifacts
+  - browser/OpenClaw inline image rendering remains a later ClawBio-side
+    attachment/UI task
 
 `gentle_local_checkout_cli.sh` defaults these paths when unset:
 
@@ -361,6 +372,10 @@ Included follow-on analysis/planning/graphics examples:
   - same `pgex_fasta` follow-on route, but renders the EcoRI cleavage context
     to expert SVG
 - `request_workflow_vkorc1_planning.json`
+  - strongest graphical variant-follow-up answer in the current scaffold
+  - the wrapper now promotes one best-first
+    `generated/clawbio_storyboard.png` messenger artifact while keeping the
+    underlying SVG figures as provenance/supporting outputs
 - `request_workflow_tp53_isoform_architecture_online.json`
   - runs the canonical TP53 isoform workflow example and collects the rendered
     architecture SVG into the ClawBio bundle
@@ -380,7 +395,8 @@ Included follow-on analysis/planning/graphics examples:
     `CATGTGTAACAG`
 - `request_protocol_cartoon_gibson_svg.json`
   - declares `expected_artifacts[]` so the generated SVG is copied into the
-    ClawBio output bundle under `generated/...`
+    ClawBio output bundle under `generated/...` and rasterized into the
+    PNG-first messenger contract
 - shipped BED-export request examples now cover both common follow-on
   surfaces:
   - shell mode:
@@ -2309,6 +2325,11 @@ Pool exchange commands:
 
 Rendering export commands:
 
+- `svg-png INPUT.svg OUTPUT.png [--scale N] [--drop-dotplot-metadata]`
+  - Calls the shared deterministic `resvg` raster helper reused by the
+    ClawBio/OpenClaw PNG-first graphics bundling path.
+  - Intended for headless post-processing of existing SVG exports; it does not
+    add new biology/render semantics by itself.
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
   - Calls engine operation `RenderSequenceSvg`.
   - Linear exports honor the current stored linear viewport when one is set,

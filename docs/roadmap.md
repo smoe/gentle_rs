@@ -2130,9 +2130,16 @@ order. Durable architecture constraints and decisions remain in
       - the wrapper now supports declared `expected_artifacts[]`, and the
         shipped graphics examples copy generated SVGs into the ClawBio
         output bundle instead of leaving it only in the execution cwd
+      - the wrapper now also hardens that graphics path for messenger use:
+        declared SVG artifacts are rasterized into deterministic PNG bundle
+        artifacts at fixed scale `2.0`, and figure-oriented
+        `result.json.preferred_artifacts[]` now points at PNG outputs instead
+        of the source SVG paths
       - when one run now yields multiple collected SVGs, the wrapper can also
         synthesize one best-first `generated/clawbio_storyboard.svg`
-        presentation artifact for chat/share-friendly replies
+        provenance sheet and the matching messenger-facing
+        `generated/clawbio_storyboard.png` presentation artifact for
+        chat/share-friendly replies
       - the shipped VKORC1 / rs9923231 luciferase-planning example now uses
         that path so ClawBio has one stronger graphical answer ready for
         "How can you help me with functional analyses of genetic variations?"
@@ -2141,6 +2148,10 @@ order. Durable architecture constraints and decisions remain in
         accepts arbitrary instructions for rearranging and combining DNA
         fragments, with engineered reporter-system design being one concrete
         downstream example
+      - explicit next/out-of-scope boundary:
+        browser/OpenClaw inline image display still needs ClawBio-side
+        attachment/gateway/webchat work and is not part of this `gentle_rs`
+        phase
   - the ClawBio-facing `SKILL.md` and scaffold README now split the single
     runtime alias into six logical capability lanes so users/agents do not
     have to infer them from examples:

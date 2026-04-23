@@ -252,15 +252,16 @@ cargo run --locked --bin gentle_cli -- --version
 - `request_workflow_vkorc1_context_svg_auto_prepare.json` is the lowest-hanging
   graphical demo route:
   it first ensures `Human GRCh38 Ensembl 116` is prepared locally, then fetches
-  `rs9923231` and exports one linear genomic-context SVG into the wrapper
-  bundle
+  `rs9923231`, exports one linear genomic-context SVG into the wrapper
+  bundle, and the wrapper now also emits the messenger-facing PNG companion
 - `request_workflow_vkorc1_planning.json` is the strongest graphical reply to
   "How can you help me with functional analyses of genetic variations?" in the
   current scaffold:
   it replays the VKORC1 / rs9923231 promoter-luciferase workflow, copies the
   promoter-context plus paired reporter SVGs into the wrapper bundle, and the
-  wrapper synthesizes a best-first `generated/clawbio_storyboard.svg` hero
-  sheet from those figures
+  wrapper synthesizes a provenance `generated/clawbio_storyboard.svg` plus the
+  best-first messenger-facing `generated/clawbio_storyboard.png` hero sheet
+  from those figures
   - treat this as the synthetic-biology bridge:
     one interpreted variant becomes one engineered allele-paired reporter
     design for experimental follow-up
@@ -284,6 +285,13 @@ cargo run --locked --bin gentle_cli -- --version
   - and it now promotes any bundle-owned ranked artifact metadata into
     `result.json.preferred_artifacts[]`, so ClawBio can choose the best first
     figure without ad hoc path guessing
+  - graphics-facing requests now use a PNG-first outward contract:
+    declared SVG engine outputs are rasterized into deterministic PNG bundle
+    artifacts, while the original SVGs remain available as provenance/supporting
+    files when useful
+  - browser/OpenClaw inline image rendering is still a later ClawBio-side
+    attachment/UI step; this repo phase is only about producing the PNG-first
+    bundle outputs
 - `request_export_bed_rs9923231_vkorc1_context_features.json` is the matching
   coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
   fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED
@@ -541,6 +549,10 @@ Included follow-on analysis/planning/graphics requests:
   - same `pgex_fasta` follow-on route, but renders the EcoRI cleavage context
     to expert SVG
 - `examples/request_workflow_vkorc1_planning.json`
+  - strongest graphical variant-follow-up answer in the current scaffold
+  - replays the VKORC1 / rs9923231 promoter-luciferase workflow and promotes a
+    best-first `generated/clawbio_storyboard.png` messenger artifact while
+    keeping the underlying SVG figures as provenance/supporting outputs
 - `examples/request_workflow_tp53_isoform_architecture_online.json`
   - replays the canonical TP53 isoform workflow example and collects the
     rendered architecture SVG into the ClawBio bundle

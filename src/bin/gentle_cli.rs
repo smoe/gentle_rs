@@ -23,6 +23,7 @@ use gentle::{
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     resource_status::resource_catalog_status,
     service_readiness::service_readiness_status,
+    svg_png::{SvgPngRenderOptions, render_svg_file_to_png},
 };
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
@@ -520,6 +521,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] import-state PATH\n  \
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
+  gentle_cli svg-png INPUT.svg OUTPUT.png [--scale N] [--drop-dotplot-metadata]\n  \
   gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID tfbs FEATURE_ID\n  \
@@ -3164,6 +3166,59 @@ fn run() -> Result<(), String> {
             let state = load_state(&state_path)?;
             let engine = GentleEngine::from_state(state);
             print_json(&summarize_state(&engine))
+        }
+        "svg-png" => {
+            if args.len() <= cmd_idx + 2 {
+                usage();
+                return Err(
+                    "svg-png requires: INPUT.svg OUTPUT.png [--scale N] [--drop-dotplot-metadata]"
+                        .to_string(),
+                );
+            }
+            let input = &args[cmd_idx + 1];
+            let output = &args[cmd_idx + 2];
+            let mut scale = 1.0f32;
+            let mut drop_dotplot_metadata = false;
+            let mut idx = cmd_idx + 3;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--scale" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing N after --scale".to_string());
+                        }
+                        scale = args[idx + 1].parse::<f32>().map_err(|e| {
+                            format!("Could not parse --scale '{}': {e}", args[idx + 1])
+                        })?;
+                        idx += 2;
+                    }
+                    "--drop-dotplot-metadata" => {
+                        drop_dotplot_metadata = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{}' for svg-png", other));
+                    }
+                }
+            }
+            ensure_parent_dir(output)?;
+            let summary = render_svg_file_to_png(
+                Path::new(input),
+                Path::new(output),
+                SvgPngRenderOptions {
+                    scale,
+                    drop_dotplot_metadata,
+                },
+            )?;
+            print_json(&json!({
+                "status": "ok",
+                "mode": "svg-png",
+                "input_path": summary.input_path,
+                "output_path": summary.output_path,
+                "scale": summary.scale,
+                "drop_dotplot_metadata": summary.drop_dotplot_metadata,
+                "width": summary.width,
+                "height": summary.height,
+            }))
         }
         "render-svg" => {
             if args.len() <= cmd_idx + 3 {

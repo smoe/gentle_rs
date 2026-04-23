@@ -21,6 +21,29 @@ def _local_checkout_script() -> Path:
     return Path(__file__).resolve().parents[1] / "gentle_local_checkout_cli.sh"
 
 
+def _examples_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "examples"
+
+
+def _fake_cli_with_svg_png(main_body: str) -> str:
+    return (
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "if [ \"${1:-}\" = \"svg-png\" ]; then\n"
+        "  output_path=$3\n"
+        "  mkdir -p \"$(dirname \"$output_path\")\"\n"
+        "  python3 - \"$output_path\" <<'PY'\n"
+        "import base64, sys\n"
+        "from pathlib import Path\n"
+        "Path(sys.argv[1]).write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0ioAAAAASUVORK5CYII='))\n"
+        "PY\n"
+        "  echo '{}'\n"
+        "  exit 0\n"
+        "fi\n"
+        f"{main_body}"
+    )
+
+
 def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
     output_dir = tmp_path / "demo_out"
     cmd = [
@@ -776,10 +799,11 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
 
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
-        "#!/usr/bin/env bash\n"
-        "cat <<'JSON'\n"
-        '{"schema":"gentle.workflow_run.v1","run_id":"example_vkorc1"}\n'
-        "JSON\n",
+        _fake_cli_with_svg_png(
+            "cat <<'JSON'\n"
+            '{"schema":"gentle.workflow_run.v1","run_id":"example_vkorc1"}\n'
+            "JSON\n"
+        ),
         encoding="utf-8",
     )
     fake_cli.chmod(0o755)
@@ -805,22 +829,24 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     preferred = result["preferred_artifacts"]
-    assert preferred[0]["artifact_id"] == "clawbio_storyboard_svg"
-    assert preferred[0]["path"] == "generated/clawbio_storyboard.svg"
+    assert preferred[0]["artifact_id"] == "clawbio_storyboard_png"
+    assert preferred[0]["path"] == "generated/clawbio_storyboard.png"
     assert preferred[0]["is_best_first_artifact"] is True
+    assert preferred[0]["derived_from"] == "generated/clawbio_storyboard.svg"
     assert any(
-        artifact["path"].endswith("vkorc1_rs9923231_promoter_context.svg")
+        artifact["path"].endswith("vkorc1_rs9923231_promoter_context.png")
         for artifact in preferred[1:]
     )
     storyboard_path = output_dir / "generated" / "clawbio_storyboard.svg"
     assert storyboard_path.exists()
+    assert (output_dir / "generated" / "clawbio_storyboard.png").exists()
     storyboard = storyboard_path.read_text(encoding="utf-8")
     assert "Variant-to-Synthetic-Biology assay storyboard" in storyboard
     assert "Genomic context" in storyboard
     assert "Reference allele reporter" in storyboard
     assert "Alternate allele reporter" in storyboard
     report = (output_dir / "report.md").read_text(encoding="utf-8")
-    assert "generated/clawbio_storyboard.svg" in report
+    assert "generated/clawbio_storyboard.png" in report
 
 
 def test_apptainer_launcher_wraps_gentle_cli_with_bind_mount(tmp_path: Path) -> None:
@@ -1016,12 +1042,12 @@ def test_expected_artifacts_are_copied_into_output_bundle(tmp_path: Path) -> Non
 
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
-        "set -- $2\n"
-        "output_path=$4\n"
-        "mkdir -p \"$(dirname \"$output_path\")\"\n"
-        "printf '<svg>demo</svg>\\n' > \"$output_path\"\n",
+        _fake_cli_with_svg_png(
+            "set -- $2\n"
+            "output_path=$4\n"
+            "mkdir -p \"$(dirname \"$output_path\")\"\n"
+            "printf '<svg>demo</svg>\\n' > \"$output_path\"\n"
+        ),
         encoding="utf-8",
     )
     fake_cli.chmod(0o755)
@@ -1047,11 +1073,27 @@ def test_expected_artifacts_are_copied_into_output_bundle(tmp_path: Path) -> Non
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     collected = result["artifacts"]["collected"]
-    assert len(collected) == 1
+    assert len(collected) == 2
     assert collected[0]["declared_path"] == "artifacts/demo.protocol.svg"
+    assert collected[0]["bundle_path"] == "generated/artifacts/demo.protocol.svg"
     copied_path = Path(collected[0]["copied_path"])
     assert copied_path.exists()
     assert copied_path.read_text(encoding="utf-8") == "<svg>demo</svg>\n"
+    assert collected[1]["declared_path"] == "artifacts/demo.protocol.png"
+    assert collected[1]["bundle_path"] == "generated/artifacts/demo.protocol.png"
+    assert collected[1]["derived_from"] == "artifacts/demo.protocol.svg"
+    assert Path(collected[1]["copied_path"]).exists()
+    assert result["preferred_artifacts"] == [
+        {
+            "artifact_id": "demo.protocol_png",
+            "path": "generated/artifacts/demo.protocol.png",
+            "caption": "demo protocol",
+            "recommended_use": "best_first_figure",
+            "presentation_rank": 0,
+            "is_best_first_artifact": True,
+            "derived_from": "artifacts/demo.protocol.svg",
+        }
+    ]
 
 
 def test_expected_artifacts_are_sandboxed_under_generated_dir(tmp_path: Path) -> None:
@@ -1072,12 +1114,12 @@ def test_expected_artifacts_are_sandboxed_under_generated_dir(tmp_path: Path) ->
 
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
-        "set -- $2\n"
-        "output_path=$4\n"
-        "mkdir -p \"$(dirname \"$output_path\")\"\n"
-        "printf '<svg>demo</svg>\\n' > \"$output_path\"\n",
+        _fake_cli_with_svg_png(
+            "set -- $2\n"
+            "output_path=$4\n"
+            "mkdir -p \"$(dirname \"$output_path\")\"\n"
+            "printf '<svg>demo</svg>\\n' > \"$output_path\"\n"
+        ),
         encoding="utf-8",
     )
     fake_cli.chmod(0o755)
@@ -1109,6 +1151,210 @@ def test_expected_artifacts_are_sandboxed_under_generated_dir(tmp_path: Path) ->
     assert copied_path.exists()
     assert copied_path.is_relative_to(generated_root)
     assert copied_path == generated_root / "outside" / "demo.protocol.svg"
+    png_path = Path(result["artifacts"]["collected"][1]["copied_path"])
+    assert png_path.exists()
+    assert png_path == generated_root / "outside" / "demo.protocol.png"
+
+
+def test_non_graphic_expected_artifacts_are_copied_without_rasterization(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "resources summarize-jaspar --motif SP1 --output artifacts/demo.summary.json",
+                "expected_artifacts": ["artifacts/demo.summary.json"],
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "set -- $2\n"
+        "output_path=$6\n"
+        "mkdir -p \"$(dirname \"$output_path\")\"\n"
+        "printf '{\"status\":\"ok\"}\\n' > \"$output_path\"\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    collected = result["artifacts"]["collected"]
+    assert collected == [
+        {
+            "declared_path": "artifacts/demo.summary.json",
+            "bundle_path": "generated/artifacts/demo.summary.json",
+            "source_path": str((tmp_path / "artifacts" / "demo.summary.json").resolve()),
+            "copied_path": str(
+                (output_dir / "generated" / "artifacts" / "demo.summary.json").resolve()
+            ),
+        }
+    ]
+    assert result["preferred_artifacts"] is None
+
+
+def test_wrapper_rasterizes_svg_artifact_via_real_gentle_cli_route(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "protocol-cartoon render-svg demo artifacts/demo.protocol.svg",
+                "expected_artifacts": ["artifacts/demo.protocol.svg"],
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    repo_root = _skill_script().resolve().parents[4]
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "if [ \"${1:-}\" = \"svg-png\" ]; then\n"
+            f"  cd {shlex.quote(str(repo_root))}\n"
+            "  exec cargo run --quiet --bin gentle_cli -- \"$@\"\n"
+            "fi\n"
+            "set -- $2\n"
+            "output_path=$4\n"
+            "mkdir -p \"$(dirname \"$output_path\")\"\n"
+            "cat > \"$output_path\" <<'SVG'\n"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"12\" viewBox=\"0 0 24 12\">\n"
+            "  <rect width=\"24\" height=\"12\" fill=\"#ffffff\"/>\n"
+            "  <rect x=\"2\" y=\"2\" width=\"20\" height=\"8\" fill=\"#0f766e\"/>\n"
+            "</svg>\n"
+            "SVG\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["preferred_artifacts"] == [
+        {
+            "artifact_id": "demo.protocol_png",
+            "path": "generated/artifacts/demo.protocol.png",
+            "caption": "demo protocol",
+            "recommended_use": "best_first_figure",
+            "presentation_rank": 0,
+            "is_best_first_artifact": True,
+            "derived_from": "artifacts/demo.protocol.svg",
+        }
+    ]
+    assert (output_dir / "generated" / "artifacts" / "demo.protocol.png").exists()
+
+
+def test_shipped_graphics_example_emits_png_first_artifacts(tmp_path: Path) -> None:
+    repo_root = _skill_script().resolve().parents[4]
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "if [ \"${1:-}\" = \"svg-png\" ]; then\n"
+            f"  cd {shlex.quote(str(repo_root))}\n"
+            "  exec cargo run --quiet --bin gentle_cli -- \"$@\"\n"
+            "fi\n"
+            "set -- $2\n"
+            "output_path=$4\n"
+            "mkdir -p \"$(dirname \"$output_path\")\"\n"
+            "cat > \"$output_path\" <<'SVG'\n"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"48\" height=\"24\" viewBox=\"0 0 48 24\">\n"
+            "  <rect width=\"48\" height=\"24\" fill=\"#f8fafc\"/>\n"
+            "  <rect x=\"4\" y=\"4\" width=\"40\" height=\"16\" fill=\"#7c3aed\"/>\n"
+            "</svg>\n"
+            "SVG\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str((_examples_dir() / "request_protocol_cartoon_gibson_svg.json").resolve()),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["preferred_artifacts"] == [
+        {
+            "artifact_id": "gibson.two_fragment.protocol_png",
+            "path": "generated/artifacts/gibson.two_fragment.protocol.png",
+            "caption": "gibson two fragment protocol",
+            "recommended_use": "best_first_figure",
+            "presentation_rank": 0,
+            "is_best_first_artifact": True,
+            "derived_from": "artifacts/gibson.two_fragment.protocol.svg",
+        }
+    ]
+    assert (
+        output_dir / "generated" / "artifacts" / "gibson.two_fragment.protocol.png"
+    ).exists()
 
 
 def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path) -> None:
