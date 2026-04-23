@@ -538,6 +538,134 @@ def test_genomes_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pa
     ]
 
 
+def test_cutrun_status_promotes_prepare_for_missing_dataset(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "cutrun status toy_ctcf",
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.cutrun_dataset_status.v1","dataset_id":"toy_ctcf","requested_catalog_path":"assets/cutrun.json","effective_cache_dir":"data/cutrun","lifecycle_status":"missing","prepared":false}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["suggested_actions"] == [
+        {
+            "action_id": "prepare_cut_run_dataset_toy_ctcf",
+            "label": "Prepare CUT&RUN dataset toy_ctcf",
+            "kind": "prepare_cutrun_dataset",
+            "shell_line": "cutrun prepare toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun",
+            "timeout_secs": 1800,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "cutrun prepare toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun",
+                "timeout_secs": 1800,
+            },
+            "rationale": "CUT&RUN dataset 'toy_ctcf' is not prepared locally and must be materialized before dataset-backed projection or read interpretation can reuse it.",
+            "requires_confirmation": True,
+        }
+    ]
+
+
+def test_cutrun_status_running_suggests_refresh_instead_of_prepare(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "cutrun status toy_ctcf",
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.cutrun_dataset_status.v1","dataset_id":"toy_ctcf","requested_catalog_path":"assets/cutrun.json","effective_cache_dir":"data/cutrun","lifecycle_status":"running","prepared":false}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["suggested_actions"] == [
+        {
+            "action_id": "re_check_cut_run_dataset_toy_ctcf_status",
+            "label": "Re-check CUT&RUN dataset toy_ctcf status",
+            "kind": "refresh_status",
+            "shell_line": "cutrun status toy_ctcf",
+            "timeout_secs": 180,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "cutrun status toy_ctcf",
+                "timeout_secs": 180,
+            },
+            "rationale": "CUT&RUN dataset 'toy_ctcf' is already being prepared, so refresh its status instead of starting another parallel prepare.",
+            "requires_confirmation": False,
+        }
+    ]
+
+
 def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(

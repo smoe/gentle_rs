@@ -281,6 +281,41 @@ fn prepare_cutrun_shell_anchor_range(
         .expect("extract CUT&RUN shell anchor");
 }
 
+fn write_cutrun_shell_prepare_activity(
+    install_dir: &Path,
+    dataset_id: &str,
+    lifecycle_status: &str,
+    updated_at_unix_ms: u128,
+    last_error: Option<&str>,
+) {
+    fs::create_dir_all(install_dir).expect("create CUT&RUN shell install dir for activity");
+    let status_path = install_dir.join(".prepare_activity.json");
+    let lock_path = install_dir.join(".prepare_activity.lock");
+    let status = crate::engine::SharedAssetActivityStatus {
+        resource_key: format!("cutrun_dataset:{dataset_id}"),
+        display_name: dataset_id.to_string(),
+        status_path: status_path.display().to_string(),
+        lock_path: Some(lock_path.display().to_string()),
+        lifecycle_status: lifecycle_status.to_string(),
+        phase: Some("materializing_asset".to_string()),
+        item: Some("toy_peaks.bed".to_string()),
+        bytes_done: 64,
+        bytes_total: Some(256),
+        percent: Some(25.0),
+        started_at_unix_ms: updated_at_unix_ms.saturating_sub(1000),
+        updated_at_unix_ms,
+        finished_at_unix_ms: None,
+        last_error: last_error.map(str::to_string),
+        owner_pid: Some(std::process::id()),
+    };
+    let text = serde_json::to_string_pretty(&status)
+        .expect("serialize CUT&RUN shell prepare activity status");
+    fs::write(&status_path, &text).expect("write CUT&RUN shell prepare activity status");
+    if lifecycle_status == "running" {
+        fs::write(&lock_path, text).expect("write CUT&RUN shell prepare activity lock");
+    }
+}
+
 #[cfg(unix)]
 fn install_fake_bigwig_to_bedgraph(path: &Path, bedgraph_source: &Path) -> String {
     let script_path = path.join("fake_bigwig_to_bedgraph.sh");
@@ -13912,6 +13947,11 @@ fn execute_cutrun_prepare_and_project_return_shared_payloads() {
     assert!(!prepare.state_changed);
     assert_eq!(prepare.output["dataset_id"].as_str(), Some("toy_ctcf"));
     assert_eq!(prepare.output["prepared"].as_bool(), Some(true));
+    assert_eq!(prepare.output["lifecycle_status"].as_str(), Some("ready"));
+    assert_eq!(
+        prepare.output["resource_key"].as_str(),
+        Some("cutrun_dataset:toy_ctcf")
+    );
 
     let project = execute_shell_command(
         &mut engine,
@@ -13940,6 +13980,62 @@ fn execute_cutrun_prepare_and_project_return_shared_payloads() {
             .as_u64()
             .unwrap_or(0)
             > 0
+    );
+}
+
+#[test]
+fn execute_cutrun_status_reports_running_lifecycle_from_active_prepare_marker() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let peaks_path = root.join("toy_peaks.bed");
+    fs::write(&peaks_path, "chr1\t1\t4\tpeak_a\t42\t+\n").expect("write peaks");
+    let cutrun_catalog = root.join("cutrun.catalog.json");
+    fs::write(
+        &cutrun_catalog,
+        format!(
+            r#"{{
+  "toy_ctcf": {{
+    "summary": "Toy CUT&RUN",
+    "target_factor": "CTCF",
+    "peaks_local": "{}"
+  }}
+}}"#,
+            peaks_path.display()
+        ),
+    )
+    .expect("write CUT&RUN catalog");
+    let cutrun_cache = root.join("cutrun_cache");
+    let install_dir = cutrun_cache.join("toy_ctcf");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    write_cutrun_shell_prepare_activity(&install_dir, "toy_ctcf", "running", now, None);
+
+    let mut engine = GentleEngine::new();
+    let status = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunStatus {
+            dataset_id: "toy_ctcf".to_string(),
+            catalog_path: Some(cutrun_catalog.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute CUT&RUN status");
+    assert!(!status.state_changed);
+    assert_eq!(status.output["dataset_id"].as_str(), Some("toy_ctcf"));
+    assert_eq!(status.output["prepared"].as_bool(), Some(false));
+    assert_eq!(status.output["lifecycle_status"].as_str(), Some("running"));
+    assert_eq!(
+        status.output["resource_key"].as_str(),
+        Some("cutrun_dataset:toy_ctcf")
+    );
+    assert_eq!(
+        status.output["current_activity"]["phase"].as_str(),
+        Some("materializing_asset")
     );
 }
 

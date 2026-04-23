@@ -1602,6 +1602,14 @@ Current draft operations:
 - `ExportCutRunReadCoverage { report_id, path, kind? }`
   - V1 is processed-evidence-first and currently reuses the shared anchored
     `ImportGenomeBedTrack` / `ImportGenomeBigWigTrack` projection behavior.
+  - prepared CUT&RUN datasets now also expose one shared lifecycle contract:
+    - `resource_key = "cutrun_dataset:<DATASET_ID>"`
+    - `lifecycle_status = missing|running|ready|failed|cancelled|stale`
+    - `current_activity` carries the persisted lease/heartbeat marker when a
+      dataset prepare is active or when the last attempt ended as
+      `failed|cancelled|stale`
+  - duplicate `PrepareCutRunDataset` callers now reuse one active dataset
+    prepare lease instead of materializing the same dataset twice in parallel.
   - V2 is ROI-first and interprets either ad hoc `FASTA`/`FASTQ` inputs or
     prepared catalog-linked raw reads against one selected genome-anchored
     region plus deterministic flanks.

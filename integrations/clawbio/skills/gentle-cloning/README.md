@@ -398,7 +398,9 @@ When present, the wrapper runs `genomes status ...` first and only runs
 before/after status payloads and exact preflight commands are then written into
 `report.md`, `result.json`, and `reproducibility/commands.sh`.
 
-For status-like requests, the wrapper may also emit `result.json.suggested_actions[]`.
+For status-like requests, including `services status`, `genomes status`,
+`helpers status`, and `cutrun status`, the wrapper may also emit
+`result.json.suggested_actions[]`.
 Each entry contains:
 
 - a short label

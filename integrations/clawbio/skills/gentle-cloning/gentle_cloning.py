@@ -1320,9 +1320,86 @@ def _extract_suggested_actions(
                 )
             )
 
+    if stdout_json.get("schema") == "gentle.cutrun_dataset_status.v1":
+        dataset_id = str(stdout_json.get("dataset_id") or "").strip()
+        lifecycle_status = str(stdout_json.get("lifecycle_status") or "").strip()
+        requested_catalog_path = str(
+            stdout_json.get("requested_catalog_path") or ""
+        ).strip()
+        effective_cache_dir = str(stdout_json.get("effective_cache_dir") or "").strip()
+        if dataset_id:
+            dataset_arg = shlex.quote(dataset_id)
+            catalog_arg = (
+                f" --catalog {shlex.quote(requested_catalog_path)}"
+                if requested_catalog_path
+                else ""
+            )
+            cache_arg = (
+                f" --cache-dir {shlex.quote(effective_cache_dir)}"
+                if effective_cache_dir
+                else ""
+            )
+            prepare_shell = f"cutrun prepare {dataset_arg}{catalog_arg}{cache_arg}"
+            refresh_shell = f"cutrun status {dataset_arg}{catalog_arg}{cache_arg}"
+            if (
+                isinstance(request, Request)
+                and request.mode == "shell"
+                and (request.shell_line or "").strip().startswith("cutrun status ")
+            ):
+                refresh_shell = (request.shell_line or "").strip() or refresh_shell
+            if lifecycle_status in {"missing", "not_prepared"}:
+                actions.append(
+                    _suggested_action(
+                        label=f"Prepare CUT&RUN dataset {dataset_id}",
+                        kind="prepare_cutrun_dataset",
+                        shell_line=prepare_shell,
+                        timeout_secs=1800,
+                        rationale=(
+                            f"CUT&RUN dataset '{dataset_id}' is not prepared locally and "
+                            "must be materialized before dataset-backed projection or read "
+                            "interpretation can reuse it."
+                        ),
+                    )
+                )
+            elif lifecycle_status in {"failed", "cancelled", "stale"}:
+                actions.append(
+                    _suggested_action(
+                        label=f"Retry prepare for CUT&RUN dataset {dataset_id}",
+                        kind="prepare_cutrun_dataset",
+                        shell_line=prepare_shell,
+                        timeout_secs=1800,
+                        rationale=(
+                            f"CUT&RUN dataset '{dataset_id}' last ended as {lifecycle_status} "
+                            "and is safe to retry when you want to restore dataset-backed "
+                            "projection or read interpretation."
+                        ),
+                    )
+                )
+            elif lifecycle_status == "running":
+                actions.append(
+                    _suggested_action(
+                        label=f"Re-check CUT&RUN dataset {dataset_id} status",
+                        kind="refresh_status",
+                        shell_line=refresh_shell,
+                        timeout_secs=180,
+                        rationale=(
+                            f"CUT&RUN dataset '{dataset_id}' is already being prepared, so "
+                            "refresh its status instead of starting another parallel prepare."
+                        ),
+                        requires_confirmation=False,
+                    )
+                )
+
     if isinstance(request, Request) and request.mode == "shell":
         shell_line = (request.shell_line or "").strip()
-        if shell_line.startswith(("genomes prepare ", "helpers prepare ", "resources sync-")):
+        if shell_line.startswith(
+            (
+                "genomes prepare ",
+                "helpers prepare ",
+                "cutrun prepare ",
+                "resources sync-",
+            )
+        ):
             actions.append(
                 _suggested_action(
                     label="Re-check services status",

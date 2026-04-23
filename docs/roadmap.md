@@ -3649,12 +3649,23 @@ Status:
    - projection rejects incompatible anchored genomes and only operates on
      genome-anchored sequences.
    - shared shell/CLI direct routes are now in place under `cutrun ...`.
+   - CUT&RUN dataset prepare/status now also use a shared lease/heartbeat
+     lifecycle:
+     - canonical dataset resource keys:
+       `cutrun_dataset:<DATASET_ID>`
+     - `ShowCutRunDatasetStatus` / `cutrun status` now expose
+       `lifecycle_status` plus `current_activity`
+     - duplicate `PrepareCutRunDataset` / `cutrun prepare` callers reuse one
+       active dataset install instead of launching parallel materialization
+     - stale dataset prepare markers are converted to `stale` and can be
+       retried safely
    - deterministic regression coverage now exists for:
      - discovery/overlay merging,
      - cache-env resolution,
      - prepare/status manifest handling,
-     - anchored peaks+signal projection,
-     - incompatible-genome rejection.
+     - duplicate prepare suppression and stale-activity recovery,
+      - anchored peaks+signal projection,
+      - incompatible-genome rejection.
 
 2. Implemented baseline V2:
    - direct ROI-first FASTA/FASTQ read interpretation with paired-end-aware
@@ -3706,6 +3717,10 @@ Remaining CUT&RUN follow-up:
   thresholds for signal-only evidence
 - consider more explicit promoter-boundary candidate interval reporting on top
   of the current merged support-window baseline
+- if later shared expression-matrix installs or external evidence bundles gain
+  one prepared-cache route, they should reuse the same CUT&RUN/genome/helper
+  lease + lifecycle model rather than introducing a second shared-runtime
+  activity contract
 
 3. Planned V3:
    - regulatory reasoning over promoter-boundary candidates, TFBS support, and

@@ -1378,6 +1378,41 @@ fn write_cutrun_test_fasta_reads(path: &Path, records: &[(&str, &str)]) {
     fs::write(path, text).expect("write CUT&RUN FASTA reads");
 }
 
+fn write_cutrun_prepare_activity(
+    install_dir: &Path,
+    dataset_id: &str,
+    lifecycle_status: &str,
+    updated_at_unix_ms: u128,
+    last_error: Option<&str>,
+) {
+    fs::create_dir_all(install_dir).expect("create CUT&RUN install dir for activity");
+    let status_path = install_dir.join(".prepare_activity.json");
+    let lock_path = install_dir.join(".prepare_activity.lock");
+    let status = SharedAssetActivityStatus {
+        resource_key: format!("cutrun_dataset:{dataset_id}"),
+        display_name: dataset_id.to_string(),
+        status_path: status_path.display().to_string(),
+        lock_path: Some(lock_path.display().to_string()),
+        lifecycle_status: lifecycle_status.to_string(),
+        phase: Some("materializing_asset".to_string()),
+        item: Some("toy_peaks.bed".to_string()),
+        bytes_done: 32,
+        bytes_total: Some(128),
+        percent: Some(25.0),
+        started_at_unix_ms: updated_at_unix_ms.saturating_sub(1000),
+        updated_at_unix_ms,
+        finished_at_unix_ms: None,
+        last_error: last_error.map(str::to_string),
+        owner_pid: Some(std::process::id()),
+    };
+    let text =
+        serde_json::to_string_pretty(&status).expect("serialize CUT&RUN prepare activity status");
+    fs::write(&status_path, &text).expect("write CUT&RUN prepare activity status");
+    if lifecycle_status == "running" {
+        fs::write(&lock_path, text).expect("write CUT&RUN prepare activity lock");
+    }
+}
+
 #[test]
 fn test_set_display_visibility() {
     let mut engine = GentleEngine::new();
@@ -16207,6 +16242,10 @@ fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
         )
         .expect("prepare CUT&RUN dataset");
     assert!(status.prepared);
+    assert_eq!(status.lifecycle_status, "ready");
+    assert_eq!(status.resource_key, "cutrun_dataset:toy_cutrun");
+    assert_eq!(status.display_name, "toy_cutrun");
+    assert!(status.current_activity.is_none());
     assert!(status.peaks.prepared);
     assert!(status.signal.prepared);
     assert!(status.reads_r1.prepared);
@@ -16226,6 +16265,8 @@ fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
             None,
         )
         .expect("show CUT&RUN status");
+    assert_eq!(status_check.lifecycle_status, "ready");
+    assert!(status_check.current_activity.is_none());
     assert!(status_check.manifest_path.is_some());
     assert!(status_check.manifest.is_some());
     assert!(
@@ -16241,6 +16282,142 @@ fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
             .as_ref()
             .and_then(|manifest| manifest.reads_r2.as_ref())
             .is_some()
+    );
+}
+
+#[test]
+fn test_prepare_cutrun_dataset_reuses_existing_running_activity() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let peaks_path = root.join("toy_peaks.bed");
+    fs::write(&peaks_path, "chr1\t1\t4\tpeak_a\t42\t+\n").expect("write peaks");
+    let catalog_path = root.join("cutrun.catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "toy_cutrun": {{
+    "summary": "Toy CUT&RUN",
+    "target_factor": "CTCF",
+    "peaks_local": "{}"
+  }}
+}}"#,
+            peaks_path.display(),
+        ),
+    )
+    .expect("write CUT&RUN catalog");
+    let cache_dir = root.join("cutrun_cache");
+    let install_dir = cache_dir.join("toy_cutrun");
+    write_cutrun_prepare_activity(
+        &install_dir,
+        "toy_cutrun",
+        "running",
+        GentleEngine::now_unix_ms(),
+        None,
+    );
+
+    let engine = GentleEngine::new();
+    let status = engine
+        .prepare_cutrun_dataset(
+            "toy_cutrun",
+            Some(catalog_path.to_string_lossy().as_ref()),
+            Some(cache_dir.to_string_lossy().as_ref()),
+        )
+        .expect("reuse running CUT&RUN prepare activity");
+    assert!(!status.prepared);
+    assert_eq!(status.lifecycle_status, "running");
+    assert_eq!(status.resource_key, "cutrun_dataset:toy_cutrun");
+    assert!(
+        status
+            .current_activity
+            .as_ref()
+            .and_then(|activity| activity.phase.as_deref())
+            == Some("materializing_asset")
+    );
+    assert!(
+        !install_dir.join("toy_peaks.bed").exists(),
+        "duplicate prepare should not materialize a second copy while another run is active"
+    );
+}
+
+#[test]
+fn test_stale_cutrun_prepare_activity_can_be_superseded_by_new_prepare() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let peaks_path = root.join("toy_peaks.bed");
+    fs::write(&peaks_path, "chr1\t1\t4\tpeak_a\t42\t+\n").expect("write peaks");
+    let catalog_path = root.join("cutrun.catalog.json");
+    fs::write(
+        &catalog_path,
+        format!(
+            r#"{{
+  "toy_cutrun": {{
+    "summary": "Toy CUT&RUN",
+    "target_factor": "CTCF",
+    "peaks_local": "{}"
+  }}
+}}"#,
+            peaks_path.display(),
+        ),
+    )
+    .expect("write CUT&RUN catalog");
+    let cache_dir = root.join("cutrun_cache");
+    let install_dir = cache_dir.join("toy_cutrun");
+    let stale_updated_at = GentleEngine::now_unix_ms().saturating_sub(6 * 60 * 60 * 1000 + 1);
+    write_cutrun_prepare_activity(
+        &install_dir,
+        "toy_cutrun",
+        "running",
+        stale_updated_at,
+        None,
+    );
+
+    let engine = GentleEngine::new();
+    let stale_status = engine
+        .show_cutrun_dataset_status(
+            "toy_cutrun",
+            Some(catalog_path.to_string_lossy().as_ref()),
+            Some(cache_dir.to_string_lossy().as_ref()),
+        )
+        .expect("show stale CUT&RUN status");
+    assert!(!stale_status.prepared);
+    assert_eq!(stale_status.lifecycle_status, "stale");
+    assert!(
+        stale_status
+            .current_activity
+            .as_ref()
+            .and_then(|activity| activity.last_error.as_deref())
+            .unwrap_or_default()
+            .contains("stale")
+    );
+    assert!(
+        !install_dir.join(".prepare_activity.lock").exists(),
+        "stale CUT&RUN activity should release its active lock"
+    );
+
+    let prepared_status = engine
+        .prepare_cutrun_dataset(
+            "toy_cutrun",
+            Some(catalog_path.to_string_lossy().as_ref()),
+            Some(cache_dir.to_string_lossy().as_ref()),
+        )
+        .expect("prepare CUT&RUN dataset after stale activity");
+    assert!(prepared_status.prepared);
+    assert_eq!(prepared_status.lifecycle_status, "ready");
+    assert!(prepared_status.current_activity.is_none());
+    assert!(
+        !install_dir.join(".prepare_activity.json").exists(),
+        "successful CUT&RUN prepare should clear transient activity status"
+    );
+    assert!(
+        !install_dir.join(".prepare_activity.lock").exists(),
+        "successful CUT&RUN prepare should clear transient activity lock"
     );
 }
 

@@ -3599,15 +3599,51 @@ pub struct CutRunPreparedAssetStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Shared lease/heartbeat status for one prepared shared asset install.
+pub struct SharedAssetActivityStatus {
+    pub resource_key: String,
+    pub display_name: String,
+    pub status_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock_path: Option<String>,
+    pub lifecycle_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item: Option<String>,
+    #[serde(default)]
+    pub bytes_done: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes_total: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub percent: Option<f64>,
+    pub started_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished_at_unix_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_pid: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable readiness/status snapshot for one CUT&RUN prepared dataset.
 pub struct CutRunDatasetStatus {
     pub schema: String,
     pub dataset_id: String,
+    pub resource_key: String,
+    pub display_name: String,
     pub catalog_origin_label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested_catalog_path: Option<String>,
     pub effective_cache_dir: String,
     pub install_dir: String,
     pub prepared: bool,
+    pub lifecycle_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_activity: Option<SharedAssetActivityStatus>,
     pub description: Option<String>,
     pub summary: Option<String>,
     pub species: Option<String>,

@@ -110,6 +110,13 @@ Catalog path note:
   - project/system overlays under `.gentle/catalogs/` and `/etc/gentle/catalogs/`
   - prepared-cache root defaults to `data/cutrun`
   - override cache root with `GENTLE_CUTRUN_CACHE_DIR`
+  - `cutrun prepare` and `cutrun status` now use the same shared lifecycle
+    contract as reference/helper prepares:
+    - `lifecycle_status = missing|running|ready|failed|cancelled|stale`
+    - `current_activity` reports the active/stale dataset prepare marker when
+      present
+    - duplicate `cutrun prepare` callers reuse one active dataset install
+      instead of launching a second parallel materialization
   - `cutrun project` only accepts genome-anchored sequences and reuses the
     shared anchored BED/BigWig track import behavior
   - `cutrun interpret` maps ad hoc `FASTA`/`FASTQ` reads only against one

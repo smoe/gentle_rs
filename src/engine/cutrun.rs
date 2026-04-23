@@ -20,6 +20,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 
 const CUTRUN_MANIFEST_FILE_NAME: &str = "manifest.json";
+const CUTRUN_PREPARE_ACTIVITY_STATUS_FILE: &str = ".prepare_activity.json";
+const CUTRUN_PREPARE_ACTIVITY_LOCK_FILE: &str = ".prepare_activity.lock";
+const CUTRUN_PREPARE_ACTIVITY_STALE_AFTER_MS: u128 = 6 * 60 * 60 * 1000;
 const CUTRUN_CACHE_DIR_ENV: &str = "GENTLE_CUTRUN_CACHE_DIR";
 const CUTRUN_REGULATORY_SUPPORT_MERGE_GAP_BP: usize = 50;
 const CUTRUN_SIGNAL_ISLAND_MIN_WIDTH_BP: usize = 20;
@@ -543,6 +546,319 @@ fn configured_cutrun_cache_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+fn cutrun_resource_key(dataset_id: &str) -> String {
+    format!("cutrun_dataset:{dataset_id}")
+}
+
+fn cutrun_now_unix_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+fn cutrun_canonical_or_display(path: &Path) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .display()
+        .to_string()
+}
+
+fn cutrun_prepare_activity_status_path(install_dir: &Path) -> PathBuf {
+    install_dir.join(CUTRUN_PREPARE_ACTIVITY_STATUS_FILE)
+}
+
+fn cutrun_prepare_activity_lock_path(install_dir: &Path) -> PathBuf {
+    install_dir.join(CUTRUN_PREPARE_ACTIVITY_LOCK_FILE)
+}
+
+fn load_cutrun_prepare_activity_status(path: &Path) -> Result<SharedAssetActivityStatus, String> {
+    let text = fs::read_to_string(path).map_err(|e| {
+        format!(
+            "Could not read CUT&RUN prepare-activity status '{}': {e}",
+            path.display()
+        )
+    })?;
+    serde_json::from_str(&text).map_err(|e| {
+        format!(
+            "Could not parse CUT&RUN prepare-activity status '{}': {e}",
+            path.display()
+        )
+    })
+}
+
+fn write_cutrun_prepare_activity_status(
+    path: &Path,
+    status: &SharedAssetActivityStatus,
+) -> Result<(), String> {
+    let parent = path.parent().ok_or_else(|| {
+        format!(
+            "CUT&RUN prepare-activity status '{}' has no parent directory",
+            path.display()
+        )
+    })?;
+    fs::create_dir_all(parent).map_err(|e| {
+        format!(
+            "Could not create CUT&RUN prepare-activity parent dir '{}': {e}",
+            parent.display()
+        )
+    })?;
+    let text = serde_json::to_string_pretty(status)
+        .map_err(|e| format!("Could not serialize CUT&RUN prepare-activity status: {e}"))?;
+    let mut tmp = NamedTempFile::new_in(parent).map_err(|e| {
+        format!(
+            "Could not create temporary CUT&RUN prepare-activity status in '{}': {e}",
+            parent.display()
+        )
+    })?;
+    tmp.write_all(text.as_bytes()).map_err(|e| {
+        format!(
+            "Could not write temporary CUT&RUN prepare-activity status in '{}': {e}",
+            parent.display()
+        )
+    })?;
+    tmp.flush().map_err(|e| {
+        format!(
+            "Could not flush temporary CUT&RUN prepare-activity status in '{}': {e}",
+            parent.display()
+        )
+    })?;
+    tmp.persist(path).map_err(|e| {
+        format!(
+            "Could not activate CUT&RUN prepare-activity status '{}': {}",
+            path.display(),
+            e.error
+        )
+    })?;
+    Ok(())
+}
+
+fn create_cutrun_prepare_activity_lock(
+    path: &Path,
+    status: &SharedAssetActivityStatus,
+) -> Result<bool, String> {
+    let parent = path.parent().ok_or_else(|| {
+        format!(
+            "CUT&RUN prepare-activity lock '{}' has no parent directory",
+            path.display()
+        )
+    })?;
+    fs::create_dir_all(parent).map_err(|e| {
+        format!(
+            "Could not create CUT&RUN prepare-activity lock parent dir '{}': {e}",
+            parent.display()
+        )
+    })?;
+    let text = serde_json::to_string_pretty(status)
+        .map_err(|e| format!("Could not serialize CUT&RUN prepare-activity lock: {e}"))?;
+    match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(mut file) => {
+            file.write_all(text.as_bytes()).map_err(|e| {
+                format!(
+                    "Could not write CUT&RUN prepare-activity lock '{}': {e}",
+                    path.display()
+                )
+            })?;
+            file.flush().map_err(|e| {
+                format!(
+                    "Could not flush CUT&RUN prepare-activity lock '{}': {e}",
+                    path.display()
+                )
+            })?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(error) => Err(format!(
+            "Could not create CUT&RUN prepare-activity lock '{}': {error}",
+            path.display()
+        )),
+    }
+}
+
+fn remove_cutrun_prepare_activity_status(path: &Path) {
+    let _ = fs::remove_file(path);
+}
+
+fn remove_cutrun_prepare_activity_lock(path: &Path) {
+    let _ = fs::remove_file(path);
+}
+
+fn cutrun_prepare_activity_is_stale(status: &SharedAssetActivityStatus, now: u128) -> bool {
+    if status.lifecycle_status != "running" {
+        return false;
+    }
+    now.saturating_sub(status.updated_at_unix_ms) > CUTRUN_PREPARE_ACTIVITY_STALE_AFTER_MS
+}
+
+fn mark_cutrun_prepare_activity_stale(
+    status_path: &Path,
+    lock_path: &Path,
+    mut status: SharedAssetActivityStatus,
+    reason: &str,
+) -> SharedAssetActivityStatus {
+    let now = cutrun_now_unix_ms();
+    status.lifecycle_status = "stale".to_string();
+    status.last_error = Some(reason.to_string());
+    status.finished_at_unix_ms = Some(now);
+    let _ = write_cutrun_prepare_activity_status(status_path, &status);
+    remove_cutrun_prepare_activity_lock(lock_path);
+    status
+}
+
+fn inspect_cutrun_prepare_activity_status_paths(
+    status_path: &Path,
+    lock_path: &Path,
+) -> Result<Option<SharedAssetActivityStatus>, String> {
+    let status_exists = status_path.exists();
+    let lock_exists = lock_path.exists();
+    if !status_exists && !lock_exists {
+        return Ok(None);
+    }
+    let status = if status_exists {
+        load_cutrun_prepare_activity_status(status_path)?
+    } else if lock_exists {
+        load_cutrun_prepare_activity_status(lock_path)?
+    } else {
+        return Ok(None);
+    };
+    if status.lifecycle_status == "running" {
+        if !lock_exists {
+            return Ok(Some(mark_cutrun_prepare_activity_stale(
+                status_path,
+                lock_path,
+                status,
+                "CUT&RUN prepare activity lost its active lock and is treated as stale",
+            )));
+        }
+        if cutrun_prepare_activity_is_stale(&status, cutrun_now_unix_ms()) {
+            return Ok(Some(mark_cutrun_prepare_activity_stale(
+                status_path,
+                lock_path,
+                status,
+                "CUT&RUN prepare activity heartbeat is stale and can be retried safely",
+            )));
+        }
+    } else if lock_exists {
+        remove_cutrun_prepare_activity_lock(lock_path);
+    }
+    Ok(Some(status))
+}
+
+fn derive_cutrun_prepare_lifecycle_status(
+    prepared: bool,
+    activity: Option<&SharedAssetActivityStatus>,
+) -> String {
+    match activity {
+        Some(activity) => activity.lifecycle_status.clone(),
+        None if prepared => "ready".to_string(),
+        None => "missing".to_string(),
+    }
+}
+
+#[derive(Debug)]
+enum CutRunPrepareActivityStart {
+    Acquired(CutRunPrepareActivityTracker),
+    Running,
+}
+
+#[derive(Debug, Clone)]
+struct CutRunPrepareActivityTracker {
+    status_path: PathBuf,
+    lock_path: PathBuf,
+    status: SharedAssetActivityStatus,
+}
+
+impl CutRunPrepareActivityTracker {
+    fn start(install_dir: &Path, dataset_id: &str) -> Result<CutRunPrepareActivityStart, String> {
+        let status_path = cutrun_prepare_activity_status_path(install_dir);
+        let lock_path = cutrun_prepare_activity_lock_path(install_dir);
+        if let Some(existing) =
+            inspect_cutrun_prepare_activity_status_paths(&status_path, &lock_path)?
+        {
+            if existing.lifecycle_status == "running" {
+                return Ok(CutRunPrepareActivityStart::Running);
+            }
+        }
+        let now = cutrun_now_unix_ms();
+        let tracker = Self {
+            status: SharedAssetActivityStatus {
+                resource_key: cutrun_resource_key(dataset_id),
+                display_name: dataset_id.to_string(),
+                status_path: cutrun_canonical_or_display(&status_path),
+                lock_path: Some(cutrun_canonical_or_display(&lock_path)),
+                lifecycle_status: "running".to_string(),
+                phase: Some("queued".to_string()),
+                item: None,
+                bytes_done: 0,
+                bytes_total: None,
+                percent: Some(0.0),
+                started_at_unix_ms: now,
+                updated_at_unix_ms: now,
+                finished_at_unix_ms: None,
+                last_error: None,
+                owner_pid: Some(std::process::id()),
+            },
+            status_path,
+            lock_path,
+        };
+        if !create_cutrun_prepare_activity_lock(&tracker.lock_path, &tracker.status)? {
+            if let Some(existing) = inspect_cutrun_prepare_activity_status_paths(
+                &tracker.status_path,
+                &tracker.lock_path,
+            )? {
+                if existing.lifecycle_status == "running" {
+                    return Ok(CutRunPrepareActivityStart::Running);
+                }
+            }
+            return Err(format!(
+                "Could not acquire a fresh CUT&RUN prepare-activity lock for '{}'",
+                dataset_id
+            ));
+        }
+        tracker.write_best_effort();
+        Ok(CutRunPrepareActivityStart::Acquired(tracker))
+    }
+
+    fn update_progress(
+        &mut self,
+        phase: &str,
+        item: Option<String>,
+        bytes_done: u64,
+        bytes_total: Option<u64>,
+    ) {
+        self.status.lifecycle_status = "running".to_string();
+        self.status.phase = Some(phase.to_string());
+        self.status.item = item;
+        self.status.bytes_done = bytes_done;
+        self.status.bytes_total = bytes_total;
+        self.status.percent = bytes_total
+            .filter(|total| *total > 0)
+            .map(|total| ((bytes_done as f64) / (total as f64) * 100.0).clamp(0.0, 100.0));
+        self.status.updated_at_unix_ms = cutrun_now_unix_ms();
+        self.status.finished_at_unix_ms = None;
+        self.status.last_error = None;
+        self.write_best_effort();
+    }
+
+    fn finish_failure(&mut self, error: &str) {
+        self.status.lifecycle_status = "failed".to_string();
+        self.status.updated_at_unix_ms = cutrun_now_unix_ms();
+        self.status.finished_at_unix_ms = Some(self.status.updated_at_unix_ms);
+        self.status.last_error = Some(error.to_string());
+        self.write_best_effort();
+        remove_cutrun_prepare_activity_lock(&self.lock_path);
+    }
+
+    fn finish_success(&mut self) {
+        remove_cutrun_prepare_activity_status(&self.status_path);
+        remove_cutrun_prepare_activity_lock(&self.lock_path);
+    }
+
+    fn write_best_effort(&self) {
+        let _ = write_cutrun_prepare_activity_status(&self.status_path, &self.status);
+    }
+}
+
 fn sanitize_for_path(value: &str) -> String {
     let mut out = String::new();
     let mut last_was_sep = false;
@@ -696,6 +1012,32 @@ impl GentleEngine {
                 install_dir.display()
             ),
         })?;
+        let mut activity_tracker =
+            match CutRunPrepareActivityTracker::start(&install_dir, &resolved_dataset_id).map_err(
+                |message| EngineError {
+                    code: ErrorCode::Io,
+                    message,
+                },
+            )? {
+                CutRunPrepareActivityStart::Acquired(tracker) => tracker,
+                CutRunPrepareActivityStart::Running => {
+                    return self.cutrun_dataset_status_from_catalog(
+                        &catalog,
+                        &resolved_dataset_id,
+                        cache_dir,
+                    );
+                }
+            };
+        let current_status =
+            self.cutrun_dataset_status_from_catalog(&catalog, &resolved_dataset_id, cache_dir)?;
+        if current_status.prepared {
+            activity_tracker.finish_success();
+            return self.cutrun_dataset_status_from_catalog(
+                &catalog,
+                &resolved_dataset_id,
+                cache_dir,
+            );
+        }
 
         let peaks_source =
             cutrun_entry_source(entry.peaks_local.as_deref(), entry.peaks_remote.as_deref());
@@ -724,63 +1066,84 @@ impl GentleEngine {
                 ),
             });
         }
+        let prepared_status = (|| -> Result<CutRunDatasetStatus, EngineError> {
+            let peaks = peaks_source
+                .as_deref()
+                .map(|source| {
+                    self.materialize_cutrun_asset(
+                        source,
+                        &entry_base_dir,
+                        &install_dir,
+                        "peaks.bed",
+                        Some(&mut activity_tracker),
+                    )
+                })
+                .transpose()?;
+            let signal = signal_source
+                .as_deref()
+                .map(|source| {
+                    self.materialize_cutrun_asset(
+                        source,
+                        &entry_base_dir,
+                        &install_dir,
+                        "signal.bigwig",
+                        Some(&mut activity_tracker),
+                    )
+                })
+                .transpose()?;
+            let reads_r1 = reads_r1_source
+                .as_deref()
+                .map(|source| {
+                    self.materialize_cutrun_asset(
+                        source,
+                        &entry_base_dir,
+                        &install_dir,
+                        "reads_r1.fastq",
+                        Some(&mut activity_tracker),
+                    )
+                })
+                .transpose()?;
+            let reads_r2 = reads_r2_source
+                .as_deref()
+                .map(|source| {
+                    self.materialize_cutrun_asset(
+                        source,
+                        &entry_base_dir,
+                        &install_dir,
+                        "reads_r2.fastq",
+                        Some(&mut activity_tracker),
+                    )
+                })
+                .transpose()?;
 
-        let peaks = peaks_source
-            .as_deref()
-            .map(|source| {
-                self.materialize_cutrun_asset(source, &entry_base_dir, &install_dir, "peaks.bed")
-            })
-            .transpose()?;
-        let signal = signal_source
-            .as_deref()
-            .map(|source| {
-                self.materialize_cutrun_asset(
-                    source,
-                    &entry_base_dir,
-                    &install_dir,
-                    "signal.bigwig",
-                )
-            })
-            .transpose()?;
-        let reads_r1 = reads_r1_source
-            .as_deref()
-            .map(|source| {
-                self.materialize_cutrun_asset(
-                    source,
-                    &entry_base_dir,
-                    &install_dir,
-                    "reads_r1.fastq",
-                )
-            })
-            .transpose()?;
-        let reads_r2 = reads_r2_source
-            .as_deref()
-            .map(|source| {
-                self.materialize_cutrun_asset(
-                    source,
-                    &entry_base_dir,
-                    &install_dir,
-                    "reads_r2.fastq",
-                )
-            })
-            .transpose()?;
-
-        let manifest = CutRunPreparedManifest {
-            schema: CUTRUN_PREPARED_MANIFEST_SCHEMA.to_string(),
-            dataset_id: resolved_dataset_id.clone(),
-            prepared_at_unix_ms: Self::now_unix_ms(),
-            catalog_origin_label: catalog.catalog_origin_label.clone(),
-            install_dir: install_dir.display().to_string(),
-            peaks,
-            signal,
-            reads_r1,
-            reads_r2,
-        };
-        self.write_cutrun_prepared_manifest(
-            &install_dir.join(CUTRUN_MANIFEST_FILE_NAME),
-            &manifest,
-        )?;
-        self.cutrun_dataset_status_from_catalog(&catalog, &resolved_dataset_id, cache_dir)
+            activity_tracker.update_progress("write_manifest", None, 0, None);
+            let manifest = CutRunPreparedManifest {
+                schema: CUTRUN_PREPARED_MANIFEST_SCHEMA.to_string(),
+                dataset_id: resolved_dataset_id.clone(),
+                prepared_at_unix_ms: Self::now_unix_ms(),
+                catalog_origin_label: catalog.catalog_origin_label.clone(),
+                install_dir: install_dir.display().to_string(),
+                peaks,
+                signal,
+                reads_r1,
+                reads_r2,
+            };
+            self.write_cutrun_prepared_manifest(
+                &install_dir.join(CUTRUN_MANIFEST_FILE_NAME),
+                &manifest,
+            )?;
+            self.cutrun_dataset_status_from_catalog(&catalog, &resolved_dataset_id, cache_dir)
+        })();
+        match prepared_status {
+            Ok(_) => {
+                activity_tracker.finish_success();
+                self.cutrun_dataset_status_from_catalog(&catalog, &resolved_dataset_id, cache_dir)
+            }
+            Err(error) => {
+                activity_tracker.finish_failure(&error.message);
+                Err(error)
+            }
+        }
     }
 
     pub fn project_cutrun_dataset(
@@ -931,6 +1294,14 @@ impl GentleEngine {
         let effective_cache_dir = catalog.cache_dir_for_entry(entry, cache_dir);
         let install_dir = effective_cache_dir.join(sanitize_for_path(&resolved_dataset_id));
         let manifest_path = install_dir.join(CUTRUN_MANIFEST_FILE_NAME);
+        let current_activity = inspect_cutrun_prepare_activity_status_paths(
+            &cutrun_prepare_activity_status_path(&install_dir),
+            &cutrun_prepare_activity_lock_path(&install_dir),
+        )
+        .map_err(|message| EngineError {
+            code: ErrorCode::Io,
+            message,
+        })?;
         let manifest = if manifest_path.exists() {
             Some(self.read_cutrun_prepared_manifest(&manifest_path)?)
         } else {
@@ -979,14 +1350,21 @@ impl GentleEngine {
             + usize::from(reads_r1_status.prepared)
             + usize::from(reads_r2_status.prepared);
         let prepared = configured_assets > 0 && configured_assets == prepared_assets;
+        let lifecycle_status =
+            derive_cutrun_prepare_lifecycle_status(prepared, current_activity.as_ref());
+        let resource_key = cutrun_resource_key(&resolved_dataset_id);
         Ok(CutRunDatasetStatus {
             schema: CUTRUN_DATASET_STATUS_SCHEMA.to_string(),
-            dataset_id: resolved_dataset_id,
+            dataset_id: resolved_dataset_id.clone(),
+            resource_key,
+            display_name: resolved_dataset_id,
             catalog_origin_label: catalog.catalog_origin_label.clone(),
             requested_catalog_path: catalog.requested_catalog_path.clone(),
             effective_cache_dir: effective_cache_dir.display().to_string(),
             install_dir: install_dir.display().to_string(),
             prepared,
+            lifecycle_status,
+            current_activity,
             description: entry.description.clone(),
             summary: entry.summary.clone(),
             species: entry.species.clone(),
@@ -1103,9 +1481,11 @@ impl GentleEngine {
         entry_base_dir: &Path,
         install_dir: &Path,
         fallback_name: &str,
+        activity_tracker: Option<&mut CutRunPrepareActivityTracker>,
     ) -> Result<CutRunPreparedAssetManifest, EngineError> {
         let file_name = source_file_name(source, fallback_name);
         let destination = install_dir.join(&file_name);
+        let mut activity_tracker = activity_tracker;
         if is_http_source(source) {
             let client = Client::builder().build().map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -1125,6 +1505,10 @@ impl GentleEngine {
                     ),
                 });
             }
+            let total = response.content_length();
+            if let Some(tracker) = activity_tracker.as_deref_mut() {
+                tracker.update_progress("download_asset", Some(file_name.clone()), 0, total);
+            }
             let mut output = File::create(&destination).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -1132,10 +1516,38 @@ impl GentleEngine {
                     destination.display()
                 ),
             })?;
-            std::io::copy(&mut response, &mut output).map_err(|e| EngineError {
+            let mut buffer = [0u8; 64 * 1024];
+            let mut bytes_done = 0u64;
+            loop {
+                let read = response.read(&mut buffer).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not read downloaded CUT&RUN asset '{}': {e}", source),
+                })?;
+                if read == 0 {
+                    break;
+                }
+                output.write_all(&buffer[..read]).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not write downloaded CUT&RUN asset '{}' to '{}': {e}",
+                        source,
+                        destination.display()
+                    ),
+                })?;
+                bytes_done = bytes_done.saturating_add(read as u64);
+                if let Some(tracker) = activity_tracker.as_deref_mut() {
+                    tracker.update_progress(
+                        "download_asset",
+                        Some(file_name.clone()),
+                        bytes_done,
+                        total,
+                    );
+                }
+            }
+            output.flush().map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
-                    "Could not write downloaded CUT&RUN asset '{}' to '{}': {e}",
+                    "Could not flush downloaded CUT&RUN asset '{}' to '{}': {e}",
                     source,
                     destination.display()
                 ),
@@ -1151,10 +1563,59 @@ impl GentleEngine {
                     ),
                 });
             }
-            fs::copy(&resolved_source, &destination).map_err(|e| EngineError {
+            let total = resolved_source.metadata().ok().map(|meta| meta.len());
+            if let Some(tracker) = activity_tracker.as_deref_mut() {
+                tracker.update_progress("copy_local_asset", Some(file_name.clone()), 0, total);
+            }
+            let mut input = File::open(&resolved_source).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
-                    "Could not copy CUT&RUN asset '{}' to '{}': {e}",
+                    "Could not open CUT&RUN asset source '{}': {e}",
+                    resolved_source.display()
+                ),
+            })?;
+            let mut output = File::create(&destination).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not create CUT&RUN asset destination '{}': {e}",
+                    destination.display()
+                ),
+            })?;
+            let mut buffer = [0u8; 64 * 1024];
+            let mut bytes_done = 0u64;
+            loop {
+                let read = input.read(&mut buffer).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not read CUT&RUN asset source '{}': {e}",
+                        resolved_source.display()
+                    ),
+                })?;
+                if read == 0 {
+                    break;
+                }
+                output.write_all(&buffer[..read]).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not copy CUT&RUN asset '{}' to '{}': {e}",
+                        resolved_source.display(),
+                        destination.display()
+                    ),
+                })?;
+                bytes_done = bytes_done.saturating_add(read as u64);
+                if let Some(tracker) = activity_tracker.as_deref_mut() {
+                    tracker.update_progress(
+                        "copy_local_asset",
+                        Some(file_name.clone()),
+                        bytes_done,
+                        total,
+                    );
+                }
+            }
+            output.flush().map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not flush copied CUT&RUN asset '{}' to '{}': {e}",
                     resolved_source.display(),
                     destination.display()
                 ),

@@ -1114,6 +1114,8 @@ For status/readiness outputs, `result.json` may additionally include:
     - `running` -> refresh status
     - `failed|cancelled|stale` -> retry
     - `ready` -> no redundant prepare offer
+  - this now includes CUT&RUN dataset status replies from `cutrun status ...`,
+    not only the shared reference/helper/resource readiness surfaces
 
 ## Dependencies
 
