@@ -63,11 +63,98 @@ def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
     assert payload["status"] in ("ok", "degraded_demo")
     assert payload["stdout_json"] is None
     assert payload["chat_summary_lines"] is None
+    assert payload["request"]["mode"] == "shell"
+    assert (
+        payload["request"]["shell_line"]
+        == "protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg"
+    )
+    assert payload["suggested_actions"] == [
+        {
+            "action_id": "learn_gentle_capabilities",
+            "label": "Learn GENtle capabilities",
+            "kind": "learn_capabilities",
+            "shell_line": "capabilities",
+            "timeout_secs": 180,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "capabilities",
+                "timeout_secs": 180,
+            },
+            "rationale": "The demo intentionally starts with one graphical export. Run `capabilities` next to inspect the broader deterministic GENtle CLI and engine surface.",
+            "requires_confirmation": False,
+        }
+    ]
     assert (output_dir / "report.md").exists()
     assert (output_dir / "result.json").exists()
     assert (output_dir / "reproducibility" / "commands.sh").exists()
     assert (output_dir / "reproducibility" / "environment.yml").exists()
     assert (output_dir / "reproducibility" / "checksums.sha256").exists()
+
+
+def test_demo_promotes_graphical_artifact_and_capabilities_followup(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        _fake_cli_with_svg_png(
+            "if [ \"${1:-}\" = \"shell\" ]; then\n"
+            "  mkdir -p artifacts\n"
+            "  cat > artifacts/gibson.two_fragment.protocol.svg <<'SVG'\n"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"600\" viewBox=\"0 0 800 600\"><rect width=\"800\" height=\"600\" fill=\"#ffffff\"/><text x=\"40\" y=\"80\">Gibson assembly demo</text></svg>\n"
+            "SVG\n"
+            "  echo '{}'\n"
+            "  exit 0\n"
+            "fi\n"
+            "echo '{}'\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "demo_out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--demo",
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "ok"
+    assert payload["chat_summary_lines"] == [
+        "Generated a deterministic GENtle protocol cartoon for a two-fragment Gibson assembly.",
+        "The ClawBio demo now starts with a graphical export so the first reply can show an actual figure instead of only listing commands.",
+        "Best-first preview artifact: generated/artifacts/gibson.two_fragment.protocol.png",
+    ]
+    assert payload["preferred_artifacts"] == [
+        {
+            "artifact_id": "gibson.two_fragment.protocol_png",
+            "path": "generated/artifacts/gibson.two_fragment.protocol.png",
+            "caption": "gibson two fragment protocol",
+            "recommended_use": "best_first_figure",
+            "presentation_rank": 0,
+            "is_best_first_artifact": True,
+            "derived_from": "artifacts/gibson.two_fragment.protocol.svg",
+        }
+    ]
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Chat Summary" in report
+    assert "## Preferred Artifacts" in report
+    assert "## Suggested Next Step" in report
+    assert "Learn GENtle capabilities" in report
+    assert "```bash" in report
+    assert "capabilities" in report
 
 
 def test_rejects_invalid_request_schema(tmp_path: Path) -> None:

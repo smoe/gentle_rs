@@ -43,6 +43,10 @@ Intended use:
    - `python clawbio.py run gentle-cloning --demo`
    - `python clawbio.py run gentle-cloning --input <request.json> --output <dir>`
 
+   The demo now starts with one deterministic graphical GENtle export so the
+   first ClawBio reply can show a figure. The broader `capabilities` command is
+   presented afterward as the suggested next step.
+
 Catalog registration:
 
 1. Copy `integrations/clawbio/skills/gentle-cloning/catalog_entry.json`

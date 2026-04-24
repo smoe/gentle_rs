@@ -27,6 +27,11 @@ RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
 SVG_DIMENSION_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)")
 CLAWBIO_GRAPHICS_SCALE = 2.0
 CLAWBIO_SVG_PNG_TIMEOUT_SECS = 300
+DEFAULT_DEMO_SHELL_LINE = (
+    "protocol-cartoon render-svg gibson.two_fragment "
+    "artifacts/gibson.two_fragment.protocol.svg"
+)
+DEFAULT_DEMO_EXPECTED_ARTIFACT = "artifacts/gibson.two_fragment.protocol.svg"
 
 
 class SkillError(RuntimeError):
@@ -1602,6 +1607,69 @@ def _extract_suggested_actions(
     return unique
 
 
+def _is_default_demo_request(request: Request | None) -> bool:
+    if request is None:
+        return False
+    return (
+        request.mode == "shell"
+        and (request.shell_line or "").strip() == DEFAULT_DEMO_SHELL_LINE
+        and request.timeout_secs == 180
+        and request.expected_artifacts == [DEFAULT_DEMO_EXPECTED_ARTIFACT]
+    )
+
+
+def _default_demo_chat_summary_lines(
+    preferred_artifacts: list[dict[str, Any]] | None,
+) -> list[str] | None:
+    if not preferred_artifacts:
+        return None
+    best_first = next(
+        (
+            artifact
+            for artifact in preferred_artifacts
+            if artifact.get("is_best_first_artifact") is True
+        ),
+        preferred_artifacts[0],
+    )
+    best_first_path = str(best_first.get("path") or "").strip()
+    if not best_first_path:
+        return None
+    return [
+        "Generated a deterministic GENtle protocol cartoon for a two-fragment Gibson assembly.",
+        (
+            "The ClawBio demo now starts with a graphical export so the first reply can "
+            "show an actual figure instead of only listing commands."
+        ),
+        f"Best-first preview artifact: {best_first_path}",
+    ]
+
+
+def _ensure_default_demo_suggested_action(
+    request: Request | None,
+    suggested_actions: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    if not _is_default_demo_request(request):
+        return suggested_actions
+    actions = list(suggested_actions or [])
+    if any(str(action.get("shell_line", "")).strip() == "capabilities" for action in actions):
+        return actions
+    actions.append(
+        _suggested_action(
+            label="Learn GENtle capabilities",
+            kind="learn_capabilities",
+            shell_line="capabilities",
+            timeout_secs=180,
+            rationale=(
+                "The demo intentionally starts with one graphical export. Run "
+                "`capabilities` next to inspect the broader deterministic GENtle "
+                "CLI and engine surface."
+            ),
+            requires_confirmation=False,
+        )
+    )
+    return actions
+
+
 def _write_report(
     path: Path,
     request: Request | None,
@@ -1690,19 +1758,40 @@ def _write_report(
             if artifact.get("recommended_use"):
                 lines.append(f"  Recommended use: `{artifact['recommended_use']}`")
     if suggested_actions:
-        lines.extend(["", "## Suggested Actions", ""])
-        for action in suggested_actions:
-            lines.append(
-                f"- `{action.get('label', 'Action')}`: `{action.get('shell_line', '(unknown)')}`"
+        if len(suggested_actions) == 1:
+            action = suggested_actions[0]
+            lines.extend(["", "## Suggested Next Step", ""])
+            lines.append(f"### {action.get('label', 'Action')}")
+            lines.extend(
+                [
+                    "",
+                    "```bash",
+                    str(action.get("shell_line", "(unknown)")),
+                    "```",
+                ]
             )
             if action.get("rationale"):
-                lines.append(f"  Why: `{action['rationale']}`")
+                lines.extend(["", f"Why: `{action['rationale']}`"])
             if action.get("requires_confirmation") is not None:
                 lines.append(
-                    "  Confirmation: `required`"
+                    "Confirmation: `required`"
                     if action["requires_confirmation"]
-                    else "  Confirmation: `not required`"
+                    else "Confirmation: `not required`"
                 )
+        else:
+            lines.extend(["", "## Suggested Actions", ""])
+            for action in suggested_actions:
+                lines.append(
+                    f"- `{action.get('label', 'Action')}`: `{action.get('shell_line', '(unknown)')}`"
+                )
+                if action.get("rationale"):
+                    lines.append(f"  Why: `{action['rationale']}`")
+                if action.get("requires_confirmation") is not None:
+                    lines.append(
+                        "  Confirmation: `required`"
+                        if action["requires_confirmation"]
+                        else "  Confirmation: `not required`"
+                    )
     if failure_summary:
         lines.extend(
             [
@@ -1827,7 +1916,12 @@ def _write_report(
 
 
 def _default_demo_request() -> Request:
-    return Request(mode="capabilities", timeout_secs=180)
+    return Request(
+        mode="shell",
+        shell_line=DEFAULT_DEMO_SHELL_LINE,
+        expected_artifacts=[DEFAULT_DEMO_EXPECTED_ARTIFACT],
+        timeout_secs=180,
+    )
 
 
 def main() -> int:
@@ -1945,6 +2039,12 @@ def main() -> int:
             preferred_artifacts,
             rasterized_pngs,
         )
+        suggested_actions = _ensure_default_demo_suggested_action(
+            request,
+            suggested_actions,
+        )
+        if chat_summary_lines is None:
+            chat_summary_lines = _default_demo_chat_summary_lines(preferred_artifacts)
     except subprocess.TimeoutExpired as e:
         request = request if request is not None else _default_demo_request()
         error_message = f"command timed out after {e.timeout} seconds"

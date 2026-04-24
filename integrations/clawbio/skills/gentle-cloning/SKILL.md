@@ -763,7 +763,7 @@ python skills/gentle-cloning/gentle_cloning.py \
   --input skills/gentle-cloning/examples/request_capabilities.json \
   --output /tmp/gentle_clawbio_run
 
-# Demo mode (capabilities check with graceful degraded-demo behavior)
+# Demo mode (graphical protocol-cartoon smoke test with graceful degraded-demo behavior)
 python skills/gentle-cloning/gentle_cloning.py \
   --demo --output /tmp/gentle_clawbio_demo
 
@@ -822,11 +822,13 @@ python skills/gentle-cloning/gentle_cloning.py \
   --demo --output /tmp/gentle_clawbio_demo
 ```
 
-Expected output: a deterministic command-execution bundle for
-`gentle_cli capabilities`, including `report.md`, `result.json`, and the
-reproducibility directory. If GENtle is not resolvable on that machine, the
-skill should still emit a degraded-demo bundle that clearly explains the missing
-resolver instead of failing silently.
+Expected output: a deterministic graphical bundle for one GENtle protocol
+cartoon export, including a PNG-first preview artifact plus `report.md`,
+`result.json`, and the reproducibility directory. The `capabilities` list is
+now offered as the suggested next command instead of being the demo payload
+itself. If GENtle is not resolvable on that machine, the skill should still
+emit a degraded-demo bundle that clearly explains the missing resolver instead
+of failing silently.
 
 When `GENTLE_CLI_CMD` points at `gentle_local_checkout_cli.sh`, the first run
 may take a while because Cargo needs to compile the local GENtle checkout and

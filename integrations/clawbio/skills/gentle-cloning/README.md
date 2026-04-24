@@ -374,6 +374,10 @@ export GENTLE_CLI_CMD='docker run --rm -i -v "$PWD":/work -w /work ghcr.io/smoe/
 python gentle_cloning.py --demo --output /tmp/gentle_clawbio_demo
 ```
 
+This now runs one deterministic graphical protocol-cartoon export as the
+first-touch demo. The follow-up `capabilities` command is surfaced as the
+suggested next step instead of being the demo payload itself.
+
 Apptainer / Singularity alternative:
 
 ```bash
