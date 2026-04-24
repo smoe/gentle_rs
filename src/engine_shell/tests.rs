@@ -4554,6 +4554,40 @@ fn parse_features_tfbs_score_tracks_svg_with_background_tail_score_kind() {
 }
 
 #[test]
+fn parse_features_tfbs_score_tracks_svg_allows_full_span_without_explicit_range() {
+    let cmd = parse_shell_line(
+        "features tfbs-score-tracks-svg seq_a /tmp/seq_a.tfbs.svg --motif \"Yamanaka factors\" --motif SP1",
+    )
+    .expect("parse full-span tfbs-score-tracks-svg");
+    match cmd {
+        ShellCommand::FeaturesTfbsScoreTracksSvg {
+            target,
+            motifs,
+            score_kind,
+            clip_negative,
+            output,
+        } => {
+            assert_eq!(
+                target,
+                SequenceScanTarget::SeqId {
+                    seq_id: "seq_a".to_string(),
+                    span_start_0based: None,
+                    span_end_0based_exclusive: None,
+                }
+            );
+            assert_eq!(
+                motifs,
+                vec!["Yamanaka factors".to_string(), "SP1".to_string()]
+            );
+            assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBits);
+            assert!(clip_negative);
+            assert_eq!(output, "/tmp/seq_a.tfbs.svg");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_features_tfbs_score_tracks_svg_for_inline_target() {
     let cmd = parse_shell_line(
         "features tfbs-score-tracks-svg --sequence-text ACGTACGTACGT --topology circular --id-hint inline_tp73 --output /tmp/inline.tfbs.svg --motif SP1 --range 2..10",
@@ -10099,6 +10133,39 @@ fn execute_features_tfbs_score_tracks_svg_matches_inline_and_stored_targets() {
         fs::read_to_string(&inline_output)
             .expect("inline svg")
             .contains("tp73_context")
+    );
+}
+
+#[test]
+fn execute_resources_resolve_tf_query_reports_builtin_groups_and_aliases() {
+    let mut engine = GentleEngine::new();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesResolveTfQuery {
+            queries: vec!["Yamanaka factors".to_string(), "OCT4".to_string()],
+            output: None,
+        },
+    )
+    .expect("resources resolve-tf-query");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["result"]["tf_query_resolution_report"]["schema"].as_str(),
+        Some("gentle.tf_query_resolution.v1")
+    );
+    assert_eq!(
+        run.output["result"]["tf_query_resolution_report"]["returned_query_count"].as_u64(),
+        Some(2)
+    );
+    assert_eq!(
+        run.output["result"]["tf_query_resolution_report"]["entries"][0]["resolution_kind"]
+            .as_str(),
+        Some("builtin_group")
+    );
+    assert_eq!(
+        run.output["result"]["tf_query_resolution_report"]["entries"][1]["resolution_kind"]
+            .as_str(),
+        Some("exact_motif")
     );
 }
 

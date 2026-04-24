@@ -1334,6 +1334,57 @@ pub struct JasparCatalogReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One motif matched while resolving a user-facing TF query or TF-group token.
+pub struct TfQueryResolutionMatch {
+    pub motif_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motif_name: Option<String>,
+    pub consensus_iupac: String,
+    pub motif_length_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Resolution result for one user-facing TF query token.
+pub struct TfQueryResolutionEntry {
+    pub query: String,
+    pub normalized_query: String,
+    pub resolution_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub matches: Vec<TfQueryResolutionMatch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unresolved_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable report for resolving user-facing TF/group/family queries into local
+/// motif-registry entries.
+pub struct TfQueryResolutionReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub queries: Vec<String>,
+    pub returned_query_count: usize,
+    pub matched_motif_count: usize,
+    #[serde(default)]
+    pub entries: Vec<TfQueryResolutionEntry>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One species assignment reported by optional remote JASPAR metadata.
 pub struct JasparSpeciesAssignment {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2608,6 +2659,8 @@ pub struct OpResult {
     pub jaspar_remote_metadata_snapshot: Option<JasparRemoteMetadataSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jaspar_catalog_report: Option<JasparCatalogReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_query_resolution_report: Option<TfQueryResolutionReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jaspar_entry_expert_view: Option<JasparEntryExpertView>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

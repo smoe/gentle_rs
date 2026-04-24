@@ -1884,6 +1884,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "resources status",
             180,
         ),
+        "request_resources_resolve_tf_query_stemness_oct4_klf.json": (
+            "shell",
+            'resources resolve-tf-query stemness OCT4 "KLF family" --output artifacts/tf_query_resolution.stemness_oct4_klf.json',
+            180,
+        ),
+        "request_resources_summarize_jaspar_stemness_sp1.json": (
+            "shell",
+            "resources summarize-jaspar --motif stemness --motif SP1 --random-length 10000 --seed 123 --output artifacts/jaspar_stemness_sp1.presentation.json",
+            180,
+        ),
         "request_services_status.json": (
             "shell",
             "services status",
@@ -1954,6 +1964,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             'genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53',
             1200,
         ),
+        "request_genomes_extract_promoter_tert_auto_prepare.json": (
+            "shell",
+            'genomes extract-promoter "Human GRCh38 Ensembl 116" TERT --output-id grch38_tert_promoter --upstream-bp 1000 --downstream-bp 200',
+            1200,
+        ),
         "request_genomes_blast_grch38_short.json": (
             "shell",
             'genomes blast "Human GRCh38 Ensembl 116" ACGTACGTACGT --task blastn-short --max-hits 10',
@@ -1972,6 +1987,21 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         "request_scan_tfbs_hits_inline_sequence_sp1_tp73.json": (
             "op",
             None,
+            180,
+        ),
+        "request_scan_tfbs_hits_grch38_tert_promoter_stemness_sp1.json": (
+            "shell",
+            "features tfbs-scan grch38_tert_promoter --motif stemness --motif SP1 --min-llr-quantile 0.95 --max-hits 100 --path artifacts/grch38_tert_promoter.stemness_sp1.tfbs_scan.json",
+            180,
+        ),
+        "request_render_svg_grch38_tert_promoter_stemness_sp1.json": (
+            "shell",
+            "features tfbs-score-tracks-svg grch38_tert_promoter artifacts/grch38_tert_promoter.stemness_sp1.tfbs.svg --motif stemness --motif SP1 --score-kind llr_background_tail_log10",
+            180,
+        ),
+        "request_tfbs_track_similarity_grch38_tert_promoter_sp1_stemness.json": (
+            "shell",
+            "features tfbs-track-similarity grch38_tert_promoter --anchor-motif SP1 --candidate-motif stemness --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species \"Homo sapiens\" --include-remote-metadata --limit 25 --path artifacts/grch38_tert_promoter.sp1_vs_stemness.similarity.json",
             180,
         ),
         "request_workflow_tp73_tfbs_score_tracks_summary.json": (
@@ -2075,6 +2105,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_export_bed_rs9923231_vkorc1_context_features.json",
             "request_genomes_extract_gene_tp53.json",
             "request_genomes_extract_gene_tp53_auto_prepare.json",
+            "request_genomes_extract_promoter_tert_auto_prepare.json",
             "request_tfbs_summary_pgex_fasta.json",
             "request_inspect_feature_expert_pgex_fasta_tfbs.json",
             "request_render_feature_expert_pgex_fasta_tfbs_svg.json",
@@ -2084,6 +2115,9 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_inspect_feature_expert_tp53_splicing.json",
             "request_export_bed_grch38_tp53_gene_models.json",
             "request_render_svg_pgex_fasta_circular.json",
+            "request_scan_tfbs_hits_grch38_tert_promoter_stemness_sp1.json",
+            "request_render_svg_grch38_tert_promoter_stemness_sp1.json",
+            "request_tfbs_track_similarity_grch38_tert_promoter_sp1_stemness.json",
         }:
             assert payload["state_path"] == ".gentle_state.json"
         if name == "request_protocol_cartoon_gibson_svg.json":
@@ -2124,6 +2158,21 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 "cache_dir": "data/genomes",
                 "prepare_timeout_secs": 7200,
             }
+        if name == "request_genomes_extract_promoter_tert_auto_prepare.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert payload["ensure_reference_prepared"] == {
+                "genome_id": "Human GRCh38 Ensembl 116",
+                "catalog_path": "assets/genomes.json",
+                "prepare_timeout_secs": 7200,
+            }
+        if name == "request_resources_resolve_tf_query_stemness_oct4_klf.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/tf_query_resolution.stemness_oct4_klf.json"
+            ]
+        if name == "request_resources_summarize_jaspar_stemness_sp1.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/jaspar_stemness_sp1.presentation.json"
+            ]
         if name == "request_workflow_vkorc1_planning.json":
             assert payload["state_path"] == ".gentle_state.json"
             assert payload["expected_artifacts"] == [
@@ -2266,6 +2315,18 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         if name == "request_export_bed_grch38_tp53_gene_models.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/grch38_tp53.gene_models.bed"
+            ]
+        if name == "request_scan_tfbs_hits_grch38_tert_promoter_stemness_sp1.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/grch38_tert_promoter.stemness_sp1.tfbs_scan.json"
+            ]
+        if name == "request_render_svg_grch38_tert_promoter_stemness_sp1.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/grch38_tert_promoter.stemness_sp1.tfbs.svg"
+            ]
+        if name == "request_tfbs_track_similarity_grch38_tert_promoter_sp1_stemness.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/grch38_tert_promoter.sp1_vs_stemness.similarity.json"
             ]
         if name == "request_protocol_cartoon_qpcr_svg.json":
             assert payload["expected_artifacts"] == [

@@ -357,10 +357,14 @@ Current shared GENtle routes behind this capability:
 - `SummarizeTfbsRegion`
 - `SummarizeTfbsScoreTracks` with stored or inline `SequenceScanTarget`
 - `RenderTfbsScoreTracksSvg` with stored or inline `SequenceScanTarget`
+- `SummarizeTfbsTrackSimilarity` with stored or inline `SequenceScanTarget`
 - `SummarizeJasparEntries`
+- `ResolveTfQueries`
 - `features tfbs-summary ...`
 - `features tfbs-score-tracks-svg ...`
+- `features tfbs-track-similarity ...`
 - `resources summarize-jaspar ...`
+- `resources resolve-tf-query ...`
 - `inspect-feature-expert SEQ_ID tfbs FEATURE_ID`
 - `render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg`
 - `features export-bed ... --kind TFBS`
@@ -372,9 +376,19 @@ Expected outputs:
 - grouped focus-vs-context TFBS summaries
 - continuous TFBS/PSSM score-track JSON reports
 - TFBS score-track SVG figures
+- TFBS track-similarity JSON reports for one anchor factor vs one candidate set
 - JASPAR entry-presentation JSON for motif-level background/max/min context
+- TF-query resolution JSON that shows how aliases, family names, or functional
+  groups map to concrete motifs
 - TFBS expert text
 - TFBS expert SVG or linear-sequence SVG with TFBS display enabled
+
+Shared TF query semantics for this capability:
+
+- exact motif ids / TF names are valid
+- common aliases such as `OCT4` are valid
+- built-in functional groups such as `Yamanaka factors` / `stemness` are valid
+- family-like queries such as `KLF family` are valid
 
 ### 3. Restriction Analysis
 
@@ -1005,12 +1019,33 @@ Apply the following methodology:
       isoform derivation, renders a protein spot map with pI on the X axis
       and molecular weight on the Y axis, and lets ClawBio rasterize the SVG
       into the PNG-first bundle contract
-  - `examples/request_resources_summarize_jaspar_sp1_rest.json`
-    - motif-presentation example: summarizes local JASPAR entries for SP1 and
-      REST into one deterministic background/max/min report
-  - `examples/request_workflow_vkorc1_planning.json`
-    - the main graphical answer for "functional analyses of genetic
-      variations" in the current scaffold
+- `examples/request_resources_summarize_jaspar_sp1_rest.json`
+  - motif-presentation example: summarizes local JASPAR entries for SP1 and
+    REST into one deterministic background/max/min report
+- `examples/request_resources_resolve_tf_query_stemness_oct4_klf.json`
+  - lightweight TF-query audit example: resolves a functional group alias
+    (`stemness`), a common TF alias (`OCT4`), and one family-like query
+    (`KLF family`) into concrete local motifs before downstream analysis
+- `examples/request_resources_summarize_jaspar_stemness_sp1.json`
+  - same motif-presentation path, but driven by a functional TF group alias
+    plus one exact TF
+- `examples/request_genomes_extract_promoter_tert_auto_prepare.json`
+  - dynamic promoter-slice example: derives one `TERT` upstream window from the
+    prepared local GRCh38 Ensembl reference, preparing it first if needed
+- `examples/request_scan_tfbs_hits_grch38_tert_promoter_stemness_sp1.json`
+  - follow-on route after the promoter extraction example that returns
+    discrete promoter hit locations for a functional TF group plus SP1
+- `examples/request_render_svg_grch38_tert_promoter_stemness_sp1.json`
+  - follow-on route after the promoter extraction example that exports the
+    continuous promoter score-track figure without forcing a hard-coded
+    TP73/TP53 walkthrough
+- `examples/request_tfbs_track_similarity_grch38_tert_promoter_sp1_stemness.json`
+  - follow-on route after the promoter extraction example that ranks the
+    requested stemness/Yamanaka factors by similarity to SP1 over the same
+    promoter span
+- `examples/request_workflow_vkorc1_planning.json`
+  - the main graphical answer for "functional analyses of genetic
+    variations" in the current scaffold
     - replays the VKORC1 / rs9923231 promoter-luciferase workflow and copies
       the promoter-context plus paired reporter SVGs into the wrapper bundle
     - the wrapper then synthesizes one provenance
@@ -1099,6 +1134,11 @@ Apply the following methodology:
 - "Show TFBS score tracks over this promoter window."
 - "Export the TP73 promoter TFBS score-track figure."
 - "Summarize the local JASPAR SP1 and REST motif entries."
+- "Resolve `stemness`, `OCT4`, or `KLF family` into the exact local motif set
+  before scanning this promoter."
+- "Extract the promoter for TERT, MYC, or another gene I choose and scan it for
+  Yamanaka-factor or SP1 support."
+- "Compare SP1 against the Yamanaka factors on the promoter of my chosen gene."
 - "Summarize TFBS hits near this SNP and also render the chosen TFBS as an
   expert figure."
 - "Show me the EcoRI cleavage context as both text and SVG."

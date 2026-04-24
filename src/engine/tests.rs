@@ -30034,6 +30034,36 @@ fn summarize_tfbs_score_tracks_supports_inline_sequence_targets() {
 }
 
 #[test]
+fn summarize_tfbs_score_tracks_expands_builtin_tf_groups() {
+    let engine = GentleEngine::new();
+    let report = engine
+        .summarize_tfbs_score_tracks(
+            SequenceScanTarget::InlineSequence {
+                sequence_text: "ACGT".repeat(50),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("inline_promoter".to_string()),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
+            &[String::from("Yamanaka factors"), String::from("SP1")],
+            TfbsScoreTrackValueKind::LlrQuantile,
+            true,
+        )
+        .expect("score tracks with builtin group");
+
+    let tf_ids = report
+        .tracks
+        .iter()
+        .map(|row| row.tf_name.clone().unwrap_or_else(|| row.tf_id.clone()))
+        .collect::<Vec<_>>();
+    assert!(tf_ids.contains(&"POU5F1".to_string()));
+    assert!(tf_ids.contains(&"SOX2".to_string()));
+    assert!(tf_ids.contains(&"KLF4".to_string()));
+    assert!(tf_ids.contains(&"MYC".to_string()));
+    assert!(tf_ids.contains(&"SP1".to_string()));
+}
+
+#[test]
 fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() {
     let engine = GentleEngine::new();
     let report = engine
@@ -30064,6 +30094,57 @@ fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() 
     assert!(row.maximizing_llr_quantile >= row.minimizing_llr_quantile);
     assert!(row.maximizing_true_log_odds_bits >= row.minimizing_true_log_odds_bits);
     assert!(row.maximizing_true_log_odds_quantile >= row.minimizing_true_log_odds_quantile);
+}
+
+#[test]
+fn summarize_jaspar_entries_expands_builtin_tf_groups() {
+    let engine = GentleEngine::new();
+    let report = engine
+        .summarize_jaspar_entries(&["Yamanaka factors".to_string()], 10_000, 12345)
+        .expect("summarize builtin tf group");
+
+    let motif_names = report
+        .rows
+        .iter()
+        .map(|row| {
+            row.motif_name
+                .clone()
+                .unwrap_or_else(|| row.motif_id.clone())
+        })
+        .collect::<Vec<_>>();
+    assert!(motif_names.contains(&"POU5F1".to_string()));
+    assert!(motif_names.contains(&"SOX2".to_string()));
+    assert!(motif_names.contains(&"KLF4".to_string()));
+    assert!(motif_names.contains(&"MYC".to_string()));
+}
+
+#[test]
+fn apply_resolve_tf_queries_operation_returns_group_and_alias_matches() {
+    let mut engine = GentleEngine::new();
+    let result = engine
+        .apply(Operation::ResolveTfQueries {
+            queries: vec!["Yamanaka factors".to_string(), "OCT4".to_string()],
+            path: None,
+        })
+        .expect("resolve tf queries");
+
+    let report = result
+        .tf_query_resolution_report
+        .expect("tf query resolution report");
+    assert_eq!(report.schema, "gentle.tf_query_resolution.v1");
+    assert_eq!(report.returned_query_count, 2);
+    assert_eq!(report.entries[0].resolution_kind, "builtin_group");
+    assert!(
+        report.entries[0]
+            .matches
+            .iter()
+            .any(|row| row.motif_name.as_deref() == Some("POU5F1"))
+    );
+    assert_eq!(report.entries[1].resolution_kind, "exact_motif");
+    assert_eq!(
+        report.entries[1].matches[0].motif_name.as_deref(),
+        Some("POU5F1")
+    );
 }
 
 #[test]

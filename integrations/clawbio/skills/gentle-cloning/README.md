@@ -546,6 +546,28 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_resources_summarize_jaspar_sp1_rest.json`
   - motif-presentation example that summarizes local JASPAR entries for SP1
     and REST into one deterministic background/max/min report
+- `examples/request_resources_resolve_tf_query_stemness_oct4_klf.json`
+  - lightweight TF-query audit example that resolves one functional group alias
+    (`stemness`), one common TF alias (`OCT4`), and one family-like query
+    (`KLF family`) into concrete local motifs
+- `examples/request_resources_summarize_jaspar_stemness_sp1.json`
+  - same motif-presentation path, but driven by a functional TF group alias
+    plus one exact TF
+- `examples/request_genomes_extract_promoter_tert_auto_prepare.json`
+  - dynamic promoter-slice example that derives one `TERT` upstream window
+    from the prepared local GRCh38 Ensembl reference, preparing it first if
+    needed
+- `examples/request_scan_tfbs_hits_grch38_tert_promoter_stemness_sp1.json`
+  - follow-on route after the promoter extraction example that returns
+    discrete promoter hit locations for a functional TF group plus SP1
+- `examples/request_render_svg_grch38_tert_promoter_stemness_sp1.json`
+  - follow-on route after the promoter extraction example that exports the
+    continuous promoter score-track figure without forcing the older TP73-only
+    walkthrough
+- `examples/request_tfbs_track_similarity_grch38_tert_promoter_sp1_stemness.json`
+  - follow-on route after the promoter extraction example that ranks the
+    requested stemness/Yamanaka factors by similarity to SP1 over the same
+    promoter span
 - `examples/request_render_svg_pgex_fasta_circular.json`
   - expects a state containing `pgex_fasta`, for example after running
     `examples/request_workflow_file.json`

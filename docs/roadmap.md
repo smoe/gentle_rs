@@ -1404,6 +1404,13 @@ order. Durable architecture constraints and decisions remain in
           through the shared `ensembl-gene fetch|list|show|import-sequence`
           route, so ClawBio can do lightweight live gene retrieval without
           whole-reference preparation
+        - shared TF query resolution is now in place for CLI/ClawBio-facing
+          promoter work too:
+          aliases such as `OCT4`, built-in groups such as `Yamanaka factors` /
+          `stemness`, and family-like queries such as `KLF family` now expand
+          deterministically across JASPAR summaries, TFBS score tracks,
+          TFBS hit scans, and TFBS-track similarity reports, so users are no
+          longer forced into the TP73/TP53-centric walkthrough wording
         - live Ensembl retrieval smoke coverage now uses an explicit internet
           probe and skips cleanly when offline instead of failing local test
           runs that have no network access

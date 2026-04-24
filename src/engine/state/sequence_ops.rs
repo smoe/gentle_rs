@@ -2141,6 +2141,133 @@ impl GentleEngine {
         })
     }
 
+    pub(super) fn expand_tf_query_tokens(tokens: &[String]) -> Result<Vec<String>, EngineError> {
+        let mut expanded = vec![];
+        let mut seen = BTreeSet::new();
+        for token in tokens {
+            let trimmed = token.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if matches!(trimmed.to_ascii_uppercase().as_str(), "ALL" | "*") {
+                for summary in crate::tf_motifs::list_motif_summaries() {
+                    if seen.insert(summary.id.clone()) {
+                        expanded.push(summary.name.unwrap_or(summary.id));
+                    }
+                }
+                continue;
+            }
+            if tf_motifs::resolve_motif_definition(trimmed).is_some() {
+                let (tf_id, tf_name, _consensus, _matrix_counts) =
+                    Self::resolve_tf_motif_for_scoring(trimmed)?;
+                if seen.insert(tf_id.clone()) {
+                    expanded.push(tf_name.unwrap_or(tf_id));
+                }
+                continue;
+            }
+            if trimmed
+                .as_bytes()
+                .iter()
+                .all(|b| IupacCode::is_valid_letter(*b))
+            {
+                if seen.insert(trimmed.to_ascii_uppercase()) {
+                    expanded.push(trimmed.to_ascii_uppercase());
+                }
+                continue;
+            }
+            let resolution = tf_motifs::resolve_tf_query(trimmed);
+            if resolution.matches.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "TF query '{}' did not match a local motif, a built-in TF group, or a family-like motif-name prefix",
+                        trimmed
+                    ),
+                });
+            }
+            for matched in resolution.matches {
+                let candidate_token =
+                    if tf_motifs::resolve_motif_definition(&matched.motif_id).is_some() {
+                        matched.motif_id
+                    } else if let Some(name) = matched
+                        .motif_name
+                        .as_deref()
+                        .filter(|name| tf_motifs::resolve_motif_definition(name).is_some())
+                    {
+                        name.to_string()
+                    } else {
+                        matched.motif_id
+                    };
+                let (tf_id, tf_name, _consensus, _matrix_counts) =
+                    Self::resolve_tf_motif_for_scoring(&candidate_token)?;
+                if seen.insert(tf_id.clone()) {
+                    expanded.push(tf_name.unwrap_or(tf_id));
+                }
+            }
+        }
+        if expanded.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "At least one TF motif or TF query is required".to_string(),
+            });
+        }
+        Ok(expanded)
+    }
+
+    pub(super) fn resolve_tf_queries_report(
+        queries: &[String],
+    ) -> Result<TfQueryResolutionReport, EngineError> {
+        let mut normalized_queries = queries
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if normalized_queries.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ResolveTfQueries requires at least one non-empty query".to_string(),
+            });
+        }
+        normalized_queries.dedup();
+        let entries = normalized_queries
+            .iter()
+            .map(|query| {
+                let resolution = tf_motifs::resolve_tf_query(query);
+                TfQueryResolutionEntry {
+                    query: resolution.query,
+                    normalized_query: resolution.normalized_query,
+                    resolution_kind: resolution.resolution_kind,
+                    label: resolution.label,
+                    description: resolution.description,
+                    aliases: resolution.aliases,
+                    matches: resolution
+                        .matches
+                        .into_iter()
+                        .map(|row| TfQueryResolutionMatch {
+                            motif_id: row.motif_id,
+                            motif_name: row.motif_name,
+                            consensus_iupac: row.consensus_iupac,
+                            motif_length_bp: row.motif_length_bp,
+                        })
+                        .collect(),
+                    unresolved_reason: resolution.unresolved_reason,
+                }
+            })
+            .collect::<Vec<_>>();
+        let matched_motif_count = entries.iter().map(|entry| entry.matches.len()).sum();
+        Ok(TfQueryResolutionReport {
+            schema: TF_QUERY_RESOLUTION_REPORT_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            queries: normalized_queries,
+            returned_query_count: entries.len(),
+            matched_motif_count,
+            entries,
+            warnings: vec![],
+        })
+    }
+
     pub(super) fn validate_tf_thresholds(min_llr_quantile: f64) -> Result<(), EngineError> {
         if !(0.0..=1.0).contains(&min_llr_quantile) {
             return Err(EngineError {

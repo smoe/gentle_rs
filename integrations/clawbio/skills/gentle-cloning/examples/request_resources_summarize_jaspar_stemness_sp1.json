@@ -1,0 +1,9 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "resources summarize-jaspar --motif stemness --motif SP1 --random-length 10000 --seed 123 --output artifacts/jaspar_stemness_sp1.presentation.json",
+  "expected_artifacts": [
+    "artifacts/jaspar_stemness_sp1.presentation.json"
+  ],
+  "timeout_secs": 180
+}

@@ -1016,6 +1016,7 @@ impl GentleEngine {
                 message: "SummarizeTfbsScoreTracks requires at least one motif".to_string(),
             });
         }
+        let effective_motifs = Self::expand_tf_query_tokens(motifs)?;
         let tss_source_seq_id = match &target {
             SequenceScanTarget::SeqId { seq_id, .. } => Some(seq_id.clone()),
             SequenceScanTarget::InlineSequence { .. } => None,
@@ -1039,9 +1040,9 @@ impl GentleEngine {
 
         let mut tracks = vec![];
         let mut global_max_score = 0.0_f64;
-        let motif_count = motifs.len();
+        let motif_count = effective_motifs.len();
         const SCORE_TRACK_STAGE_COUNT: usize = 2;
-        for (motif_idx, motif) in motifs.iter().enumerate() {
+        for (motif_idx, motif) in effective_motifs.iter().enumerate() {
             let (tf_id, tf_name, _consensus, matrix_counts) =
                 Self::resolve_tf_motif_for_scoring(motif)?;
             let (llr_matrix, true_log_odds_matrix) = Self::prepare_scoring_matrices(&matrix_counts);
@@ -1460,7 +1461,7 @@ impl GentleEngine {
         let requested_candidate_tokens = if candidate_scope == "all_registry" {
             crate::tf_motifs::all_motif_ids()
         } else {
-            candidate_motifs.to_vec()
+            Self::expand_tf_query_tokens(candidate_motifs)?
         };
         if requested_candidate_tokens.is_empty() {
             return Err(EngineError {
@@ -1653,19 +1654,7 @@ impl GentleEngine {
         op_id: Option<&str>,
         run_id: Option<&str>,
     ) -> Result<TfbsHitScanReport, EngineError> {
-        let effective_motifs = if motifs.len() == 1
-            && matches!(motifs[0].trim().to_ascii_uppercase().as_str(), "ALL" | "*")
-        {
-            crate::tf_motifs::all_motif_ids()
-        } else {
-            motifs.to_vec()
-        };
-        if effective_motifs.is_empty() {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: "ScanTfbsHits requires at least one motif".to_string(),
-            });
-        }
+        let effective_motifs = Self::expand_tf_query_tokens(motifs)?;
 
         let default_min_llr_quantile = min_llr_quantile.unwrap_or(0.0);
         Self::validate_tf_thresholds(default_min_llr_quantile)?;

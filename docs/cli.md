@@ -465,7 +465,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -1501,6 +1501,7 @@ cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resourc
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
 cargo run --bin gentle_cli -- resources sync-jaspar-remote-metadata --filter TP --limit 50 data/resources/jaspar.remote_metadata.json
 cargo run --bin gentle_cli -- resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output jaspar.summary.json
+cargo run --bin gentle_cli -- shell 'resources resolve-tf-query "Yamanaka factors" OCT4 "KLF family" --output tf_queries.json'
 cargo run --bin gentle_cli -- resources benchmark-jaspar --random-length 10000 --seed 123 --output data/resources/jaspar.registry_benchmark.json
 cargo run --bin gentle_cli -- resources list-jaspar --filter TP --limit 50 --output jaspar.catalog.json
 cargo run --bin gentle_cli -- resources inspect-jaspar SP1 --random-length 10000 --seed 123 --fetch-remote --output jaspar.expert.json
@@ -1672,6 +1673,7 @@ Shared shell command:
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
     - `resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]`
     - `resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]`
+    - `resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]`
     - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
@@ -1756,6 +1758,8 @@ Shared shell command:
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
     - `features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]`
     - `features tfbs-score-tracks-svg --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]`
+    - `features tfbs-track-similarity SEQ_ID --anchor-motif TOKEN [--candidate-motif TOKEN ...|--candidate-motifs CSV|--candidate-motif ALL] [--range START..END|--start N --end N] [--ranking-metric raw_pearson|smoothed_pearson|raw_spearman|smoothed_spearman] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--species TEXT] [--include-remote-metadata] [--limit N] [--path FILE.json]`
+    - `features tfbs-track-similarity --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --anchor-motif TOKEN [--candidate-motif TOKEN ...|--candidate-motifs CSV|--candidate-motif ALL] [--range START..END|--start N --end N] [--ranking-metric raw_pearson|smoothed_pearson|raw_spearman|smoothed_spearman] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--species TEXT] [--include-remote-metadata] [--limit N] [--path FILE.json]`
       - the background-normalized score kinds suppress everything below the
         `0.95` modeled random-background quantile and can show either the
         surviving mid-rank percentile itself or `-log10(background tail)`
@@ -1768,6 +1772,10 @@ Shared shell command:
       - the same JSON payload now also includes pairwise raw/smoothed
         correlation summaries and primary-peak offsets so agent/CLI workflows
         can judge whether strong motif neighborhoods are actually synchronized
+      - motif tokens accept exact ids/names, aliases like `OCT4`, built-in
+        groups like `Yamanaka factors` / `stemness`, and family-like queries
+        like `KLF family`
+      - omitting `--range` uses the full selected/stored sequence span
       - stacked SVG labels now render as `TF name (JASPAR id)` when possible,
         and TSS context uses one shared dashed line with a single top-level
         kinked arrow if feature-derived or promoter-provenance TSS metadata is
@@ -1787,6 +1795,8 @@ Shared shell command:
         primary-peak offsets visible for quick promoter interpretation
     - `features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
     - `features tfbs-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
+      - the same motif-token expansion rules apply here too, so promoter scans
+        can use aliases, family-style queries, or functional groups
     - `features restriction-scan SEQ_ID [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
     - `features restriction-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
     - `variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]`
@@ -2211,6 +2221,12 @@ Shared shell command:
       - anchor-vs-candidate similarity ranking through the same shell/CLI
         family:
         - `gentle_cli shell 'features tfbs-track-similarity tp73_context --anchor-motif TP73 --candidate-motif ALL --range 15564..16764 --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species "Homo sapiens" --include-remote-metadata --limit 25 --path /tmp/tp73_tfbs_similarity.json'`
+      - dynamic promoter workflow example:
+        - `gentle_cli shell 'resources resolve-tf-query "Yamanaka factors" OCT4 "KLF family" --output /tmp/tf_queries.json'`
+        - `gentle_cli genomes extract-promoter "Human GRCh38 Ensembl 116" TERT --output-id grch38_tert_promoter --upstream-bp 1000 --downstream-bp 200`
+        - `gentle_cli shell 'features tfbs-scan grch38_tert_promoter --motif "Yamanaka factors" --motif SP1 --min-llr-quantile 0.95 --max-hits 100 --path /tmp/tert_tfbs_scan.json'`
+        - `gentle_cli shell 'features tfbs-score-tracks-svg grch38_tert_promoter /tmp/tert_yamanaka_sp1_tracks.svg --motif "Yamanaka factors" --motif SP1 --score-kind llr_background_tail_log10'`
+        - `gentle_cli shell 'features tfbs-track-similarity grch38_tert_promoter --anchor-motif SP1 --candidate-motif "Yamanaka factors" --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species "Homo sapiens" --include-remote-metadata --limit 25 --path /tmp/tert_sp1_yamanaka_similarity.json'`
       - `--score-kind` now lets you inspect raw bit scores, in-window
         quantiles, random-background percentiles, or `-log10(background tail)`
         views; the background-tail modes are the best first pass when random
@@ -2702,8 +2718,23 @@ Resource sync commands:
     - a minimizing sequence,
     - and `llr_bits` / `true_log_odds_bits` score distributions on one deterministic pseudorandom DNA background.
   - Omitting `--motif` and `--motifs` summarizes the full active local JASPAR registry.
+  - `TOKEN` accepts:
+    - exact motif ids or TF names,
+    - common aliases such as `OCT4`,
+    - built-in functional groups such as `Yamanaka factors` / `stemness`,
+    - and family-like queries such as `KLF family`.
   - Default background length: `10000 bp`.
   - Default seed: one built-in deterministic seed so agent/CLI runs remain reproducible.
+- `resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]`
+  - Resolves user-facing TF queries into the exact local motif ids/names that
+    GENtle will use for downstream TFBS/JASPAR routes.
+  - This is the lightweight inspection route for:
+    - exact ids/names,
+    - aliases such as `OCT4`,
+    - functional groups such as `Yamanaka factors` / `stemness`,
+    - and family-like queries such as `KLF family`.
+  - Output includes per-query resolution rows plus the expanded motif ids so
+    ClawBio/CLI users can audit what a natural-language TF query mapped to.
 - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
   - Benchmarks the full active local JASPAR registry through one deterministic
     shared background and writes an export-ready drift snapshot.

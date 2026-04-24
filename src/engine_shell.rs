@@ -950,6 +950,10 @@ pub enum ShellCommand {
         fetch_remote: bool,
         output: Option<String>,
     },
+    ResourcesResolveTfQuery {
+        queries: Vec<String>,
+        output: Option<String>,
+    },
     ResourcesInspectJaspar {
         motif: String,
         random_sequence_length_bp: usize,
@@ -5709,6 +5713,12 @@ impl ShellCommand {
                     .map(|value| format!(", limit={value}"))
                     .unwrap_or_default(),
                 fetch_remote,
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::ResourcesResolveTfQuery { queries, output } => format!(
+                "resolve {} TF quer{} against the local motif registry (output='{}')",
+                queries.len(),
+                if queries.len() == 1 { "y" } else { "ies" },
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ResourcesSyncAttract { input, output } => {
@@ -15575,6 +15585,43 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         output,
                     })
                 }
+                "resolve-tf-query" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources resolve-tf-query requires QUERY [QUERY ...] [--output PATH]"
+                                .to_string(),
+                        );
+                    }
+                    let mut queries: Vec<String> = vec![];
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other if other.starts_with("--") => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources resolve-tf-query"
+                                ));
+                            }
+                            _ => {
+                                queries.push(tokens[idx].clone());
+                                idx += 1;
+                            }
+                        }
+                    }
+                    if queries.is_empty() {
+                        return Err(
+                            "resources resolve-tf-query requires at least one QUERY".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::ResourcesResolveTfQuery { queries, output })
+                }
                 "status" => {
                     if tokens.len() != 2 {
                         return Err("resources status takes no additional arguments".to_string());
@@ -15582,7 +15629,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     Ok(ShellCommand::ResourcesStatus)
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, inspect-jaspar or sync-attract)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, resolve-tf-query, inspect-jaspar or sync-attract)"
                 )),
             }
         }
@@ -18485,6 +18532,18 @@ fn execute_export_import_and_resource_command(
                     limit: *limit,
                     include_remote_metadata: *fetch_remote,
                     refresh_remote_metadata: *fetch_remote,
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ResourcesResolveTfQuery { queries, output } => {
+            let op_result = engine
+                .apply(Operation::ResolveTfQueries {
+                    queries: queries.clone(),
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -24817,6 +24876,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
             | ShellCommand::ResourcesBenchmarkJaspar { .. }
             | ShellCommand::ResourcesListJaspar { .. }
+            | ShellCommand::ResourcesResolveTfQuery { .. }
             | ShellCommand::ResourcesInspectJaspar { .. }
             | ShellCommand::ResourcesSummarizeJaspar { .. }
             | ShellCommand::ResourcesSyncAttract { .. }
@@ -25393,6 +25453,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
         | ShellCommand::ResourcesBenchmarkJaspar { .. }
         | ShellCommand::ResourcesListJaspar { .. }
+        | ShellCommand::ResourcesResolveTfQuery { .. }
         | ShellCommand::ResourcesInspectJaspar { .. }
         | ShellCommand::ResourcesSummarizeJaspar { .. }
         | ShellCommand::ResourcesSyncAttract { .. } => {

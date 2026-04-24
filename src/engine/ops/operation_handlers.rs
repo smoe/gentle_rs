@@ -18,8 +18,8 @@ use crate::{
     genomes::{default_catalog_discovery_label, default_catalog_discovery_token},
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     protein_gel::{
-        Protein2dGelSpot, ProteinGelSample, build_protein_2d_gel_layout,
-        build_protein_gel_layout, export_protein_2d_gel_svg, export_protein_gel_svg,
+        Protein2dGelSpot, ProteinGelSample, build_protein_2d_gel_layout, build_protein_gel_layout,
+        export_protein_2d_gel_svg, export_protein_gel_svg,
     },
     uniprot::UniprotNucleotideXref,
 };
@@ -6300,6 +6300,7 @@ impl GentleEngine {
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
             jaspar_catalog_report: None,
+            tf_query_resolution_report: None,
             jaspar_entry_expert_view: None,
             jaspar_registry_benchmark: None,
             jaspar_entry_presentation: None,
@@ -6689,17 +6690,17 @@ impl GentleEngine {
                     }
                     let mut samples: Vec<ProteinGelSample> = vec![];
                     for row in &report.rows {
-                        let protein = self
-                            .state
-                            .sequences
-                            .get(&row.protein_seq_id)
-                            .ok_or_else(|| EngineError {
-                                code: ErrorCode::NotFound,
-                                message: format!(
-                                    "Protein '{}' from report '{}' was not found in state",
-                                    row.protein_seq_id, report.report_id
-                                ),
-                            })?;
+                        let protein =
+                            self.state
+                                .sequences
+                                .get(&row.protein_seq_id)
+                                .ok_or_else(|| EngineError {
+                                    code: ErrorCode::NotFound,
+                                    message: format!(
+                                        "Protein '{}' from report '{}' was not found in state",
+                                        row.protein_seq_id, report.report_id
+                                    ),
+                                })?;
                         if !protein.is_protein_sequence() {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
@@ -6780,17 +6781,17 @@ impl GentleEngine {
                     }
                     let mut spots: Vec<Protein2dGelSpot> = vec![];
                     for row in &report.rows {
-                        let protein = self
-                            .state
-                            .sequences
-                            .get(&row.protein_seq_id)
-                            .ok_or_else(|| EngineError {
-                                code: ErrorCode::NotFound,
-                                message: format!(
-                                    "Protein '{}' from report '{}' was not found in state",
-                                    row.protein_seq_id, report.report_id
-                                ),
-                            })?;
+                        let protein =
+                            self.state
+                                .sequences
+                                .get(&row.protein_seq_id)
+                                .ok_or_else(|| EngineError {
+                                    code: ErrorCode::NotFound,
+                                    message: format!(
+                                        "Protein '{}' from report '{}' was not found in state",
+                                        row.protein_seq_id, report.report_id
+                                    ),
+                                })?;
                         if !protein.is_protein_sequence() {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
@@ -11501,7 +11502,11 @@ impl GentleEngine {
                         .features()
                         .to_vec();
                     let requested_feature_ids = feature_ids.clone();
-                    let (transcript_feature_ids, resolved_feature_query) = if let Some(feature_query) = feature_query.clone() {
+                    let (transcript_feature_ids, resolved_feature_query) = if let Some(
+                        feature_query,
+                    ) =
+                        feature_query.clone()
+                    {
                         let mut query = feature_query;
                         if query.seq_id.trim().is_empty() {
                             query.seq_id = seq_id.clone();
@@ -13671,6 +13676,49 @@ impl GentleEngine {
                         }
                     ));
                     result.jaspar_entry_expert_view = Some(report);
+                }
+                Operation::ResolveTfQueries { queries, path } => {
+                    let mut report = Self::resolve_tf_queries_report(&queries)?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        let json =
+                            serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not serialize TF query-resolution report for '{}': {e}",
+                                    path
+                                ),
+                            })?;
+                        std::fs::write(path, json).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not write TF query-resolution report to '{}': {e}",
+                                path
+                            ),
+                        })?;
+                        result.messages.push(format!(
+                            "Wrote TF query-resolution report for {} quer{} to '{}'",
+                            report.returned_query_count,
+                            if report.returned_query_count == 1 {
+                                "y"
+                            } else {
+                                "ies"
+                            },
+                            path
+                        ));
+                    }
+                    result.messages.push(format!(
+                        "Resolved {} TF quer{} into {} motif match(es)",
+                        report.returned_query_count,
+                        if report.returned_query_count == 1 {
+                            "y"
+                        } else {
+                            "ies"
+                        },
+                        report.matched_motif_count
+                    ));
+                    result.tf_query_resolution_report = Some(report);
                 }
                 Operation::InspectSequenceContextView {
                     seq_id,
