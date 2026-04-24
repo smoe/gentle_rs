@@ -33,6 +33,8 @@ SUPPORTED_REQUEST_MODES = (
     "shell",
     "op",
     "workflow",
+    "agent-plan",
+    "agent-execute-plan",
     "raw",
 )
 SVG_DIMENSION_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)")
@@ -59,6 +61,22 @@ class Request:
     operation: Any = None
     workflow: Any = None
     workflow_path: str | None = None
+    system_id: str | None = None
+    prompt: str | None = None
+    catalog_path: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    connect_timeout_secs: int | None = None
+    read_timeout_secs: int | None = None
+    max_retries: int | None = None
+    max_response_bytes: int | None = None
+    include_state_summary: bool | None = None
+    max_candidates: int | None = None
+    allow_mutating_candidates: bool | None = None
+    plan: Any = None
+    plan_path: str | None = None
+    candidate_id: str | None = None
+    confirm: bool | None = None
     expected_artifacts: list[str] | None = None
     ensure_reference_prepared: Any = None
 
@@ -291,6 +309,22 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         operation=payload.get("operation"),
         workflow=payload.get("workflow"),
         workflow_path=payload.get("workflow_path"),
+        system_id=payload.get("system_id"),
+        prompt=payload.get("prompt"),
+        catalog_path=payload.get("catalog_path"),
+        base_url=payload.get("base_url"),
+        model=payload.get("model"),
+        connect_timeout_secs=payload.get("connect_timeout_secs"),
+        read_timeout_secs=payload.get("read_timeout_secs"),
+        max_retries=payload.get("max_retries"),
+        max_response_bytes=payload.get("max_response_bytes"),
+        include_state_summary=payload.get("include_state_summary"),
+        max_candidates=payload.get("max_candidates"),
+        allow_mutating_candidates=payload.get("allow_mutating_candidates"),
+        plan=payload.get("plan"),
+        plan_path=payload.get("plan_path"),
+        candidate_id=payload.get("candidate_id"),
+        confirm=payload.get("confirm"),
         expected_artifacts=payload.get("expected_artifacts"),
         ensure_reference_prepared=payload.get("ensure_reference_prepared"),
     )
@@ -313,10 +347,56 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
     elif request.mode == "workflow":
         if request.workflow is None and not request.workflow_path:
             raise SkillError("mode=workflow requires 'workflow' or 'workflow_path'")
+    elif request.mode == "agent-plan":
+        if not isinstance(request.system_id, str) or not request.system_id.strip():
+            raise SkillError("mode=agent-plan requires non-empty string field 'system_id'")
+        if not isinstance(request.prompt, str) or not request.prompt.strip():
+            raise SkillError("mode=agent-plan requires non-empty string field 'prompt'")
+    elif request.mode == "agent-execute-plan":
+        if request.plan is None and not request.plan_path:
+            raise SkillError("mode=agent-execute-plan requires 'plan' or 'plan_path'")
+        if not isinstance(request.candidate_id, str) or not request.candidate_id.strip():
+            raise SkillError(
+                "mode=agent-execute-plan requires non-empty string field 'candidate_id'"
+            )
     elif request.mode not in SUPPORTED_REQUEST_MODES:
         raise SkillError(
             "unsupported mode. Use one of: " + ", ".join(SUPPORTED_REQUEST_MODES)
         )
+    for field_name in (
+        "catalog_path",
+        "base_url",
+        "model",
+        "workflow_path",
+        "plan_path",
+        "system_id",
+        "prompt",
+        "candidate_id",
+    ):
+        value = getattr(request, field_name)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise SkillError(f"{field_name} must be a non-empty string when present")
+    for field_name in (
+        "connect_timeout_secs",
+        "read_timeout_secs",
+        "max_retries",
+        "max_response_bytes",
+        "max_candidates",
+    ):
+        value = getattr(request, field_name)
+        if value is None:
+            continue
+        try:
+            coerced = int(value)
+        except (TypeError, ValueError) as e:
+            raise SkillError(f"{field_name} must be an integer when present") from e
+        if coerced < 0:
+            raise SkillError(f"{field_name} must be >= 0 when present")
+        setattr(request, field_name, coerced)
+    for field_name in ("include_state_summary", "allow_mutating_candidates", "confirm"):
+        value = getattr(request, field_name)
+        if value is not None and not isinstance(value, bool):
+            raise SkillError(f"{field_name} must be a boolean when present")
     if request.ensure_reference_prepared is not None:
         ensure = request.ensure_reference_prepared
         if not isinstance(ensure, dict):
@@ -1053,6 +1133,47 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
             args.extend(["workflow", f"@{resolved_workflow_path}"])
         else:
             args.extend(["workflow", _json_arg(request.workflow)])
+    elif request.mode == "agent-plan":
+        tokens = ["agents", "plan", request.system_id.strip(), "--prompt", request.prompt.strip()]
+        if request.catalog_path:
+            tokens.extend(["--catalog", request.catalog_path])
+        if request.base_url:
+            tokens.extend(["--base-url", request.base_url])
+        if request.model:
+            tokens.extend(["--model", request.model])
+        if request.connect_timeout_secs:
+            tokens.extend(
+                ["--connect-timeout-secs", str(request.connect_timeout_secs)]
+            )
+        if request.read_timeout_secs:
+            tokens.extend(["--read-timeout-secs", str(request.read_timeout_secs)])
+        if request.max_retries is not None:
+            tokens.extend(["--max-retries", str(request.max_retries)])
+        if request.max_response_bytes:
+            tokens.extend(["--max-response-bytes", str(request.max_response_bytes)])
+        if request.max_candidates:
+            tokens.extend(["--max-candidates", str(request.max_candidates)])
+        if request.include_state_summary is False:
+            tokens.append("--no-state-summary")
+        if request.allow_mutating_candidates is False:
+            tokens.append("--no-mutating-candidates")
+        args.extend(["shell", shlex.join(tokens)])
+    elif request.mode == "agent-execute-plan":
+        plan_arg = (
+            f"@{_resolve_request_path(request.plan_path, script_path)}"
+            if request.plan_path
+            else _json_arg(request.plan)
+        )
+        tokens = [
+            "agents",
+            "execute-plan",
+            plan_arg,
+            "--candidate-id",
+            request.candidate_id.strip(),
+        ]
+        if request.confirm:
+            tokens.append("--confirm")
+        args.extend(["shell", shlex.join(tokens)])
     elif request.mode == "raw":
         args.extend(request.raw_args or [])
     else:

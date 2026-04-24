@@ -242,6 +242,8 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "shell",
             "op",
             "workflow",
+            "agent-plan",
+            "agent-execute-plan",
             "raw",
         ],
         "has_demo": True,
@@ -297,6 +299,56 @@ def test_skill_info_request_mode_reports_catalog_version(
     assert payload["stdout_json"]["version"] == "0.1.0"
     assert payload["resolver"] is None
     assert payload["command"] is None
+
+
+def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "agent-plan",
+                "system_id": "builtin_echo",
+                "prompt": "auto: state-summary",
+                "include_state_summary": False,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - \"$@\" <<'PY'\n"
+        "import json, sys\n"
+        "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
+        "PY\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+    payload = json.loads(run.stdout)
+    argv = payload["stdout_json"]["argv"]
+    assert argv[0] == "shell"
+    assert "agents plan builtin_echo" in argv[1]
+    assert "--no-state-summary" in argv[1]
 
 
 def test_rejects_invalid_request_schema(tmp_path: Path) -> None:

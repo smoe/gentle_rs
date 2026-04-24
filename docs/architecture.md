@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-22
+Last updated: 2026-04-24
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -842,6 +842,23 @@ MCP direction:
   capability negotiation.
 - `agents ask` remains supported as a complementary route for chat-like
   assistance and suggested-command execution.
+- The machine-facing prose compiler (`agents plan` / `agents execute-plan`)
+  sits between those layers:
+  - it accepts prose like the local assistant,
+  - but it returns typed execution candidates instead of chat-oriented
+    suggestion rows,
+  - and it executes stored candidates through the same shell/op/workflow paths
+    used elsewhere.
+
+AI role split (durable rule):
+
+- GUI Agent Assistant and `agents ask` are the local human-facing chat layer.
+- `agents plan` / `agents execute-plan` are the machine-facing prose-compiler
+  and replayable execution layer.
+- MCP is the preferred external tool-orchestration surface.
+- ClawBio/OpenClaw should own orchestration/policy outside GENtle and should
+  share the typed planner/transport boundary rather than nesting GENtle's chat
+  assistant runtime.
 
 ### Agent assistant bridge (implemented)
 
@@ -849,7 +866,11 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
 
 - Shared shell commands:
   - `agents list [--catalog PATH]`
+  - `agents preflight SYSTEM_ID [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
+  - `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
   - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+  - `agents plan SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--no-state-summary] [--no-mutating-candidates]`
+  - `agents execute-plan PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]`
 - Catalog source defaults to `assets/agent_systems.json`.
 - Catalog entries describe transport and invocation details:
   - `builtin_echo` (offline/demo transport)
@@ -870,6 +891,10 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
   - plain assistant message (`chat`)
   - follow-up questions (`ask`)
   - suggested shell commands with explicit execution intent (`ask` or `auto`)
+- Machine-facing planner payloads are separate and typed:
+  - `gentle.agent_plan_request.v1`
+  - `gentle.agent_plan_result.v1`
+  - `gentle.agent_execution_result.v1`
 
 Execution safety model:
 

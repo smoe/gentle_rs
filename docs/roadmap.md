@@ -2730,7 +2730,7 @@ order. Durable architecture constraints and decisions remain in
 | Candidate strand-relation controls across adapters | Done |
 | Alternative-splicing interpretation (lanes/boundaries/events/evidence) | Done (expert + primary-map read-only baseline) |
 | Cloning-mode macro presets (SnapGene-style workflows) | Partial (starter templates only) |
-| AI communication routes (agent bridge + MCP server) | Partial (agent bridge + guarded MCP op/workflow baseline implemented; ClawBio skill scaffold available) |
+| AI communication routes (assistant + planner + MCP server) | Partial (chat assistant plus typed planner/execute-plan baseline implemented; MCP and ClawBio wrapper parity started) |
 | Gel simulation realism and arrangement modeling | Partial |
 | Shared operation protocol usage | Partial |
 
@@ -2740,6 +2740,12 @@ Notes:
   `cargo run --bin gentle_cli -- capabilities` and
   `cargo run --bin gentle_cli -- state-summary` for current runtime inventory.
 - `import-pool` and some resource utilities remain adapter-level contracts.
+- AI-route split is now explicit:
+  - GUI Agent Assistant and `agents ask` remain the human-facing chat layer
+  - `agents plan` / `agents execute-plan` are the machine-facing prose
+    compiler and replayable execution layer
+  - MCP and the ClawBio wrapper now expose that typed planner boundary instead
+    of depending on chat-only assistant flows
 
 ## 2. Active known gaps (priority-ordered)
 

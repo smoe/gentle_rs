@@ -2902,6 +2902,14 @@ Conceptual/tutorial companion:
   - Default catalog path: `assets/agent_systems.json`.
   - Includes availability status (`available`, `availability_reason`) so callers
     can skip systems that are not currently runnable.
+- `agents preflight SYSTEM_ID [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
+  - Returns read-only transport/runtime metadata for one configured system.
+  - This is the preferred CLI parity route for external orchestrators that want
+    availability, endpoint, and runtime-limit diagnostics without starting a
+    chat/planning request.
+- `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
+  - Discovers model ids for one `native_openai` or `native_openai_compat`
+    system using its effective endpoint configuration.
 - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system and returns message/questions/suggested shell commands.
   - `--base-url` sets a per-request runtime endpoint override (maps to
@@ -2939,6 +2947,18 @@ Conceptual/tutorial companion:
       Jan/Msty/Ollama-style `/chat/completions` endpoints; key optional)
       - endpoint host/port come from catalog `base_url` (or `--base-url` if set);
         GENtle does not silently switch to a different host/port
+- `agents plan SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--no-state-summary] [--no-mutating-candidates]`
+  - Accepts prose like `agents ask`, but returns typed `gentle.agent_plan_result.v1`
+    candidates instead of chat-oriented suggestion rows.
+  - Current candidate kinds are `shell`, `op`, `workflow`, and `ui_intent`.
+  - This is the recommended machine-facing prose boundary for MCP/ClawBio-style
+    orchestration.
+- `agents execute-plan PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]`
+  - Executes one stored plan candidate without re-planning.
+  - `shell` candidates run through the shared shell executor.
+  - `op` / `workflow` candidates require `--confirm` when marked mutating.
+  - Nested `agents ask` / `agents plan` / `agents execute-plan` recursion from
+    candidate shell payloads is blocked.
 
 Prompting users should send to agents:
 

@@ -21,8 +21,13 @@ use crate::{
     agent_bridge::{
         AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
         AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, agent_system_availability,
-        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
+        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, invoke_agent_support_with_env_overrides,
+    },
+    agent_execution::execute_agent_plan_candidate,
+    agent_planner::{load_agent_plan_from_argument, plan_from_shell_options},
+    agent_transport::{
+        agent_system_availability, build_agent_system_preflight, discover_models_for_agent_system,
+        load_agent_system_catalog,
     },
     attract_motifs,
     dna_ladder::LadderMolecule,
@@ -1045,6 +1050,22 @@ pub enum ShellCommand {
     AgentsList {
         catalog_path: Option<String>,
     },
+    AgentsPreflight {
+        system_id: String,
+        catalog_path: Option<String>,
+        base_url_override: Option<String>,
+        model_override: Option<String>,
+        timeout_seconds: Option<u64>,
+        connect_timeout_seconds: Option<u64>,
+        read_timeout_seconds: Option<u64>,
+        max_retries: Option<usize>,
+        max_response_bytes: Option<usize>,
+    },
+    AgentsDiscoverModels {
+        system_id: String,
+        catalog_path: Option<String>,
+        base_url_override: Option<String>,
+    },
     AgentsAsk {
         system_id: String,
         prompt: String,
@@ -1060,6 +1081,26 @@ pub enum ShellCommand {
         allow_auto_exec: bool,
         execute_all: bool,
         execute_indices: Vec<usize>,
+    },
+    AgentsPlan {
+        system_id: String,
+        prompt: String,
+        catalog_path: Option<String>,
+        base_url_override: Option<String>,
+        model_override: Option<String>,
+        timeout_seconds: Option<u64>,
+        connect_timeout_seconds: Option<u64>,
+        read_timeout_seconds: Option<u64>,
+        max_retries: Option<usize>,
+        max_response_bytes: Option<usize>,
+        include_state_summary: bool,
+        max_candidates: Option<usize>,
+        allow_mutating_candidates: bool,
+    },
+    AgentsExecutePlan {
+        plan_input: String,
+        candidate_id: String,
+        confirm: bool,
     },
     UiListIntents,
     UiIntent {
@@ -6085,6 +6126,54 @@ impl ShellCommand {
                     .unwrap_or_else(|| "assets/agent_systems.json".to_string());
                 format!("list agent systems from catalog '{catalog}'")
             }
+            Self::AgentsPreflight {
+                system_id,
+                catalog_path,
+                base_url_override,
+                model_override,
+                timeout_seconds,
+                connect_timeout_seconds,
+                read_timeout_seconds,
+                max_retries,
+                max_response_bytes,
+            } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| "assets/agent_systems.json".to_string());
+                let base_url = base_url_override.as_deref().unwrap_or("-");
+                let model = model_override.as_deref().unwrap_or("-");
+                let timeout = timeout_seconds
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let connect_timeout = connect_timeout_seconds
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let read_timeout = read_timeout_seconds
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let retries = max_retries
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let max_bytes = max_response_bytes
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "preflight agent '{system_id}' (catalog='{catalog}', base_url_override={base_url}, model_override={model}, timeout_secs={timeout}, connect_timeout_secs={connect_timeout}, read_timeout_secs={read_timeout}, max_retries={retries}, max_response_bytes={max_bytes})"
+                )
+            }
+            Self::AgentsDiscoverModels {
+                system_id,
+                catalog_path,
+                base_url_override,
+            } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| "assets/agent_systems.json".to_string());
+                let base_url = base_url_override.as_deref().unwrap_or("-");
+                format!(
+                    "discover models for agent '{system_id}' (catalog='{catalog}', base_url_override={base_url})"
+                )
+            }
             Self::AgentsAsk {
                 system_id,
                 prompt,
@@ -6142,6 +6231,66 @@ impl ShellCommand {
                     "ask agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, base_url_override={base_url}, model_override={model}, timeout_secs={timeout}, connect_timeout_secs={connect_timeout}, read_timeout_secs={read_timeout}, max_retries={retries}, max_response_bytes={max_bytes}, execute={execute_mode})",
                     prompt.len(),
                     include_state_summary
+                )
+            }
+            Self::AgentsPlan {
+                system_id,
+                prompt,
+                catalog_path,
+                base_url_override,
+                model_override,
+                timeout_seconds,
+                connect_timeout_seconds,
+                read_timeout_seconds,
+                max_retries,
+                max_response_bytes,
+                include_state_summary,
+                max_candidates,
+                allow_mutating_candidates,
+            } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| "assets/agent_systems.json".to_string());
+                let base_url = base_url_override.as_deref().unwrap_or("-");
+                let model = model_override.as_deref().unwrap_or("-");
+                let timeout = timeout_seconds
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let connect_timeout = connect_timeout_seconds
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let read_timeout = read_timeout_seconds
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let retries = max_retries
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let max_bytes = max_response_bytes
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let candidate_limit = max_candidates
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "plan with agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, allow_mutating_candidates={}, max_candidates={}, base_url_override={base_url}, model_override={model}, timeout_secs={timeout}, connect_timeout_secs={connect_timeout}, read_timeout_secs={read_timeout}, max_retries={retries}, max_response_bytes={max_bytes})",
+                    prompt.len(),
+                    include_state_summary,
+                    allow_mutating_candidates,
+                    candidate_limit
+                )
+            }
+            Self::AgentsExecutePlan {
+                plan_input,
+                candidate_id,
+                confirm,
+            } => {
+                let source = if plan_input.trim().starts_with('@') {
+                    "file"
+                } else {
+                    "json"
+                };
+                format!(
+                    "execute planner candidate '{candidate_id}' from {source} (confirm={confirm})"
                 )
             }
             Self::UiListIntents => "list supported GUI intent commands".to_string(),
@@ -9080,6 +9229,7 @@ impl ShellCommand {
                 | Self::RnaReadsInterpret { .. }
                 | Self::RnaReadsAlignReport { .. }
                 | Self::SetParameter { .. }
+                | Self::AgentsExecutePlan { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
         )
@@ -13803,7 +13953,10 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
 
 fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
-        return Err("agents requires a subcommand: list or ask".to_string());
+        return Err(
+            "agents requires a subcommand: list, preflight, discover-models, ask, plan, or execute-plan"
+                .to_string(),
+        );
     }
     match tokens[1].as_str() {
         "list" => {
@@ -13825,6 +13978,174 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
             }
             Ok(ShellCommand::AgentsList { catalog_path })
+        }
+        "preflight" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "agents preflight requires SYSTEM_ID [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]"
+                        .to_string(),
+                );
+            }
+            let system_id = tokens[2].trim().to_string();
+            if system_id.is_empty() {
+                return Err("agents preflight SYSTEM_ID cannot be empty".to_string());
+            }
+            let mut catalog_path: Option<String> = None;
+            let mut base_url_override: Option<String> = None;
+            let mut model_override: Option<String> = None;
+            let mut timeout_seconds: Option<u64> = None;
+            let mut connect_timeout_seconds: Option<u64> = None;
+            let mut read_timeout_seconds: Option<u64> = None;
+            let mut max_retries: Option<usize> = None;
+            let mut max_response_bytes: Option<usize> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "agents preflight",
+                        )?);
+                    }
+                    "--base-url" => {
+                        base_url_override = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--base-url",
+                            "agents preflight",
+                        )?);
+                    }
+                    "--model" => {
+                        model_override = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--model",
+                            "agents preflight",
+                        )?);
+                    }
+                    "--timeout-secs" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--timeout-secs",
+                            "agents preflight",
+                        )?;
+                        let parsed = raw
+                            .parse::<u64>()
+                            .map_err(|e| format!("Invalid --timeout-secs value '{raw}': {e}"))?;
+                        timeout_seconds = (parsed > 0).then_some(parsed);
+                    }
+                    "--connect-timeout-secs" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--connect-timeout-secs",
+                            "agents preflight",
+                        )?;
+                        let parsed = raw.parse::<u64>().map_err(|e| {
+                            format!("Invalid --connect-timeout-secs value '{raw}': {e}")
+                        })?;
+                        connect_timeout_seconds = (parsed > 0).then_some(parsed);
+                    }
+                    "--read-timeout-secs" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-timeout-secs",
+                            "agents preflight",
+                        )?;
+                        let parsed = raw.parse::<u64>().map_err(|e| {
+                            format!("Invalid --read-timeout-secs value '{raw}': {e}")
+                        })?;
+                        read_timeout_seconds = (parsed > 0).then_some(parsed);
+                    }
+                    "--max-retries" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-retries",
+                            "agents preflight",
+                        )?;
+                        max_retries =
+                            Some(raw.parse::<usize>().map_err(|e| {
+                                format!("Invalid --max-retries value '{raw}': {e}")
+                            })?);
+                    }
+                    "--max-response-bytes" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-response-bytes",
+                            "agents preflight",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --max-response-bytes value '{raw}': {e}")
+                        })?;
+                        max_response_bytes = (parsed > 0).then_some(parsed);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for agents preflight"));
+                    }
+                }
+            }
+            Ok(ShellCommand::AgentsPreflight {
+                system_id,
+                catalog_path,
+                base_url_override,
+                model_override,
+                timeout_seconds,
+                connect_timeout_seconds,
+                read_timeout_seconds,
+                max_retries,
+                max_response_bytes,
+            })
+        }
+        "discover-models" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "agents discover-models requires SYSTEM_ID [--catalog PATH] [--base-url URL]"
+                        .to_string(),
+                );
+            }
+            let system_id = tokens[2].trim().to_string();
+            if system_id.is_empty() {
+                return Err("agents discover-models SYSTEM_ID cannot be empty".to_string());
+            }
+            let mut catalog_path: Option<String> = None;
+            let mut base_url_override: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "agents discover-models",
+                        )?);
+                    }
+                    "--base-url" => {
+                        base_url_override = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--base-url",
+                            "agents discover-models",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for agents discover-models"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::AgentsDiscoverModels {
+                system_id,
+                catalog_path,
+                base_url_override,
+            })
         }
         "ask" => {
             if tokens.len() < 3 {
@@ -14008,8 +14329,210 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 execute_indices,
             })
         }
+        "plan" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "agents plan requires SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--allow-mutating-candidates|--no-mutating-candidates] [--no-state-summary]"
+                        .to_string(),
+                );
+            }
+            let system_id = tokens[2].trim().to_string();
+            if system_id.is_empty() {
+                return Err("agents plan SYSTEM_ID cannot be empty".to_string());
+            }
+            let mut prompt: Option<String> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut base_url_override: Option<String> = None;
+            let mut model_override: Option<String> = None;
+            let mut timeout_seconds: Option<u64> = None;
+            let mut connect_timeout_seconds: Option<u64> = None;
+            let mut read_timeout_seconds: Option<u64> = None;
+            let mut max_retries: Option<usize> = None;
+            let mut max_response_bytes: Option<usize> = None;
+            let mut max_candidates: Option<usize> = None;
+            let mut include_state_summary = true;
+            let mut allow_mutating_candidates = true;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--prompt" => {
+                        prompt = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--prompt",
+                            "agents plan",
+                        )?);
+                    }
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "agents plan",
+                        )?);
+                    }
+                    "--base-url" => {
+                        base_url_override = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--base-url",
+                            "agents plan",
+                        )?);
+                    }
+                    "--model" => {
+                        model_override = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--model",
+                            "agents plan",
+                        )?);
+                    }
+                    "--timeout-secs" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--timeout-secs", "agents plan")?;
+                        let parsed = raw
+                            .parse::<u64>()
+                            .map_err(|e| format!("Invalid --timeout-secs value '{raw}': {e}"))?;
+                        timeout_seconds = (parsed > 0).then_some(parsed);
+                    }
+                    "--connect-timeout-secs" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--connect-timeout-secs",
+                            "agents plan",
+                        )?;
+                        let parsed = raw.parse::<u64>().map_err(|e| {
+                            format!("Invalid --connect-timeout-secs value '{raw}': {e}")
+                        })?;
+                        connect_timeout_seconds = (parsed > 0).then_some(parsed);
+                    }
+                    "--read-timeout-secs" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-timeout-secs",
+                            "agents plan",
+                        )?;
+                        let parsed = raw.parse::<u64>().map_err(|e| {
+                            format!("Invalid --read-timeout-secs value '{raw}': {e}")
+                        })?;
+                        read_timeout_seconds = (parsed > 0).then_some(parsed);
+                    }
+                    "--max-retries" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--max-retries", "agents plan")?;
+                        max_retries =
+                            Some(raw.parse::<usize>().map_err(|e| {
+                                format!("Invalid --max-retries value '{raw}': {e}")
+                            })?);
+                    }
+                    "--max-response-bytes" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-response-bytes",
+                            "agents plan",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --max-response-bytes value '{raw}': {e}")
+                        })?;
+                        max_response_bytes = (parsed > 0).then_some(parsed);
+                    }
+                    "--max-candidates" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--max-candidates", "agents plan")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --max-candidates value '{raw}': {e}"))?;
+                        max_candidates = Some(parsed);
+                    }
+                    "--no-state-summary" => {
+                        include_state_summary = false;
+                        idx += 1;
+                    }
+                    "--with-state-summary" => {
+                        include_state_summary = true;
+                        idx += 1;
+                    }
+                    "--allow-mutating-candidates" => {
+                        allow_mutating_candidates = true;
+                        idx += 1;
+                    }
+                    "--no-mutating-candidates" => {
+                        allow_mutating_candidates = false;
+                        idx += 1;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for agents plan")),
+                }
+            }
+            let prompt = prompt
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "agents plan requires non-empty --prompt TEXT".to_string())?;
+            Ok(ShellCommand::AgentsPlan {
+                system_id,
+                prompt,
+                catalog_path,
+                base_url_override,
+                model_override,
+                timeout_seconds,
+                connect_timeout_seconds,
+                read_timeout_seconds,
+                max_retries,
+                max_response_bytes,
+                include_state_summary,
+                max_candidates,
+                allow_mutating_candidates,
+            })
+        }
+        "execute-plan" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "agents execute-plan requires PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]"
+                        .to_string(),
+                );
+            }
+            let plan_input = tokens[2].trim().to_string();
+            if plan_input.is_empty() {
+                return Err("agents execute-plan plan payload cannot be empty".to_string());
+            }
+            let mut candidate_id: Option<String> = None;
+            let mut confirm = false;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--candidate-id" => {
+                        candidate_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--candidate-id",
+                            "agents execute-plan",
+                        )?);
+                    }
+                    "--confirm" => {
+                        confirm = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for agents execute-plan"));
+                    }
+                }
+            }
+            let candidate_id = candidate_id
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    "agents execute-plan requires non-empty --candidate-id ID".to_string()
+                })?;
+            Ok(ShellCommand::AgentsExecutePlan {
+                plan_input,
+                candidate_id,
+                confirm,
+            })
+        }
         other => Err(format!(
-            "Unknown agents subcommand '{other}' (expected list or ask)"
+            "Unknown agents subcommand '{other}' (expected list, preflight, discover-models, ask, plan, or execute-plan)"
         )),
     }
 }
@@ -17256,7 +17779,9 @@ fn workflow_macro_script_contains_agents_ask(engine: &GentleEngine, script_or_re
 
 fn shell_command_contains_agents_ask(engine: &GentleEngine, command: &ShellCommand) -> bool {
     match command {
-        ShellCommand::AgentsAsk { .. } => true,
+        ShellCommand::AgentsAsk { .. }
+        | ShellCommand::AgentsPlan { .. }
+        | ShellCommand::AgentsExecutePlan { .. } => true,
         ShellCommand::MacrosRun { script, .. } => {
             workflow_macro_script_contains_agents_ask(engine, script)
         }
@@ -17458,7 +17983,12 @@ fn execute_agent_suggested_commands(
                 continue;
             }
         };
-        if matches!(parsed, ShellCommand::AgentsAsk { .. }) {
+        if matches!(
+            parsed,
+            ShellCommand::AgentsAsk { .. }
+                | ShellCommand::AgentsPlan { .. }
+                | ShellCommand::AgentsExecutePlan { .. }
+        ) {
             rows.push(AgentSuggestedExecutionReport {
                 index: index_1based,
                 command: command_text,
@@ -17468,7 +17998,7 @@ fn execute_agent_suggested_commands(
                 ok: false,
                 state_changed: false,
                 error: Some(
-                    "Agent-to-agent 'agents ask' execution is blocked for suggested commands"
+                    "Agent-to-agent assistant/planner execution is blocked for suggested commands"
                         .to_string(),
                 ),
                 output: None,
@@ -17745,6 +18275,65 @@ fn execute_agents_ask_command(
     })
 }
 
+fn execute_agents_plan_command(
+    engine: &mut GentleEngine,
+    system_id: &str,
+    prompt: &str,
+    catalog_path: Option<&str>,
+    base_url_override: Option<&str>,
+    model_override: Option<&str>,
+    timeout_seconds: Option<u64>,
+    connect_timeout_seconds: Option<u64>,
+    read_timeout_seconds: Option<u64>,
+    max_retries: Option<usize>,
+    max_response_bytes: Option<usize>,
+    include_state_summary: bool,
+    max_candidates: Option<usize>,
+    allow_mutating_candidates: bool,
+) -> Result<ShellRunResult, String> {
+    let state_summary = if include_state_summary {
+        Some(engine.summarize_state())
+    } else {
+        None
+    };
+    let plan = plan_from_shell_options(
+        catalog_path,
+        system_id,
+        prompt,
+        state_summary.as_ref(),
+        base_url_override,
+        model_override,
+        timeout_seconds,
+        connect_timeout_seconds,
+        read_timeout_seconds,
+        max_retries,
+        max_response_bytes,
+        max_candidates,
+        allow_mutating_candidates,
+    )?;
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: serde_json::to_value(plan)
+            .map_err(|err| format!("Could not serialize planner result: {err}"))?,
+    })
+}
+
+fn execute_agents_execute_plan_command(
+    engine: &mut GentleEngine,
+    plan_input: &str,
+    candidate_id: &str,
+    confirm: bool,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let plan = load_agent_plan_from_argument(plan_input)?;
+    let execution = execute_agent_plan_candidate(engine, &plan, candidate_id, confirm, options)?;
+    Ok(ShellRunResult {
+        state_changed: execution.state_changed,
+        output: serde_json::to_value(execution)
+            .map_err(|err| format!("Could not serialize planner execution result: {err}"))?,
+    })
+}
+
 fn execute_agent_meta_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -17780,6 +18369,109 @@ fn execute_agent_meta_command(
                     "catalog_schema": catalog.schema,
                     "system_count": systems.len(),
                     "systems": systems
+                }),
+            })
+        }
+        ShellCommand::AgentsPreflight {
+            system_id,
+            catalog_path,
+            base_url_override,
+            model_override,
+            timeout_seconds,
+            connect_timeout_seconds,
+            read_timeout_seconds,
+            max_retries,
+            max_response_bytes,
+        } => {
+            let mut env_overrides = HashMap::new();
+            if let Some(base_url) = base_url_override
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                env_overrides.insert(AGENT_BASE_URL_ENV.to_string(), base_url.to_string());
+            }
+            if let Some(model) = model_override
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                env_overrides.insert(AGENT_MODEL_ENV.to_string(), model.to_string());
+            }
+            if let Some(timeout_seconds) = timeout_seconds.filter(|value| *value > 0) {
+                env_overrides.insert(
+                    AGENT_TIMEOUT_SECS_ENV.to_string(),
+                    timeout_seconds.to_string(),
+                );
+            }
+            if let Some(connect_timeout_seconds) =
+                connect_timeout_seconds.filter(|value| *value > 0)
+            {
+                env_overrides.insert(
+                    AGENT_CONNECT_TIMEOUT_SECS_ENV.to_string(),
+                    connect_timeout_seconds.to_string(),
+                );
+            }
+            if let Some(read_timeout_seconds) = read_timeout_seconds.filter(|value| *value > 0) {
+                env_overrides.insert(
+                    AGENT_READ_TIMEOUT_SECS_ENV.to_string(),
+                    read_timeout_seconds.to_string(),
+                );
+            }
+            if let Some(max_retries) = max_retries {
+                env_overrides.insert(AGENT_MAX_RETRIES_ENV.to_string(), max_retries.to_string());
+            }
+            if let Some(max_response_bytes) = max_response_bytes.filter(|value| *value > 0) {
+                env_overrides.insert(
+                    AGENT_MAX_RESPONSE_BYTES_ENV.to_string(),
+                    max_response_bytes.to_string(),
+                );
+            }
+            let preflight = build_agent_system_preflight(
+                catalog_path.as_deref(),
+                system_id,
+                if env_overrides.is_empty() {
+                    None
+                } else {
+                    Some(&env_overrides)
+                },
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(preflight)
+                    .map_err(|err| format!("Could not serialize agent preflight: {err}"))?,
+            })
+        }
+        ShellCommand::AgentsDiscoverModels {
+            system_id,
+            catalog_path,
+            base_url_override,
+        } => {
+            let mut env_overrides = HashMap::new();
+            if let Some(base_url) = base_url_override
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                env_overrides.insert(AGENT_BASE_URL_ENV.to_string(), base_url.to_string());
+            }
+            let models = discover_models_for_agent_system(
+                catalog_path.as_deref(),
+                system_id,
+                if env_overrides.is_empty() {
+                    None
+                } else {
+                    Some(&env_overrides)
+                },
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.agent_models.v1",
+                    "system_id": system_id,
+                    "catalog_path": catalog_path,
+                    "model_count": models.len(),
+                    "models": models,
                 }),
             })
         }
@@ -25777,9 +26469,60 @@ pub fn execute_shell_command_with_options(
             options,
         );
     }
+    if let ShellCommand::AgentsPlan {
+        system_id,
+        prompt,
+        catalog_path,
+        base_url_override,
+        model_override,
+        timeout_seconds,
+        connect_timeout_seconds,
+        read_timeout_seconds,
+        max_retries,
+        max_response_bytes,
+        include_state_summary,
+        max_candidates,
+        allow_mutating_candidates,
+    } = command
+    {
+        return execute_agents_plan_command(
+            engine,
+            system_id,
+            prompt,
+            catalog_path.as_deref(),
+            base_url_override.as_deref(),
+            model_override.as_deref(),
+            *timeout_seconds,
+            *connect_timeout_seconds,
+            *read_timeout_seconds,
+            *max_retries,
+            *max_response_bytes,
+            *include_state_summary,
+            *max_candidates,
+            *allow_mutating_candidates,
+        );
+    }
+    if let ShellCommand::AgentsExecutePlan {
+        plan_input,
+        candidate_id,
+        confirm,
+    } = command
+    {
+        return execute_agents_execute_plan_command(
+            engine,
+            plan_input,
+            candidate_id,
+            *confirm,
+            options,
+        );
+    }
     if matches!(
         command,
-        ShellCommand::AgentsList { .. } | ShellCommand::Capabilities | ShellCommand::StateSummary
+        ShellCommand::AgentsList { .. }
+            | ShellCommand::AgentsPreflight { .. }
+            | ShellCommand::AgentsDiscoverModels { .. }
+            | ShellCommand::Capabilities
+            | ShellCommand::StateSummary
     ) {
         return execute_agent_meta_command(engine, command);
     }
@@ -26549,7 +27292,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PlanningSyncStatus
         | ShellCommand::PlanningSyncPull { .. }
         | ShellCommand::PlanningSyncPush { .. } => execute_planning_command(engine, command)?,
-        ShellCommand::AgentsList { .. } => execute_agent_meta_command(engine, command)?,
+        ShellCommand::AgentsList { .. }
+        | ShellCommand::AgentsPreflight { .. }
+        | ShellCommand::AgentsDiscoverModels { .. } => execute_agent_meta_command(engine, command)?,
         ShellCommand::AgentsAsk {
             system_id,
             prompt,
@@ -26692,6 +27437,47 @@ fn execute_shell_command_with_options_inner(
                 }),
             }
         }
+        ShellCommand::AgentsPlan {
+            system_id,
+            prompt,
+            catalog_path,
+            base_url_override,
+            model_override,
+            timeout_seconds,
+            connect_timeout_seconds,
+            read_timeout_seconds,
+            max_retries,
+            max_response_bytes,
+            include_state_summary,
+            max_candidates,
+            allow_mutating_candidates,
+        } => execute_agents_plan_command(
+            engine,
+            system_id,
+            prompt,
+            catalog_path.as_deref(),
+            base_url_override.as_deref(),
+            model_override.as_deref(),
+            *timeout_seconds,
+            *connect_timeout_seconds,
+            *read_timeout_seconds,
+            *max_retries,
+            *max_response_bytes,
+            *include_state_summary,
+            *max_candidates,
+            *allow_mutating_candidates,
+        )?,
+        ShellCommand::AgentsExecutePlan {
+            plan_input,
+            candidate_id,
+            confirm,
+        } => execute_agents_execute_plan_command(
+            engine,
+            plan_input,
+            candidate_id,
+            *confirm,
+            options,
+        )?,
         ShellCommand::UiListIntents
         | ShellCommand::UiIntent { .. }
         | ShellCommand::UiPreparedGenomes { .. }
