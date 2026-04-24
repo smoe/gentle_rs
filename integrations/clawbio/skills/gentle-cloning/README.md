@@ -32,11 +32,17 @@ surface is now six explicit sub-capabilities:
 - restriction analysis
 - splicing expert
 - isoform architecture
-- variant follow-up
+- experimental follow-up
 
 This is a documentation/routing split, not six separate executables. The goal
 is to make it obvious that GENtle already exposes dedicated shared command
 surfaces for those tasks instead of one vague "cloning" box.
+
+For ClawBio developer-side orchestration around prompts such as "determine the
+effect of this SNP", "what should we do with this differentially expressed
+gene", "overexpress this gene", "knock down this gene", or "characterize this
+splice variant", see
+`../../experimental_followup_requests.md`.
 
 ## Files
 

@@ -166,7 +166,7 @@ Logical capability split inside that one runtime alias:
 - restriction analysis
 - splicing expert
 - isoform architecture
-- variant follow-up
+- experimental follow-up
 
 This is a ClawBio-facing routing/documentation split, not six separate
 executables. It exists so wrappers and tutorials can call out the real shared

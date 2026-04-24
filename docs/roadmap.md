@@ -2202,7 +2202,14 @@ order. Durable architecture constraints and decisions remain in
     - restriction analysis
     - splicing expert
     - isoform architecture
-    - variant follow-up
+    - experimental follow-up
+  - the ClawBio integration folder now also includes
+    `integrations/clawbio/experimental_followup_requests.md`, a developer
+    request note for routing prompts such as "determine the effect of this
+    SNP", "what should we do with this differentially expressed gene", or
+    "characterize this splice variant" through ClawBio-side evidence
+    orchestration plus deterministic GENtle sequence-context, perturbation,
+    routine-comparison, and assay-planning artifacts
   - current CLI reality check for that split:
     - already present:
       - DNA-window SVG export plus coordinate-bearing BED export

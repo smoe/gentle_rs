@@ -882,7 +882,7 @@ def _write_storyboard_svg(
         '  <text id="subtitle" x="64" y="114" font-family="Inter,Segoe UI,sans-serif" font-size="16" fill="#334155">'
         + html.escape(subtitle)
         + "</text>",
-        '  <text x="64" y="144" font-family="Inter,Segoe UI,sans-serif" font-size="13" fill="#475569">Deterministic GENtle figures bundled for a ClawBio/OpenClaw variant follow-up reply.</text>',
+        '  <text x="64" y="144" font-family="Inter,Segoe UI,sans-serif" font-size="13" fill="#475569">Deterministic GENtle figures bundled for a ClawBio/OpenClaw experimental follow-up reply.</text>',
     ]
 
     for panel, (x, y, width, height) in zip(panels, frame_rects):

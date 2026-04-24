@@ -453,18 +453,22 @@ Expected outputs:
 - isoform-panel text
 - isoform-architecture SVG
 
-### 6. Variant Follow-up
+### 6. Experimental Follow-up
 
-Use this when ClawBio starts from a patient/cohort variant or pharmacogenomic
-alert and wants a sequence-grounded assay-planning handoff.
+Use this when ClawBio starts from a patient/cohort variant, pharmacogenomic
+alert, differentially expressed gene, splice-variant observation, or explicit
+perturbation request and wants a sequence-grounded assay-planning handoff.
 
 This is the right lane when the user asks a broad question like
-"How can you help me with functional analyses of genetic variations?" and
-expects one concrete graphical answer rather than only a text capability list.
-The synthetic-biology bridge here is explicit: GENtle turns a variant context
-into engineered follow-up systems such as allele-paired promoter reporters,
-regulatory reporters, or related assay constructs rather than stopping at
-annotation or prioritization.
+"How can you help me with functional analyses of genetic variations?",
+"What should we do with this differentially expressed gene?", or
+"How do we characterize this splice variant?" and expects one concrete
+graphical or planning answer rather than only a text capability list.
+The synthetic-biology bridge here is explicit: GENtle turns biological
+observations into engineered follow-up systems such as allele-paired promoter
+reporters, regulatory reporters, qPCR/RT-PCR assays, isoform/protein figures,
+overexpression constructs, knockdown readouts, or related assay constructs
+rather than stopping at annotation or prioritization.
 
 Current shared GENtle routes behind this capability:
 
@@ -474,15 +478,19 @@ Current shared GENtle routes behind this capability:
 - `SuggestPromoterReporterFragments`
 - `MaterializeVariantAllele`
 - shared reporter-preview workflow/macro paths
+- `routines list|explain|compare ... --seq-id ...`
+- `planning profile|objective|suggestions ...`
 
 Expected outputs:
 
 - promoter-context report
 - reporter-fragment candidates
 - paired allele inserts
+- perturbation and readout candidate families
+- routine time/cost/local-fit planning evidence when available
 - construct previews and handoff bundle artifacts
 - one best-first storyboard-style PNG when the wrapper collects multiple
-  variant-analysis figures from the same run
+  follow-up figures from the same run
 
 ## Core Capabilities
 
@@ -496,11 +504,12 @@ Expected outputs:
    - restriction analysis
    - splicing expert
    - isoform architecture
-   - variant follow-up
+   - experimental follow-up
 3. **Observation-to-assay translation**: turn prioritized cohort or
-   patient-data observations into explicit sequence-grounded follow-up steps,
-   while keeping the boundary between association, mechanism, and validation
-   visible.
+   patient-data observations, differential-expression hits, splice-variant
+   observations, or explicit perturbation requests into sequence-grounded
+   follow-up steps, while keeping the boundary between association, mechanism,
+   perturbation, and validation visible.
 4. **Fragment-first stateless inspection**: analyze pasted DNA text directly
    for restriction sites and TFBS hits when the user only needs a read-only
    answer and does not need project state yet.
@@ -542,7 +551,7 @@ task:
    - restriction analysis
    - splicing expert
    - isoform architecture
-   - variant follow-up
+   - experimental follow-up
    - general cloning/workflow replay if none of the above fits better
    - if the user only supplied raw DNA text and asked for a read-only scan,
      prefer the stateless inline-sequence operation path under TFBS or

@@ -2863,13 +2863,25 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
 
     description = catalog_entry["description"]
     assert "patient-data observations" in description
+    assert "differential-expression hits" in description
+    assert "splice-variant observations" in description
+    assert "perturbation requests" in description
     assert "direct DNA fragment requests" in description
     assert "mechanistic follow-up" in description
     assert "reusable local reference assets" in description
 
     trigger_keywords = set(catalog_entry["trigger_keywords"])
     assert "patient variant" in trigger_keywords
+    assert "differential expression" in trigger_keywords
+    assert "differentially expressed gene" in trigger_keywords
+    assert "overexpression" in trigger_keywords
+    assert "knockdown" in trigger_keywords
+    assert "antisense RNA" in trigger_keywords
+    assert "siRNA" in trigger_keywords
+    assert "shRNA" in trigger_keywords
+    assert "CRISPRi" in trigger_keywords
     assert "splicing effect" in trigger_keywords
+    assert "splice variant" in trigger_keywords
     assert "prepare ensembl" in trigger_keywords
     assert "reference blast" in trigger_keywords
     assert "restriction sites" in trigger_keywords
