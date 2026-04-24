@@ -329,6 +329,10 @@ order. Durable architecture constraints and decisions remain in
   - `features query/export-bed`, TFBS summary/score/scan routes, and
     `features restriction-scan` no longer enter the broader transcript/variant/
     dotplot sequence-analysis helper on small-stack test threads
+  - `features restriction-scan` now also uses an even narrower shell execution
+    helper that calls the shared restriction-site scan routine directly instead
+    of entering the public operation-dispatch frame for this non-mutating
+    report command
   - matching TFBS/restriction scan `Operation` variants also short-circuit
     through a dedicated engine helper before the monolithic `apply_internal`
     matcher, while the inner matcher delegates back to that helper to preserve

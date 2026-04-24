@@ -22716,6 +22716,75 @@ fn execute_primers_command(
 }
 
 #[inline(never)]
+fn execute_features_restriction_scan_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    let ShellCommand::FeaturesRestrictionScan {
+        target,
+        enzymes,
+        max_sites_per_enzyme,
+        include_cut_geometry,
+        path,
+    } = command
+    else {
+        unreachable!("non-restriction-scan command passed to restriction-scan helper");
+    };
+
+    let mut report = engine
+        .find_restriction_sites(
+            target.clone(),
+            enzymes,
+            *max_sites_per_enzyme,
+            *include_cut_geometry,
+            None,
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+    let mut messages = vec![format!(
+        "Restriction-site scan on '{}' matched {} site(s) across {} enzyme(s) over {}..{}",
+        report.target_label,
+        report.matched_site_count,
+        report.enzymes_scanned.len(),
+        report.scan_start_0based,
+        report.scan_end_0based_exclusive,
+    )];
+    let mut warnings = vec![];
+    if !report.skipped_enzyme_names_due_to_max_sites.is_empty() {
+        warnings.push(format!(
+            "Skipped enzyme(s) due to max_sites_per_enzyme cap {}: {}",
+            report.max_sites_per_enzyme.unwrap_or_default(),
+            report.skipped_enzyme_names_due_to_max_sites.join(", ")
+        ));
+    }
+    if let Some(path) = path.as_deref() {
+        let text = serde_json::to_string_pretty(&report).map_err(|e| {
+            format!("Could not serialize restriction-site scan report for '{path}': {e}")
+        })?;
+        fs::write(path, text).map_err(|e| {
+            format!("Could not write restriction-site scan report to '{path}': {e}")
+        })?;
+        report.path = Some(path.to_string());
+        messages.push(format!(
+            "Wrote restriction-site scan report for '{}' to '{}'",
+            report.target_label, path
+        ));
+    }
+
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!({
+            "result": {
+                "messages": messages,
+                "warnings": warnings,
+                "restriction_site_scan": report.clone(),
+            },
+            "report": report,
+        }),
+    })
+}
+
+#[inline(never)]
 fn execute_feature_scan_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -22869,31 +22938,6 @@ fn execute_feature_scan_command(
                 })
                 .map_err(|e| e.to_string())?;
             let report = op_result.tfbs_hit_scan.clone();
-            Ok(ShellRunResult {
-                state_changed: false,
-                output: json!({
-                    "result": op_result,
-                    "report": report,
-                }),
-            })
-        }
-        ShellCommand::FeaturesRestrictionScan {
-            target,
-            enzymes,
-            max_sites_per_enzyme,
-            include_cut_geometry,
-            path,
-        } => {
-            let op_result = engine
-                .apply(Operation::FindRestrictionSites {
-                    target: target.clone(),
-                    enzymes: enzymes.clone(),
-                    max_sites_per_enzyme: *max_sites_per_enzyme,
-                    include_cut_geometry: *include_cut_geometry,
-                    path: path.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let report = op_result.restriction_site_scan.clone();
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -26042,6 +26086,9 @@ pub fn execute_shell_command_with_options(
     ) {
         return execute_feature_expert_command(engine, command);
     }
+    if matches!(command, ShellCommand::FeaturesRestrictionScan { .. }) {
+        return execute_features_restriction_scan_command(engine, command);
+    }
     if matches!(
         command,
         ShellCommand::FeaturesQuery { .. }
@@ -26051,7 +26098,6 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
             | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
             | ShellCommand::FeaturesTfbsScan { .. }
-            | ShellCommand::FeaturesRestrictionScan { .. }
     ) {
         return execute_feature_scan_command(engine, command);
     }
@@ -26283,16 +26329,16 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PanelsValidateIsoform { .. } => {
             execute_feature_expert_command(engine, command)?
         }
+        ShellCommand::FeaturesRestrictionScan { .. } => {
+            execute_features_restriction_scan_command(engine, command)?
+        }
         ShellCommand::FeaturesQuery { .. }
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
         | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
         | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
         | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
-        | ShellCommand::FeaturesTfbsScan { .. }
-        | ShellCommand::FeaturesRestrictionScan { .. } => {
-            execute_feature_scan_command(engine, command)?
-        }
+        | ShellCommand::FeaturesTfbsScan { .. } => execute_feature_scan_command(engine, command)?,
         ShellCommand::TranscriptsDerive { .. }
         | ShellCommand::VariantAnnotatePromoterWindows { .. }
         | ShellCommand::VariantPromoterContext { .. }
