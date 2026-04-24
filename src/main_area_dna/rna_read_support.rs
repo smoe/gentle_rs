@@ -511,6 +511,52 @@ impl MainAreaDna {
         Some(report)
     }
 
+    pub(super) fn rna_read_report_matches_splicing_view(
+        report: &RnaReadInterpretationReport,
+        view: &SplicingExpertView,
+    ) -> bool {
+        report.seq_id == view.seq_id && report.seed_feature_id == view.target_feature_id
+    }
+
+    pub(super) fn get_saved_rna_read_report_for_splicing_view_by_id(
+        &mut self,
+        report_id: &str,
+        view: &SplicingExpertView,
+    ) -> Option<Arc<RnaReadInterpretationReport>> {
+        self.get_saved_rna_read_report_by_id(report_id)
+            .filter(|report| Self::rna_read_report_matches_splicing_view(report.as_ref(), view))
+    }
+
+    pub(super) fn validate_rna_read_report_id_for_splicing_view(
+        &mut self,
+        report_id: &str,
+        view: &SplicingExpertView,
+    ) -> Result<(), String> {
+        if let Some(report) = self.get_saved_rna_read_report_by_id(report_id)
+            && !Self::rna_read_report_matches_splicing_view(report.as_ref(), view)
+        {
+            return Err(Self::rna_read_report_view_mismatch_message(
+                report.as_ref(),
+                view,
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn rna_read_report_view_mismatch_message(
+        report: &RnaReadInterpretationReport,
+        view: &SplicingExpertView,
+    ) -> String {
+        format!(
+            "Report '{}' belongs to {} feature n-{}, but this RNA-read workspace is open for {} feature n-{}. Refresh the Report ID or select a matching report before running report-based actions.",
+            report.report_id,
+            report.seq_id,
+            report.seed_feature_id,
+            view.seq_id,
+            view.target_feature_id
+        )
+    }
+
     pub(super) fn matching_rna_read_report_summaries_for_splicing_view(
         &mut self,
         view: &SplicingExpertView,
@@ -550,14 +596,6 @@ impl MainAreaDna {
         summaries: &[RnaReadInterpretationReportSummary],
     ) -> Option<String> {
         summaries.first().map(|row| row.report_id.clone())
-    }
-
-    pub(super) fn latest_rna_read_report_id_for_splicing_view(
-        &mut self,
-        view: &SplicingExpertView,
-    ) -> Option<String> {
-        let summaries = self.matching_rna_read_report_summaries_for_splicing_view(view);
-        Self::latest_matching_rna_read_report_id(&summaries)
     }
 
     pub(super) fn ensure_selected_rna_read_evidence_report_for_view(
@@ -1132,7 +1170,9 @@ impl MainAreaDna {
             return Some(Arc::new(progress));
         }
         self.current_rna_read_mapping_workspace_report_id()
-            .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
+            .and_then(|report_id| {
+                self.get_saved_rna_read_report_for_splicing_view_by_id(&report_id, view)
+            })
             .map(|report| self.synthesize_rna_read_progress_from_report(report.as_ref()))
     }
 

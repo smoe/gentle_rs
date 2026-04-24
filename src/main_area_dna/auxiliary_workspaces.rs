@@ -6211,10 +6211,30 @@ impl MainAreaDna {
     }
 
     pub(super) fn open_rna_read_mapping_workspace_for_view(&mut self, view: &SplicingExpertView) {
-        let desired_report_id = self
-            .selected_rna_read_evidence_report_id()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| self.latest_rna_read_report_id_for_splicing_view(view));
+        let matching_summaries = self.matching_rna_read_report_summaries_for_splicing_view(view);
+        let selected_report_id = self.selected_rna_read_evidence_report_id();
+        let selected_report_matches_view = selected_report_id.as_deref().is_some_and(|value| {
+            let value = value.trim();
+            if matching_summaries
+                .iter()
+                .any(|row| row.report_id.eq_ignore_ascii_case(value))
+            {
+                return true;
+            }
+            self.get_saved_rna_read_report_by_id(value)
+                .map(|report| Self::rna_read_report_matches_splicing_view(report.as_ref(), view))
+                .unwrap_or(true)
+        });
+        let desired_report_id = selected_report_id
+            .filter(|_| selected_report_matches_view)
+            .or_else(|| Self::latest_matching_rna_read_report_id(&matching_summaries));
+        let current_report_id = self.current_rna_read_mapping_workspace_report_id();
+        let current_report_mismatches_view = current_report_id
+            .as_deref()
+            .and_then(|report_id| self.get_saved_rna_read_report_by_id(report_id))
+            .is_some_and(|report| {
+                !Self::rna_read_report_matches_splicing_view(report.as_ref(), view)
+            });
         self.log_rna_read_mapping_status(
             view,
             "open requested",
@@ -6227,10 +6247,13 @@ impl MainAreaDna {
         self.show_rna_read_mapping_window = true;
         self.rna_read_mapping_status.clear();
         self.log_rna_read_mapping_status(view, "window state stored", true);
-        if self.rna_reads_ui.report_id.trim().is_empty()
-            && let Some(report_id) = desired_report_id
-        {
-            self.rna_reads_ui.report_id = report_id;
+        if self.rna_reads_ui.report_id.trim().is_empty() || current_report_mismatches_view {
+            if let Some(report_id) = desired_report_id {
+                self.rna_reads_ui.report_id = report_id;
+            } else if current_report_mismatches_view && self.rna_reads_ui.report_id_auto_sync {
+                self.rna_reads_ui.report_id =
+                    Self::default_rna_read_report_id(view, &self.rna_reads_ui);
+            }
         }
     }
 

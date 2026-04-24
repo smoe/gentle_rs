@@ -3597,6 +3597,10 @@ Status:
       scope + origin mode instead of only the input filename
     - the panel now exposes explicit `Auto` and `Refresh ID` controls so
       users can keep deterministic naming without losing manual override
+    - reopening a mapping workspace now validates saved `Report ID` context
+      against the current sequence and seed feature; stale report IDs from a
+      different locus are ignored/replaced before progress, workflow staging,
+      exports, or phase-2 alignment can run from the wrong context
     - saved-report selectors now show denser one-line summaries
       (profile/origin/read counts/scope/target-gene count) to reduce confusion
       between near-duplicate TP73 runs

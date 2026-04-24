@@ -7900,6 +7900,62 @@ mod tests {
     }
 
     #[test]
+    fn open_rna_read_mapping_workspace_replaces_stale_report_id_with_matching_report() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        engine
+            .write()
+            .expect("engine")
+            .commit_rna_read_report(RnaReadInterpretationReport {
+                report_id: "other_locus".to_string(),
+                seq_id: "seq1".to_string(),
+                seed_feature_id: 9,
+                generated_at_unix_ms: 2,
+                ..RnaReadInterpretationReport::default()
+            })
+            .expect("commit stale report");
+        engine
+            .write()
+            .expect("engine")
+            .commit_rna_read_report(RnaReadInterpretationReport {
+                report_id: "tp73_saved".to_string(),
+                seq_id: "seq1".to_string(),
+                seed_feature_id: 17,
+                generated_at_unix_ms: 1,
+                ..RnaReadInterpretationReport::default()
+            })
+            .expect("commit matching report");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.rna_read_evidence_ui.selected_report_id = "other_locus".to_string();
+        area.rna_reads_ui.report_id = "other_locus".to_string();
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        area.open_rna_read_mapping_workspace_for_view(&view);
+
+        assert_eq!(area.rna_reads_ui.report_id, "tp73_saved");
+    }
+
+    #[test]
     fn open_current_rna_read_mapping_workspace_uses_selected_splicing_feature() {
         let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
@@ -8963,6 +9019,73 @@ mod tests {
     }
 
     #[test]
+    fn mapping_workspace_ignores_saved_report_progress_for_other_splicing_view() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        engine
+            .write()
+            .expect("engine")
+            .commit_rna_read_report(RnaReadInterpretationReport {
+                report_id: "other_locus".to_string(),
+                seq_id: "seq1".to_string(),
+                seed_feature_id: 7,
+                read_count_total: 1,
+                read_count_seed_passed: 1,
+                hits: vec![RnaReadInterpretationHit {
+                    record_index: 0,
+                    header_id: "read0".to_string(),
+                    sequence: "ACGTACGT".to_string(),
+                    read_length_bp: 8,
+                    tested_kmers: 8,
+                    matched_kmers: 8,
+                    seed_hit_fraction: 1.0,
+                    passed_seed_filter: true,
+                    ..RnaReadInterpretationHit::default()
+                }],
+                ..RnaReadInterpretationReport::default()
+            })
+            .expect("commit report");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.rna_reads_ui.report_id = "other_locus".to_string();
+        area.rna_reads_ui.report_id_auto_sync = false;
+        area.rna_reads_ui.input_path = "/tmp/reads.fa".to_string();
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 9,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: "demo".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 8,
+            transcript_count: 1,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+
+        assert!(
+            area.current_rna_read_mapping_progress_for_view(&view)
+                .is_none()
+        );
+        let align_error = area
+            .build_splicing_rna_read_align_operation(&view, None)
+            .expect_err("stale report id should not align from this workspace");
+        assert!(align_error.contains("belongs to seq1 feature n-7"));
+        let interpret_error = area
+            .build_splicing_rna_read_interpret_operation(&view)
+            .expect_err("stale report id should not be overwritten from this workspace");
+        assert!(interpret_error.contains("belongs to seq1 feature n-7"));
+    }
+
+    #[test]
     fn unaligned_saved_report_progress_skips_alignment_inspection() {
         let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
         let mut state = ProjectState::default();
@@ -9404,9 +9527,28 @@ mod tests {
         let mut area = MainAreaDna::new(dna, None, None);
         area.rna_reads_ui.report_id = "report1".to_string();
         area.rna_reads_ui.align_phase_selection = RnaReadHitSelection::All;
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 9,
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            group_label: "demo".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            transcript_count: 1,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
 
         let op = area
-            .build_splicing_rna_read_align_operation(Some(vec![9, 2, 9, 5]))
+            .build_splicing_rna_read_align_operation(&view, Some(vec![9, 2, 9, 5]))
             .expect("build align op");
 
         match op {
@@ -25211,9 +25353,22 @@ impl MainAreaDna {
         let previous_op_status = self.op_status.clone();
         let mut persist_ui_state = false;
         self.render_rna_read_mapping_status(ui);
-        let workspace_saved_report = self
-            .current_rna_read_mapping_workspace_report_id()
-            .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id));
+        let workspace_report_id = self.current_rna_read_mapping_workspace_report_id();
+        let workspace_raw_report = workspace_report_id
+            .as_deref()
+            .and_then(|report_id| self.get_saved_rna_read_report_by_id(report_id));
+        let workspace_report_view_mismatch = workspace_raw_report
+            .as_ref()
+            .filter(|report| !Self::rna_read_report_matches_splicing_view(report.as_ref(), view))
+            .map(|report| Self::rna_read_report_view_mismatch_message(report.as_ref(), view));
+        let workspace_saved_report = workspace_raw_report
+            .as_ref()
+            .filter(|report| Self::rna_read_report_matches_splicing_view(report.as_ref(), view))
+            .cloned();
+        let report_id_usable_for_view = workspace_report_view_mismatch.is_none();
+        if let Some(message) = workspace_report_view_mismatch.as_ref() {
+            ui.small(egui::RichText::new(message).color(egui::Color32::from_rgb(180, 83, 9)));
+        }
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             ui.label(
@@ -25942,9 +26097,7 @@ impl MainAreaDna {
                     )
                     .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
-                if let Some(report_id) = self.current_rna_read_mapping_workspace_report_id()
-                    && let Some(report) = self.get_saved_rna_read_report_by_id(&report_id)
-                {
+                if let Some(report) = workspace_saved_report.as_ref() {
                     ui.small(
                         egui::RichText::new(
                             Self::format_rna_read_alignment_selection_summary(
@@ -25985,7 +26138,9 @@ impl MainAreaDna {
             );
         }
         let mut highlight_selection_update: Option<Option<usize>> = None;
-        self.sync_rna_read_evidence_selection_to_mapping_report();
+        if report_id_usable_for_view {
+            self.sync_rna_read_evidence_selection_to_mapping_report();
+        }
         let progress_snapshot = self.current_rna_read_mapping_progress_for_view(view);
         let align_selection_label =
             Self::rna_read_align_selection_ui_label(self.rna_reads_ui.align_phase_selection)
@@ -25995,14 +26150,12 @@ impl MainAreaDna {
             .as_ref()
             .is_some_and(|task| task.operation_label == "Nanopore alignment phase")
         {
-            self.current_rna_read_mapping_workspace_report_id()
-                .and_then(|report_id| self.get_saved_rna_read_report_by_id(&report_id))
-                .map(|report| {
-                    Self::format_rna_read_alignment_selection_summary(
-                        report.as_ref(),
-                        self.rna_reads_ui.align_phase_selection,
-                    )
-                })
+            workspace_saved_report.as_ref().map(|report| {
+                Self::format_rna_read_alignment_selection_summary(
+                    report.as_ref(),
+                    self.rna_reads_ui.align_phase_selection,
+                )
+            })
         } else {
             None
         };
@@ -26539,51 +26692,53 @@ impl MainAreaDna {
                             });
             }
         }
+        let report_action_hover = workspace_report_view_mismatch.as_deref().unwrap_or(
+            "Start asynchronous phase-1 interpretation with the current settings. Reads are optionally cDNA-normalized, scored against the admitted transcript/junction seed index, and written into the current Report ID for later inspection, alignment, and export.",
+        );
         if ui
-                    .add_enabled(
-                        self.rna_read_task.is_none(),
-                        egui::Button::new(Self::rna_read_mapping_run_button_label()),
-                    )
-                    .on_hover_text(
-                        "Start asynchronous phase-1 interpretation with the current settings. Reads are optionally cDNA-normalized, scored against the admitted transcript/junction seed index, and written into the current Report ID for later inspection, alignment, and export.",
-                    )
-                    .clicked()
-                {
-                    self.run_splicing_rna_read_interpretation(view);
-                }
+            .add_enabled(
+                self.rna_read_task.is_none() && report_id_usable_for_view,
+                egui::Button::new(Self::rna_read_mapping_run_button_label()),
+            )
+            .on_hover_text(report_action_hover)
+            .clicked()
+        {
+            self.run_splicing_rna_read_interpretation(view);
+        }
+        let align_action_hover = workspace_report_view_mismatch.as_deref().unwrap_or(
+            "Reopen the retained report stored under Report ID, run phase-2 pairwise alignment on the selected retained rows, and refresh mapping summaries plus exon-transition/isoform support tables. This does not reread the FASTA input unless you rerun phase 1.",
+        );
         if ui
-                    .add_enabled(
-                        self.rna_read_task.is_none(),
-                        egui::Button::new("Run alignment phase (retained report)"),
-                    )
-                    .on_hover_text(
-                        "Reopen the retained report stored under Report ID, run phase-2 pairwise alignment on the selected retained rows, and refresh mapping summaries plus exon-transition/isoform support tables. This does not reread the FASTA input unless you rerun phase 1.",
-                    )
-                    .clicked()
-                {
-                    self.run_splicing_rna_read_alignment_phase();
-                }
+            .add_enabled(
+                self.rna_read_task.is_none() && report_id_usable_for_view,
+                egui::Button::new("Run alignment phase (retained report)"),
+            )
+            .on_hover_text(align_action_hover)
+            .clicked()
+        {
+            self.run_splicing_rna_read_alignment_phase(view);
+        }
         ui.horizontal_wrapped(|ui| {
                     if ui
                         .add_enabled(
-                            self.rna_read_task.is_none(),
+                            self.rna_read_task.is_none() && report_id_usable_for_view,
                             egui::Button::new("Prepare Workflow Op"),
                         )
-                        .on_hover_text(
+                        .on_hover_text(workspace_report_view_mismatch.as_deref().unwrap_or(
                             "Build the same InterpretRnaReads payload from this panel and stage it in Engine Ops -> Workflow runner.",
-                        )
+                        ))
                         .clicked()
                     {
                         self.prepare_splicing_rna_read_interpretation_workflow(view);
                     }
                     if ui
                         .add_enabled(
-                            self.rna_read_task.is_none(),
+                            self.rna_read_task.is_none() && report_id_usable_for_view,
                             egui::Button::new("Copy Workflow JSON"),
                         )
-                        .on_hover_text(
+                        .on_hover_text(workspace_report_view_mismatch.as_deref().unwrap_or(
                             "Copy a full workflow JSON object (run_id + ops) for gentle_cli workflow/shell use.",
-                        )
+                        ))
                         .clicked()
                     {
                         self.copy_splicing_rna_read_interpretation_workflow_json(view, ui.ctx());
@@ -26603,48 +26758,48 @@ impl MainAreaDna {
                 }
         if ui
             .add_enabled(
-                self.rna_read_task.is_none(),
+                self.rna_read_task.is_none() && report_id_usable_for_view,
                 egui::Button::new("Export Retained Top Reads (FASTA)..."),
             )
-            .on_hover_text(
+            .on_hover_text(workspace_report_view_mismatch.as_deref().unwrap_or(
                 "Export retained top-ranked reads with seed diagnostics in FASTA headers.",
-            )
+            ))
             .clicked()
         {
             self.export_retained_rna_hits_fasta();
         }
         if ui
             .add_enabled(
-                self.rna_read_task.is_none(),
+                self.rna_read_task.is_none() && report_id_usable_for_view,
                 egui::Button::new("Export Exon Paths (TSV)..."),
             )
-            .on_hover_text(
+            .on_hover_text(workspace_report_view_mismatch.as_deref().unwrap_or(
                 "Export per-read inferred exon paths and seed metrics for downstream review.",
-            )
+            ))
             .clicked()
         {
             self.export_rna_read_exon_paths_tsv();
         }
         if ui
             .add_enabled(
-                self.rna_read_task.is_none(),
+                self.rna_read_task.is_none() && report_id_usable_for_view,
                 egui::Button::new("Export Exon Abundance (TSV)..."),
             )
-            .on_hover_text(
+            .on_hover_text(workspace_report_view_mismatch.as_deref().unwrap_or(
                 "Export exon/transition support abundance aggregated across retained reads.",
-            )
+            ))
             .clicked()
         {
             self.export_rna_read_exon_abundance_tsv();
         }
         if ui
                     .add_enabled(
-                        self.rna_read_task.is_none(),
+                        self.rna_read_task.is_none() && report_id_usable_for_view,
                         egui::Button::new("Export Score Density (SVG)..."),
                     )
-                    .on_hover_text(
+                    .on_hover_text(workspace_report_view_mismatch.as_deref().unwrap_or(
                         "Export the seed-hit score-density chart as SVG using the current Linear/Log scale toggle.",
-                    )
+                    ))
                     .clicked()
                 {
                     self.export_rna_read_score_density_svg();
@@ -29557,16 +29712,21 @@ impl MainAreaDna {
         self.start_rna_read_interpretation(op);
     }
 
-    fn run_splicing_rna_read_alignment_phase(&mut self) {
-        self.run_splicing_rna_read_alignment_phase_with_records(None);
+    fn run_splicing_rna_read_alignment_phase(&mut self, view: &SplicingExpertView) {
+        self.run_splicing_rna_read_alignment_phase_with_records(view, None);
     }
 
-    fn run_splicing_rna_read_alignment_phase_for_selected(&mut self, record_indices: Vec<usize>) {
-        self.run_splicing_rna_read_alignment_phase_with_records(Some(record_indices));
+    fn run_splicing_rna_read_alignment_phase_for_selected(
+        &mut self,
+        view: &SplicingExpertView,
+        record_indices: Vec<usize>,
+    ) {
+        self.run_splicing_rna_read_alignment_phase_with_records(view, Some(record_indices));
     }
 
     fn run_splicing_rna_read_alignment_phase_with_records(
         &mut self,
+        view: &SplicingExpertView,
         record_indices: Option<Vec<usize>>,
     ) {
         if self.rna_read_task.is_some() {
@@ -29580,7 +29740,7 @@ impl MainAreaDna {
                 return;
             }
         }
-        let op = match self.build_splicing_rna_read_align_operation(record_indices) {
+        let op = match self.build_splicing_rna_read_align_operation(view, record_indices) {
             Ok(op) => op,
             Err(message) => {
                 self.op_status = message.clone();
@@ -29702,6 +29862,9 @@ impl MainAreaDna {
                 Some(raw.to_string())
             }
         };
+        if let Some(report_id) = report_id.as_deref() {
+            self.validate_rna_read_report_id_for_splicing_view(report_id, view)?;
+        }
         let checkpoint_every_reads = Self::parse_positive_usize_text(
             &self.rna_reads_ui.checkpoint_every_reads,
             "checkpoint_every_reads",
@@ -29899,13 +30062,16 @@ impl MainAreaDna {
     }
 
     fn build_splicing_rna_read_align_operation(
-        &self,
+        &mut self,
+        view: &SplicingExpertView,
         selected_record_indices: Option<Vec<usize>>,
     ) -> Result<Operation, String> {
         let report_id = self.rna_reads_ui.report_id.trim();
         if report_id.is_empty() {
             return Err("Set a Report ID first before running alignment phase".to_string());
         }
+        let report_id = report_id.to_string();
+        self.validate_rna_read_report_id_for_splicing_view(&report_id, view)?;
         let align_config = self.parse_rna_align_config_from_ui()?;
         let selected_record_indices = selected_record_indices
             .unwrap_or_default()
@@ -29914,7 +30080,7 @@ impl MainAreaDna {
             .into_iter()
             .collect::<Vec<_>>();
         Ok(Operation::AlignRnaReadReport {
-            report_id: report_id.to_string(),
+            report_id,
             selection: self.rna_reads_ui.align_phase_selection,
             align_config_override: Some(align_config),
             selected_record_indices,
@@ -32547,7 +32713,7 @@ impl MainAreaDna {
                     .iter()
                     .copied()
                     .collect::<Vec<_>>();
-                self.run_splicing_rna_read_alignment_phase_for_selected(selected_indices);
+                self.run_splicing_rna_read_alignment_phase_for_selected(view, selected_indices);
             }
             if ui
                 .button(format!("Copy selected FASTA ({selected_count})"))
@@ -34229,7 +34395,7 @@ impl MainAreaDna {
                             ))
                             .clicked()
                     {
-                        self.run_splicing_rna_read_alignment_phase();
+                        self.run_splicing_rna_read_alignment_phase(view);
                     }
                     let selected_count = self.rna_seed_selected_record_indices.len();
                     if allow_mapping_actions
@@ -34251,6 +34417,7 @@ impl MainAreaDna {
                             .copied()
                             .collect::<Vec<_>>();
                         self.run_splicing_rna_read_alignment_phase_for_selected(
+                            view,
                             selected_indices,
                         );
                     }
@@ -34501,9 +34668,10 @@ impl MainAreaDna {
                                     self.rna_seed_selected_record_indices
                                         .insert(row.record_index);
                                     next_selection = Some(Some(row.record_index));
-                                    self.run_splicing_rna_read_alignment_phase_for_selected(vec![
-                                        row.record_index,
-                                    ]);
+                                    self.run_splicing_rna_read_alignment_phase_for_selected(
+                                        view,
+                                        vec![row.record_index],
+                                    );
                                 }
                             });
                             table_row.col(|ui| {
@@ -34525,6 +34693,7 @@ impl MainAreaDna {
                                             .insert(row.record_index);
                                         next_selection = Some(Some(row.record_index));
                                         self.run_splicing_rna_read_alignment_phase_for_selected(
+                                            view,
                                             vec![row.record_index],
                                         );
                                         ui.close();

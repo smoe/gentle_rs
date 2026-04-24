@@ -751,6 +751,10 @@ Feature tree grouping:
     - `Refresh ID` to regenerate the suggested value once without forcing
       future auto-sync
     - manual typing automatically switches the field into manual-override mode
+    - saved IDs are validated against the open sequence and seed feature before
+      they are used for progress, workflow staging, exports, or phase-2
+      alignment; if an ID resolves to another locus, the workspace warns and
+      requires a matching/refreshed ID instead of silently reusing it
   - field tooltips now explain how `Report ID`, `Scope`, `Origin mode`,
     `Report mode`, cDNA normalization, and alignment reuse affect retained
     reports and later inspection/export
