@@ -2391,6 +2391,69 @@ pub struct ProteaseCatalogExportReport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProteaseDigestProteaseSummary {
+    pub name: String,
+    pub cleavage_pattern: String,
+    pub cut_offset: isize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProteaseCleavageSite {
+    pub protease_name: String,
+    pub cleavage_boundary_0based: usize,
+    pub cleavage_after_aa_1based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_residue: Option<char>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub downstream_residue: Option<char>,
+    pub context: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProteaseDigestPeptide {
+    pub peptide_index: usize,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub source_start_aa_1based: usize,
+    pub source_end_aa_1based: usize,
+    pub length_aa: usize,
+    pub sequence: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_left_cleavage_boundary_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_right_cleavage_boundary_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_seq_id: Option<SeqId>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProteaseDigestReport {
+    pub schema: String,
+    pub source_seq_id: SeqId,
+    pub source_length_aa: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_protein_derivation_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_translation_table: Option<String>,
+    pub requested_proteases: Vec<String>,
+    pub resolved_proteases: Vec<ProteaseDigestProteaseSummary>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_proteases: Vec<String>,
+    pub min_length_aa: usize,
+    pub materialized: bool,
+    pub cleavage_site_count: usize,
+    pub peptide_count: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub created_seq_ids: Vec<SeqId>,
+    pub sites: Vec<ProteaseCleavageSite>,
+    pub peptides: Vec<ProteaseDigestPeptide>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomeExtractionProvenance {
     pub seq_id: SeqId,
     pub recorded_at_unix_ms: u128,
@@ -2739,6 +2802,8 @@ pub struct OpResult {
     pub protein_derivation_report: Option<ProteinDerivationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reverse_translation_report: Option<ReverseTranslationReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protease_digest_report: Option<ProteaseDigestReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub construct_reasoning_graph: Option<ConstructReasoningGraph>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

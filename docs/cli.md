@@ -1714,6 +1714,7 @@ Shared shell command:
     - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `proteases list [--filter TEXT] [--output PATH]`
     - `proteases show QUERY [--output PATH]`
+    - `proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]`
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
@@ -2739,14 +2740,22 @@ Resource sync commands:
     - cleavage-pattern notation
     - specificity summaries
     - common applications such as `proteomics` or `tag_removal`
-  - This is a catalog/inspection route; it does not execute peptide cleavage
-    yet.
+  - Catalog rows also drive the shared protein-digest operation below.
 - `proteases show QUERY [--output OUTPUT.json]`
   - Resolves one protease by exact name or alias first, then by unique
     catalog-search match.
   - Useful for sequence-specific tag-cleavage proteases such as `TEV protease`,
     `HRV 3C protease`, `Thrombin`, `Factor Xa`, or residue-specific entries
     such as `Trypsin`.
+- `proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]`
+  - Predicts cleavage sites on a first-class protein/peptide sequence using the
+    built-in protease catalog and returns
+    `gentle.protease_digest_report.v1`.
+  - By default the predicted peptide products are materialized as first-class
+    `peptide` sequences with source-protein and transcript-derived provenance
+    qualifiers when the source protein carries them.
+  - `--predict-only` keeps the operation report-only and does not create
+    sequence entries; `--min-length-aa` filters short peptide products.
 - `resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]`
   - Parses JASPAR PFM text into motif snapshot JSON with IUPAC consensus.
   - `INPUT` may be a local file path or an `https://...` URL.

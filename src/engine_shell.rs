@@ -909,6 +909,13 @@ pub enum ShellCommand {
         query: String,
         output: Option<String>,
     },
+    ProteasesDigest {
+        seq_id: String,
+        proteases: Vec<String>,
+        output_prefix: Option<String>,
+        min_length_aa: Option<usize>,
+        materialize: bool,
+    },
     ExportPool {
         inputs: Vec<String>,
         output: String,
@@ -5732,6 +5739,20 @@ impl ShellCommand {
                 "show protease catalog entry '{}' (output='{}')",
                 query.trim(),
                 output.as_deref().unwrap_or("-"),
+            ),
+            Self::ProteasesDigest {
+                seq_id,
+                proteases,
+                output_prefix,
+                min_length_aa,
+                materialize,
+            } => format!(
+                "digest protein '{}' with proteases [{}] (output_prefix='{}', min_length_aa={}, materialize={})",
+                seq_id,
+                proteases.join(","),
+                output_prefix.as_deref().unwrap_or("-"),
+                min_length_aa.unwrap_or(1),
+                materialize,
             ),
             Self::ExportPool {
                 inputs,
@@ -15551,7 +15572,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "proteases" | "protease" => {
             if tokens.len() < 2 {
-                return Err("proteases requires a subcommand: list or show".to_string());
+                return Err("proteases requires a subcommand: list, show, or digest".to_string());
             }
             match tokens[1].as_str() {
                 "list" => {
@@ -15608,8 +15629,68 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     Ok(ShellCommand::ProteasesShow { query, output })
                 }
+                "digest" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "proteases digest requires SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]"
+                                .to_string(),
+                        );
+                    }
+                    let seq_id = tokens[2].clone();
+                    let proteases = split_ids(&tokens[3]);
+                    if proteases.is_empty() {
+                        return Err(
+                            "proteases digest requires at least one protease name".to_string()
+                        );
+                    }
+                    let mut output_prefix: Option<String> = None;
+                    let mut min_length_aa: Option<usize> = None;
+                    let mut materialize = true;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--output-prefix" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing PREFIX after --output-prefix".to_string());
+                                }
+                                output_prefix = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--min-length-aa" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing N after --min-length-aa".to_string());
+                                }
+                                let parsed = tokens[idx + 1].parse::<usize>().map_err(|_| {
+                                    format!("Invalid --min-length-aa value '{}'", tokens[idx + 1])
+                                })?;
+                                min_length_aa = Some(parsed.max(1));
+                                idx += 2;
+                            }
+                            "--predict-only" => {
+                                materialize = false;
+                                idx += 1;
+                            }
+                            "--materialize" => {
+                                materialize = true;
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for proteases digest"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ProteasesDigest {
+                        seq_id,
+                        proteases,
+                        output_prefix,
+                        min_length_aa,
+                        materialize,
+                    })
+                }
                 other => Err(format!(
-                    "Unknown proteases subcommand '{other}' (expected list or show)"
+                    "Unknown proteases subcommand '{other}' (expected list, show, or digest)"
                 )),
             }
         }
@@ -18971,6 +19052,27 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(entry)
                     .map_err(|e| format!("Could not serialize protease entry: {e}"))?,
+            })
+        }
+        ShellCommand::ProteasesDigest {
+            seq_id,
+            proteases,
+            output_prefix,
+            min_length_aa,
+            materialize,
+        } => {
+            let op_result = engine
+                .apply(Operation::ProteaseDigestProteinSequence {
+                    seq_id: seq_id.clone(),
+                    proteases: proteases.clone(),
+                    output_prefix: output_prefix.clone(),
+                    min_length_aa: *min_length_aa,
+                    materialize: *materialize,
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: *materialize,
+                output: json!({ "result": op_result }),
             })
         }
         ShellCommand::ExportPool {
@@ -25569,6 +25671,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ImportPool { .. }
             | ShellCommand::ProteasesList { .. }
             | ShellCommand::ProteasesShow { .. }
+            | ShellCommand::ProteasesDigest { .. }
             | ShellCommand::ResourcesStatus
             | ShellCommand::ServicesStatus
             | ShellCommand::ServicesHandoff { .. }
@@ -26151,6 +26254,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ImportPool { .. }
         | ShellCommand::ProteasesList { .. }
         | ShellCommand::ProteasesShow { .. }
+        | ShellCommand::ProteasesDigest { .. }
         | ShellCommand::ResourcesStatus
         | ShellCommand::ServicesStatus
         | ShellCommand::ServicesHandoff { .. }

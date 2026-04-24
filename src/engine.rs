@@ -52,7 +52,7 @@ use crate::{
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
     pool_gel::{GelSampleInput, export_pool_gel_svg},
-    protease::Protease,
+    protease::{Protease, normalize_protease_name_token},
     protocol_cartoon::{ProtocolCartoonKind, ProtocolCartoonTemplateBindings},
     render_export::{export_circular_svg, export_linear_svg},
     render_feature_expert::render_feature_expert_svg,
@@ -3327,6 +3327,16 @@ pub enum Operation {
         #[serde(default)]
         anneal_window_bp: Option<usize>,
     },
+    ProteaseDigestProteinSequence {
+        seq_id: SeqId,
+        proteases: Vec<String>,
+        #[serde(default)]
+        output_prefix: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_length_aa: Option<usize>,
+        #[serde(default = "default_true")]
+        materialize: bool,
+    },
     BuildProteinToDnaHandoffReasoning {
         seq_id: SeqId,
         protein_seq_id: SeqId,
@@ -5041,6 +5051,7 @@ impl GentleEngine {
                 "DeriveTranscriptSequences".to_string(),
                 "DeriveProteinSequences".to_string(),
                 "ReverseTranslateProteinSequence".to_string(),
+                "ProteaseDigestProteinSequence".to_string(),
                 "BuildProteinToDnaHandoffReasoning".to_string(),
                 "ComputeDotplot".to_string(),
                 "ComputeDotplotOverlay".to_string(),
@@ -5327,6 +5338,60 @@ impl GentleEngine {
                 ),
             }),
         }
+    }
+
+    fn resolve_proteases_for_digest(
+        requested: &[String],
+    ) -> (Vec<Protease>, Vec<String>, Vec<String>) {
+        let all = active_proteases();
+        let mut resolved: Vec<Protease> = vec![];
+        let mut missing: Vec<String> = vec![];
+        let mut warnings: Vec<String> = vec![];
+        let mut seen = BTreeSet::new();
+        for raw in requested {
+            let query = raw.trim();
+            if query.is_empty() {
+                continue;
+            }
+            let exact_matches = all
+                .iter()
+                .filter(|protease| protease.matches_name_or_alias(query))
+                .collect::<Vec<_>>();
+            let chosen = if exact_matches.len() == 1 {
+                Some(exact_matches[0])
+            } else {
+                let filter_matches = all
+                    .iter()
+                    .filter(|protease| protease.matches_filter(query))
+                    .collect::<Vec<_>>();
+                match filter_matches.len() {
+                    1 => Some(filter_matches[0]),
+                    0 => None,
+                    _ => {
+                        warnings.push(format!(
+                            "Protease query '{}' matched multiple catalog entries; specify one of: {}",
+                            query,
+                            filter_matches
+                                .iter()
+                                .take(8)
+                                .map(|protease| protease.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
+                        None
+                    }
+                }
+            };
+            if let Some(protease) = chosen {
+                let key = normalize_protease_name_token(&protease.name);
+                if seen.insert(key) {
+                    resolved.push(protease.clone());
+                }
+            } else {
+                missing.push(query.to_string());
+            }
+        }
+        (resolved, missing, warnings)
     }
 
     pub fn export_protease_catalog(

@@ -1854,7 +1854,13 @@ order. Durable architecture constraints and decisions remain in
       `Trypsin`, `TEV protease`, and `HRV 3C protease`
     - shared-shell inspection routes now exist for that catalog:
       `proteases list|show`
-    - actual protease cleavage/digest operations are still a future engine step
+    - first shared protease digest operation now exists:
+      `ProteaseDigestProteinSequence` / `proteases digest`, producing
+      `gentle.protease_digest_report.v1` and optionally materializing peptide
+      products as first-class `peptide` sequences
+    - digest products preserve source protein, transcript-derived provenance,
+      derivation mode, and translation-table qualifiers when the protein came
+      from the transcript-first derivation path
     - the viewer still reuses the shared isoform-architecture canvas for
       genome/transcript projection inspection, but imported/derived proteins
       can now also exist as regular sequence entries
@@ -2006,12 +2012,11 @@ order. Durable architecture constraints and decisions remain in
        - keep this engine-owned so the same protein-aware behavior is available
          across GUI/CLI/JS/Lua/Python/MCP rather than growing GUI-only helpers
     6. Protease digestion / peptide-fragment workflows
-       - build actual protease cleavage prediction/materialization on top of
-         the now shared protease catalog instead of keeping proteases as
-         catalog-only metadata
-       - preserve transcript-first protein provenance, so predicted peptide
-         fragments stay auditable back to derived/imported protein sequences
-         rather than becoming adapter-only calculations
+       - expand the new protease cleavage prediction/materialization path with
+         missed-cleavage models, enzyme-condition notes, and downstream
+         proteomics/gel planning reports
+       - surface protease digest reports in GUI protein-expert and ClawBio
+         graphical insight flows instead of keeping them shell/report-only
 - Executable tutorial baseline is now integrated with canonical workflow
   examples:
   - canonical tutorial landing page now exists at `docs/tutorial/README.md`

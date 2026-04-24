@@ -12907,6 +12907,65 @@ fn execute_proteases_show_returns_trypsin_metadata() {
 }
 
 #[test]
+fn parse_proteases_digest_command() {
+    let command = parse_shell_line(
+        "proteases digest p Trypsin,Lys-C --output-prefix p_digest --min-length-aa 4 --predict-only",
+    )
+    .expect("parse protease digest");
+    match command {
+        ShellCommand::ProteasesDigest {
+            seq_id,
+            proteases,
+            output_prefix,
+            min_length_aa,
+            materialize,
+        } => {
+            assert_eq!(seq_id, "p");
+            assert_eq!(proteases, vec!["Trypsin", "Lys-C"]);
+            assert_eq!(output_prefix.as_deref(), Some("p_digest"));
+            assert_eq!(min_length_aa, Some(4));
+            assert!(!materialize);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_proteases_digest_materializes_peptides() {
+    let mut protein = DNAsequence::from_sequence("MAKRPTRKAA").expect("protein");
+    protein.set_molecule_type("protein");
+    let mut state = ProjectState::default();
+    state.sequences.insert("p".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ProteasesDigest {
+            seq_id: "p".to_string(),
+            proteases: vec!["Trypsin".to_string()],
+            output_prefix: Some("p_trypsin".to_string()),
+            min_length_aa: Some(1),
+            materialize: true,
+        },
+    )
+    .expect("execute protease digest");
+    assert!(out.state_changed);
+    assert_eq!(
+        out.output["result"]["protease_digest_report"]["schema"].as_str(),
+        Some("gentle.protease_digest_report.v1")
+    );
+    assert_eq!(
+        out.output["result"]["protease_digest_report"]["peptide_count"].as_u64(),
+        Some(4)
+    );
+    assert_eq!(
+        out.output["result"]["created_seq_ids"]
+            .as_array()
+            .map(Vec::len),
+        Some(4)
+    );
+}
+
+#[test]
 fn execute_services_status_reports_combined_readiness() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let out = execute_shell_command(&mut engine, &ShellCommand::ServicesStatus)

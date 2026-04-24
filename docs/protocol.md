@@ -2055,12 +2055,19 @@ external coding agent runtime, see:
 - shared-shell protease catalog routes:
   - `proteases list [--filter TEXT] [--output PATH]`
   - `proteases show QUERY [--output PATH]`
+  - `proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]`
   - semantics:
     - exposes the built-in protease catalog as deterministic JSON
     - search spans names, aliases, cleavage-pattern notation, specificity, and
       curated biotech-facing application tags
-    - this is inspection/catalog functionality only; it does not yet execute
-      peptide cleavage or digest planning
+    - `ProteaseDigestProteinSequence` is the canonical engine operation for
+      cleavage prediction/materialization on first-class protein or peptide
+      sequences
+    - digest reports use `gentle.protease_digest_report.v1` and retain
+      source-protein, transcript, derivation-mode, and translation-table
+      provenance when present on transcript-derived proteins
+    - peptide products are materialized as first-class `peptide` sequences
+      unless the shell caller passes `--predict-only`
 - shared-shell Ensembl gene routes:
   - `ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]`
   - `ensembl-gene list`

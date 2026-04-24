@@ -13182,6 +13182,98 @@ fn test_inspect_protease_entry_resolves_alias() {
 }
 
 #[test]
+fn test_protease_digest_materializes_peptides_with_transcript_provenance() {
+    let mut protein = seq("MAKRPTRKAA");
+    protein.set_molecule_type("protein");
+    protein.features_mut().push(gb_io::seq::Feature {
+        kind: "Protein".into(),
+        location: gb_io::seq::Location::simple_range(0, 10),
+        qualifiers: vec![
+            ("transcript_id".into(), Some("tx1".into())),
+            (
+                "protein_derivation_mode".into(),
+                Some("annotated_cds".into()),
+            ),
+            ("translation_table".into(), Some("1".into())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("p".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::ProteaseDigestProteinSequence {
+            seq_id: "p".to_string(),
+            proteases: vec!["Trypsin".to_string()],
+            output_prefix: Some("p_trypsin".to_string()),
+            min_length_aa: Some(1),
+            materialize: true,
+        })
+        .expect("digest protein");
+
+    let report = result
+        .protease_digest_report
+        .as_ref()
+        .expect("protease digest report");
+    assert_eq!(report.schema, "gentle.protease_digest_report.v1");
+    assert_eq!(report.source_transcript_id.as_deref(), Some("tx1"));
+    assert_eq!(
+        report
+            .sites
+            .iter()
+            .map(|site| site.cleavage_boundary_0based)
+            .collect::<Vec<_>>(),
+        vec![3, 7, 8]
+    );
+    assert_eq!(
+        report
+            .peptides
+            .iter()
+            .map(|peptide| peptide.sequence.as_str())
+            .collect::<Vec<_>>(),
+        vec!["MAK", "RPTR", "K", "AA"]
+    );
+    assert_eq!(result.created_seq_ids.len(), 4);
+    let first = engine
+        .state()
+        .sequences
+        .get(&result.created_seq_ids[0])
+        .expect("materialized peptide");
+    assert_eq!(first.molecule_type(), Some("peptide"));
+    assert_eq!(first.get_forward_string(), "MAK");
+    assert!(
+        first.features()[0]
+            .qualifier_values("source_transcript_id")
+            .any(|value| value == "tx1")
+    );
+}
+
+#[test]
+fn test_protease_digest_prediction_only_does_not_materialize() {
+    let mut protein = seq("MAKRPTRKAA");
+    protein.set_molecule_type("protein");
+    let mut state = ProjectState::default();
+    state.sequences.insert("p".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::ProteaseDigestProteinSequence {
+            seq_id: "p".to_string(),
+            proteases: vec!["Trypsin".to_string()],
+            output_prefix: None,
+            min_length_aa: Some(4),
+            materialize: false,
+        })
+        .expect("predict digest");
+
+    assert!(result.created_seq_ids.is_empty());
+    let report = result.protease_digest_report.expect("protease report");
+    assert!(!report.materialized);
+    assert_eq!(report.peptide_count, 1);
+    assert_eq!(report.peptides[0].sequence, "RPTR");
+}
+
+#[test]
 fn test_save_file_operation_fasta() {
     let mut state = ProjectState::default();
     state.sequences.insert("s".to_string(), seq("ATGCCA"));

@@ -700,6 +700,22 @@
          "usage": "proteases show QUERY [--output PATH]"
       },
       {
+         "aliases": [
+            "protease digest"
+         ],
+         "engine_operations": [
+            "ProteaseDigestProteinSequence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "proteases digest",
+         "summary": "Predict and optionally materialize protease peptide products from a protein sequence.",
+         "usage": "proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "ExportPool"

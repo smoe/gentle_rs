@@ -2788,6 +2788,119 @@ impl GentleEngine {
         Ok(protein)
     }
 
+    fn protein_feature_qualifier(protein: &DNAsequence, key: &str) -> Option<String> {
+        protein
+            .features()
+            .iter()
+            .find_map(|feature| Self::qualifier_text_for_derivation(feature, key))
+    }
+
+    fn protease_digest_context(protein_sequence: &str, boundary_0based: usize) -> String {
+        let residues = protein_sequence.chars().collect::<Vec<_>>();
+        let start = boundary_0based.saturating_sub(6);
+        let end = (boundary_0based + 6).min(residues.len());
+        let mut context = String::new();
+        for residue in &residues[start..boundary_0based.min(residues.len())] {
+            context.push(*residue);
+        }
+        context.push('|');
+        for residue in &residues[boundary_0based.min(residues.len())..end] {
+            context.push(*residue);
+        }
+        context
+    }
+
+    fn build_protease_digest_peptide_sequence(
+        peptide: &ProteaseDigestPeptide,
+        seq_name: &str,
+        source_seq_id: &str,
+        proteases: &[ProteaseDigestProteaseSummary],
+        source_transcript_id: Option<&str>,
+        source_derivation_mode: Option<&str>,
+        source_translation_table: Option<&str>,
+    ) -> Result<DNAsequence, EngineError> {
+        let mut sequence =
+            DNAsequence::from_sequence(&peptide.sequence).map_err(|e| EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not construct protease peptide '{seq_name}': {e}"),
+            })?;
+        sequence.set_name(seq_name);
+        sequence.set_molecule_type("peptide");
+        let mut qualifiers = vec![
+            ("label".into(), Some(seq_name.to_string())),
+            ("source_seq_id".into(), Some(source_seq_id.to_string())),
+            (
+                "source_start_aa_1based".into(),
+                Some(peptide.source_start_aa_1based.to_string()),
+            ),
+            (
+                "source_end_aa_1based".into(),
+                Some(peptide.source_end_aa_1based.to_string()),
+            ),
+            (
+                "source_start_0based".into(),
+                Some(peptide.start_0based.to_string()),
+            ),
+            (
+                "source_end_0based_exclusive".into(),
+                Some(peptide.end_0based_exclusive.to_string()),
+            ),
+            (
+                "protease_digest".into(),
+                Some(
+                    proteases
+                        .iter()
+                        .map(|protease| protease.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                ),
+            ),
+            (
+                "synthetic_origin".into(),
+                Some("protease_digest_peptide".to_string()),
+            ),
+        ];
+        if let Some(boundary) = peptide.source_left_cleavage_boundary_0based {
+            qualifiers.push((
+                "source_left_cleavage_boundary_0based".into(),
+                Some(boundary.to_string()),
+            ));
+        }
+        if let Some(boundary) = peptide.source_right_cleavage_boundary_0based {
+            qualifiers.push((
+                "source_right_cleavage_boundary_0based".into(),
+                Some(boundary.to_string()),
+            ));
+        }
+        if let Some(transcript_id) = source_transcript_id {
+            qualifiers.push((
+                "source_transcript_id".into(),
+                Some(transcript_id.to_string()),
+            ));
+        }
+        if let Some(derivation_mode) = source_derivation_mode {
+            qualifiers.push((
+                "source_protein_derivation_mode".into(),
+                Some(derivation_mode.to_string()),
+            ));
+        }
+        if let Some(translation_table) = source_translation_table {
+            qualifiers.push((
+                "source_translation_table".into(),
+                Some(translation_table.to_string()),
+            ));
+        }
+        if peptide.length_aa > 0 {
+            sequence.features_mut().push(gb_io::seq::Feature {
+                kind: "Peptide".into(),
+                location: gb_io::seq::Location::simple_range(0, peptide.length_aa as i64),
+                qualifiers,
+            });
+        }
+        Self::prepare_sequence(&mut sequence);
+        Ok(sequence)
+    }
+
     fn build_reverse_translated_coding_dna(
         coding_sequence: &str,
         seq_name: &str,
@@ -6277,6 +6390,7 @@ impl GentleEngine {
             sequence_alignment: None,
             protein_derivation_report: None,
             reverse_translation_report: None,
+            protease_digest_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
@@ -11815,6 +11929,211 @@ impl GentleEngine {
                     ));
                     result.warnings.extend(warnings);
                     result.reverse_translation_report = Some(report);
+                }
+                Operation::ProteaseDigestProteinSequence {
+                    seq_id,
+                    proteases,
+                    output_prefix,
+                    min_length_aa,
+                    materialize,
+                } => {
+                    if proteases.iter().all(|name| name.trim().is_empty()) {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ProteaseDigestProteinSequence requires at least one protease"
+                                .to_string(),
+                        });
+                    }
+                    let protein = self
+                        .state
+                        .sequences
+                        .get(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?
+                        .clone();
+                    if !protein.is_protein_sequence() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "ProteaseDigestProteinSequence requires a protein or peptide sequence; '{}' has molecule_type={:?}",
+                                seq_id,
+                                protein.molecule_type()
+                            ),
+                        });
+                    }
+                    parent_seq_ids.push(seq_id.clone());
+                    let (resolved, missing, mut resolution_warnings) =
+                        Self::resolve_proteases_for_digest(&proteases);
+                    if !missing.is_empty() {
+                        resolution_warnings.push(format!(
+                            "Unknown or ambiguous proteases ignored: {}",
+                            missing.join(",")
+                        ));
+                    }
+                    if resolved.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "No requested proteases could be resolved from: {}",
+                                proteases.join(",")
+                            ),
+                        });
+                    }
+                    result.warnings.extend(resolution_warnings);
+                    let protein_sequence = protein.get_forward_string().to_ascii_uppercase();
+                    let source_len = protein_sequence.len();
+                    let min_length_aa = min_length_aa.unwrap_or(1).max(1);
+                    let resolved_summaries = resolved
+                        .iter()
+                        .map(|protease| ProteaseDigestProteaseSummary {
+                            name: protease.name.clone(),
+                            cleavage_pattern: protease.sequence.clone(),
+                            cut_offset: protease.cut,
+                            aliases: protease.aliases.clone(),
+                        })
+                        .collect::<Vec<_>>();
+                    let mut cleavage_boundaries = BTreeSet::new();
+                    let mut sites = vec![];
+                    let residues = protein_sequence.chars().collect::<Vec<_>>();
+                    for protease in &resolved {
+                        for boundary in protease.cleavage_boundaries_0based(&protein_sequence) {
+                            let upstream_residue = boundary
+                                .checked_sub(1)
+                                .and_then(|idx| residues.get(idx).copied());
+                            let downstream_residue = residues.get(boundary).copied();
+                            sites.push(ProteaseCleavageSite {
+                                protease_name: protease.name.clone(),
+                                cleavage_boundary_0based: boundary,
+                                cleavage_after_aa_1based: boundary,
+                                upstream_residue,
+                                downstream_residue,
+                                context: Self::protease_digest_context(&protein_sequence, boundary),
+                            });
+                            if boundary > 0 && boundary < source_len {
+                                cleavage_boundaries.insert(boundary);
+                            }
+                        }
+                    }
+                    sites.sort_by(|a, b| {
+                        a.cleavage_boundary_0based
+                            .cmp(&b.cleavage_boundary_0based)
+                            .then_with(|| a.protease_name.cmp(&b.protease_name))
+                    });
+                    let mut peptide_boundaries = vec![0usize];
+                    peptide_boundaries.extend(cleavage_boundaries.iter().copied());
+                    peptide_boundaries.push(source_len);
+                    peptide_boundaries.sort_unstable();
+                    peptide_boundaries.dedup();
+
+                    let mut peptides = vec![];
+                    for pair in peptide_boundaries.windows(2) {
+                        let start = pair[0];
+                        let end = pair[1];
+                        if end <= start {
+                            continue;
+                        }
+                        let length_aa = end - start;
+                        if length_aa < min_length_aa {
+                            continue;
+                        }
+                        let sequence = protein_sequence[start..end].to_string();
+                        peptides.push(ProteaseDigestPeptide {
+                            peptide_index: peptides.len() + 1,
+                            start_0based: start,
+                            end_0based_exclusive: end,
+                            source_start_aa_1based: start + 1,
+                            source_end_aa_1based: end,
+                            length_aa,
+                            sequence,
+                            source_left_cleavage_boundary_0based: (start > 0).then_some(start),
+                            source_right_cleavage_boundary_0based: (end < source_len)
+                                .then_some(end),
+                            created_seq_id: None,
+                        });
+                    }
+                    if materialize && peptides.len() > self.max_fragments_per_container() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Protease digest would create {} peptides, exceeding max_fragments_per_container={}",
+                                peptides.len(),
+                                self.max_fragments_per_container()
+                            ),
+                        });
+                    }
+                    let source_transcript_id =
+                        Self::protein_feature_qualifier(&protein, "transcript_id");
+                    let source_protein_derivation_mode =
+                        Self::protein_feature_qualifier(&protein, "protein_derivation_mode");
+                    let source_translation_table =
+                        Self::protein_feature_qualifier(&protein, "translation_table");
+                    if materialize {
+                        let prefix = output_prefix
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(ToOwned::to_owned)
+                            .unwrap_or_else(|| format!("{seq_id}_protease_digest"));
+                        let source_name = protein.name().as_deref().unwrap_or(seq_id.as_str());
+                        for peptide in &mut peptides {
+                            let base_seq_id = format!("{}_p{}", prefix, peptide.peptide_index);
+                            let peptide_seq_id = self.unique_seq_id(&base_seq_id);
+                            let peptide_name =
+                                format!("{source_name} protease peptide {}", peptide.peptide_index);
+                            let peptide_sequence = Self::build_protease_digest_peptide_sequence(
+                                peptide,
+                                &peptide_name,
+                                &seq_id,
+                                &resolved_summaries,
+                                source_transcript_id.as_deref(),
+                                source_protein_derivation_mode.as_deref(),
+                                source_translation_table.as_deref(),
+                            )?;
+                            self.state
+                                .sequences
+                                .insert(peptide_seq_id.clone(), peptide_sequence);
+                            self.add_lineage_node(
+                                &peptide_seq_id,
+                                SequenceOrigin::Derived,
+                                Some(&result.op_id),
+                            );
+                            result.created_seq_ids.push(peptide_seq_id.clone());
+                            peptide.created_seq_id = Some(peptide_seq_id);
+                        }
+                    }
+                    let report = ProteaseDigestReport {
+                        schema: "gentle.protease_digest_report.v1".to_string(),
+                        source_seq_id: seq_id.clone(),
+                        source_length_aa: source_len,
+                        source_transcript_id,
+                        source_protein_derivation_mode,
+                        source_translation_table,
+                        requested_proteases: proteases.clone(),
+                        resolved_proteases: resolved_summaries,
+                        missing_proteases: missing,
+                        min_length_aa,
+                        materialized: materialize,
+                        cleavage_site_count: sites.len(),
+                        peptide_count: peptides.len(),
+                        created_seq_ids: result.created_seq_ids.clone(),
+                        sites,
+                        peptides,
+                    };
+                    result.messages.push(format!(
+                        "Protease digest of '{}' with {} protease(s) found {} cleavage site(s) and {} peptide(s){}.",
+                        seq_id,
+                        report.resolved_proteases.len(),
+                        report.cleavage_site_count,
+                        report.peptide_count,
+                        if materialize {
+                            format!("; materialized {} peptide sequence(s)", report.created_seq_ids.len())
+                        } else {
+                            "; prediction only".to_string()
+                        }
+                    ));
+                    result.protease_digest_report = Some(report);
                 }
                 Operation::BuildProteinToDnaHandoffReasoning {
                     seq_id,

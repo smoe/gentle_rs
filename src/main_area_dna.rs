@@ -1724,6 +1724,7 @@ mod tests {
             sequence_alignment: None,
             protein_derivation_report: None,
             reverse_translation_report: None,
+            protease_digest_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_trace_import_report: Some(SequencingTraceImportReport {
@@ -4701,6 +4702,7 @@ mod tests {
                 sequence_alignment: None,
                 protein_derivation_report: None,
                 reverse_translation_report: None,
+                protease_digest_report: None,
                 construct_reasoning_graph: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
