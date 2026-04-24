@@ -2912,6 +2912,10 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `chat_summary_lines[]` is populated when `stdout_json.schema` is
     `gentle.sequence_context_view.v1`, so ClawBio/OpenClaw can relay the
     compact sequence-context summary before attaching larger SVG/BED artifacts
+  - when no domain-specific summary is available but a command completed with
+    parseable output, the wrapper synthesizes a short execution summary so
+    chat renderers still show the command and output shape instead of only
+    report section headings
   - `artifacts.collected[]` may enumerate declared output files copied into the
     wrapper bundle with `declared_path`, `bundle_path`, `source_path`,
     `copied_path`, and optional `derived_from`

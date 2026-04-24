@@ -477,6 +477,13 @@ Each entry contains:
 That gives chat layers a deterministic way to offer "Would you like me to run
 this next?" without scraping the human-readable report.
 
+The wrapper also writes a Telegram-safe execution summary into both
+`result.json.chat_summary_lines[]` and `report.md` whenever a successful
+command has parseable output but no more specific biological summary. This
+prevents confirmed actions such as `capabilities` from appearing in chat as
+empty `Command` / `Stdout` / `Stderr` headings if the messenger strips fenced
+Markdown blocks.
+
 For `services handoff`, the wrapper also lifts GENtle-owned
 `preferred_demo_actions[]` and `blocked_actions[]` to the top level of
 `result.json`. Demo actions include ready-to-run nested request objects;

@@ -104,6 +104,15 @@ def _format_command_text(command: list[str] | None) -> str:
     return " ".join(shlex.quote(v) for v in command)
 
 
+def _one_line_preview(text: str, *, max_chars: int = 240) -> str | None:
+    stripped = " ".join((text or "").strip().split())
+    if not stripped:
+        return None
+    if len(stripped) <= max_chars:
+        return stripped
+    return stripped[: max_chars - 1].rstrip() + "..."
+
+
 def _now_utc_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
@@ -1523,6 +1532,49 @@ def _runtime_version_chat_summary_lines(
     return [f"Installed GENtle runtime version: {version_text}"]
 
 
+def _fallback_chat_summary_lines(
+    *,
+    request: Request | None,
+    command: list[str] | None,
+    run_result: subprocess.CompletedProcess[str] | None,
+    stdout_json: Any | None,
+    status: str,
+) -> list[str] | None:
+    if run_result is None:
+        return None
+    stdout_preview = _one_line_preview(run_result.stdout)
+    stderr_preview = _one_line_preview(run_result.stderr)
+    if not isinstance(stdout_json, dict) and not stdout_preview and not stderr_preview:
+        return None
+    command_text = _format_command_text(command)
+    lines = [
+        f"GENtle command completed with status `{status}` and exit code `{run_result.returncode}`.",
+        f"Command: {command_text}",
+    ]
+    if isinstance(stdout_json, dict):
+        schema = stdout_json.get("schema")
+        if isinstance(schema, str) and schema.strip():
+            lines.append(f"Parsed JSON output schema: {schema.strip()}")
+        else:
+            keys = sorted(str(key) for key in stdout_json.keys())[:8]
+            if keys:
+                lines.append("Parsed JSON output keys: " + ", ".join(keys))
+        if (
+            isinstance(request, Request)
+            and request.mode == "shell"
+            and (request.shell_line or "").strip() == "capabilities"
+        ):
+            capabilities = stdout_json.get("capabilities")
+            if isinstance(capabilities, list):
+                lines.append(f"Capability entries reported: {len(capabilities)}")
+    else:
+        if stdout_preview:
+            lines.append(f"Stdout preview: {stdout_preview}")
+    if stderr_preview:
+        lines.append(f"Stderr preview: {stderr_preview}")
+    return lines
+
+
 def _action_id_from_label(label: str) -> str:
     token = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
     return token or "action"
@@ -2032,6 +2084,8 @@ def _write_report(
     stdout = run_result.stdout if run_result else ""
     stderr = run_result.stderr if run_result else ""
     exit_code = run_result.returncode if run_result else None
+    stdout_preview = _one_line_preview(stdout)
+    stderr_preview = _one_line_preview(stderr)
     lines = [
         "# GENtle ClawBio Skill Report",
         "",
@@ -2047,6 +2101,9 @@ def _write_report(
     lines.append(f"- Execution cwd: `{execution_cwd}`")
     if exit_code is not None:
         lines.append(f"- Exit code: `{exit_code}`")
+    lines.append(f"- Command text: `{command_text}`")
+    lines.append(f"- Stdout preview: `{stdout_preview or '(empty)'}`")
+    lines.append(f"- Stderr preview: `{stderr_preview or '(empty)'}`")
     if isinstance(stdout_json, dict) and isinstance(stdout_json.get("schema"), str):
         lines.append(f"- Parsed stdout JSON schema: `{stdout_json['schema']}`")
     if error_message:
@@ -2081,6 +2138,18 @@ def _write_report(
         lines.append(
             f"- Reference preflight: `{reference_preflight.get('status', 'unknown')}`"
         )
+    lines.extend(
+        [
+            "",
+            "## Execution Summary",
+            "",
+            f"- Command: `{command_text}`",
+        ]
+    )
+    if exit_code is not None:
+        lines.append(f"- Exit code: `{exit_code}`")
+    lines.append(f"- Stdout preview: `{stdout_preview or '(empty)'}`")
+    lines.append(f"- Stderr preview: `{stderr_preview or '(empty)'}`")
     if chat_summary_lines:
         lines.extend(["", "## Chat Summary", ""])
         lines.extend(f"- {line}" for line in chat_summary_lines)
@@ -2435,6 +2504,14 @@ def main() -> int:
             )
             if chat_summary_lines is None:
                 chat_summary_lines = _default_demo_chat_summary_lines(preferred_artifacts)
+            if chat_summary_lines is None:
+                chat_summary_lines = _fallback_chat_summary_lines(
+                    request=request,
+                    command=command,
+                    run_result=run_result,
+                    stdout_json=stdout_json,
+                    status=status,
+                )
     except subprocess.TimeoutExpired as e:
         request = request if request is not None else _default_demo_request()
         error_message = f"command timed out after {e.timeout} seconds"

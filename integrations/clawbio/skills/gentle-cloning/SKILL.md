@@ -1314,6 +1314,10 @@ For status/readiness outputs, `result.json` may additionally include:
     - `ready` -> no redundant prepare offer
   - this now includes CUT&RUN dataset status replies from `cutrun status ...`,
     not only the shared reference/helper/resource readiness surfaces
+- generic execution summaries for successful commands with parseable output
+  but no domain-specific summary, so confirmed actions such as `capabilities`
+  still show command/output content in Telegram-style chat surfaces even when
+  fenced Markdown blocks are stripped
 - `preferred_demo_actions[]` for `services handoff` demo commands that are
   already shaped as ClawBio request objects
 - `blocked_actions[]` for `services handoff` setup steps that are useful but
