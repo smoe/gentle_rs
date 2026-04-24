@@ -1919,7 +1919,10 @@ Sequencing-trace evidence notes:
   - derives strand-aware promoter windows from transcript TSS geometry
   - writes them back as ordinary `promoter` features with explicit generated
     qualifiers (`generated_by`, `promoter_source`, `gene`, `transcript_id`,
-    `upstream_bp`, `downstream_bp`)
+    `transcript_count`, `transcript_ids`, `upstream_bp`, `downstream_bp`)
+  - exact duplicate promoter spans that differ only by downstream splice
+    variation are collapsed at write-back time; the shared feature label keeps
+    one promoter symbol and annotates how many transcripts contributed
   - generated promoter windows render distinctly from imported promoter
     features
 - `SummarizeVariantPromoterContext { input, variant_label_or_id?, gene_label?, transcript_id?, promoter_upstream_bp=1000, promoter_downstream_bp=200, tfbs_focus_half_window_bp=100, path? }`

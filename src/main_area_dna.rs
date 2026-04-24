@@ -8194,6 +8194,46 @@ mod tests {
     }
 
     #[test]
+    fn open_variant_followup_for_reasoning_promoter_span_resolves_transcript_feature() {
+        let mut dna = DNAsequence::from_sequence(&"A".repeat(4000)).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(1200, 1800),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some("ENSTTP73A".to_string())),
+                ("label".into(), Some("TP73-201".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("tp73_reasoning_ui".to_string(), dna.clone());
+        let mut engine = GentleEngine::from_state(state);
+        let graph = engine
+            .build_construct_reasoning_graph("tp73_reasoning_ui", None, Some("graph_tp73_ui"))
+            .expect("graph");
+        let promoter_evidence_id = graph
+            .evidence
+            .iter()
+            .find(|row| row.role == ConstructRole::Promoter)
+            .map(|row| row.evidence_id.clone())
+            .expect("promoter evidence");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("tp73_reasoning_ui".to_string()), Some(engine));
+        area.focus_construct_reasoning_graph("graph_tp73_ui");
+
+        let opened =
+            area.open_variant_followup_for_reasoning_span(promoter_evidence_id.as_str(), "test");
+
+        assert!(opened);
+        assert!(area.show_variant_followup_window);
+        assert_eq!(area.variant_followup_ui.source_feature_id, Some(0));
+        assert_eq!(area.variant_followup_ui.gene_label, "TP73");
+        assert_eq!(area.variant_followup_ui.transcript_id, "ENSTTP73A");
+    }
+
+    #[test]
     fn variant_followup_handoff_result_uses_bundle_relative_artifacts() {
         let dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             .expect("sequence");
@@ -50315,6 +50355,45 @@ impl MainAreaDna {
                 {
                     self.open_variant_followup_for_feature(feature_id, "description panel");
                 }
+            } else if let Some(reasoning_evidence_id) = self
+                .description_cache_selected_reasoning_evidence_id
+                .as_deref()
+                .filter(|evidence_id| {
+                    self.find_construct_reasoning_span(evidence_id)
+                        .map(|(_, span)| self.reasoning_span_supports_variant_followup(&span))
+                        .unwrap_or(false)
+                })
+                .map(str::to_string)
+            {
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("Promoter design")
+                        .strong()
+                        .size(detail_font_size),
+                );
+                ui.label(
+                    egui::RichText::new(
+                        "Open the dedicated Promoter design window from this reasoning-derived promoter span to inspect TF score tracks and downstream promoter context.",
+                    )
+                    .size(detail_font_size),
+                );
+                let button_label = if self.show_variant_followup_window {
+                    "Focus Promoter Design"
+                } else {
+                    "Open Promoter Design"
+                };
+                if ui
+                    .button(button_label)
+                    .on_hover_text(
+                        "Resolve the reasoning-derived promoter span back to a transcript feature and open the Promoter design window",
+                    )
+                    .clicked()
+                {
+                    self.open_variant_followup_for_reasoning_span(
+                        reasoning_evidence_id.as_str(),
+                        "description panel",
+                    );
+                }
             }
             if let Some((overlay, span)) = self
                 .description_cache_selected_reasoning_evidence_id
@@ -51043,6 +51122,7 @@ impl MainAreaDna {
                 self.draw_pcr_paint_overlays(ui, &response);
                 self.render_pcr_post_drag_actions(ui);
                 let mut map_open_variant_followup_feature: Option<usize> = None;
+                let mut map_open_variant_followup_reasoning_evidence: Option<String> = None;
                 let mut map_open_splicing_feature: Option<usize> = None;
                 let mut map_open_rna_read_mapping_feature: Option<usize> = None;
                 let mut map_open_dotplot_feature: Option<usize> = None;
@@ -51060,12 +51140,38 @@ impl MainAreaDna {
                         .get_hovered_feature_id()
                         .or_else(|| self.map_dna.get_selected_feature_id())
                         .or_else(|| self.get_selected_feature_id());
+                    let candidate_reasoning_evidence_id = self
+                        .map_dna
+                        .get_hovered_reasoning_evidence_id()
+                        .or_else(|| self.map_dna.get_selected_reasoning_evidence_id());
+                    let promoter_feature_id = candidate_feature_id
+                        .filter(|feature_id| self.feature_supports_variant_followup(*feature_id));
+                    let promoter_reasoning_evidence_id = candidate_reasoning_evidence_id
+                        .filter(|evidence_id| {
+                            self.find_construct_reasoning_span(evidence_id)
+                                .map(|(_, span)| self.reasoning_span_supports_variant_followup(&span))
+                                .unwrap_or(false)
+                        });
                     let Some(feature_id) = candidate_feature_id else {
-                        if !showed_any {
-                            ui.label("No selection or feature under cursor");
+                        if let Some(evidence_id) = promoter_reasoning_evidence_id {
+                            if showed_any {
+                                ui.separator();
+                            }
+                            let variant_response =
+                                ui.add(egui::Button::new("Open Promoter Design"));
+                            let variant_response = variant_response.on_hover_text(
+                                "Resolve the reasoning-derived promoter span back to a transcript feature and open the Promoter design window",
+                            );
+                            if variant_response.clicked() {
+                                map_open_variant_followup_reasoning_evidence =
+                                    Some(evidence_id.to_string());
+                                ui.close();
+                            }
+                        } else if !showed_any {
+                            ui.label("No selection, feature, or reasoning span under cursor");
                         } else {
                             ui.separator();
-                            ui.small("No feature under cursor");
+                            ui.small("No feature or promoter-relevant reasoning span under cursor");
                         }
                         return;
                     };
@@ -51073,14 +51179,25 @@ impl MainAreaDna {
                         ui.separator();
                     }
                     let variant_response = ui.add_enabled(
-                        self.feature_supports_variant_followup(feature_id),
+                        promoter_feature_id.is_some() || promoter_reasoning_evidence_id.is_some(),
                         egui::Button::new("Open Promoter Design"),
                     );
-                    let variant_response = variant_response.on_hover_text(
-                        "Open the dedicated Promoter design window for this promoter-relevant feature",
-                    );
+                    let variant_response = if promoter_feature_id.is_some() {
+                        variant_response.on_hover_text(
+                            "Open the dedicated Promoter design window for this promoter-relevant feature",
+                        )
+                    } else {
+                        variant_response.on_hover_text(
+                            "Resolve the reasoning-derived promoter span back to a transcript feature and open the Promoter design window",
+                        )
+                    };
                     if variant_response.clicked() {
-                        map_open_variant_followup_feature = Some(feature_id);
+                        if let Some(feature_id) = promoter_feature_id {
+                            map_open_variant_followup_feature = Some(feature_id);
+                        } else if let Some(evidence_id) = promoter_reasoning_evidence_id {
+                            map_open_variant_followup_reasoning_evidence =
+                                Some(evidence_id.to_string());
+                        }
                         ui.close();
                     }
                     let open_response = ui.add_enabled(
@@ -51207,6 +51324,12 @@ impl MainAreaDna {
                 }
                 if let Some(feature_id) = map_open_variant_followup_feature {
                     self.open_variant_followup_for_feature(feature_id, "map context menu");
+                }
+                if let Some(evidence_id) = map_open_variant_followup_reasoning_evidence {
+                    self.open_variant_followup_for_reasoning_span(
+                        evidence_id.as_str(),
+                        "map context menu",
+                    );
                 }
                 if let Some(feature_id) = map_open_splicing_feature {
                     self.open_splicing_expert_for_feature(feature_id, "map context menu");

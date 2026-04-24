@@ -38,6 +38,65 @@ impl MainAreaDna {
             .unwrap_or(false)
     }
 
+    pub(super) fn reasoning_span_supports_variant_followup(
+        &self,
+        span: &ConstructReasoningOverlaySpan,
+    ) -> bool {
+        matches!(span.role, ConstructRole::Promoter | ConstructRole::Variant)
+            && self
+                .resolve_variant_followup_feature_id_for_reasoning_span(span)
+                .is_some()
+    }
+
+    fn resolve_variant_followup_feature_id_for_reasoning_span(
+        &self,
+        span: &ConstructReasoningOverlaySpan,
+    ) -> Option<usize> {
+        let dna = self.dna.read().ok()?;
+        for transcript_id in &span.provenance_refs {
+            let trimmed = transcript_id.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Some((feature_id, _)) = dna.features().iter().enumerate().find(|(_, feature)| {
+                feature.kind.to_string().trim().eq_ignore_ascii_case("mRNA")
+                    && feature
+                        .qualifier_values("transcript_id")
+                        .any(|value| value.eq_ignore_ascii_case(trimmed))
+            }) {
+                return Some(feature_id);
+            }
+        }
+        None
+    }
+
+    pub(super) fn open_variant_followup_for_reasoning_span(
+        &mut self,
+        evidence_id: &str,
+        source: &str,
+    ) -> bool {
+        let Some((_, span)) = self.find_construct_reasoning_span(evidence_id) else {
+            self.op_status = format!(
+                "Could not open Promoter design from {source}: reasoning span '{evidence_id}' is no longer available"
+            );
+            return false;
+        };
+        if !self.reasoning_span_supports_variant_followup(&span) {
+            self.op_status = format!(
+                "Could not open Promoter design from {source}: selected reasoning span is not promoter-design relevant"
+            );
+            return false;
+        }
+        let Some(feature_id) = self.resolve_variant_followup_feature_id_for_reasoning_span(&span)
+        else {
+            self.op_status = format!(
+                "Could not open Promoter design from {source}: reasoning span could not be mapped back to a transcript feature"
+            );
+            return false;
+        };
+        self.open_variant_followup_for_feature(feature_id, source)
+    }
+
     pub(super) fn open_variant_followup_for_feature(
         &mut self,
         feature_id: usize,

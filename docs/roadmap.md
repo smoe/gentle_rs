@@ -1179,6 +1179,13 @@ order. Durable architecture constraints and decisions remain in
         - it now also exposes positive-only TF/PSSM score tracks across one
           promoter span so TERT/TP73-style promoter case studies can inspect
           continuous motif support instead of only thresholded TFBS blobs
+        - transcript-derived promoter windows that land on the same DNA span
+          now collapse to one promoter annotation with transcript-count
+          labeling instead of rendering one stacked copy per downstream splice
+          variant
+        - map/description actions can now open `Promoter design` directly from
+          a reasoning-derived promoter span by resolving the stored transcript
+          provenance back to the source transcript feature
         - shared visual/export parity for those score tracks now exists too:
           `RenderTfbsScoreTracksSvg` is available through the engine, shell/CLI,
           and the Promoter design window’s `Export TF score tracks SVG...`
@@ -3899,11 +3906,6 @@ Remaining CUT&RUN follow-up:
   one prepared-cache route, they should reuse the same CUT&RUN/genome/helper
   lease + lifecycle model rather than introducing a second shared-runtime
   activity contract
-
-3. Planned V3:
-   - regulatory reasoning over promoter-boundary candidates, TFBS support, and
-     motif-context interpretation, including motif-absent but strongly
-     supported windows.
 
 ### Isoform-architecture panel track (baseline implemented; follow-ups)
 
