@@ -1,0 +1,11 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "workflow_path": "docs/examples/workflows/tfbs_track_similarity_stateless_offline.json",
+  "expected_artifacts": [
+    "artifacts/tfbs_track_similarity_demo.score_tracks.json",
+    "artifacts/tfbs_track_similarity_demo.score_tracks.svg",
+    "artifacts/tfbs_track_similarity_demo.similarity.json"
+  ],
+  "timeout_secs": 180
+}

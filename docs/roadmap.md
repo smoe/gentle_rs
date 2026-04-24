@@ -1257,6 +1257,16 @@ order. Durable architecture constraints and decisions remain in
           - GUI controls for anchor motif, candidate scope, ranking metric,
             optional cached remote-metadata enrichment, species filters, and
             optional row limit
+        - one small release-signoff/demo slice now also exists for that path:
+          - hand-written GUI walkthrough:
+            `docs/tutorial/tfbs_similarity_ranking_gui.md`
+          - offline workflow example:
+            `docs/examples/workflows/tfbs_track_similarity_stateless_offline.json`
+          - matching ClawBio wrapper request:
+            `integrations/clawbio/skills/gentle-cloning/examples/request_workflow_tfbs_track_similarity_stateless.json`
+          - all three intentionally reuse the same tiny local inline-sequence
+            fixture as the broader stateless inspection tutorial so release
+            sign-off stays fast and offline-friendly
         - still open on that track:
           explicit pre-rank vs post-rank species-filtering controls, richer
           metadata facets such as TF family/class/tax-group pivots, and the
@@ -1403,9 +1413,11 @@ order. Durable architecture constraints and decisions remain in
           post-prepare `services status` refresh instead of stopping at static
           prose
         - the wrapper also normalizes GENtle-owned
-          `stdout_json.suggested_actions[]` from `services handoff` into
-          top-level `result.json.suggested_actions[]`, including the nested
-          ClawBio request payload needed for explicit user confirmation
+          `stdout_json.suggested_actions[]`,
+          `stdout_json.preferred_demo_actions[]`, and
+          `stdout_json.blocked_actions[]` from `services handoff` into
+          top-level `result.json` fields, including nested ClawBio request
+          payloads where an action is executable
       - remaining gap on this track:
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo

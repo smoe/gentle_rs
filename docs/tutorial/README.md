@@ -105,6 +105,11 @@ ClawBio:
 - Use the stateless sequence-inspection tutorial:
   [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](./stateless_sequence_inspection_gui_cli.md)
 
+If you want to sign off the new anchor-vs-candidate TFBS ranking in the GUI:
+
+- Use the TFBS similarity ranking tutorial:
+  [`docs/tutorial/tfbs_similarity_ranking_gui.md`](./tfbs_similarity_ranking_gui.md)
+
 If you want to validate a construct from imported ABI/AB1/SCF evidence in the
 GUI today:
 
@@ -176,6 +181,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/gibson_physical_rack_gui.md`](./gibson_physical_rack_gui.md) | GUI walkthrough + CLI parity | `manual/hybrid` | Physical rack export, README-grade isometric figure generation, carrier-label/OpenSCAD handoff | Hand-written walkthrough for taking the arrangement-ready Gibson starter into the linked rack layer and exporting one pseudo-3D/isometric hero SVG plus the other physical carrier projections. |
 | [`docs/tutorial/two_sequence_dotplot_gui.md`](./two_sequence_dotplot_gui.md) | GUI walkthrough | `manual` | Screenshot-backed visual analysis tutorial | Good for interface learning; more exposed to UI drift than generated chapters. |
 | [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](./stateless_sequence_inspection_gui_cli.md) | GUI walkthrough + CLI/ClawBio parity | `manual/hybrid` | Direct restriction-site / TFBS / score-track inspection on one tiny synthetic sequence | Uses one local FASTA for the GUI and the matching state-optional workflow example plus ClawBio request for parity. |
+| [`docs/tutorial/tfbs_similarity_ranking_gui.md`](./tfbs_similarity_ranking_gui.md) | GUI walkthrough + CLI/ClawBio parity | `manual/hybrid` | Sign-off path for anchor-vs-candidate TFBS similarity ranking on one tiny synthetic sequence | Reuses the same local FASTA as the stateless inspection tutorial, then adds one offline workflow and ClawBio replay for the new similarity report. |
 | [`docs/tutorial/sequencing_confirmation_gui.md`](./sequencing_confirmation_gui.md) | GUI walkthrough + shared-engine parity | `manual/hybrid` | GUI-first trace import, intended-edit review, chromatogram inspection | Hand-written walkthrough for `Patterns -> Sequencing Confirmation...`, including raw trace import, baseline-aware variant classification, and lineage reopen. |
 | [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md) | CLI walkthrough + shell parity | `manual/hybrid` | Imported trace inspection, trace-aware sequencing confirmation, report export | Hand-written local walkthrough for `seq-trace import|list|show` plus `seq-confirm run --trace-id ...` on one deterministic bundled ABI fixture. |
 | [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md) | CLI walkthrough + shared-shell parity | `manual/hybrid` | Batch cDNA cohort comparison for one target gene | Hand-written batch workflow for many `fa.gz` / `fasta.gz` inputs, report alignment, target-gene abundance summaries, exon-pair co-presence, and assigned-read mean-length export. |
@@ -223,6 +229,12 @@ Use the labels above as trust/maintenance signals:
 1. Open `File -> Open Tutorial Project...` -> `Core (9)` -> `18. Simple PCR From a Selected Core Region`
 2. Follow [`docs/tutorial/simple_pcr_selection_gui.md`](./simple_pcr_selection_gui.md) from the loaded TP73 starter project
 3. Use the richer executable PCR chapter afterward if you need batch queueing or painted primer windows
+
+### Path B3: TFBS similarity sign-off
+
+1. Read [`docs/tutorial/tfbs_similarity_ranking_gui.md`](./tfbs_similarity_ranking_gui.md)
+2. Load the tiny synthetic FASTA and verify the GUI `TFBS similarity` path end-to-end
+3. Replay the matching offline workflow and ClawBio request if you want parity before release sign-off
 
 ### Path B2: Protein workflow sanity checks
 

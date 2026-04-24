@@ -1588,6 +1588,63 @@ def _normalize_stdout_suggested_action(action: Any) -> dict[str, Any] | None:
     return normalized
 
 
+def _extract_normalized_action_list(
+    stdout_json: Any,
+    field_name: str,
+) -> list[dict[str, Any]] | None:
+    if not isinstance(stdout_json, dict):
+        return None
+    raw_actions = stdout_json.get(field_name)
+    if not isinstance(raw_actions, list):
+        return None
+    actions = [
+        normalized
+        for normalized in (
+            _normalize_stdout_suggested_action(action) for action in raw_actions
+        )
+        if normalized is not None
+    ]
+    return actions or None
+
+
+def _extract_preferred_demo_actions(stdout_json: Any) -> list[dict[str, Any]] | None:
+    return _extract_normalized_action_list(stdout_json, "preferred_demo_actions")
+
+
+def _normalize_stdout_blocked_action(blocked_action: Any) -> dict[str, Any] | None:
+    if not isinstance(blocked_action, dict):
+        return None
+    action = _normalize_stdout_suggested_action(blocked_action.get("action"))
+    if action is None:
+        return None
+    normalized: dict[str, Any] = {
+        "blocked_reason": str(blocked_action.get("blocked_reason") or "").strip(),
+        "unblock_hint": str(blocked_action.get("unblock_hint") or "").strip(),
+        "action": action,
+    }
+    for key in ("download_url", "local_path_hint"):
+        value = str(blocked_action.get(key) or "").strip()
+        if value:
+            normalized[key] = value
+    return normalized
+
+
+def _extract_blocked_actions(stdout_json: Any) -> list[dict[str, Any]] | None:
+    if not isinstance(stdout_json, dict):
+        return None
+    raw_actions = stdout_json.get("blocked_actions")
+    if not isinstance(raw_actions, list):
+        return None
+    actions = [
+        normalized
+        for normalized in (
+            _normalize_stdout_blocked_action(action) for action in raw_actions
+        )
+        if normalized is not None
+    ]
+    return actions or None
+
+
 def _extract_suggested_actions(
     stdout_json: Any,
     request: Request | None,
@@ -1596,16 +1653,7 @@ def _extract_suggested_actions(
         return None
 
     actions: list[dict[str, Any]] = []
-    raw_suggested_actions = stdout_json.get("suggested_actions")
-    if isinstance(raw_suggested_actions, list):
-        actions.extend(
-            normalized
-            for normalized in (
-                _normalize_stdout_suggested_action(action)
-                for action in raw_suggested_actions
-            )
-            if normalized is not None
-        )
+    actions.extend(_extract_normalized_action_list(stdout_json, "suggested_actions") or [])
 
     if stdout_json.get("schema") == "gentle.service_readiness.v1":
         has_running_prepare = False
@@ -1961,6 +2009,8 @@ def _write_report(
     failure_summary: dict[str, Any] | None,
     preferred_artifacts: list[dict[str, Any]] | None,
     suggested_actions: list[dict[str, Any]] | None,
+    preferred_demo_actions: list[dict[str, Any]] | None,
+    blocked_actions: list[dict[str, Any]] | None,
 ) -> None:
     command_text = _format_command_text(command)
     stdout = run_result.stdout if run_result else ""
@@ -2065,6 +2115,35 @@ def _write_report(
                         if action["requires_confirmation"]
                         else "  Confirmation: `not required`"
                     )
+    if preferred_demo_actions:
+        lines.extend(["", "## Preferred Demo Actions", ""])
+        for action in preferred_demo_actions:
+            lines.append(
+                f"- `{action.get('label', 'Action')}`: `{action.get('shell_line', '(unknown)')}`"
+            )
+            if action.get("rationale"):
+                lines.append(f"  Why: `{action['rationale']}`")
+    if blocked_actions:
+        lines.extend(["", "## Blocked Actions", ""])
+        for blocked in blocked_actions:
+            action = blocked.get("action") if isinstance(blocked, dict) else None
+            label = (
+                action.get("label", "Action")
+                if isinstance(action, dict)
+                else "Action"
+            )
+            shell_line = (
+                action.get("shell_line", "(unknown)")
+                if isinstance(action, dict)
+                else "(unknown)"
+            )
+            lines.append(f"- `{label}`: `{shell_line}`")
+            if blocked.get("blocked_reason"):
+                lines.append(f"  Blocked reason: `{blocked['blocked_reason']}`")
+            if blocked.get("unblock_hint"):
+                lines.append(f"  Unblock hint: `{blocked['unblock_hint']}`")
+            if blocked.get("download_url"):
+                lines.append(f"  Download URL: `{blocked['download_url']}`")
     if failure_summary:
         lines.extend(
             [
@@ -2242,6 +2321,8 @@ def main() -> int:
     chat_summary_lines: list[str] | None = None
     preferred_artifacts: list[dict[str, Any]] | None = None
     suggested_actions: list[dict[str, Any]] | None = None
+    preferred_demo_actions: list[dict[str, Any]] | None = None
+    blocked_actions: list[dict[str, Any]] | None = None
 
     try:
         if args.skill_info:
@@ -2305,6 +2386,8 @@ def main() -> int:
             chat_summary_lines = _extract_chat_summary_lines(stdout_json)
             preferred_artifacts = _extract_preferred_artifacts(stdout_json)
             suggested_actions = _extract_suggested_actions(stdout_json, request)
+            preferred_demo_actions = _extract_preferred_demo_actions(stdout_json)
+            blocked_actions = _extract_blocked_actions(stdout_json)
             collected_artifacts = _copy_collected_artifacts(
                 request, output_dir, execution_cwd
             )
@@ -2376,6 +2459,8 @@ def main() -> int:
         failure_summary=failure_summary,
         preferred_artifacts=preferred_artifacts,
         suggested_actions=suggested_actions,
+        preferred_demo_actions=preferred_demo_actions,
+        blocked_actions=blocked_actions,
     )
 
     command_lines = [
@@ -2417,6 +2502,8 @@ def main() -> int:
         "chat_summary_lines": chat_summary_lines,
         "preferred_artifacts": preferred_artifacts,
         "suggested_actions": suggested_actions,
+        "preferred_demo_actions": preferred_demo_actions,
+        "blocked_actions": blocked_actions,
         "error": error_message,
         "failure_summary": failure_summary,
         "preflight": {

@@ -103,6 +103,14 @@ Current intended use in GENtle:
 - Load in
   [`docs/tutorial/stateless_sequence_inspection_gui_cli.md`](../stateless_sequence_inspection_gui_cli.md)
   for the GUI toolbar path (`RE scan`, `TFBS scan`, `TFBS score tracks`).
+- Load in
+  [`docs/tutorial/tfbs_similarity_ranking_gui.md`](../tfbs_similarity_ranking_gui.md)
+  for the GUI sign-off path of `TFBS similarity` on the same tiny local
+  sequence.
 - Compare against the matching workflow example
   [`docs/examples/workflows/inline_sequence_inspection_stateless_offline.json`](../../examples/workflows/inline_sequence_inspection_stateless_offline.json),
   which uses the same bases through state-optional inline-sequence operands.
+- Compare against the matching similarity workflow example
+  [`docs/examples/workflows/tfbs_track_similarity_stateless_offline.json`](../../examples/workflows/tfbs_track_similarity_stateless_offline.json),
+  which reuses the same inline sequence for one anchor-vs-candidate similarity
+  ranking plus its score-track context.

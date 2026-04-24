@@ -936,6 +936,10 @@ Apply the following methodology:
      `resources status`, inspect `result.json.suggested_actions[]` before
      improvising your own next-step prose; those actions exist so ClawBio can
      offer "Would you like me to run this?" deterministically
+   - for `services handoff`, also inspect
+     `result.json.preferred_demo_actions[]` and
+     `result.json.blocked_actions[]` so ready demos and not-yet-executable
+     setup steps can be described without parsing raw `stdout_json`
 7. **Treat prepared references as reusable infrastructure**: do not imply
    prepared Ensembl assets or BLAST indices are only valuable inside GENtle;
    explain that they can also support external bioinformatics tooling.
@@ -1079,6 +1083,10 @@ Apply the following methodology:
   - follow-on route after the promoter extraction example that ranks the
     requested stemness/Yamanaka factors by similarity to SP1 over the same
     promoter span
+- `examples/request_workflow_tfbs_track_similarity_stateless.json`
+  - offline state-optional similarity demo: reuses one tiny synthetic inline
+    sequence, exports score-track context plus one anchor-vs-candidate
+    similarity report, and avoids any genome-preparation prerequisite
 - `examples/request_summarize_grch38_tert_tp73_promoters_stemness_sp1.json`
   - multi-gene promoter comparison example that derives promoter-aligned TFBS
     summary rows for user-swappable genes (`TERT` and `TP73` here, but not
@@ -1237,6 +1245,10 @@ For status/readiness outputs, `result.json` may additionally include:
     - `ready` -> no redundant prepare offer
   - this now includes CUT&RUN dataset status replies from `cutrun status ...`,
     not only the shared reference/helper/resource readiness surfaces
+- `preferred_demo_actions[]` for `services handoff` demo commands that are
+  already shaped as ClawBio request objects
+- `blocked_actions[]` for `services handoff` setup steps that are useful but
+  need another input first, such as a local `ATtRACT.zip` path
 
 ## Dependencies
 

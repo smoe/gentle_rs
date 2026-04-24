@@ -2939,10 +2939,12 @@ ClawBio/OpenClaw integration scaffold schemas:
     - `environment_hints[]` for deployment variables such as
       `GENTLE_CLI_CMD`, `GENTLE_REPO_ROOT`, `GENTLE_REFERENCE_CACHE_DIR`,
       `GENTLE_HELPER_CACHE_DIR`, and `GENTLE_CUTRUN_CACHE_DIR`
-  - the ClawBio wrapper normalizes `stdout_json.suggested_actions[]` into
-    top-level `result.json.suggested_actions[]`, adding the nested
-    `gentle.clawbio_skill_request.v1` payload needed for conversational
-    confirmation/execution
+  - the ClawBio wrapper normalizes `stdout_json.suggested_actions[]`,
+    `stdout_json.preferred_demo_actions[]`, and
+    `stdout_json.blocked_actions[]` into top-level `result.json` fields,
+    adding nested `gentle.clawbio_skill_request.v1` payloads where an action is
+    executable so conversational confirmation/execution does not need to parse
+    the raw GENtle payload
 - reproducibility outputs:
   - `report.md`
   - `result.json`

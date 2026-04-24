@@ -457,6 +457,12 @@ Each entry contains:
 That gives chat layers a deterministic way to offer "Would you like me to run
 this next?" without scraping the human-readable report.
 
+For `services handoff`, the wrapper also lifts GENtle-owned
+`preferred_demo_actions[]` and `blocked_actions[]` to the top level of
+`result.json`. Demo actions include ready-to-run nested request objects;
+blocked actions keep the useful command plus the reason it should not yet be
+offered as executable, such as a missing local `ATtRACT.zip` path.
+
 For shared runtime setup, those suggestions are now lifecycle-aware:
 
 - `missing` -> offer `prepare`
@@ -596,6 +602,10 @@ Included follow-on analysis/planning/graphics requests:
   - follow-on route after the promoter extraction example that ranks the
     requested stemness/Yamanaka factors by similarity to SP1 over the same
     promoter span
+- `examples/request_workflow_tfbs_track_similarity_stateless.json`
+  - offline state-optional similarity demo that reuses one tiny synthetic
+    inline sequence, exports score-track context plus one anchor-vs-candidate
+    similarity report, and avoids any genome-preparation prerequisite
 - `examples/request_summarize_grch38_tert_tp73_promoters_stemness_sp1.json`
   - multi-gene promoter comparison example that summarizes promoter-aligned TF
     support for `TERT` and `TP73`, while still leaving the chosen genes fully

@@ -738,6 +738,8 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
         '{"schema":"gentle.service_handoff.v1",'
         '"summary_lines":["GENtle handoff ready"],'
         '"preferred_artifacts":[{"artifact_id":"service_handoff_json","path":"artifacts/service_handoff.json","caption":"Handoff","recommended_use":"installation_doctor_payload","presentation_rank":0,"is_best_first_artifact":true}],'
+        '"preferred_demo_actions":[{"action_id":"render_gibson_protocol_cartoon","label":"Render Gibson protocol cartoon","kind":"demo_graphic","shell_line":"protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg","timeout_secs":180,"rationale":"Fast graphical demo.","requires_confirmation":false,"expected_artifacts":["artifacts/gibson.two_fragment.protocol.svg"]}],'
+        '"blocked_actions":[{"blocked_reason":"requires_local_archive_path","unblock_hint":"Download ATtRACT.zip first.","download_url":"https://attract.cnic.es/attract/static/ATtRACT.zip","local_path_hint":"/path/to/ATtRACT.zip","action":{"action_id":"sync_attract_runtime_snapshot","label":"Sync ATtRACT runtime snapshot","kind":"sync_resource","shell_line":"resources sync-attract /path/to/ATtRACT.zip","timeout_secs":900,"rationale":"Normalize the ATtRACT ZIP into a runtime snapshot.","requires_confirmation":true,"resource_key":"resource:attract","lifecycle_status":"missing","expected_artifacts":["data/resources/attract.motifs.json"]}}],'
         '"suggested_actions":[{"action_id":"prepare_human_grch38_ensembl_116","label":"Prepare Human GRCh38 Ensembl 116","kind":"prepare_reference","shell_line":"genomes prepare \\"Human GRCh38 Ensembl 116\\" --timeout-secs 7200","timeout_secs":7500,"rationale":"Prepare the shared human reference.","requires_confirmation":true,"resource_key":"reference_genome:Human GRCh38 Ensembl 116","lifecycle_status":"missing"}]}\n'
         "JSON\n",
         encoding="utf-8",
@@ -792,6 +794,52 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
             "requires_confirmation": True,
             "resource_key": "reference_genome:Human GRCh38 Ensembl 116",
             "lifecycle_status": "missing",
+        }
+    ]
+    assert result["preferred_demo_actions"] == [
+        {
+            "action_id": "render_gibson_protocol_cartoon",
+            "label": "Render Gibson protocol cartoon",
+            "kind": "demo_graphic",
+            "shell_line": "protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg",
+            "timeout_secs": 180,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg",
+                "timeout_secs": 180,
+                "expected_artifacts": ["artifacts/gibson.two_fragment.protocol.svg"],
+            },
+            "rationale": "Fast graphical demo.",
+            "requires_confirmation": False,
+            "expected_artifacts": ["artifacts/gibson.two_fragment.protocol.svg"],
+        }
+    ]
+    assert result["blocked_actions"] == [
+        {
+            "blocked_reason": "requires_local_archive_path",
+            "unblock_hint": "Download ATtRACT.zip first.",
+            "action": {
+                "action_id": "sync_attract_runtime_snapshot",
+                "label": "Sync ATtRACT runtime snapshot",
+                "kind": "sync_resource",
+                "shell_line": "resources sync-attract /path/to/ATtRACT.zip",
+                "timeout_secs": 900,
+                "request": {
+                    "schema": "gentle.clawbio_skill_request.v1",
+                    "mode": "shell",
+                    "shell_line": "resources sync-attract /path/to/ATtRACT.zip",
+                    "timeout_secs": 900,
+                    "expected_artifacts": ["data/resources/attract.motifs.json"],
+                },
+                "rationale": "Normalize the ATtRACT ZIP into a runtime snapshot.",
+                "requires_confirmation": True,
+                "expected_artifacts": ["data/resources/attract.motifs.json"],
+                "resource_key": "resource:attract",
+                "lifecycle_status": "missing",
+            },
+            "download_url": "https://attract.cnic.es/attract/static/ATtRACT.zip",
+            "local_path_hint": "/path/to/ATtRACT.zip",
         }
     ]
 

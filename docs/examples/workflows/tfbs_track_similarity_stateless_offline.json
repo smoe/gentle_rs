@@ -1,0 +1,93 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tfbs_track_similarity_stateless_offline",
+  "title": "TFBS track similarity on one inline sequence (offline)",
+  "summary": "Builds one shared TFBS score-track context plus one anchor-vs-candidate similarity ranking on a tiny synthetic inline DNA sequence without first materializing project state.",
+  "test_mode": "always",
+  "required_files": [],
+  "tags": [
+    "tutorial",
+    "offline",
+    "inline-sequence",
+    "tfbs",
+    "similarity",
+    "clawbio"
+  ],
+  "workflow": {
+    "run_id": "example_tfbs_track_similarity_stateless_offline",
+    "ops": [
+      {
+        "SummarizeTfbsScoreTracks": {
+          "target": {
+            "kind": "inline_sequence",
+            "sequence_text": "GAATTCCCGGGATCCGGGCGGGGCGCATGTGTAACAGGGGCGGGGC",
+            "topology": "linear",
+            "id_hint": "tfbs_track_similarity_demo",
+            "span_start_0based": 0,
+            "span_end_0based_exclusive": 46
+          },
+          "motifs": [
+            "SP1",
+            "TP53",
+            "TP63",
+            "TP73",
+            "REST",
+            "CTCF"
+          ],
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": false,
+          "path": "artifacts/tfbs_track_similarity_demo.score_tracks.json"
+        }
+      },
+      {
+        "RenderTfbsScoreTracksSvg": {
+          "target": {
+            "kind": "inline_sequence",
+            "sequence_text": "GAATTCCCGGGATCCGGGCGGGGCGCATGTGTAACAGGGGCGGGGC",
+            "topology": "linear",
+            "id_hint": "tfbs_track_similarity_demo",
+            "span_start_0based": 0,
+            "span_end_0based_exclusive": 46
+          },
+          "motifs": [
+            "SP1",
+            "TP53",
+            "TP63",
+            "TP73",
+            "REST",
+            "CTCF"
+          ],
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": false,
+          "path": "artifacts/tfbs_track_similarity_demo.score_tracks.svg"
+        }
+      },
+      {
+        "SummarizeTfbsTrackSimilarity": {
+          "target": {
+            "kind": "inline_sequence",
+            "sequence_text": "GAATTCCCGGGATCCGGGCGGGGCGCATGTGTAACAGGGGCGGGGC",
+            "topology": "linear",
+            "id_hint": "tfbs_track_similarity_demo",
+            "span_start_0based": 0,
+            "span_end_0based_exclusive": 46
+          },
+          "anchor_motif": "SP1",
+          "candidate_motifs": [
+            "TP53",
+            "TP63",
+            "TP73",
+            "REST",
+            "CTCF"
+          ],
+          "ranking_metric": "smoothed_spearman",
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": false,
+          "include_remote_metadata": false,
+          "limit": 10,
+          "path": "artifacts/tfbs_track_similarity_demo.similarity.json"
+        }
+      }
+    ]
+  }
+}
