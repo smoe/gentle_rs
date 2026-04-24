@@ -295,6 +295,7 @@ Quick scaffold usage (inside the scaffold directory):
 
 ```bash
 python gentle_cloning.py --demo --output /tmp/gentle_clawbio_demo
+python gentle_cloning.py --skill-info --output /tmp/gentle_clawbio_skill_info
 python gentle_cloning.py --input examples/request_capabilities.json --output /tmp/gentle_clawbio_caps
 ```
 

@@ -921,8 +921,10 @@ Apply the following methodology:
 
 **Key parameters / control points**:
 
-- `mode`: one of `capabilities`, `state-summary`, `shell`, `op`, `workflow`,
-  or `raw`.
+- `mode`: one of `skill-info`, `capabilities`, `state-summary`, `shell`, `op`,
+  `workflow`, or `raw`.
+- `skill-info`: reports ClawBio skill/catalog schema metadata without invoking
+  `gentle_cli`; use it when checking which copied skill scaffold is installed.
 - `timeout_secs`: command timeout in seconds; default `180`.
 - `state_path`: optional but strongly recommended for stateful workflows.
 - `ensure_reference_prepared`: optional reference preflight that runs

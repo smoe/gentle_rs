@@ -400,11 +400,13 @@ Alternative runtimes:
 ## Request schema
 
 - `schema`: `gentle.clawbio_skill_request.v1`
-- `mode`: `capabilities|state-summary|shell|op|workflow|raw`
+- `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|raw`
 - optional: `state_path`, `timeout_secs`, `ensure_reference_prepared`
 
 Mode-specific fields:
 
+- `skill-info`: no extra fields; reports skill/catalog schema metadata without
+  invoking `gentle_cli`
 - `shell`: `shell_line`
 - `op`: `operation`
 - `workflow`: `workflow` or `workflow_path`

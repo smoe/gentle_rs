@@ -41,6 +41,7 @@ Intended use:
    - use repository-local `cargo run --quiet --bin gentle_cli --`
 3. Run:
    - `python clawbio.py run gentle-cloning --demo`
+   - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_skill_info.json --output <dir>`
    - `python clawbio.py run gentle-cloning --input <request.json> --output <dir>`
 
    The demo now starts with one deterministic graphical GENtle export so the

@@ -157,6 +157,102 @@ def test_demo_promotes_graphical_artifact_and_capabilities_followup(
     assert "capabilities" in report
 
 
+def test_skill_info_reports_catalog_version_without_gentle_cli(
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "skill_info"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--skill-info",
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            "/definitely/missing/gentle_cli",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "ok"
+    assert payload["resolver"] is None
+    assert payload["command"] is None
+    assert payload["request"]["mode"] == "skill-info"
+    assert payload["stdout_json"] == {
+        "schema": "gentle.clawbio_skill_info.v1",
+        "name": "gentle-cloning",
+        "version": "0.1.0",
+        "status": "mvp",
+        "request_schema": "gentle.clawbio_skill_request.v1",
+        "result_schema": "gentle.clawbio_skill_result.v1",
+        "supported_request_modes": [
+            "skill-info",
+            "capabilities",
+            "state-summary",
+            "shell",
+            "op",
+            "workflow",
+            "raw",
+        ],
+        "has_demo": True,
+        "demo_command": "python clawbio.py run gentle-cloning --demo",
+        "catalog_entry_path": str(
+            Path(__file__).resolve().parents[1] / "catalog_entry.json"
+        ),
+        "catalog_entry_loaded": True,
+        "runtime_version_command": "gentle_cli --version",
+    }
+    assert payload["chat_summary_lines"] == [
+        "gentle-cloning skill version 0.1.0 (mvp).",
+        "Request schema: gentle.clawbio_skill_request.v1; result schema: gentle.clawbio_skill_result.v1.",
+        "Use `gentle_cli --version` when you need the GENtle runtime version.",
+    ]
+    assert "# no command executed" in (
+        output_dir / "reproducibility" / "commands.sh"
+    ).read_text(encoding="utf-8")
+
+
+def test_skill_info_request_mode_reports_catalog_version(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps({"schema": "gentle.clawbio_skill_request.v1", "mode": "skill-info"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    output_dir = tmp_path / "skill_info_request"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            "/definitely/missing/gentle_cli",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "ok"
+    assert payload["request"]["mode"] == "skill-info"
+    assert payload["stdout_json"]["schema"] == "gentle.clawbio_skill_info.v1"
+    assert payload["stdout_json"]["version"] == "0.1.0"
+    assert payload["resolver"] is None
+    assert payload["command"] is None
+
+
 def test_rejects_invalid_request_schema(tmp_path: Path) -> None:
     bad_req = tmp_path / "bad.json"
     bad_req.write_text(

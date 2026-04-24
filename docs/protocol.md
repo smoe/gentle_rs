@@ -2739,7 +2739,7 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `gentle_local_checkout_cli.sh` for local editable GENtle checkouts
   - `gentle_apptainer_cli.sh` for Apptainer/Singularity-backed `:cli` images
 - wrapper request schema: `gentle.clawbio_skill_request.v1`
-  - `mode`: `capabilities|state-summary|shell|op|workflow|raw`
+  - `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|raw`
   - optional: `state_path`, `timeout_secs`
   - optional: `expected_artifacts[]`
     - wrapper-declared output files to copy into the ClawBio output bundle
@@ -2749,6 +2749,8 @@ ClawBio/OpenClaw integration scaffold schemas:
       the wrapper now also rasterizes them into messenger-ready PNG artifacts
       in the output bundle at fixed deterministic scale `2.0`
   - mode-specific:
+    - `skill-info`: reports ClawBio skill/catalog metadata without invoking
+      `gentle_cli`
     - `shell`: `shell_line`
     - `op`: `operation` (JSON object/string)
     - `workflow`: `workflow` or `workflow_path`

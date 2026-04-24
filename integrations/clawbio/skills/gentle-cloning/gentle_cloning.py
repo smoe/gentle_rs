@@ -24,6 +24,17 @@ import xml.etree.ElementTree as ET
 
 REQUEST_SCHEMA = "gentle.clawbio_skill_request.v1"
 RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
+SKILL_INFO_SCHEMA = "gentle.clawbio_skill_info.v1"
+SKILL_NAME = "gentle-cloning"
+SUPPORTED_REQUEST_MODES = (
+    "skill-info",
+    "capabilities",
+    "state-summary",
+    "shell",
+    "op",
+    "workflow",
+    "raw",
+)
 SVG_DIMENSION_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)")
 CLAWBIO_GRAPHICS_SCALE = 2.0
 CLAWBIO_SVG_PNG_TIMEOUT_SECS = 300
@@ -85,6 +96,52 @@ def _read_json(path: Path) -> dict[str, Any]:
         raise SkillError(f"request JSON file '{path}' does not exist") from e
     except json.JSONDecodeError as e:
         raise SkillError(f"invalid JSON in '{path}': {e}") from e
+
+
+def _catalog_entry_path(script_path: Path) -> Path:
+    return script_path.resolve().parent / "catalog_entry.json"
+
+
+def _read_catalog_entry(script_path: Path) -> dict[str, Any]:
+    path = _catalog_entry_path(script_path)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _skill_info_payload(script_path: Path) -> dict[str, Any]:
+    catalog_entry = _read_catalog_entry(script_path)
+    catalog_path = _catalog_entry_path(script_path)
+    return {
+        "schema": SKILL_INFO_SCHEMA,
+        "name": str(catalog_entry.get("name") or SKILL_NAME),
+        "version": str(catalog_entry.get("version") or "unknown"),
+        "status": str(catalog_entry.get("status") or "unknown"),
+        "request_schema": REQUEST_SCHEMA,
+        "result_schema": RESULT_SCHEMA,
+        "supported_request_modes": list(SUPPORTED_REQUEST_MODES),
+        "has_demo": bool(catalog_entry.get("has_demo", True)),
+        "demo_command": str(
+            catalog_entry.get("demo_command")
+            or "python clawbio.py run gentle-cloning --demo"
+        ),
+        "catalog_entry_path": str(catalog_path),
+        "catalog_entry_loaded": bool(catalog_entry),
+        "runtime_version_command": "gentle_cli --version",
+    }
+
+
+def _skill_info_chat_summary_lines(info: dict[str, Any]) -> list[str]:
+    name = str(info.get("name") or SKILL_NAME)
+    version = str(info.get("version") or "unknown")
+    status = str(info.get("status") or "unknown")
+    return [
+        f"{name} skill version {version} ({status}).",
+        f"Request schema: {info.get('request_schema')}; result schema: {info.get('result_schema')}.",
+        "Use `gentle_cli --version` when you need the GENtle runtime version.",
+    ]
 
 
 def _repo_root_candidates(script_path: Path) -> list[Path]:
@@ -256,10 +313,9 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
     elif request.mode == "workflow":
         if request.workflow is None and not request.workflow_path:
             raise SkillError("mode=workflow requires 'workflow' or 'workflow_path'")
-    elif request.mode not in ("capabilities", "state-summary"):
+    elif request.mode not in SUPPORTED_REQUEST_MODES:
         raise SkillError(
-            "unsupported mode. Use one of: capabilities, state-summary, shell, "
-            "op, workflow, raw"
+            "unsupported mode. Use one of: " + ", ".join(SUPPORTED_REQUEST_MODES)
         )
     if request.ensure_reference_prepared is not None:
         ensure = request.ensure_reference_prepared
@@ -1936,6 +1992,11 @@ def main() -> int:
     parser.add_argument("--output", required=True, help="Output directory")
     parser.add_argument("--demo", action="store_true", help="Run built-in demo request")
     parser.add_argument(
+        "--skill-info",
+        action="store_true",
+        help="Report ClawBio skill metadata without invoking gentle_cli",
+    )
+    parser.add_argument(
         "--gentle-cli",
         help="Explicit command used to invoke gentle_cli. Recommended runtime "
         "is Docker/OCI or Apptainer/Singularity via GENTLE_CLI_CMD; examples "
@@ -1966,85 +2027,92 @@ def main() -> int:
     suggested_actions: list[dict[str, Any]] | None = None
 
     try:
-        if args.demo:
+        if args.skill_info:
+            request = Request(mode="skill-info")
+        elif args.demo:
             request = _default_demo_request()
         else:
             if not args.input:
-                raise SkillError("--input is required unless --demo is used")
+                raise SkillError("--input is required unless --demo or --skill-info is used")
             payload = _read_json(_resolve_existing_request_file(args.input, Path(__file__)))
             request = _coerce_request(payload)
 
-        try:
-            resolution = _resolve_cli(args.gentle_cli, Path(__file__))
-        except SkillError as e:
-            if args.demo:
-                status = "degraded_demo"
-                error_message = str(e)
-                request = _default_demo_request()
+        if request.mode == "skill-info":
+            stdout_json = _skill_info_payload(Path(__file__))
+            chat_summary_lines = _skill_info_chat_summary_lines(stdout_json)
+            status = "ok"
+        else:
+            try:
+                resolution = _resolve_cli(args.gentle_cli, Path(__file__))
+            except SkillError as e:
+                if args.demo:
+                    status = "degraded_demo"
+                    error_message = str(e)
+                    request = _default_demo_request()
+                    raise
                 raise
-            raise
 
-        execution_cwd = _resolve_execution_cwd(request, resolution, Path(__file__))
-        if request.ensure_reference_prepared is not None:
-            reference_preflight = _reference_preflight_record(
-                request.ensure_reference_prepared
+            execution_cwd = _resolve_execution_cwd(request, resolution, Path(__file__))
+            if request.ensure_reference_prepared is not None:
+                reference_preflight = _reference_preflight_record(
+                    request.ensure_reference_prepared
+                )
+                _ensure_reference_prepared(
+                    request.ensure_reference_prepared,
+                    resolution,
+                    execution_cwd,
+                    reference_preflight,
+                )
+
+            cli_args = _build_cli_args(request, Path(__file__))
+            run_result, main_step = _run_cli_command(
+                resolution,
+                cli_args,
+                execution_cwd,
+                request.timeout_secs,
             )
-            _ensure_reference_prepared(
-                request.ensure_reference_prepared,
+            command = main_step["command"]
+            status = "ok" if run_result.returncode == 0 else "command_failed"
+            if run_result.returncode != 0:
+                failure_summary = _build_failure_summary(
+                    stage="main_command",
+                    step=main_step,
+                    execution_cwd=execution_cwd,
+                )
+                error_message = _build_failure_message(
+                    headline="gentle_cli exited with a non-zero status.",
+                    failure_summary=failure_summary,
+                )
+            stdout_json = _parse_stdout_json(run_result.stdout)
+            chat_summary_lines = _extract_chat_summary_lines(stdout_json)
+            preferred_artifacts = _extract_preferred_artifacts(stdout_json)
+            suggested_actions = _extract_suggested_actions(stdout_json, request)
+            collected_artifacts = _copy_collected_artifacts(
+                request, output_dir, execution_cwd
+            )
+            collected_artifacts, preferred_artifacts = _augment_artifacts_with_storyboard(
+                request,
+                output_dir,
+                collected_artifacts,
+                preferred_artifacts,
+            )
+            collected_artifacts, rasterized_pngs = _rasterize_collected_svg_artifacts(
+                collected_artifacts,
                 resolution,
                 execution_cwd,
-                reference_preflight,
+                output_dir,
             )
-
-        cli_args = _build_cli_args(request, Path(__file__))
-        run_result, main_step = _run_cli_command(
-            resolution,
-            cli_args,
-            execution_cwd,
-            request.timeout_secs,
-        )
-        command = main_step["command"]
-        status = "ok" if run_result.returncode == 0 else "command_failed"
-        if run_result.returncode != 0:
-            failure_summary = _build_failure_summary(
-                stage="main_command",
-                step=main_step,
-                execution_cwd=execution_cwd,
+            preferred_artifacts = _rewrite_preferred_artifacts_for_png(
+                collected_artifacts,
+                preferred_artifacts,
+                rasterized_pngs,
             )
-            error_message = _build_failure_message(
-                headline="gentle_cli exited with a non-zero status.",
-                failure_summary=failure_summary,
+            suggested_actions = _ensure_default_demo_suggested_action(
+                request,
+                suggested_actions,
             )
-        stdout_json = _parse_stdout_json(run_result.stdout)
-        chat_summary_lines = _extract_chat_summary_lines(stdout_json)
-        preferred_artifacts = _extract_preferred_artifacts(stdout_json)
-        suggested_actions = _extract_suggested_actions(stdout_json, request)
-        collected_artifacts = _copy_collected_artifacts(
-            request, output_dir, execution_cwd
-        )
-        collected_artifacts, preferred_artifacts = _augment_artifacts_with_storyboard(
-            request,
-            output_dir,
-            collected_artifacts,
-            preferred_artifacts,
-        )
-        collected_artifacts, rasterized_pngs = _rasterize_collected_svg_artifacts(
-            collected_artifacts,
-            resolution,
-            execution_cwd,
-            output_dir,
-        )
-        preferred_artifacts = _rewrite_preferred_artifacts_for_png(
-            collected_artifacts,
-            preferred_artifacts,
-            rasterized_pngs,
-        )
-        suggested_actions = _ensure_default_demo_suggested_action(
-            request,
-            suggested_actions,
-        )
-        if chat_summary_lines is None:
-            chat_summary_lines = _default_demo_chat_summary_lines(preferred_artifacts)
+            if chat_summary_lines is None:
+                chat_summary_lines = _default_demo_chat_summary_lines(preferred_artifacts)
     except subprocess.TimeoutExpired as e:
         request = request if request is not None else _default_demo_request()
         error_message = f"command timed out after {e.timeout} seconds"
