@@ -13,7 +13,8 @@ Current scaffold:
 - `skills/gentle-cloning/catalog_entry.json` (ready-to-paste
   `skills/catalog.json` entry)
 - `experimental_followup_request_catalog.json` (machine-readable intent catalog
-  for ClawBio planners)
+  for ClawBio planners, including optional decision contexts such as upstream
+  variant-prioritization assumptions)
 - `generate_experimental_followup_catalog_graph.py` (deterministic generator
   for the catalog-derived Mermaid graph)
 - `experimental_followup_catalog_graph.mmd` (generated graph of the current

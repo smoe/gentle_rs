@@ -12,6 +12,93 @@
     "missing_material_classes",
     "procurement_delay"
   ],
+  "decision_contexts": [
+    {
+      "context_id": "variant_prioritization_context",
+      "title": "Variant prioritization evidence and policy",
+      "description": "Optional ClawBio-owned upstream context from variant prioritization reports or equivalent interpretation pipelines. GENtle should preserve and surface these assumptions when turning prioritized variants into experimental follow-up plans, but should not reinterpret them as clinical truth.",
+      "owner": "ClawBio/external variant-prioritization pipeline",
+      "fields": [
+        {
+          "field_id": "sample_status",
+          "meaning": "Whether the variant evidence is germline, somatic tumor-normal, somatic tumor-only, mixed, or unknown.",
+          "example_values": [
+            "germline",
+            "somatic_tumor_normal",
+            "somatic_tumor_only",
+            "unknown"
+          ]
+        },
+        {
+          "field_id": "matched_normal_available",
+          "meaning": "Whether a matched normal was available when classifying a somatic variant.",
+          "example_values": [
+            true,
+            false
+          ]
+        },
+        {
+          "field_id": "copy_number_available",
+          "meaning": "Whether copy-number segment evidence was available and should influence interpretation or follow-up design.",
+          "example_values": [
+            true,
+            false
+          ]
+        },
+        {
+          "field_id": "caller_support",
+          "meaning": "Variant callers or prioritization sources supporting the candidate.",
+          "example_values": [
+            "Mutect2",
+            "Strelka",
+            "PCGR",
+            "CPSR"
+          ]
+        },
+        {
+          "field_id": "clinical_scope",
+          "meaning": "Interpretation scope requested upstream, such as pharmacogenomics, cancer predisposition, somatic precision oncology, GWAS/low-risk evidence, or research-only follow-up.",
+          "example_values": [
+            "pgx",
+            "predisposition",
+            "somatic_precision_oncology",
+            "gwas",
+            "research_followup"
+          ]
+        },
+        {
+          "field_id": "frequency_policy",
+          "meaning": "Population/frequency assumptions used to keep or deprioritize a variant.",
+          "example_values": [
+            "gnomAD population and max MAF threshold"
+          ]
+        },
+        {
+          "field_id": "transcript_policy",
+          "meaning": "Transcript/consequence selection policy used upstream, for example MANE/canonical/VEP consequence picking.",
+          "example_values": [
+            "MANE Select",
+            "canonical transcript",
+            "VEP pick order"
+          ]
+        },
+        {
+          "field_id": "qc_filtering_policy",
+          "meaning": "Depth, allele fraction, PASS/filter, panel-of-normals, or caller-specific quality assumptions used before experimental planning.",
+          "example_values": [
+            "min depth",
+            "min allelic fraction",
+            "PASS only",
+            "panel of normals"
+          ]
+        }
+      ],
+      "applies_to_intents": [
+        "snp_effect",
+        "prioritized_variant_followup"
+      ]
+    }
+  ],
   "intents": [
     {
       "intent_id": "snp_effect",
@@ -28,6 +115,9 @@
         "regulatory_context",
         "splice_isoform_context",
         "protein_context"
+      ],
+      "decision_contexts": [
+        "variant_prioritization_context"
       ],
       "required_user_inputs": [
         "variant_id_or_coordinate"
@@ -88,6 +178,113 @@
       ],
       "confirmation_gates": [
         "external_predictor_calls",
+        "reference_preparation",
+        "multi_step_graphical_workflow",
+        "genome_editing_strategy_selection"
+      ]
+    },
+    {
+      "intent_id": "prioritized_variant_followup",
+      "title": "Plan experimental follow-up from a variant prioritization report",
+      "detection_phrases": [
+        "what experiment should I do for this prioritized variant",
+        "follow up this PCGR variant",
+        "follow up this CPSR finding",
+        "turn this variant prioritization report into a wet-lab plan",
+        "which validation assay follows from this variant report"
+      ],
+      "evidence_classes": [
+        "variant_context",
+        "protein_context",
+        "splice_isoform_context",
+        "regulatory_context",
+        "perturbation_intent"
+      ],
+      "decision_contexts": [
+        "variant_prioritization_context"
+      ],
+      "required_user_inputs": [
+        "prioritized_variant_record_or_report",
+        "variant_id_or_coordinate",
+        "target_gene_or_locus"
+      ],
+      "optional_user_inputs": [
+        "sample_status",
+        "matched_normal_available",
+        "copy_number_available",
+        "caller_support",
+        "clinical_scope",
+        "frequency_policy",
+        "transcript_policy",
+        "qc_filtering_policy",
+        "cell_model",
+        "desired_readout"
+      ],
+      "external_evidence": [
+        "PCGR/CPSR or equivalent variant-prioritization report",
+        "sample status and matched-normal assumptions",
+        "caller support and QC/filter status",
+        "frequency and transcript/consequence policy",
+        "copy-number context when available",
+        "clinical/reporting scope kept separate from experimental feasibility"
+      ],
+      "gentle_requests": [
+        {
+          "path": "skills/gentle-cloning/examples/request_skill_info.json",
+          "purpose": "Confirm copied skill metadata before adapting a prioritized-report follow-up path.",
+          "requires_adaptation": false
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_export_sequence_context_bundle_rs9923231_vkorc1.json",
+          "purpose": "Export sequence-grounded context around the prioritized variant or nearby candidate gene.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_render_svg_rs9923231_vkorc1_linear.json",
+          "purpose": "Render a local genomic-context figure suitable for discussing the prioritized locus.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json",
+          "purpose": "Use the promoter-reporter planning workflow when the prioritized variant has regulatory or promoter-proximal evidence.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_workflow_tp53_splicing_expert_svg.json",
+          "purpose": "Use splicing-expert rendering when the prioritized variant or report suggests splice impact.",
+          "requires_adaptation": true
+        }
+      ],
+      "gentle_shell_commands": [
+        {
+          "shell_line": "routines list --query reporter",
+          "purpose": "Discover reporter routes when upstream evidence points to regulatory or UTR follow-up.",
+          "confirmation": "not_required"
+        },
+        {
+          "shell_line": "routines list --query splicing",
+          "purpose": "Discover splicing/minigene or RT-PCR routes when upstream evidence points to splice follow-up.",
+          "confirmation": "not_required"
+        },
+        {
+          "shell_line": "routines compare gibson.two_fragment_overlap_preview golden_gate.type_iis_single_insert",
+          "purpose": "Compare practical construct-building routes after a follow-up family is chosen.",
+          "confirmation": "not_required"
+        }
+      ],
+      "followup_families": [
+        "promoter_luciferase_reporter",
+        "UTR_or_translation_reporter",
+        "minigene_splicing_reporter",
+        "allele_paired_overexpression",
+        "endogenous_editing",
+        "qPCR_validation",
+        "routine_comparison"
+      ],
+      "confirmation_gates": [
+        "external_predictor_calls",
+        "clinical_or_reporting_scope_review",
+        "variant_qc_policy_review",
         "reference_preparation",
         "multi_step_graphical_workflow",
         "genome_editing_strategy_selection"

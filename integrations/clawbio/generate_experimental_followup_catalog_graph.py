@@ -70,7 +70,25 @@ def _load_catalog(path: Path) -> dict[str, Any]:
         )
     if not isinstance(catalog.get("intents"), list):
         raise ValueError("Catalog must contain an intents array")
+    if not isinstance(catalog.get("decision_contexts", []), list):
+        raise ValueError("Catalog decision_contexts must be an array when present")
     return catalog
+
+
+def _decision_context_label(context: dict[str, Any]) -> str:
+    context_id = context["context_id"]
+    title = context.get("title", context_id)
+    field_ids = [
+        field["field_id"]
+        for field in context.get("fields", [])
+        if isinstance(field, dict) and field.get("field_id")
+    ]
+    field_summary = ", ".join(field_ids[:4])
+    if len(field_ids) > 4:
+        field_summary += ", ..."
+    if field_summary:
+        return f"{_wrap_text(title)}<br/>{context_id}<br/>fields: {_wrap_text(field_summary, width=38)}"
+    return f"{_wrap_text(title)}<br/>{context_id}"
 
 
 def generate_mermaid(catalog: dict[str, Any]) -> str:
@@ -78,6 +96,7 @@ def generate_mermaid(catalog: dict[str, Any]) -> str:
     if not intents:
         raise ValueError("Catalog must contain at least one intent")
 
+    decision_contexts = catalog.get("decision_contexts", [])
     evidence_classes = _first_seen(
         evidence
         for intent in intents
@@ -107,6 +126,10 @@ def generate_mermaid(catalog: dict[str, Any]) -> str:
     intent_ids = {
         intent["intent_id"]: _stable_id("intent", intent["intent_id"])
         for intent in intents
+    }
+    context_ids = {
+        context["context_id"]: _stable_id("context", context["context_id"])
+        for context in decision_contexts
     }
     evidence_ids = {
         evidence: _stable_id("evidence", evidence) for evidence in evidence_classes
@@ -160,6 +183,20 @@ def generate_mermaid(catalog: dict[str, Any]) -> str:
     lines.append("  end")
     lines.append("")
 
+    if decision_contexts:
+        lines.append(
+            '  subgraph CONTEXTS["Decision contexts (policy/filtering assumptions)"]'
+        )
+        for context in decision_contexts:
+            lines.append(
+                _node(
+                    context_ids[context["context_id"]],
+                    _decision_context_label(context),
+                )
+            )
+        lines.append("  end")
+        lines.append("")
+
     lines.append('  subgraph EVIDENCE["Evidence classes (why a path is relevant)"]')
     for evidence in evidence_classes:
         lines.append(_node(evidence_ids[evidence], evidence))
@@ -196,6 +233,14 @@ def generate_mermaid(catalog: dict[str, Any]) -> str:
         lines.append(_edge(catalog_node, intent_node, "defines"))
         if intent.get("external_evidence"):
             lines.append(_edge(intent_node, external_node, "may use"))
+        for context_id in intent.get("decision_contexts", []):
+            if context_id not in context_ids:
+                raise ValueError(
+                    f"Intent {intent['intent_id']!r} references unknown "
+                    f"decision context {context_id!r}"
+                )
+            lines.append(_edge(intent_node, context_ids[context_id], "decides with"))
+            lines.append(_edge(context_ids[context_id], external_node, "summarizes"))
         for evidence in intent.get("evidence_classes", []):
             lines.append(_edge(intent_node, evidence_ids[evidence], "evidence"))
         for request in intent.get("gentle_requests", []):
@@ -218,6 +263,7 @@ def generate_mermaid(catalog: dict[str, Any]) -> str:
             "",
             "  classDef source fill:#fff8db,stroke:#8a6d1d,color:#2f2410;",
             "  classDef intent fill:#e7f0ff,stroke:#2450a6,color:#10254d;",
+            "  classDef context fill:#fff4d6,stroke:#b7791f,color:#3f2500;",
             "  classDef evidence fill:#eef7ee,stroke:#337a3e,color:#17391d;",
             "  classDef request fill:#f7ecff,stroke:#7a3ea6,color:#33184b;",
             "  classDef planning fill:#fff0e6,stroke:#b75d1a,color:#4b250c;",
@@ -226,11 +272,22 @@ def generate_mermaid(catalog: dict[str, Any]) -> str:
             "  classDef output fill:#f3f4f6,stroke:#4b5563,color:#111827;",
             f"  class {catalog_node},{external_node} source;",
             f"  class {','.join(intent_ids.values())} intent;",
-            f"  class {','.join(evidence_ids.values())} evidence;",
-            f"  class {','.join(request_ids.values())} request;",
-            f"  class {','.join(command_ids.values())} planning;",
-            f"  class {','.join(family_ids.values())} family;",
-            f"  class {','.join(gate_ids.values())} gate;",
+        ]
+    )
+    if context_ids:
+        lines.append(f"  class {','.join(context_ids.values())} context;")
+    if evidence_ids:
+        lines.append(f"  class {','.join(evidence_ids.values())} evidence;")
+    if request_ids:
+        lines.append(f"  class {','.join(request_ids.values())} request;")
+    if command_ids:
+        lines.append(f"  class {','.join(command_ids.values())} planning;")
+    if family_ids:
+        lines.append(f"  class {','.join(family_ids.values())} family;")
+    if gate_ids:
+        lines.append(f"  class {','.join(gate_ids.values())} gate;")
+    lines.extend(
+        [
             f"  class {artifact_node},{planning_node} output;",
             "",
         ]

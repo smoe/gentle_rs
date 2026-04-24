@@ -117,6 +117,33 @@ Useful predictor/source classes:
 ClawBio should pass the predictor summary into the final response separately
 from GENtle's deterministic outputs. This keeps uncertainty visible.
 
+## Requested Variant Prioritization Decision Context
+
+When the prompt already comes from a variant-prioritization report, ClawBio
+should preserve the upstream interpretation assumptions instead of flattening
+them into a generic "interesting variant" label. The catalog now models this
+as `variant_prioritization_context`, an optional ClawBio-owned decision context
+that GENtle can surface while planning experiments.
+
+Useful fields include:
+
+- `sample_status`: germline, somatic tumor-normal, somatic tumor-only, mixed,
+  or unknown.
+- `matched_normal_available`: whether somatic classification used a matched
+  normal.
+- `copy_number_available`: whether CNA/segment evidence was available.
+- `caller_support`: callers or report sources supporting the candidate.
+- `clinical_scope`: pharmacogenomics, predisposition, somatic precision
+  oncology, GWAS/low-risk evidence, or research-only follow-up.
+- `frequency_policy`: population and allele-frequency assumptions.
+- `transcript_policy`: MANE/canonical/VEP consequence-picking assumptions.
+- `qc_filtering_policy`: depth, allele fraction, PASS/filter,
+  panel-of-normals, or caller-specific thresholds.
+
+This context should guide whether a wet-lab follow-up is worth proposing and
+which caveats must be shown. It should not make GENtle responsible for clinical
+interpretation.
+
 ## Requested GENtle Calls Available Now
 
 Current GENtle/ClawBio scaffold examples already cover useful building blocks:

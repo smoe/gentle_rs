@@ -11,7 +11,9 @@ The current catalog-derived graph is generated in
 `experimental_followup_catalog_graph.mmd` by
 `generate_experimental_followup_catalog_graph.py`. Keep this human-readable
 document as the semantic legend, and regenerate the `.mmd` file whenever
-`experimental_followup_request_catalog.json` changes:
+`experimental_followup_request_catalog.json` changes. The generated graph
+includes real catalog intents plus optional decision-context nodes such as
+`variant_prioritization_context`:
 
 ```sh
 python3 integrations/clawbio/generate_experimental_followup_catalog_graph.py
@@ -78,6 +80,7 @@ flowchart LR
 | --- | --- | --- |
 | Request origin | The raw material that triggered planning: prompt, selected GUI locus, uploaded table, VCF row, or pasted sequence. | User, GUI, ClawBio session |
 | Catalog intent | The normalized routing label chosen from `experimental_followup_request_catalog.json`. This is the planner's first structured decision. | ClawBio planner |
+| Decision contexts | Optional upstream policy and filtering assumptions that affect whether an intent deserves follow-up. Example: variant-prioritization sample status, transcript policy, frequency policy, and QC filters. | ClawBio planner / external prioritization pipeline |
 | Evidence classes | Additive biological tags that explain why tools are relevant. One prompt may have several classes. | ClawBio planner |
 | External evidence | Probabilistic or context-heavy evidence from tools and knowledge sources outside GENtle. | ClawBio/external tools |
 | GENtle sequence context | Deterministic sequence-grounded context and renderable views. | GENtle |
@@ -98,6 +101,12 @@ splicing reporter, or "insufficient local evidence" response.
 additive. A single observation may be both `variant_context` and
 `splice_isoform_context`, or both `differential_expression` and
 `perturbation_intent`.
+
+`decision_contexts` explain which upstream interpretation assumptions should be
+kept visible while planning. For example, a PCGR/CPSR-style prioritized variant
+may carry sample-status, matched-normal, frequency, transcript, and QC-policy
+assumptions that influence whether a reporter, splicing, coding, or editing
+follow-up is sensible.
 
 `artifacts` are concrete GENtle outputs: maps, protocol cartoons, BED files,
 JSON reports, TSV exports, and context bundles. They are the evidence objects
@@ -120,12 +129,13 @@ biology ontology. For each new entry, capture:
 
 1. representative phrases users actually ask,
 2. required inputs that must be known before execution,
-3. additive evidence classes,
-4. external evidence that ClawBio may gather,
-5. GENtle example requests that can be adapted,
-6. optional shell commands for routine/planning checks,
-7. follow-up families the user may see,
-8. confirmation gates that prevent accidental expensive or policy-sensitive
+3. optional decision contexts that must stay visible,
+4. additive evidence classes,
+5. external evidence that ClawBio may gather,
+6. GENtle example requests that can be adapted,
+7. optional shell commands for routine/planning checks,
+8. follow-up families the user may see,
+9. confirmation gates that prevent accidental expensive or policy-sensitive
    work.
 
 The generated graph should stay synchronized with the catalog, while this

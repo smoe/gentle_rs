@@ -2240,6 +2240,15 @@ order. Durable architecture constraints and decisions remain in
     `integrations/clawbio/experimental_followup_catalog_graph.mmd`
     deterministically from that catalog, with a regression test guarding
     graph drift
+  - the catalog now includes a ClawBio-owned
+    `variant_prioritization_context` for upstream report assumptions such as
+    sample status, matched-normal availability, copy-number availability,
+    caller support, clinical/reporting scope, allele-frequency policy,
+    transcript policy, and QC/filtering policy; the corresponding
+    `prioritized_variant_followup` intent is meant for prompts that start from
+    a PCGR/CPSR-like or equivalent prioritized variant report and asks GENtle
+    to help plan sequence-grounded follow-up, not to reinterpret the report
+    clinically
   - current CLI reality check for that split:
     - already present:
       - DNA-window SVG export plus coordinate-bearing BED export

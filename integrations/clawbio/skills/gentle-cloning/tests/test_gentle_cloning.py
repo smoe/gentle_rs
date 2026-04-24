@@ -2920,10 +2920,37 @@ def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -
         "missing_material_classes",
         "procurement_delay",
     }
+    decision_contexts = {
+        context["context_id"]: context
+        for context in catalog["decision_contexts"]
+    }
+    assert set(decision_contexts) >= {"variant_prioritization_context"}
+    variant_context = decision_contexts["variant_prioritization_context"]
+    assert variant_context["owner"] == (
+        "ClawBio/external variant-prioritization pipeline"
+    )
+    assert set(variant_context["applies_to_intents"]) >= {
+        "snp_effect",
+        "prioritized_variant_followup",
+    }
+    assert {
+        field["field_id"]
+        for field in variant_context["fields"]
+    } >= {
+        "sample_status",
+        "matched_normal_available",
+        "copy_number_available",
+        "caller_support",
+        "clinical_scope",
+        "frequency_policy",
+        "transcript_policy",
+        "qc_filtering_policy",
+    }
 
     intents = {intent["intent_id"]: intent for intent in catalog["intents"]}
     assert set(intents) >= {
         "snp_effect",
+        "prioritized_variant_followup",
         "differential_expression_followup",
         "splice_variant_characterization",
         "overexpression_planning",
@@ -2938,6 +2965,8 @@ def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -
         assert intent["evidence_classes"]
         assert intent["followup_families"]
         assert intent["confirmation_gates"]
+        for context_id in intent.get("decision_contexts", []):
+            assert context_id in decision_contexts
         for request in intent.get("gentle_requests", []):
             path = request["path"]
             assert path.startswith("skills/gentle-cloning/examples/")
@@ -2964,6 +2993,10 @@ def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -
         "base_editing",
         "prime_editing",
     } <= set(intents["genomic_perturbation_planning"]["followup_families"])
+    assert {
+        "clinical_or_reporting_scope_review",
+        "variant_qc_policy_review",
+    } <= set(intents["prioritized_variant_followup"]["confirmation_gates"])
 
     routine_commands = {
         command["shell_line"]
@@ -2998,6 +3031,9 @@ def test_experimental_followup_catalog_graph_matches_generator() -> None:
 
     assert generated == committed
     assert "Catalog intents (routing decisions)" in committed
+    assert "Decision contexts (policy/filtering assumptions)" in committed
+    assert "variant_prioritization_context" in committed
+    assert "prioritized_variant_followup" in committed
     assert "GENtle artifact/report request templates" in committed
     assert "Routine/planning shell commands" in committed
     assert "Follow-up candidate families" in committed
