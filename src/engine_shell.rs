@@ -916,6 +916,13 @@ pub enum ShellCommand {
         min_length_aa: Option<usize>,
         materialize: bool,
     },
+    ProteasesDigestGelSvg {
+        seq_id: String,
+        proteases: Vec<String>,
+        output: String,
+        min_length_aa: Option<usize>,
+        ladders: Option<Vec<String>>,
+    },
     ExportPool {
         inputs: Vec<String>,
         output: String,
@@ -5763,6 +5770,23 @@ impl ShellCommand {
                 output_prefix.as_deref().unwrap_or("-"),
                 min_length_aa.unwrap_or(1),
                 materialize,
+            ),
+            Self::ProteasesDigestGelSvg {
+                seq_id,
+                proteases,
+                output,
+                min_length_aa,
+                ladders,
+            } => format!(
+                "render protease digest gel for '{}' with proteases [{}] to '{}' (min_length_aa={}, ladders={})",
+                seq_id,
+                proteases.join(","),
+                output,
+                min_length_aa.unwrap_or(1),
+                ladders
+                    .as_ref()
+                    .map(|values| values.join(","))
+                    .unwrap_or_else(|| "auto".to_string()),
             ),
             Self::ExportPool {
                 inputs,
@@ -15601,7 +15625,10 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "proteases" | "protease" => {
             if tokens.len() < 2 {
-                return Err("proteases requires a subcommand: list, show, or digest".to_string());
+                return Err(
+                    "proteases requires a subcommand: list, show, digest, or digest-gel-svg"
+                        .to_string(),
+                );
             }
             match tokens[1].as_str() {
                 "list" => {
@@ -15718,8 +15745,68 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         materialize,
                     })
                 }
+                "digest-gel-svg" | "digest-gel" | "gel-svg" => {
+                    if tokens.len() < 5 {
+                        return Err(
+                            "proteases digest-gel-svg requires SEQ_ID PROTEASE[,PROTEASE...] OUTPUT.svg [--min-length-aa N] [--ladder NAME] [--ladders CSV]"
+                                .to_string(),
+                        );
+                    }
+                    let seq_id = tokens[2].clone();
+                    let proteases = split_ids(&tokens[3]);
+                    if proteases.is_empty() {
+                        return Err(
+                            "proteases digest-gel-svg requires at least one protease name"
+                                .to_string(),
+                        );
+                    }
+                    let output = tokens[4].clone();
+                    let mut min_length_aa: Option<usize> = None;
+                    let mut ladders: Vec<String> = vec![];
+                    let mut idx = 5usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--min-length-aa" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing N after --min-length-aa".to_string());
+                                }
+                                let parsed = tokens[idx + 1].parse::<usize>().map_err(|_| {
+                                    format!("Invalid --min-length-aa value '{}'", tokens[idx + 1])
+                                })?;
+                                min_length_aa = Some(parsed.max(1));
+                                idx += 2;
+                            }
+                            "--ladder" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing NAME after --ladder".to_string());
+                                }
+                                ladders.push(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--ladders" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing CSV after --ladders".to_string());
+                                }
+                                ladders.extend(split_ids(&tokens[idx + 1]));
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for proteases digest-gel-svg"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ProteasesDigestGelSvg {
+                        seq_id,
+                        proteases,
+                        output,
+                        min_length_aa,
+                        ladders: (!ladders.is_empty()).then_some(ladders),
+                    })
+                }
                 other => Err(format!(
-                    "Unknown proteases subcommand '{other}' (expected list, show, or digest)"
+                    "Unknown proteases subcommand '{other}' (expected list, show, digest, or digest-gel-svg)"
                 )),
             }
         }
@@ -19101,6 +19188,30 @@ fn execute_export_import_and_resource_command(
                 .map_err(|e| e.to_string())?;
             Ok(ShellRunResult {
                 state_changed: *materialize,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ProteasesDigestGelSvg {
+            seq_id,
+            proteases,
+            output,
+            min_length_aa,
+            ladders,
+        } => {
+            ensure_shell_output_parent_dir(output)?;
+            let op_result = engine
+                .apply(Operation::RenderProteaseDigestGelSvg {
+                    seq_id: Some(seq_id.clone()),
+                    report_id: None,
+                    transcript_id: None,
+                    proteases: proteases.clone(),
+                    path: output.clone(),
+                    min_length_aa: *min_length_aa,
+                    ladders: ladders.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
                 output: json!({ "result": op_result }),
             })
         }
@@ -22605,47 +22716,11 @@ fn execute_primers_command(
 }
 
 #[inline(never)]
-fn execute_sequence_analysis_command(
+fn execute_feature_scan_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
-        ShellCommand::TranscriptsDerive {
-            seq_id,
-            feature_ids,
-            scope,
-            output_prefix,
-        } => {
-            let op_result = engine
-                .apply(Operation::DeriveTranscriptSequences {
-                    seq_id: seq_id.clone(),
-                    feature_ids: feature_ids.clone(),
-                    scope: *scope,
-                    output_prefix: output_prefix.clone(),
-                })
-                .map_err(|e| e.to_string())?;
-            let created_ids = op_result.created_seq_ids.clone();
-            let created = created_ids
-                .iter()
-                .filter_map(|derived_seq_id| {
-                    engine.state().sequences.get(derived_seq_id).map(|dna| {
-                        json!({
-                            "seq_id": derived_seq_id,
-                            "name": dna.name(),
-                            "length_bp": dna.len(),
-                        })
-                    })
-                })
-                .collect::<Vec<_>>();
-            Ok(ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "result": op_result,
-                    "transcript_count": created.len(),
-                    "transcripts": created,
-                }),
-            })
-        }
         ShellCommand::FeaturesQuery { query } => {
             let result = engine
                 .query_sequence_features(query.clone())
@@ -22824,6 +22899,52 @@ fn execute_sequence_analysis_command(
                 output: json!({
                     "result": op_result,
                     "report": report,
+                }),
+            })
+        }
+        _ => unreachable!("non-feature scan command passed to feature scan helper"),
+    }
+}
+
+#[inline(never)]
+fn execute_sequence_analysis_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::TranscriptsDerive {
+            seq_id,
+            feature_ids,
+            scope,
+            output_prefix,
+        } => {
+            let op_result = engine
+                .apply(Operation::DeriveTranscriptSequences {
+                    seq_id: seq_id.clone(),
+                    feature_ids: feature_ids.clone(),
+                    scope: *scope,
+                    output_prefix: output_prefix.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let created_ids = op_result.created_seq_ids.clone();
+            let created = created_ids
+                .iter()
+                .filter_map(|derived_seq_id| {
+                    engine.state().sequences.get(derived_seq_id).map(|dna| {
+                        json!({
+                            "seq_id": derived_seq_id,
+                            "name": dna.name(),
+                            "length_bp": dna.len(),
+                        })
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "transcript_count": created.len(),
+                    "transcripts": created,
                 }),
             })
         }
@@ -25761,6 +25882,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ProteasesList { .. }
             | ShellCommand::ProteasesShow { .. }
             | ShellCommand::ProteasesDigest { .. }
+            | ShellCommand::ProteasesDigestGelSvg { .. }
             | ShellCommand::ResourcesStatus
             | ShellCommand::ServicesStatus
             | ShellCommand::ServicesHandoff { .. }
@@ -25922,8 +26044,7 @@ pub fn execute_shell_command_with_options(
     }
     if matches!(
         command,
-        ShellCommand::TranscriptsDerive { .. }
-            | ShellCommand::FeaturesQuery { .. }
+        ShellCommand::FeaturesQuery { .. }
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
             | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
@@ -25931,6 +26052,12 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
             | ShellCommand::FeaturesTfbsScan { .. }
             | ShellCommand::FeaturesRestrictionScan { .. }
+    ) {
+        return execute_feature_scan_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::TranscriptsDerive { .. }
             | ShellCommand::VariantAnnotatePromoterWindows { .. }
             | ShellCommand::VariantPromoterContext { .. }
             | ShellCommand::VariantReporterFragments { .. }
@@ -26156,15 +26283,17 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PanelsValidateIsoform { .. } => {
             execute_feature_expert_command(engine, command)?
         }
-        ShellCommand::TranscriptsDerive { .. }
-        | ShellCommand::FeaturesQuery { .. }
+        ShellCommand::FeaturesQuery { .. }
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
         | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
         | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
         | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
         | ShellCommand::FeaturesTfbsScan { .. }
-        | ShellCommand::FeaturesRestrictionScan { .. }
+        | ShellCommand::FeaturesRestrictionScan { .. } => {
+            execute_feature_scan_command(engine, command)?
+        }
+        ShellCommand::TranscriptsDerive { .. }
         | ShellCommand::VariantAnnotatePromoterWindows { .. }
         | ShellCommand::VariantPromoterContext { .. }
         | ShellCommand::VariantReporterFragments { .. }
@@ -26346,6 +26475,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ProteasesList { .. }
         | ShellCommand::ProteasesShow { .. }
         | ShellCommand::ProteasesDigest { .. }
+        | ShellCommand::ProteasesDigestGelSvg { .. }
         | ShellCommand::ResourcesStatus
         | ShellCommand::ServicesStatus
         | ShellCommand::ServicesHandoff { .. }

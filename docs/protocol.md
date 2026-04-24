@@ -1612,6 +1612,7 @@ Current draft operations:
 - `RenderLineageSvg { path }`
 - `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id?, conditions? }`
 - `RenderProteinGelSvg { report_id, path, ladders? }`
+- `RenderProteaseDigestGelSvg { seq_id?, report_id?, transcript_id?, proteases[], path, min_length_aa?, ladders? }`
 - `RenderProtein2dGelSvg { report_id, path, ladders? }`
 - `CreateArrangementSerial { container_ids, arrangement_id?, name?, ladders? }`
 - `SetArrangementLadders { arrangement_id, ladders? }`
@@ -2062,6 +2063,7 @@ external coding agent runtime, see:
   - `proteases list [--filter TEXT] [--output PATH]`
   - `proteases show QUERY [--output PATH]`
   - `proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]`
+  - `proteases digest-gel-svg SEQ_ID PROTEASE[,PROTEASE...] OUTPUT.svg [--min-length-aa N] [--ladder NAME] [--ladders CSV]`
   - semantics:
     - exposes the built-in protease catalog as deterministic JSON
     - search spans names, aliases, cleavage-pattern notation, specificity, and
@@ -2069,6 +2071,9 @@ external coding agent runtime, see:
     - `ProteaseDigestProteinSequence` is the canonical engine operation for
       cleavage prediction/materialization on first-class protein or peptide
       sequences
+    - `RenderProteaseDigestGelSvg` is the graphical companion for digest
+      reports and keeps the same source-neutral report payload while producing
+      an SVG suitable for ClawBio PNG rasterization
     - digest reports use `gentle.protease_digest_report.v1` and retain
       source-protein, transcript, derivation-mode, and translation-table
       provenance when present on transcript-derived proteins
@@ -3195,6 +3200,26 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   selection summary.
 - This is the canonical protein-gel route for transcript-native demos such as
   the TP73 isoform workflow; `RenderPoolGelSvg` remains DNA/bp-based.
+
+`RenderProteaseDigestGelSvg` semantics:
+
+- Accepts either one first-class protein/peptide `seq_id`, or one
+  `ProteinDerivationReport` `report_id` plus an optional `transcript_id` for
+  selecting the derived protein row, one or more protease names or aliases, and
+  an output SVG `path`.
+- The `report_id` path is preferred inside workflows that derive proteins
+  immediately before rendering, because it follows the actual sequence id
+  created in the current state even when prior runs forced a uniqueness suffix.
+- Uses the same built-in protease catalog and cleavage matcher as
+  `ProteaseDigestProteinSequence`, but runs in prediction-only mode and does
+  not materialize peptide sequences.
+- Returns the same `gentle.protease_digest_report.v1` in `OpResult` while also
+  rendering one protein-gel lane per retained peptide product.
+- `min_length_aa` filters short peptides before rendering; `ladders` can
+  request deterministic protein ladder overlays.
+- This is the ClawBio/OpenClaw-friendly graphical insight path for protease
+  digestion because declared SVG artifacts are rasterized by the wrapper into
+  PNG-first messenger outputs.
 
 `RenderProtein2dGelSvg` semantics:
 

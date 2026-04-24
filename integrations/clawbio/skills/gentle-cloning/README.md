@@ -218,6 +218,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_svg.json --output /tmp/gentle_tp73_tfbs_score_tracks_svg
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_gel.json --output /tmp/gentle_tp73_isoform_protein_gel
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_2d_gel.json --output /tmp/gentle_tp73_isoform_protein_2d_gel
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_variant1_trypsin_digest_gel.json --output /tmp/gentle_tp73_trypsin_digest_gel
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_resources_summarize_jaspar_sp1_rest.json --output /tmp/gentle_jaspar_sp1_rest
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json --output /tmp/gentle_vkorc1_planning
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_svg_pgex_fasta_circular.json --output /tmp/gentle_pgex_map
@@ -338,6 +339,11 @@ cargo run --locked --bin gentle_cli -- --version
   offline TP73 demo: it reuses the same curated isoform derivation and
   renders one protein spot map with pI on the X axis and molecular weight on
   the Y axis before promoting the SVG into the PNG-first bundle contract
+- `request_workflow_tp73_variant1_trypsin_digest_gel.json` is the first
+  ClawBio-ready protease digest graphics demo: it derives TP73 transcript
+  variant 1 protein, applies the shared Trypsin catalog rule, renders retained
+  peptide masses as a protein-gel SVG, and lets the wrapper promote that SVG
+  into the PNG-first messenger artifact contract
 - `request_resources_summarize_jaspar_sp1_rest.json` exposes the newer
   motif-presentation layer as one deterministic JASPAR background/max/min
   summary for SP1 and REST
@@ -560,6 +566,11 @@ Included follow-on analysis/planning/graphics requests:
     protein isoforms, renders one protein 2D gel with pI on the X axis and
     molecular weight on the Y axis, and lets ClawBio rasterize the SVG into
     the PNG-first bundle contract
+- `examples/request_workflow_tp73_variant1_trypsin_digest_gel.json`
+  - offline TP73 variant 1 protease-digest graphics demo that applies Trypsin
+    to the transcript-derived protein, renders retained peptide masses as a
+    protein-gel SVG, and lets ClawBio rasterize the figure into the PNG-first
+    bundle contract
 - `examples/request_resources_summarize_jaspar_sp1_rest.json`
   - motif-presentation example that summarizes local JASPAR entries for SP1
     and REST into one deterministic background/max/min report

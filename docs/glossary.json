@@ -1,5 +1,5 @@
 {
-   "command_count": 347,
+   "command_count": 351,
    "commands": [
       {
          "aliases": [
@@ -714,6 +714,24 @@
          "path": "proteases digest",
          "summary": "Predict and optionally materialize protease peptide products from a protein sequence.",
          "usage": "proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]"
+      },
+      {
+         "aliases": [
+            "protease digest-gel-svg",
+            "proteases digest-gel",
+            "proteases gel-svg"
+         ],
+         "engine_operations": [
+            "RenderProteaseDigestGelSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "proteases digest-gel-svg",
+         "summary": "Render a protease peptide digest as a protein-gel SVG for graphical inspection.",
+         "usage": "proteases digest-gel-svg SEQ_ID PROTEASE[,PROTEASE...] OUTPUT.svg [--min-length-aa N] [--ladder NAME] [--ladders CSV]"
       },
       {
          "aliases": [],

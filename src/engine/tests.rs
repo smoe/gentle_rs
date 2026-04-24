@@ -9313,6 +9313,74 @@ fn test_derive_protein_sequences_persists_protein_derivation_report() {
 }
 
 #[test]
+fn test_render_protease_digest_gel_from_report_uses_latest_created_protein_id() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        transcript_translation_test_sequence(
+            vec![("organism".into(), Some("Escherichia coli".to_string()))],
+            vec![
+                ("gene".into(), Some("toyA".to_string())),
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("label".into(), Some("TX_TOY".to_string())),
+            ],
+            vec![
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("product".into(), Some("Toy enzyme".to_string())),
+                ("protein_id".into(), Some("PROT_TOY".to_string())),
+                ("transl_table".into(), Some("11".to_string())),
+            ],
+        ),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let first = engine
+        .apply(Operation::DeriveProteinSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            feature_query: None,
+            scope: None,
+            output_prefix: Some("prot".to_string()),
+            report_id: Some("prot_report".to_string()),
+        })
+        .expect("first protein derivation");
+    let second = engine
+        .apply(Operation::DeriveProteinSequences {
+            seq_id: "s".to_string(),
+            feature_ids: vec![1],
+            feature_query: None,
+            scope: None,
+            output_prefix: Some("prot".to_string()),
+            report_id: Some("prot_report".to_string()),
+        })
+        .expect("second protein derivation");
+    assert_ne!(first.created_seq_ids[0], second.created_seq_ids[0]);
+
+    let svg_dir = tempdir().expect("tempdir");
+    let result = engine
+        .apply(Operation::RenderProteaseDigestGelSvg {
+            seq_id: None,
+            report_id: Some("prot_report".to_string()),
+            transcript_id: Some("TX_TOY".to_string()),
+            proteases: vec!["Trypsin".to_string()],
+            path: svg_dir
+                .path()
+                .join("report_driven_digest_gel.svg")
+                .display()
+                .to_string(),
+            min_length_aa: Some(1),
+            ladders: None,
+        })
+        .expect("render protease digest gel from report");
+
+    let report = result
+        .protease_digest_report
+        .as_ref()
+        .expect("protease digest report");
+    assert_eq!(report.source_seq_id, second.created_seq_ids[0]);
+    assert_ne!(report.source_seq_id, first.created_seq_ids[0]);
+}
+
+#[test]
 fn test_tp73_isoform_protein_gel_route_loads_derives_and_renders() {
     let mut engine = GentleEngine::default();
     engine
@@ -13271,6 +13339,43 @@ fn test_protease_digest_prediction_only_does_not_materialize() {
     assert!(!report.materialized);
     assert_eq!(report.peptide_count, 1);
     assert_eq!(report.peptides[0].sequence, "RPTR");
+}
+
+#[test]
+fn test_render_protease_digest_gel_svg_reports_peptide_lanes() {
+    let mut protein = seq("MAKRPTRKAA");
+    protein.set_molecule_type("protein");
+    let mut state = ProjectState::default();
+    state.sequences.insert("p".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+    let svg_dir = tempdir().expect("tempdir");
+    let svg_path = svg_dir.path().join("trypsin_digest_gel.svg");
+
+    let result = engine
+        .apply(Operation::RenderProteaseDigestGelSvg {
+            seq_id: Some("p".to_string()),
+            report_id: None,
+            transcript_id: None,
+            proteases: vec!["Trypsin".to_string()],
+            path: svg_path.display().to_string(),
+            min_length_aa: Some(1),
+            ladders: Some(vec!["Protein Ladder 10-100 kDa".to_string()]),
+        })
+        .expect("render protease digest gel");
+
+    assert!(result.created_seq_ids.is_empty());
+    let report = result
+        .protease_digest_report
+        .as_ref()
+        .expect("protease digest report");
+    assert!(!report.materialized);
+    assert_eq!(report.peptide_count, 4);
+    let svg = fs::read_to_string(&svg_path).expect("rendered protease gel svg");
+    assert!(svg.contains("Protein Gel Preview"));
+    assert!(svg.contains("Source: p"));
+    assert!(svg.contains("Proteases: Trypsin"));
+    assert!(svg.contains("Protein Ladder 10-100 kDa"));
+    assert!(svg.contains("p1"));
 }
 
 #[test]

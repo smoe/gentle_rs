@@ -506,6 +506,22 @@ def _resolve_expected_artifact(raw_path: str, execution_cwd: Path) -> Path:
     return execution_cwd / path
 
 
+def _prepare_expected_artifact_parent_dirs(
+    request: Request,
+    execution_cwd: Path,
+) -> None:
+    if not request.expected_artifacts:
+        return
+    for raw_path in request.expected_artifacts:
+        path = Path(raw_path)
+        if path.is_absolute():
+            continue
+        parent = (execution_cwd / path).parent
+        if parent == execution_cwd:
+            continue
+        parent.mkdir(parents=True, exist_ok=True)
+
+
 def _safe_artifact_destination(raw_path: str) -> Path:
     normalized = raw_path.replace("\\", "/")
     parts: list[str] = []
@@ -2145,6 +2161,7 @@ def main() -> int:
                 )
 
             cli_args = _build_cli_args(request, Path(__file__))
+            _prepare_expected_artifact_parent_dirs(request, execution_cwd)
             run_result, main_step = _run_cli_command(
                 resolution,
                 cli_args,

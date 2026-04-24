@@ -219,6 +219,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json --output /tmp/gentle_tp53_splicing_text
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing.json --output /tmp/gentle_tp53_qpcr_seed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json --output /tmp/gentle_p53_family_anchor
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_variant1_trypsin_digest_gel.json --output /tmp/gentle_tp73_trypsin_digest_gel
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_qpcr_svg.json --output /tmp/gentle_qpcr_graphics
 ```
@@ -394,6 +395,10 @@ Included follow-on analysis/planning/graphics examples:
   - replays the anchored p53-family comparison with TP73 on the shared
     reference axis and TP63 plus TP53 aligned by the conserved motif
     `CATGTGTAACAG`
+- `request_workflow_tp73_variant1_trypsin_digest_gel.json`
+  - derives TP73 transcript variant 1 protein from the bundled offline TP73
+    GenBank asset, renders a trypsin peptide digest gel SVG, and lets the
+    ClawBio wrapper expose the PNG raster as the chat-facing preferred artifact
 - `request_protocol_cartoon_gibson_svg.json`
   - declares `expected_artifacts[]` so the generated SVG is copied into the
     ClawBio output bundle under `generated/...` and rasterized into the
@@ -1725,6 +1730,7 @@ Shared shell command:
     - `proteases list [--filter TEXT] [--output PATH]`
     - `proteases show QUERY [--output PATH]`
     - `proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]`
+    - `proteases digest-gel-svg SEQ_ID PROTEASE[,PROTEASE...] OUTPUT.svg [--min-length-aa N] [--ladder NAME] [--ladders CSV]`
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
@@ -2768,6 +2774,12 @@ Resource sync commands:
     qualifiers when the source protein carries them.
   - `--predict-only` keeps the operation report-only and does not create
     sequence entries; `--min-length-aa` filters short peptide products.
+- `proteases digest-gel-svg SEQ_ID PROTEASE[,PROTEASE...] OUTPUT.svg [--min-length-aa N] [--ladder NAME] [--ladders CSV]`
+  - Renders the same prediction-only protease digest as a protein-gel SVG using
+    the shared protein ladder renderer.
+  - The operation still returns `gentle.protease_digest_report.v1`, so ClawBio
+    can combine a compact structured digest report with the PNG raster that the
+    wrapper derives from the declared SVG artifact.
 - `resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]`
   - Parses JASPAR PFM text into motif snapshot JSON with IUPAC consensus.
   - `INPUT` may be a local file path or an `https://...` URL.

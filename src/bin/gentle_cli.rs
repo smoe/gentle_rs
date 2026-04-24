@@ -763,6 +763,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "resources",
     "import-pool",
     "ladders",
+    "proteases",
     "racks",
     "guides",
     "features",

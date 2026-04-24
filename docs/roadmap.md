@@ -324,6 +324,15 @@ order. Durable architecture constraints and decisions remain in
     threads during protocol-cartoon template export coverage
   - those routes now dispatch through a dedicated protocol-cartoon helper,
     keeping one implementation path while reducing matcher stack depth
+- Engine-shell feature-query, TFBS, and restriction-scan commands now use the
+  next narrower split-helper pattern:
+  - `features query/export-bed`, TFBS summary/score/scan routes, and
+    `features restriction-scan` no longer enter the broader transcript/variant/
+    dotplot sequence-analysis helper on small-stack test threads
+  - matching TFBS/restriction scan `Operation` variants also short-circuit
+    through a dedicated engine helper before the monolithic `apply_internal`
+    matcher, while the inner matcher delegates back to that helper to preserve
+    one implementation path
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).
@@ -1861,6 +1870,16 @@ order. Durable architecture constraints and decisions remain in
     - `Protein Evidence...` now exposes that digest path directly with a
       compact report panel for resolved proteases, cleavage-site context,
       peptide products, and materialized peptide sequence ids
+    - a graphical digest companion is now available through
+      `RenderProteaseDigestGelSvg` / `proteases digest-gel-svg`, which reuses
+      the same protease catalog and `gentle.protease_digest_report.v1` payload
+      while rendering retained peptide masses as a protein-gel SVG; workflow
+      callers can target either an explicit protein `seq_id` or a
+      `ProteinDerivationReport` row so digest graphics follow freshly derived
+      suffixed protein ids instead of accidentally reusing stale state
+    - the ClawBio example pack now includes an offline TP73 variant 1 trypsin
+      digest-gel workflow request; the wrapper rasterizes the declared SVG into
+      a PNG-first messenger artifact
     - digest products preserve source protein, transcript-derived provenance,
       derivation mode, and translation-table qualifiers when the protein came
       from the transcript-first derivation path
@@ -2018,8 +2037,8 @@ order. Durable architecture constraints and decisions remain in
        - expand the new protease cleavage prediction/materialization path with
          missed-cleavage models, enzyme-condition notes, and downstream
          proteomics/gel planning reports
-       - surface protease digest reports in ClawBio graphical insight flows
-         now that the GUI has a first direct Protein Evidence report panel
+       - next graphical follow-up: add digest-summary cartoons and optional
+         missed-cleavage lanes on top of the first ClawBio PNG digest-gel path
 - Executable tutorial baseline is now integrated with canonical workflow
   examples:
   - canonical tutorial landing page now exists at `docs/tutorial/README.md`
@@ -2196,6 +2215,9 @@ order. Durable architecture constraints and decisions remain in
       - the wrapper now supports declared `expected_artifacts[]`, and the
         shipped graphics examples copy generated SVGs into the ClawBio
         output bundle instead of leaving it only in the execution cwd
+      - declared relative artifact parent directories are created before the
+        wrapped GENtle command runs, so a fresh ClawBio execution cwd can emit
+        `artifacts/...` graphics without requiring users to pre-create folders
       - the wrapper now also hardens that graphics path for messenger use:
         declared SVG artifacts are rasterized into deterministic PNG bundle
         artifacts at fixed scale `2.0`, and figure-oriented

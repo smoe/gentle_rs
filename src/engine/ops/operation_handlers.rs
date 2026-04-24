@@ -6328,6 +6328,530 @@ impl GentleEngine {
         Ok(())
     }
 
+    #[inline(never)]
+    fn apply_feature_scan_operation(
+        &mut self,
+        op: Operation,
+        run_id: &str,
+        result: &mut OpResult,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<(), EngineError> {
+        match op {
+            Operation::FindRestrictionSites {
+                target,
+                enzymes,
+                max_sites_per_enzyme,
+                include_cut_geometry,
+                path,
+            } => {
+                let mut report = self.find_restriction_sites(
+                    target.clone(),
+                    &enzymes,
+                    max_sites_per_enzyme,
+                    include_cut_geometry,
+                    Some(&result.op_id),
+                    Some(run_id),
+                )?;
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "restriction-site scan report")?;
+                    report.path = Some(path.to_string());
+                    result.messages.push(format!(
+                        "Wrote restriction-site scan report for '{}' to '{}'",
+                        report.target_label, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "Restriction-site scan on '{}' matched {} site(s) across {} enzyme(s) over {}..{}",
+                    report.target_label,
+                    report.matched_site_count,
+                    report.enzymes_scanned.len(),
+                    report.scan_start_0based,
+                    report.scan_end_0based_exclusive,
+                ));
+                if !report.skipped_enzyme_names_due_to_max_sites.is_empty() {
+                    result.warnings.push(format!(
+                        "Skipped enzyme(s) due to max_sites_per_enzyme cap {}: {}",
+                        report.max_sites_per_enzyme.unwrap_or_default(),
+                        report.skipped_enzyme_names_due_to_max_sites.join(", ")
+                    ));
+                }
+                result.restriction_site_scan = Some(report);
+            }
+            Operation::SummarizeTfbsRegion {
+                seq_id,
+                focus_start_0based,
+                focus_end_0based_exclusive,
+                context_start_0based,
+                context_end_0based_exclusive,
+                min_focus_occurrences,
+                min_context_occurrences,
+                limit,
+                path,
+            } => {
+                let summary = self.summarize_tfbs_region(TfbsRegionSummaryRequest {
+                    seq_id: seq_id.clone(),
+                    focus_start_0based,
+                    focus_end_0based_exclusive,
+                    context_start_0based,
+                    context_end_0based_exclusive,
+                    min_focus_occurrences,
+                    min_context_occurrences,
+                    limit,
+                })?;
+                if let Some(path) = path.as_deref() {
+                    self.write_tfbs_region_summary_json(&summary, path)?;
+                    result.messages.push(format!(
+                        "Wrote TFBS region summary for '{}' to '{}'",
+                        summary.seq_id, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "TFBS region summary for '{}' matched {} factor(s) in focus {}..{} against context {}..{}",
+                    summary.seq_id,
+                    summary.matched_tf_count,
+                    summary.focus_start_0based,
+                    summary.focus_end_0based_exclusive,
+                    summary.context_start_0based,
+                    summary.context_end_0based_exclusive,
+                ));
+                result.tfbs_region_summary = Some(summary);
+            }
+            Operation::SummarizeTfbsScoreTracks {
+                target,
+                motifs,
+                score_kind,
+                clip_negative,
+                path,
+            } => {
+                let mut report = self.summarize_tfbs_score_tracks_with_progress(
+                    target.clone(),
+                    &motifs,
+                    score_kind,
+                    clip_negative,
+                    true,
+                    &mut |progress| on_progress(progress),
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_tfbs_score_track_report_json(&report, path)?;
+                    result.messages.push(format!(
+                        "Wrote TFBS score tracks for '{}' to '{}'",
+                        report.seq_id, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "TFBS score tracks for '{}' covered {} motif(s) over {}..{} with score_kind={} clip_negative={}",
+                    report.seq_id,
+                    report.tracks.len(),
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.score_kind.as_str(),
+                    report.clip_negative
+                ));
+                result.tfbs_score_tracks = Some(report);
+            }
+            Operation::SummarizeMultiGenePromoterTfbs {
+                genome_id,
+                genes,
+                motifs,
+                upstream_bp,
+                downstream_bp,
+                score_kind,
+                clip_negative,
+                catalog_path,
+                cache_dir,
+                path,
+            } => {
+                let mut report = self.summarize_multi_gene_promoter_tfbs(
+                    &genome_id,
+                    &genes,
+                    &motifs,
+                    upstream_bp,
+                    downstream_bp,
+                    score_kind,
+                    clip_negative,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "multi-gene promoter TFBS report")?;
+                    result.messages.push(format!(
+                        "Wrote multi-gene promoter TFBS report for '{}' to '{}'",
+                        report.genome_id, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                result.messages.push(format!(
+                    "Multi-gene promoter TFBS summary for '{}' covered {} gene(s) and {} per-gene motif row(s) with score_kind={} clip_negative={}",
+                    report.genome_id,
+                    report.returned_gene_count,
+                    report.summary_rows.len(),
+                    report.score_kind.as_str(),
+                    report.clip_negative
+                ));
+                result.multi_gene_promoter_tfbs = Some(report);
+            }
+            Operation::SummarizeTfbsTrackSimilarity {
+                target,
+                anchor_motif,
+                candidate_motifs,
+                ranking_metric,
+                score_kind,
+                clip_negative,
+                species_filters,
+                include_remote_metadata,
+                limit,
+                path,
+            } => {
+                let mut report = self.summarize_tfbs_track_similarity(
+                    target.clone(),
+                    &anchor_motif,
+                    &candidate_motifs,
+                    ranking_metric,
+                    score_kind,
+                    clip_negative,
+                    &species_filters,
+                    include_remote_metadata,
+                    limit,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "TFBS similarity report")?;
+                    result.messages.push(format!(
+                        "Wrote TFBS track-similarity report for '{}' to '{}'",
+                        report.target_label, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                result.messages.push(format!(
+                    "TFBS track similarity for '{}' ranked {} candidate motif(s) against '{}' over {}..{} (metric={}, score_kind={}, clip_negative={})",
+                    report.target_label,
+                    report.returned_candidate_count,
+                    report.anchor_tf_id,
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.ranking_metric.as_str(),
+                    report.score_kind.as_str(),
+                    report.clip_negative
+                ));
+                result.tfbs_track_similarity = Some(report);
+            }
+            Operation::ScanTfbsHits {
+                target,
+                motifs,
+                min_llr_bits,
+                min_llr_quantile,
+                per_tf_thresholds,
+                max_hits,
+                path,
+            } => {
+                let mut report = self.scan_tfbs_hits(
+                    target.clone(),
+                    &motifs,
+                    min_llr_bits,
+                    min_llr_quantile,
+                    &per_tf_thresholds,
+                    max_hits,
+                    Some(&result.op_id),
+                    Some(run_id),
+                )?;
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "TFBS hit-scan report")?;
+                    report.path = Some(path.to_string());
+                    result.messages.push(format!(
+                        "Wrote TFBS hit-scan report for '{}' to '{}'",
+                        report.target_label, path
+                    ));
+                }
+                result.messages.push(format!(
+                    "TFBS hit scan on '{}' matched {} hit(s) across {} motif(s) over {}..{}",
+                    report.target_label,
+                    report.matched_hit_count,
+                    report.motifs_scanned.len(),
+                    report.scan_start_0based,
+                    report.scan_end_0based_exclusive,
+                ));
+                if report.truncated_at_max_hits {
+                    result.warnings.push(format!(
+                        "TFBS hit scan reached max_hits={} and truncated remaining hits",
+                        report.max_hits.unwrap_or_default()
+                    ));
+                }
+                result.tfbs_hit_scan = Some(report);
+            }
+            _ => unreachable!("non-feature-scan operation passed to helper"),
+        }
+        Ok(())
+    }
+
+    fn resolve_protease_digest_source_seq_id(
+        &self,
+        seq_id: Option<&str>,
+        report_id: Option<&str>,
+        transcript_id: Option<&str>,
+    ) -> Result<SeqId, EngineError> {
+        if let Some(seq_id) = seq_id.map(str::trim).filter(|value| !value.is_empty()) {
+            return Ok(seq_id.to_string());
+        }
+        let report_id = report_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RenderProteaseDigestGelSvg requires either seq_id or report_id"
+                    .to_string(),
+            })?;
+        let report = self.get_protein_derivation_report(report_id)?;
+        if report.rows.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Protein derivation report '{}' did not contain any protein rows",
+                    report.report_id
+                ),
+            });
+        }
+        if let Some(transcript_id) = transcript_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let matches = report
+                .rows
+                .iter()
+                .filter(|row| row.derivation.transcript_id == transcript_id)
+                .collect::<Vec<_>>();
+            return match matches.as_slice() {
+                [row] => Ok(row.protein_seq_id.clone()),
+                [] => Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Protein derivation report '{}' did not contain transcript '{}'",
+                        report.report_id, transcript_id
+                    ),
+                }),
+                _ => Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Protein derivation report '{}' contained multiple rows for transcript '{}'",
+                        report.report_id, transcript_id
+                    ),
+                }),
+            };
+        }
+        if report.rows.len() == 1 {
+            return Ok(report.rows[0].protein_seq_id.clone());
+        }
+        let transcripts = report
+            .rows
+            .iter()
+            .map(|row| row.derivation.transcript_id.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Err(EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Protein derivation report '{}' contained {} proteins; provide seq_id or transcript_id (available transcripts: {})",
+                report.report_id,
+                report.rows.len(),
+                transcripts
+            ),
+        })
+    }
+
+    fn build_protease_digest_report_for_sequence(
+        &mut self,
+        seq_id: &str,
+        proteases: &[String],
+        output_prefix: Option<&str>,
+        min_length_aa: Option<usize>,
+        materialize: bool,
+        op_id: &str,
+    ) -> Result<(ProteaseDigestReport, Vec<SeqId>, Vec<String>), EngineError> {
+        if proteases.iter().all(|name| name.trim().is_empty()) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ProteaseDigestProteinSequence requires at least one protease".to_string(),
+            });
+        }
+        let protein = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?
+            .clone();
+        if !protein.is_protein_sequence() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "ProteaseDigestProteinSequence requires a protein or peptide sequence; '{}' has molecule_type={:?}",
+                    seq_id,
+                    protein.molecule_type()
+                ),
+            });
+        }
+        let (resolved, missing, mut warnings) = Self::resolve_proteases_for_digest(proteases);
+        if !missing.is_empty() {
+            warnings.push(format!(
+                "Unknown or ambiguous proteases ignored: {}",
+                missing.join(",")
+            ));
+        }
+        if resolved.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No requested proteases could be resolved from: {}",
+                    proteases.join(",")
+                ),
+            });
+        }
+        let protein_sequence = protein.get_forward_string().to_ascii_uppercase();
+        let source_len = protein_sequence.len();
+        let min_length_aa = min_length_aa.unwrap_or(1).max(1);
+        let resolved_summaries = resolved
+            .iter()
+            .map(|protease| ProteaseDigestProteaseSummary {
+                name: protease.name.clone(),
+                cleavage_pattern: protease.sequence.clone(),
+                cut_offset: protease.cut,
+                aliases: protease.aliases.clone(),
+            })
+            .collect::<Vec<_>>();
+        let mut cleavage_boundaries = BTreeSet::new();
+        let mut sites = vec![];
+        let residues = protein_sequence.chars().collect::<Vec<_>>();
+        for protease in &resolved {
+            for boundary in protease.cleavage_boundaries_0based(&protein_sequence) {
+                let upstream_residue = boundary
+                    .checked_sub(1)
+                    .and_then(|idx| residues.get(idx).copied());
+                let downstream_residue = residues.get(boundary).copied();
+                sites.push(ProteaseCleavageSite {
+                    protease_name: protease.name.clone(),
+                    cleavage_boundary_0based: boundary,
+                    cleavage_after_aa_1based: boundary,
+                    upstream_residue,
+                    downstream_residue,
+                    context: Self::protease_digest_context(&protein_sequence, boundary),
+                });
+                if boundary > 0 && boundary < source_len {
+                    cleavage_boundaries.insert(boundary);
+                }
+            }
+        }
+        sites.sort_by(|a, b| {
+            a.cleavage_boundary_0based
+                .cmp(&b.cleavage_boundary_0based)
+                .then_with(|| a.protease_name.cmp(&b.protease_name))
+        });
+        let mut peptide_boundaries = vec![0usize];
+        peptide_boundaries.extend(cleavage_boundaries.iter().copied());
+        peptide_boundaries.push(source_len);
+        peptide_boundaries.sort_unstable();
+        peptide_boundaries.dedup();
+
+        let mut peptides = vec![];
+        for pair in peptide_boundaries.windows(2) {
+            let start = pair[0];
+            let end = pair[1];
+            if end <= start {
+                continue;
+            }
+            let length_aa = end - start;
+            if length_aa < min_length_aa {
+                continue;
+            }
+            let sequence = protein_sequence[start..end].to_string();
+            peptides.push(ProteaseDigestPeptide {
+                peptide_index: peptides.len() + 1,
+                start_0based: start,
+                end_0based_exclusive: end,
+                source_start_aa_1based: start + 1,
+                source_end_aa_1based: end,
+                length_aa,
+                sequence,
+                source_left_cleavage_boundary_0based: (start > 0).then_some(start),
+                source_right_cleavage_boundary_0based: (end < source_len).then_some(end),
+                created_seq_id: None,
+            });
+        }
+        if materialize && peptides.len() > self.max_fragments_per_container() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Protease digest would create {} peptides, exceeding max_fragments_per_container={}",
+                    peptides.len(),
+                    self.max_fragments_per_container()
+                ),
+            });
+        }
+        let source_transcript_id = Self::protein_feature_qualifier(&protein, "transcript_id");
+        let source_protein_derivation_mode =
+            Self::protein_feature_qualifier(&protein, "protein_derivation_mode");
+        let source_translation_table =
+            Self::protein_feature_qualifier(&protein, "translation_table");
+        let mut created_seq_ids = vec![];
+        if materialize {
+            let prefix = output_prefix
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| format!("{seq_id}_protease_digest"));
+            let source_name = protein.name().as_deref().unwrap_or(seq_id);
+            for peptide in &mut peptides {
+                let base_seq_id = format!("{}_p{}", prefix, peptide.peptide_index);
+                let peptide_seq_id = self.unique_seq_id(&base_seq_id);
+                let peptide_name =
+                    format!("{source_name} protease peptide {}", peptide.peptide_index);
+                let peptide_sequence = Self::build_protease_digest_peptide_sequence(
+                    peptide,
+                    &peptide_name,
+                    seq_id,
+                    &resolved_summaries,
+                    source_transcript_id.as_deref(),
+                    source_protein_derivation_mode.as_deref(),
+                    source_translation_table.as_deref(),
+                )?;
+                self.state
+                    .sequences
+                    .insert(peptide_seq_id.clone(), peptide_sequence);
+                self.add_lineage_node(&peptide_seq_id, SequenceOrigin::Derived, Some(op_id));
+                peptide.created_seq_id = Some(peptide_seq_id.clone());
+                created_seq_ids.push(peptide_seq_id);
+            }
+        }
+        let report = ProteaseDigestReport {
+            schema: "gentle.protease_digest_report.v1".to_string(),
+            source_seq_id: seq_id.to_string(),
+            source_length_aa: source_len,
+            source_transcript_id,
+            source_protein_derivation_mode,
+            source_translation_table,
+            requested_proteases: proteases.to_vec(),
+            resolved_proteases: resolved_summaries,
+            missing_proteases: missing,
+            min_length_aa,
+            materialized: materialize,
+            cleavage_site_count: sites.len(),
+            peptide_count: peptides.len(),
+            created_seq_ids: created_seq_ids.clone(),
+            sites,
+            peptides,
+        };
+        Ok((report, created_seq_ids, warnings))
+    }
+
     pub(super) fn apply_internal(
         &mut self,
         op: Operation,
@@ -6428,6 +6952,16 @@ impl GentleEngine {
         };
 
         if matches!(
+            &op,
+            Operation::FindRestrictionSites { .. }
+                | Operation::SummarizeTfbsRegion { .. }
+                | Operation::SummarizeTfbsScoreTracks { .. }
+                | Operation::SummarizeMultiGenePromoterTfbs { .. }
+                | Operation::SummarizeTfbsTrackSimilarity { .. }
+                | Operation::ScanTfbsHits { .. }
+        ) {
+            self.apply_feature_scan_operation(op, run_id, &mut result, on_progress)?;
+        } else if matches!(
             &op,
             Operation::SetRackProfile { .. }
                 | Operation::ApplyRackTemplate { .. }
@@ -6916,6 +7450,106 @@ impl GentleEngine {
                         path,
                         ladders_used
                     ));
+                }
+                Operation::RenderProteaseDigestGelSvg {
+                    seq_id,
+                    report_id,
+                    transcript_id,
+                    proteases,
+                    path,
+                    min_length_aa,
+                    ladders,
+                } => {
+                    let seq_id = self.resolve_protease_digest_source_seq_id(
+                        seq_id.as_deref(),
+                        report_id.as_deref(),
+                        transcript_id.as_deref(),
+                    )?;
+                    parent_seq_ids.push(seq_id.clone());
+                    let (report, _created_seq_ids, warnings) = self
+                        .build_protease_digest_report_for_sequence(
+                            seq_id.as_str(),
+                            &proteases,
+                            None,
+                            min_length_aa,
+                            false,
+                            &result.op_id,
+                        )?;
+                    result.warnings.extend(warnings);
+                    if report.peptides.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Protease digest of '{}' did not produce any peptide rows with min_length_aa={}",
+                                report.source_seq_id, report.min_length_aa
+                            ),
+                        });
+                    }
+                    let protease_names = report
+                        .resolved_proteases
+                        .iter()
+                        .map(|protease| protease.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let notes = vec![
+                        format!("Source: {}", report.source_seq_id),
+                        format!("Source length: {} aa", report.source_length_aa),
+                        format!("Proteases: {}", protease_names),
+                        format!("Cleavage sites: {}", report.cleavage_site_count),
+                        format!(
+                            "Peptides shown: {} (min_length_aa={})",
+                            report.peptide_count, report.min_length_aa
+                        ),
+                    ];
+                    let samples = report
+                        .peptides
+                        .iter()
+                        .map(|peptide| {
+                            let preview = if peptide.sequence.len() > 16 {
+                                format!("{}...", &peptide.sequence[..16])
+                            } else {
+                                peptide.sequence.clone()
+                            };
+                            ProteinGelSample {
+                                name: format!("p{}", peptide.peptide_index),
+                                detail: Some(format!(
+                                    "{}..{} aa, {} aa, {}",
+                                    peptide.source_start_aa_1based,
+                                    peptide.source_end_aa_1based,
+                                    peptide.length_aa,
+                                    preview
+                                )),
+                                molecular_weight_kda: Self::estimate_protein_molecular_weight_kda(
+                                    &peptide.sequence,
+                                ),
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    let requested_ladders: &[String] = ladders.as_deref().unwrap_or(&[]);
+                    let layout = build_protein_gel_layout(&samples, requested_ladders, notes)
+                        .map_err(|message| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message,
+                        })?;
+                    let svg = export_protein_gel_svg(&layout);
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write SVG output '{path}': {e}"),
+                    })?;
+                    let ladders_used = if layout.selected_ladders.is_empty() {
+                        "auto".to_string()
+                    } else {
+                        layout.selected_ladders.join(" + ")
+                    };
+                    result.messages.push(format!(
+                        "Wrote protease digest gel SVG for '{}' with {} peptide lane(s) to '{}' (proteases: {}, ladders: {})",
+                        report.source_seq_id,
+                        layout.sample_count,
+                        path,
+                        protease_names,
+                        ladders_used
+                    ));
+                    result.protease_digest_report = Some(report);
                 }
                 Operation::RenderProtein2dGelSvg {
                     report_id,
@@ -11937,190 +12571,18 @@ impl GentleEngine {
                     min_length_aa,
                     materialize,
                 } => {
-                    if proteases.iter().all(|name| name.trim().is_empty()) {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "ProteaseDigestProteinSequence requires at least one protease"
-                                .to_string(),
-                        });
-                    }
-                    let protein = self
-                        .state
-                        .sequences
-                        .get(&seq_id)
-                        .ok_or_else(|| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!("Sequence '{seq_id}' not found"),
-                        })?
-                        .clone();
-                    if !protein.is_protein_sequence() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "ProteaseDigestProteinSequence requires a protein or peptide sequence; '{}' has molecule_type={:?}",
-                                seq_id,
-                                protein.molecule_type()
-                            ),
-                        });
-                    }
                     parent_seq_ids.push(seq_id.clone());
-                    let (resolved, missing, mut resolution_warnings) =
-                        Self::resolve_proteases_for_digest(&proteases);
-                    if !missing.is_empty() {
-                        resolution_warnings.push(format!(
-                            "Unknown or ambiguous proteases ignored: {}",
-                            missing.join(",")
-                        ));
-                    }
-                    if resolved.is_empty() {
-                        return Err(EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!(
-                                "No requested proteases could be resolved from: {}",
-                                proteases.join(",")
-                            ),
-                        });
-                    }
-                    result.warnings.extend(resolution_warnings);
-                    let protein_sequence = protein.get_forward_string().to_ascii_uppercase();
-                    let source_len = protein_sequence.len();
-                    let min_length_aa = min_length_aa.unwrap_or(1).max(1);
-                    let resolved_summaries = resolved
-                        .iter()
-                        .map(|protease| ProteaseDigestProteaseSummary {
-                            name: protease.name.clone(),
-                            cleavage_pattern: protease.sequence.clone(),
-                            cut_offset: protease.cut,
-                            aliases: protease.aliases.clone(),
-                        })
-                        .collect::<Vec<_>>();
-                    let mut cleavage_boundaries = BTreeSet::new();
-                    let mut sites = vec![];
-                    let residues = protein_sequence.chars().collect::<Vec<_>>();
-                    for protease in &resolved {
-                        for boundary in protease.cleavage_boundaries_0based(&protein_sequence) {
-                            let upstream_residue = boundary
-                                .checked_sub(1)
-                                .and_then(|idx| residues.get(idx).copied());
-                            let downstream_residue = residues.get(boundary).copied();
-                            sites.push(ProteaseCleavageSite {
-                                protease_name: protease.name.clone(),
-                                cleavage_boundary_0based: boundary,
-                                cleavage_after_aa_1based: boundary,
-                                upstream_residue,
-                                downstream_residue,
-                                context: Self::protease_digest_context(&protein_sequence, boundary),
-                            });
-                            if boundary > 0 && boundary < source_len {
-                                cleavage_boundaries.insert(boundary);
-                            }
-                        }
-                    }
-                    sites.sort_by(|a, b| {
-                        a.cleavage_boundary_0based
-                            .cmp(&b.cleavage_boundary_0based)
-                            .then_with(|| a.protease_name.cmp(&b.protease_name))
-                    });
-                    let mut peptide_boundaries = vec![0usize];
-                    peptide_boundaries.extend(cleavage_boundaries.iter().copied());
-                    peptide_boundaries.push(source_len);
-                    peptide_boundaries.sort_unstable();
-                    peptide_boundaries.dedup();
-
-                    let mut peptides = vec![];
-                    for pair in peptide_boundaries.windows(2) {
-                        let start = pair[0];
-                        let end = pair[1];
-                        if end <= start {
-                            continue;
-                        }
-                        let length_aa = end - start;
-                        if length_aa < min_length_aa {
-                            continue;
-                        }
-                        let sequence = protein_sequence[start..end].to_string();
-                        peptides.push(ProteaseDigestPeptide {
-                            peptide_index: peptides.len() + 1,
-                            start_0based: start,
-                            end_0based_exclusive: end,
-                            source_start_aa_1based: start + 1,
-                            source_end_aa_1based: end,
-                            length_aa,
-                            sequence,
-                            source_left_cleavage_boundary_0based: (start > 0).then_some(start),
-                            source_right_cleavage_boundary_0based: (end < source_len)
-                                .then_some(end),
-                            created_seq_id: None,
-                        });
-                    }
-                    if materialize && peptides.len() > self.max_fragments_per_container() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "Protease digest would create {} peptides, exceeding max_fragments_per_container={}",
-                                peptides.len(),
-                                self.max_fragments_per_container()
-                            ),
-                        });
-                    }
-                    let source_transcript_id =
-                        Self::protein_feature_qualifier(&protein, "transcript_id");
-                    let source_protein_derivation_mode =
-                        Self::protein_feature_qualifier(&protein, "protein_derivation_mode");
-                    let source_translation_table =
-                        Self::protein_feature_qualifier(&protein, "translation_table");
-                    if materialize {
-                        let prefix = output_prefix
-                            .as_deref()
-                            .map(str::trim)
-                            .filter(|value| !value.is_empty())
-                            .map(ToOwned::to_owned)
-                            .unwrap_or_else(|| format!("{seq_id}_protease_digest"));
-                        let source_name = protein.name().as_deref().unwrap_or(seq_id.as_str());
-                        for peptide in &mut peptides {
-                            let base_seq_id = format!("{}_p{}", prefix, peptide.peptide_index);
-                            let peptide_seq_id = self.unique_seq_id(&base_seq_id);
-                            let peptide_name =
-                                format!("{source_name} protease peptide {}", peptide.peptide_index);
-                            let peptide_sequence = Self::build_protease_digest_peptide_sequence(
-                                peptide,
-                                &peptide_name,
-                                &seq_id,
-                                &resolved_summaries,
-                                source_transcript_id.as_deref(),
-                                source_protein_derivation_mode.as_deref(),
-                                source_translation_table.as_deref(),
-                            )?;
-                            self.state
-                                .sequences
-                                .insert(peptide_seq_id.clone(), peptide_sequence);
-                            self.add_lineage_node(
-                                &peptide_seq_id,
-                                SequenceOrigin::Derived,
-                                Some(&result.op_id),
-                            );
-                            result.created_seq_ids.push(peptide_seq_id.clone());
-                            peptide.created_seq_id = Some(peptide_seq_id);
-                        }
-                    }
-                    let report = ProteaseDigestReport {
-                        schema: "gentle.protease_digest_report.v1".to_string(),
-                        source_seq_id: seq_id.clone(),
-                        source_length_aa: source_len,
-                        source_transcript_id,
-                        source_protein_derivation_mode,
-                        source_translation_table,
-                        requested_proteases: proteases.clone(),
-                        resolved_proteases: resolved_summaries,
-                        missing_proteases: missing,
-                        min_length_aa,
-                        materialized: materialize,
-                        cleavage_site_count: sites.len(),
-                        peptide_count: peptides.len(),
-                        created_seq_ids: result.created_seq_ids.clone(),
-                        sites,
-                        peptides,
-                    };
+                    let (report, created_seq_ids, warnings) = self
+                        .build_protease_digest_report_for_sequence(
+                            &seq_id,
+                            &proteases,
+                            output_prefix.as_deref(),
+                            min_length_aa,
+                            materialize,
+                            &result.op_id,
+                        )?;
+                    result.warnings.extend(warnings);
+                    result.created_seq_ids.extend(created_seq_ids);
                     result.messages.push(format!(
                         "Protease digest of '{}' with {} protease(s) found {} cleavage site(s) and {} peptide(s){}.",
                         seq_id,
@@ -13493,259 +13955,13 @@ impl GentleEngine {
                 ));
                     result.rna_read_gene_support_audit = Some(audit);
                 }
-                Operation::FindRestrictionSites {
-                    target,
-                    enzymes,
-                    max_sites_per_enzyme,
-                    include_cut_geometry,
-                    path,
-                } => {
-                    let mut report = self.find_restriction_sites(
-                        target.clone(),
-                        &enzymes,
-                        max_sites_per_enzyme,
-                        include_cut_geometry,
-                        Some(&result.op_id),
-                        Some(run_id),
-                    )?;
-                    if let Some(path) = path.as_deref() {
-                        self.write_pretty_json_file(&report, path, "restriction-site scan report")?;
-                        report.path = Some(path.to_string());
-                        result.messages.push(format!(
-                            "Wrote restriction-site scan report for '{}' to '{}'",
-                            report.target_label, path
-                        ));
-                    }
-                    result.messages.push(format!(
-                    "Restriction-site scan on '{}' matched {} site(s) across {} enzyme(s) over {}..{}",
-                    report.target_label,
-                    report.matched_site_count,
-                    report.enzymes_scanned.len(),
-                    report.scan_start_0based,
-                    report.scan_end_0based_exclusive,
-                ));
-                    if !report.skipped_enzyme_names_due_to_max_sites.is_empty() {
-                        result.warnings.push(format!(
-                            "Skipped enzyme(s) due to max_sites_per_enzyme cap {}: {}",
-                            report.max_sites_per_enzyme.unwrap_or_default(),
-                            report.skipped_enzyme_names_due_to_max_sites.join(", ")
-                        ));
-                    }
-                    result.restriction_site_scan = Some(report);
-                }
-                Operation::SummarizeTfbsRegion {
-                    seq_id,
-                    focus_start_0based,
-                    focus_end_0based_exclusive,
-                    context_start_0based,
-                    context_end_0based_exclusive,
-                    min_focus_occurrences,
-                    min_context_occurrences,
-                    limit,
-                    path,
-                } => {
-                    let summary = self.summarize_tfbs_region(TfbsRegionSummaryRequest {
-                        seq_id: seq_id.clone(),
-                        focus_start_0based,
-                        focus_end_0based_exclusive,
-                        context_start_0based,
-                        context_end_0based_exclusive,
-                        min_focus_occurrences,
-                        min_context_occurrences,
-                        limit,
-                    })?;
-                    if let Some(path) = path.as_deref() {
-                        self.write_tfbs_region_summary_json(&summary, path)?;
-                        result.messages.push(format!(
-                            "Wrote TFBS region summary for '{}' to '{}'",
-                            summary.seq_id, path
-                        ));
-                    }
-                    result.messages.push(format!(
-                    "TFBS region summary for '{}' matched {} factor(s) in focus {}..{} against context {}..{}",
-                    summary.seq_id,
-                    summary.matched_tf_count,
-                    summary.focus_start_0based,
-                    summary.focus_end_0based_exclusive,
-                    summary.context_start_0based,
-                    summary.context_end_0based_exclusive,
-                ));
-                    result.tfbs_region_summary = Some(summary);
-                }
-                Operation::SummarizeTfbsScoreTracks {
-                    target,
-                    motifs,
-                    score_kind,
-                    clip_negative,
-                    path,
-                } => {
-                    let mut report = self.summarize_tfbs_score_tracks_with_progress(
-                        target.clone(),
-                        &motifs,
-                        score_kind,
-                        clip_negative,
-                        true,
-                        &mut |progress| on_progress(progress),
-                    )?;
-                    report.op_id = Some(result.op_id.clone());
-                    report.run_id = Some(run_id.to_string());
-                    if let Some(path) = path.as_deref() {
-                        self.write_tfbs_score_track_report_json(&report, path)?;
-                        result.messages.push(format!(
-                            "Wrote TFBS score tracks for '{}' to '{}'",
-                            report.seq_id, path
-                        ));
-                    }
-                    result.messages.push(format!(
-                    "TFBS score tracks for '{}' covered {} motif(s) over {}..{} with score_kind={} clip_negative={}",
-                    report.seq_id,
-                    report.tracks.len(),
-                    report.view_start_0based,
-                    report.view_end_0based_exclusive,
-                    report.score_kind.as_str(),
-                    report.clip_negative
-                ));
-                    result.tfbs_score_tracks = Some(report);
-                }
-                Operation::SummarizeMultiGenePromoterTfbs {
-                    genome_id,
-                    genes,
-                    motifs,
-                    upstream_bp,
-                    downstream_bp,
-                    score_kind,
-                    clip_negative,
-                    catalog_path,
-                    cache_dir,
-                    path,
-                } => {
-                    let mut report = self.summarize_multi_gene_promoter_tfbs(
-                        &genome_id,
-                        &genes,
-                        &motifs,
-                        upstream_bp,
-                        downstream_bp,
-                        score_kind,
-                        clip_negative,
-                        catalog_path.as_deref(),
-                        cache_dir.as_deref(),
-                    )?;
-                    report.op_id = Some(result.op_id.clone());
-                    report.run_id = Some(run_id.to_string());
-                    if let Some(path) = path.as_deref() {
-                        self.write_pretty_json_file(
-                            &report,
-                            path,
-                            "multi-gene promoter TFBS report",
-                        )?;
-                        result.messages.push(format!(
-                            "Wrote multi-gene promoter TFBS report for '{}' to '{}'",
-                            report.genome_id, path
-                        ));
-                    }
-                    for warning in &report.warnings {
-                        result.warnings.push(warning.clone());
-                    }
-                    result.messages.push(format!(
-                        "Multi-gene promoter TFBS summary for '{}' covered {} gene(s) and {} per-gene motif row(s) with score_kind={} clip_negative={}",
-                        report.genome_id,
-                        report.returned_gene_count,
-                        report.summary_rows.len(),
-                        report.score_kind.as_str(),
-                        report.clip_negative
-                    ));
-                    result.multi_gene_promoter_tfbs = Some(report);
-                }
-                Operation::SummarizeTfbsTrackSimilarity {
-                    target,
-                    anchor_motif,
-                    candidate_motifs,
-                    ranking_metric,
-                    score_kind,
-                    clip_negative,
-                    species_filters,
-                    include_remote_metadata,
-                    limit,
-                    path,
-                } => {
-                    let mut report = self.summarize_tfbs_track_similarity(
-                        target.clone(),
-                        &anchor_motif,
-                        &candidate_motifs,
-                        ranking_metric,
-                        score_kind,
-                        clip_negative,
-                        &species_filters,
-                        include_remote_metadata,
-                        limit,
-                    )?;
-                    report.op_id = Some(result.op_id.clone());
-                    report.run_id = Some(run_id.to_string());
-                    if let Some(path) = path.as_deref() {
-                        self.write_pretty_json_file(&report, path, "TFBS similarity report")?;
-                        result.messages.push(format!(
-                            "Wrote TFBS track-similarity report for '{}' to '{}'",
-                            report.target_label, path
-                        ));
-                    }
-                    for warning in &report.warnings {
-                        result.warnings.push(warning.clone());
-                    }
-                    result.messages.push(format!(
-                    "TFBS track similarity for '{}' ranked {} candidate motif(s) against '{}' over {}..{} (metric={}, score_kind={}, clip_negative={})",
-                    report.target_label,
-                    report.returned_candidate_count,
-                    report.anchor_tf_id,
-                    report.view_start_0based,
-                    report.view_end_0based_exclusive,
-                    report.ranking_metric.as_str(),
-                    report.score_kind.as_str(),
-                    report.clip_negative
-                ));
-                    result.tfbs_track_similarity = Some(report);
-                }
-                Operation::ScanTfbsHits {
-                    target,
-                    motifs,
-                    min_llr_bits,
-                    min_llr_quantile,
-                    per_tf_thresholds,
-                    max_hits,
-                    path,
-                } => {
-                    let mut report = self.scan_tfbs_hits(
-                        target.clone(),
-                        &motifs,
-                        min_llr_bits,
-                        min_llr_quantile,
-                        &per_tf_thresholds,
-                        max_hits,
-                        Some(&result.op_id),
-                        Some(run_id),
-                    )?;
-                    if let Some(path) = path.as_deref() {
-                        self.write_pretty_json_file(&report, path, "TFBS hit-scan report")?;
-                        report.path = Some(path.to_string());
-                        result.messages.push(format!(
-                            "Wrote TFBS hit-scan report for '{}' to '{}'",
-                            report.target_label, path
-                        ));
-                    }
-                    result.messages.push(format!(
-                        "TFBS hit scan on '{}' matched {} hit(s) across {} motif(s) over {}..{}",
-                        report.target_label,
-                        report.matched_hit_count,
-                        report.motifs_scanned.len(),
-                        report.scan_start_0based,
-                        report.scan_end_0based_exclusive,
-                    ));
-                    if report.truncated_at_max_hits {
-                        result.warnings.push(format!(
-                            "TFBS hit scan reached max_hits={} and truncated remaining hits",
-                            report.max_hits.unwrap_or_default()
-                        ));
-                    }
-                    result.tfbs_hit_scan = Some(report);
+                op @ Operation::FindRestrictionSites { .. }
+                | op @ Operation::SummarizeTfbsRegion { .. }
+                | op @ Operation::SummarizeTfbsScoreTracks { .. }
+                | op @ Operation::SummarizeMultiGenePromoterTfbs { .. }
+                | op @ Operation::SummarizeTfbsTrackSimilarity { .. }
+                | op @ Operation::ScanTfbsHits { .. } => {
+                    self.apply_feature_scan_operation(op, run_id, &mut result, on_progress)?;
                 }
                 Operation::SummarizeJasparEntries {
                     motifs,

@@ -158,6 +158,51 @@ def test_demo_promotes_graphical_artifact_and_capabilities_followup(
     assert "capabilities" in report
 
 
+def test_expected_artifact_parent_dirs_are_created_before_command(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        _fake_cli_with_svg_png(
+            "if [ \"${1:-}\" = \"shell\" ]; then\n"
+            "  cat > artifacts/gibson.two_fragment.protocol.svg <<'SVG'\n"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"80\" height=\"60\" viewBox=\"0 0 80 60\"><rect width=\"80\" height=\"60\" fill=\"#ffffff\"/></svg>\n"
+            "SVG\n"
+            "  echo '{}'\n"
+            "  exit 0\n"
+            "fi\n"
+            "echo '{}'\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "demo_out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--demo",
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "ok"
+    assert (tmp_path / "artifacts" / "gibson.two_fragment.protocol.svg").exists()
+    assert (
+        output_dir / "generated" / "artifacts" / "gibson.two_fragment.protocol.png"
+    ).exists()
+
+
 def test_skill_info_reports_catalog_version_without_gentle_cli(
     tmp_path: Path,
 ) -> None:
@@ -2219,6 +2264,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             300,
         ),
+        "request_workflow_tp73_variant1_trypsin_digest_gel.json": (
+            "workflow",
+            None,
+            300,
+        ),
         "request_resources_summarize_jaspar_sp1_rest.json": (
             "shell",
             "resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output artifacts/jaspar_sp1_rest.presentation.json",
@@ -2502,6 +2552,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             )
             assert payload["expected_artifacts"] == [
                 "exports/tp73_isoform_protein_2d_gel.svg"
+            ]
+            assert payload["timeout_secs"] == 300
+        if name == "request_workflow_tp73_variant1_trypsin_digest_gel.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "docs/examples/workflows/tp73_variant1_trypsin_digest_gel_offline.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "exports/tp73_variant1_trypsin_digest_gel.svg"
             ]
             assert payload["timeout_secs"] == 300
         if name == "request_resources_summarize_jaspar_sp1_rest.json":
@@ -2870,6 +2930,7 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "direct DNA fragment requests" in description
     assert "mechanistic follow-up" in description
     assert "reusable local reference assets" in description
+    assert "protease-digest figures" in description
 
     trigger_keywords = set(catalog_entry["trigger_keywords"])
     assert "patient variant" in trigger_keywords
@@ -2891,6 +2952,8 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "jaspar motif" in trigger_keywords
     assert "protein gel" in trigger_keywords
     assert "protein 2d gel" in trigger_keywords
+    assert "protease digest" in trigger_keywords
+    assert "trypsin digest" in trigger_keywords
     assert "tp73 isoform" in trigger_keywords
 
 

@@ -6,12 +6,12 @@ description: >-
   patient-data observations or direct DNA fragment requests into
   sequence-grounded mechanistic follow-up, assay-planning artifacts,
   stateless sequence inspection, reusable local reference-preparation
-  workflows, and transcript-native protein-gel / protein 2D-gel figures for
-  isoform demos such as TP73.
+  workflows, and transcript-native protein-gel / protein 2D-gel / protease
+  digest figures for isoform demos such as TP73.
 version: 0.1.0
 author: GENtle project
 license: MIT
-    tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis]
+    tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest]
 metadata:
   openclaw:
     requires:
@@ -50,6 +50,8 @@ metadata:
       - protein gel
       - protein 2d gel
       - protein isoform
+      - protease digest
+      - trypsin digest
       - tp73 isoform
       - isoelectric point
 ---
@@ -684,6 +686,9 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_2d_gel.json \
   --output /tmp/gentle_clawbio_tp73_isoform_protein_2d_gel
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_tp73_variant1_trypsin_digest_gel.json \
+  --output /tmp/gentle_clawbio_tp73_trypsin_digest_gel
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_resources_summarize_jaspar_sp1_rest.json \
   --output /tmp/gentle_clawbio_jaspar_sp1_rest
 python clawbio.py run gentle-cloning \
@@ -754,6 +759,11 @@ Notes:
   it first ensures `Human GRCh38 Ensembl 116` is prepared locally, then fetches
   `rs9923231` and exports one linear genomic-context SVG into the wrapper
   bundle
+- `request_workflow_tp73_variant1_trypsin_digest_gel.json` is a compact
+  protease-digest graphics demo:
+  it derives TP73 transcript variant 1 protein, applies the shared Trypsin
+  catalog rule, renders retained peptide masses as a protein-gel SVG, and lets
+  the wrapper promote the SVG into a PNG-first messenger artifact
 - `request_seed_qpcr_tp53_splicing.json` is a matching follow-on shell route
   after the TP53 splicing example state is present; it emits the non-mutating
   `gentle.qpcr_seed_request.v1` payload from splicing group `2`, including
@@ -1040,6 +1050,11 @@ Apply the following methodology:
       isoform derivation, renders a protein spot map with pI on the X axis
       and molecular weight on the Y axis, and lets ClawBio rasterize the SVG
       into the PNG-first bundle contract
+  - `examples/request_workflow_tp73_variant1_trypsin_digest_gel.json`
+    - offline TP73 variant 1 protease-digest graphics demo: applies Trypsin to
+      the transcript-derived protein, renders retained peptide masses as a
+      protein-gel SVG, and lets ClawBio rasterize the figure into the
+      PNG-first bundle contract
 - `examples/request_resources_summarize_jaspar_sp1_rest.json`
   - motif-presentation example: summarizes local JASPAR entries for SP1 and
     REST into one deterministic background/max/min report

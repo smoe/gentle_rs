@@ -2694,6 +2694,20 @@ pub enum Operation {
         #[serde(default)]
         ladders: Option<Vec<String>>,
     },
+    RenderProteaseDigestGelSvg {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        seq_id: Option<SeqId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        report_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        proteases: Vec<String>,
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_length_aa: Option<usize>,
+        #[serde(default)]
+        ladders: Option<Vec<String>>,
+    },
     RenderProtein2dGelSvg {
         report_id: String,
         path: String,
@@ -4970,6 +4984,7 @@ impl GentleEngine {
                 "RenderLineageSvg".to_string(),
                 "RenderPoolGelSvg".to_string(),
                 "RenderProteinGelSvg".to_string(),
+                "RenderProteaseDigestGelSvg".to_string(),
                 "RenderProtein2dGelSvg".to_string(),
                 "RenderProtocolCartoonSvg".to_string(),
                 "RenderProtocolCartoonTemplateSvg".to_string(),
@@ -7129,6 +7144,7 @@ impl GentleEngine {
                 | Operation::RenderLineageSvg { .. }
                 | Operation::RenderPoolGelSvg { .. }
                 | Operation::RenderProteinGelSvg { .. }
+                | Operation::RenderProteaseDigestGelSvg { .. }
                 | Operation::RenderProtein2dGelSvg { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }

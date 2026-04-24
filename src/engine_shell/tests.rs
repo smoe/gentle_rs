@@ -12931,6 +12931,30 @@ fn parse_proteases_digest_command() {
 }
 
 #[test]
+fn parse_proteases_digest_gel_svg_command() {
+    let command = parse_shell_line(
+        "proteases digest-gel-svg p Trypsin,Lys-C exports/p_digest.svg --min-length-aa 4 --ladder 'Protein Ladder 10-100 kDa'",
+    )
+    .expect("parse protease digest gel");
+    match command {
+        ShellCommand::ProteasesDigestGelSvg {
+            seq_id,
+            proteases,
+            output,
+            min_length_aa,
+            ladders,
+        } => {
+            assert_eq!(seq_id, "p");
+            assert_eq!(proteases, vec!["Trypsin", "Lys-C"]);
+            assert_eq!(output, "exports/p_digest.svg");
+            assert_eq!(min_length_aa, Some(4));
+            assert_eq!(ladders, Some(vec!["Protein Ladder 10-100 kDa".to_string()]));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn execute_proteases_digest_materializes_peptides() {
     let mut protein = DNAsequence::from_sequence("MAKRPTRKAA").expect("protein");
     protein.set_molecule_type("protein");
@@ -12963,6 +12987,40 @@ fn execute_proteases_digest_materializes_peptides() {
             .map(Vec::len),
         Some(4)
     );
+}
+
+#[test]
+fn execute_proteases_digest_gel_svg_writes_report_and_svg() {
+    let mut protein = DNAsequence::from_sequence("MAKRPTRKAA").expect("protein");
+    protein.set_molecule_type("protein");
+    let mut state = ProjectState::default();
+    state.sequences.insert("p".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+    let td = tempdir().expect("tempdir");
+    let output = td.path().join("p_trypsin_gel.svg");
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ProteasesDigestGelSvg {
+            seq_id: "p".to_string(),
+            proteases: vec!["Trypsin".to_string()],
+            output: output.to_string_lossy().to_string(),
+            min_length_aa: Some(1),
+            ladders: Some(vec!["Protein Ladder 10-100 kDa".to_string()]),
+        },
+    )
+    .expect("execute protease digest gel");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["result"]["protease_digest_report"]["schema"].as_str(),
+        Some("gentle.protease_digest_report.v1")
+    );
+    assert_eq!(
+        out.output["result"]["protease_digest_report"]["peptide_count"].as_u64(),
+        Some(4)
+    );
+    let svg = fs::read_to_string(output).expect("read digest gel svg");
+    assert!(svg.contains("Protein Gel Preview"));
+    assert!(svg.contains("Proteases: Trypsin"));
 }
 
 #[test]
