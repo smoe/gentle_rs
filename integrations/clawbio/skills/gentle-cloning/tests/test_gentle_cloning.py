@@ -2891,3 +2891,84 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "protein gel" in trigger_keywords
     assert "protein 2d gel" in trigger_keywords
     assert "tp73 isoform" in trigger_keywords
+
+
+def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -> None:
+    skill_root = Path(__file__).resolve().parents[1]
+    clawbio_root = Path(__file__).resolve().parents[3]
+    catalog = json.loads(
+        (clawbio_root / "experimental_followup_request_catalog.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert (
+        catalog["schema"]
+        == "gentle.clawbio_experimental_followup_request_catalog.v1"
+    )
+    assert catalog["skill_alias"] == "gentle-cloning"
+    assert catalog["skill_info_request"] == (
+        "skills/gentle-cloning/examples/request_skill_info.json"
+    )
+    assert set(catalog["planning_axes"]) >= {
+        "estimated_time_hours",
+        "estimated_cost",
+        "local_fit_score",
+        "composite_meta_score",
+        "guardrail_status",
+        "missing_material_classes",
+        "procurement_delay",
+    }
+
+    intents = {intent["intent_id"]: intent for intent in catalog["intents"]}
+    assert set(intents) >= {
+        "snp_effect",
+        "differential_expression_followup",
+        "splice_variant_characterization",
+        "overexpression_planning",
+        "knockdown_planning",
+        "genomic_perturbation_planning",
+        "routine_cost_comparison",
+    }
+
+    for intent in intents.values():
+        assert intent["title"]
+        assert intent["detection_phrases"]
+        assert intent["evidence_classes"]
+        assert intent["followup_families"]
+        assert intent["confirmation_gates"]
+        for request in intent.get("gentle_requests", []):
+            path = request["path"]
+            assert path.startswith("skills/gentle-cloning/examples/")
+            assert (clawbio_root / path).exists(), path
+            assert request["purpose"]
+            assert isinstance(request["requires_adaptation"], bool)
+        for command in intent.get("gentle_shell_commands", []):
+            assert command["shell_line"]
+            assert command["purpose"]
+            assert command["confirmation"] in {"not_required", "required"}
+
+    assert {
+        "adenoviral_expression",
+        "lentiviral_expression",
+    } <= set(intents["overexpression_planning"]["followup_families"])
+    assert {
+        "antisense_knockdown",
+        "siRNA_knockdown",
+        "shRNA_knockdown",
+        "CRISPRi_repression",
+    } <= set(intents["knockdown_planning"]["followup_families"])
+    assert {
+        "CRISPR_knockout",
+        "base_editing",
+        "prime_editing",
+    } <= set(intents["genomic_perturbation_planning"]["followup_families"])
+
+    routine_commands = {
+        command["shell_line"]
+        for command in intents["routine_cost_comparison"]["gentle_shell_commands"]
+    }
+    assert "planning profile show --scope effective" in routine_commands
+    assert "planning objective show" in routine_commands
+    assert any(command.startswith("routines compare ") for command in routine_commands)
+    assert skill_root.name == "gentle-cloning"

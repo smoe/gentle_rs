@@ -42,7 +42,10 @@ For ClawBio developer-side orchestration around prompts such as "determine the
 effect of this SNP", "what should we do with this differentially expressed
 gene", "overexpress this gene", "knock down this gene", or "characterize this
 splice variant", see
-`../../experimental_followup_requests.md`.
+`../../experimental_followup_requests.md`. The companion
+`../../experimental_followup_request_catalog.json` provides the same routing
+surface as machine-readable intent records for planners that should not scrape
+free text.
 
 ## Files
 

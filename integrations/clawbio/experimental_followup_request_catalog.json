@@ -1,0 +1,533 @@
+{
+  "schema": "gentle.clawbio_experimental_followup_request_catalog.v1",
+  "description": "Machine-readable ClawBio routing catalog for turning biological observations into GENtle-backed experimental follow-up and perturbation-planning requests.",
+  "skill_alias": "gentle-cloning",
+  "skill_info_request": "skills/gentle-cloning/examples/request_skill_info.json",
+  "planning_axes": [
+    "estimated_time_hours",
+    "estimated_cost",
+    "local_fit_score",
+    "composite_meta_score",
+    "guardrail_status",
+    "missing_material_classes",
+    "procurement_delay"
+  ],
+  "intents": [
+    {
+      "intent_id": "snp_effect",
+      "title": "Determine SNP or small-variant effect",
+      "detection_phrases": [
+        "determine the effect of this SNP",
+        "what does this rsID do",
+        "follow up this variant",
+        "design an assay for this SNP",
+        "test this regulatory variant"
+      ],
+      "evidence_classes": [
+        "variant_context",
+        "regulatory_context",
+        "splice_isoform_context",
+        "protein_context"
+      ],
+      "required_user_inputs": [
+        "variant_id_or_coordinate"
+      ],
+      "optional_user_inputs": [
+        "genome_build",
+        "target_gene",
+        "cell_model",
+        "desired_readout"
+      ],
+      "external_evidence": [
+        "VEP or equivalent transcript consequence",
+        "SpliceAI or equivalent splice predictor when splice proximity is plausible",
+        "SIFT/PolyPhen/AlphaMissense-like coding predictors for coding variants",
+        "RegulomeDB/eQTL/ENCODE-style regulatory context when available",
+        "ClinVar/gnomAD/pharmacogenomic/literature context when relevant"
+      ],
+      "gentle_requests": [
+        {
+          "path": "skills/gentle-cloning/examples/request_skill_info.json",
+          "purpose": "Confirm copied skill metadata before deeper orchestration.",
+          "requires_adaptation": false
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_dbsnp_fetch_rs9923231.json",
+          "purpose": "Fetch and annotate a local sequence context for the user's rsID.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_export_sequence_context_bundle_rs9923231_vkorc1.json",
+          "purpose": "Export compact context JSON/text, BED, and graphics for the fetched locus.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_workflow_vkorc1_planning.json",
+          "purpose": "Use the promoter-reporter planning workflow when the variant is regulatory/promoter-proximal.",
+          "requires_adaptation": true
+        }
+      ],
+      "gentle_shell_commands": [
+        {
+          "shell_line": "routines list --query reporter",
+          "purpose": "Discover reporter-oriented routine families before proposing wet-lab follow-up.",
+          "confirmation": "not_required"
+        },
+        {
+          "shell_line": "routines list --query expression",
+          "purpose": "Search the routine catalog for expression-oriented construct routes.",
+          "confirmation": "not_required"
+        }
+      ],
+      "followup_families": [
+        "promoter_luciferase_reporter",
+        "UTR_or_translation_reporter",
+        "minigene_splicing_reporter",
+        "allele_paired_overexpression",
+        "endogenous_editing"
+      ],
+      "confirmation_gates": [
+        "external_predictor_calls",
+        "reference_preparation",
+        "multi_step_graphical_workflow",
+        "genome_editing_strategy_selection"
+      ]
+    },
+    {
+      "intent_id": "differential_expression_followup",
+      "title": "Plan follow-up for a differentially expressed gene",
+      "detection_phrases": [
+        "what should we do with this differentially expressed gene",
+        "follow up this upregulated gene",
+        "follow up this downregulated gene",
+        "validate this RNA-seq hit"
+      ],
+      "evidence_classes": [
+        "differential_expression",
+        "protein_context",
+        "perturbation_intent"
+      ],
+      "required_user_inputs": [
+        "gene_symbol",
+        "direction_or_fold_change"
+      ],
+      "optional_user_inputs": [
+        "cell_model",
+        "organism",
+        "baseline_expression",
+        "desired_readout"
+      ],
+      "external_evidence": [
+        "differential-expression statistics",
+        "tissue/cell-type baseline expression",
+        "pathway or gene-set context",
+        "literature and perturbation feasibility notes"
+      ],
+      "gentle_requests": [
+        {
+          "path": "skills/gentle-cloning/examples/request_genomes_extract_gene_tp53_auto_prepare.json",
+          "purpose": "Extract the target gene context from a prepared or auto-prepared reference.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_protocol_cartoon_qpcr_svg.json",
+          "purpose": "Render a qPCR-style readout plan when expression validation is the first step.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json",
+          "purpose": "Render a construct-planning cartoon when cloning is the next step.",
+          "requires_adaptation": true
+        }
+      ],
+      "gentle_shell_commands": [
+        {
+          "shell_line": "routines list --query overexpression",
+          "purpose": "Search for overexpression-compatible cloning routes.",
+          "confirmation": "not_required"
+        },
+        {
+          "shell_line": "routines list --query qpcr",
+          "purpose": "Search for expression-validation readout routes.",
+          "confirmation": "not_required"
+        }
+      ],
+      "followup_families": [
+        "qPCR_validation",
+        "RT_PCR_validation",
+        "transient_overexpression",
+        "stable_overexpression",
+        "knockdown_or_rescue"
+      ],
+      "confirmation_gates": [
+        "reference_preparation",
+        "cell_model_specific_delivery_choice",
+        "multi_step_construct_planning"
+      ]
+    },
+    {
+      "intent_id": "splice_variant_characterization",
+      "title": "Characterize a splice variant or isoform shift",
+      "detection_phrases": [
+        "characterize this splice variant",
+        "follow up this exon skipping event",
+        "test this isoform switch",
+        "validate this junction"
+      ],
+      "evidence_classes": [
+        "splice_isoform_context",
+        "protein_context",
+        "differential_expression"
+      ],
+      "required_user_inputs": [
+        "gene_or_transcript_id",
+        "splice_or_isoform_observation"
+      ],
+      "optional_user_inputs": [
+        "junction_reads",
+        "target_exon",
+        "cell_model",
+        "protein_readout"
+      ],
+      "external_evidence": [
+        "splice predictor when variant-driven",
+        "junction support or transcript abundance",
+        "ORF/protein-domain consequence",
+        "isoform-specific protein detectability"
+      ],
+      "gentle_requests": [
+        {
+          "path": "skills/gentle-cloning/examples/request_workflow_tp53_splicing_expert_svg.json",
+          "purpose": "Render a deterministic splicing-expert figure for the selected locus.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json",
+          "purpose": "Inspect splicing context in compact text/JSON form.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing.json",
+          "purpose": "Seed qPCR/RT-PCR follow-up around the splice context.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_gel.json",
+          "purpose": "Render an isoform/protein gel view when protein-level separation is useful.",
+          "requires_adaptation": true
+        }
+      ],
+      "gentle_shell_commands": [
+        {
+          "shell_line": "routines list --query splicing",
+          "purpose": "Search for splicing/minigene or RT-PCR-related routine support.",
+          "confirmation": "not_required"
+        }
+      ],
+      "followup_families": [
+        "RT_PCR_isoform_assay",
+        "qPCR_isoform_assay",
+        "minigene_splicing_reporter",
+        "RNA_read_mapping",
+        "protein_isoform_gel"
+      ],
+      "confirmation_gates": [
+        "external_splice_predictor_calls",
+        "large_reference_or_panel_preparation",
+        "multi_step_graphical_workflow"
+      ]
+    },
+    {
+      "intent_id": "overexpression_planning",
+      "title": "Plan gene or isoform overexpression",
+      "detection_phrases": [
+        "overexpress this gene",
+        "make an expression construct",
+        "express this splice isoform",
+        "compare plasmid versus viral delivery"
+      ],
+      "evidence_classes": [
+        "perturbation_intent",
+        "protein_context",
+        "splice_isoform_context"
+      ],
+      "required_user_inputs": [
+        "gene_or_orf_or_isoform"
+      ],
+      "optional_user_inputs": [
+        "cell_model",
+        "delivery_preference",
+        "tag_preference",
+        "transient_or_stable",
+        "selection_marker"
+      ],
+      "external_evidence": [
+        "ORF/transcript model",
+        "protein tag and localization constraints",
+        "cell-model transfection or transduction feasibility",
+        "biosafety and viral-vector policy constraints"
+      ],
+      "gentle_requests": [
+        {
+          "path": "skills/gentle-cloning/examples/request_ensembl_gene_fetch_tp53_human.json",
+          "purpose": "Fetch a gene/transcript record as a starting point for ORF planning.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_ensembl_gene_import_sequence_tp53.json",
+          "purpose": "Import the selected gene/transcript sequence into GENtle state.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_2d_gel.json",
+          "purpose": "Inspect isoform protein size/pI expectations when isoform choice matters.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json",
+          "purpose": "Render a generic construct-assembly cartoon for the selected expression route.",
+          "requires_adaptation": true
+        }
+      ],
+      "gentle_shell_commands": [
+        {
+          "shell_line": "routines list --query expression",
+          "purpose": "Search the routine catalog for expression-related routes.",
+          "confirmation": "not_required"
+        },
+        {
+          "shell_line": "routines compare gibson.two_fragment_overlap_preview golden_gate.type_iis_single_insert",
+          "purpose": "Compare two common insert-assembly routes with time/cost/local-fit estimates.",
+          "confirmation": "not_required"
+        }
+      ],
+      "followup_families": [
+        "transient_plasmid_overexpression",
+        "stable_plasmid_expression",
+        "adenoviral_expression",
+        "lentiviral_expression",
+        "tagged_isoform_expression",
+        "rescue_after_loss_of_function"
+      ],
+      "confirmation_gates": [
+        "viral_delivery_strategy_selection",
+        "biosafety_or_policy_review",
+        "planning_profile_update",
+        "multi_step_construct_planning"
+      ]
+    },
+    {
+      "intent_id": "knockdown_planning",
+      "title": "Plan gene knockdown or repression",
+      "detection_phrases": [
+        "knock down this gene",
+        "reduce expression of this gene",
+        "design antisense RNA",
+        "plan siRNA or shRNA",
+        "use CRISPRi"
+      ],
+      "evidence_classes": [
+        "perturbation_intent",
+        "differential_expression",
+        "regulatory_context"
+      ],
+      "required_user_inputs": [
+        "gene_symbol_or_target_sequence"
+      ],
+      "optional_user_inputs": [
+        "cell_model",
+        "transient_or_stable",
+        "knockdown_modality",
+        "desired_readout"
+      ],
+      "external_evidence": [
+        "gene/transcript models",
+        "off-target and target-accessibility predictors",
+        "cell-model delivery feasibility",
+        "baseline expression and essentiality context"
+      ],
+      "gentle_requests": [
+        {
+          "path": "skills/gentle-cloning/examples/request_genomes_extract_gene_tp53_auto_prepare.json",
+          "purpose": "Extract target gene sequence context for knockdown/readout planning.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_protocol_cartoon_qpcr_svg.json",
+          "purpose": "Render a qPCR-style readout plan for knockdown validation.",
+          "requires_adaptation": true
+        }
+      ],
+      "gentle_shell_commands": [
+        {
+          "shell_line": "routines list --query crispr",
+          "purpose": "Discover CRISPR guide and oligo preparation routines.",
+          "confirmation": "not_required"
+        },
+        {
+          "shell_line": "routines explain crispr.guides.practical_filter_and_oligos",
+          "purpose": "Explain the CRISPR guide filtering and oligo handoff route.",
+          "confirmation": "not_required"
+        }
+      ],
+      "followup_families": [
+        "antisense_knockdown",
+        "siRNA_knockdown",
+        "shRNA_knockdown",
+        "CRISPRi_repression",
+        "qPCR_validation",
+        "rescue_control"
+      ],
+      "confirmation_gates": [
+        "external_offtarget_predictors",
+        "viral_delivery_strategy_selection",
+        "planning_profile_update"
+      ]
+    },
+    {
+      "intent_id": "genomic_perturbation_planning",
+      "title": "Plan genomic disruption or precise editing",
+      "detection_phrases": [
+        "knock out this gene",
+        "disturb the genomic sequence",
+        "delete this enhancer",
+        "make a loss-of-function construct",
+        "base edit this site",
+        "prime edit this variant"
+      ],
+      "evidence_classes": [
+        "perturbation_intent",
+        "variant_context",
+        "regulatory_context"
+      ],
+      "required_user_inputs": [
+        "target_gene_or_region"
+      ],
+      "optional_user_inputs": [
+        "edit_type",
+        "cell_model",
+        "genome_build",
+        "delivery_preference"
+      ],
+      "external_evidence": [
+        "guide/off-target prediction",
+        "editability or prime-editing feasibility",
+        "genomic context and paralog/repeat caution",
+        "cell-model delivery feasibility"
+      ],
+      "gentle_requests": [
+        {
+          "path": "skills/gentle-cloning/examples/request_genomes_extract_gene_tp53_auto_prepare.json",
+          "purpose": "Extract target sequence context before guide or deletion planning.",
+          "requires_adaptation": true
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_render_svg_rs9923231_vkorc1_linear.json",
+          "purpose": "Render a local genomic-context figure for the target region.",
+          "requires_adaptation": true
+        }
+      ],
+      "gentle_shell_commands": [
+        {
+          "shell_line": "routines list --query crispr",
+          "purpose": "Discover CRISPR guide selection and oligo handoff routines.",
+          "confirmation": "not_required"
+        },
+        {
+          "shell_line": "routines explain crispr.guides.candidate_priority_scan",
+          "purpose": "Explain the guide candidate priority scan route before proposing genome editing.",
+          "confirmation": "not_required"
+        }
+      ],
+      "followup_families": [
+        "CRISPR_knockout",
+        "regulatory_deletion",
+        "base_editing",
+        "prime_editing",
+        "CRISPRa_activation",
+        "endogenous_editing_plus_rescue"
+      ],
+      "confirmation_gates": [
+        "genome_editing_strategy_selection",
+        "external_offtarget_predictors",
+        "biosafety_or_policy_review",
+        "reference_preparation"
+      ]
+    },
+    {
+      "intent_id": "routine_cost_comparison",
+      "title": "Compare practical routine choices by time, cost, and fit",
+      "detection_phrases": [
+        "which follow-up is cheapest",
+        "which route is fastest",
+        "compare these cloning methods",
+        "compare plasmid versus viral delivery",
+        "what is the best practical plan"
+      ],
+      "evidence_classes": [
+        "perturbation_intent"
+      ],
+      "required_user_inputs": [
+        "candidate_followup_families_or_routines"
+      ],
+      "optional_user_inputs": [
+        "planning_objective",
+        "local_materials",
+        "max_cost",
+        "max_time_hours",
+        "preferred_routine_families"
+      ],
+      "external_evidence": [
+        "local pricing and procurement lead times",
+        "available vectors/helpers/host systems",
+        "cell-model delivery constraints",
+        "lab policy constraints"
+      ],
+      "gentle_requests": [
+        {
+          "path": "skills/gentle-cloning/examples/request_services_status.json",
+          "purpose": "Check installed service/resource readiness before comparing plans.",
+          "requires_adaptation": false
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_hosts_list_deor.json",
+          "purpose": "List host-profile records that can influence routine fit.",
+          "requires_adaptation": false
+        },
+        {
+          "path": "skills/gentle-cloning/examples/request_helpers_list_gst.json",
+          "purpose": "List helper/reference assets that can influence routine feasibility.",
+          "requires_adaptation": false
+        }
+      ],
+      "gentle_shell_commands": [
+        {
+          "shell_line": "planning profile show --scope effective",
+          "purpose": "Inspect the currently effective planning profile.",
+          "confirmation": "not_required"
+        },
+        {
+          "shell_line": "planning objective show",
+          "purpose": "Inspect current time/cost/local-fit weights and guardrails.",
+          "confirmation": "not_required"
+        },
+        {
+          "shell_line": "routines compare gibson.two_fragment_overlap_preview golden_gate.type_iis_single_insert",
+          "purpose": "Compare common assembly routes using the current planning model.",
+          "confirmation": "not_required"
+        }
+      ],
+      "followup_families": [
+        "routine_comparison",
+        "planning_profile_review",
+        "objective_guardrail_review",
+        "material_availability_review"
+      ],
+      "confirmation_gates": [
+        "planning_profile_update",
+        "planning_objective_update",
+        "multi_step_workflow_execution"
+      ]
+    }
+  ]
+}

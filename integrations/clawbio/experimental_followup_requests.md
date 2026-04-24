@@ -9,6 +9,11 @@ should orchestrate them for natural-language questions such as "determine the
 effect of this SNP", "what should we do with this differentially expressed
 gene", or "how do we characterize this splice variant".
 
+Companion file:
+`experimental_followup_request_catalog.json` carries the same planner-facing
+surface as a machine-readable catalog of intents, example request paths,
+follow-up families, and confirmation gates.
+
 ## Goal
 
 ClawBio should treat biological observations as prompts for a structured
@@ -367,4 +372,3 @@ ClawBio-side tests should cover:
    cheapest, easiest, or best-fit follow-up.
 9. Long-running reference preparation and genome-editing/viral-delivery
    strategy choices are confirmation-gated.
-

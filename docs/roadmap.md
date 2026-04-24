@@ -2209,7 +2209,9 @@ order. Durable architecture constraints and decisions remain in
     SNP", "what should we do with this differentially expressed gene", or
     "characterize this splice variant" through ClawBio-side evidence
     orchestration plus deterministic GENtle sequence-context, perturbation,
-    routine-comparison, and assay-planning artifacts
+    routine-comparison, and assay-planning artifacts; the companion
+    `integrations/clawbio/experimental_followup_request_catalog.json` exposes
+    the same surface as machine-readable intent records for planners
   - current CLI reality check for that split:
     - already present:
       - DNA-window SVG export plus coordinate-bearing BED export

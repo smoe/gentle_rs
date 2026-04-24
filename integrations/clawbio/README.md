@@ -12,6 +12,8 @@ Current scaffold:
 - `skills/gentle-cloning/tests/*`
 - `skills/gentle-cloning/catalog_entry.json` (ready-to-paste
   `skills/catalog.json` entry)
+- `experimental_followup_request_catalog.json` (machine-readable intent catalog
+  for ClawBio planners)
 - `experimental_followup_requests.md` (requests for ClawBio developers who
   want prompts such as "determine the effect of this SNP", "what should we do
   with this differentially expressed gene", or "characterize this splice
