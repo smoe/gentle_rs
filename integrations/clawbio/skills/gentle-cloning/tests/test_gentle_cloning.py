@@ -1201,6 +1201,7 @@ def test_local_checkout_launcher_uses_repo_root_defaults(tmp_path: Path) -> None
     args = capture_args.read_text(encoding="utf-8").splitlines()
     assert args == [
         "run",
+        "--locked",
         "--quiet",
         "--manifest-path",
         str(fake_repo / "Cargo.toml"),
