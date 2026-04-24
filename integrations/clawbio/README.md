@@ -14,6 +14,10 @@ Current scaffold:
   `skills/catalog.json` entry)
 - `experimental_followup_request_catalog.json` (machine-readable intent catalog
   for ClawBio planners)
+- `generate_experimental_followup_catalog_graph.py` (deterministic generator
+  for the catalog-derived Mermaid graph)
+- `experimental_followup_catalog_graph.mmd` (generated graph of the current
+  catalog entries and links)
 - `experimental_followup_graph.md` (annotated graph explaining how request
   origin, intent, evidence, artifacts, routine planning, and confirmation gates
   relate)

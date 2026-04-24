@@ -7,6 +7,16 @@ It is intentionally more annotated than a compact dependency graph because the
 catalog mixes user intent, external evidence, deterministic GENtle artifacts,
 and practical routine planning.
 
+The current catalog-derived graph is generated in
+`experimental_followup_catalog_graph.mmd` by
+`generate_experimental_followup_catalog_graph.py`. Keep this human-readable
+document as the semantic legend, and regenerate the `.mmd` file whenever
+`experimental_followup_request_catalog.json` changes:
+
+```sh
+python3 integrations/clawbio/generate_experimental_followup_catalog_graph.py
+```
+
 ## Annotated Flow
 
 ```mermaid
@@ -118,6 +128,5 @@ biology ontology. For each new entry, capture:
 8. confirmation gates that prevent accidental expensive or policy-sensitive
    work.
 
-The graph above should therefore be generated from the catalog eventually, but
-the human-readable graph remains useful as the contract for what those fields
-mean.
+The generated graph should stay synchronized with the catalog, while this
+human-readable graph remains useful as the contract for what those fields mean.

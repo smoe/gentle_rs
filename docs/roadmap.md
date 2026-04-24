@@ -2229,8 +2229,12 @@ order. Durable architecture constraints and decisions remain in
     `integrations/clawbio/experimental_followup_request_catalog.json` exposes
     the same surface as machine-readable intent records for planners, and
     `integrations/clawbio/experimental_followup_graph.md` documents the
-    annotated request/evidence/artifact/planning graph that should eventually
-    be generated from that catalog
+    annotated request/evidence/artifact/planning graph
+  - `integrations/clawbio/generate_experimental_followup_catalog_graph.py`
+    now derives
+    `integrations/clawbio/experimental_followup_catalog_graph.mmd`
+    deterministically from that catalog, with a regression test guarding
+    graph drift
   - current CLI reality check for that split:
     - already present:
       - DNA-window SVG export plus coordinate-bearing BED export

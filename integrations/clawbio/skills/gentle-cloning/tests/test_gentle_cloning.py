@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -2972,3 +2973,32 @@ def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -
     assert "planning objective show" in routine_commands
     assert any(command.startswith("routines compare ") for command in routine_commands)
     assert skill_root.name == "gentle-cloning"
+
+
+def test_experimental_followup_catalog_graph_matches_generator() -> None:
+    clawbio_root = Path(__file__).resolve().parents[3]
+    script_path = clawbio_root / "generate_experimental_followup_catalog_graph.py"
+    spec = importlib.util.spec_from_file_location(
+        "generate_experimental_followup_catalog_graph",
+        script_path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    catalog = json.loads(
+        (clawbio_root / "experimental_followup_request_catalog.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    generated = module.generate_mermaid(catalog)
+    committed = (
+        clawbio_root / "experimental_followup_catalog_graph.mmd"
+    ).read_text(encoding="utf-8")
+
+    assert generated == committed
+    assert "Catalog intents (routing decisions)" in committed
+    assert "GENtle artifact/report request templates" in committed
+    assert "Routine/planning shell commands" in committed
+    assert "Follow-up candidate families" in committed
+    assert "Confirmation gates" in committed
