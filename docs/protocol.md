@@ -1870,6 +1870,8 @@ Sequencing-trace evidence notes:
   - this operation is self-sufficient and transcript-first: it does not depend
     on UniProt or any other external protein evidence source to decide what
     protein products exist
+  - `protein` and `peptide` molecule labels are treated as one first-class
+    protein family for shared import/export handling
   - also persists one `gentle.protein_derivation_report.v1` artifact keyed by
     stable `report_id` with stored `seq_id`, derived protein sequence ids, and
     `op_id` / `run_id` provenance for lineage/reopen paths
@@ -2050,6 +2052,15 @@ external coding agent runtime, see:
   - `ensembl-protein list`
   - `ensembl-protein show ENTRY_ID`
   - `ensembl-protein import-sequence ENTRY_ID [--output-id ID]`
+- shared-shell protease catalog routes:
+  - `proteases list [--filter TEXT] [--output PATH]`
+  - `proteases show QUERY [--output PATH]`
+  - semantics:
+    - exposes the built-in protease catalog as deterministic JSON
+    - search spans names, aliases, cleavage-pattern notation, specificity, and
+      curated biotech-facing application tags
+    - this is inspection/catalog functionality only; it does not yet execute
+      peptide cleavage or digest planning
 - shared-shell Ensembl gene routes:
   - `ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]`
   - `ensembl-gene list`
@@ -3548,6 +3559,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - derives one first-class protein sequence per selected/admitted transcript
   - transcript-native translation is the authoritative product derivation path;
     it does not consult UniProt or other external protein sources
+  - `protein` and `peptide` molecule labels are treated as the same first-class
+    protein family in shared FASTA/import/export handling
   - uses annotated CDS translation when available
   - if CDS annotation is absent, falls back deterministically to:
     - an inferred ATG-start ORF on the derived transcript

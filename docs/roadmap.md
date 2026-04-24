@@ -1846,6 +1846,15 @@ order. Durable architecture constraints and decisions remain in
         species
       - optional speed mark and annealing-heuristic settings
       - the created coding DNA sequence itself
+  - protein/protease follow-up now started:
+    - shared import/export handling now documents `protein` and `peptide` as
+      one first-class molecule family for FASTA/export semantics
+    - the built-in mixed enzyme snapshot now carries a curated biotech-facing
+      protease catalog slice, including sequence-specific entries such as
+      `Trypsin`, `TEV protease`, and `HRV 3C protease`
+    - shared-shell inspection routes now exist for that catalog:
+      `proteases list|show`
+    - actual protease cleavage/digest operations are still a future engine step
     - the viewer still reuses the shared isoform-architecture canvas for
       genome/transcript projection inspection, but imported/derived proteins
       can now also exist as regular sequence entries
@@ -1996,6 +2005,13 @@ order. Durable architecture constraints and decisions remain in
          cloning, and routine-assistant paths
        - keep this engine-owned so the same protein-aware behavior is available
          across GUI/CLI/JS/Lua/Python/MCP rather than growing GUI-only helpers
+    6. Protease digestion / peptide-fragment workflows
+       - build actual protease cleavage prediction/materialization on top of
+         the now shared protease catalog instead of keeping proteases as
+         catalog-only metadata
+       - preserve transcript-first protein provenance, so predicted peptide
+         fragments stay auditable back to derived/imported protein sequences
+         rather than becoming adapter-only calculations
 - Executable tutorial baseline is now integrated with canonical workflow
   examples:
   - canonical tutorial landing page now exists at `docs/tutorial/README.md`

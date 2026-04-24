@@ -28,7 +28,9 @@ use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,
     ensembl_protein::EnsemblProteinEntry,
-    enzymes::{active_restriction_enzymes, default_preferred_restriction_enzyme_names},
+    enzymes::{
+        active_proteases, active_restriction_enzymes, default_preferred_restriction_enzyme_names,
+    },
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
         BlastExternalBinaryPreflightReport, DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN,
@@ -50,6 +52,7 @@ use crate::{
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
     pool_gel::{GelSampleInput, export_pool_gel_svg},
+    protease::Protease,
     protocol_cartoon::{ProtocolCartoonKind, ProtocolCartoonTemplateBindings},
     render_export::{export_circular_svg, export_linear_svg},
     render_feature_expert::render_feature_expert_svg,
@@ -5243,6 +5246,105 @@ impl GentleEngine {
         Ok(RnaLadderExportReport {
             path: path.to_string(),
             ladder_count: catalog.ladder_count,
+        })
+    }
+
+    fn protease_catalog_entry_from_protease(protease: &Protease) -> ProteaseCatalogEntry {
+        ProteaseCatalogEntry {
+            schema: "gentle.protease_catalog_entry.v1".to_string(),
+            name: protease.name.clone(),
+            cleavage_pattern: protease.sequence.clone(),
+            cut_offset: protease.cut,
+            aliases: protease.aliases.clone(),
+            note: protease.note.clone(),
+            category: protease.category.clone(),
+            specificity: protease.specificity.clone(),
+            cleavage_side: protease.cleavage_side.clone(),
+            typical_applications: protease.typical_applications.clone(),
+            sequence_specific: protease.sequence_specific,
+        }
+    }
+
+    pub fn inspect_protease_catalog(filter: Option<&str>) -> ProteaseCatalogReport {
+        let normalized_filter = filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let all = active_proteases();
+        let proteases = all
+            .iter()
+            .filter(|protease| {
+                normalized_filter
+                    .as_deref()
+                    .is_none_or(|needle| protease.matches_filter(needle))
+            })
+            .map(Self::protease_catalog_entry_from_protease)
+            .collect::<Vec<_>>();
+        ProteaseCatalogReport {
+            schema: "gentle.protease_catalog.v1".to_string(),
+            filter: normalized_filter,
+            total_protease_count: all.len(),
+            returned_protease_count: proteases.len(),
+            proteases,
+        }
+    }
+
+    pub fn inspect_protease_entry(query: &str) -> Result<ProteaseCatalogEntry, EngineError> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Protease lookup requires a non-empty query".to_string(),
+            });
+        }
+        let all = active_proteases();
+        if let Some(protease) = all
+            .iter()
+            .find(|protease| protease.matches_name_or_alias(trimmed))
+        {
+            return Ok(Self::protease_catalog_entry_from_protease(protease));
+        }
+        let matches = all
+            .iter()
+            .filter(|protease| protease.matches_filter(trimmed))
+            .collect::<Vec<_>>();
+        match matches.len() {
+            1 => Ok(Self::protease_catalog_entry_from_protease(matches[0])),
+            0 => Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Protease '{}' not found in the built-in catalog", trimmed),
+            }),
+            _ => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Protease query '{}' is ambiguous; matches: {}",
+                    trimmed,
+                    matches
+                        .iter()
+                        .map(|protease| protease.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            }),
+        }
+    }
+
+    pub fn export_protease_catalog(
+        path: &str,
+        filter: Option<&str>,
+    ) -> Result<ProteaseCatalogExportReport, EngineError> {
+        let report = Self::inspect_protease_catalog(filter);
+        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize protease catalog JSON: {e}"),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write protease catalog file '{path}': {e}"),
+        })?;
+        Ok(ProteaseCatalogExportReport {
+            path: path.to_string(),
+            returned_protease_count: report.returned_protease_count,
         })
     }
 

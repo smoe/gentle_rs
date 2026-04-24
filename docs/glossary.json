@@ -672,6 +672,34 @@
          "usage": "ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]"
       },
       {
+         "aliases": [
+            "protease list"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "proteases list",
+         "summary": "Inspect the built-in protease catalog.",
+         "usage": "proteases list [--filter TEXT] [--output PATH]"
+      },
+      {
+         "aliases": [
+            "protease show"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "proteases show",
+         "summary": "Inspect one protease catalog entry by name or alias.",
+         "usage": "proteases show QUERY [--output PATH]"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "ExportPool"
