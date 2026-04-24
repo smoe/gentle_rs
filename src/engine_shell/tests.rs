@@ -11880,6 +11880,189 @@ fn parse_agents_ask_command() {
 }
 
 #[test]
+fn parse_agents_plan_command() {
+    let cmd = parse_shell_line(
+        "agents plan builtin_echo --prompt 'auto: state-summary' --catalog catalog.json --base-url http://localhost:11434 --model llama3 --max-candidates 2 --no-mutating-candidates --no-state-summary",
+    )
+    .expect("parse agents plan");
+    match cmd {
+        ShellCommand::AgentsPlan {
+            system_id,
+            prompt,
+            catalog_path,
+            base_url_override,
+            model_override,
+            include_state_summary,
+            max_candidates,
+            allow_mutating_candidates,
+            ..
+        } => {
+            assert_eq!(system_id, "builtin_echo");
+            assert_eq!(prompt, "auto: state-summary");
+            assert_eq!(catalog_path.as_deref(), Some("catalog.json"));
+            assert_eq!(base_url_override.as_deref(), Some("http://localhost:11434"));
+            assert_eq!(model_override.as_deref(), Some("llama3"));
+            assert!(!include_state_summary);
+            assert_eq!(max_candidates, Some(2));
+            assert!(!allow_mutating_candidates);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_agents_plan_builtin_echo_returns_typed_plan() {
+    let tmp = tempdir().expect("tempdir");
+    let catalog_path = tmp.path().join("agents.json");
+    let catalog_json = r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {
+      "id": "builtin_echo",
+      "label": "Builtin Echo",
+      "transport": "builtin_echo"
+    }
+  ]
+}"#;
+    fs::write(&catalog_path, catalog_json).expect("write catalog");
+
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::AgentsPlan {
+            system_id: "builtin_echo".to_string(),
+            prompt: "auto: state-summary\nop: {\"SetParameter\":{\"name\":\"max_fragments_per_container\",\"value\":7}}".to_string(),
+            catalog_path: Some(catalog_path.display().to_string()),
+            base_url_override: None,
+            model_override: None,
+            timeout_seconds: None,
+            connect_timeout_seconds: None,
+            read_timeout_seconds: None,
+            max_retries: None,
+            max_response_bytes: None,
+            include_state_summary: false,
+            max_candidates: None,
+            allow_mutating_candidates: true,
+        },
+    )
+    .expect("execute agents plan");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.agent_plan_result.v1")
+    );
+    assert_eq!(out.output["candidates"].as_array().map(Vec::len), Some(2));
+    assert_eq!(out.output["candidates"][0]["kind"].as_str(), Some("shell"));
+    assert_eq!(out.output["candidates"][1]["kind"].as_str(), Some("op"));
+}
+
+#[test]
+fn execute_agents_execute_plan_runs_shell_candidate_without_confirm() {
+    let plan = serde_json::json!({
+        "schema": "gentle.agent_plan_result.v1",
+        "assistant_message": "ready",
+        "questions": [],
+        "candidates": [
+            {
+                "candidate_id": "candidate-1",
+                "title": "Set parameter",
+                "rationale": "mutating shell command",
+                "kind": "shell",
+                "mutating": true,
+                "requires_confirmation": false,
+                "execution_mode": "auto",
+                "shell_command": "set-param max_fragments_per_container 123"
+            }
+        ]
+    });
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::AgentsExecutePlan {
+            plan_input: plan.to_string(),
+            candidate_id: "candidate-1".to_string(),
+            confirm: false,
+        },
+    )
+    .expect("execute plan");
+    assert!(out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.agent_execution_result.v1")
+    );
+    assert_eq!(out.output["candidate_id"].as_str(), Some("candidate-1"));
+}
+
+#[test]
+fn execute_agents_execute_plan_requires_confirm_for_mutating_op_candidate() {
+    let plan = serde_json::json!({
+        "schema": "gentle.agent_plan_result.v1",
+        "assistant_message": "ready",
+        "questions": [],
+        "candidates": [
+            {
+                "candidate_id": "candidate-1",
+                "title": "Set parameter op",
+                "rationale": "mutating operation",
+                "kind": "op",
+                "mutating": true,
+                "requires_confirmation": true,
+                "execution_mode": "ask",
+                "operation": {
+                    "SetParameter": {"name":"max_fragments_per_container","value": 321}
+                }
+            }
+        ]
+    });
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let err = execute_shell_command(
+        &mut engine,
+        &ShellCommand::AgentsExecutePlan {
+            plan_input: plan.to_string(),
+            candidate_id: "candidate-1".to_string(),
+            confirm: false,
+        },
+    )
+    .expect_err("confirm should be required");
+    assert!(err.contains("--confirm"), "unexpected error: {err}");
+}
+
+#[test]
+fn execute_agents_execute_plan_blocks_nested_agents_ask_candidate() {
+    let plan = serde_json::json!({
+        "schema": "gentle.agent_plan_result.v1",
+        "assistant_message": "ready",
+        "questions": [],
+        "candidates": [
+            {
+                "candidate_id": "candidate-1",
+                "title": "Nested ask",
+                "rationale": "should be blocked",
+                "kind": "shell",
+                "mutating": false,
+                "requires_confirmation": false,
+                "execution_mode": "auto",
+                "shell_command": "agents ask builtin_echo --prompt 'ask: capabilities'"
+            }
+        ]
+    });
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let err = execute_shell_command(
+        &mut engine,
+        &ShellCommand::AgentsExecutePlan {
+            plan_input: plan.to_string(),
+            candidate_id: "candidate-1".to_string(),
+            confirm: false,
+        },
+    )
+    .expect_err("nested ask should be blocked");
+    assert!(
+        err.contains("blocks nested agent"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn execute_agents_ask_runs_auto_suggestion_when_enabled() {
     let tmp = tempdir().expect("tempdir");
     let catalog_path = tmp.path().join("agents.json");

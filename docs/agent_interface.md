@@ -1,6 +1,6 @@
 # GENtle Agent Interface
 
-Last updated: 2026-04-16
+Last updated: 2026-04-24
 
 This guide explains how agents can control GENtle and how the available
 interfaces differ.
@@ -16,6 +16,7 @@ coding agents like Codex), start with:
 GENtle exposes multiple agent-facing routes:
 
 - deterministic command execution through CLI/shared shell
+- machine-facing prose compilation through the typed planner
 - deterministic tool execution through MCP
 - guided assistant interaction through the Agent Assistant bridge
 
@@ -49,7 +50,40 @@ Key properties:
 - machine-readable JSON outputs
 - strong reproducibility and auditability
 
-### 2) MCP (`gentle_mcp`)
+### 2) Machine-facing prose compiler (`agents plan` / `agents execute-plan`)
+
+The planner is the new non-chat route that still accepts prose, but compiles it
+into structured executable candidates instead of conversational suggestions.
+
+Entry points:
+
+- CLI/shared shell:
+  - `agents plan SYSTEM_ID --prompt TEXT`
+  - `agents execute-plan PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]`
+- MCP:
+  - `agent_plan`
+  - `agent_execute_plan`
+- ClawBio wrapper:
+  - `mode=agent-plan`
+  - `mode=agent-execute-plan`
+
+What it is good for:
+
+- prose-to-typed-action compilation
+- auditable compile-then-execute loops
+- external orchestrators that want GENtle-native action candidates without
+  depending on GUI chat UX
+
+Key properties:
+
+- accepts free prose just like the local assistant
+- returns `gentle.agent_plan_result.v1`
+- executes stored plans through `gentle.agent_execution_result.v1`
+- shell candidates may execute directly through the shared shell executor
+- `op`/`workflow` candidates require explicit confirmation when marked mutating
+- execution never silently re-plans
+
+### 3) MCP (`gentle_mcp`)
 
 MCP is the tool-based route for external AI clients that speak JSON-RPC over
 stdio.
@@ -94,7 +128,7 @@ Key properties:
 - mutating tools require explicit confirmation (`confirm=true`)
 - UI-intent tools are currently non-mutating query/intent routes
 
-### 3) Agent Assistant bridge (`agents ...` and GUI Agent Assistant)
+### 4) Agent Assistant bridge (`agents ...` and GUI Agent Assistant)
 
 Agent Assistant runs configured external/internal AI systems and can return:
 
@@ -104,7 +138,7 @@ Agent Assistant runs configured external/internal AI systems and can return:
 
 Entry points:
 
-- CLI/shared shell: `agents list`, `agents ask`
+- CLI/shared shell: `agents list`, `agents ask`, `agents preflight`, `agents discover-models`
 - GUI: `Tools -> Agent Assistant...`
 
 What it is good for:
@@ -118,6 +152,8 @@ Key properties:
 
 - not a direct replacement for deterministic interfaces
 - produces suggestions that can be executed through shared shell commands
+- optimized for human-in-the-loop chat and suggestion review, not as ClawBio's
+  primary machine-facing planning API
 - recursion guardrail blocks nested `agents ask` execution from suggested
   commands
 - suggested commands can execute shared BLAST routes (`genomes/helpers blast`,
@@ -127,15 +163,15 @@ Key properties:
   dedicated async job-handle/progress/cancel flow for agent-driven BLAST (and
   future primer-pair multi-BLAST selection) is planned
 
-## CLI vs MCP vs Agent Assistant
+## CLI vs planner vs MCP vs Agent Assistant
 
-| Topic | CLI/shared shell | MCP | Agent Assistant |
-|---|---|---|---|
-| Transport | process args/stdin/stdout | JSON-RPC over stdio | catalog-driven agent transport + shared shell execution |
-| Best use | scripts and deterministic automation | tool-based external agent integration | interactive assistant with suggestion flow |
-| Mutating safety gate | command-level intent | explicit `confirm=true` on mutating tools | per-suggestion execution policy (`ask`/`auto`) |
-| Output model | direct JSON/text/markdown | MCP envelope + structuredContent | assistant payload + optional execution reports |
-| Deterministic parity target | canonical | canonical via wrappers | uses canonical shell routes for execution |
+| Topic | CLI/shared shell | Planner | MCP | Agent Assistant |
+|---|---|---|---|---|
+| Transport | process args/stdin/stdout | shared shell + stored JSON plan | JSON-RPC over stdio | catalog-driven agent transport + shared shell execution |
+| Best use | scripts and deterministic automation | prose-in typed compile/execute loops | tool-based external agent integration | interactive assistant with suggestion flow |
+| Mutating safety gate | command-level intent | candidate-level confirm for mutating `op`/`workflow` | explicit `confirm=true` on mutating tools | per-suggestion execution policy (`ask`/`auto`) |
+| Output model | direct JSON/text/markdown | typed plan/result JSON | MCP envelope + structuredContent | assistant payload + optional execution reports |
+| Deterministic parity target | canonical | canonical shell/op/workflow execution | canonical via wrappers | uses canonical shell routes for execution |
 
 ## The "agent prompt" offered by GENtle
 
@@ -170,14 +206,21 @@ In short:
 2. Store commands/workflows in version control.
 3. Re-run unchanged for reproducible outputs.
 
-### Pattern B: external MCP agent orchestrator
+### Pattern B: machine-facing planner compile/execute
+
+1. Call `agents plan` or `agent_plan` with prose.
+2. Inspect `gentle.agent_plan_result.v1`.
+3. Choose one candidate.
+4. Execute it later with `agents execute-plan` / `agent_execute_plan`.
+
+### Pattern C: external MCP agent orchestrator
 
 1. Connect to `gentle_mcp`.
 2. Discover tools with `tools/list`.
 3. Call tools deterministically (`ui_*`, `state_summary`, `op`, `workflow`).
 4. Require explicit `confirm=true` for mutating calls.
 
-### Pattern C: interactive assistant then execute
+### Pattern D: interactive assistant then execute
 
 1. Use GUI Agent Assistant or `agents ask`.
 2. Ask for explicit command suggestions.
@@ -194,6 +237,8 @@ Example command suggestions (valid through Agent Assistant execution path):
 - Keep business/biology logic in shared engine paths only.
 - Keep adapters thin (CLI/MCP/GUI assistant should not fork biology behavior).
 - Use explicit confirmation for mutating routes.
+- ClawBio/OpenClaw should prefer the typed planner boundary or deterministic
+  shell/op/workflow routes rather than driving GENtle through `agents ask`.
 - Prefer deterministic machine-readable outputs for automation.
 
 ## Related manuals

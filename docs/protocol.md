@@ -2237,6 +2237,51 @@ external coding agent runtime, see:
 
 MCP query/introspection tool contracts (current):
 
+- `agent_systems`
+  - arguments:
+    - optional: `catalog_path`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `agents list [--catalog ...]`
+
+- `agent_preflight`
+  - arguments:
+    - required: `system_id`
+    - optional: `catalog_path`, `base_url`, `model`, `timeout_secs`,
+      `connect_timeout_secs`, `read_timeout_secs`, `max_retries`,
+      `max_response_bytes`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `agents preflight ...`
+
+- `agent_models`
+  - arguments:
+    - required: `system_id`
+    - optional: `catalog_path`, `base_url`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `agents discover-models ...`
+
+- `agent_plan`
+  - arguments:
+    - required: `system_id`, `prompt`
+    - optional: `state_path`, `catalog_path`, `base_url`, `model`,
+      `timeout_secs`, `connect_timeout_secs`, `read_timeout_secs`,
+      `max_retries`, `max_response_bytes`, `include_state_summary`,
+      `max_candidates`, `allow_mutating_candidates`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `agents plan ...`
+
+- `agent_execute_plan`
+  - arguments:
+    - required: `candidate_id`
+    - one of: `plan` or `plan_path`
+    - optional: `state_path`, `confirm`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `agents execute-plan ...`
+
 - `reference_catalog_entries`
   - arguments:
     - optional: `catalog_path`, `filter`
@@ -2609,6 +2654,12 @@ Adapter-equivalence guarantee for UI-intent tools:
   - Lists configured agent systems from catalog JSON.
   - Default catalog: `assets/agent_systems.json`.
 
+- `agents preflight SYSTEM_ID [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
+  - Returns read-only transport/runtime metadata as `gentle.agent_preflight.v1`.
+
+- `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
+  - Returns discovered model ids as `gentle.agent_models.v1`.
+
 - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system via catalog transport.
   - `--base-url` applies a per-request runtime base URL override for native
@@ -2627,6 +2678,60 @@ Adapter-equivalence guarantee for UI-intent tools:
     override (maps to `GENTLE_AGENT_MAX_RESPONSE_BYTES`).
   - `--no-state-summary` suppresses project context injection.
   - Suggested-command execution is per-suggestion only (no global always-execute).
+
+- `agents plan SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--no-state-summary] [--no-mutating-candidates]`
+  - Accepts prose but returns typed `gentle.agent_plan_result.v1` candidates.
+  - `shell` candidates compile to shared shell commands.
+  - `op`, `workflow`, and `ui_intent` are first-class plan payload kinds on the
+    stored JSON boundary.
+
+- `agents execute-plan PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]`
+  - Executes one stored planner candidate and returns
+    `gentle.agent_execution_result.v1`.
+  - Candidate execution never silently re-plans.
+  - Nested `agents ask` / `agents plan` / `agents execute-plan` shell payloads
+    are rejected.
+
+Machine-facing planner schemas:
+
+- `gentle.agent_plan_request.v1`
+  - fields:
+    - `schema`
+    - `system_id`
+    - `prompt`
+    - optional `state_summary`
+    - optional `max_candidates`
+    - optional `allow_mutating_candidates`
+- `gentle.agent_plan_result.v1`
+  - fields:
+    - `schema`
+    - `assistant_message`
+    - `questions[]`
+    - `candidates[]`
+  - candidate fields:
+    - `candidate_id`
+    - `title`
+    - `rationale`
+    - `kind = shell | op | workflow | ui_intent`
+    - `mutating`
+    - `requires_confirmation`
+    - `execution_mode = ask | auto`
+    - exactly one payload field:
+      - `shell_command`
+      - `operation`
+      - `workflow`
+      - `ui_intent`
+- `gentle.agent_execution_result.v1`
+  - fields:
+    - `schema`
+    - `candidate_id`
+    - `title`
+    - `kind`
+    - `mutating`
+    - `requires_confirmation`
+    - `confirmed`
+    - `state_changed`
+    - `output`
 
 Agent bridge catalog schema (`gentle.agent_systems.v1`):
 
@@ -2768,7 +2873,7 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `gentle_local_checkout_cli.sh` for local editable GENtle checkouts
   - `gentle_apptainer_cli.sh` for Apptainer/Singularity-backed `:cli` images
 - wrapper request schema: `gentle.clawbio_skill_request.v1`
-  - `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|raw`
+  - `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|agent-plan|agent-execute-plan|raw`
   - optional: `state_path`, `timeout_secs`
   - optional: `expected_artifacts[]`
     - wrapper-declared output files to copy into the ClawBio output bundle
@@ -2786,6 +2891,11 @@ ClawBio/OpenClaw integration scaffold schemas:
       - relative `workflow_path` resolves via current working directory, then
         `GENTLE_REPO_ROOT`, then the local GENtle repo containing the scaffold
         when discoverable
+    - `agent-plan`: `system_id`, `prompt`, optional planner/runtime overrides
+      such as `catalog_path`, `base_url`, `model`, `max_candidates`,
+      `include_state_summary`, and `allow_mutating_candidates`
+    - `agent-execute-plan`: `plan` or `plan_path`, `candidate_id`, optional
+      `confirm`
     - `raw`: `raw_args[]`
 - wrapper result schema: `gentle.clawbio_skill_result.v1`
   - `status`: `ok|command_failed|timeout|failed|degraded_demo`
@@ -2808,6 +2918,9 @@ ClawBio/OpenClaw integration scaffold schemas:
       artifacts, but messenger-facing consumers should prefer the PNG outputs
   - browser/OpenClaw inline image display remains a later ClawBio-side task;
     this phase is limited to PNG-first bundle production inside `gentle_rs`
+  - wrapper `agent-plan` / `agent-execute-plan` modes intentionally share the
+    typed GENtle planner boundary instead of routing machine consumers through
+    the chat-oriented `agents ask` UX
 - service handoff payload: `gentle.service_handoff.v1`
   - produced by `services handoff [--scope NAME] [--output PATH]`
   - embeds the normal `gentle.service_readiness.v1` status as

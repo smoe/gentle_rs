@@ -18,6 +18,8 @@ The ClawBio x GENtle integration adds a separate orchestration and policy layer:
 
 - ClawBio: intent interpretation, strategy selection, constraint policy, fallback policy.
 - GENtle: deterministic execution (`shell`, `op`, `workflow`), schema-tagged outputs, reproducibility artifacts.
+- Shared middle ground: GENtle may compile prose into typed plan candidates,
+  but ClawBio still owns whether those candidates should be executed.
 
 ## Governance and Control Model
 
@@ -50,12 +52,14 @@ Minimum control baseline for integration:
 ## Request/Result Contract
 
 Request (`gentle.clawbio_skill_request.v1`):
-- `mode`: `capabilities | state-summary | shell | op | workflow | raw`
+- `mode`: `capabilities | state-summary | shell | op | workflow | agent-plan | agent-execute-plan | raw`
 - Optional controls: `state_path`, `timeout_secs`
 - Mode payload:
   - `shell`: `shell_line`
   - `op`: `operation`
   - `workflow`: `workflow` or `workflow_path`
+  - `agent-plan`: `system_id`, `prompt`, optional planner/runtime overrides
+  - `agent-execute-plan`: `plan` or `plan_path`, `candidate_id`, optional `confirm`
   - `raw`: `raw_args[]`
 
 Result (`gentle.clawbio_skill_result.v1`):
@@ -68,8 +72,8 @@ Result (`gentle.clawbio_skill_result.v1`):
 ## Deterministic Execution Pattern
 
 1. Inspect (non-mutating): `capabilities`, `state-summary`, `features query`, `primers preflight`.
-2. Plan in ClawBio: construct explicit `Operation` or `Workflow` payloads.
-3. Execute mutating step explicitly: `op` or `workflow`.
+2. Either plan in ClawBio directly or ask GENtle to compile prose with `agent-plan`.
+3. Execute one stored candidate explicitly with `agent-execute-plan`, or run direct `op` / `workflow`.
 4. Collect artifacts for audit/replay.
 
 ## Artifacts and Provenance
@@ -88,6 +92,9 @@ These artifacts are the handoff unit for ranking, review, and replay.
 - No implicit mutating execution: ClawBio must choose mutating modes explicitly.
 - Keep data local by default; export is explicit.
 - Maintain recursion guardrails for agent-invoked commands.
+- ClawBio should not treat `agents ask` as its primary integration boundary;
+  the preferred shared AI-facing boundary is the typed planner plus the
+  read-only transport/preflight metadata.
 - Prefer schema-tagged JSON outputs over prose when ClawBio consumes results.
 - Treat policy denials as first-class deterministic outcomes (not hidden failures).
 

@@ -198,6 +198,106 @@ fn tool_list() -> Value {
             }
         },
         {
+            "name": "agent_systems",
+            "title": "Agent Systems",
+            "description": "Return configured GENtle agent systems via the shared `agents list` contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "catalog_path": {
+                        "type": "string",
+                        "description": "Optional agent-system catalog path."
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "agent_preflight",
+            "title": "Agent Preflight",
+            "description": "Return transport/runtime preflight details for one GENtle agent system.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "system_id": { "type": "string" },
+                    "catalog_path": { "type": "string" },
+                    "base_url": { "type": "string" },
+                    "model": { "type": "string" },
+                    "timeout_secs": { "type": "integer", "minimum": 1 },
+                    "connect_timeout_secs": { "type": "integer", "minimum": 1 },
+                    "read_timeout_secs": { "type": "integer", "minimum": 1 },
+                    "max_retries": { "type": "integer", "minimum": 0 },
+                    "max_response_bytes": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["system_id"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "agent_models",
+            "title": "Agent Models",
+            "description": "Discover model ids for one GENtle OpenAI-compatible/native agent system.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "system_id": { "type": "string" },
+                    "catalog_path": { "type": "string" },
+                    "base_url": { "type": "string" }
+                },
+                "required": ["system_id"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "agent_plan",
+            "title": "Agent Plan",
+            "description": "Compile free prose into a typed GENtle execution plan via the shared `agents plan` contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": { "type": "string" },
+                    "system_id": { "type": "string" },
+                    "prompt": { "type": "string" },
+                    "catalog_path": { "type": "string" },
+                    "base_url": { "type": "string" },
+                    "model": { "type": "string" },
+                    "timeout_secs": { "type": "integer", "minimum": 1 },
+                    "connect_timeout_secs": { "type": "integer", "minimum": 1 },
+                    "read_timeout_secs": { "type": "integer", "minimum": 1 },
+                    "max_retries": { "type": "integer", "minimum": 0 },
+                    "max_response_bytes": { "type": "integer", "minimum": 1 },
+                    "include_state_summary": { "type": "boolean" },
+                    "max_candidates": { "type": "integer", "minimum": 1 },
+                    "allow_mutating_candidates": { "type": "boolean" }
+                },
+                "required": ["system_id", "prompt"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "agent_execute_plan",
+            "title": "Agent Execute Plan",
+            "description": "Execute one stored planner candidate through the shared `agents execute-plan` contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": { "type": "string" },
+                    "plan": {
+                        "description": "Planner result payload as object or raw JSON string.",
+                        "oneOf": [
+                            { "type": "object" },
+                            { "type": "string" }
+                        ]
+                    },
+                    "plan_path": { "type": "string" },
+                    "candidate_id": { "type": "string" },
+                    "confirm": { "type": "boolean" }
+                },
+                "required": ["candidate_id"],
+                "additionalProperties": false
+            }
+        },
+        {
             "name": "op",
             "title": "Apply Operation",
             "description": "Apply one operation via shared engine contract and persist state (requires confirm=true).",
@@ -912,6 +1012,19 @@ fn optional_usize_arg(args: &Map<String, Value>, key: &str) -> Result<Option<usi
     }
 }
 
+fn optional_u64_arg(args: &Map<String, Value>, key: &str) -> Result<Option<u64>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(value)) => value
+            .as_u64()
+            .map(Some)
+            .ok_or_else(|| format!("MCP argument '{key}' must be a non-negative integer")),
+        Some(_) => Err(format!(
+            "MCP argument '{key}' must be a non-negative integer"
+        )),
+    }
+}
+
 fn optional_json_string_arg(
     args: &Map<String, Value>,
     key: &str,
@@ -1239,6 +1352,261 @@ fn run_shell_tool_with_optional_persist(
             .map_err(|err| format!("Could not save state to '{state_path}': {err}"))?;
     }
     Ok(run.output)
+}
+
+fn agent_systems_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec!["agents".to_string(), "list".to_string()];
+    append_string_flag(&mut tokens, "--catalog", catalog_path);
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "agent_systems") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn agent_preflight_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let system_id = match required_string_arg(&args, "system_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let base_url = match optional_string_arg(&args, "base_url") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let model = match optional_string_arg(&args, "model") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let timeout_secs = match optional_u64_arg(&args, "timeout_secs") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let connect_timeout_secs = match optional_u64_arg(&args, "connect_timeout_secs") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let read_timeout_secs = match optional_u64_arg(&args, "read_timeout_secs") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let max_retries = match optional_usize_arg(&args, "max_retries") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let max_response_bytes = match optional_usize_arg(&args, "max_response_bytes") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec!["agents".to_string(), "preflight".to_string(), system_id];
+    append_string_flag(&mut tokens, "--catalog", catalog_path);
+    append_string_flag(&mut tokens, "--base-url", base_url);
+    append_string_flag(&mut tokens, "--model", model);
+    if let Some(value) = timeout_secs {
+        tokens.push("--timeout-secs".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = connect_timeout_secs {
+        tokens.push("--connect-timeout-secs".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = read_timeout_secs {
+        tokens.push("--read-timeout-secs".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = max_retries {
+        tokens.push("--max-retries".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = max_response_bytes {
+        tokens.push("--max-response-bytes".to_string());
+        tokens.push(value.to_string());
+    }
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "agent_preflight") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn agent_models_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let system_id = match required_string_arg(&args, "system_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let base_url = match optional_string_arg(&args, "base_url") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec![
+        "agents".to_string(),
+        "discover-models".to_string(),
+        system_id,
+    ];
+    append_string_flag(&mut tokens, "--catalog", catalog_path);
+    append_string_flag(&mut tokens, "--base-url", base_url);
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "agent_models") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn agent_plan_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let system_id = match required_string_arg(&args, "system_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let prompt = match required_string_arg(&args, "prompt") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let base_url = match optional_string_arg(&args, "base_url") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let model = match optional_string_arg(&args, "model") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let timeout_secs = match optional_u64_arg(&args, "timeout_secs") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let connect_timeout_secs = match optional_u64_arg(&args, "connect_timeout_secs") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let read_timeout_secs = match optional_u64_arg(&args, "read_timeout_secs") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let max_retries = match optional_usize_arg(&args, "max_retries") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let max_response_bytes = match optional_usize_arg(&args, "max_response_bytes") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let max_candidates = match optional_usize_arg(&args, "max_candidates") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let include_state_summary = match optional_bool_arg(&args, "include_state_summary") {
+        Ok(value) => value.unwrap_or(true),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let allow_mutating_candidates = match optional_bool_arg(&args, "allow_mutating_candidates") {
+        Ok(value) => value.unwrap_or(true),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec!["agents".to_string(), "plan".to_string(), system_id];
+    tokens.push("--prompt".to_string());
+    tokens.push(prompt);
+    append_string_flag(&mut tokens, "--catalog", catalog_path);
+    append_string_flag(&mut tokens, "--base-url", base_url);
+    append_string_flag(&mut tokens, "--model", model);
+    if let Some(value) = timeout_secs {
+        tokens.push("--timeout-secs".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = connect_timeout_secs {
+        tokens.push("--connect-timeout-secs".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = read_timeout_secs {
+        tokens.push("--read-timeout-secs".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = max_retries {
+        tokens.push("--max-retries".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = max_response_bytes {
+        tokens.push("--max-response-bytes".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = max_candidates {
+        tokens.push("--max-candidates".to_string());
+        tokens.push(value.to_string());
+    }
+    if !include_state_summary {
+        tokens.push("--no-state-summary".to_string());
+    }
+    if !allow_mutating_candidates {
+        tokens.push("--no-mutating-candidates".to_string());
+    }
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "agent_plan") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn agent_execute_plan_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let candidate_id = match required_string_arg(&args, "candidate_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let plan_path = match optional_string_arg(&args, "plan_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let plan_payload = match optional_json_string_arg(&args, "plan") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let confirm = match optional_bool_arg(&args, "confirm") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let plan_arg = if let Some(path) = plan_path {
+        format!("@{path}")
+    } else if let Some(payload) = plan_payload {
+        payload
+    } else {
+        return tool_result_text(
+            "agent_execute_plan requires 'plan' or 'plan_path'".to_string(),
+            "text",
+            true,
+        );
+    };
+    let mut tokens = vec![
+        "agents".to_string(),
+        "execute-plan".to_string(),
+        plan_arg,
+        "--candidate-id".to_string(),
+        candidate_id,
+    ];
+    if confirm {
+        tokens.push("--confirm".to_string());
+    }
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        tokens,
+        "agent_execute_plan",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
 }
 
 fn ui_intents_tool_result(default_state_path: &str, arguments: &Value) -> Value {
@@ -1696,6 +2064,13 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
                     true,
                 ),
             }
+        }
+        "agent_systems" => agent_systems_tool_result(default_state_path, &params.arguments),
+        "agent_preflight" => agent_preflight_tool_result(default_state_path, &params.arguments),
+        "agent_models" => agent_models_tool_result(default_state_path, &params.arguments),
+        "agent_plan" => agent_plan_tool_result(default_state_path, &params.arguments),
+        "agent_execute_plan" => {
+            agent_execute_plan_tool_result(default_state_path, &params.arguments)
         }
         "reference_catalog_entries" => catalog_entries_tool_result(&params.arguments, false),
         "helper_catalog_entries" => catalog_entries_tool_result(&params.arguments, true),
@@ -2199,6 +2574,83 @@ mod tests {
             .and_then(Value::as_u64)
             .unwrap_or(999);
         assert_eq!(sequence_count, 0);
+    }
+
+    #[test]
+    fn mcp_agent_plan_matches_shared_shell_output() {
+        let temp = tempdir().expect("tempdir");
+        let catalog_path = temp.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {"id":"builtin_echo","label":"Builtin Echo","transport":"builtin_echo"}
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let expected = run_shared_shell_command(vec![
+            "agents".to_string(),
+            "plan".to_string(),
+            "builtin_echo".to_string(),
+            "--catalog".to_string(),
+            catalog_path.display().to_string(),
+            "--prompt".to_string(),
+            "auto: state-summary".to_string(),
+            "--no-state-summary".to_string(),
+        ]);
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "agent_plan",
+            json!({
+                "system_id": "builtin_echo",
+                "catalog_path": catalog_path.display().to_string(),
+                "prompt": "auto: state-summary",
+                "include_state_summary": false
+            }),
+        );
+        assert_eq!(response["result"]["structuredContent"], expected);
+    }
+
+    #[test]
+    fn mcp_agent_execute_plan_matches_shared_shell_output() {
+        let temp = tempdir().expect("tempdir");
+        let state_path = temp.path().join("agent_execute_plan_state.gentle.json");
+        let plan = json!({
+            "schema": "gentle.agent_plan_result.v1",
+            "assistant_message": "ready",
+            "questions": [],
+            "candidates": [
+                {
+                    "candidate_id": "candidate-1",
+                    "title": "State summary",
+                    "rationale": "non mutating shell command",
+                    "kind": "shell",
+                    "mutating": false,
+                    "requires_confirmation": false,
+                    "execution_mode": "auto",
+                    "shell_command": "state-summary"
+                }
+            ]
+        });
+        let expected = run_shared_shell_command(vec![
+            "agents".to_string(),
+            "execute-plan".to_string(),
+            plan.to_string(),
+            "--candidate-id".to_string(),
+            "candidate-1".to_string(),
+        ]);
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "agent_execute_plan",
+            json!({
+                "state_path": state_path.display().to_string(),
+                "candidate_id": "candidate-1",
+                "plan": plan
+            }),
+        );
+        assert_eq!(response["result"]["structuredContent"], expected);
     }
 
     #[test]

@@ -2178,6 +2178,9 @@ Behavior:
 - loads systems from catalog JSON (default `assets/agent_systems.json`)
 - system selection is a dropdown from catalog entries
 - unavailable systems remain selectable and show the reason
+- this window is intentionally the local chat-oriented assistant surface; the
+  typed prose compiler/executor (`agents plan` / `agents execute-plan`) is the
+  headless CLI/MCP/ClawBio route for machine-facing compile/execute loops
 - `OpenAI API key` field in this window is a session-only override
   - enter your key as `sk-...`
   - click `Clear Key` to remove it from current session

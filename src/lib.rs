@@ -12,6 +12,12 @@ use std::sync::LazyLock;
 pub mod about;
 /// Agent-assistant bridge models, transports, and execution guardrails.
 pub mod agent_bridge;
+/// Deterministic execution of stored machine-facing agent plans.
+pub mod agent_execution;
+/// Machine-facing prose compiler and typed plan/result contracts.
+pub mod agent_planner;
+/// Shared agent transport metadata, availability, and discovery helpers.
+pub mod agent_transport;
 /// Amino-acid lookup tables and codon translation helpers.
 pub mod amino_acids;
 /// Top-level GUI application wiring and event loop state.
