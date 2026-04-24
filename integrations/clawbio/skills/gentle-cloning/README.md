@@ -100,12 +100,13 @@ When ClawBio/OpenClaw is being readied for broader user questions, the intended
 order is:
 
 1. `services status`
-2. `genomes status "Human GRCh38 Ensembl 116"`
-3. `genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200` if needed
-4. `helpers status "Plasmid pUC19 (online)"`
-5. `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800` if likely
+2. `services handoff --scope clawbio --output artifacts/service_handoff.json`
+3. `genomes status "Human GRCh38 Ensembl 116"`
+4. `genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200` if needed
+5. `helpers status "Plasmid pUC19 (online)"`
+6. `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800` if likely
    cloning/vector work is expected
-6. `resources status`
+7. `resources status`
 
 Interpret resource preparation honestly:
 
@@ -114,7 +115,10 @@ Interpret resource preparation honestly:
   - not a mandatory "download first" path for baseline GENtle use
 - `ATtRACT`
   - known and worth surfacing in readiness answers
-  - not yet an executable download/use path in GENtle
+  - normalized by GENtle from a local `ATtRACT.zip` via
+    `resources sync-attract /path/to/ATtRACT.zip`
+  - `services handoff` keeps this as a blocked action until the local ZIP path
+    is supplied
 
 ### Investigating stale Ensembl answers
 
@@ -181,6 +185,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_install_ensembl_mouse.json --output /tmp/gentle_install_mouse
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_shell_state_summary.json --output /tmp/gentle_state_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_status.json --output /tmp/gentle_services_status
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_handoff.json --output /tmp/gentle_services_handoff
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_resources_status.json --output /tmp/gentle_resources_status
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json --output /tmp/gentle_prepare_grch38
@@ -463,6 +468,7 @@ Included first-run bootstrap requests:
 - `examples/request_genomes_install_ensembl_mouse.json`
 - `examples/request_shell_state_summary.json`
 - `examples/request_services_status.json`
+- `examples/request_services_handoff.json`
 - `examples/request_genomes_status_grch38.json`
 - `examples/request_resources_status.json`
 - `examples/request_genomes_prepare_grch38.json`

@@ -1306,6 +1306,25 @@ def _extract_sequence_context_bundle(stdout_json: Any) -> dict[str, Any] | None:
 
 
 def _extract_preferred_artifacts(stdout_json: Any) -> list[dict[str, Any]] | None:
+    if isinstance(stdout_json, dict) and isinstance(
+        stdout_json.get("preferred_artifacts"), list
+    ):
+        artifacts = [
+            artifact
+            for artifact in stdout_json["preferred_artifacts"]
+            if isinstance(artifact, dict) and isinstance(artifact.get("path"), str)
+        ]
+        if artifacts:
+            artifacts.sort(
+                key=lambda artifact: (
+                    int(artifact.get("presentation_rank", 10**9))
+                    if isinstance(artifact.get("presentation_rank"), int)
+                    else 10**9,
+                    str(artifact.get("artifact_id", "")),
+                )
+            )
+            return artifacts
+
     bundle = _extract_sequence_context_bundle(stdout_json)
     if not isinstance(bundle, dict):
         return None
@@ -1343,6 +1362,11 @@ def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
         lines = _summary_lines_from_sequence_context_view(candidate)
         if lines:
             return lines
+    raw_lines = stdout_json.get("summary_lines")
+    if isinstance(raw_lines, list):
+        lines = [line.strip() for line in raw_lines if isinstance(line, str) and line.strip()]
+        if lines:
+            return lines
     return None
 
 
@@ -1368,8 +1392,11 @@ def _suggested_action(
     timeout_secs: int,
     rationale: str,
     requires_confirmation: bool = True,
+    expected_artifacts: list[str] | None = None,
+    resource_key: str | None = None,
+    lifecycle_status: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    action = {
         "action_id": _action_id_from_label(label),
         "label": label,
         "kind": kind,
@@ -1379,6 +1406,49 @@ def _suggested_action(
         "rationale": rationale,
         "requires_confirmation": requires_confirmation,
     }
+    if expected_artifacts:
+        action["expected_artifacts"] = expected_artifacts
+        action["request"]["expected_artifacts"] = expected_artifacts
+    if resource_key:
+        action["resource_key"] = resource_key
+    if lifecycle_status:
+        action["lifecycle_status"] = lifecycle_status
+    return action
+
+
+def _normalize_stdout_suggested_action(action: Any) -> dict[str, Any] | None:
+    if not isinstance(action, dict):
+        return None
+    label = str(action.get("label") or "").strip()
+    shell_line = str(action.get("shell_line") or "").strip()
+    kind = str(action.get("kind") or "suggested_action").strip() or "suggested_action"
+    if not label or not shell_line:
+        return None
+    raw_timeout = action.get("timeout_secs")
+    try:
+        timeout_secs = int(raw_timeout)
+    except (TypeError, ValueError):
+        timeout_secs = 180
+    expected_artifacts = [
+        str(path)
+        for path in action.get("expected_artifacts", [])
+        if isinstance(path, str) and path.strip()
+    ]
+    normalized = _suggested_action(
+        label=label,
+        kind=kind,
+        shell_line=shell_line,
+        timeout_secs=timeout_secs,
+        rationale=str(action.get("rationale") or "").strip(),
+        requires_confirmation=bool(action.get("requires_confirmation", True)),
+        expected_artifacts=expected_artifacts or None,
+        resource_key=str(action.get("resource_key") or "").strip() or None,
+        lifecycle_status=str(action.get("lifecycle_status") or "").strip() or None,
+    )
+    action_id = str(action.get("action_id") or "").strip()
+    if action_id:
+        normalized["action_id"] = action_id
+    return normalized
 
 
 def _extract_suggested_actions(
@@ -1389,6 +1459,16 @@ def _extract_suggested_actions(
         return None
 
     actions: list[dict[str, Any]] = []
+    raw_suggested_actions = stdout_json.get("suggested_actions")
+    if isinstance(raw_suggested_actions, list):
+        actions.extend(
+            normalized
+            for normalized in (
+                _normalize_stdout_suggested_action(action)
+                for action in raw_suggested_actions
+            )
+            if normalized is not None
+        )
 
     if stdout_json.get("schema") == "gentle.service_readiness.v1":
         has_running_prepare = False

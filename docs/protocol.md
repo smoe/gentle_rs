@@ -2779,6 +2779,28 @@ ClawBio/OpenClaw integration scaffold schemas:
       artifacts, but messenger-facing consumers should prefer the PNG outputs
   - browser/OpenClaw inline image display remains a later ClawBio-side task;
     this phase is limited to PNG-first bundle production inside `gentle_rs`
+- service handoff payload: `gentle.service_handoff.v1`
+  - produced by `services handoff [--scope NAME] [--output PATH]`
+  - embeds the normal `gentle.service_readiness.v1` status as
+    `service_readiness`
+  - adds chat-gateway decision fields:
+    - `readiness[]` with `resource_key`, `display_name`, `resource_kind`,
+      `prepared`, `lifecycle_status`, and short status text
+    - `suggested_actions[]` with deterministic GENtle shell commands that are
+      safe to offer next
+    - `running_actions[]` with refresh/status commands for already-active
+      shared prepares
+    - `blocked_actions[]` for useful but not immediately executable setup,
+      such as ATtRACT sync before a local ZIP path is known
+    - `preferred_demo_actions[]` for low-friction demo commands that can be
+      shown by ClawBio without inventing route logic
+    - `environment_hints[]` for deployment variables such as
+      `GENTLE_CLI_CMD`, `GENTLE_REPO_ROOT`, `GENTLE_REFERENCE_CACHE_DIR`,
+      `GENTLE_HELPER_CACHE_DIR`, and `GENTLE_CUTRUN_CACHE_DIR`
+  - the ClawBio wrapper normalizes `stdout_json.suggested_actions[]` into
+    top-level `result.json.suggested_actions[]`, adding the nested
+    `gentle.clawbio_skill_request.v1` payload needed for conversational
+    confirmation/execution
 - reproducibility outputs:
   - `report.md`
   - `result.json`
@@ -2786,6 +2808,8 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `reproducibility/environment.yml`
   - `reproducibility/checksums.sha256`
 - included bootstrap example requests:
+  - `request_services_status.json`
+  - `request_services_handoff.json`
   - `request_genomes_list_human.json`
   - `request_genomes_status_grch38.json`
   - `request_genomes_prepare_grch38.json`

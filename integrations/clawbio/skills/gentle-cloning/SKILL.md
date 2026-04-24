@@ -219,13 +219,14 @@ prepared.
 Recommended preparation order for common human-question answering:
 
 1. `services status`
-2. `genomes status "Human GRCh38 Ensembl 116"`
-3. if needed:
+2. `services handoff --scope clawbio --output artifacts/service_handoff.json`
+3. `genomes status "Human GRCh38 Ensembl 116"`
+4. if needed:
    - `genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200`
-4. for cloning/vector-heavy follow-up if likely:
+5. for cloning/vector-heavy follow-up if likely:
    - `helpers status "Plasmid pUC19 (online)"`
    - `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800`
-5. `resources status`
+6. `resources status`
 
 Interpret resource readiness conservatively:
 
@@ -233,9 +234,12 @@ Interpret resource readiness conservatively:
   - available today through bundled/runtime snapshots
   - report active source and counts via `resources status`
 - `ATtRACT`
-  - known external resource, but not yet integrated as an executable GENtle
-    data source
-  - do not promise download/use through GENtle yet
+  - known external resource normalized from the published local ZIP with
+    `resources sync-attract /path/to/ATtRACT.zip`
+  - do not present it as ready until `resources status` or `services handoff`
+    reports a valid runtime snapshot
+  - when the ZIP path is not known, treat sync as a blocked action rather than
+    an immediately executable command
 
 When the user says they want to prepare for future questions, say what you are
 preparing and then execute the relevant preparation/status steps rather than
@@ -605,6 +609,9 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_services_status.json \
   --output /tmp/gentle_clawbio_services_status
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_services_handoff.json \
+  --output /tmp/gentle_clawbio_services_handoff
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_genomes_status_grch38.json \
   --output /tmp/gentle_clawbio_status_grch38
 python clawbio.py run gentle-cloning \
@@ -940,6 +947,7 @@ Apply the following methodology:
 - Included first-run bootstrap requests:
   - `examples/request_genomes_list_human.json`
   - `examples/request_services_status.json`
+  - `examples/request_services_handoff.json`
   - `examples/request_genomes_status_grch38.json`
   - `examples/request_resources_status.json`
   - `examples/request_genomes_prepare_grch38.json`

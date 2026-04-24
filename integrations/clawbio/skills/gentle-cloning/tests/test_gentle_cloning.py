@@ -616,6 +616,88 @@ def test_services_status_running_suppresses_prepare_and_suggests_refresh(
     ]
 
 
+def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "services handoff --scope clawbio --output artifacts/service_handoff.json",
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.service_handoff.v1",'
+        '"summary_lines":["GENtle handoff ready"],'
+        '"preferred_artifacts":[{"artifact_id":"service_handoff_json","path":"artifacts/service_handoff.json","caption":"Handoff","recommended_use":"installation_doctor_payload","presentation_rank":0,"is_best_first_artifact":true}],'
+        '"suggested_actions":[{"action_id":"prepare_human_grch38_ensembl_116","label":"Prepare Human GRCh38 Ensembl 116","kind":"prepare_reference","shell_line":"genomes prepare \\"Human GRCh38 Ensembl 116\\" --timeout-secs 7200","timeout_secs":7500,"rationale":"Prepare the shared human reference.","requires_confirmation":true,"resource_key":"reference_genome:Human GRCh38 Ensembl 116","lifecycle_status":"missing"}]}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["chat_summary_lines"] == ["GENtle handoff ready"]
+    assert result["preferred_artifacts"] == [
+        {
+            "artifact_id": "service_handoff_json",
+            "path": "artifacts/service_handoff.json",
+            "caption": "Handoff",
+            "recommended_use": "installation_doctor_payload",
+            "presentation_rank": 0,
+            "is_best_first_artifact": True,
+        }
+    ]
+    assert result["suggested_actions"] == [
+        {
+            "action_id": "prepare_human_grch38_ensembl_116",
+            "label": "Prepare Human GRCh38 Ensembl 116",
+            "kind": "prepare_reference",
+            "shell_line": 'genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200',
+            "timeout_secs": 7500,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": 'genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200',
+                "timeout_secs": 7500,
+            },
+            "rationale": "Prepare the shared human reference.",
+            "requires_confirmation": True,
+            "resource_key": "reference_genome:Human GRCh38 Ensembl 116",
+            "lifecycle_status": "missing",
+        }
+    ]
+
+
 def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(
@@ -1995,6 +2077,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "services status",
             180,
         ),
+        "request_services_handoff.json": (
+            "shell",
+            "services handoff --scope clawbio --output artifacts/service_handoff.json",
+            180,
+        ),
         "request_helpers_status_puc19.json": (
             "shell",
             'helpers status "Plasmid pUC19 (online)"',
@@ -2238,6 +2325,10 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         if name == "request_protocol_cartoon_gibson_svg.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/gibson.two_fragment.protocol.svg"
+            ]
+        if name == "request_services_handoff.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/service_handoff.json"
             ]
         if name == "request_render_svg_pgex_fasta_circular.json":
             assert payload["expected_artifacts"] == [

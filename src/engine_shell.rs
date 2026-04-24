@@ -963,6 +963,10 @@ pub enum ShellCommand {
     },
     ResourcesStatus,
     ServicesStatus,
+    ServicesHandoff {
+        scope: Option<String>,
+        output: Option<String>,
+    },
     RoutinesList {
         catalog_path: Option<String>,
         family: Option<String>,
@@ -5855,6 +5859,11 @@ impl ShellCommand {
                 "inspect combined service readiness for canonical references/helpers/resources"
                     .to_string()
             }
+            Self::ServicesHandoff { scope, output } => format!(
+                "build service handoff report for chat gateways (scope='{}', output='{}')",
+                scope.as_deref().unwrap_or("clawbio"),
+                output.as_deref().unwrap_or("-"),
+            ),
             Self::RoutinesList {
                 catalog_path,
                 family,
@@ -16088,7 +16097,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "services" => {
             if tokens.len() < 2 {
-                return Err("services requires a subcommand: status".to_string());
+                return Err("services requires a subcommand: status or handoff".to_string());
             }
             match tokens[1].as_str() {
                 "status" => {
@@ -16097,8 +16106,37 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     Ok(ShellCommand::ServicesStatus)
                 }
+                "handoff" | "doctor" => {
+                    let mut scope: Option<String> = None;
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--scope" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing NAME after --scope".to_string());
+                                }
+                                scope = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for services handoff"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ServicesHandoff { scope, output })
+                }
                 other => Err(format!(
-                    "Unknown services subcommand '{other}' (expected status)"
+                    "Unknown services subcommand '{other}' (expected status, handoff or doctor)"
                 )),
             }
         }
@@ -18803,6 +18841,15 @@ fn execute_rack_export_command(
     }
 }
 
+fn ensure_shell_output_parent_dir(path: &str) -> Result<(), String> {
+    let parent = Path::new(path)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)
+        .map_err(|e| format!("Could not create output directory for '{path}': {e}"))
+}
+
 #[inline(never)]
 fn execute_export_import_and_resource_command(
     engine: &mut GentleEngine,
@@ -19048,6 +19095,23 @@ fn execute_export_import_and_resource_command(
             output: serde_json::to_value(service_readiness::service_readiness_status()?)
                 .map_err(|e| format!("Could not serialize service readiness: {e}"))?,
         }),
+        ShellCommand::ServicesHandoff { scope, output } => {
+            let report =
+                service_readiness::service_handoff_report(scope.as_deref(), output.clone())?;
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&report)
+                    .map_err(|e| format!("Could not serialize service handoff report: {e}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write service handoff report: {e}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize service handoff report: {e}"))?,
+            })
+        }
         _ => unreachable!("non-export/import/resource command passed to helper"),
     }
 }
@@ -25388,6 +25452,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ImportPool { .. }
             | ShellCommand::ResourcesStatus
             | ShellCommand::ServicesStatus
+            | ShellCommand::ServicesHandoff { .. }
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
             | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
@@ -25967,6 +26032,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ImportPool { .. }
         | ShellCommand::ResourcesStatus
         | ShellCommand::ServicesStatus
+        | ShellCommand::ServicesHandoff { .. }
         | ShellCommand::ResourcesSyncRebase { .. }
         | ShellCommand::ResourcesSyncJaspar { .. }
         | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }

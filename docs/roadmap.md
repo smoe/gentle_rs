@@ -1316,14 +1316,23 @@ order. Durable architecture constraints and decisions remain in
           remote database access"
         - that status framing is now widening into service-readiness reporting:
           `resources status` now reports which integrated external snapshots are
-          active for `REBASE` and `JASPAR`, and it records `ATtRACT` explicitly
-          as a not-yet-integrated external database, including the published
-          ZIP download URL, so chat layers can be precise about current gaps
+          active for `REBASE`, `JASPAR`, and normalized `ATtRACT` runtime
+          snapshots; when ATtRACT is not prepared it still records the
+          published ZIP download URL so chat layers can be precise about the
+          local-file prerequisite
         - the next layer above that is now in place too:
           `services status` returns one combined readiness report for canonical
           references, helper backbones, and active external resource snapshots,
           giving ClawBio/OpenClaw a stable first question to ask GENtle before
           deciding whether to fetch, prepare, or render
+        - GENtle now also exposes a chat-gateway handoff/doctor route:
+          `services handoff [--scope clawbio] [--output PATH]` returns
+          `gentle.service_handoff.v1`, embedding the combined readiness report
+          and adding `readiness[]`, `suggested_actions[]`,
+          `running_actions[]`, `blocked_actions[]`,
+          `preferred_demo_actions[]`, `preferred_artifacts[]`,
+          `environment_hints[]`, and `warnings[]` so ClawBio can offer setup
+          or demo actions without inferring them from prose
         - that same shared report now also persists/inspects best-effort
           prepare-activity markers for reference/helper installs, so callers
           can distinguish `currently preparing/indexing` from plain
@@ -1380,6 +1389,10 @@ order. Durable architecture constraints and decisions remain in
           `genomes prepare`, `helpers prepare`, `resources sync-attract`, or a
           post-prepare `services status` refresh instead of stopping at static
           prose
+        - the wrapper also normalizes GENtle-owned
+          `stdout_json.suggested_actions[]` from `services handoff` into
+          top-level `result.json.suggested_actions[]`, including the nested
+          ClawBio request payload needed for explicit user confirmation
       - remaining gap on this track:
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo
@@ -1387,11 +1400,10 @@ order. Durable architecture constraints and decisions remain in
         - enrich the sequence-context bundle/manifest layer further so
           ClawBio can pick one "best first figure" and one compact textual
           summary without inventing presentation logic from raw files alone
-        - enrich the new service-readiness surface further so it can report
+        - enrich the service-readiness/handoff surface further so it can report
           richer active-job details (queue/worker identity, stronger stale-job
-          detection) and deeper ATtRACT runtime detail (for example active
-          snapshot version/content hash), not only best-effort phase/progress
-          hints
+          detection) and deeper ATtRACT runtime detail beyond the current
+          fingerprint/count fields when normalized snapshots are present
         - extend the same shared lease/lifecycle model from
           reference/helper prepares into resource sync/setup paths such as
           `resources sync-attract`, so shared runtime snapshot downloads cannot

@@ -12332,6 +12332,21 @@ fn parse_services_status() {
 }
 
 #[test]
+fn parse_services_handoff_with_scope_and_output() {
+    let cmd = parse_shell_line(
+        "services handoff --scope clawbio --output artifacts/service_handoff.json",
+    )
+    .expect("parse services handoff");
+    match cmd {
+        ShellCommand::ServicesHandoff { scope, output } => {
+            assert_eq!(scope.as_deref(), Some("clawbio"));
+            assert_eq!(output.as_deref(), Some("artifacts/service_handoff.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_attract_inspect_splicing() {
     let cmd = parse_shell_line(
         "attract inspect-splicing seq_1 5 --scope target_group_target_strand --organism \"Homo sapiens\" --flank-bp 12 --min-score 3.0 --min-match-quantile 0.975 --pwm-mapping windowed_submatrix --compare-policies --all-transcripts --no-fallback",
@@ -12849,6 +12864,56 @@ fn execute_services_status_reports_combined_readiness() {
             .as_array()
             .map(|rows| !rows.is_empty())
             .unwrap_or(false)
+    );
+}
+
+#[test]
+fn execute_services_handoff_reports_actions_and_writes_json() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("service_handoff.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesHandoff {
+            scope: Some("clawbio".to_string()),
+            output: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute services handoff");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.service_handoff.v1")
+    );
+    assert_eq!(out.output["scope"].as_str(), Some("clawbio"));
+    assert_eq!(
+        out.output["service_readiness"]["schema"].as_str(),
+        Some("gentle.service_readiness.v1")
+    );
+    assert!(
+        out.output["readiness"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| row["resource_key"].as_str()
+                == Some("reference_genome:Human GRCh38 Ensembl 116")))
+            .unwrap_or(false)
+    );
+    assert!(out.output["suggested_actions"].as_array().is_some());
+    assert!(out.output["blocked_actions"].as_array().is_some());
+    assert!(
+        out.output["preferred_demo_actions"]
+            .as_array()
+            .map(|rows| rows
+                .iter()
+                .any(|row| row["kind"].as_str() == Some("demo_graphic")))
+            .unwrap_or(false)
+    );
+    assert!(output_path.exists());
+    let persisted: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(output_path).expect("read handoff report"))
+            .expect("parse persisted handoff report");
+    assert_eq!(
+        persisted["preferred_artifacts"][0]["recommended_use"].as_str(),
+        Some("installation_doctor_payload")
     );
 }
 

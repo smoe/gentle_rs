@@ -1497,6 +1497,7 @@ cargo run --bin gentle_cli -- ladders export rna_ladders.snapshot.json --molecul
 cargo run --bin gentle_cli -- export-pool frag_1,frag_2 digest.pool.gentle.json "BamHI+EcoRI digest pool"
 cargo run --bin gentle_cli -- import-pool digest.pool.gentle.json imported
 cargo run --bin gentle_cli -- services status
+cargo run --bin gentle_cli -- services handoff --scope clawbio --output artifacts/service_handoff.json
 cargo run --bin gentle_cli -- resources status
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
@@ -2679,6 +2680,23 @@ Resource sync commands:
   - Includes compact `summary_lines` that chat/report layers such as
     ClawBio/OpenClaw can surface directly before deciding whether they should
     fetch, prepare, or render.
+- `services handoff [--scope NAME] [--output PATH]`
+  - Builds a chat-gateway handoff/doctor report with schema
+    `gentle.service_handoff.v1`.
+  - The report embeds the `services status` readiness payload and adds:
+    `readiness[]`, `suggested_actions[]`, `running_actions[]`,
+    `blocked_actions[]`, `preferred_demo_actions[]`, `preferred_artifacts[]`,
+    `environment_hints[]`, `warnings[]`, and `summary_lines[]`.
+  - Suggested actions are deterministic GENtle shell commands for missing or
+    retryable shared setup. Running shared prepares become refresh/status
+    suggestions, not duplicate prepare commands.
+  - Blocked actions are intentionally not offered as immediately executable
+    commands. For example, ATtRACT sync is blocked until the caller supplies a
+    local `ATtRACT.zip` path, then the command can be completed as
+    `resources sync-attract /path/to/ATtRACT.zip`.
+  - When `--output` is provided, the same JSON payload is written to disk and
+    listed as the best-first `preferred_artifacts[]` entry so ClawBio can bundle
+    it as an auditable installation report.
 - `resources status`
   - Reports which integrated external resource snapshots are active right now.
   - Covers built-in/runtime status for `REBASE` and `JASPAR`, including item
