@@ -280,11 +280,24 @@ cover:
 
 ## Release-Shaped Smoke Check Results
 
-Partial local release-prep checks run on 2026-04-24:
+Local release-prep checks run on 2026-04-24:
 
 - `git diff --check`: pass
 - `cargo check -q`: pass
 - `cargo test -q inspect_cutrun_regulatory_support`: pass
+- `cargo build --release --features script-interfaces`: pass
+  - run with `CARGO_TARGET_DIR=/tmp/gentle_release_smoke`
+  - run with `CARGO_INCREMENTAL=0`
+  - completed in `45m 27s`
+- release-artifact checks from the same built target:
+  - `gentle --version`: pass
+  - `gentle_cli capabilities`: pass
+  - `gentle_js --version`: pass
+  - `gentle_lua --version`: pass
+  - `gentle_examples_docs --check`: pass
+  - `gentle_examples_docs tutorial-check`: pass
+  - `gentle_mcp --help`: pass
 
-The broader release-shaped matrix from `docs/release.md` remains pending before
-final tagging.
+Remaining before final tagging:
+
+- the short manual GUI smoke pass listed above is still pending
