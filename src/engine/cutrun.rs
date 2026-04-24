@@ -27,6 +27,7 @@ const CUTRUN_CACHE_DIR_ENV: &str = "GENTLE_CUTRUN_CACHE_DIR";
 const CUTRUN_REGULATORY_SUPPORT_MERGE_GAP_BP: usize = 50;
 const CUTRUN_SIGNAL_ISLAND_MIN_WIDTH_BP: usize = 20;
 const CUTRUN_SIGNAL_ISLAND_TOP_POSITIVE_FRACTION: f64 = 0.95;
+const CUTRUN_MOTIF_CONTEXT_MIN_LLR_QUANTILE: f64 = 0.95;
 
 #[derive(Clone, Debug, Default)]
 struct CutRunRegulatoryEvidenceCandidate {
@@ -3712,7 +3713,7 @@ impl GentleEngine {
             },
             motif_tokens,
             None,
-            None,
+            Some(CUTRUN_MOTIF_CONTEXT_MIN_LLR_QUANTILE),
             &[],
             Some(5_000),
             None,
@@ -3746,7 +3747,7 @@ impl GentleEngine {
                 },
                 motif_tokens,
                 None,
-                None,
+                Some(CUTRUN_MOTIF_CONTEXT_MIN_LLR_QUANTILE),
                 &[],
                 Some(10_000),
                 None,
@@ -4000,8 +4001,20 @@ impl GentleEngine {
                 resolved_target_motif_consensus.len()
             ));
         }
-        let context_motif_tokens =
-            self.cutrun_collect_context_motif_tokens(&normalized_species_filters, &mut warnings);
+        let target_motif_resolved = !resolved_target_motif_consensus.is_empty();
+        let resolved_target_motif_ids = resolved_target_motif_consensus
+            .iter()
+            .map(|(tf_id, _, _)| tf_id.trim().to_ascii_uppercase())
+            .filter(|tf_id| !tf_id.is_empty())
+            .collect::<BTreeSet<_>>();
+        let context_motif_tokens = self
+            .cutrun_collect_context_motif_tokens(&normalized_species_filters, &mut warnings)
+            .into_iter()
+            .filter(|motif_id| {
+                resolved_target_motif_ids.is_empty()
+                    || !resolved_target_motif_ids.contains(&motif_id.trim().to_ascii_uppercase())
+            })
+            .collect::<Vec<_>>();
 
         let mut confirmed_tfbs_rows = vec![];
         let mut unconfirmed_tfbs_rows = vec![];
@@ -4140,12 +4153,13 @@ impl GentleEngine {
         }
 
         let mut motif_absent_supported_windows = vec![];
-        if resolved_target_motif_consensus.is_empty() && !strong_support_windows.is_empty() {
+        if !target_motif_resolved && !strong_support_windows.is_empty() {
             warnings.push(
-                "CUT&RUN regulatory inspection could not resolve any target motif from the selected evidence sources, so motif-absent supported windows were not classified".to_string(),
+                "CUT&RUN regulatory inspection could not resolve any target motif from the selected evidence sources; strong supported windows will be reported by motif context only".to_string(),
             );
-        } else {
-            for support_window in strong_support_windows {
+        }
+        for support_window in strong_support_windows {
+            let target_motif_present = if target_motif_resolved {
                 let window_sequence = dna
                     .extract_region_preserving_features(
                         support_window.local_start_0based,
@@ -4159,47 +4173,49 @@ impl GentleEngine {
                         ),
                     })?
                     .get_forward_string();
-                let target_motif_present =
-                    resolved_target_motif_consensus
-                        .iter()
-                        .any(|(_, _, consensus)| {
-                            Self::contains_motif_any_strand(window_sequence.as_bytes(), consensus)
-                                .unwrap_or(false)
-                        });
-                if target_motif_present {
-                    continue;
-                }
-                let (motifs_inside_window, motifs_in_neighbor_window) = self
-                    .cutrun_collect_strong_window_motif_context(
-                        dna,
-                        support_window,
-                        &context_motif_tokens,
-                        neighbor_window_bp,
-                    )?;
-                motif_absent_supported_windows.push(CutRunMotifAbsentSupportWindow {
-                    window_id: support_window.window_id.clone(),
-                    local_start_0based: support_window.local_start_0based,
-                    local_end_0based_exclusive: support_window.local_end_0based_exclusive,
-                    genomic_start_1based: support_window.genomic_start_1based,
-                    genomic_end_1based: support_window.genomic_end_1based,
-                    support_strength: support_window.support_strength,
-                    overlapping_peak_count: support_window.overlapping_peak_count,
-                    max_signal_value: support_window.max_signal_value,
-                    mean_signal_value: support_window.mean_signal_value,
-                    supporting_fragment_count: support_window.supporting_fragment_count,
-                    cut_site_count: support_window.cut_site_count,
-                    target_motif_present: false,
-                    occupancy_interpretation: if motifs_inside_window.is_empty()
-                        && motifs_in_neighbor_window.is_empty()
-                    {
-                        CutRunMotifAbsentOccupancyInterpretation::MotifPoorSupported
-                    } else {
-                        CutRunMotifAbsentOccupancyInterpretation::ContextSupportedByOtherMotifs
-                    },
-                    motifs_inside_window,
-                    motifs_in_neighbor_window,
-                });
+                resolved_target_motif_consensus
+                    .iter()
+                    .any(|(_, _, consensus)| {
+                        Self::contains_motif_any_strand(window_sequence.as_bytes(), consensus)
+                            .unwrap_or(false)
+                    })
+            } else {
+                false
+            };
+            if target_motif_present {
+                continue;
             }
+            let (motifs_inside_window, motifs_in_neighbor_window) = self
+                .cutrun_collect_strong_window_motif_context(
+                    dna,
+                    support_window,
+                    &context_motif_tokens,
+                    neighbor_window_bp,
+                )?;
+            motif_absent_supported_windows.push(CutRunMotifAbsentSupportWindow {
+                window_id: support_window.window_id.clone(),
+                local_start_0based: support_window.local_start_0based,
+                local_end_0based_exclusive: support_window.local_end_0based_exclusive,
+                genomic_start_1based: support_window.genomic_start_1based,
+                genomic_end_1based: support_window.genomic_end_1based,
+                support_strength: support_window.support_strength,
+                overlapping_peak_count: support_window.overlapping_peak_count,
+                max_signal_value: support_window.max_signal_value,
+                mean_signal_value: support_window.mean_signal_value,
+                supporting_fragment_count: support_window.supporting_fragment_count,
+                cut_site_count: support_window.cut_site_count,
+                target_motif_resolved,
+                target_motif_present,
+                occupancy_interpretation: if motifs_inside_window.is_empty()
+                    && motifs_in_neighbor_window.is_empty()
+                {
+                    CutRunMotifAbsentOccupancyInterpretation::MotifPoorSupported
+                } else {
+                    CutRunMotifAbsentOccupancyInterpretation::ContextSupportedByOtherMotifs
+                },
+                motifs_inside_window,
+                motifs_in_neighbor_window,
+            });
         }
 
         confirmed_tfbs_rows.sort_by(|left, right| {
@@ -4231,6 +4247,7 @@ impl GentleEngine {
             promoter_search_start_0based: span_start_0based,
             promoter_search_end_0based_exclusive: span_end_0based_exclusive,
             neighbor_window_bp,
+            motif_context_min_llr_quantile: CUTRUN_MOTIF_CONTEXT_MIN_LLR_QUANTILE,
             species_filters: normalized_species_filters,
             support_windows,
             confirmed_tfbs_rows,

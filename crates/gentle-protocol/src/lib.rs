@@ -4006,6 +4006,7 @@ pub struct CutRunMotifAbsentSupportWindow {
     pub mean_signal_value: Option<f64>,
     pub supporting_fragment_count: usize,
     pub cut_site_count: u32,
+    pub target_motif_resolved: bool,
     pub target_motif_present: bool,
     #[serde(default)]
     pub motifs_inside_window: Vec<CutRunMotifContextHit>,
@@ -4042,6 +4043,7 @@ pub struct CutRunRegulatorySupportReport {
     pub promoter_search_start_0based: usize,
     pub promoter_search_end_0based_exclusive: usize,
     pub neighbor_window_bp: usize,
+    pub motif_context_min_llr_quantile: f64,
     #[serde(default)]
     pub species_filters: Vec<String>,
     #[serde(default)]

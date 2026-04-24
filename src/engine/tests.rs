@@ -17640,6 +17640,7 @@ fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_
         .expect("inspect CUT&RUN regulatory support");
 
     assert_eq!(report.support_windows.len(), 2);
+    assert!((report.motif_context_min_llr_quantile - 0.95).abs() < f64::EPSILON);
     assert_eq!(report.motif_absent_supported_windows.len(), 2);
     assert!(
         report
@@ -17647,6 +17648,12 @@ fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_
             .iter()
             .all(|window| window.occupancy_interpretation
                 == CutRunMotifAbsentOccupancyInterpretation::ContextSupportedByOtherMotifs)
+    );
+    assert!(
+        report
+            .motif_absent_supported_windows
+            .iter()
+            .all(|window| { window.target_motif_resolved && !window.target_motif_present })
     );
     assert!(report.motif_absent_supported_windows.iter().all(|window| {
         window.motifs_inside_window.is_empty()
@@ -17672,6 +17679,143 @@ fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_
     assert_eq!(near_summary.window_count, 2);
     assert_eq!(near_summary.window_fraction, 1.0);
     assert_eq!(near_summary.motif_label.as_deref(), Some("SP1"));
+}
+
+#[test]
+fn test_inspect_cutrun_regulatory_support_reports_context_when_target_motif_unresolved() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let _jaspar_serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let _snapshot_guard = install_cutrun_test_jaspar_snapshot(&["SP1"], "Synthetic species");
+    let sp1_consensus = GentleEngine::resolve_tf_motif_for_scoring("SP1")
+        .expect("resolve SP1")
+        .2;
+    let supported_window = format!("GATCGATC{sp1_consensus}TTA");
+    let mut sequence = vec![b'A'; 180];
+    let window_start = 50usize;
+    sequence[window_start..window_start + supported_window.len()]
+        .copy_from_slice(supported_window.as_bytes());
+    let sequence = String::from_utf8(sequence).expect("synthetic CUT&RUN sequence");
+    let reference_catalog_path =
+        write_cutrun_test_reference_catalog_with_sequence(root, "ToyGenome", &sequence);
+    let reads_path = root.join("cofactor_reads.fasta");
+    write_cutrun_test_fasta_reads(
+        &reads_path,
+        &[
+            ("supported_window_a", &supported_window),
+            ("supported_window_b", &supported_window),
+        ],
+    );
+    let cutrun_catalog_path = root.join("cutrun.catalog.json");
+    fs::write(
+        &cutrun_catalog_path,
+        format!(
+            r#"{{
+  "toy_cofactor_reads": {{
+    "summary": "Toy non-DNA-binding cofactor CUT&RUN reads",
+    "target_factor": "NON_DNA_BINDING_COFACTOR",
+    "species": "Synthetic species",
+    "supported_reference_genome_ids": ["ToyGenome"],
+    "reads_r1_local": "{}",
+    "read_layout": "single_end"
+  }}
+}}"#,
+            reads_path.display()
+        ),
+    )
+    .expect("write cofactor CUT&RUN dataset catalog");
+    let cutrun_cache_dir = root.join("cutrun_cache");
+    let _makeblastdb_guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+
+    let mut engine = GentleEngine::new();
+    prepare_cutrun_test_anchor_range(
+        &mut engine,
+        "ToyGenome",
+        &reference_catalog_path,
+        "toy_cutrun_roi",
+        1,
+        sequence.len(),
+    );
+    engine
+        .apply(Operation::PrepareCutRunDataset {
+            dataset_id: "toy_cofactor_reads".to_string(),
+            catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache_dir.to_string_lossy().to_string()),
+        })
+        .expect("prepare cofactor CUT&RUN dataset");
+    let report_id = "toy_cofactor_reads_report".to_string();
+    engine
+        .apply(Operation::InterpretCutRunReads {
+            seq_id: "toy_cutrun_roi".to_string(),
+            input_r1_path: None,
+            input_r2_path: None,
+            dataset_id: Some("toy_cofactor_reads".to_string()),
+            catalog_path: Some(cutrun_catalog_path.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache_dir.to_string_lossy().to_string()),
+            input_format: CutRunInputFormat::Fasta,
+            read_layout: CutRunReadLayout::SingleEnd,
+            roi_flank_bp: 0,
+            seed_filter: CutRunSeedFilterConfig {
+                kmer_len: 4,
+                min_seed_matches: 1,
+            },
+            align_config: CutRunAlignConfig {
+                max_mismatches: 0,
+                min_identity_fraction: 1.0,
+                max_fragment_span_bp: 64,
+            },
+            deduplicate_fragments: false,
+            report_id: Some(report_id.clone()),
+            checkpoint_path: None,
+            checkpoint_every_reads: 10,
+        })
+        .expect("interpret cofactor CUT&RUN reads");
+
+    let report = engine
+        .inspect_cutrun_regulatory_support(
+            "toy_cutrun_roi",
+            &[],
+            std::slice::from_ref(&report_id),
+            None,
+            None,
+            24,
+            &["Synthetic".to_string()],
+        )
+        .expect("inspect cofactor CUT&RUN support");
+
+    assert_eq!(report.support_windows.len(), 1);
+    assert_eq!(report.motif_absent_supported_windows.len(), 1);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("motif context only"))
+    );
+    let context_window = &report.motif_absent_supported_windows[0];
+    assert!(!context_window.target_motif_resolved);
+    assert!(!context_window.target_motif_present);
+    assert_eq!(
+        context_window.occupancy_interpretation,
+        CutRunMotifAbsentOccupancyInterpretation::ContextSupportedByOtherMotifs
+    );
+    assert!(
+        context_window
+            .motifs_inside_window
+            .iter()
+            .any(|hit| hit.motif_label.as_deref() == Some("SP1"))
+    );
+    let inside_summary = report
+        .common_motifs_inside_supported_windows
+        .first()
+        .expect("inside-window summary");
+    assert_eq!(inside_summary.window_count, 1);
+    assert_eq!(inside_summary.motif_label.as_deref(), Some("SP1"));
 }
 
 #[test]

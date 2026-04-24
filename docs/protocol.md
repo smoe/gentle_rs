@@ -1736,6 +1736,12 @@ Current draft operations:
     - theoretical TFBS rows are split into `confirmed` vs `unconfirmed`
     - motif-absent strong windows are reported separately and classified as
       `context_supported_by_other_motifs` or `motif_poor_supported`
+    - if the assayed target factor cannot be resolved to a local motif, strong
+      support windows are still reported through context-only motif reasoning
+      instead of being dropped
+    - motif-context scans intentionally use a high-confidence
+      `motif_context_min_llr_quantile` of `0.95` by default, and resolved
+      target motifs are excluded from the "other motifs" context list
     - recurring motif summaries are emitted for motifs found inside supported
       windows and in their neighbor flanks
   - default catalog: `assets/cutrun.json`; default prepared-cache root:

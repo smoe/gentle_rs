@@ -23,7 +23,7 @@ members = [
 exclude = ["packages/snapgene-reader"]
 
 [workspace.package]
-version = "0.1.0-internal.5"
+version = "0.1.0-internal.6"
 edition = "2024"
 
 [package.metadata.bundle]

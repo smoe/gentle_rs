@@ -3827,10 +3827,16 @@ Status:
      reported separately and classified as:
      - `context_supported_by_other_motifs`
      - `motif_poor_supported`
+   - non-DNA-binding/cofactor-style evidence sources whose target factor cannot
+     be resolved to a local motif now still produce strong-window motif-context
+     rows, marked as context-only reasoning instead of being silently skipped.
    - motif-context aggregation across many motif-absent supported windows is
      now reported through ranked recurring motifs:
      - inside supported windows
      - in immediate neighbor flanks
+   - motif-context scans use a high-confidence default
+     `motif_context_min_llr_quantile = 0.95` and omit resolved target motifs
+     from the "other motifs" context rows.
    - the first V3 surface remains CLI/protocol/shell only; GUI inspection is
      still deferred until the report shape settles.
 
