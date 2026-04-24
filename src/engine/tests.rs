@@ -30333,6 +30333,13 @@ fn apply_summarize_tfbs_track_similarity_operation_returns_similarity_payload() 
     let mut state = ProjectState::default();
     state.sequences.insert("promoter".to_string(), dna);
     let mut engine = GentleEngine::from_state(state);
+    let temp = tempdir().expect("temp dir");
+    let output_path = temp
+        .path()
+        .join("reports")
+        .join("tfbs")
+        .join("similarity.json");
+    let output_path_text = output_path.to_string_lossy().to_string();
 
     let result = engine
         .apply(Operation::SummarizeTfbsTrackSimilarity {
@@ -30349,10 +30356,14 @@ fn apply_summarize_tfbs_track_similarity_operation_returns_similarity_payload() 
             species_filters: vec![],
             include_remote_metadata: false,
             limit: Some(2),
-            path: None,
+            path: Some(output_path_text.clone()),
         })
         .expect("apply similarity op");
 
+    assert!(
+        output_path.is_file(),
+        "similarity op should create missing parent directories for report export"
+    );
     let report = result
         .tfbs_track_similarity
         .expect("similarity report should be attached");

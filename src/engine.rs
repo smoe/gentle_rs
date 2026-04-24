@@ -10844,6 +10844,7 @@ impl GentleEngine {
             code: ErrorCode::Internal,
             message: format!("Could not serialize {artifact_label} for '{path}': {e}"),
         })?;
+        Self::ensure_output_parent_dir(path)?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write {artifact_label} to '{path}': {e}"),
@@ -10856,6 +10857,7 @@ impl GentleEngine {
         contents: &str,
         artifact_label: &str,
     ) -> Result<(), EngineError> {
+        Self::ensure_output_parent_dir(path)?;
         std::fs::write(path, contents).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write {artifact_label} to '{path}': {e}"),
@@ -11912,6 +11914,7 @@ impl GentleEngine {
                 summary.seq_id, path
             ),
         })?;
+        Self::ensure_output_parent_dir(path)?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write TFBS region summary to '{path}': {e}"),

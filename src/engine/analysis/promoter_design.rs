@@ -1823,6 +1823,7 @@ impl GentleEngine {
                 report.seq_id, path
             ),
         })?;
+        Self::ensure_output_parent_dir(path)?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write TFBS score-track report to '{path}': {e}"),

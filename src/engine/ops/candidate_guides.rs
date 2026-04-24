@@ -989,10 +989,12 @@ impl GentleEngine {
     }
 
     pub(super) fn ensure_output_parent_dir(path: &str) -> Result<(), EngineError> {
-        let parent = Path::new(path)
+        let Some(parent) = Path::new(path)
             .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("."));
+            .filter(|parent| !parent.as_os_str().is_empty())
+        else {
+            return Ok(());
+        };
         std::fs::create_dir_all(&parent).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!(

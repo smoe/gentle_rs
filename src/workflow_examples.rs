@@ -1435,6 +1435,13 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
+        if let Operation::SummarizeTfbsTrackSimilarity { path, .. } = op {
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
         if let Operation::RenderTfbsScoreTracksSvg { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
