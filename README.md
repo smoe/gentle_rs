@@ -492,6 +492,49 @@ and
 exports stay available when strand-specific spacing or flanking-motif
 relationships matter.
 
+### Dynamic Promoter TF Workflows
+
+The README examples above happen to use `TP73` and `TERT`, but the shared
+engine routes are not locked to those genes. Any prepared local
+Ensembl-backed gene can be turned into one promoter slice, and the requested
+factors can be described by exact motif id/name, common aliases such as
+`OCT4`, family-style queries such as `KLF family`, or built-in functional
+groups such as `Yamanaka factors` / `stemness`.
+
+One direct command-line path looks like this:
+
+```sh
+cargo run --quiet --bin gentle_cli -- shell \
+  'resources resolve-tf-query "Yamanaka factors" OCT4 "KLF family" --output /tmp/tf_queries.json'
+
+cargo run --quiet --bin gentle_cli -- \
+  genomes extract-promoter "Human GRCh38 Ensembl 116" TERT \
+  --output-id grch38_tert_promoter \
+  --upstream-bp 1000 \
+  --downstream-bp 200
+
+cargo run --quiet --bin gentle_cli -- shell \
+  'features tfbs-scan grch38_tert_promoter --motif "Yamanaka factors" --motif SP1 --min-llr-quantile 0.95 --max-hits 100 --path /tmp/tert_tfbs_scan.json'
+
+cargo run --quiet --bin gentle_cli -- shell \
+  'features tfbs-score-tracks-svg grch38_tert_promoter docs/figures/tert_yamanaka_sp1_score_tracks.svg --motif "Yamanaka factors" --motif SP1 --score-kind llr_background_tail_log10'
+
+cargo run --quiet --bin gentle_cli -- shell \
+  'features tfbs-track-similarity grch38_tert_promoter --anchor-motif SP1 --candidate-motif "Yamanaka factors" --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species "Homo sapiens" --include-remote-metadata --limit 25 --path /tmp/tert_sp1_yamanaka_similarity.json'
+```
+
+That keeps the whole promoter-analysis path dynamic:
+
+- the gene can be replaced with any user-chosen locus that exists in the
+  prepared reference
+- the upstream region is derived deterministically from transcript TSS
+  geometry instead of being pasted manually
+- `features tfbs-scan ...` returns discrete hit locations
+- `features tfbs-score-tracks-svg ...` renders the continuous binding-support
+  landscape
+- `features tfbs-track-similarity ...` ranks other requested factors by how
+  similarly they score over the same promoter span
+
 ### Stateless Sequence Inspection
 
 GENtle now also has a very small state-optional inspection slice for direct DNA

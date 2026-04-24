@@ -2142,21 +2142,6 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 state,
                 "features tfbs-score-tracks-svg",
             )?;
-            if !matches!(
-                &target,
-                SequenceScanTarget::SeqId {
-                    span_end_0based_exclusive: Some(_),
-                    ..
-                } | SequenceScanTarget::InlineSequence {
-                    span_end_0based_exclusive: Some(_),
-                    ..
-                }
-            ) {
-                return Err(
-                    "features tfbs-score-tracks-svg requires --range START..END or --end N"
-                        .to_string(),
-                );
-            }
             Ok(ShellCommand::FeaturesTfbsScoreTracksSvg {
                 target,
                 motifs,

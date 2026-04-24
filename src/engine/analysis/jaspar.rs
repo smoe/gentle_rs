@@ -902,11 +902,7 @@ impl GentleEngine {
         let requested_motifs = if motifs.is_empty() {
             tf_motifs::all_motif_ids()
         } else {
-            motifs
-                .iter()
-                .map(|motif| motif.trim().to_string())
-                .filter(|motif| !motif.is_empty())
-                .collect::<Vec<_>>()
+            Self::expand_tf_query_tokens(motifs)?
         };
         if requested_motifs.is_empty() {
             return Err(EngineError {

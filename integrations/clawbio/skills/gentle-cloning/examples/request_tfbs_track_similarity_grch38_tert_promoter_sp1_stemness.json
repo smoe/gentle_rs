@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "features tfbs-track-similarity grch38_tert_promoter --anchor-motif SP1 --candidate-motif stemness --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species \"Homo sapiens\" --include-remote-metadata --limit 25 --path artifacts/grch38_tert_promoter.sp1_vs_stemness.similarity.json",
+  "expected_artifacts": [
+    "artifacts/grch38_tert_promoter.sp1_vs_stemness.similarity.json"
+  ],
+  "timeout_secs": 180
+}

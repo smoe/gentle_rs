@@ -195,6 +195,13 @@ Behavior notes:
 - `SummarizeTfbsScoreTracks` returns the structured per-position forward/reverse
   score arrays over a `SequenceScanTarget`, so the same report path works for
   stored `seq_id` spans and inline ASCII DNA.
+- motif tokens in `motifs[]` resolve through the same shared TF-query layer:
+  - exact motif ids / TF names
+  - aliases such as `OCT4`
+  - built-in functional groups such as `Yamanaka factors` / `stemness`
+  - family-like queries such as `KLF family`
+- when the shell command omits an explicit range, the full selected
+  `SequenceScanTarget` span is used.
 - when the target is a stored `seq_id`, the same shared report can also carry
   `overlay_tracks[]` for imported genome-track evidence already materialized on
   that sequence (for example projected BED / CUT&RUN peak intervals):
@@ -367,6 +374,9 @@ Behavior notes:
   adapters can later re-sort without recomputing biology
 - `candidate_motifs=["ALL"]` or `["*"]` expands to the full local JASPAR
   registry
+- otherwise `anchor_motif` and every `candidate_motifs[]` token resolve
+  through the same shared TF-query layer used by score tracks and JASPAR
+  summaries, so aliases/groups/family-like queries expand deterministically
 - optional `species_filters[]` currently use the persisted local
   `jaspar.remote_metadata.json` snapshot rather than live network refresh:
   motifs without cached metadata are skipped when such a filter is active
@@ -377,6 +387,43 @@ Behavior notes:
 - unlike the pairwise synchrony heatmap, this route sorts by the selected
   metric itself rather than its absolute value because the intent is “most
   similarly scoring”, not “most strongly related in either direction”
+
+## TF query resolution contract
+
+GENtle also exposes one lightweight TF-query resolution report so CLI, GUI,
+and ClawBio/OpenClaw users can audit what a natural-language transcription
+factor query will map to before running TFBS/JASPAR analysis.
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources resolve-tf-query "Yamanaka factors" OCT4 "KLF family" --output tf_queries.json'
+```
+
+First-class operation route:
+
+```json
+{"ResolveTfQueries":{"queries":["Yamanaka factors","OCT4","KLF family"],"path":"tf_queries.json"}}
+```
+
+Portable schema:
+
+- `gentle.tf_query_resolution.v1`
+
+Behavior notes:
+
+- each query row reports:
+  - the original query string
+  - whether it matched exactly, by alias, as a built-in group, or by a
+    family-like local-registry expansion
+  - the expanded motif ids/names GENtle will actually use downstream
+- this is the intended bridge between user-facing names such as
+  `Yamanaka factors`, `stemness`, or `OCT4` and the concrete local motif
+  registry rows that power:
+  - `SummarizeJasparEntries`
+  - `SummarizeTfbsScoreTracks`
+  - `SummarizeTfbsTrackSimilarity`
+  - `ScanTfbsHits`
 
 ## Stateless sequence-scan contract
 
@@ -570,6 +617,9 @@ Behavior notes:
 
 - When `motifs` is omitted or empty, GENtle summarizes every entry currently
   visible through the active local JASPAR registry.
+- `motifs[]` accepts the same query forms described above for
+  `ResolveTfQueries`, so callers can use aliases, built-in groups, or
+  family-like queries instead of only exact motif ids.
 - `maximizing_sequence` and `minimizing_sequence` are derived column-wise from
   the same local matrix/consensus information GENtle already uses for TFBS
   scoring; they are not hand-curated examples.
