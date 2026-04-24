@@ -1828,4 +1828,261 @@ impl GentleEngine {
             message: format!("Could not write TFBS score-track report to '{path}': {e}"),
         })
     }
+
+    fn promoter_aligned_sequence(sequence: &str, strand: Option<char>) -> String {
+        if strand == Some('-') {
+            Self::reverse_complement(sequence)
+        } else {
+            sequence.to_string()
+        }
+    }
+
+    fn promoter_oriented_tss_position_0based(
+        sequence_length_bp: usize,
+        extract_start_1based: usize,
+        tss_1based: usize,
+        strand: Option<char>,
+    ) -> Option<usize> {
+        if extract_start_1based == 0 || tss_1based < extract_start_1based {
+            return None;
+        }
+        let local_0based = tss_1based.saturating_sub(extract_start_1based);
+        if local_0based >= sequence_length_bp {
+            return None;
+        }
+        Some(if strand == Some('-') {
+            sequence_length_bp
+                .saturating_sub(1)
+                .saturating_sub(local_0based)
+        } else {
+            local_0based
+        })
+    }
+
+    fn promoter_local_position_to_genomic_1based(
+        strand: Option<char>,
+        promoter_start_1based: usize,
+        promoter_end_1based: usize,
+        promoter_length_bp: usize,
+        local_0based: usize,
+    ) -> Option<usize> {
+        if promoter_length_bp == 0 || local_0based >= promoter_length_bp {
+            return None;
+        }
+        Some(if strand == Some('-') {
+            promoter_end_1based.saturating_sub(local_0based)
+        } else {
+            promoter_start_1based.saturating_add(local_0based)
+        })
+    }
+
+    fn tfbs_track_positive_support_fraction(track: &TfbsScoreTrackRow) -> f64 {
+        if track.scored_window_count == 0 {
+            return 0.0;
+        }
+        let positive_windows = track
+            .forward_scores
+            .iter()
+            .zip(track.reverse_scores.iter())
+            .filter(|(forward, reverse)| **forward > 0.0 || **reverse > 0.0)
+            .count();
+        positive_windows as f64 / track.scored_window_count as f64
+    }
+
+    pub(crate) fn summarize_multi_gene_promoter_tfbs(
+        &self,
+        genome_id: &str,
+        genes: &[PromoterTfbsGeneQuery],
+        motifs: &[String],
+        upstream_bp: usize,
+        downstream_bp: usize,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<MultiGenePromoterTfbsReport, EngineError> {
+        if genes.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "SummarizeMultiGenePromoterTfbs requires at least one gene query"
+                    .to_string(),
+            });
+        }
+        if motifs.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "SummarizeMultiGenePromoterTfbs requires at least one TF motif query"
+                    .to_string(),
+            });
+        }
+
+        let effective_catalog_path =
+            catalog_path.unwrap_or(crate::genomes::default_catalog_discovery_token(false));
+        let (catalog, _) = Self::open_reference_genome_catalog(Some(effective_catalog_path))?;
+        let mut gene_reports = vec![];
+        let mut summary_rows = vec![];
+        let mut warnings = vec![];
+
+        for gene in genes {
+            let resolved = Self::resolve_genome_promoter_slice_request(
+                &catalog,
+                genome_id,
+                &gene.gene_query,
+                gene.occurrence,
+                gene.transcript_id.as_deref(),
+                upstream_bp,
+                downstream_bp,
+                cache_dir,
+            )?;
+            warnings.extend(resolved.warnings.clone());
+
+            let strand = resolved
+                .selected_gene
+                .strand
+                .or(resolved.selected_transcript.strand)
+                .unwrap_or('+');
+            let promoter_sequence = catalog
+                .get_sequence_region_with_cache(
+                    genome_id,
+                    &resolved.selected_transcript.chromosome,
+                    resolved.extract_start_1based,
+                    resolved.extract_end_1based,
+                    cache_dir,
+                )
+                .map_err(|e| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Could not load promoter slice {}:{}-{} from '{}': {}",
+                        resolved.selected_transcript.chromosome,
+                        resolved.extract_start_1based,
+                        resolved.extract_end_1based,
+                        genome_id,
+                        e
+                    ),
+                })?;
+            let oriented_sequence =
+                Self::promoter_aligned_sequence(&promoter_sequence, Some(strand));
+            let promoter_length_bp = oriented_sequence.len();
+            let tss_position_0based = Self::promoter_oriented_tss_position_0based(
+                promoter_length_bp,
+                resolved.extract_start_1based,
+                resolved.tss_1based,
+                Some(strand),
+            )
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not place TSS for gene '{}' into promoter-oriented coordinates",
+                    Self::genome_gene_display_label(&resolved.selected_gene)
+                ),
+            })?;
+            let desired_promoter_length =
+                upstream_bp.saturating_add(downstream_bp).saturating_add(1);
+            if promoter_length_bp != desired_promoter_length {
+                warnings.push(format!(
+                    "Promoter slice for '{}' is {} bp instead of the requested {} bp, likely because the genomic interval clipped at a contig boundary.",
+                    Self::genome_gene_display_label(&resolved.selected_gene),
+                    promoter_length_bp,
+                    desired_promoter_length
+                ));
+            }
+
+            let display_label = gene
+                .display_label
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .or_else(|| resolved.selected_gene.gene_name.clone())
+                .unwrap_or_else(|| resolved.query.clone());
+            let mut tfbs_score_tracks = self.summarize_tfbs_score_tracks(
+                SequenceScanTarget::InlineSequence {
+                    sequence_text: oriented_sequence,
+                    topology: InlineSequenceTopology::Linear,
+                    id_hint: Some(display_label.clone()),
+                    span_start_0based: None,
+                    span_end_0based_exclusive: None,
+                },
+                motifs,
+                score_kind,
+                clip_negative,
+            )?;
+            tfbs_score_tracks.tss_markers = vec![TfbsScoreTrackTssMarker {
+                feature_id: usize::MAX,
+                feature_kind: "genome_promoter_slice".to_string(),
+                label: resolved.selected_transcript.transcript_id.clone(),
+                position_0based: tss_position_0based,
+                is_reverse: false,
+            }];
+
+            for track in &tfbs_score_tracks.tracks {
+                let peak_position_0based = track.max_position_0based;
+                summary_rows.push(MultiGenePromoterTfbsSummaryRow {
+                    gene_label: display_label.clone(),
+                    gene_query: resolved.query.clone(),
+                    transcript_id: resolved.selected_transcript.transcript_id.clone(),
+                    tf_id: track.tf_id.clone(),
+                    tf_name: track.tf_name.clone(),
+                    max_score: track.max_score,
+                    peak_position_0based,
+                    peak_position_promoter_relative_bp: peak_position_0based
+                        .map(|value| value as i64 - tss_position_0based as i64),
+                    peak_genomic_position_1based: peak_position_0based.and_then(|value| {
+                        Self::promoter_local_position_to_genomic_1based(
+                            Some(strand),
+                            resolved.extract_start_1based,
+                            resolved.extract_end_1based,
+                            promoter_length_bp,
+                            value,
+                        )
+                    }),
+                    positive_fraction: Self::tfbs_track_positive_support_fraction(track),
+                });
+            }
+
+            gene_reports.push(MultiGenePromoterTfbsGeneReport {
+                gene_query: resolved.query.clone(),
+                occurrence: resolved.occurrence,
+                transcript_id_requested: gene.transcript_id.clone(),
+                display_label,
+                gene_id: resolved.selected_gene.gene_id.clone(),
+                gene_name: resolved.selected_gene.gene_name.clone(),
+                transcript_id: resolved.selected_transcript.transcript_id.clone(),
+                chromosome: resolved.selected_transcript.chromosome.clone(),
+                strand: strand.to_string(),
+                promoter_start_1based: resolved.extract_start_1based,
+                promoter_end_1based: resolved.extract_end_1based,
+                promoter_length_bp,
+                tss_1based: resolved.tss_1based,
+                sequence_orientation: "transcription_aligned".to_string(),
+                used_fuzzy_gene_match: resolved.used_fuzzy_gene_match,
+                tfbs_score_tracks,
+            });
+        }
+
+        summary_rows.sort_by(|left, right| {
+            left.gene_label
+                .cmp(&right.gene_label)
+                .then(left.transcript_id.cmp(&right.transcript_id))
+                .then(left.tf_id.cmp(&right.tf_id))
+        });
+
+        Ok(MultiGenePromoterTfbsReport {
+            schema: MULTI_GENE_PROMOTER_TFBS_REPORT_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            genome_id: genome_id.to_string(),
+            upstream_bp,
+            downstream_bp,
+            score_kind,
+            clip_negative,
+            motifs_requested: motifs.to_vec(),
+            gene_queries_requested: genes.to_vec(),
+            returned_gene_count: gene_reports.len(),
+            genes: gene_reports,
+            summary_rows,
+            warnings,
+        })
+    }
 }

@@ -345,6 +345,61 @@ Behavior notes:
   useful for figure/report contexts where one wants to show that only some
   factors cross into positive support while the others remain below zero.
 
+## Multi-gene promoter TFBS contract
+
+GENtle now also exposes one promoter-aligned multi-gene TFBS comparison report
+for cases where users want one shared upstream figure across several genes
+instead of repeating a single-gene promoter workflow manually.
+
+Current shared-shell routes:
+
+```bash
+gentle_cli shell 'genomes promoter-tfbs-summary GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]'
+gentle_cli shell 'genomes promoter-tfbs-svg GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg'
+```
+
+First-class operation routes:
+
+```json
+{"SummarizeMultiGenePromoterTfbs":{"genome_id":"Human GRCh38 Ensembl 116","genes":[{"gene_query":"TERT"},{"gene_query":"TP73"}],"motifs":["Yamanaka factors","SP1"],"upstream_bp":1000,"downstream_bp":200,"score_kind":"llr_background_tail_log10","clip_negative":true,"path":"artifacts/tert_tp73_promoter_tfbs.summary.json"}}
+```
+
+```json
+{"RenderMultiGenePromoterTfbsSvg":{"genome_id":"Human GRCh38 Ensembl 116","genes":[{"gene_query":"TERT"},{"gene_query":"TP73"}],"motifs":["Yamanaka factors","SP1"],"upstream_bp":1000,"downstream_bp":200,"score_kind":"llr_background_tail_log10","clip_negative":true,"path":"artifacts/tert_tp73_promoter_tfbs.svg"}}
+```
+
+Portable schema:
+
+- `gentle.multi_gene_promoter_tfbs.v1`
+
+Behavior notes:
+
+- each `genes[]` entry uses the same shared TF-query and promoter-resolution
+  machinery as the single-gene promoter route, including exact/fuzzy gene
+  selection and optional transcript pinning
+- shorthand shell gene tokens support:
+  - `QUERY`
+  - `QUERY::OCCURRENCE`
+  - `QUERY@TRANSCRIPT_ID`
+  - `QUERY#DISPLAY_LABEL`
+  - combinations such as `QUERY::2@ENST...#short_label`
+- every returned `genes[]` row carries:
+  - resolved gene/transcript identifiers
+  - promoter genomic interval
+  - transcript TSS position
+  - one nested `gentle.tfbs_score_tracks.v1` report
+- minus-strand promoters are reverse-complemented before scoring, and
+  `sequence_orientation="transcription_aligned"` makes that explicit so
+  upstream/downstream comparisons stay meaningful across mixed-strand genes
+- `summary_rows[]` flatten one per-gene/per-factor comparison table with:
+  - `max_score`
+  - `peak_position_0based`
+  - `peak_position_promoter_relative_bp`
+  - `peak_genomic_position_1based`
+  - `positive_fraction`
+- the SVG export renders one small-multiples promoter panel per gene with a
+  shared promoter-relative axis convention and explicit TSS markers
+
 ## TFBS score-track similarity contract
 
 GENtle now also exposes one anchor-vs-candidate TFBS score-track similarity

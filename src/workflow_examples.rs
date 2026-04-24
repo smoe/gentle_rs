@@ -2499,7 +2499,9 @@ mod tests {
         let run_dir = TempDir::new().expect("temp run dir");
         run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
             .expect("tp73 protein 2D gel workflow should execute");
-        let svg_path = run_dir.path().join("exports/tp73_isoform_protein_2d_gel.svg");
+        let svg_path = run_dir
+            .path()
+            .join("exports/tp73_isoform_protein_2d_gel.svg");
         assert!(svg_path.exists());
         let svg = fs::read_to_string(&svg_path).expect("read tp73 protein 2D gel svg");
         assert!(svg.contains("Protein 2D Gel Preview"));

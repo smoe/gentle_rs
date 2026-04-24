@@ -535,6 +535,43 @@ That keeps the whole promoter-analysis path dynamic:
 - `features tfbs-track-similarity ...` ranks other requested factors by how
   similarly they score over the same promoter span
 
+The same shared engine route now also supports one combined multi-gene figure,
+so users are no longer limited to repeating the single-gene workflow by hand:
+
+```sh
+cargo run --quiet --bin gentle_cli -- shell \
+  'genomes promoter-tfbs-summary "Human GRCh38 Ensembl 116" \
+    --gene TERT \
+    --gene TP73 \
+    --motif "Yamanaka factors" \
+    --motif SP1 \
+    --upstream-bp 1000 \
+    --downstream-bp 200 \
+    --score-kind llr_background_tail_log10 \
+    --path /tmp/tert_tp73_promoter_tfbs.summary.json'
+
+cargo run --quiet --bin gentle_cli -- shell \
+  'genomes promoter-tfbs-svg "Human GRCh38 Ensembl 116" \
+    --gene TERT \
+    --gene TP73 \
+    --motif "Yamanaka factors" \
+    --motif SP1 \
+    --upstream-bp 1000 \
+    --downstream-bp 200 \
+    --score-kind llr_background_tail_log10 \
+    /tmp/tert_tp73_promoter_tfbs.svg'
+```
+
+Those commands keep the multi-gene path just as dynamic:
+
+- any prepared Ensembl-backed gene set can be supplied with repeated `--gene`
+  tokens
+- promoter windows are transcription-aligned before scoring, so upstream
+  support stays comparable across plus- and minus-strand genes
+- the summary JSON exposes one compact per-gene/per-factor comparison table
+- the SVG renders one small-multiples promoter panel per gene with a shared
+  x-axis convention and explicit TSS markers
+
 ### Stateless Sequence Inspection
 
 GENtle now also has a very small state-optional inspection slice for direct DNA

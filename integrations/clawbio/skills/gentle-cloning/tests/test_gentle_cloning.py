@@ -2004,6 +2004,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "features tfbs-track-similarity grch38_tert_promoter --anchor-motif SP1 --candidate-motif stemness --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species \"Homo sapiens\" --include-remote-metadata --limit 25 --path artifacts/grch38_tert_promoter.sp1_vs_stemness.similarity.json",
             180,
         ),
+        "request_summarize_grch38_tert_tp73_promoters_stemness_sp1.json": (
+            "shell",
+            "genomes promoter-tfbs-summary \"Human GRCh38 Ensembl 116\" --gene TERT --gene TP73 --motif stemness --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 --path artifacts/grch38_tert_tp73_promoters.stemness_sp1.summary.json",
+            1800,
+        ),
+        "request_render_svg_grch38_tert_tp73_promoters_stemness_sp1.json": (
+            "shell",
+            "genomes promoter-tfbs-svg \"Human GRCh38 Ensembl 116\" --gene TERT --gene TP73 --motif stemness --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 artifacts/grch38_tert_tp73_promoters.stemness_sp1.svg",
+            1800,
+        ),
         "request_workflow_tp73_tfbs_score_tracks_summary.json": (
             "workflow",
             None,
@@ -2120,6 +2130,15 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_tfbs_track_similarity_grch38_tert_promoter_sp1_stemness.json",
         }:
             assert payload["state_path"] == ".gentle_state.json"
+        if name in {
+            "request_summarize_grch38_tert_tp73_promoters_stemness_sp1.json",
+            "request_render_svg_grch38_tert_tp73_promoters_stemness_sp1.json",
+        }:
+            assert payload["ensure_reference_prepared"] == {
+                "genome_id": "Human GRCh38 Ensembl 116",
+                "catalog_path": "assets/genomes.json",
+                "prepare_timeout_secs": 7200,
+            }
         if name == "request_protocol_cartoon_gibson_svg.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/gibson.two_fragment.protocol.svg"
@@ -2327,6 +2346,14 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         if name == "request_tfbs_track_similarity_grch38_tert_promoter_sp1_stemness.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/grch38_tert_promoter.sp1_vs_stemness.similarity.json"
+            ]
+        if name == "request_summarize_grch38_tert_tp73_promoters_stemness_sp1.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/grch38_tert_tp73_promoters.stemness_sp1.summary.json"
+            ]
+        if name == "request_render_svg_grch38_tert_tp73_promoters_stemness_sp1.json":
+            assert payload["expected_artifacts"] == [
+                "artifacts/grch38_tert_tp73_promoters.stemness_sp1.svg"
             ]
         if name == "request_protocol_cartoon_qpcr_svg.json":
             assert payload["expected_artifacts"] == [

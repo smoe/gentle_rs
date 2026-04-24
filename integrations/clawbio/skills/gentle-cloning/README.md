@@ -568,6 +568,13 @@ Included follow-on analysis/planning/graphics requests:
   - follow-on route after the promoter extraction example that ranks the
     requested stemness/Yamanaka factors by similarity to SP1 over the same
     promoter span
+- `examples/request_summarize_grch38_tert_tp73_promoters_stemness_sp1.json`
+  - multi-gene promoter comparison example that summarizes promoter-aligned TF
+    support for `TERT` and `TP73`, while still leaving the chosen genes fully
+    user-swappable
+- `examples/request_render_svg_grch38_tert_tp73_promoters_stemness_sp1.json`
+  - same multi-gene promoter comparison path, but exports one combined
+    small-multiples SVG figure
 - `examples/request_render_svg_pgex_fasta_circular.json`
   - expects a state containing `pgex_fasta`, for example after running
     `examples/request_workflow_file.json`

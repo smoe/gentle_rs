@@ -70,7 +70,8 @@ struct ProteinLadderCatalog {
     ladders: Vec<ProteinLadder>,
 }
 
-static PROTEIN_LADDERS: LazyLock<ProteinLadderCatalog> = LazyLock::new(ProteinLadderCatalog::default);
+static PROTEIN_LADDERS: LazyLock<ProteinLadderCatalog> =
+    LazyLock::new(ProteinLadderCatalog::default);
 
 impl ProteinLadderCatalog {
     fn default() -> Self {
@@ -192,7 +193,11 @@ impl ProteinLadderCatalog {
     }
 
     fn names_sorted(&self) -> Vec<String> {
-        let mut names = self.ladders.iter().map(|l| l.name.to_string()).collect::<Vec<_>>();
+        let mut names = self
+            .ladders
+            .iter()
+            .map(|l| l.name.to_string())
+            .collect::<Vec<_>>();
         names.sort_unstable();
         names
     }
@@ -407,7 +412,11 @@ pub fn build_protein_gel_layout(
         });
     }
 
-    let pool_min = all_band_kdas.iter().copied().reduce(f32::min).unwrap_or(1.0);
+    let pool_min = all_band_kdas
+        .iter()
+        .copied()
+        .reduce(f32::min)
+        .unwrap_or(1.0);
     let pool_max = all_band_kdas
         .iter()
         .copied()
@@ -495,8 +504,16 @@ pub fn build_protein_gel_layout(
         });
     }
 
-    let min_band = all_band_values.iter().copied().reduce(f32::min).unwrap_or(pool_min);
-    let max_band = all_band_values.iter().copied().reduce(f32::max).unwrap_or(pool_max);
+    let min_band = all_band_values
+        .iter()
+        .copied()
+        .reduce(f32::min)
+        .unwrap_or(pool_min);
+    let max_band = all_band_values
+        .iter()
+        .copied()
+        .reduce(f32::max)
+        .unwrap_or(pool_max);
     let range_min_kda = ((min_band as f64) * 0.72).floor().max(1.0) as f32;
     let mut range_max_kda = ((max_band as f64) * 1.28).ceil().max(2.0) as f32;
     if range_max_kda <= range_min_kda {
@@ -647,8 +664,16 @@ pub fn export_protein_gel_svg(layout: &ProteinGelLayout) -> String {
 
         for band in &lane.bands {
             let y = protein_mass_y(layout, band.kda, GEL_TOP + 14.0, GEL_BOTTOM - 14.0);
-            let width = if lane.is_ladder { 34.0 + 20.0 * band.intensity } else { 42.0 };
-            let height = if lane.is_ladder { 3.0 + 3.0 * band.intensity } else { 8.0 };
+            let width = if lane.is_ladder {
+                34.0 + 20.0 * band.intensity
+            } else {
+                42.0
+            };
+            let height = if lane.is_ladder {
+                3.0 + 3.0 * band.intensity
+            } else {
+                8.0
+            };
             let fill = if lane.is_ladder { "#e5e7eb" } else { "#d97706" };
             doc = doc.add(
                 Rectangle::new()
@@ -918,7 +943,11 @@ pub fn build_protein_2d_gel_layout(
         });
     }
 
-    let pool_min = all_band_kdas.iter().copied().reduce(f32::min).unwrap_or(1.0);
+    let pool_min = all_band_kdas
+        .iter()
+        .copied()
+        .reduce(f32::min)
+        .unwrap_or(1.0);
     let pool_max = all_band_kdas
         .iter()
         .copied()
@@ -929,16 +958,32 @@ pub fn build_protein_2d_gel_layout(
         return Err("No protein ladders available for protein 2D-gel rendering".to_string());
     }
 
-    let min_band = all_band_kdas.iter().copied().reduce(f32::min).unwrap_or(pool_min);
-    let max_band = all_band_kdas.iter().copied().reduce(f32::max).unwrap_or(pool_max);
+    let min_band = all_band_kdas
+        .iter()
+        .copied()
+        .reduce(f32::min)
+        .unwrap_or(pool_min);
+    let max_band = all_band_kdas
+        .iter()
+        .copied()
+        .reduce(f32::max)
+        .unwrap_or(pool_max);
     let range_min_kda = ((min_band as f64) * 0.72).floor().max(1.0) as f32;
     let mut range_max_kda = ((max_band as f64) * 1.28).ceil().max(2.0) as f32;
     if range_max_kda <= range_min_kda {
         range_max_kda = range_min_kda + 1.0;
     }
 
-    let min_pi = all_pi_values.iter().copied().reduce(f32::min).unwrap_or(0.0);
-    let max_pi = all_pi_values.iter().copied().reduce(f32::max).unwrap_or(min_pi);
+    let min_pi = all_pi_values
+        .iter()
+        .copied()
+        .reduce(f32::min)
+        .unwrap_or(0.0);
+    let max_pi = all_pi_values
+        .iter()
+        .copied()
+        .reduce(f32::max)
+        .unwrap_or(min_pi);
     let range_min_pi = (min_pi - 1.0).floor().clamp(0.0, 13.0);
     let mut range_max_pi = (max_pi + 1.0).ceil().clamp(range_min_pi + 2.0, 14.0);
     if range_max_pi <= range_min_pi {
@@ -1089,7 +1134,12 @@ pub fn export_protein_2d_gel_svg(layout: &Protein2dGelLayout) -> String {
     }
 
     for (idx, spot) in layout.spots.iter().enumerate() {
-        let x = protein_pi_x(layout, spot.isoelectric_point, plot_left + 22.0, plot_right - 22.0);
+        let x = protein_pi_x(
+            layout,
+            spot.isoelectric_point,
+            plot_left + 22.0,
+            plot_right - 22.0,
+        );
         let y = protein_mass_y_for_range(
             layout.range_min_kda,
             layout.range_max_kda,

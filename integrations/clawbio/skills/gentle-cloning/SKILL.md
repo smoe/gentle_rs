@@ -376,6 +376,8 @@ Expected outputs:
 - grouped focus-vs-context TFBS summaries
 - continuous TFBS/PSSM score-track JSON reports
 - TFBS score-track SVG figures
+- multi-gene promoter TFBS summary JSON reports
+- multi-gene promoter TFBS SVG figures
 - TFBS track-similarity JSON reports for one anchor factor vs one candidate set
 - JASPAR entry-presentation JSON for motif-level background/max/min context
 - TF-query resolution JSON that shows how aliases, family names, or functional
@@ -1043,6 +1045,13 @@ Apply the following methodology:
   - follow-on route after the promoter extraction example that ranks the
     requested stemness/Yamanaka factors by similarity to SP1 over the same
     promoter span
+- `examples/request_summarize_grch38_tert_tp73_promoters_stemness_sp1.json`
+  - multi-gene promoter comparison example that derives promoter-aligned TFBS
+    summary rows for user-swappable genes (`TERT` and `TP73` here, but not
+    hard-coded in the engine)
+- `examples/request_render_svg_grch38_tert_tp73_promoters_stemness_sp1.json`
+  - same multi-gene promoter comparison path, but exports one combined
+    small-multiples SVG figure
 - `examples/request_workflow_vkorc1_planning.json`
   - the main graphical answer for "functional analyses of genetic
     variations" in the current scaffold
@@ -1139,6 +1148,9 @@ Apply the following methodology:
 - "Extract the promoter for TERT, MYC, or another gene I choose and scan it for
   Yamanaka-factor or SP1 support."
 - "Compare SP1 against the Yamanaka factors on the promoter of my chosen gene."
+- "Compare the promoter TF support for TERT and TP73 in one combined figure."
+- "Use my own gene set, not just TP73/TP53, and show one promoter-aligned TFBS
+  panel per gene."
 - "Summarize TFBS hits near this SNP and also render the chosen TFBS as an
   expert figure."
 - "Show me the EcoRI cleavage context as both text and SVG."

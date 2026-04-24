@@ -72,10 +72,10 @@ pub mod ncbi_genbank_xml;
 pub mod open_reading_frame;
 /// Virtual pool gel model and rendering primitives.
 pub mod pool_gel;
-/// Protein molecular-weight gel model and rendering primitives.
-pub mod protein_gel;
 /// Protease digest definitions and helpers.
 pub mod protease;
+/// Protein molecular-weight gel model and rendering primitives.
+pub mod protein_gel;
 /// Protocol-cartoon catalog and deterministic SVG rendering helpers.
 pub mod protocol_cartoon;
 /// Position-specific scoring matrix (motif) primitives.
@@ -90,6 +90,8 @@ pub mod render_dna_linear;
 pub mod render_export;
 /// Feature expert-view SVG renderer.
 pub mod render_feature_expert;
+/// Shared multi-gene promoter TFBS small-multiples SVG renderer.
+pub mod render_multi_gene_promoter_tfbs;
 /// Sequence export helpers and render-side formatting.
 pub mod render_sequence;
 /// Shared TF motif score-track SVG renderer.
@@ -116,6 +118,8 @@ pub mod sequence_rows_restriction_enzymes;
 pub mod service_readiness;
 /// Generated/derived shell-help documentation helpers.
 pub mod shell_docs;
+/// Deterministic SVG-to-PNG rasterization helpers for headless adapters.
+pub mod svg_png;
 /// Hidden shared support helpers for internal tests across library and binaries.
 #[doc(hidden)]
 pub mod test_support;
@@ -133,8 +137,6 @@ pub mod window_backdrop;
 pub mod window_dna;
 /// Curated workflow example payloads and templates.
 pub mod workflow_examples;
-/// Deterministic SVG-to-PNG rasterization helpers for headless adapters.
-pub mod svg_png;
 
 // Restriction enzymes and proteases
 pub static ENZYMES: LazyLock<Enzymes> = LazyLock::new(Enzymes::default);

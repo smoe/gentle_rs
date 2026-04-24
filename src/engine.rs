@@ -473,6 +473,7 @@ const FEATURE_QUERY_DEFAULT_LIMIT: usize = 200;
 const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
 const TFBS_SCORE_TRACK_REPORT_SCHEMA: &str = "gentle.tfbs_score_tracks.v1";
+const MULTI_GENE_PROMOTER_TFBS_REPORT_SCHEMA: &str = "gentle.multi_gene_promoter_tfbs.v1";
 const JASPAR_ENTRY_EXPERT_VIEW_SCHEMA: &str = "gentle.jaspar_entry_expert.v1";
 const JASPAR_ENTRY_PRESENTATION_REPORT_SCHEMA: &str = "gentle.jaspar_entry_presentation.v1";
 const JASPAR_REGISTRY_BENCHMARK_REPORT_SCHEMA: &str = "gentle.jaspar_registry_benchmark.v1";
@@ -558,6 +559,19 @@ fn default_promoter_reporter_retain_upstream_beyond_variant_bp() -> usize {
 
 fn default_promoter_reporter_max_candidates() -> usize {
     DEFAULT_PROMOTER_REPORTER_MAX_CANDIDATES
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedGenomePromoterSlice {
+    query: String,
+    occurrence: usize,
+    used_fuzzy_gene_match: bool,
+    selected_gene: GenomeGeneRecord,
+    selected_transcript: GenomeTranscriptRecord,
+    tss_1based: usize,
+    extract_start_1based: usize,
+    extract_end_1based: usize,
+    warnings: Vec<String>,
 }
 
 // Private decomposition slices of the engine implementation. Shared public
@@ -3611,6 +3625,47 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    SummarizeMultiGenePromoterTfbs {
+        genome_id: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        genes: Vec<PromoterTfbsGeneQuery>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        motifs: Vec<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    RenderMultiGenePromoterTfbsSvg {
+        genome_id: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        genes: Vec<PromoterTfbsGeneQuery>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        motifs: Vec<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        downstream_bp: usize,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        path: String,
+    },
     ScanTfbsHits {
         target: SequenceScanTarget,
         motifs: Vec<String>,
@@ -5004,6 +5059,8 @@ impl GentleEngine {
                 "SummarizeTfbsRegion".to_string(),
                 "SummarizeTfbsScoreTracks".to_string(),
                 "SummarizeTfbsTrackSimilarity".to_string(),
+                "SummarizeMultiGenePromoterTfbs".to_string(),
+                "RenderMultiGenePromoterTfbsSvg".to_string(),
                 "ScanTfbsHits".to_string(),
                 "InspectJasparEntry".to_string(),
                 "SummarizeJasparEntries".to_string(),
@@ -6938,6 +6995,8 @@ impl GentleEngine {
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
                 | Operation::SummarizeTfbsTrackSimilarity { .. }
+                | Operation::SummarizeMultiGenePromoterTfbs { .. }
+                | Operation::RenderMultiGenePromoterTfbsSvg { .. }
                 | Operation::ScanTfbsHits { .. }
                 | Operation::InspectJasparEntry { .. }
                 | Operation::SummarizeJasparEntries { .. }
@@ -7353,6 +7412,203 @@ impl GentleEngine {
             },
         );
         Ok(ranked.remove(0).0)
+    }
+
+    fn resolve_genome_promoter_slice_request(
+        catalog: &GenomeCatalog,
+        genome_id: &str,
+        gene_query: &str,
+        occurrence: Option<usize>,
+        transcript_id: Option<&str>,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        cache_dir: Option<&str>,
+    ) -> Result<ResolvedGenomePromoterSlice, EngineError> {
+        let query = gene_query.trim();
+        if query.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene query cannot be empty".to_string(),
+            });
+        }
+        let resolved_transcript_id = transcript_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let genes = catalog
+            .list_gene_regions(genome_id, cache_dir)
+            .map_err(|e| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Could not load gene index for genome '{}': {}",
+                    genome_id, e
+                ),
+            })?;
+        let mut exact_matches: Vec<&GenomeGeneRecord> = genes
+            .iter()
+            .filter(|record| Self::genome_gene_matches_exact(record, query))
+            .collect();
+        let used_fuzzy_gene_match = if exact_matches.is_empty() {
+            let query_lower = query.to_ascii_lowercase();
+            exact_matches = genes
+                .iter()
+                .filter(|record| Self::genome_gene_matches_contains(record, &query_lower))
+                .collect();
+            true
+        } else {
+            false
+        };
+        if exact_matches.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("No genes in '{}' match query '{}'", genome_id, query),
+            });
+        }
+        let requested_occurrence = occurrence;
+        let occurrence = requested_occurrence.unwrap_or(1);
+        if occurrence == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Gene occurrence must be >= 1".to_string(),
+            });
+        }
+        let mut warnings = vec![];
+        if exact_matches.len() > 1 && requested_occurrence.is_none() {
+            warnings.push(format!(
+                "Gene query '{}' matched {} records in '{}'; using first match (set occurrence for another match).",
+                query,
+                exact_matches.len(),
+                genome_id
+            ));
+        }
+        let Some(selected_gene) = exact_matches.get(occurrence - 1).cloned().cloned() else {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Gene query '{}' matched {} records, but occurrence {} was requested",
+                    query,
+                    exact_matches.len(),
+                    occurrence
+                ),
+            });
+        };
+
+        let mut transcript_records = match catalog.list_gene_transcript_records(
+            genome_id,
+            &selected_gene.chromosome,
+            selected_gene.start_1based,
+            selected_gene.end_1based,
+            selected_gene.gene_id.as_deref(),
+            selected_gene.gene_name.as_deref(),
+            cache_dir,
+        ) {
+            Ok(records) => records,
+            Err(e) => {
+                warnings.push(format!(
+                    "Could not inspect transcript/exon annotation for gene '{}': {}",
+                    Self::genome_gene_display_label(&selected_gene),
+                    e
+                ));
+                vec![]
+            }
+        };
+        if transcript_records.is_empty() {
+            match catalog.list_gene_transcript_records(
+                genome_id,
+                &selected_gene.chromosome,
+                selected_gene.start_1based,
+                selected_gene.end_1based,
+                None,
+                None,
+                cache_dir,
+            ) {
+                Ok(mut records) => {
+                    let selected_gene_id_norm = selected_gene
+                        .gene_id
+                        .as_deref()
+                        .map(Self::normalize_id_token)
+                        .filter(|v| !v.is_empty());
+                    let selected_gene_name_norm = selected_gene
+                        .gene_name
+                        .as_deref()
+                        .map(Self::normalize_id_token)
+                        .filter(|v| !v.is_empty());
+                    if selected_gene_id_norm.is_some() || selected_gene_name_norm.is_some() {
+                        records.retain(|record| {
+                            let transcript_gene_id_norm = record
+                                .gene_id
+                                .as_deref()
+                                .map(Self::normalize_id_token)
+                                .filter(|v| !v.is_empty());
+                            let transcript_gene_name_norm = record
+                                .gene_name
+                                .as_deref()
+                                .map(Self::normalize_id_token)
+                                .filter(|v| !v.is_empty());
+                            selected_gene_id_norm
+                                .as_ref()
+                                .zip(transcript_gene_id_norm.as_ref())
+                                .map(|(left, right)| left == right)
+                                .unwrap_or(false)
+                                || selected_gene_name_norm
+                                    .as_ref()
+                                    .zip(transcript_gene_name_norm.as_ref())
+                                    .map(|(left, right)| left == right)
+                                    .unwrap_or(false)
+                        });
+                    }
+                    if !records.is_empty() {
+                        warnings.push(format!(
+                            "Gene-scoped transcript filter returned no records for '{}'; using overlap fallback with {} transcript candidate(s).",
+                            Self::genome_gene_display_label(&selected_gene),
+                            records.len()
+                        ));
+                        transcript_records = records;
+                    }
+                }
+                Err(e) => {
+                    warnings.push(format!(
+                        "Could not run transcript fallback for gene '{}': {}",
+                        Self::genome_gene_display_label(&selected_gene),
+                        e
+                    ));
+                }
+            }
+        }
+
+        let (selected_transcript, tss_1based, extract_start_1based, extract_end_1based) =
+            Self::resolve_extract_genome_promoter_slice_interval(
+                &selected_gene,
+                &transcript_records,
+                resolved_transcript_id.as_deref(),
+                upstream_bp,
+                downstream_bp,
+            )
+            .map_err(|message| EngineError {
+                code: ErrorCode::NotFound,
+                message,
+            })?;
+
+        if resolved_transcript_id.is_none() && transcript_records.len() > 1 {
+            warnings.push(format!(
+                "Gene '{}' has {} transcript candidate(s); using outermost 5' transcript '{}' for promoter slice derivation (set transcript_id to choose another).",
+                Self::genome_gene_display_label(&selected_gene),
+                transcript_records.len(),
+                selected_transcript.transcript_id
+            ));
+        }
+
+        Ok(ResolvedGenomePromoterSlice {
+            query: query.to_string(),
+            occurrence,
+            used_fuzzy_gene_match,
+            selected_gene,
+            selected_transcript,
+            tss_1based,
+            extract_start_1based,
+            extract_end_1based,
+            warnings,
+        })
     }
 
     fn resolve_extract_genome_promoter_slice_interval(

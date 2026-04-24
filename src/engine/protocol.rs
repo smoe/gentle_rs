@@ -984,6 +984,94 @@ pub struct TfbsScoreTrackReport {
     pub tracks: Vec<TfbsScoreTrackRow>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One requested gene token for a multi-gene promoter TFBS analysis.
+pub struct PromoterTfbsGeneQuery {
+    pub gene_query: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub occurrence: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One promoter-resolved gene entry inside a multi-gene TFBS analysis report.
+pub struct MultiGenePromoterTfbsGeneReport {
+    pub gene_query: String,
+    pub occurrence: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_requested: Option<String>,
+    pub display_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_name: Option<String>,
+    pub transcript_id: String,
+    pub chromosome: String,
+    pub strand: String,
+    pub promoter_start_1based: usize,
+    pub promoter_end_1based: usize,
+    pub promoter_length_bp: usize,
+    pub tss_1based: usize,
+    pub sequence_orientation: String,
+    pub used_fuzzy_gene_match: bool,
+    pub tfbs_score_tracks: TfbsScoreTrackReport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One per-gene/per-motif summary row derived from a multi-gene promoter TFBS
+/// analysis.
+pub struct MultiGenePromoterTfbsSummaryRow {
+    pub gene_label: String,
+    pub gene_query: String,
+    pub transcript_id: String,
+    pub tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_name: Option<String>,
+    pub max_score: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_position_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_position_promoter_relative_bp: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_genomic_position_1based: Option<usize>,
+    pub positive_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable multi-gene promoter TFBS analysis report with one promoter-aligned
+/// score-track panel per requested gene and one compact comparison matrix.
+pub struct MultiGenePromoterTfbsReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub genome_id: String,
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    pub score_kind: TfbsScoreTrackValueKind,
+    pub clip_negative: bool,
+    #[serde(default)]
+    pub motifs_requested: Vec<String>,
+    #[serde(default)]
+    pub gene_queries_requested: Vec<PromoterTfbsGeneQuery>,
+    pub returned_gene_count: usize,
+    #[serde(default)]
+    pub genes: Vec<MultiGenePromoterTfbsGeneReport>,
+    #[serde(default)]
+    pub summary_rows: Vec<MultiGenePromoterTfbsSummaryRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 /// Topology hint for inline sequence operands used by state-optional scans.
@@ -2651,6 +2739,8 @@ pub struct OpResult {
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multi_gene_promoter_tfbs: Option<MultiGenePromoterTfbsReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_hit_scan: Option<TfbsHitScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

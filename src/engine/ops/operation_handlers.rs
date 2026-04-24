@@ -6296,6 +6296,7 @@ impl GentleEngine {
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
+            multi_gene_promoter_tfbs: None,
             tfbs_hit_scan: None,
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
@@ -6574,6 +6575,56 @@ impl GentleEngine {
                     path
                 ));
                     result.tfbs_score_tracks = Some(report);
+                }
+                Operation::RenderMultiGenePromoterTfbsSvg {
+                    genome_id,
+                    genes,
+                    motifs,
+                    upstream_bp,
+                    downstream_bp,
+                    score_kind,
+                    clip_negative,
+                    catalog_path,
+                    cache_dir,
+                    path,
+                } => {
+                    let mut report = self.summarize_multi_gene_promoter_tfbs(
+                        &genome_id,
+                        &genes,
+                        &motifs,
+                        upstream_bp,
+                        downstream_bp,
+                        score_kind,
+                        clip_negative,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    let svg =
+                        crate::render_multi_gene_promoter_tfbs::render_multi_gene_promoter_tfbs_svg(
+                            &report,
+                        );
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not write multi-gene promoter TFBS SVG to '{}': {e}",
+                            path
+                        ),
+                    })?;
+                    for warning in &report.warnings {
+                        result.warnings.push(warning.clone());
+                    }
+                    result.messages.push(format!(
+                        "Wrote multi-gene promoter TFBS SVG for '{}' ({} gene(s), {} per-gene motif row(s), score_kind={}, clip_negative={}) to '{}'",
+                        report.genome_id,
+                        report.returned_gene_count,
+                        report.summary_rows.len(),
+                        report.score_kind.as_str(),
+                        report.clip_negative,
+                        path
+                    ));
+                    result.multi_gene_promoter_tfbs = Some(report);
                 }
                 Operation::RenderTfbsScoreTrackCorrelationSvg {
                     seq_id,
@@ -7983,200 +8034,34 @@ impl GentleEngine {
                     catalog_path,
                     cache_dir,
                 } => {
-                    let query = gene_query.trim();
-                    if query.is_empty() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "Gene query cannot be empty".to_string(),
-                        });
-                    }
-                    let resolved_transcript_id = transcript_id
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .map(str::to_string);
                     let catalog_path = catalog_path
                         .unwrap_or_else(|| default_catalog_discovery_token(false).to_string());
                     let (catalog, _) = Self::open_reference_genome_catalog(Some(&catalog_path))?;
-                    let genes = catalog
-                        .list_gene_regions(&genome_id, cache_dir.as_deref())
-                        .map_err(|e| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!(
-                                "Could not load gene index for genome '{}': {}",
-                                genome_id, e
-                            ),
-                        })?;
-                    let mut exact_matches: Vec<&GenomeGeneRecord> = genes
-                        .iter()
-                        .filter(|record| Self::genome_gene_matches_exact(record, query))
-                        .collect();
-                    let used_fuzzy = if exact_matches.is_empty() {
-                        let query_lower = query.to_ascii_lowercase();
-                        exact_matches = genes
-                            .iter()
-                            .filter(|record| {
-                                Self::genome_gene_matches_contains(record, &query_lower)
-                            })
-                            .collect();
-                        true
-                    } else {
-                        false
-                    };
-                    if exact_matches.is_empty() {
-                        return Err(EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!("No genes in '{}' match query '{}'", genome_id, query),
-                        });
-                    }
-                    let requested_occurrence = occurrence;
-                    let occurrence = requested_occurrence.unwrap_or(1);
-                    if occurrence == 0 {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "Gene occurrence must be >= 1".to_string(),
-                        });
-                    }
-                    if exact_matches.len() > 1 && requested_occurrence.is_none() {
-                        result.warnings.push(format!(
-                        "Gene query '{}' matched {} records in '{}'; using first match (set occurrence for another match).",
-                        query,
-                        exact_matches.len(),
-                        genome_id
-                    ));
-                    }
-                    let Some(selected_gene) = exact_matches.get(occurrence - 1) else {
-                        return Err(EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!(
-                                "Gene query '{}' matched {} records, but occurrence {} was requested",
-                                query,
-                                exact_matches.len(),
-                                occurrence
-                            ),
-                        });
-                    };
-
-                    let mut transcript_records = match catalog.list_gene_transcript_records(
+                    let promoter = Self::resolve_genome_promoter_slice_request(
+                        &catalog,
                         &genome_id,
-                        &selected_gene.chromosome,
-                        selected_gene.start_1based,
-                        selected_gene.end_1based,
-                        selected_gene.gene_id.as_deref(),
-                        selected_gene.gene_name.as_deref(),
+                        &gene_query,
+                        occurrence,
+                        transcript_id.as_deref(),
+                        upstream_bp,
+                        downstream_bp,
                         cache_dir.as_deref(),
-                    ) {
-                        Ok(records) => records,
-                        Err(e) => {
-                            result.warnings.push(format!(
-                                "Could not inspect transcript/exon annotation for gene '{}': {}",
-                                Self::genome_gene_display_label(selected_gene),
-                                e
-                            ));
-                            vec![]
-                        }
-                    };
-                    if transcript_records.is_empty() {
-                        match catalog.list_gene_transcript_records(
-                            &genome_id,
-                            &selected_gene.chromosome,
-                            selected_gene.start_1based,
-                            selected_gene.end_1based,
-                            None,
-                            None,
-                            cache_dir.as_deref(),
-                        ) {
-                            Ok(mut records) => {
-                                let selected_gene_id_norm = selected_gene
-                                    .gene_id
-                                    .as_deref()
-                                    .map(Self::normalize_id_token)
-                                    .filter(|v| !v.is_empty());
-                                let selected_gene_name_norm = selected_gene
-                                    .gene_name
-                                    .as_deref()
-                                    .map(Self::normalize_id_token)
-                                    .filter(|v| !v.is_empty());
-                                if selected_gene_id_norm.is_some()
-                                    || selected_gene_name_norm.is_some()
-                                {
-                                    records.retain(|record| {
-                                        let transcript_gene_id_norm = record
-                                            .gene_id
-                                            .as_deref()
-                                            .map(Self::normalize_id_token)
-                                            .filter(|v| !v.is_empty());
-                                        let transcript_gene_name_norm = record
-                                            .gene_name
-                                            .as_deref()
-                                            .map(Self::normalize_id_token)
-                                            .filter(|v| !v.is_empty());
-                                        selected_gene_id_norm
-                                            .as_ref()
-                                            .zip(transcript_gene_id_norm.as_ref())
-                                            .map(|(left, right)| left == right)
-                                            .unwrap_or(false)
-                                            || selected_gene_name_norm
-                                                .as_ref()
-                                                .zip(transcript_gene_name_norm.as_ref())
-                                                .map(|(left, right)| left == right)
-                                                .unwrap_or(false)
-                                    });
-                                }
-                                if !records.is_empty() {
-                                    result.warnings.push(format!(
-                                    "Gene-scoped transcript filter returned no records for '{}'; using overlap fallback with {} transcript candidate(s).",
-                                    Self::genome_gene_display_label(selected_gene),
-                                    records.len()
-                                ));
-                                    transcript_records = records;
-                                }
-                            }
-                            Err(e) => {
-                                result.warnings.push(format!(
-                                    "Could not run transcript fallback for gene '{}': {}",
-                                    Self::genome_gene_display_label(selected_gene),
-                                    e
-                                ));
-                            }
-                        }
-                    }
-
-                    let (selected_transcript, tss_1based, extract_start_1based, extract_end_1based) =
-                        Self::resolve_extract_genome_promoter_slice_interval(
-                            selected_gene,
-                            &transcript_records,
-                            resolved_transcript_id.as_deref(),
-                            upstream_bp,
-                            downstream_bp,
-                        )
-                        .map_err(|message| EngineError {
-                            code: ErrorCode::NotFound,
-                            message,
-                        })?;
-
-                    if resolved_transcript_id.is_none() && transcript_records.len() > 1 {
-                        result.warnings.push(format!(
-                        "Gene '{}' has {} transcript candidate(s); using outermost 5' transcript '{}' for promoter slice derivation (set transcript_id to choose another).",
-                        Self::genome_gene_display_label(selected_gene),
-                        transcript_records.len(),
-                        selected_transcript.transcript_id
-                    ));
-                    }
+                    )?;
+                    result.warnings.extend(promoter.warnings.clone());
 
                     let default_id = Self::default_extract_genome_promoter_slice_output_id(
                         &genome_id,
-                        selected_gene,
-                        &selected_transcript.transcript_id,
+                        &promoter.selected_gene,
+                        &promoter.selected_transcript.transcript_id,
                         upstream_bp,
                         downstream_bp,
                     );
                     let seq_id = self.extract_genome_region_into_state(
                         &mut result,
                         &genome_id,
-                        &selected_transcript.chromosome,
-                        extract_start_1based,
-                        extract_end_1based,
+                        &promoter.selected_transcript.chromosome,
+                        promoter.extract_start_1based,
+                        promoter.extract_end_1based,
                         output_id.or(Some(default_id)),
                         annotation_scope,
                         max_annotation_features,
@@ -8185,33 +8070,37 @@ impl GentleEngine {
                         cache_dir.clone(),
                         "ExtractGenomePromoterSlice",
                         Some(GenomeExtractionProvenanceOverrides {
-                            gene_query: Some(query.to_string()),
-                            occurrence: Some(occurrence),
-                            transcript_id: Some(selected_transcript.transcript_id.clone()),
-                            tss_1based: Some(tss_1based),
+                            gene_query: Some(promoter.query.clone()),
+                            occurrence: Some(promoter.occurrence),
+                            transcript_id: Some(promoter.selected_transcript.transcript_id.clone()),
+                            tss_1based: Some(promoter.tss_1based),
                             promoter_upstream_bp: Some(upstream_bp),
                             promoter_downstream_bp: Some(downstream_bp),
-                            gene_id: selected_gene.gene_id.clone(),
-                            gene_name: selected_gene.gene_name.clone(),
-                            strand: selected_gene.strand,
+                            gene_id: promoter.selected_gene.gene_id.clone(),
+                            gene_name: promoter.selected_gene.gene_name.clone(),
+                            strand: promoter.selected_gene.strand,
                             anchor_strand: Some('+'),
                             anchor_verified: Some(true),
                             ..Default::default()
                         }),
                     )?;
-                    let match_mode = if used_fuzzy { "fuzzy" } else { "exact" };
+                    let match_mode = if promoter.used_fuzzy_gene_match {
+                        "fuzzy"
+                    } else {
+                        "exact"
+                    };
                     result.messages.push(format!(
                     "Extracted promoter slice for '{}' using transcript '{}' [{} match, occurrence {}] as '{}' from '{}' ({}:{}-{}, tss_1based={}, upstream_bp={}, downstream_bp={})",
-                    Self::genome_gene_display_label(selected_gene),
-                    selected_transcript.transcript_id,
+                    Self::genome_gene_display_label(&promoter.selected_gene),
+                    promoter.selected_transcript.transcript_id,
                     match_mode,
-                    occurrence,
+                    promoter.occurrence,
                     seq_id,
                     genome_id,
-                    selected_transcript.chromosome,
-                    extract_start_1based,
-                    extract_end_1based,
-                    tss_1based,
+                    promoter.selected_transcript.chromosome,
+                    promoter.extract_start_1based,
+                    promoter.extract_end_1based,
+                    promoter.tss_1based,
                     upstream_bp,
                     downstream_bp
                 ));
@@ -13398,6 +13287,55 @@ impl GentleEngine {
                     report.clip_negative
                 ));
                     result.tfbs_score_tracks = Some(report);
+                }
+                Operation::SummarizeMultiGenePromoterTfbs {
+                    genome_id,
+                    genes,
+                    motifs,
+                    upstream_bp,
+                    downstream_bp,
+                    score_kind,
+                    clip_negative,
+                    catalog_path,
+                    cache_dir,
+                    path,
+                } => {
+                    let mut report = self.summarize_multi_gene_promoter_tfbs(
+                        &genome_id,
+                        &genes,
+                        &motifs,
+                        upstream_bp,
+                        downstream_bp,
+                        score_kind,
+                        clip_negative,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "multi-gene promoter TFBS report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote multi-gene promoter TFBS report for '{}' to '{}'",
+                            report.genome_id, path
+                        ));
+                    }
+                    for warning in &report.warnings {
+                        result.warnings.push(warning.clone());
+                    }
+                    result.messages.push(format!(
+                        "Multi-gene promoter TFBS summary for '{}' covered {} gene(s) and {} per-gene motif row(s) with score_kind={} clip_negative={}",
+                        report.genome_id,
+                        report.returned_gene_count,
+                        report.summary_rows.len(),
+                        report.score_kind.as_str(),
+                        report.clip_negative
+                    ));
+                    result.multi_gene_promoter_tfbs = Some(report);
                 }
                 Operation::SummarizeTfbsTrackSimilarity {
                     target,

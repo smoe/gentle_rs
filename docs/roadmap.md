@@ -1411,6 +1411,16 @@ order. Durable architecture constraints and decisions remain in
           deterministically across JASPAR summaries, TFBS score tracks,
           TFBS hit scans, and TFBS-track similarity reports, so users are no
           longer forced into the TP73/TP53-centric walkthrough wording
+        - promoter TF work is now also multi-gene capable through one shared
+          engine/shell route:
+          `SummarizeMultiGenePromoterTfbs` /
+          `RenderMultiGenePromoterTfbsSvg` plus
+          `genomes|helpers promoter-tfbs-summary|promoter-tfbs-svg`
+          resolve repeated user-chosen genes against one prepared reference,
+          transcription-align minus-strand promoter windows, emit portable
+          per-gene/per-factor comparison rows, and render one combined
+          small-multiples SVG instead of forcing one TP73/TP53-by-guide
+          walkthrough or one manual repeat-per-gene loop
         - live Ensembl retrieval smoke coverage now uses an explicit internet
           probe and skips cleanly when offline instead of failing local test
           runs that have no network access

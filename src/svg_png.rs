@@ -139,9 +139,7 @@ pub fn render_svg_file_to_png(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        SvgPngRenderOptions, render_svg_file_to_png, strip_dotplot_metadata_text,
-    };
+    use super::{SvgPngRenderOptions, render_svg_file_to_png, strip_dotplot_metadata_text};
     use image::GenericImageView;
 
     #[test]

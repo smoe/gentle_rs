@@ -16,12 +16,13 @@ use crate::engine::{
     ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
     BIGWIG_TO_BEDGRAPH_ENV_BIN, ConstructObjective, ConstructRole, Container, ContainerKind,
     CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
-    CutRunSeedFilterConfig, EditableStatus, PrimerDesignProgress, ProteinExternalOpinionSource,
-    ProteinFeatureFilter, Rack, RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection,
-    RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry,
-    RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode, RnaReadAlignConfig,
-    RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass,
-    SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
+    CutRunSeedFilterConfig, EditableStatus, PrimerDesignProgress, PromoterTfbsGeneQuery,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
+    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
+    TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_gene::{EnsemblGeneEntry, EnsemblGeneTranscriptSummary};
@@ -13123,6 +13124,65 @@ fn parse_genomes_extract_promoter_with_scope_and_transcript() {
 }
 
 #[test]
+fn parse_genomes_promoter_tfbs_summary_with_multiple_gene_specs() {
+    let cmd = parse_shell_line(
+        "genomes promoter-tfbs-summary ToyGenome --gene POS1 --gene NEG1::2@TX_NEG#NEG1_panel --motif stemness --motifs SP1,TP73 --upstream-bp 750 --downstream-bp 80 --score-kind llr_background_tail_log10 --allow-negative --catalog c.json --cache-dir cache --path out.json",
+    )
+    .expect("parse genomes promoter-tfbs-summary");
+    match cmd {
+        ShellCommand::ReferencePromoterTfbsSummary {
+            helper_mode,
+            genome_id,
+            genes,
+            motifs,
+            upstream_bp,
+            downstream_bp,
+            score_kind,
+            clip_negative,
+            catalog_path,
+            cache_dir,
+            path,
+        } => {
+            assert!(!helper_mode);
+            assert_eq!(genome_id, "ToyGenome".to_string());
+            assert_eq!(
+                genes,
+                vec![
+                    PromoterTfbsGeneQuery {
+                        gene_query: "POS1".to_string(),
+                        occurrence: None,
+                        transcript_id: None,
+                        display_label: None,
+                    },
+                    PromoterTfbsGeneQuery {
+                        gene_query: "NEG1".to_string(),
+                        occurrence: Some(2),
+                        transcript_id: Some("TX_NEG".to_string()),
+                        display_label: Some("NEG1_panel".to_string()),
+                    },
+                ]
+            );
+            assert_eq!(
+                motifs,
+                vec![
+                    "stemness".to_string(),
+                    "SP1".to_string(),
+                    "TP73".to_string()
+                ]
+            );
+            assert_eq!(upstream_bp, 750);
+            assert_eq!(downstream_bp, 80);
+            assert_eq!(score_kind, TfbsScoreTrackValueKind::LlrBackgroundTailLog10);
+            assert!(!clip_negative);
+            assert_eq!(catalog_path, Some("c.json".to_string()));
+            assert_eq!(cache_dir, Some("cache".to_string()));
+            assert_eq!(path, Some("out.json".to_string()));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_genomes_extract_gene_with_annotation_flag() {
     let cmd = parse_shell_line(
         "genomes extract-gene ToyGenome MYGENE --include-genomic-annotation --output-id out",
@@ -13605,6 +13665,116 @@ fn execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand() {
         .expect("sequence created by extract-promoter");
     let expected = sequence[(1930 - 1)..2050].to_string();
     assert_eq!(seq.get_forward_string(), expected);
+}
+
+#[test]
+fn execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads() {
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("toy.fa");
+    let gtf = td.path().join("toy.gtf");
+    let summary_path = td.path().join("promoter_tfbs_summary.json");
+    let svg_path = td.path().join("promoter_tfbs.svg");
+    let sequence: String = (0..5000)
+        .map(|idx| match ((idx * 17) + (idx / 5)) % 4 {
+            0 => 'A',
+            1 => 'C',
+            2 => 'G',
+            _ => 'T',
+        })
+        .collect();
+    fs::write(&fasta, format!(">chr1\n{sequence}\n")).expect("write fasta");
+    fs::write(
+        &gtf,
+        concat!(
+            "chr1\tsrc\tgene\t501\t950\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\";\n",
+            "chr1\tsrc\ttranscript\t601\t920\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\";\n",
+            "chr1\tsrc\texon\t601\t700\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t801\t920\t.\t+\t.\tgene_id \"GENE_POS\"; gene_name \"POS1\"; transcript_id \"TX_POS\"; exon_number \"2\";\n",
+            "chr1\tsrc\tgene\t2001\t2600\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\";\n",
+            "chr1\tsrc\ttranscript\t2051\t2500\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\";\n",
+            "chr1\tsrc\texon\t2051\t2200\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"1\";\n",
+            "chr1\tsrc\texon\t2351\t2500\t.\t-\t.\tgene_id \"GENE_NEG\"; gene_name \"NEG1\"; transcript_id \"TX_NEG\"; exon_number \"2\";\n",
+        ),
+    )
+    .expect("write gtf");
+    let catalog = td.path().join("catalog.json");
+    let cache_dir = td.path().join("cache");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        ),
+    )
+    .expect("write catalog");
+    let catalog_path = catalog.to_string_lossy().to_string();
+
+    let mut engine = GentleEngine::new();
+    let _guard = EnvVarGuard::set(
+        crate::genomes::MAKEBLASTDB_ENV_BIN,
+        "__gentle_makeblastdb_missing_for_test__",
+    );
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferencePrepare {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog_path.clone()),
+            cache_dir: None,
+            timeout_seconds: None,
+        },
+    )
+    .expect("prepare genome");
+
+    let summary_cmd = parse_shell_line(&format!(
+        "genomes promoter-tfbs-summary ToyGenome --gene POS1@TX_POS --gene NEG1@TX_NEG#NEG1_panel --motif SP1 --motif \"Yamanaka factors\" --upstream-bp 100 --downstream-bp 20 --score-kind llr_background_tail_log10 --catalog {} --path {}",
+        catalog_path,
+        summary_path.to_string_lossy(),
+    ))
+    .expect("parse promoter-tfbs-summary");
+    let summary = execute_shell_command(&mut engine, &summary_cmd).expect("run promoter summary");
+    assert!(!summary.state_changed);
+    assert_eq!(
+        summary.output["result"]["multi_gene_promoter_tfbs"]["schema"].as_str(),
+        Some("gentle.multi_gene_promoter_tfbs.v1")
+    );
+    assert_eq!(
+        summary.output["result"]["multi_gene_promoter_tfbs"]["returned_gene_count"].as_u64(),
+        Some(2)
+    );
+    assert_eq!(
+        summary.output["result"]["multi_gene_promoter_tfbs"]["genes"][1]["sequence_orientation"]
+            .as_str(),
+        Some("transcription_aligned")
+    );
+    let summary_json = fs::read_to_string(&summary_path).expect("read summary json");
+    assert!(summary_json.contains("\"returned_gene_count\": 2"));
+
+    let svg_cmd = parse_shell_line(&format!(
+        "genomes promoter-tfbs-svg ToyGenome --gene POS1@TX_POS --gene NEG1@TX_NEG#NEG1_panel --motif SP1 --motif stemness --upstream-bp 100 --downstream-bp 20 --score-kind llr_background_tail_log10 --catalog {} {}",
+        catalog_path,
+        svg_path.to_string_lossy(),
+    ))
+    .expect("parse promoter-tfbs-svg");
+    let svg = execute_shell_command(&mut engine, &svg_cmd).expect("run promoter svg");
+    assert!(!svg.state_changed);
+    assert_eq!(
+        svg.output["result"]["multi_gene_promoter_tfbs"]["returned_gene_count"].as_u64(),
+        Some(2)
+    );
+    let svg_text = fs::read_to_string(&svg_path).expect("read promoter svg");
+    assert!(svg_text.contains("<svg"));
+    assert!(svg_text.contains("POS1"));
+    assert!(svg_text.contains("NEG1_panel"));
+    assert!(svg_text.contains("TSS"));
 }
 
 #[test]

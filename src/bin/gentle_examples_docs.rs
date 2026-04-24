@@ -1,5 +1,6 @@
 //! Documentation helper binary that renders workflow examples into generated snippets.
 
+use gentle::svg_png::{SvgPngRenderOptions, render_svg_file_to_png};
 use gentle::workflow_examples::{
     DEFAULT_TUTORIAL_CATALOG_META_PATH, DEFAULT_TUTORIAL_CATALOG_PATH,
     DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_TUTORIAL_OUTPUT_DIR, DEFAULT_TUTORIAL_SOURCE_DIR,
@@ -8,7 +9,6 @@ use gentle::workflow_examples::{
     generate_workflow_example_docs, load_workflow_examples, validate_example_required_files,
     write_tutorial_catalog_from_sources, write_tutorial_manifest_from_sources,
 };
-use gentle::svg_png::{SvgPngRenderOptions, render_svg_file_to_png};
 use serde_json::json;
 use std::{
     env,
@@ -485,5 +485,4 @@ mod tests {
         assert!((parsed.svg_scale - 1.5).abs() < 1e-6);
         assert!(parsed.drop_dotplot_metadata);
     }
-
 }

@@ -49,11 +49,11 @@ use crate::{
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, ProjectState, PromoterWindowCollapseMode,
-        ProteinExternalOpinionSource, ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal,
-        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode,
-        RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
+        PrimerDesignSideConstraint, ProjectState, PromoterTfbsGeneQuery,
+        PromoterWindowCollapseMode, ProteinExternalOpinionSource, ProteinFeatureFilter,
+        ProteinToDnaHandoffRankingGoal, RackAuthoringTemplate, RackCarrierLabelPreset,
+        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+        RackProfileKind, RenderSvgMode, RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
         ReverseTranslationReportSummary, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
@@ -1174,6 +1174,32 @@ pub enum ShellCommand {
         include_genomic_annotation: Option<bool>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+    },
+    ReferencePromoterTfbsSummary {
+        helper_mode: bool,
+        genome_id: String,
+        genes: Vec<PromoterTfbsGeneQuery>,
+        motifs: Vec<String>,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        path: Option<String>,
+    },
+    ReferencePromoterTfbsSvg {
+        helper_mode: bool,
+        genome_id: String,
+        genes: Vec<PromoterTfbsGeneQuery>,
+        motifs: Vec<String>,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        output: String,
     },
     ReferenceExtendAnchor {
         helper_mode: bool,
@@ -3849,6 +3875,87 @@ fn split_csv_tokens_with_empty_error(raw: &str) -> Result<Vec<String>, String> {
     Ok(tokens)
 }
 
+fn parse_tfbs_score_track_value_kind_shell(
+    raw: &str,
+    context: &str,
+) -> Result<TfbsScoreTrackValueKind, String> {
+    match raw.trim() {
+        "llr_bits" => Ok(TfbsScoreTrackValueKind::LlrBits),
+        "llr_quantile" => Ok(TfbsScoreTrackValueKind::LlrQuantile),
+        "llr_background_quantile" => Ok(TfbsScoreTrackValueKind::LlrBackgroundQuantile),
+        "llr_background_tail_log10" => Ok(TfbsScoreTrackValueKind::LlrBackgroundTailLog10),
+        "true_log_odds_bits" => Ok(TfbsScoreTrackValueKind::TrueLogOddsBits),
+        "true_log_odds_quantile" => Ok(TfbsScoreTrackValueKind::TrueLogOddsQuantile),
+        "true_log_odds_background_quantile" => {
+            Ok(TfbsScoreTrackValueKind::TrueLogOddsBackgroundQuantile)
+        }
+        "true_log_odds_background_tail_log10" => {
+            Ok(TfbsScoreTrackValueKind::TrueLogOddsBackgroundTailLog10)
+        }
+        other => Err(format!(
+            "Unsupported --score-kind value '{other}' for {context} (expected llr_bits, llr_quantile, llr_background_quantile, llr_background_tail_log10, true_log_odds_bits, true_log_odds_quantile, true_log_odds_background_quantile, or true_log_odds_background_tail_log10)"
+        )),
+    }
+}
+
+fn parse_promoter_tfbs_gene_query_token(
+    raw: &str,
+    context: &str,
+) -> Result<PromoterTfbsGeneQuery, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{context} gene token must not be empty"));
+    }
+    let (core, display_label) = if let Some((left, right)) = trimmed.rsplit_once('#') {
+        let label = right.trim();
+        if label.is_empty() {
+            return Err(format!(
+                "{context} gene token '{raw}' has an empty #DISPLAY_LABEL suffix"
+            ));
+        }
+        (left.trim(), Some(label.to_string()))
+    } else {
+        (trimmed, None)
+    };
+    let (core, transcript_id) = if let Some((left, right)) = core.rsplit_once('@') {
+        let transcript = right.trim();
+        if transcript.is_empty() {
+            return Err(format!(
+                "{context} gene token '{raw}' has an empty @TRANSCRIPT suffix"
+            ));
+        }
+        (left.trim(), Some(transcript.to_string()))
+    } else {
+        (core, None)
+    };
+    let (gene_query, occurrence) = if let Some((left, right)) = core.rsplit_once("::") {
+        let occurrence = right.trim().parse::<usize>().map_err(|e| {
+            format!(
+                "{context} gene token '{raw}' has an invalid ::OCCURRENCE suffix '{right}': {e}"
+            )
+        })?;
+        if occurrence == 0 {
+            return Err(format!(
+                "{context} gene token '{raw}' must use ::OCCURRENCE >= 1"
+            ));
+        }
+        (left.trim().to_string(), Some(occurrence))
+    } else {
+        (core.trim().to_string(), None)
+    };
+    if gene_query.is_empty() {
+        return Err(format!(
+            "{context} gene token '{raw}' is missing the base gene query"
+        ));
+    }
+    Ok(PromoterTfbsGeneQuery {
+        gene_query,
+        occurrence,
+        transcript_id,
+        display_label,
+    })
+}
+
 fn normalize_compact_token(raw: &str) -> String {
     raw.chars()
         .filter(|c| c.is_ascii_alphanumeric())
@@ -6366,6 +6473,91 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string());
                 format!(
                     "extract {label} promoter '{gene_query}' from '{genome_id}' (occurrence={occ}, transcript_id='{transcript}', output='{output}', upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, catalog='{catalog}', cache='{cache}')"
+                )
+            }
+            Self::ReferencePromoterTfbsSummary {
+                helper_mode,
+                genome_id,
+                genes,
+                motifs,
+                upstream_bp,
+                downstream_bp,
+                score_kind,
+                clip_negative,
+                catalog_path,
+                cache_dir,
+                path,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let gene_summary = if genes.is_empty() {
+                    "-".to_string()
+                } else {
+                    genes
+                        .iter()
+                        .map(|gene| {
+                            gene.display_label
+                                .clone()
+                                .unwrap_or_else(|| gene.gene_query.clone())
+                        })
+                        .collect::<Vec<_>>()
+                        .join(",")
+                };
+                let motif_summary = if motifs.is_empty() {
+                    "-".to_string()
+                } else {
+                    motifs.join(",")
+                };
+                format!(
+                    "summarize multi-gene {label} promoter TFBS for '{genome_id}' (genes={gene_summary}, motifs={motif_summary}, upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, score_kind={}, clip_negative={}, output='{}', catalog='{catalog}', cache='{cache}')",
+                    score_kind.as_str(),
+                    clip_negative,
+                    path.as_deref().unwrap_or("-"),
+                )
+            }
+            Self::ReferencePromoterTfbsSvg {
+                helper_mode,
+                genome_id,
+                genes,
+                motifs,
+                upstream_bp,
+                downstream_bp,
+                score_kind,
+                clip_negative,
+                catalog_path,
+                cache_dir,
+                output,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_display_label(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let gene_summary = if genes.is_empty() {
+                    "-".to_string()
+                } else {
+                    genes
+                        .iter()
+                        .map(|gene| {
+                            gene.display_label
+                                .clone()
+                                .unwrap_or_else(|| gene.gene_query.clone())
+                        })
+                        .collect::<Vec<_>>()
+                        .join(",")
+                };
+                let motif_summary = if motifs.is_empty() {
+                    "-".to_string()
+                } else {
+                    motifs.join(",")
+                };
+                format!(
+                    "render multi-gene {label} promoter TFBS SVG for '{genome_id}' (genes={gene_summary}, motifs={motif_summary}, upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, score_kind={}, clip_negative={}, output='{output}', catalog='{catalog}', cache='{cache}')",
+                    score_kind.as_str(),
+                    clip_negative,
                 )
             }
             Self::ReferenceExtendAnchor {
@@ -11671,6 +11863,267 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 cache_dir,
             })
         }
+        "promoter-tfbs-summary" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} promoter-tfbs-summary requires GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let mut genes: Vec<PromoterTfbsGeneQuery> = vec![];
+            let mut motifs: Vec<String> = vec![];
+            let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut score_kind = TfbsScoreTrackValueKind::default();
+            let mut clip_negative = true;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--gene", label)?;
+                        genes.push(parse_promoter_tfbs_gene_query_token(
+                            &raw,
+                            &format!("{label} promoter-tfbs-summary"),
+                        )?);
+                    }
+                    "--gene-json" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--gene-json", label)?;
+                        let parsed =
+                            serde_json::from_str::<PromoterTfbsGeneQuery>(&raw).map_err(|e| {
+                                format!(
+                                    "Invalid --gene-json payload '{raw}' for {label} promoter-tfbs-summary: {e}"
+                                )
+                            })?;
+                        if parsed.gene_query.trim().is_empty() {
+                            return Err(format!(
+                                "{label} promoter-tfbs-summary --gene-json requires non-empty gene_query"
+                            ));
+                        }
+                        genes.push(parsed);
+                    }
+                    "--motif" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--motif", label)?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(format!(
+                                "{label} promoter-tfbs-summary --motif requires a non-empty token"
+                            ));
+                        }
+                        motifs.push(trimmed.to_string());
+                    }
+                    "--motifs" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--motifs", label)?;
+                        motifs.extend(split_csv_tokens_with_empty_error(&raw)?);
+                    }
+                    "--upstream-bp" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--upstream-bp", label)?;
+                        upstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --upstream-bp value '{raw}' for {label} promoter-tfbs-summary: {e}"
+                            )
+                        })?;
+                    }
+                    "--downstream-bp" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--downstream-bp", label)?;
+                        downstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --downstream-bp value '{raw}' for {label} promoter-tfbs-summary: {e}"
+                            )
+                        })?;
+                    }
+                    "--score-kind" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--score-kind", label)?;
+                        score_kind = parse_tfbs_score_track_value_kind_shell(
+                            &raw,
+                            &format!("{label} promoter-tfbs-summary"),
+                        )?;
+                    }
+                    "--allow-negative" => {
+                        clip_negative = false;
+                        idx += 1;
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(tokens, &mut idx, &flag, label)?)
+                    }
+                    other if !other.starts_with("--") && path.is_none() => {
+                        path = Some(other.to_string());
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} promoter-tfbs-summary"
+                        ));
+                    }
+                }
+            }
+            if genes.is_empty() {
+                return Err(format!(
+                    "{label} promoter-tfbs-summary requires at least one --gene QUERY or --gene-json JSON"
+                ));
+            }
+            if motifs.is_empty() {
+                return Err(format!(
+                    "{label} promoter-tfbs-summary requires at least one --motif TOKEN"
+                ));
+            }
+            Ok(ShellCommand::ReferencePromoterTfbsSummary {
+                helper_mode,
+                genome_id,
+                genes,
+                motifs,
+                upstream_bp,
+                downstream_bp,
+                score_kind,
+                clip_negative,
+                catalog_path,
+                cache_dir,
+                path,
+            })
+        }
+        "promoter-tfbs-svg" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} promoter-tfbs-svg requires GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg|--output OUTPUT.svg"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let mut genes: Vec<PromoterTfbsGeneQuery> = vec![];
+            let mut motifs: Vec<String> = vec![];
+            let mut upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut score_kind = TfbsScoreTrackValueKind::default();
+            let mut clip_negative = true;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut output: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--gene", label)?;
+                        genes.push(parse_promoter_tfbs_gene_query_token(
+                            &raw,
+                            &format!("{label} promoter-tfbs-svg"),
+                        )?);
+                    }
+                    "--gene-json" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--gene-json", label)?;
+                        let parsed =
+                            serde_json::from_str::<PromoterTfbsGeneQuery>(&raw).map_err(|e| {
+                                format!(
+                                    "Invalid --gene-json payload '{raw}' for {label} promoter-tfbs-svg: {e}"
+                                )
+                            })?;
+                        if parsed.gene_query.trim().is_empty() {
+                            return Err(format!(
+                                "{label} promoter-tfbs-svg --gene-json requires non-empty gene_query"
+                            ));
+                        }
+                        genes.push(parsed);
+                    }
+                    "--motif" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--motif", label)?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(format!(
+                                "{label} promoter-tfbs-svg --motif requires a non-empty token"
+                            ));
+                        }
+                        motifs.push(trimmed.to_string());
+                    }
+                    "--motifs" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--motifs", label)?;
+                        motifs.extend(split_csv_tokens_with_empty_error(&raw)?);
+                    }
+                    "--upstream-bp" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--upstream-bp", label)?;
+                        upstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --upstream-bp value '{raw}' for {label} promoter-tfbs-svg: {e}"
+                            )
+                        })?;
+                    }
+                    "--downstream-bp" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--downstream-bp", label)?;
+                        downstream_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --downstream-bp value '{raw}' for {label} promoter-tfbs-svg: {e}"
+                            )
+                        })?;
+                    }
+                    "--score-kind" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--score-kind", label)?;
+                        score_kind = parse_tfbs_score_track_value_kind_shell(
+                            &raw,
+                            &format!("{label} promoter-tfbs-svg"),
+                        )?;
+                    }
+                    "--allow-negative" => {
+                        clip_negative = false;
+                        idx += 1;
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    "--output" | "--path" => {
+                        let flag = tokens[idx].clone();
+                        output = Some(parse_option_path(tokens, &mut idx, &flag, label)?)
+                    }
+                    other if !other.starts_with("--") && output.is_none() => {
+                        output = Some(other.to_string());
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} promoter-tfbs-svg"
+                        ));
+                    }
+                }
+            }
+            if genes.is_empty() {
+                return Err(format!(
+                    "{label} promoter-tfbs-svg requires at least one --gene QUERY or --gene-json JSON"
+                ));
+            }
+            if motifs.is_empty() {
+                return Err(format!(
+                    "{label} promoter-tfbs-svg requires at least one --motif TOKEN"
+                ));
+            }
+            let Some(output) = output.filter(|value| !value.trim().is_empty()) else {
+                return Err(format!(
+                    "{label} promoter-tfbs-svg requires OUTPUT.svg or --output OUTPUT.svg"
+                ));
+            };
+            Ok(ShellCommand::ReferencePromoterTfbsSvg {
+                helper_mode,
+                genome_id,
+                genes,
+                motifs,
+                upstream_bp,
+                downstream_bp,
+                score_kind,
+                clip_negative,
+                catalog_path,
+                cache_dir,
+                output,
+            })
+        }
         "extend-anchor" => {
             if tokens.len() < 5 {
                 return Err(format!(
@@ -11772,7 +12225,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected ensembl-available, install-ensembl, list, validate-catalog, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extract-promoter, extend-anchor, verify-anchor)"
+            "Unknown {label} subcommand '{other}' (expected ensembl-available, install-ensembl, list, validate-catalog, preview-ensembl-specs, update-ensembl-specs, status, genes, prepare, remove-prepared, remove-catalog-entry, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extract-promoter, promoter-tfbs-summary, promoter-tfbs-svg, extend-anchor, verify-anchor)"
         )),
     }
 }
@@ -19849,6 +20302,70 @@ fn execute_reference_and_track_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::ReferencePromoterTfbsSummary {
+            helper_mode,
+            genome_id,
+            genes,
+            motifs,
+            upstream_bp,
+            downstream_bp,
+            score_kind,
+            clip_negative,
+            catalog_path,
+            cache_dir,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::SummarizeMultiGenePromoterTfbs {
+                    genome_id: genome_id.clone(),
+                    genes: genes.clone(),
+                    motifs: motifs.clone(),
+                    upstream_bp: *upstream_bp,
+                    downstream_bp: *downstream_bp,
+                    score_kind: *score_kind,
+                    clip_negative: *clip_negative,
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ReferencePromoterTfbsSvg {
+            helper_mode,
+            genome_id,
+            genes,
+            motifs,
+            upstream_bp,
+            downstream_bp,
+            score_kind,
+            clip_negative,
+            catalog_path,
+            cache_dir,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderMultiGenePromoterTfbsSvg {
+                    genome_id: genome_id.clone(),
+                    genes: genes.clone(),
+                    motifs: motifs.clone(),
+                    upstream_bp: *upstream_bp,
+                    downstream_bp: *downstream_bp,
+                    score_kind: *score_kind,
+                    clip_negative: *clip_negative,
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
         ShellCommand::ReferenceExtendAnchor {
             helper_mode,
             seq_id,
@@ -24937,6 +25454,8 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ReferenceExtractRegion { .. }
             | ShellCommand::ReferenceExtractGene { .. }
             | ShellCommand::ReferenceExtractPromoter { .. }
+            | ShellCommand::ReferencePromoterTfbsSummary { .. }
+            | ShellCommand::ReferencePromoterTfbsSvg { .. }
             | ShellCommand::ReferenceExtendAnchor { .. }
             | ShellCommand::ReferenceVerifyAnchor { .. }
             | ShellCommand::TracksImportBed { .. }
@@ -25651,6 +26170,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ReferenceExtractRegion { .. }
         | ShellCommand::ReferenceExtractGene { .. }
         | ShellCommand::ReferenceExtractPromoter { .. }
+        | ShellCommand::ReferencePromoterTfbsSummary { .. }
+        | ShellCommand::ReferencePromoterTfbsSvg { .. }
         | ShellCommand::ReferenceExtendAnchor { .. }
         | ShellCommand::ReferenceVerifyAnchor { .. }
         | ShellCommand::TracksImportBed { .. }

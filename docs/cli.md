@@ -2227,6 +2227,9 @@ Shared shell command:
         - `gentle_cli shell 'features tfbs-scan grch38_tert_promoter --motif "Yamanaka factors" --motif SP1 --min-llr-quantile 0.95 --max-hits 100 --path /tmp/tert_tfbs_scan.json'`
         - `gentle_cli shell 'features tfbs-score-tracks-svg grch38_tert_promoter /tmp/tert_yamanaka_sp1_tracks.svg --motif "Yamanaka factors" --motif SP1 --score-kind llr_background_tail_log10'`
         - `gentle_cli shell 'features tfbs-track-similarity grch38_tert_promoter --anchor-motif SP1 --candidate-motif "Yamanaka factors" --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --species "Homo sapiens" --include-remote-metadata --limit 25 --path /tmp/tert_sp1_yamanaka_similarity.json'`
+      - multi-gene promoter comparison through the same reference shell family:
+        - `gentle_cli shell 'genomes promoter-tfbs-summary "Human GRCh38 Ensembl 116" --gene TERT --gene TP73 --motif "Yamanaka factors" --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 --path /tmp/tert_tp73_promoter_tfbs.summary.json'`
+        - `gentle_cli shell 'genomes promoter-tfbs-svg "Human GRCh38 Ensembl 116" --gene TERT --gene TP73 --motif "Yamanaka factors" --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 /tmp/tert_tp73_promoter_tfbs.svg'`
       - `--score-kind` now lets you inspect raw bit scores, in-window
         quantiles, random-background percentiles, or `-log10(background tail)`
         views; the background-tail modes are the best first pass when random
@@ -2999,6 +3002,17 @@ Genome convenience commands:
     outermost 5' transcript among the matched gene’s transcript records and
     warns when multiple transcript candidates existed.
   - Defaults are `--upstream-bp 1000` and `--downstream-bp 200`.
+- `genomes promoter-tfbs-summary GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
+  - Runs engine `SummarizeMultiGenePromoterTfbs`.
+  - Resolves repeated `--gene` tokens into promoter-aligned windows over one
+    prepared reference, then scores the requested motif set over every gene.
+  - Minus-strand promoters are reverse-complemented before scoring so all gene
+    panels share the same transcription-oriented x-axis.
+  - Returns portable schema `gentle.multi_gene_promoter_tfbs.v1`.
+- `genomes promoter-tfbs-svg GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg`
+  - Runs engine `RenderMultiGenePromoterTfbsSvg`.
+  - Exports one small-multiples SVG with one promoter-aligned score-track panel
+    per requested gene.
 - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
   - Runs engine `ExtendGenomeAnchor`.
   - Extends an already genome-anchored sequence in-silico on contextual `5'` or `3'`.
@@ -3046,6 +3060,10 @@ Host convenience commands:
   - Same behavior as `genomes remove-prepared`, with helper-catalog default.
 - `helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-promoter`, with helper-catalog default.
+- `helpers promoter-tfbs-summary HELPER_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
+  - Same behavior as `genomes promoter-tfbs-summary`, with helper-catalog default.
+- `helpers promoter-tfbs-svg HELPER_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg`
+  - Same behavior as `genomes promoter-tfbs-svg`, with helper-catalog default.
 - `cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]`
   - Lists prepared installs and orphaned remnants under the selected cache
     roots with artifact-group byte totals.
