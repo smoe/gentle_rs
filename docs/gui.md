@@ -4274,6 +4274,19 @@ Protein-evidence behavior:
       reference species
     - selected speed mark and optional annealing heuristic summary
     - inline coding DNA text for the created synthetic CDS
+- The same specialist now also includes a `Protease digest protein` section:
+  - reuses the selected first-class protein sequence from the protein selector
+  - accepts comma-separated protease names/aliases from the built-in catalog
+    such as `Trypsin` or `Trypsin,Lys-C`
+  - can either materialize first-class peptide sequence products or run in
+    report-only prediction mode
+  - result panel:
+    - resolved proteases
+    - cleavage-site and peptide counts
+    - transcript/protein provenance when present on the source protein
+    - compact cleavage-site preview with local context
+    - first peptide-product rows with source amino-acid span, length, created
+      sequence id, and peptide sequence preview
 - The same specialist now also includes a `DNA handoff reasoning` section:
   - builds an engine-owned construct-reasoning graph for the selected target
     DNA sequence plus active protein source

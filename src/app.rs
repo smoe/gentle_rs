@@ -76,7 +76,7 @@ use crate::{
         JasparCatalogReport, JasparEntryExpertView, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, MacroTemplateSuggestion, OpResult, Operation,
         OperationProgress, PlanningEstimate, PlanningObjective, PlanningProfile,
-        PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
+        PlanningProfileScope, PlanningSuggestionStatus, ProjectState, ProteaseDigestReport,
         ProteinToDnaHandoffRankingGoal, ROUTINE_DECISION_TRACE_SCHEMA,
         ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, Rack,
         RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
@@ -913,6 +913,11 @@ pub struct GENtleApp {
     reverse_translate_target_anneal_tm_c: String,
     reverse_translate_anneal_window_bp: String,
     reverse_translation_report: Option<ReverseTranslationReport>,
+    protease_digest_names: String,
+    protease_digest_output_prefix: String,
+    protease_digest_min_length_aa: String,
+    protease_digest_materialize: bool,
+    protease_digest_report: Option<ProteaseDigestReport>,
     protein_handoff_ranking_goal: ProteinToDnaHandoffRankingGoal,
     protein_handoff_graph: Option<ConstructReasoningGraph>,
     protein_handoff_selected_candidate_id: String,
@@ -2593,6 +2598,11 @@ impl Default for GENtleApp {
             reverse_translate_target_anneal_tm_c: String::new(),
             reverse_translate_anneal_window_bp: "20".to_string(),
             reverse_translation_report: None,
+            protease_digest_names: "Trypsin".to_string(),
+            protease_digest_output_prefix: String::new(),
+            protease_digest_min_length_aa: "1".to_string(),
+            protease_digest_materialize: true,
+            protease_digest_report: None,
             protein_handoff_ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
             protein_handoff_graph: None,
             protein_handoff_selected_candidate_id: String::new(),
@@ -18538,6 +18548,102 @@ Error: `{err}`"
         }
     }
 
+    fn protease_digest_names_from_dialog(&self) -> Vec<String> {
+        self.protease_digest_names
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(ToOwned::to_owned)
+            .collect()
+    }
+
+    fn digest_selected_protein_from_dialog(&mut self) {
+        let seq_id = self.reverse_translate_protein_seq_id.trim().to_string();
+        if seq_id.is_empty() {
+            self.uniprot_status = "Choose a protein sequence before protease digest".to_string();
+            return;
+        }
+        let proteases = self.protease_digest_names_from_dialog();
+        if proteases.is_empty() {
+            self.uniprot_status =
+                "Enter at least one protease name, for example Trypsin".to_string();
+            return;
+        }
+        let min_length_aa = Self::uniprot_optional_trimmed(&self.protease_digest_min_length_aa)
+            .map(|raw| {
+                raw.parse::<usize>()
+                    .map_err(|_| format!("minimum peptide length '{}' is not a valid integer", raw))
+            })
+            .transpose();
+        let min_length_aa = match min_length_aa {
+            Ok(value) => value.map(|value| value.max(1)),
+            Err(message) => {
+                self.uniprot_status = message;
+                return;
+            }
+        };
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::ProteaseDigestProteinSequence {
+                seq_id,
+                proteases,
+                output_prefix: Self::uniprot_optional_trimmed(&self.protease_digest_output_prefix),
+                min_length_aa,
+                materialize: self.protease_digest_materialize,
+            });
+        match result {
+            Ok(result) => {
+                for seq_id in &result.created_seq_ids {
+                    self.open_sequence_window(seq_id);
+                }
+                if let Some(report) = result.protease_digest_report.as_ref() {
+                    self.protease_digest_report = Some(report.clone());
+                    self.uniprot_status = format!(
+                        "Protease digest: ok\nsource: {}\nproteases: {}\ncleavage sites: {}\npeptides: {}\ncreated: {}\nwarnings: {}\nmessages: {}",
+                        report.source_seq_id,
+                        report
+                            .resolved_proteases
+                            .iter()
+                            .map(|protease| protease.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        report.cleavage_site_count,
+                        report.peptide_count,
+                        if report.created_seq_ids.is_empty() {
+                            "-".to_string()
+                        } else {
+                            report.created_seq_ids.join(", ")
+                        },
+                        if result.warnings.is_empty() {
+                            "-".to_string()
+                        } else {
+                            result.warnings.join(" | ")
+                        },
+                        if result.messages.is_empty() {
+                            "-".to_string()
+                        } else {
+                            result.messages.join(" | ")
+                        }
+                    );
+                } else {
+                    self.protease_digest_report = None;
+                    self.uniprot_status = Self::format_op_result_status(
+                        "Protease digest: ok",
+                        &result.created_seq_ids,
+                        &result.warnings,
+                        &result.messages,
+                    );
+                }
+            }
+            Err(err) => {
+                self.protease_digest_report = None;
+                self.uniprot_status = format!("Protease digest failed: {}", err.message);
+            }
+        }
+    }
+
     fn protein_handoff_transcript_filter_from_dialog(&self) -> Option<String> {
         Self::uniprot_optional_trimmed(&self.uniprot_feature_transcript_id)
             .or_else(|| Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id))
@@ -19243,6 +19349,114 @@ Error: `{err}`"
         }
         if !report.warnings.is_empty() {
             ui.small(format!("warnings: {}", report.warnings.join(" | ")));
+        }
+    }
+
+    fn render_protease_digest_report(&self, ui: &mut Ui) {
+        let Some(report) = self.protease_digest_report.as_ref() else {
+            return;
+        };
+        ui.separator();
+        ui.label("Protease digest report");
+        egui::Grid::new("protease_digest_report_summary")
+            .num_columns(2)
+            .spacing([12.0, 4.0])
+            .striped(true)
+            .show(ui, |ui| {
+                ui.strong("source");
+                ui.monospace(format!(
+                    "{} ({} aa)",
+                    report.source_seq_id, report.source_length_aa
+                ));
+                ui.end_row();
+                ui.strong("proteases");
+                ui.monospace(
+                    report
+                        .resolved_proteases
+                        .iter()
+                        .map(|protease| protease.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
+                ui.end_row();
+                ui.strong("sites / peptides");
+                ui.monospace(format!(
+                    "{} cleavage site(s), {} peptide(s)",
+                    report.cleavage_site_count, report.peptide_count
+                ));
+                ui.end_row();
+                ui.strong("materialized");
+                ui.monospace(if report.materialized {
+                    format!("yes ({})", report.created_seq_ids.len())
+                } else {
+                    "prediction only".to_string()
+                });
+                ui.end_row();
+                if let Some(transcript_id) = report.source_transcript_id.as_deref() {
+                    ui.strong("transcript");
+                    ui.monospace(transcript_id);
+                    ui.end_row();
+                }
+            });
+        if !report.sites.is_empty() {
+            let site_preview = report
+                .sites
+                .iter()
+                .take(16)
+                .map(|site| {
+                    format!(
+                        "{}@{} ({})",
+                        site.protease_name, site.cleavage_after_aa_1based, site.context
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" | ");
+            ui.small(format!(
+                "cleavage preview: {}{}",
+                site_preview,
+                if report.sites.len() > 16 {
+                    " | ..."
+                } else {
+                    ""
+                }
+            ));
+        }
+        if !report.peptides.is_empty() {
+            ui.label("Peptide products");
+            egui::Grid::new("protease_digest_peptide_preview")
+                .num_columns(5)
+                .spacing([10.0, 3.0])
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("#");
+                    ui.strong("aa span");
+                    ui.strong("len");
+                    ui.strong("seq_id");
+                    ui.strong("sequence");
+                    ui.end_row();
+                    for peptide in report.peptides.iter().take(12) {
+                        ui.monospace(peptide.peptide_index.to_string());
+                        ui.monospace(format!(
+                            "{}..{}",
+                            peptide.source_start_aa_1based, peptide.source_end_aa_1based
+                        ));
+                        ui.monospace(peptide.length_aa.to_string());
+                        ui.monospace(peptide.created_seq_id.as_deref().unwrap_or("-"));
+                        let mut peptide_sequence = peptide.sequence.clone();
+                        if peptide_sequence.len() > 42 {
+                            peptide_sequence.truncate(42);
+                            peptide_sequence.push_str("...");
+                        }
+                        ui.monospace(peptide_sequence);
+                        ui.end_row();
+                    }
+                });
+            if report.peptides.len() > 12 {
+                ui.small(format!(
+                    "showing first 12 of {} peptide products",
+                    report.peptides.len()
+                ));
+            }
         }
     }
 
@@ -20352,6 +20566,48 @@ Error: `{err}`"
                 }
             });
             self.render_reverse_translation_report(ui);
+        }
+        ui.separator();
+        ui.label("Protease digest protein");
+        ui.small(
+            "Predict protease cleavage sites on the selected first-class protein and optionally materialize peptide products while keeping transcript-derived provenance.",
+        );
+        if protein_seq_ids.is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(180, 83, 9),
+                "No protein sequence is available for protease digestion.",
+            );
+        } else {
+            ui.horizontal(|ui| {
+                ui.label("proteases");
+                ui.text_edit_singleline(&mut self.protease_digest_names)
+                    .on_hover_text("Comma-separated protease names or aliases, for example Trypsin or Trypsin,Lys-C");
+                ui.label("min aa");
+                ui.text_edit_singleline(&mut self.protease_digest_min_length_aa)
+                    .on_hover_text("Minimum peptide product length to keep (default 1)");
+                ui.checkbox(&mut self.protease_digest_materialize, "materialize")
+                    .on_hover_text("Create peptide sequence entries for the predicted digest products");
+            });
+            ui.horizontal(|ui| {
+                ui.label("output prefix");
+                ui.text_edit_singleline(&mut self.protease_digest_output_prefix)
+                    .on_hover_text(
+                        "Optional peptide seq_id prefix (defaults to PROTEIN_ID_protease_digest)",
+                    );
+                if ui
+                    .button("Digest Protein")
+                    .on_hover_text(
+                        "Run the shared ProteaseDigestProteinSequence operation on the selected protein sequence",
+                    )
+                    .clicked()
+                {
+                    self.digest_selected_protein_from_dialog();
+                }
+            });
+            ui.small(
+                "Uses the same protein seq_id selector as reverse translation above; uncheck materialize for report-only prediction.",
+            );
+            self.render_protease_digest_report(ui);
         }
         ui.separator();
         ui.label("DNA handoff reasoning");
@@ -50958,6 +51214,47 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 .state()
                 .sequences
                 .contains_key(&report.coding_seq_id)
+        );
+    }
+
+    #[test]
+    fn protease_digest_from_dialog_sets_report_and_status() {
+        let mut protein = DNAsequence::from_sequence("MAKRPTRKAA").expect("protein");
+        protein.set_name("Toy protein");
+        protein.set_molecule_type("protein");
+        protein.features_mut().push(gb_io::seq::Feature {
+            kind: "Protein".into(),
+            location: gb_io::seq::Location::simple_range(0, 10),
+            qualifiers: vec![("transcript_id".into(), Some("tx1".to_string()))],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("prot".to_string(), protein);
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.reverse_translate_protein_seq_id = "prot".to_string();
+        app.protease_digest_names = "Trypsin".to_string();
+        app.protease_digest_min_length_aa = "1".to_string();
+        app.protease_digest_output_prefix = "prot_trypsin".to_string();
+        app.protease_digest_materialize = true;
+
+        app.digest_selected_protein_from_dialog();
+
+        let report = app
+            .protease_digest_report
+            .as_ref()
+            .expect("protease digest report");
+        assert_eq!(report.source_seq_id, "prot");
+        assert_eq!(report.source_transcript_id.as_deref(), Some("tx1"));
+        assert_eq!(report.cleavage_site_count, 3);
+        assert_eq!(report.peptide_count, 4);
+        assert!(app.uniprot_status.contains("Protease digest: ok"));
+        assert!(
+            app.engine
+                .read()
+                .unwrap()
+                .state()
+                .sequences
+                .contains_key(report.created_seq_ids[0].as_str())
         );
     }
 

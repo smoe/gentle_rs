@@ -1858,6 +1858,9 @@ order. Durable architecture constraints and decisions remain in
       `ProteaseDigestProteinSequence` / `proteases digest`, producing
       `gentle.protease_digest_report.v1` and optionally materializing peptide
       products as first-class `peptide` sequences
+    - `Protein Evidence...` now exposes that digest path directly with a
+      compact report panel for resolved proteases, cleavage-site context,
+      peptide products, and materialized peptide sequence ids
     - digest products preserve source protein, transcript-derived provenance,
       derivation mode, and translation-table qualifiers when the protein came
       from the transcript-first derivation path
@@ -2015,8 +2018,8 @@ order. Durable architecture constraints and decisions remain in
        - expand the new protease cleavage prediction/materialization path with
          missed-cleavage models, enzyme-condition notes, and downstream
          proteomics/gel planning reports
-       - surface protease digest reports in GUI protein-expert and ClawBio
-         graphical insight flows instead of keeping them shell/report-only
+       - surface protease digest reports in ClawBio graphical insight flows
+         now that the GUI has a first direct Protein Evidence report panel
 - Executable tutorial baseline is now integrated with canonical workflow
   examples:
   - canonical tutorial landing page now exists at `docs/tutorial/README.md`
