@@ -522,7 +522,8 @@ impl GentleEngine {
         filter: Option<&str>,
         limit: Option<usize>,
     ) -> Result<(usize, Vec<String>, Vec<tf_motifs::TfMotifSummary>), EngineError> {
-        let registry_rows = tf_motifs::list_motif_summaries();
+        let motif_db = tf_motifs::snapshot_db();
+        let registry_rows = motif_db.motif_summaries();
         let registry_entry_count = registry_rows.len();
         let mut seen_ids = BTreeSet::new();
         let mut requested_motifs = vec![];
@@ -535,7 +536,7 @@ impl GentleEngine {
             {
                 requested_motifs.push(token.to_string());
                 let motif_definition =
-                    tf_motifs::resolve_motif_definition(token).ok_or_else(|| EngineError {
+                    motif_db.resolve_cloned(token).ok_or_else(|| EngineError {
                         code: ErrorCode::NotFound,
                         message: format!(
                             "JASPAR entry '{}' was not found in the local motif registry",
@@ -900,7 +901,8 @@ impl GentleEngine {
         }
 
         let requested_motifs = if motifs.is_empty() {
-            tf_motifs::all_motif_ids()
+            let motif_db = tf_motifs::snapshot_db();
+            motif_db.motif_ids()
         } else {
             Self::expand_tf_query_tokens(motifs)?
         };
@@ -913,11 +915,13 @@ impl GentleEngine {
 
         let random_background =
             Self::deterministic_random_dna_bytes(random_sequence_length_bp, random_seed);
+        let motif_db = tf_motifs::snapshot_db();
+        let registry_entry_count = motif_db.motif_ids().len();
 
         let mut seen_ids = BTreeSet::new();
         let mut rows = vec![];
         for token in &requested_motifs {
-            let motif = tf_motifs::resolve_motif_definition(token).ok_or_else(|| EngineError {
+            let motif = motif_db.resolve_cloned(token).ok_or_else(|| EngineError {
                 code: ErrorCode::NotFound,
                 message: format!(
                     "JASPAR entry '{}' was not found in the local motif registry",
@@ -1006,7 +1010,7 @@ impl GentleEngine {
             op_id: None,
             run_id: None,
             requested_motifs,
-            registry_entry_count: tf_motifs::all_motif_ids().len(),
+            registry_entry_count,
             resolved_entry_count: rows.len(),
             random_sequence_length_bp,
             random_seed,

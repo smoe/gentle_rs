@@ -257,8 +257,8 @@ impl TfMotifDb {
                 continue;
             }
             let idx = motifs.len();
-            let id_key = m.id.trim().to_ascii_uppercase();
-            let name_key = m.name.as_ref().map(|n| n.trim().to_ascii_uppercase());
+            let id_key = normalize_lookup_key(&m.id);
+            let name_key = m.name.as_ref().map(|n| normalize_lookup_key(n));
             let motif = TfMotif {
                 id: m.id.trim().to_string(),
                 name: m.name.as_ref().map(|n| n.trim().to_string()),
@@ -313,9 +313,46 @@ impl TfMotifDb {
         let idx = self.by_key.get(&key)?;
         self.motifs.get(*idx)
     }
+
+    pub fn resolve_cloned(&self, token: &str) -> Option<TfMotif> {
+        self.resolve(token).cloned()
+    }
+
+    pub fn motif_summaries(&self) -> Vec<TfMotifSummary> {
+        let mut out = self
+            .motifs
+            .iter()
+            .map(|m| TfMotifSummary {
+                id: m.id.clone(),
+                name: m.name.clone(),
+                consensus_iupac: m.consensus_iupac.clone(),
+                motif_length_bp: m.matrix_counts.len(),
+            })
+            .collect::<Vec<_>>();
+        out.sort_by(|a, b| {
+            a.id.to_ascii_uppercase()
+                .cmp(&b.id.to_ascii_uppercase())
+                .then_with(|| {
+                    a.name
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_ascii_uppercase()
+                        .cmp(&b.name.as_deref().unwrap_or("").to_ascii_uppercase())
+                })
+        });
+        out
+    }
+
+    pub fn motif_ids(&self) -> Vec<String> {
+        self.motif_summaries().into_iter().map(|m| m.id).collect()
+    }
 }
 
 static TF_MOTIFS: LazyLock<RwLock<TfMotifDb>> = LazyLock::new(|| RwLock::new(TfMotifDb::load()));
+
+pub fn snapshot_db() -> TfMotifDb {
+    TF_MOTIFS.read().map(|db| db.clone()).unwrap_or_default()
+}
 
 pub fn resolve_motif(token: &str) -> Option<String> {
     TF_MOTIFS
@@ -342,37 +379,11 @@ pub fn reload_from_path(path: Option<&str>) {
 }
 
 pub fn list_motif_summaries() -> Vec<TfMotifSummary> {
-    let mut out = TF_MOTIFS
-        .read()
-        .ok()
-        .map(|db| {
-            db.motifs
-                .iter()
-                .map(|m| TfMotifSummary {
-                    id: m.id.clone(),
-                    name: m.name.clone(),
-                    consensus_iupac: m.consensus_iupac.clone(),
-                    motif_length_bp: m.matrix_counts.len(),
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    out.sort_by(|a, b| {
-        a.id.to_ascii_uppercase()
-            .cmp(&b.id.to_ascii_uppercase())
-            .then_with(|| {
-                a.name
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_ascii_uppercase()
-                    .cmp(&b.name.as_deref().unwrap_or("").to_ascii_uppercase())
-            })
-    });
-    out
+    snapshot_db().motif_summaries()
 }
 
 pub fn all_motif_ids() -> Vec<String> {
-    list_motif_summaries().into_iter().map(|m| m.id).collect()
+    snapshot_db().motif_ids()
 }
 
 fn fuzzy_family_like_matches(query: &str) -> Vec<TfQueryResolvedMotif> {
@@ -560,5 +571,31 @@ mod tests {
                 .iter()
                 .any(|row| row.motif_name.as_deref() == Some("KLF4"))
         );
+    }
+
+    #[test]
+    fn resolve_motif_supports_versioned_jaspar_ids() {
+        assert!(resolve_motif("MA0001.3").is_some());
+    }
+
+    #[test]
+    fn resolve_motif_supports_names_with_underscores() {
+        let db = TfMotifDb::from_json(
+            r#"{
+  "schema":"gentle.tf_motifs.v1",
+  "motifs":[
+    {
+      "id":"MTEST1.1",
+      "name":"CODEX_TEST_MOTIF_1",
+      "consensus_iupac":"ACGT"
+    }
+  ]
+}"#,
+        )
+        .expect("motif db");
+        let resolved = db
+            .resolve("CODEX_TEST_MOTIF_1")
+            .expect("resolve custom motif");
+        assert_eq!(resolved.consensus_iupac, "ACGT");
     }
 }

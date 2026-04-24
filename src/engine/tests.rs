@@ -70,6 +70,11 @@ fn attract_test_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn jaspar_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 fn internet_access_available() -> bool {
     static INTERNET_OK: OnceLock<bool> = OnceLock::new();
     *INTERNET_OK.get_or_init(|| {
@@ -17091,6 +17096,7 @@ fn test_inspect_cutrun_regulatory_support_read_report_only_produces_strong_suppo
     let _serial = cutrun_test_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let _jaspar_serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     let td = tempdir().expect("tempdir");
     let root = td.path();
     let sp1_consensus = GentleEngine::resolve_tf_motif_for_scoring("SP1")
@@ -17212,6 +17218,7 @@ fn test_inspect_cutrun_regulatory_support_classifies_supported_and_unsupported_t
     let _serial = cutrun_test_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let _jaspar_serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     let td = tempdir().expect("tempdir");
     let root = td.path();
     let sp1_consensus = GentleEngine::resolve_tf_motif_for_scoring("SP1")
@@ -17347,6 +17354,7 @@ fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_
     let _serial = cutrun_test_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let _jaspar_serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     let td = tempdir().expect("tempdir");
     let root = td.path();
     let _snapshot_guard =
@@ -17515,6 +17523,7 @@ fn test_inspect_cutrun_regulatory_support_reports_motif_poor_supported_windows()
     let _serial = cutrun_test_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    let _jaspar_serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     let td = tempdir().expect("tempdir");
     let root = td.path();
     let _snapshot_guard = install_cutrun_test_jaspar_snapshot(&["CTCF"], "Synthetic species");
@@ -30207,6 +30216,7 @@ fn apply_summarize_multi_gene_promoter_tfbs_returns_transcription_aligned_report
 
 #[test]
 fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     let engine = GentleEngine::new();
     let report = engine
         .summarize_jaspar_entries(&["SP1".to_string()], 10_000, 12345)
@@ -30240,6 +30250,7 @@ fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() 
 
 #[test]
 fn summarize_jaspar_entries_expands_builtin_tf_groups() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     let engine = GentleEngine::new();
     let report = engine
         .summarize_jaspar_entries(&["Yamanaka factors".to_string()], 10_000, 12345)
@@ -30262,6 +30273,7 @@ fn summarize_jaspar_entries_expands_builtin_tf_groups() {
 
 #[test]
 fn apply_resolve_tf_queries_operation_returns_group_and_alias_matches() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     let mut engine = GentleEngine::new();
     let result = engine
         .apply(Operation::ResolveTfQueries {
@@ -30291,6 +30303,7 @@ fn apply_resolve_tf_queries_operation_returns_group_and_alias_matches() {
 
 #[test]
 fn apply_summarize_jaspar_entries_operation_returns_report_and_writes_json() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     let td = tempdir().expect("tempdir");
     let output_path = td.path().join("jaspar.summary.json");
     let mut engine = GentleEngine::new();
@@ -30332,6 +30345,7 @@ fn apply_summarize_jaspar_entries_operation_returns_report_and_writes_json() {
 
 #[test]
 fn benchmark_jaspar_registry_summarizes_all_local_entries_and_score_families() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     let engine = GentleEngine::new();
     let report = engine
         .benchmark_jaspar_registry(1024, 12345)
@@ -30355,6 +30369,7 @@ fn benchmark_jaspar_registry_summarizes_all_local_entries_and_score_families() {
 
 #[test]
 fn apply_benchmark_jaspar_registry_operation_returns_report_and_writes_json() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
     let td = tempdir().expect("tempdir");
     let output_path = td.path().join("jaspar.benchmark.json");
     let mut engine = GentleEngine::new();
