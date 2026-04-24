@@ -901,6 +901,14 @@ pub enum ShellCommand {
         output: String,
         name_filter: Option<String>,
     },
+    ProteasesList {
+        filter: Option<String>,
+        output: Option<String>,
+    },
+    ProteasesShow {
+        query: String,
+        output: Option<String>,
+    },
     ExportPool {
         inputs: Vec<String>,
         output: String,
@@ -5712,6 +5720,19 @@ impl ShellCommand {
                     molecule.display_name()
                 )
             }
+            Self::ProteasesList { filter, output } => format!(
+                "list protease catalog entries{} (output='{}')",
+                filter
+                    .as_deref()
+                    .map(|value| format!(" for filter '{}'", value))
+                    .unwrap_or_default(),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::ProteasesShow { query, output } => format!(
+                "show protease catalog entry '{}' (output='{}')",
+                query.trim(),
+                output.as_deref().unwrap_or("-"),
+            ),
             Self::ExportPool {
                 inputs,
                 output,
@@ -15528,6 +15549,70 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
+        "proteases" | "protease" => {
+            if tokens.len() < 2 {
+                return Err("proteases requires a subcommand: list or show".to_string());
+            }
+            match tokens[1].as_str() {
+                "list" => {
+                    let mut filter: Option<String> = None;
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--filter" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --filter".to_string());
+                                }
+                                filter = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for proteases list"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ProteasesList { filter, output })
+                }
+                "show" => {
+                    if tokens.len() < 3 {
+                        return Err("proteases show requires QUERY [--output PATH]".to_string());
+                    }
+                    let query = tokens[2].clone();
+                    let mut output: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing PATH after --output".to_string());
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for proteases show"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ProteasesShow { query, output })
+                }
+                other => Err(format!(
+                    "Unknown proteases subcommand '{other}' (expected list or show)"
+                )),
+            }
+        }
         "export-pool" => {
             if tokens.len() < 3 {
                 return Err(token_error(cmd));
@@ -18856,6 +18941,38 @@ fn execute_export_import_and_resource_command(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
+        ShellCommand::ProteasesList { filter, output } => {
+            let report = GentleEngine::inspect_protease_catalog(filter.as_deref());
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&report)
+                    .map_err(|e| format!("Could not serialize protease catalog: {e}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write protease catalog '{path}': {e}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize protease catalog: {e}"))?,
+            })
+        }
+        ShellCommand::ProteasesShow { query, output } => {
+            let entry = GentleEngine::inspect_protease_entry(query).map_err(|e| e.to_string())?;
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&entry)
+                    .map_err(|e| format!("Could not serialize protease entry: {e}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write protease entry '{path}': {e}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(entry)
+                    .map_err(|e| format!("Could not serialize protease entry: {e}"))?,
+            })
+        }
         ShellCommand::ExportPool {
             inputs,
             output,
@@ -25450,6 +25567,8 @@ pub fn execute_shell_command_with_options(
         ShellCommand::ExportPool { .. }
             | ShellCommand::ExportRunBundle { .. }
             | ShellCommand::ImportPool { .. }
+            | ShellCommand::ProteasesList { .. }
+            | ShellCommand::ProteasesShow { .. }
             | ShellCommand::ResourcesStatus
             | ShellCommand::ServicesStatus
             | ShellCommand::ServicesHandoff { .. }
@@ -26030,6 +26149,8 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::ExportPool { .. }
         | ShellCommand::ExportRunBundle { .. }
         | ShellCommand::ImportPool { .. }
+        | ShellCommand::ProteasesList { .. }
+        | ShellCommand::ProteasesShow { .. }
         | ShellCommand::ResourcesStatus
         | ShellCommand::ServicesStatus
         | ShellCommand::ServicesHandoff { .. }

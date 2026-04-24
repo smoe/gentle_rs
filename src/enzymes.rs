@@ -1,6 +1,9 @@
 //! Restriction-enzyme catalog loading and convenience selection helpers.
 
-use crate::{protease::Protease, restriction_enzyme::RestrictionEnzyme};
+use crate::{
+    protease::{Protease, normalize_protease_name_token},
+    restriction_enzyme::RestrictionEnzyme,
+};
 use anyhow::{Result, anyhow};
 use std::fs;
 
@@ -119,6 +122,17 @@ pub fn active_restriction_enzymes() -> Vec<RestrictionEnzyme> {
         }
     }
     load_restriction_enzymes_from_json_text(BUILTIN_ENZYMES_JSON).unwrap_or_default()
+}
+
+pub fn active_proteases() -> Vec<Protease> {
+    let mut proteases = Enzymes::default().proteases;
+    proteases.sort_by_key(|protease| {
+        (
+            normalize_protease_name_token(&protease.name),
+            protease.name.to_ascii_lowercase(),
+        )
+    });
+    proteases
 }
 
 pub fn default_preferred_restriction_enzyme_names() -> Vec<String> {

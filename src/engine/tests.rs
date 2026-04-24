@@ -13145,6 +13145,43 @@ fn test_export_rna_ladders_operation() {
 }
 
 #[test]
+fn test_inspect_protease_catalog_reports_trypsin_and_sequence_specific_filter() {
+    let catalog = GentleEngine::inspect_protease_catalog(Some("proteomics"));
+    assert_eq!(catalog.schema, "gentle.protease_catalog.v1");
+    assert!(catalog.total_protease_count >= catalog.returned_protease_count);
+    assert!(catalog.returned_protease_count > 0);
+    assert!(catalog.proteases.iter().all(|entry| {
+        entry.name.to_ascii_lowercase().contains("trypsin")
+            || entry
+                .typical_applications
+                .iter()
+                .any(|value| value.contains("proteomics"))
+            || entry
+                .specificity
+                .as_deref()
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .contains("proteomics")
+    }));
+    assert!(
+        catalog
+            .proteases
+            .iter()
+            .any(|entry| entry.name == "Trypsin" && entry.sequence_specific)
+    );
+}
+
+#[test]
+fn test_inspect_protease_entry_resolves_alias() {
+    let entry = GentleEngine::inspect_protease_entry("PreScission protease")
+        .expect("resolve protease alias");
+    assert_eq!(entry.schema, "gentle.protease_catalog_entry.v1");
+    assert_eq!(entry.name, "HRV 3C protease");
+    assert_eq!(entry.cleavage_side.as_deref(), Some("c_terminal"));
+    assert!(entry.sequence_specific);
+}
+
+#[test]
 fn test_save_file_operation_fasta() {
     let mut state = ProjectState::default();
     state.sequences.insert("s".to_string(), seq("ATGCCA"));
@@ -13163,6 +13200,33 @@ fn test_save_file_operation_fasta() {
     let text = std::fs::read_to_string(path_text).unwrap();
     assert!(text.starts_with(">"));
     assert!(text.contains("ATGCCA"));
+}
+
+#[test]
+fn test_save_file_operation_fasta_canonicalizes_peptide_to_protein_metadata() {
+    let mut state = ProjectState::default();
+    let mut protein = DNAsequence::from_sequence("MEEPQ").expect("protein");
+    protein.set_molecule_type("peptide");
+    state.sequences.insert("pep".to_string(), protein);
+    let mut engine = GentleEngine::from_state(state);
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().with_extension("fa");
+    let path_text = path.display().to_string();
+    engine
+        .apply(Operation::SaveFile {
+            seq_id: "pep".to_string(),
+            path: path_text.clone(),
+            format: ExportFormat::Fasta,
+        })
+        .expect("save peptide fasta");
+    let text = std::fs::read_to_string(path_text).expect("read peptide fasta");
+    assert!(
+        text.lines()
+            .next()
+            .unwrap_or("")
+            .contains("molecule=protein")
+    );
+    assert!(text.contains("MEEPQ"));
 }
 
 #[test]

@@ -2353,6 +2353,44 @@ pub struct RnaLadderExportReport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProteaseCatalogEntry {
+    pub schema: String,
+    pub name: String,
+    pub cleavage_pattern: String,
+    pub cut_offset: isize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cleavage_side: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub typical_applications: Vec<String>,
+    #[serde(default)]
+    pub sequence_specific: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProteaseCatalogReport {
+    pub schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    pub total_protease_count: usize,
+    pub returned_protease_count: usize,
+    pub proteases: Vec<ProteaseCatalogEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProteaseCatalogExportReport {
+    pub path: String,
+    pub returned_protease_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomeExtractionProvenance {
     pub seq_id: SeqId,
     pub recorded_at_unix_ms: u128,

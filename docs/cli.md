@@ -865,6 +865,8 @@ UniProt mapping capability status:
   - `DeriveProteinSequences`
     - transcript-first and self-sufficient; UniProt is optional comparison
       evidence, not the source of truth for what peptide products exist
+  - protein and peptide molecule labels are treated as one first-class
+    `protein` family for shared import/export and FASTA metadata purposes
 
 ## Build and run
 
@@ -1710,6 +1712,8 @@ Shared shell command:
     - `helpers blast-list`
     - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+    - `proteases list [--filter TEXT] [--output PATH]`
+    - `proteases show QUERY [--output PATH]`
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
@@ -2727,6 +2731,22 @@ Resource sync commands:
   - `INPUT` may be a local file path or an `https://...` URL.
   - Default output: `data/resources/rebase.enzymes.json`.
   - At runtime, GENtle auto-loads this file (if present) and overrides embedded restriction enzymes.
+- `proteases list [--filter TEXT] [--output OUTPUT.json]`
+  - Lists the built-in protease catalog through one deterministic JSON report.
+  - Search matches the curated biotech-facing metadata now carried by the
+    protease rows:
+    - names and aliases
+    - cleavage-pattern notation
+    - specificity summaries
+    - common applications such as `proteomics` or `tag_removal`
+  - This is a catalog/inspection route; it does not execute peptide cleavage
+    yet.
+- `proteases show QUERY [--output OUTPUT.json]`
+  - Resolves one protease by exact name or alias first, then by unique
+    catalog-search match.
+  - Useful for sequence-specific tag-cleavage proteases such as `TEV protease`,
+    `HRV 3C protease`, `Thrombin`, `Factor Xa`, or residue-specific entries
+    such as `Trypsin`.
 - `resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]`
   - Parses JASPAR PFM text into motif snapshot JSON with IUPAC consensus.
   - `INPUT` may be a local file path or an `https://...` URL.

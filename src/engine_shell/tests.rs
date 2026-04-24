@@ -3947,6 +3947,32 @@ fn parse_ladders_list_rna() {
 }
 
 #[test]
+fn parse_proteases_list_with_filter_and_output() {
+    let cmd = parse_shell_line("proteases list --filter trypsin --output proteases.json")
+        .expect("parse proteases list");
+    match cmd {
+        ShellCommand::ProteasesList { filter, output } => {
+            assert_eq!(filter.as_deref(), Some("trypsin"));
+            assert_eq!(output.as_deref(), Some("proteases.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_proteases_show_with_output() {
+    let cmd = parse_shell_line("proteases show Trypsin --output trypsin.json")
+        .expect("parse proteases show");
+    match cmd {
+        ShellCommand::ProteasesShow { query, output } => {
+            assert_eq!(query, "Trypsin");
+            assert_eq!(output.as_deref(), Some("trypsin.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_reference_genes_with_regex_and_biotypes() {
     let cmd = parse_shell_line(
             "helpers genes Helper --filter '^bla$' --biotype promoter --biotype cds --limit 10 --offset 3",
@@ -12824,6 +12850,59 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
     assert_eq!(
         out.output["attract"]["download_url"].as_str(),
         Some("https://attract.cnic.es/attract/static/ATtRACT.zip")
+    );
+}
+
+#[test]
+fn execute_proteases_list_writes_catalog_json() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("proteases.catalog.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ProteasesList {
+            filter: Some("tag_removal".to_string()),
+            output: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute proteases list");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.protease_catalog.v1")
+    );
+    assert!(out.output["proteases"].as_array().is_some_and(|rows| {
+        rows.iter()
+            .any(|row| row["name"].as_str() == Some("TEV protease"))
+    }));
+    let written = fs::read_to_string(&output_path).expect("read protease catalog");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse JSON");
+    assert_eq!(
+        json.get("filter").and_then(|value| value.as_str()),
+        Some("tag_removal")
+    );
+}
+
+#[test]
+fn execute_proteases_show_returns_trypsin_metadata() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ProteasesShow {
+            query: "Trypsin".to_string(),
+            output: None,
+        },
+    )
+    .expect("execute proteases show");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.protease_catalog_entry.v1")
+    );
+    assert_eq!(out.output["name"].as_str(), Some("Trypsin"));
+    assert_eq!(
+        out.output["specificity"].as_str(),
+        Some("Cleaves C-terminal to Lys or Arg unless the next residue is Pro.")
     );
 }
 
