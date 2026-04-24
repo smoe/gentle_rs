@@ -47,6 +47,11 @@ metadata:
       - genome anchor
       - fetch genbank
       - design assay
+      - gentle version
+      - installed gentle
+      - database status
+      - installed databases
+      - resources status
       - protein gel
       - protein 2d gel
       - protein isoform
@@ -128,6 +133,8 @@ capability-led language:
 - For patient/cohort signals, describe the path explicitly:
   `observation -> mechanistic hypothesis -> GENtle sequence/context analysis -> wet-lab validation plan`.
 - Be explicit that GENtle can:
+  - report the installed GENtle runtime version via request mode `version`
+    (`examples/request_version_installed.json`),
   - inspect pasted DNA fragments directly for restriction sites or TFBS hits
     without first creating project-state records when the task is purely
     read-only,
@@ -142,6 +149,11 @@ capability-led language:
   useful to other bioinformatics tools. GENtle's added value is deterministic
   preparation, cataloging, provenance, and downstream reuse in the same
   workflow.
+- When users ask which databases, references, or resources GENtle has
+  installed, answer by running status routes instead of saying the skill cannot
+  know. Start with `services status`, then use `resources status`,
+  `genomes status ...`, `helpers status ...`, or list routes for the requested
+  resource family.
 - GENtle now also covers transcript-native protein-gel rendering for curated
   isoform sets, including the 1D molecular-weight lane route and the 2D pI vs
   molecular-weight spot-map route used by the TP73 demos.
@@ -230,6 +242,13 @@ Recommended preparation order for common human-question answering:
    - `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800`
 6. `resources status`
 
+For a generic "what is installed?" or "what databases do you know about?"
+question, use `services status` first because it gives the ClawBio-facing
+readiness view across references, helpers, and integrated resources. Follow
+with `resources status` for JASPAR/REBASE/ATtRACT-style resource snapshots,
+`genomes status` or `genomes list` for reference genomes, and `helpers status`
+or `helpers list` for helper/vector assets.
+
 Interpret resource readiness conservatively:
 
 - `JASPAR` and `REBASE`
@@ -303,10 +322,33 @@ Preferred handling:
 ## Capability Split Inside This One Skill
 
 `gentle-cloning` is still one runtime alias in ClawBio/OpenClaw, but it should
-be treated as a bundle of six explicit sub-capabilities rather than one vague
+be treated as a bundle of eight explicit sub-capabilities rather than one vague
 "do anything with GENtle" wrapper.
 
-### 1. Genomic Context
+### 1. Runtime and Resource Readiness
+
+Use this when the user asks which GENtle runtime is installed, which databases
+or resources GENtle knows about, or which references/helpers are prepared
+locally.
+
+Current shared GENtle routes behind this capability:
+
+- request mode `version`
+- `services status`
+- `services handoff --scope clawbio ...`
+- `resources status`
+- `genomes list`, `genomes status ...`
+- `helpers list`, `helpers status ...`
+- family-specific list/status routes for prepared external resources
+
+Expected outputs:
+
+- one installed runtime version line for chat-first answers
+- one local readiness/status payload with suggested next actions when
+  preparation or sync is the obvious follow-up
+- one reproducibility bundle showing the exact status command that was run
+
+### 2. Genomic Context
 
 Use this when the user wants the DNA sequence window in headless form:
 
@@ -351,7 +393,7 @@ Expected outputs:
 - one extracted region/gene/promoter slice from a prepared local reference
 - one reproducibility bundle from the ClawBio wrapper
 
-### 2. TFBS Analysis
+### 3. TFBS Analysis
 
 Use this when the user wants transcription-factor binding-site annotation,
 inspection, or figure export.
@@ -398,7 +440,7 @@ Shared TF query semantics for this capability:
 - built-in functional groups such as `Yamanaka factors` / `stemness` are valid
 - family-like queries such as `KLF family` are valid
 
-### 3. Restriction Analysis
+### 4. Restriction Analysis
 
 Use this when the user wants endonuclease cleavage inspection, map rendering,
 or coordinate export.
@@ -418,7 +460,7 @@ Expected outputs:
 - restriction-cleavage SVGs
 - BED rows for deterministic REBASE-derived cut sites
 
-### 4. Splicing Expert
+### 5. Splicing Expert
 
 Use this when the user wants transcript/exon/splice interpretation in the same
 shape as the GUI `Splicing Expert`.
@@ -437,7 +479,7 @@ Expected outputs:
 - splicing-expert SVG with junction support, transition matrices, and phase
   cues
 
-### 5. Isoform Architecture
+### 6. Isoform Architecture
 
 Use this when the user wants transcript-family or isoform-panel review rather
 than one splice group.
@@ -455,7 +497,29 @@ Expected outputs:
 - isoform-panel text
 - isoform-architecture SVG
 
-### 6. Experimental Follow-up
+### 7. Protein Isoform Gel and 2D-Gel Rendering
+
+Use this when the user wants a transcript-native protein figure, including
+the canonical offline TP73 isoform protein gel, TP73 2D pI-vs-kDa spot map, or
+protease-digest gel demo.
+
+Current shared GENtle routes behind this capability:
+
+- `DeriveProteinSequences`
+- `RenderProteinGelSvg`
+- `RenderProtein2dGelSvg`
+- `DigestProteinSequence`
+- `docs/examples/workflows/tp73_isoform_protein_gel_offline.json`
+- `docs/examples/workflows/tp73_isoform_protein_2d_gel_offline.json`
+- `docs/examples/workflows/tp73_variant1_trypsin_digest_gel_offline.json`
+
+Expected outputs:
+
+- one deterministic protein-derivation report naming admitted transcripts
+- one SVG provenance figure
+- one promoted PNG-first ClawBio artifact for messenger/web display
+
+### 8. Experimental Follow-up
 
 Use this when ClawBio starts from a patient/cohort variant, pharmacogenomic
 alert, differentially expressed gene, splice-variant observation, or explicit
@@ -904,6 +968,8 @@ This skill should be usable by an AI agent even without the Python wrapper.
 Apply the following methodology:
 
 1. **Prefer explicit execution modes over free-form advice**:
+   - use `version` to report which installed GENtle runtime binary is behind
+     the copied ClawBio skill;
    - use `capabilities` to discover what the local GENtle build supports;
    - use `state-summary` to inspect existing project state;
    - use `shell` for canonical human-readable GENtle command routes;
@@ -951,10 +1017,12 @@ Apply the following methodology:
 
 **Key parameters / control points**:
 
-- `mode`: one of `skill-info`, `capabilities`, `state-summary`, `shell`, `op`,
-  `workflow`, or `raw`.
+- `mode`: one of `skill-info`, `version`, `capabilities`, `state-summary`,
+  `shell`, `op`, `workflow`, or `raw`.
 - `skill-info`: reports ClawBio skill/catalog schema metadata without invoking
   `gentle_cli`; use it when checking which copied skill scaffold is installed.
+- `version`: invokes `gentle_cli --version`; use it when checking which GENtle
+  runtime binary is installed behind the copied ClawBio skill.
 - `timeout_secs`: command timeout in seconds; default `180`.
 - `state_path`: optional but strongly recommended for stateful workflows.
 - `ensure_reference_prepared`: optional reference preflight that runs
@@ -968,6 +1036,7 @@ Apply the following methodology:
   `GENTLE_CLI_CMD`, then `gentle_cli` on `PATH`, then local `cargo run`
   fallback.
 - Included first-run bootstrap requests:
+  - `examples/request_version_installed.json`
   - `examples/request_genomes_list_human.json`
   - `examples/request_services_status.json`
   - `examples/request_services_handoff.json`

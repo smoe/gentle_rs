@@ -1,0 +1,5 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "version",
+  "timeout_secs": 180
+}

@@ -28,6 +28,7 @@ SKILL_INFO_SCHEMA = "gentle.clawbio_skill_info.v1"
 SKILL_NAME = "gentle-cloning"
 SUPPORTED_REQUEST_MODES = (
     "skill-info",
+    "version",
     "capabilities",
     "state-summary",
     "shell",
@@ -148,6 +149,7 @@ def _skill_info_payload(script_path: Path) -> dict[str, Any]:
         "catalog_entry_path": str(catalog_path),
         "catalog_entry_loaded": bool(catalog_entry),
         "runtime_version_command": "gentle_cli --version",
+        "runtime_version_request_mode": "version",
     }
 
 
@@ -158,7 +160,7 @@ def _skill_info_chat_summary_lines(info: dict[str, Any]) -> list[str]:
     return [
         f"{name} skill version {version} ({status}).",
         f"Request schema: {info.get('request_schema')}; result schema: {info.get('result_schema')}.",
-        "Use `gentle_cli --version` when you need the GENtle runtime version.",
+        "Use request mode `version` when you need the installed GENtle runtime version.",
     ]
 
 
@@ -1121,6 +1123,8 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
         args.extend(["--state", request.state_path])
     if request.mode == "capabilities":
         args.append("capabilities")
+    elif request.mode == "version":
+        args.append("--version")
     elif request.mode == "state-summary":
         args.append("state-summary")
     elif request.mode == "shell":
@@ -1505,6 +1509,18 @@ def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
         if lines:
             return lines
     return None
+
+
+def _runtime_version_chat_summary_lines(
+    request: Request | None,
+    run_result: subprocess.CompletedProcess[str] | None,
+) -> list[str] | None:
+    if request is None or request.mode != "version" or run_result is None:
+        return None
+    version_text = run_result.stdout.strip() or run_result.stderr.strip()
+    if not version_text:
+        return ["GENtle runtime version command completed, but did not print a version."]
+    return [f"Installed GENtle runtime version: {version_text}"]
 
 
 def _action_id_from_label(label: str) -> str:
@@ -2384,6 +2400,11 @@ def main() -> int:
                 )
             stdout_json = _parse_stdout_json(run_result.stdout)
             chat_summary_lines = _extract_chat_summary_lines(stdout_json)
+            if chat_summary_lines is None:
+                chat_summary_lines = _runtime_version_chat_summary_lines(
+                    request,
+                    run_result,
+                )
             preferred_artifacts = _extract_preferred_artifacts(stdout_json)
             suggested_actions = _extract_suggested_actions(stdout_json, request)
             preferred_demo_actions = _extract_preferred_demo_actions(stdout_json)

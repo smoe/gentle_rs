@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -1405,6 +1405,14 @@ order. Durable architecture constraints and decisions remain in
           route such as `services status`, the wrapper surfaces that as a
           likely version mismatch and points the operator to updating the
           binary or using `gentle_local_checkout_cli.sh`
+        - the ClawBio wrapper now also has a first-class `version` request mode
+          that invokes `gentle_cli --version`, promotes a chat-safe installed
+          runtime summary, and is documented through
+          `request_version_installed.json`; the skill wording now also directs
+          generic "installed databases/resources" questions to `services
+          status`, `resources status`, `genomes status/list`, and
+          `helpers status/list` rather than allowing chat layers to answer
+          from memory
         - the lowest-hanging graphical demo on that same path is now explicit:
           one request can auto-prepare `Human GRCh38 Ensembl 116`, fetch
           `rs9923231`, and export a linear `VKORC1` genomic-context SVG for

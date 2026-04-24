@@ -237,6 +237,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         "result_schema": "gentle.clawbio_skill_result.v1",
         "supported_request_modes": [
             "skill-info",
+            "version",
             "capabilities",
             "state-summary",
             "shell",
@@ -253,11 +254,12 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         ),
         "catalog_entry_loaded": True,
         "runtime_version_command": "gentle_cli --version",
+        "runtime_version_request_mode": "version",
     }
     assert payload["chat_summary_lines"] == [
         "gentle-cloning skill version 0.1.0 (mvp).",
         "Request schema: gentle.clawbio_skill_request.v1; result schema: gentle.clawbio_skill_result.v1.",
-        "Use `gentle_cli --version` when you need the GENtle runtime version.",
+        "Use request mode `version` when you need the installed GENtle runtime version.",
     ]
     assert "# no command executed" in (
         output_dir / "reproducibility" / "commands.sh"
@@ -299,6 +301,58 @@ def test_skill_info_request_mode_reports_catalog_version(
     assert payload["stdout_json"]["version"] == "0.1.0"
     assert payload["resolver"] is None
     assert payload["command"] is None
+
+
+def test_version_mode_reports_installed_gentle_runtime(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps({"schema": "gentle.clawbio_skill_request.v1", "mode": "version"})
+        + "\n",
+        encoding="utf-8",
+    )
+    argv_path = tmp_path / "argv.txt"
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' \"$@\" > {shlex.quote(str(argv_path))}\n"
+        "if [ \"${1:-}\" = \"--version\" ]; then\n"
+        "  echo 'GENtle 0.1.0-test'\n"
+        "  exit 0\n"
+        "fi\n"
+        "echo 'unexpected args' >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "version_out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "ok"
+    assert payload["request"]["mode"] == "version"
+    assert payload["command"] == [str(fake_cli), "--version"]
+    assert payload["stdout"] == "GENtle 0.1.0-test\n"
+    assert payload["stdout_json"] is None
+    assert payload["chat_summary_lines"] == [
+        "Installed GENtle runtime version: GENtle 0.1.0-test"
+    ]
+    assert argv_path.read_text(encoding="utf-8").splitlines() == ["--version"]
 
 
 def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
@@ -2164,6 +2218,11 @@ def test_relative_input_path_resolves_from_copied_clawbio_skill_layout(tmp_path:
 def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() -> None:
     examples_dir = Path(__file__).resolve().parents[1] / "examples"
     expected = {
+        "request_version_installed.json": (
+            "version",
+            None,
+            180,
+        ),
         "request_genomes_list_human.json": (
             "shell",
             "genomes list --filter human",
@@ -3029,8 +3088,13 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "perturbation requests" in description
     assert "direct DNA fragment requests" in description
     assert "mechanistic follow-up" in description
+    assert "installed-runtime and resource-readiness checks" in description
     assert "reusable local reference assets" in description
     assert "protease-digest figures" in description
+
+    tags = set(catalog_entry["tags"])
+    assert "runtime-status" in tags
+    assert "resource-status" in tags
 
     trigger_keywords = set(catalog_entry["trigger_keywords"])
     assert "patient variant" in trigger_keywords
@@ -3050,6 +3114,11 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "extract gene from ensembl" in trigger_keywords
     assert "tfbs score tracks" in trigger_keywords
     assert "jaspar motif" in trigger_keywords
+    assert "gentle version" in trigger_keywords
+    assert "installed gentle" in trigger_keywords
+    assert "database status" in trigger_keywords
+    assert "installed databases" in trigger_keywords
+    assert "resources status" in trigger_keywords
     assert "protein gel" in trigger_keywords
     assert "protein 2d gel" in trigger_keywords
     assert "protease digest" in trigger_keywords

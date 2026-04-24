@@ -25,16 +25,18 @@ could be used.
 ## Logical capability split
 
 The runtime alias is still `gentle-cloning`, but the intended ClawBio-facing
-surface is now six explicit sub-capabilities:
+surface is now eight explicit sub-capabilities:
 
+- runtime and resource readiness
 - genomic context
 - TFBS analysis
 - restriction analysis
 - splicing expert
 - isoform architecture
+- protein isoform gel / 2D-gel rendering
 - experimental follow-up
 
-This is a documentation/routing split, not six separate executables. The goal
+This is a documentation/routing split, not separate executables. The goal
 is to make it obvious that GENtle already exposes dedicated shared command
 surfaces for those tasks instead of one vague "cloning" box.
 
@@ -75,6 +77,10 @@ intended framing is:
   BLAST-capable indices, that may also be useful to external bioinformatics
   tools. Its added value is deterministic preparation, cataloging, provenance,
   and reuse in the same workflow.
+- GENtle can report the installed runtime version via
+  `examples/request_version_installed.json` and can answer installed
+  database/resource questions by running `services status`, `resources status`,
+  `genomes status`, `helpers status`, or the relevant list route.
 
 ### Ensembl availability answers
 
@@ -102,6 +108,15 @@ ClawBio/OpenClaw answer pattern is:
 
 This keeps the answer truthful while still surfacing the practical path
 forward.
+
+For broader questions such as "which databases are installed?" or "what does
+GENtle know about locally?", do not answer from memory and do not say the
+skill cannot know. Run the status routes:
+
+- `services status` for the ClawBio-facing readiness overview
+- `resources status` for integrated JASPAR/REBASE/ATtRACT-style resources
+- `genomes status ...` or `genomes list` for reference-genome catalogs/caches
+- `helpers status ...` or `helpers list` for helper/vector assets
 
 ### Preparation for likely user questions
 
@@ -138,9 +153,11 @@ the chat layer did not actually invoke the refreshed `gentle-cloning` skill.
 The shortest investigation path is:
 
 1. verify the copied remote skill bundle really contains:
+   - `examples/request_version_installed.json`
    - `examples/request_services_status.json`
    - the `Ensembl availability answers` section in `SKILL.md`
 2. run the skill directly from the ClawBio checkout:
+   - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_version_installed.json --output /tmp/gentle_version`
    - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_status.json --output /tmp/gentle_services_status`
    - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38`
    - the wrapper now resolves relative `--input` paths not only from the
@@ -187,6 +204,7 @@ export GENTLE_CLI_CMD=/home/clawbio/ClawBio/skills/gentle-cloning/gentle_local_c
 
 cd /home/clawbio/ClawBio
 python clawbio.py run gentle-cloning --demo
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_version_installed.json --output /tmp/gentle_version
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_list_human.json --output /tmp/gentle_list_human
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_list_gst.json --output /tmp/gentle_list_helpers
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_hosts_list_deor.json --output /tmp/gentle_list_hosts
@@ -420,13 +438,15 @@ Alternative runtimes:
 ## Request schema
 
 - `schema`: `gentle.clawbio_skill_request.v1`
-- `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|raw`
+- `mode`: `skill-info|version|capabilities|state-summary|shell|op|workflow|raw`
 - optional: `state_path`, `timeout_secs`, `ensure_reference_prepared`
 
 Mode-specific fields:
 
 - `skill-info`: no extra fields; reports skill/catalog schema metadata without
   invoking `gentle_cli`
+- `version`: no extra fields; invokes `gentle_cli --version` and promotes a
+  chat-safe installed-runtime summary
 - `shell`: `shell_line`
 - `op`: `operation`
 - `workflow`: `workflow` or `workflow_path`
@@ -482,6 +502,7 @@ working after the scaffold is copied into a separate ClawBio checkout.
 
 Included first-run bootstrap requests:
 
+- `examples/request_version_installed.json`
 - `examples/request_genomes_list_human.json`
 - `examples/request_helpers_list_gst.json`
 - `examples/request_hosts_list_deor.json`
