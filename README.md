@@ -616,6 +616,18 @@ design story. The left panel explains the reverse-strand promoter interval to
 take forward, while the right panel shows the study construct as a real GENtle
 circular-map export rather than a standalone illustration.
 
+The same ClawBio bridge is also being shaped into an experimental follow-up
+planner. Natural requests such as "determine the effect of this SNP", "what
+should we do with this differentially expressed gene", "characterize this
+splice variant", "overexpress this gene", or "compare the cheapest route" can
+be routed through a machine-readable request catalog that separates prompt
+origin, intent, evidence, GENtle artifacts, routine planning, and confirmation
+gates. The current integration notes live in
+[`integrations/clawbio/experimental_followup_graph.md`](integrations/clawbio/experimental_followup_graph.md),
+[`integrations/clawbio/experimental_followup_request_catalog.json`](integrations/clawbio/experimental_followup_request_catalog.json),
+and
+[`integrations/clawbio/experimental_followup_requests.md`](integrations/clawbio/experimental_followup_requests.md).
+
 ### Guided GUI Tutorials
 
 ![GENtle Gibson testing tutorial in the Help window](docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png)

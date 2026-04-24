@@ -14,6 +14,9 @@ Current scaffold:
   `skills/catalog.json` entry)
 - `experimental_followup_request_catalog.json` (machine-readable intent catalog
   for ClawBio planners)
+- `experimental_followup_graph.md` (annotated graph explaining how request
+  origin, intent, evidence, artifacts, routine planning, and confirmation gates
+  relate)
 - `experimental_followup_requests.md` (requests for ClawBio developers who
   want prompts such as "determine the effect of this SNP", "what should we do
   with this differentially expressed gene", or "characterize this splice

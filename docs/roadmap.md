@@ -2211,7 +2211,10 @@ order. Durable architecture constraints and decisions remain in
     orchestration plus deterministic GENtle sequence-context, perturbation,
     routine-comparison, and assay-planning artifacts; the companion
     `integrations/clawbio/experimental_followup_request_catalog.json` exposes
-    the same surface as machine-readable intent records for planners
+    the same surface as machine-readable intent records for planners, and
+    `integrations/clawbio/experimental_followup_graph.md` documents the
+    annotated request/evidence/artifact/planning graph that should eventually
+    be generated from that catalog
   - current CLI reality check for that split:
     - already present:
       - DNA-window SVG export plus coordinate-bearing BED export

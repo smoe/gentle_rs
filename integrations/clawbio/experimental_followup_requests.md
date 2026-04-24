@@ -13,6 +13,8 @@ Companion file:
 `experimental_followup_request_catalog.json` carries the same planner-facing
 surface as a machine-readable catalog of intents, example request paths,
 follow-up families, and confirmation gates.
+`experimental_followup_graph.md` explains the catalog as an annotated graph,
+including the distinction between artifacts and routine planning.
 
 ## Goal
 
