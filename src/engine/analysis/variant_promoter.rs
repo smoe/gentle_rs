@@ -187,6 +187,95 @@ impl GentleEngine {
         collapsed
     }
 
+    fn collapse_promoter_window_records_by_exact_span(
+        records: Vec<PromoterWindowRecord>,
+    ) -> Vec<PromoterWindowRecord> {
+        let mut grouped: BTreeMap<
+            (
+                Option<String>,
+                Option<String>,
+                String,
+                usize,
+                usize,
+                usize,
+                usize,
+            ),
+            Vec<PromoterWindowRecord>,
+        > = BTreeMap::new();
+        for record in records {
+            let key = (
+                record
+                    .gene_label
+                    .clone()
+                    .map(|value| value.to_ascii_lowercase()),
+                record
+                    .gene_id
+                    .clone()
+                    .map(|value| value.to_ascii_lowercase()),
+                record.strand.clone(),
+                record.start_0based,
+                record.end_0based_exclusive,
+                record.upstream_bp,
+                record.downstream_bp,
+            );
+            grouped.entry(key).or_default().push(record);
+        }
+        let mut collapsed = grouped
+            .into_values()
+            .filter_map(|mut group| {
+                group.sort_by(|left, right| {
+                    left.transcript_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.transcript_id.to_ascii_lowercase())
+                        .then_with(|| {
+                            left.transcript_label
+                                .to_ascii_lowercase()
+                                .cmp(&right.transcript_label.to_ascii_lowercase())
+                        })
+                });
+                let mut group_iter = group.into_iter();
+                let mut representative = group_iter.next()?;
+                let mut transcript_ids = representative.transcript_ids.clone();
+                let mut transcript_labels = representative.transcript_labels.clone();
+                let mut transcript_feature_id = representative.transcript_feature_id;
+                for record in group_iter {
+                    if transcript_feature_id.is_none() {
+                        transcript_feature_id = record.transcript_feature_id;
+                    }
+                    transcript_ids.extend(record.transcript_ids);
+                    transcript_labels.extend(record.transcript_labels);
+                }
+                transcript_ids.sort();
+                transcript_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+                transcript_labels.sort();
+                transcript_labels.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+                representative.transcript_feature_id = transcript_feature_id;
+                representative.transcript_count = transcript_ids.len().max(1);
+                representative.transcript_ids = transcript_ids;
+                representative.transcript_labels = transcript_labels;
+                representative.source = "transcript_tss_exact_collapse".to_string();
+                Some(representative)
+            })
+            .collect::<Vec<_>>();
+        collapsed.sort_by(|left, right| {
+            left.gene_label
+                .clone()
+                .unwrap_or_else(|| left.transcript_label.clone())
+                .to_ascii_lowercase()
+                .cmp(
+                    &right
+                        .gene_label
+                        .clone()
+                        .unwrap_or_else(|| right.transcript_label.clone())
+                        .to_ascii_lowercase(),
+                )
+                .then_with(|| left.start_0based.cmp(&right.start_0based))
+                .then_with(|| left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                .then_with(|| left.strand.cmp(&right.strand))
+        });
+        collapsed
+    }
+
     pub(crate) fn derive_promoter_window_records(
         &self,
         dna: &DNAsequence,
@@ -285,9 +374,12 @@ impl GentleEngine {
                 Some(PromoterWindowRecord {
                     gene_label: resolved_gene_label,
                     gene_id: resolved_gene_id,
-                    transcript_id,
-                    transcript_label,
+                    transcript_id: transcript_id.clone(),
+                    transcript_label: transcript_label.clone(),
                     transcript_feature_id: Some(feature_id),
+                    transcript_count: 1,
+                    transcript_ids: vec![transcript_id],
+                    transcript_labels: vec![transcript_label],
                     strand: if is_reverse { "-" } else { "+" }.to_string(),
                     tss_local_0based,
                     start_0based,
@@ -347,21 +439,35 @@ impl GentleEngine {
             .gene_label
             .clone()
             .unwrap_or_else(|| record.transcript_label.clone());
+        let transcript_count = record
+            .transcript_count
+            .max(record.transcript_ids.len().max(1));
+        let label = if transcript_count > 1 {
+            format!("{base_label} promoter window ({transcript_count} tx)")
+        } else {
+            format!("{base_label} promoter window")
+        };
+        let note = if transcript_count > 1 {
+            format!(
+                "Generated promoter window from transcript TSS geometry shared by {transcript_count} transcripts (transcript_ids='{}', transcript_labels='{}', representative_tss_local_1based={}, upstream_bp={}, downstream_bp={}).",
+                record.transcript_ids.join(","),
+                record.transcript_labels.join(","),
+                record.tss_local_0based.saturating_add(1),
+                record.upstream_bp,
+                record.downstream_bp
+            )
+        } else {
+            format!(
+                "Generated promoter window from transcript TSS geometry (transcript='{}', tss_local_1based={}, upstream_bp={}, downstream_bp={}).",
+                record.transcript_label,
+                record.tss_local_0based.saturating_add(1),
+                record.upstream_bp,
+                record.downstream_bp
+            )
+        };
         let mut qualifiers = vec![
-            (
-                "label".into(),
-                Some(format!("{base_label} promoter window")),
-            ),
-            (
-                "note".into(),
-                Some(format!(
-                    "Generated promoter window from transcript TSS geometry (transcript='{}', tss_local_1based={}, upstream_bp={}, downstream_bp={}).",
-                    record.transcript_label,
-                    record.tss_local_0based.saturating_add(1),
-                    record.upstream_bp,
-                    record.downstream_bp
-                )),
-            ),
+            ("label".into(), Some(label)),
+            ("note".into(), Some(note)),
             (
                 "gentle_generated".into(),
                 Some(ANNOTATE_PROMOTER_WINDOWS_GENERATED_TAG.to_string()),
@@ -370,12 +476,24 @@ impl GentleEngine {
                 "generated_by".into(),
                 Some("AnnotatePromoterWindows".to_string()),
             ),
-            ("promoter_source".into(), Some("transcript_tss".to_string())),
+            ("promoter_source".into(), Some(record.source.clone())),
             ("regulatory_class".into(), Some("promoter".to_string())),
             ("transcript_id".into(), Some(record.transcript_id.clone())),
             (
+                "transcript_count".into(),
+                Some(transcript_count.to_string()),
+            ),
+            (
+                "transcript_ids".into(),
+                Some(record.transcript_ids.join(",")),
+            ),
+            (
                 "transcript_label".into(),
                 Some(record.transcript_label.clone()),
+            ),
+            (
+                "transcript_labels".into(),
+                Some(record.transcript_labels.join(",")),
             ),
             ("upstream_bp".into(), Some(record.upstream_bp.to_string())),
             (
@@ -423,7 +541,8 @@ impl GentleEngine {
                 collapse_mode,
             )
         };
-        if records.is_empty() {
+        let collapsed_records = Self::collapse_promoter_window_records_by_exact_span(records);
+        if collapsed_records.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::NotFound,
                 message: format!(
@@ -444,8 +563,9 @@ impl GentleEngine {
             .features()
             .iter()
             .filter_map(|feature| {
-                let transcript_id =
-                    Self::feature_qualifier_text(feature, "transcript_id").unwrap_or_default();
+                let gene_label = Self::feature_qualifier_text(feature, "gene")
+                    .or_else(|| Self::feature_qualifier_text(feature, "label"))
+                    .unwrap_or_default();
                 let generated = Self::feature_qualifier_text(feature, "gentle_generated")
                     .unwrap_or_default()
                     .trim()
@@ -465,18 +585,22 @@ impl GentleEngine {
                     } else {
                         "+"
                     },
-                    transcript_id.to_ascii_lowercase(),
+                    gene_label.to_ascii_lowercase(),
                     format!("{start}-{end}")
                 ))
             })
             .collect::<HashSet<_>>();
         let mut added = 0usize;
-        for record in &records {
+        for record in &collapsed_records {
             let signature = format!(
                 "promoter:{}:{}:{}:{}",
                 ANNOTATE_PROMOTER_WINDOWS_GENERATED_TAG,
                 record.strand,
-                record.transcript_id.to_ascii_lowercase(),
+                record
+                    .gene_label
+                    .clone()
+                    .unwrap_or_else(|| record.transcript_label.clone())
+                    .to_ascii_lowercase(),
                 format!("{}-{}", record.start_0based, record.end_0based_exclusive)
             );
             if existing.contains(&signature) {
@@ -489,7 +613,7 @@ impl GentleEngine {
         if added > 0 {
             Self::prepare_sequence(dna);
         }
-        Ok(records)
+        Ok(collapsed_records)
     }
 
     pub(crate) fn build_construct_reasoning_generated_promoter_evidence(
@@ -504,14 +628,14 @@ impl GentleEngine {
         }) {
             return vec![];
         }
-        self.derive_promoter_window_records(
+        Self::collapse_promoter_window_records_by_exact_span(self.derive_promoter_window_records(
             dna,
             None,
             None,
             upstream_bp,
             downstream_bp,
             PromoterWindowCollapseMode::Transcript,
-        )
+        ))
         .into_iter()
         .map(|record| DesignEvidence {
             evidence_id: format!(
@@ -531,14 +655,34 @@ impl GentleEngine {
             strand: Some(record.strand.clone()),
             role: ConstructRole::Promoter,
             evidence_class: EvidenceClass::ContextEvidence,
-            label: record
-                .gene_label
-                .clone()
-                .unwrap_or_else(|| record.transcript_label.clone()),
-            rationale: format!(
-                "Promoter window derived from transcript TSS geometry ({} bp upstream / {} bp downstream) because the sequence lacks imported promoter annotations.",
-                record.upstream_bp, record.downstream_bp
-            ),
+            label: {
+                let base_label = record
+                    .gene_label
+                    .clone()
+                    .unwrap_or_else(|| record.transcript_label.clone());
+                let transcript_count =
+                    record.transcript_count.max(record.transcript_ids.len().max(1));
+                if transcript_count > 1 {
+                    format!("{base_label} promoter window ({transcript_count} tx)")
+                } else {
+                    base_label
+                }
+            },
+            rationale: {
+                let transcript_count =
+                    record.transcript_count.max(record.transcript_ids.len().max(1));
+                if transcript_count > 1 {
+                    format!(
+                        "Promoter window derived from transcript TSS geometry ({} bp upstream / {} bp downstream) and collapsed from {transcript_count} transcript interpretations because the sequence lacks imported promoter annotations.",
+                        record.upstream_bp, record.downstream_bp
+                    )
+                } else {
+                    format!(
+                        "Promoter window derived from transcript TSS geometry ({} bp upstream / {} bp downstream) because the sequence lacks imported promoter annotations.",
+                        record.upstream_bp, record.downstream_bp
+                    )
+                }
+            },
             confidence: Some(0.7),
             context_tags: vec![
                 "promoter".to_string(),
@@ -547,11 +691,16 @@ impl GentleEngine {
                 "transcript_tss".to_string(),
             ],
             provenance_kind: "derived_promoter_window".to_string(),
-            provenance_refs: vec![record.transcript_id.clone()],
-            notes: vec![format!(
-                "tss_local_0based={} transcript_label={}",
-                record.tss_local_0based, record.transcript_label
-            )],
+            provenance_refs: record.transcript_ids.clone(),
+            notes: vec![
+                format!("tss_local_0based={}", record.tss_local_0based),
+                format!(
+                    "transcript_count={}",
+                    record.transcript_count.max(record.transcript_ids.len().max(1))
+                ),
+                format!("transcript_ids={}", record.transcript_ids.join(",")),
+                format!("transcript_labels={}", record.transcript_labels.join(",")),
+            ],
             ..DesignEvidence::default()
         })
         .collect()

@@ -32047,6 +32047,69 @@ fn summarize_variant_promoter_context_derives_promoter_candidate_from_transcript
 }
 
 #[test]
+fn annotate_promoter_windows_collapses_identical_spans_and_records_transcript_count() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(4000)).expect("sequence");
+    for (transcript_id, transcript_label) in [("ENSTTP73A", "TP73-201"), ("ENSTTP73B", "TP73-202")]
+    {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(1200, 1800),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_label.to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_promoter_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let records = engine
+        .annotate_promoter_windows_for_sequence(
+            "tp73_promoter_demo",
+            Some("TP73"),
+            None,
+            1000,
+            200,
+            PromoterWindowCollapseMode::Transcript,
+        )
+        .expect("annotate promoter windows");
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].transcript_count, 2);
+    assert_eq!(records[0].transcript_ids.len(), 2);
+
+    let stored = engine
+        .state()
+        .sequences
+        .get("tp73_promoter_demo")
+        .expect("stored sequence");
+    let promoter = stored
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("promoter"))
+        .expect("collapsed promoter feature");
+    assert!(
+        promoter
+            .qualifier_values("label")
+            .any(|value| value.contains("(2 tx)"))
+    );
+    assert!(
+        promoter
+            .qualifier_values("transcript_count")
+            .any(|value| value == "2")
+    );
+    assert!(
+        promoter
+            .qualifier_values("transcript_ids")
+            .any(|value| value.contains("ENSTTP73A") && value.contains("ENSTTP73B"))
+    );
+}
+
+#[test]
 fn build_construct_reasoning_graph_derives_promoter_assay_from_generated_promoter_window() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
@@ -32126,6 +32189,52 @@ fn build_construct_reasoning_graph_derives_promoter_assay_from_generated_promote
                 .iter()
                 .any(|label| label == "Variant effect candidates derived")
     }));
+}
+
+#[test]
+fn build_construct_reasoning_graph_collapses_identical_generated_promoter_windows() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(4000)).expect("sequence");
+    for (transcript_id, transcript_label) in [("ENSTTP73A", "TP73-201"), ("ENSTTP73B", "TP73-202")]
+    {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(1200, 1800),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_label.to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_reasoning_demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let graph = engine
+        .build_construct_reasoning_graph("tp73_reasoning_demo", None, None)
+        .expect("graph");
+
+    let promoter_evidence = graph
+        .evidence
+        .iter()
+        .filter(|row| row.role == ConstructRole::Promoter)
+        .collect::<Vec<_>>();
+    assert_eq!(promoter_evidence.len(), 1);
+    assert!(
+        promoter_evidence[0]
+            .label
+            .contains("promoter window (2 tx)")
+    );
+    assert_eq!(promoter_evidence[0].provenance_refs.len(), 2);
+
+    let promoter_candidates = graph
+        .annotation_candidates
+        .iter()
+        .filter(|row| row.role == ConstructRole::Promoter)
+        .collect::<Vec<_>>();
+    assert_eq!(promoter_candidates.len(), 1);
 }
 
 #[test]

@@ -4016,6 +4016,14 @@ Tutorial projects:
     as `-log10(tail)` (`llr_background_tail_log10`,
     `true_log_odds_background_tail_log10`), so promoter inspection is not
     locked to one scoring view.
+  - transcript-derived promoter windows now avoid visually stacking identical
+    DNA-level promoter spans just because splice variants diverge downstream:
+    exact-shared windows collapse to one promoter symbol and annotate the
+    contributing transcript count in the label (`(n tx)`).
+  - the map context menu also now recognizes reasoning-derived promoter spans
+    and can resolve them back to the transcript feature that seeded the window,
+    so `Open Promoter Design` works even before the promoter window has been
+    written back as a standalone feature.
   - the same score-track panel now also shows deterministic random-background
     normalization context per motif so permissive score families can be read
     against their baseline instead of as free-floating texture:
