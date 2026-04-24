@@ -100,6 +100,9 @@ macOS auxiliary-window stability note:
   RNA-read Mapping now also clear older legacy title-derived embedded layers,
   so reopening those windows no longer leaves detached non-functional title
   bars behind.
+- The root hosted workspace also checks open auxiliary workspace titles and
+  clears stale title-derived layers there, covering cases where RNA-read
+  Mapping is opened or re-owned from inside a DNA sequence viewer.
 - The hosted RNA-read Mapping shell now renders its workspace intro only once,
   and short saved-report preview tables expand a little further before opening
   an inner vertical scrollbar so wheel scrolling is less likely to get trapped
@@ -116,6 +119,9 @@ macOS auxiliary-window stability note:
   windows. The menu path is intentionally not being deepened further; the
   intended exit is to return to native child viewports once the upstream egui
   bug is fixed.
+- Newly opened sequence windows are queued for foreground focus after their
+  viewport is registered, so opening a sequence from a project/lineage view
+  should raise that DNA viewer instead of leaving it behind older windows.
 
 ## Configuration Window
 
@@ -691,11 +697,16 @@ Feature tree grouping:
         same gene/group label as the selected seed feature
       - `all overlapping` = transcript-like RNA features with any bp overlap
         against the selected ROI; full coverage is not required
-      - `target strand` vs `both strands` controls whether opposite-strand
-        transcript templates are allowed to contribute seed hashes
+      - `target-gene strand` = the selected target gene/group's annotated
+        strand
+      - `any strand` = the target-gene strand plus antisense/opposite-strand
+        transcript templates; this is relative to the selected target gene, so
+        a reverse-strand target gene has the forward strand as its opposite
+        strand
     - a compact eligibility sketch now shows, for overlapping transcript-like
       RNA features, which combinations of target gene/group vs other overlap
-      and target strand vs opposite strand are indexed or excluded
+      and target-gene strand vs antisense/opposite strand are indexed or
+      excluded
     - `Gene expansion mode` is still one run, not multiple invocations:
       - `single_gene` = only the current target gene/group contributes
         transcript templates
@@ -781,7 +792,7 @@ Feature tree grouping:
   - these runtime options are passed directly to the shared
     `InterpretRnaReads` engine operation (GUI/CLI/JS/Lua parity)
   - `Apply TP73 specificity preset` sets a stricter seed gate and scope
-    (`target-group / target-strand`) for focused pilot filtering runs
+    (`target-group / target-gene-strand`) for focused pilot filtering runs
   - `report_mode=seed_passed_only` now keeps a smaller but still reviewable
     retained set:
     - composite seed-pass rows
@@ -789,7 +800,7 @@ Feature tree grouping:
     - this keeps "reasonable seed" candidates available for later phase-2
       alignment and manual inspection even when they fail the stricter
       composite seed gate
-  - default splicing scope is broad (`all overlapping / both strands`) with
+  - default splicing scope is broad (`all overlapping / any strand`) with
     optional narrowing presets
   - advanced `Origin mode` controls are available:
     - `single_gene` (baseline; current execution path)
@@ -803,14 +814,19 @@ Feature tree grouping:
   - tutorial reference for TP53-basis multi-gene mapping:
     - `docs/tutorial/generated/chapters/12_tp53_multi_gene_sparse_mapping_online.md`
   - scope presets are explicit:
-    - `all-overlap / both-strands`: all overlapping transcripts, `+` and `-`
-    - `target-group / any-strand`: target group only, but both strands allowed
-    - `all-overlap / target-strand`: all overlapping transcripts on target strand
-    - `target-group / target-strand`: target group on target strand only
+    - `all-overlap / any-strand`: all overlapping transcripts, including
+      antisense/opposite-strand genes relative to the selected target gene/group
+    - `target-group / any-strand`: target group only, any annotated strand allowed
+    - `all-overlap / target-gene-strand`: all overlapping transcripts on the
+      selected target gene/group's annotated strand
+    - `target-group / target-gene-strand`: target group on the selected target
+      gene/group's annotated strand only
   - strand-scoring semantics:
-    - both-strand modes score against the union of admitted strand-specific
-      templates (shared k-mers can contribute in this combined mode)
-    - target-strand modes exclude opposite-strand templates from the score
+    - any-strand modes score against the union of admitted target-gene-strand
+      and antisense/opposite-strand templates (shared k-mers can contribute in
+      this combined mode)
+    - target-gene-strand modes exclude antisense/opposite-strand templates from
+      the score
   - seed-index semantics:
     - indexed seeds include annotated exon-body k-mers and exon-exon junction
       transition k-mers for admitted transcripts

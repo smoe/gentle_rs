@@ -71,12 +71,12 @@ Out of scope (initial phase):
 - Expose inspect/export parity for those summaries across GUI/shared shell/CLI
   routes.
 
-### Phase 2b: dual-strand joint-run hardening (all-overlap scope)
+### Phase 2b: any-strand joint-run hardening (all-overlap scope)
 
 Goal: keep one combined run over `+/-` transcript lanes while making
 cross-strand evidence assignment explicit, auditable, and deterministic.
 
-- Keep `all-overlap / both-strands` as one run contract:
+- Keep `all-overlap / any-strand` as one run contract:
   no independent per-strand reruns required.
 - Add strand-partitioned seed diagnostics per read:
   - best `+` transcript-chain score tuple
@@ -139,7 +139,7 @@ tracked as deferred and pending Anze-led direction.
 - Summary inspect/export semantics are consistent across GUI/shell/CLI.
 - Engine remains the biology source of truth (no adapter-local biology logic).
 - Dual-strand joint-run assignment is deterministic and auditable:
-  - one combined run can include both strands,
+  - one combined run can include any-strand scope,
   - per-read strand decision diagnostics are exported,
   - strict same-strand mode is available when higher specificity is needed.
 

@@ -4681,7 +4681,7 @@ mod tests {
             "7".to_string(),
             "reads.fa".to_string(),
             "--scope".to_string(),
-            "all_overlapping_both_strands".to_string(),
+            "all_overlapping_any_strand".to_string(),
         ])
         .expect("parse rna-reads interpret");
         assert!(matches!(

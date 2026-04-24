@@ -376,6 +376,44 @@ impl GENtleApp {
         entries
     }
 
+    fn collect_open_auxiliary_window_titles(&self) -> Vec<String> {
+        let mut titles = Vec::new();
+        let mut seen = HashSet::new();
+        for window_map in [&self.windows, &self.detached_auxiliary_window_hosts] {
+            for window in window_map.values() {
+                let Ok(window_guard) = window.read() else {
+                    continue;
+                };
+                for (_, title, _) in window_guard.collect_open_auxiliary_window_entries() {
+                    if seen.insert(title.clone()) {
+                        titles.push(title);
+                    }
+                }
+            }
+        }
+        titles
+    }
+
+    pub(super) fn reset_root_auxiliary_areas_if_legacy_title_layers_visible(
+        &self,
+        ctx: &egui::Context,
+    ) -> bool {
+        let has_stale_auxiliary_title_layer = self
+            .collect_open_auxiliary_window_titles()
+            .iter()
+            .any(|title| {
+                let layer_id = Self::stale_hosted_window_title_layer_id(title);
+                ctx.memory(|mem| mem.areas().is_visible(&layer_id))
+            });
+        if has_stale_auxiliary_title_layer {
+            ctx.memory_mut(|mem| mem.reset_areas());
+            ctx.request_repaint();
+            true
+        } else {
+            false
+        }
+    }
+
     pub(super) fn process_window_close_queue(&mut self) {
         let Ok(mut to_close) = self.windows_to_close.write() else {
             eprintln!("W GENtleApp: close-queue lock poisoned");
@@ -541,6 +579,7 @@ impl GENtleApp {
         self.pending_window_initial_positions.insert(id, position);
         window.set_window_scope_id(format!("{id:?}"));
         self.windows.insert(id, Arc::new(RwLock::new(window)));
+        self.queue_focus_viewport(id);
         id
     }
 }

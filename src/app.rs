@@ -44243,6 +44243,7 @@ impl GENtleApp {
             self.poll_agent_model_discovery_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
             self.sync_open_windows_if_display_changed(ctx);
+            self.reset_root_auxiliary_areas_if_legacy_title_layers_visible(ctx);
 
             if self.show_help_dialog {
                 Self::reset_root_help_areas_if_legacy_layers_visible(
@@ -46048,6 +46049,15 @@ mod tests {
             app.pending_window_open_timestamps
                 .contains_key(&viewport_id),
             "registered deferred windows should track an open probe"
+        );
+        assert!(
+            app.pending_focus_viewports.contains(&viewport_id),
+            "newly registered sequence windows should be raised after first render"
+        );
+        assert!(
+            app.pending_viewport_focus_timestamps
+                .contains_key(&viewport_id),
+            "foreground focus requests should be tracked for slow-focus diagnostics"
         );
         let consumed = app.pending_window_initial_positions.remove(&viewport_id);
         assert_eq!(consumed, Some(egui::Pos2 { x: 0.0, y: 0.0 }));
@@ -50573,6 +50583,30 @@ mod tests {
                 .contains_key(&detached_viewport_id),
             "detached host should be discarded once a visible sequence window renders the same RNA-read Mapping workspace"
         );
+    }
+
+    #[test]
+    fn stale_auxiliary_workspace_title_area_in_root_context_is_reset_when_detected() {
+        let ctx = egui::Context::default();
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+
+        let mut visible = Window::new_dna(dna, "seq1".to_string(), app.engine.clone());
+        visible.seed_rna_read_mapping_window_for_tests("seq1", 17, "TP73");
+        app.register_window(visible);
+
+        let title = "RNA-read Mapping - TP73 (seq1)";
+        let stale_title_layer_id = GENtleApp::stale_hosted_window_title_layer_id(title);
+
+        ctx.begin_pass(egui::RawInput::default());
+        egui::Window::new(title).show(&ctx, |ui| {
+            ui.label("legacy root-hosted RNA-read Mapping title shell");
+        });
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+
+        assert!(app.reset_root_auxiliary_areas_if_legacy_title_layers_visible(&ctx));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        let _ = ctx.end_pass();
     }
 
     #[test]

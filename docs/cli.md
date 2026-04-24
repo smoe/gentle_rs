@@ -2101,17 +2101,21 @@ Shared shell command:
         - `--min-confirmed-transitions 1`
         - `--min-transition-support-fraction 0.05`
     - RNA-read scope semantics:
-      - `all_overlapping_both_strands`: index all overlapping transcripts on
-        both strands
-      - `target_group_any_strand`: index only target-group transcripts, both
-        strands allowed
+      - `all_overlapping_both_strands`: legacy wire token for all overlapping
+        transcripts on any strand, including antisense/opposite-strand genes
+        relative to the selected target gene/group
+        - shared-shell parsing also accepts `all_overlapping_any_strand` as a
+          human-facing alias; persisted JSON still emits the legacy token
+      - `target_group_any_strand`: index only target-group transcripts, any
+        annotated strand allowed
       - `all_overlapping_target_strand`: index all overlapping transcripts on
-        target strand only
-      - `target_group_target_strand`: index only target-group transcripts on
-        target strand
+        the selected target gene/group's annotated strand only
+      - `target_group_target_strand`: index only target-group transcripts on the
+        selected target gene/group's annotated strand
       - strand-scoring note:
-        both-strand modes score against the union of admitted `+/-` templates;
-        target-strand modes exclude opposite-strand templates from scoring.
+        any-strand modes score against the union of admitted target-gene-strand
+        and antisense/opposite-strand templates; target-gene-strand modes
+        exclude antisense/opposite-strand templates from scoring.
       - seed-index note:
         indexed seeds include exon-body and exon-exon transition k-mers for
         admitted transcripts.

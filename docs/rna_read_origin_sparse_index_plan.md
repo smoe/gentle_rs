@@ -28,7 +28,7 @@ explicit origin diagnostics, not only a single scalar score.
 1. Preserve current strict TP73 gate as a stable baseline (no regression).
 2. Add deterministic origin classes for interpretation and review.
 3. Support optional multi-gene target sets in one combined run.
-4. Keep strand evidence explicit and auditable in both-strands mode.
+4. Keep strand evidence explicit and auditable in any-strand mode.
 5. Use one sparse annotated seed index (scalable, no duplicated per-gene
    indexes).
 
@@ -107,7 +107,7 @@ Also emit:
 
 ## Strand policy
 
-- Keep one combined run for both strands when requested.
+- Keep one combined run for any-strand scope when requested.
 - Do not hide strand ambiguity:
   - emit per-read `selected_strand`, `competing_opposite_strand`,
     `ambiguous_near_tie`

@@ -10075,7 +10075,12 @@ fn parse_mode(mode: &str) -> Result<RenderSvgMode, String> {
 
 fn parse_splicing_scope_token(raw: &str) -> Result<SplicingScopePreset, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
-        "all_overlapping_both_strands" | "all-overlapping-both-strands" | "all" => {
+        "all_overlapping_any_strand"
+        | "all-overlapping-any-strand"
+        | "all-any"
+        | "all_overlapping_both_strands"
+        | "all-overlapping-both-strands"
+        | "all" => {
             Ok(SplicingScopePreset::AllOverlappingBothStrands)
         }
         "target_group_any_strand" | "target-group-any-strand" | "target-any" => {
@@ -10088,7 +10093,7 @@ fn parse_splicing_scope_token(raw: &str) -> Result<SplicingScopePreset, String> 
             Ok(SplicingScopePreset::TargetGroupTargetStrand)
         }
         other => Err(format!(
-            "Unknown splicing scope '{other}' (expected all_overlapping_both_strands, target_group_any_strand, all_overlapping_target_strand, or target_group_target_strand)"
+            "Unknown splicing scope '{other}' (expected all_overlapping_any_strand, target_group_any_strand, all_overlapping_target_strand, or target_group_target_strand; legacy all_overlapping_both_strands is also accepted)"
         )),
     }
 }

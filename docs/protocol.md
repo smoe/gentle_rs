@@ -5903,14 +5903,22 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     tolerant 5' poly-T-head detector (minor interruptions in the head are
     accepted)
 - Scope/strand semantics for `InterpretRnaReads`:
-  - `all_overlapping_both_strands`: all overlapping transcripts on both strands
-  - `target_group_any_strand`: target-group transcripts only, both strands
-  - `all_overlapping_target_strand`: all overlapping transcripts on target
-    strand only
-  - `target_group_target_strand`: target-group transcripts on target strand only
+  - `all_overlapping_both_strands`: legacy wire token for all overlapping
+    transcripts on any strand, including antisense/opposite-strand genes
+    relative to the selected target gene/group
+    - shared-shell parsing also accepts `all_overlapping_any_strand` as a
+      human-facing alias while persisted JSON keeps the legacy token for
+      compatibility
+  - `target_group_any_strand`: target-group transcripts only, any annotated
+    strand allowed
+  - `all_overlapping_target_strand`: all overlapping transcripts on the
+    selected target gene/group's annotated strand only
+  - `target_group_target_strand`: target-group transcripts on the selected
+    target gene/group's annotated strand only
   - scoring note:
-    both-strand modes score against the union of admitted strand-specific
-    templates; target-strand modes exclude opposite-strand templates.
+    any-strand modes score against the union of admitted target-gene-strand and
+    antisense/opposite-strand templates; target-gene-strand modes exclude
+    antisense/opposite-strand templates.
   - seed-index note:
     indexed seeds include annotated exon-body and exon-exon transition k-mers
     for admitted transcripts.

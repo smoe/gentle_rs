@@ -7741,7 +7741,14 @@ mod tests {
                 &view,
                 SplicingScopePreset::TargetGroupTargetStrand
             ),
-            "Target gene/group TP73 (target strand)"
+            "Target gene/group TP73 (target-gene strand)"
+        );
+        assert_eq!(
+            MainAreaDna::rna_read_scope_selection_label(
+                &view,
+                SplicingScopePreset::AllOverlappingBothStrands
+            ),
+            "All overlapping genes incl. antisense (any strand)"
         );
     }
 
@@ -7803,7 +7810,9 @@ mod tests {
             RnaReadOriginMode::MultiGeneSparse,
             "TP73, TP53",
         );
-        assert!(summary.contains("all genes overlapping seq1:10..50 on the target strand"));
+        assert!(summary.contains(
+            "all genes overlapping seq1:10..50 on the selected target gene/group strand"
+        ));
         assert!(summary.contains("TP73, TP53"));
     }
 
@@ -24939,16 +24948,16 @@ impl MainAreaDna {
         let target = view.group_label.trim();
         match scope {
             SplicingScopePreset::AllOverlappingBothStrands => {
-                "All overlapping genes (both strands)".to_string()
+                "All overlapping genes incl. antisense (any strand)".to_string()
             }
             SplicingScopePreset::TargetGroupAnyStrand => {
                 format!("Target gene/group {target} (any strand)")
             }
             SplicingScopePreset::AllOverlappingTargetStrand => {
-                "All overlapping genes (target strand)".to_string()
+                "All overlapping genes (target-gene strand)".to_string()
             }
             SplicingScopePreset::TargetGroupTargetStrand => {
-                format!("Target gene/group {target} (target strand)")
+                format!("Target gene/group {target} (target-gene strand)")
             }
         }
     }
@@ -24979,16 +24988,16 @@ impl MainAreaDna {
         );
         let strand_scope = match scope {
             SplicingScopePreset::AllOverlappingBothStrands => {
-                format!("all genes overlapping {region} on both strands")
+                format!("all genes overlapping {region} on any strand, including antisense/opposite-strand genes relative to '{target}'")
             }
             SplicingScopePreset::TargetGroupAnyStrand => {
-                format!("target gene '{target}' on either strand within {region}")
+                format!("target gene '{target}' on any annotated strand within {region}")
             }
             SplicingScopePreset::AllOverlappingTargetStrand => {
-                format!("all genes overlapping {region} on the target strand")
+                format!("all genes overlapping {region} on the selected target gene/group strand")
             }
             SplicingScopePreset::TargetGroupTargetStrand => {
-                format!("target gene '{target}' on the target strand within {region}")
+                format!("target gene '{target}' on the selected target gene/group strand within {region}")
             }
         };
         match origin_mode {
@@ -25051,12 +25060,12 @@ impl MainAreaDna {
         .striped(true)
         .show(ui, |ui| {
             ui.small("");
-            ui.small("Target strand");
-            ui.small("Opposite strand");
+            ui.small("Target-gene strand");
+            ui.small("Antisense / opposite strand");
             ui.end_row();
             for (group_label, is_target_group) in [
                 (format!("Target gene/group '{}'", view.group_label), true),
-                ("Other overlapping gene/group".to_string(), false),
+                ("Other overlapping / antisense gene/group".to_string(), false),
             ] {
                 ui.small(group_label);
                 for (strand_label, is_target_strand) in [("indexed", true), ("indexed", false)] {
@@ -25488,7 +25497,7 @@ impl MainAreaDna {
             });
             ui.horizontal(|ui| {
                 ui.label("Region / gene scope").on_hover_text(
-                    "Controls which genes/transcript templates contribute exon-body and junction seed hashes. Broader scopes admit more competing isoforms and strands; narrower scopes keep the run focused on the current target gene or strand context.",
+                    "Controls which genes/transcript templates contribute exon-body and junction seed hashes. Any-strand scopes admit target-gene-strand and antisense/opposite-strand templates; target-gene-strand scopes keep the run on the selected target gene/group's annotated strand.",
                 );
                 let mut scope_changed = false;
                 egui::ComboBox::from_id_salt(format!(
@@ -25504,10 +25513,10 @@ impl MainAreaDna {
                         .selectable_value(
                             &mut self.rna_reads_ui.scope,
                             SplicingScopePreset::AllOverlappingBothStrands,
-                            "All overlapping (both strands)",
+                            "All overlapping incl. antisense (any strand)",
                         )
                         .on_hover_text(
-                            "Broadest mode: include all overlapping transcripts on both strands.",
+                            "Broadest mode: include all overlapping transcripts on any strand, including antisense/opposite-strand genes relative to the selected target gene/group.",
                         )
                         .changed();
                     scope_changed |= ui
@@ -25517,27 +25526,27 @@ impl MainAreaDna {
                             "Target gene/group (any strand)",
                         )
                         .on_hover_text(
-                            "Restrict to the current target gene/group, but allow both strands inside that group.",
+                            "Restrict to the current target gene/group, but allow any annotated strand inside that group.",
                         )
                         .changed();
                     scope_changed |= ui
                         .selectable_value(
                             &mut self.rna_reads_ui.scope,
                             SplicingScopePreset::AllOverlappingTargetStrand,
-                            "All overlapping (target strand)",
+                            "All overlapping (target-gene strand)",
                         )
                         .on_hover_text(
-                            "Include all overlapping transcripts only on the target strand.",
+                            "Include all overlapping transcripts only on the selected target gene/group's annotated strand; antisense/opposite-strand genes are excluded.",
                         )
                         .changed();
                     scope_changed |= ui
                         .selectable_value(
                             &mut self.rna_reads_ui.scope,
                             SplicingScopePreset::TargetGroupTargetStrand,
-                            "Target gene/group (target strand)",
+                            "Target gene/group (target-gene strand)",
                         )
                         .on_hover_text(
-                            "Most specific mode: the current target gene/group on the target strand only.",
+                            "Most specific mode: the current target gene/group on the selected target gene/group's annotated strand only.",
                         )
                         .changed();
                 });
@@ -28644,24 +28653,24 @@ impl MainAreaDna {
     ) -> (&'static str, &'static str, &'static str) {
         match scope {
             SplicingScopePreset::AllOverlappingBothStrands => (
-                "All overlapping transcripts on both strands are indexed.",
-                "Includes every annotated transcript lane overlapping the ROI, independent of gene/group assignment.",
-                "Strand note: scoring uses the union of indexed templates from + and - strands; if a seed exists on both strands, it can contribute in this mode.",
+                "All overlapping transcripts on any strand are indexed.",
+                "Includes every annotated transcript lane overlapping the ROI, including antisense/opposite-strand genes relative to the selected target gene/group.",
+                "Strand note: scoring uses the union of indexed templates from the target-gene strand and antisense/opposite strand; if a seed exists in both orientations, it can contribute in this mode.",
             ),
             SplicingScopePreset::TargetGroupAnyStrand => (
-                "Only the target transcript group is indexed (both strands allowed).",
-                "Restricts indexing to the selected target group but keeps both strand directions if the group contains them.",
-                "Strand note: scoring still uses a multi-strand union within the selected group.",
+                "Only the target transcript group is indexed (any strand allowed).",
+                "Restricts indexing to the selected target group but keeps every annotated strand direction if the group contains them.",
+                "Strand note: scoring still uses an any-strand union within the selected group.",
             ),
             SplicingScopePreset::AllOverlappingTargetStrand => (
-                "All overlapping transcripts on target strand are indexed.",
-                "Includes all overlapping transcripts but only those matching the target strand direction.",
-                "Strand note: opposite-strand seeds are excluded from the score in this mode.",
+                "All overlapping transcripts on the target-gene strand are indexed.",
+                "Includes all overlapping transcripts but only those matching the selected target gene/group's annotated strand.",
+                "Strand note: antisense/opposite-strand seeds are excluded from the score in this mode.",
             ),
             SplicingScopePreset::TargetGroupTargetStrand => (
-                "Only target group on target strand is indexed.",
-                "Most restrictive mode: selected group and selected strand only.",
-                "Strand note: opposite-strand seeds cannot contribute to the score in this mode.",
+                "Only the target group on the target-gene strand is indexed.",
+                "Most restrictive mode: selected group and selected target gene/group strand only.",
+                "Strand note: antisense/opposite-strand seeds cannot contribute to the score in this mode.",
             ),
         }
     }
