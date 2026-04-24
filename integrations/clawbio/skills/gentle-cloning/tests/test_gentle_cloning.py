@@ -2978,7 +2978,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
     assert splicing_ops[1]["RenderFeatureExpertSvg"]["target"] == {
         "splicing_feature": {
             "feature_id": 2,
-            "scope": "all_overlapping_both_strands",
+            "scope": "all_overlapping_any_strand",
         }
     }
     assert splicing_ops[1]["RenderFeatureExpertSvg"]["path"] == (

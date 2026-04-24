@@ -156,7 +156,7 @@ find "$READ_DIR" -maxdepth 1 \( -name '*.fa.gz' -o -name '*.fasta.gz' \) -print0
         --report-id "$report_id" \
         --profile nanopore_cdna_v1 \
         --format fasta \
-        --scope all_overlapping_both_strands \
+        --scope all_overlapping_any_strand \
         --origin-mode single_gene
     done
 ```
@@ -177,7 +177,7 @@ cargo run --bin gentle_cli -- --state "$STATE" rna-reads interpret \
   --report-id "$report_id" \
   --profile nanopore_cdna_v1 \
   --format fasta \
-  --scope all_overlapping_both_strands \
+  --scope all_overlapping_any_strand \
   --origin-mode multi_gene_sparse \
   --target-gene TP53 \
   --target-gene TP63 \

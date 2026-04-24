@@ -694,11 +694,11 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
   gentle_cli [--state PATH|--project PATH] dotplot list [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] dotplot show DOTPLOT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
+  gentle_cli [--state PATH|--project PATH] transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
   gentle_cli [--state PATH|--project PATH] flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]\n  \
   gentle_cli [--state PATH|--project PATH] flex list [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] flex show TRACK_ID\n\n  \
-  gentle_cli [--state PATH|--project PATH] splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
+  gentle_cli [--state PATH|--project PATH] splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
   gentle_cli [--state PATH|--project PATH] align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]\n\n  \
   gentle_cli [--state PATH|--project PATH] reverse-translate run PROTEIN_SEQ_ID [--output-id ID] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N]\n  \
   gentle_cli [--state PATH|--project PATH] reverse-translate list-reports [PROTEIN_SEQ_ID]\n  \
@@ -4687,7 +4687,7 @@ mod tests {
         assert!(matches!(
             rna_reads_interpret,
             ShellCommand::RnaReadsInterpret {
-                scope: gentle::engine::SplicingScopePreset::AllOverlappingBothStrands,
+                scope: gentle::engine::SplicingScopePreset::AllOverlappingAnyStrand,
                 ..
             }
         ));

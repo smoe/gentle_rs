@@ -3523,9 +3523,12 @@ pub(super) fn parse_rna_read_input_format(raw: &str) -> Result<RnaReadInputForma
 
 pub(super) fn parse_splicing_scope_preset(raw: &str) -> Result<SplicingScopePreset, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
-        "all_overlapping_both_strands" | "all" | "broad" => {
-            Ok(SplicingScopePreset::AllOverlappingBothStrands)
-        }
+        "all_overlapping_any_strand"
+        | "all-overlapping-any-strand"
+        | "all_any"
+        | "all-any"
+        | "all"
+        | "broad" => Ok(SplicingScopePreset::AllOverlappingAnyStrand),
         "target_group_any_strand" | "target_group" | "group" => {
             Ok(SplicingScopePreset::TargetGroupAnyStrand)
         }
@@ -3536,7 +3539,7 @@ pub(super) fn parse_splicing_scope_preset(raw: &str) -> Result<SplicingScopePres
             Ok(SplicingScopePreset::TargetGroupTargetStrand)
         }
         other => Err(format!(
-            "Unsupported scope preset '{other}', expected all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand"
+            "Unsupported scope preset '{other}', expected all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand"
         )),
     }
 }
@@ -4303,7 +4306,7 @@ pub(super) fn parse_splicing_refs_command(tokens: &[String]) -> Result<ShellComm
         "derive" => {
             if tokens.len() < 5 {
                 return Err(
-                    "splicing-refs derive requires SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]"
+                    "splicing-refs derive requires SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]"
                         .to_string(),
                 );
             }
@@ -6206,7 +6209,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             }
             let mut profile = RnaReadInterpretationProfile::NanoporeCdnaV1;
             let mut input_format = RnaReadInputFormat::Fasta;
-            let mut scope = SplicingScopePreset::AllOverlappingBothStrands;
+            let mut scope = SplicingScopePreset::AllOverlappingAnyStrand;
             let mut origin_mode = RnaReadOriginMode::SingleGene;
             let mut target_gene_ids: Vec<String> = vec![];
             let mut roi_seed_capture_enabled = false;

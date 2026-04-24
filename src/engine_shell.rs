@@ -10075,13 +10075,8 @@ fn parse_mode(mode: &str) -> Result<RenderSvgMode, String> {
 
 fn parse_splicing_scope_token(raw: &str) -> Result<SplicingScopePreset, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
-        "all_overlapping_any_strand"
-        | "all-overlapping-any-strand"
-        | "all-any"
-        | "all_overlapping_both_strands"
-        | "all-overlapping-both-strands"
-        | "all" => {
-            Ok(SplicingScopePreset::AllOverlappingBothStrands)
+        "all_overlapping_any_strand" | "all-overlapping-any-strand" | "all-any" | "all" => {
+            Ok(SplicingScopePreset::AllOverlappingAnyStrand)
         }
         "target_group_any_strand" | "target-group-any-strand" | "target-any" => {
             Ok(SplicingScopePreset::TargetGroupAnyStrand)
@@ -10093,7 +10088,7 @@ fn parse_splicing_scope_token(raw: &str) -> Result<SplicingScopePreset, String> 
             Ok(SplicingScopePreset::TargetGroupTargetStrand)
         }
         other => Err(format!(
-            "Unknown splicing scope '{other}' (expected all_overlapping_any_strand, target_group_any_strand, all_overlapping_target_strand, or target_group_target_strand; legacy all_overlapping_both_strands is also accepted)"
+            "Unknown splicing scope '{other}' (expected all_overlapping_any_strand, target_group_any_strand, all_overlapping_target_strand, or target_group_target_strand)"
         )),
     }
 }
@@ -10310,7 +10305,7 @@ fn parse_feature_expert_target_tokens(
                 .map_err(|e| format!("Invalid splicing feature id '{}': {e}", tokens[1]))?;
             Ok(FeatureExpertTarget::SplicingFeature {
                 feature_id,
-                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                scope: SplicingScopePreset::AllOverlappingAnyStrand,
             })
         }
         "isoform" => {
@@ -22851,7 +22846,7 @@ fn execute_primers_command(
                     seq_id,
                     &FeatureExpertTarget::SplicingFeature {
                         feature_id: *feature_id,
-                        scope: SplicingScopePreset::AllOverlappingBothStrands,
+                        scope: SplicingScopePreset::AllOverlappingAnyStrand,
                     },
                 )
                 .map_err(|e| e.to_string())?;
@@ -22940,7 +22935,7 @@ fn execute_primers_command(
                     seq_id,
                     &FeatureExpertTarget::SplicingFeature {
                         feature_id: *feature_id,
-                        scope: SplicingScopePreset::AllOverlappingBothStrands,
+                        scope: SplicingScopePreset::AllOverlappingAnyStrand,
                     },
                 )
                 .map_err(|e| e.to_string())?;

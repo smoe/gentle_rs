@@ -44,7 +44,7 @@
           "profile": "nanopore_cdna_v1",
           "input_path": "test_files/mapping/SRR32957124_10000.fasta.gz",
           "input_format": "fasta",
-          "scope": "all_overlapping_both_strands",
+          "scope": "all_overlapping_any_strand",
           "origin_mode": "multi_gene_sparse",
           "target_gene_ids": [
             "TP53",

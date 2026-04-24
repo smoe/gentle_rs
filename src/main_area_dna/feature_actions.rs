@@ -37,7 +37,7 @@ impl MainAreaDna {
         }
         match self.inspect_feature_expert_target(&FeatureExpertTarget::SplicingFeature {
             feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
         }) {
             Ok(FeatureExpertView::Splicing(view)) => Ok(view),
             Ok(_) => Err("Selected feature does not expose a splicing expert payload".to_string()),

@@ -23,7 +23,7 @@
           "profile": "nanopore_cdna_v1",
           "input_path": "test_files/SRR32957124_10000.fasta",
           "input_format": "fasta",
-          "scope": "all_overlapping_both_strands",
+          "scope": "all_overlapping_any_strand",
           "origin_mode": "single_gene",
           "target_gene_ids": [],
           "roi_seed_capture_enabled": false,

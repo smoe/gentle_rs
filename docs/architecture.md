@@ -1664,7 +1664,7 @@ Architecture constraints for this track:
 - Read-orientation handling must stay explicit and deterministic:
   cDNA-oriented poly-T prefix reverse-complement normalization is configurable,
   and direct-RNA mode must remain available without implicit strand mixing.
-- For `all-overlap / both-strands` scope, RNA-read interpretation should remain
+- For `all-overlap / any-strand` scope, RNA-read interpretation should remain
   a single combined run, but assignment decisions must include
   strand-partitioned diagnostics and deterministic tie-breaks so cross-strand
   seed reuse is always auditable.

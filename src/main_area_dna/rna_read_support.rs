@@ -68,7 +68,7 @@ impl Default for RnaReadInterpretOpsUiState {
             report_id: String::new(),
             report_id_auto_sync: true,
             report_id_auto_sync_explicit: true,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_format: RnaReadInputFormat::Fasta,
             origin_mode: RnaReadOriginMode::SingleGene,

@@ -3760,7 +3760,7 @@ Track boundaries:
    - preserve unmatched-seed residuals in report payloads as candidate
      sequencing-error/trans-splicing indicators for downstream clustering.
 10. Add dual-strand joint-run isoform assignment hardening (planned):
-   - keep one run over both strands for `all-overlap / both-strands` scope,
+   - keep one combined run for `all-overlap / any-strand` scope,
      but add explicit strand-partitioned score diagnostics in the isoform table
      to make cross-strand contributions auditable.
    - add deterministic tie-break policy when `+/-` isoforms compete for the

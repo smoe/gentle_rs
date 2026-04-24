@@ -2048,7 +2048,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq".to_string(),
             target_feature_id: 1,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -2121,7 +2121,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq".to_string(),
             target_feature_id: 1,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -2172,7 +2172,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq".to_string(),
             target_feature_id: 1,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -2252,7 +2252,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq".to_string(),
             target_feature_id: 1,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -3601,7 +3601,7 @@ mod tests {
         area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -3643,7 +3643,7 @@ mod tests {
         area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 0,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -3811,7 +3811,7 @@ mod tests {
         area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 9,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -5089,7 +5089,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 7,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 101,
@@ -5198,7 +5198,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 3,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 10,
@@ -5592,7 +5592,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq".to_string(),
             target_feature_id: 1,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -6984,7 +6984,7 @@ mod tests {
         area.splicing_expert_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7119,7 +7119,7 @@ mod tests {
         area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7153,7 +7153,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7196,7 +7196,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7247,7 +7247,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7591,7 +7591,7 @@ mod tests {
         assert!(!decoded.rna_reads_ui.roi_seed_capture_enabled);
         assert_eq!(
             decoded.rna_reads_ui.scope,
-            SplicingScopePreset::AllOverlappingBothStrands
+            SplicingScopePreset::AllOverlappingAnyStrand
         );
         assert_eq!(
             decoded.rna_reads_ui.report_mode,
@@ -7720,7 +7720,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7746,7 +7746,7 @@ mod tests {
         assert_eq!(
             MainAreaDna::rna_read_scope_selection_label(
                 &view,
-                SplicingScopePreset::AllOverlappingBothStrands
+                SplicingScopePreset::AllOverlappingAnyStrand
             ),
             "All overlapping genes incl. antisense (any strand)"
         );
@@ -7762,7 +7762,7 @@ mod tests {
     #[test]
     fn rna_read_scope_cell_included_matches_scope_flags() {
         assert!(MainAreaDna::rna_read_scope_cell_included(
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
             false,
             false,
         ));
@@ -7788,7 +7788,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 10,
@@ -7883,7 +7883,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -7942,7 +7942,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -8466,7 +8466,7 @@ mod tests {
         area.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -8553,7 +8553,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "TP73.ncbi".to_string(),
             target_feature_id: 42,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -8575,7 +8575,7 @@ mod tests {
             .expect("workflow");
         assert_eq!(
             workflow.run_id,
-            "workflow_rna_reads_tp73_ncbi_rna_tp73_srr32957124_ncdna_aobs_sg"
+            "workflow_rna_reads_tp73_ncbi_rna_tp73_srr32957124_ncdna_aoas_sg"
         );
         assert_eq!(workflow.ops.len(), 1);
         match &workflow.ops[0] {
@@ -8593,14 +8593,14 @@ mod tests {
                 assert_eq!(seed_filter.seed_stride_bp, 3);
                 assert_eq!(
                     report_id.as_deref(),
-                    Some("rna_tp73_srr32957124_ncdna_aobs_sg")
+                    Some("rna_tp73_srr32957124_ncdna_aoas_sg")
                 );
             }
             other => panic!("unexpected workflow op: {other:?}"),
         }
         assert_eq!(
             area.rna_reads_ui.report_id,
-            "rna_tp73_srr32957124_ncdna_aobs_sg"
+            "rna_tp73_srr32957124_ncdna_aoas_sg"
         );
     }
 
@@ -8615,7 +8615,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "TP73.ncbi".to_string(),
             target_feature_id: 42,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -8678,7 +8678,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "TP73.ncbi".to_string(),
             target_feature_id: 42,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -8715,7 +8715,7 @@ mod tests {
     fn explicit_auto_rna_read_ui_state_stays_auto_after_load() {
         let mut ui_state = RnaReadInterpretOpsUiState::default();
         ui_state.input_path = "/tmp/SRR32957124.fasta.gz".to_string();
-        ui_state.report_id = "rna_tp73_srr32957124_ncdna_aobs_sg".to_string();
+        ui_state.report_id = "rna_tp73_srr32957124_ncdna_aoas_sg".to_string();
         let serialized = serde_json::to_value(&ui_state).expect("serialize ui");
         let mut loaded =
             serde_json::from_value::<RnaReadInterpretOpsUiState>(serialized).expect("reload ui");
@@ -8864,7 +8864,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 9,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "demo".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -8995,7 +8995,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 9,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "demo".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -9063,7 +9063,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 9,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "demo".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -9129,7 +9129,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 9,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "demo".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -9539,7 +9539,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 9,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "demo".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -9934,7 +9934,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 0,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "GENE1".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -10548,7 +10548,7 @@ mod tests {
         let small_view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 1,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -11466,7 +11466,7 @@ mod tests {
         let view = SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: "TP73".to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -13071,7 +13071,7 @@ impl MainAreaDna {
         self.rna_read_mapping_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: seq_id.to_string(),
             target_feature_id: feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             group_label: group_label.to_string(),
             strand: "+".to_string(),
             region_start_1based: 1,
@@ -24947,7 +24947,7 @@ impl MainAreaDna {
     ) -> String {
         let target = view.group_label.trim();
         match scope {
-            SplicingScopePreset::AllOverlappingBothStrands => {
+            SplicingScopePreset::AllOverlappingAnyStrand => {
                 "All overlapping genes incl. antisense (any strand)".to_string()
             }
             SplicingScopePreset::TargetGroupAnyStrand => {
@@ -24987,8 +24987,10 @@ impl MainAreaDna {
             view.seq_id, view.region_start_1based, view.region_end_1based
         );
         let strand_scope = match scope {
-            SplicingScopePreset::AllOverlappingBothStrands => {
-                format!("all genes overlapping {region} on any strand, including antisense/opposite-strand genes relative to '{target}'")
+            SplicingScopePreset::AllOverlappingAnyStrand => {
+                format!(
+                    "all genes overlapping {region} on any strand, including antisense/opposite-strand genes relative to '{target}'"
+                )
             }
             SplicingScopePreset::TargetGroupAnyStrand => {
                 format!("target gene '{target}' on any annotated strand within {region}")
@@ -24997,7 +24999,9 @@ impl MainAreaDna {
                 format!("all genes overlapping {region} on the selected target gene/group strand")
             }
             SplicingScopePreset::TargetGroupTargetStrand => {
-                format!("target gene '{target}' on the selected target gene/group strand within {region}")
+                format!(
+                    "target gene '{target}' on the selected target gene/group strand within {region}"
+                )
             }
         };
         match origin_mode {
@@ -25061,11 +25065,14 @@ impl MainAreaDna {
         .show(ui, |ui| {
             ui.small("");
             ui.small("Target-gene strand");
-            ui.small("Antisense / opposite strand");
+            ui.small("Antisense to target gene");
             ui.end_row();
             for (group_label, is_target_group) in [
                 (format!("Target gene/group '{}'", view.group_label), true),
-                ("Other overlapping / antisense gene/group".to_string(), false),
+                (
+                    "Other overlapping / antisense gene/group".to_string(),
+                    false,
+                ),
             ] {
                 ui.small(group_label);
                 for (strand_label, is_target_strand) in [("indexed", true), ("indexed", false)] {
@@ -25301,7 +25308,7 @@ impl MainAreaDna {
                 let _ = self.derive_transcript_sequences_with_compact_feedback(
                     view.seq_id.clone(),
                     vec![view.target_feature_id],
-                    Some(SplicingScopePreset::AllOverlappingBothStrands),
+                    Some(SplicingScopePreset::AllOverlappingAnyStrand),
                     &format!("splicing group '{}'", view.group_label),
                 );
             }
@@ -25512,7 +25519,7 @@ impl MainAreaDna {
                     scope_changed |= ui
                         .selectable_value(
                             &mut self.rna_reads_ui.scope,
-                            SplicingScopePreset::AllOverlappingBothStrands,
+                            SplicingScopePreset::AllOverlappingAnyStrand,
                             "All overlapping incl. antisense (any strand)",
                         )
                         .on_hover_text(
@@ -28303,7 +28310,7 @@ impl MainAreaDna {
 
     fn rna_read_scope_report_token(scope: SplicingScopePreset) -> &'static str {
         match scope {
-            SplicingScopePreset::AllOverlappingBothStrands => "aobs",
+            SplicingScopePreset::AllOverlappingAnyStrand => "aoas",
             SplicingScopePreset::TargetGroupAnyStrand => "tgas",
             SplicingScopePreset::AllOverlappingTargetStrand => "aots",
             SplicingScopePreset::TargetGroupTargetStrand => "tgts",
@@ -28652,7 +28659,7 @@ impl MainAreaDna {
         scope: SplicingScopePreset,
     ) -> (&'static str, &'static str, &'static str) {
         match scope {
-            SplicingScopePreset::AllOverlappingBothStrands => (
+            SplicingScopePreset::AllOverlappingAnyStrand => (
                 "All overlapping transcripts on any strand are indexed.",
                 "Includes every annotated transcript lane overlapping the ROI, including antisense/opposite-strand genes relative to the selected target gene/group.",
                 "Strand note: scoring uses the union of indexed templates from the target-gene strand and antisense/opposite strand; if a seed exists in both orientations, it can contribute in this mode.",
@@ -50017,7 +50024,7 @@ impl MainAreaDna {
                     } else if Self::feature_kind_supports_splicing_expert(kind_upper.as_str()) {
                         expert_target = Some(FeatureExpertTarget::SplicingFeature {
                             feature_id: id,
-                            scope: SplicingScopePreset::AllOverlappingBothStrands,
+                            scope: SplicingScopePreset::AllOverlappingAnyStrand,
                         });
                     }
                 } else {

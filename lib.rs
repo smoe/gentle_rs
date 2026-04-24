@@ -809,7 +809,7 @@ impl GelRunConditions {
 /// Shared scope preset for splicing/exon-context views and RNA-read mapping.
 pub enum SplicingScopePreset {
     #[default]
-    AllOverlappingBothStrands,
+    AllOverlappingAnyStrand,
     TargetGroupAnyStrand,
     AllOverlappingTargetStrand,
     TargetGroupTargetStrand,
@@ -818,7 +818,7 @@ pub enum SplicingScopePreset {
 impl SplicingScopePreset {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::AllOverlappingBothStrands => "all_overlapping_both_strands",
+            Self::AllOverlappingAnyStrand => "all_overlapping_any_strand",
             Self::TargetGroupAnyStrand => "target_group_any_strand",
             Self::AllOverlappingTargetStrand => "all_overlapping_target_strand",
             Self::TargetGroupTargetStrand => "target_group_target_strand",
@@ -1000,14 +1000,14 @@ mod tests {
     #[test]
     fn feature_expert_target_accepts_legacy_pascal_case_tags() {
         let target: FeatureExpertTarget = serde_json::from_str(
-            r#"{"SplicingFeature":{"feature_id":2,"scope":"all_overlapping_both_strands"}}"#,
+            r#"{"SplicingFeature":{"feature_id":2,"scope":"all_overlapping_any_strand"}}"#,
         )
         .expect("deserialize legacy splicing feature target");
         assert_eq!(
             target,
             FeatureExpertTarget::SplicingFeature {
                 feature_id: 2,
-                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                scope: SplicingScopePreset::AllOverlappingAnyStrand,
             }
         );
 

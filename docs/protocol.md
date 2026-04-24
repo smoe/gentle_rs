@@ -5271,7 +5271,7 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
   - returns structured payload `sequence_alignment` with spans, score, coverage, identity, and CIGAR-like compact operations string
   - non-mutating operation (no sequence/container state mutation)
 - Shared-shell command family:
-  - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
+  - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
   - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
   - `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--pwm-mapping strict_same_length|windowed_submatrix] [--compare-policies] [--all-transcripts] [--no-fallback]`
 
@@ -5752,7 +5752,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       sidecar bundle, the export preserves that file and writes a sibling
       `*_compare.svg` plus sidecar instead of overwriting
 - Shared-shell command family:
-  - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+  - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
@@ -5905,12 +5905,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     tolerant 5' poly-T-head detector (minor interruptions in the head are
     accepted)
 - Scope/strand semantics for `InterpretRnaReads`:
-  - `all_overlapping_both_strands`: legacy wire token for all overlapping
-    transcripts on any strand, including antisense/opposite-strand genes
-    relative to the selected target gene/group
-    - shared-shell parsing also accepts `all_overlapping_any_strand` as a
-      human-facing alias while persisted JSON keeps the legacy token for
-      compatibility
+  - `all_overlapping_any_strand`: all overlapping transcripts on any strand,
+    including antisense/opposite-strand genes relative to the selected target
+    gene/group
   - `target_group_any_strand`: target-group transcripts only, any annotated
     strand allowed
   - `all_overlapping_target_strand`: all overlapping transcripts on the

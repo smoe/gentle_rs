@@ -15964,7 +15964,7 @@ fn parse_feature_expert_commands() {
                 target,
                 FeatureExpertTarget::SplicingFeature {
                     feature_id: 11,
-                    scope: SplicingScopePreset::AllOverlappingBothStrands,
+                    scope: SplicingScopePreset::AllOverlappingAnyStrand,
                 }
             );
         }
@@ -17394,7 +17394,7 @@ fn execute_splicing_feature_expert_svg_shell_and_operation_routes_match() {
             seq_id: "seq_a".to_string(),
             target: FeatureExpertTarget::SplicingFeature {
                 feature_id,
-                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                scope: SplicingScopePreset::AllOverlappingAnyStrand,
             },
             path: op_path.clone(),
         })
@@ -17406,7 +17406,7 @@ fn execute_splicing_feature_expert_svg_shell_and_operation_routes_match() {
             seq_id: "seq_a".to_string(),
             target: FeatureExpertTarget::SplicingFeature {
                 feature_id,
-                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                scope: SplicingScopePreset::AllOverlappingAnyStrand,
             },
             output: shell_path.clone(),
         },
@@ -17686,7 +17686,7 @@ fn parse_dotplot_and_flex_commands() {
 #[test]
 fn parse_transcripts_derive_command() {
     let parsed = parse_shell_line(
-        "transcripts derive seq_a --feature-id 11 --scope all_overlapping_both_strands --output-prefix seq_a__mrna",
+        "transcripts derive seq_a --feature-id 11 --scope all_overlapping_any_strand --output-prefix seq_a__mrna",
     )
     .expect("parse transcripts derive");
     match parsed {
@@ -17698,7 +17698,7 @@ fn parse_transcripts_derive_command() {
         } => {
             assert_eq!(seq_id, "seq_a");
             assert_eq!(feature_ids, vec![11]);
-            assert_eq!(scope, Some(SplicingScopePreset::AllOverlappingBothStrands));
+            assert_eq!(scope, Some(SplicingScopePreset::AllOverlappingAnyStrand));
             assert_eq!(output_prefix.as_deref(), Some("seq_a__mrna"));
         }
         other => panic!("expected TranscriptsDerive, got {other:?}"),
@@ -18131,10 +18131,9 @@ fn parse_rna_reads_commands() {
 
 #[test]
 fn parse_rna_reads_interpret_defaults_to_engine_kmer_len() {
-    let cmd = parse_shell_line(
-        "rna-reads interpret seq_a 7 reads.fa --scope all_overlapping_both_strands",
-    )
-    .expect("parse rna-reads interpret defaults");
+    let cmd =
+        parse_shell_line("rna-reads interpret seq_a 7 reads.fa --scope all_overlapping_any_strand")
+            .expect("parse rna-reads interpret defaults");
     match cmd {
         ShellCommand::RnaReadsInterpret {
             origin_mode,
@@ -18162,6 +18161,22 @@ fn parse_rna_reads_interpret_defaults_to_engine_kmer_len() {
         }
         other => panic!("expected RnaReadsInterpret, got {other:?}"),
     }
+}
+
+#[test]
+fn parse_rna_reads_interpret_rejects_old_both_strands_scope_token() {
+    let err = parse_shell_line(
+        "rna-reads interpret seq_a 7 reads.fa --scope all_overlapping_both_strands",
+    )
+    .expect_err("removed scope spelling should not be accepted");
+    assert!(
+        err.contains("all_overlapping_any_strand"),
+        "unexpected parse error: {err}"
+    );
+    assert!(
+        !err.contains("also accepted") && !err.contains("legacy"),
+        "old token should not be advertised as accepted: {err}"
+    );
 }
 
 #[test]
@@ -18501,7 +18516,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
             input_path: input_path.display().to_string(),
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::SingleGene,
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -19140,7 +19155,7 @@ fn execute_rna_reads_export_sample_sheet_supports_target_gene_columns() {
             input_path: input_path.display().to_string(),
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::SingleGene,
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -19229,7 +19244,7 @@ fn execute_rna_reads_summarize_gene_support_returns_summary_json_and_writes_file
             input_path: input_path.display().to_string(),
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::SingleGene,
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -19364,7 +19379,7 @@ fn execute_rna_reads_inspect_gene_support_returns_audit_json_and_writes_file() {
             input_path: input_path.display().to_string(),
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::SingleGene,
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,

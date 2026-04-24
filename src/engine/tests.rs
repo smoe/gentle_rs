@@ -8355,7 +8355,7 @@ fn test_inspect_splicing_feature_expert_view() {
             "s",
             &FeatureExpertTarget::SplicingFeature {
                 feature_id: 0,
-                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                scope: SplicingScopePreset::AllOverlappingAnyStrand,
             },
         )
         .unwrap();
@@ -8442,7 +8442,7 @@ fn test_splicing_expert_view_reports_cds_flank_phase_forward() {
             "s",
             &FeatureExpertTarget::SplicingFeature {
                 feature_id: 0,
-                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                scope: SplicingScopePreset::AllOverlappingAnyStrand,
             },
         )
         .expect("inspect splicing");
@@ -8562,7 +8562,7 @@ fn test_splicing_expert_view_reports_cds_flank_phase_reverse() {
             "s",
             &FeatureExpertTarget::SplicingFeature {
                 feature_id: 0,
-                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                scope: SplicingScopePreset::AllOverlappingAnyStrand,
             },
         )
         .expect("inspect splicing");
@@ -10080,7 +10080,7 @@ fn test_render_splicing_feature_expert_svg_operation() {
             seq_id: "s".to_string(),
             target: FeatureExpertTarget::SplicingFeature {
                 feature_id: 0,
-                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                scope: SplicingScopePreset::AllOverlappingAnyStrand,
             },
             path: path_text.clone(),
         })
@@ -23529,7 +23529,7 @@ fn test_interpret_rna_reads_accepts_gzip_fasta_input() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -23560,7 +23560,7 @@ fn test_interpret_rna_reads_accepts_gzip_fasta_input() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_gz.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::SingleGene,
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -23604,7 +23604,7 @@ fn test_align_rna_read_report_selected_record_indices_overrides_selection() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -23638,7 +23638,7 @@ fn test_align_rna_read_report_selected_record_indices_overrides_selection() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::SingleGene,
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -23717,7 +23717,7 @@ fn test_inspect_rna_read_alignment_detail_reconstructs_template_alignment() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -23747,7 +23747,7 @@ fn test_inspect_rna_read_alignment_detail_reconstructs_template_alignment() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::SingleGene,
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -23811,7 +23811,7 @@ fn test_transition_support_counts_only_seed_passed_reads() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let transcript = splicing
@@ -23845,7 +23845,7 @@ fn test_transition_support_counts_only_seed_passed_reads() {
             RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path.to_str().expect("path"),
             RnaReadInputFormat::Fasta,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
             RnaReadOriginMode::SingleGene,
             &[],
             false,
@@ -23916,7 +23916,7 @@ fn seed_failed_but_alignable_rna_read_report() -> (GentleEngine, String) {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -23939,7 +23939,7 @@ fn seed_failed_but_alignable_rna_read_report() -> (GentleEngine, String) {
             report_id: report_id.clone(),
             seq_id: "seq_a".to_string(),
             seed_feature_id: feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             seed_filter: strict_seed_filter,
             align_config: RnaReadAlignConfig::default(),
@@ -24114,7 +24114,7 @@ fn test_interpret_rna_reads_poly_t_cdna_flip_sets_rc_flag_and_sequence() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: Default::default(),
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -24145,7 +24145,7 @@ fn test_interpret_rna_reads_poly_t_cdna_flip_sets_rc_flag_and_sequence() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: Default::default(),
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -24187,7 +24187,7 @@ fn test_align_read_to_template_supports_reverse_complement_query_orientation() {
         .build_splicing_expert_view(
             "seq_a",
             feature_id,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
         )
         .expect("splicing view");
     let lane = splicing.transcripts.first().expect("first transcript lane");
@@ -24276,7 +24276,7 @@ fn test_interpret_rna_reads_multi_gene_sparse_persists_and_warns_for_missing_tar
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -24299,7 +24299,7 @@ fn test_interpret_rna_reads_multi_gene_sparse_persists_and_warns_for_missing_tar
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::MultiGeneSparse,
             target_gene_ids: vec!["TP73".to_string(), "TP53".to_string(), "TP73".to_string()],
             roi_seed_capture_enabled: true,
@@ -24486,7 +24486,7 @@ fn test_list_and_show_rna_read_reports_messages_include_origin_provenance() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -24509,7 +24509,7 @@ fn test_list_and_show_rna_read_reports_messages_include_origin_provenance() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::MultiGeneSparse,
             target_gene_ids: vec!["TP73".to_string(), "TP53".to_string()],
             roi_seed_capture_enabled: true,
@@ -24741,7 +24741,7 @@ fn test_interpret_rna_reads_progress_reports_histogram_updates() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -24770,7 +24770,7 @@ fn test_interpret_rna_reads_progress_reports_histogram_updates() {
                 profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
                 input_path: input_path.display().to_string(),
                 input_format: RnaReadInputFormat::Fasta,
-                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                scope: SplicingScopePreset::AllOverlappingAnyStrand,
                 origin_mode: Default::default(),
                 target_gene_ids: vec![],
                 roi_seed_capture_enabled: false,
@@ -24847,7 +24847,7 @@ fn test_interpret_rna_reads_cancel_check_stops_quickly() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -24875,7 +24875,7 @@ fn test_interpret_rna_reads_cancel_check_stops_quickly() {
         RnaReadInterpretationProfile::NanoporeCdnaV1,
         input_path.to_str().expect("path"),
         RnaReadInputFormat::Fasta,
-        SplicingScopePreset::AllOverlappingBothStrands,
+        SplicingScopePreset::AllOverlappingAnyStrand,
         RnaReadOriginMode::SingleGene,
         &[],
         false,
@@ -25828,7 +25828,7 @@ fn test_mapped_support_counts_follow_transcript_offsets_not_genomic_span_overlap
     let splicing = SplicingExpertView {
         seq_id: "seq".to_string(),
         target_feature_id: 1,
-        scope: SplicingScopePreset::AllOverlappingBothStrands,
+        scope: SplicingScopePreset::AllOverlappingAnyStrand,
         group_label: "GENE1".to_string(),
         strand: "+".to_string(),
         region_start_1based: 1,
@@ -26720,7 +26720,7 @@ fn test_inspect_rna_read_alignments_reports_phase1_vs_phase2_effects_and_support
         .build_splicing_expert_view(
             "seq_a",
             feature_id,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
         )
         .expect("splicing view");
     assert!(splicing.transcripts.len() >= 2);
@@ -26744,7 +26744,7 @@ fn test_inspect_rna_read_alignments_reports_phase1_vs_phase2_effects_and_support
             report_id: "rna_reads_effects".to_string(),
             seq_id: "seq_a".to_string(),
             seed_feature_id: feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             hits: vec![
                 RnaReadInterpretationHit {
                     record_index: 0,
@@ -27060,14 +27060,14 @@ fn test_inspect_rna_read_concatemers_reports_internal_adapter_and_multi_gene_fra
         .build_splicing_expert_view(
             "seq_a",
             gene1_feature_id,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
         )
         .expect("GENE1 splicing view");
     let splicing_gene2 = engine
         .build_splicing_expert_view(
             "seq_a",
             gene2_feature_id,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
         )
         .expect("GENE2 splicing view");
     let lane_gene1 = splicing_gene1
@@ -27102,7 +27102,7 @@ fn test_inspect_rna_read_concatemers_reports_internal_adapter_and_multi_gene_fra
             report_id: "rna_reads_concatemers_decompose".to_string(),
             seq_id: "seq_a".to_string(),
             seed_feature_id: gene1_feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::MultiGeneSparse,
             target_gene_ids: vec!["GENE2".to_string()],
             align_config: RnaReadAlignConfig {
@@ -27236,14 +27236,14 @@ fn test_inspect_rna_read_concatemers_can_disable_fragment_decomposition() {
         .build_splicing_expert_view(
             "seq_a",
             gene1_feature_id,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
         )
         .expect("GENE1 splicing view");
     let splicing_gene2 = engine
         .build_splicing_expert_view(
             "seq_a",
             gene2_feature_id,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
         )
         .expect("GENE2 splicing view");
     let lane_gene1 = splicing_gene1
@@ -27272,7 +27272,7 @@ fn test_inspect_rna_read_concatemers_can_disable_fragment_decomposition() {
             report_id: "rna_reads_concatemers_no_fragments".to_string(),
             seq_id: "seq_a".to_string(),
             seed_feature_id: gene1_feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::MultiGeneSparse,
             target_gene_ids: vec!["GENE2".to_string()],
             hits: vec![RnaReadInterpretationHit {
@@ -27362,7 +27362,7 @@ fn test_inspect_rna_read_concatemers_summarizes_repeated_partner_genes_from_mult
         .build_splicing_expert_view(
             "seq_a",
             gene1_feature_id,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
         )
         .expect("GENE1 splicing view");
     let lane_gene1 = splicing_gene1
@@ -27402,7 +27402,7 @@ fn test_inspect_rna_read_concatemers_summarizes_repeated_partner_genes_from_mult
             report_id: "rna_reads_concatemers_partner_summary".to_string(),
             seq_id: "seq_a".to_string(),
             seed_feature_id: gene1_feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             align_config: RnaReadAlignConfig {
                 max_secondary_mappings: 0,
                 ..RnaReadAlignConfig::default()
@@ -27600,7 +27600,7 @@ fn test_rna_read_transcript_catalog_index_roundtrip_supports_concatemer_inspecti
         .build_splicing_expert_view(
             "seq_a",
             gene1_feature_id,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
         )
         .expect("GENE1 splicing view");
     let lane_gene1 = splicing_gene1
@@ -27651,7 +27651,7 @@ fn test_rna_read_transcript_catalog_index_roundtrip_supports_concatemer_inspecti
             report_id: "rna_reads_concatemers_index_roundtrip".to_string(),
             seq_id: "seq_a".to_string(),
             seed_feature_id: gene1_feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             align_config: RnaReadAlignConfig {
                 max_secondary_mappings: 0,
                 ..RnaReadAlignConfig::default()
@@ -27767,7 +27767,7 @@ fn test_build_rna_read_alignment_display_reports_query_orientation_and_exact_mid
         .build_splicing_expert_view(
             "seq_a",
             feature_id,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
         )
         .expect("splicing view");
     let lane = splicing.transcripts.first().expect("first transcript lane");
@@ -27790,7 +27790,7 @@ fn test_build_rna_read_alignment_display_reports_query_orientation_and_exact_mid
             report_id: "rna_alignment_display".to_string(),
             seq_id: "seq_a".to_string(),
             seed_feature_id: feature_id,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             hits: vec![RnaReadInterpretationHit {
                 record_index: 0,
                 header_id: "rc_read".to_string(),
@@ -27923,7 +27923,7 @@ fn test_interpret_rna_reads_populates_exon_and_junction_support_frequencies() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -27945,7 +27945,7 @@ fn test_interpret_rna_reads_populates_exon_and_junction_support_frequencies() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: Default::default(),
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -28000,7 +28000,7 @@ fn test_export_rna_read_sample_sheet_writes_frequency_columns() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -28022,7 +28022,7 @@ fn test_export_rna_read_sample_sheet_writes_frequency_columns() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: Default::default(),
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -28190,7 +28190,7 @@ fn test_export_rna_read_exon_paths_and_abundance_tsv() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -28212,7 +28212,7 @@ fn test_export_rna_read_exon_paths_and_abundance_tsv() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: Default::default(),
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -28354,7 +28354,7 @@ fn test_export_rna_read_score_density_svg() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -28376,7 +28376,7 @@ fn test_export_rna_read_score_density_svg() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: Default::default(),
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -28650,7 +28650,7 @@ fn test_interpret_rna_reads_retention_rescue_can_exceed_baseline_top_5000_in_mem
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -28684,7 +28684,7 @@ fn test_interpret_rna_reads_retention_rescue_can_exceed_baseline_top_5000_in_mem
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: Default::default(),
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -28742,7 +28742,7 @@ fn test_interpret_rna_reads_report_mode_seed_passed_only_filters_hits() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -28777,7 +28777,7 @@ fn test_interpret_rna_reads_report_mode_seed_passed_only_filters_hits() {
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path: input_path.display().to_string(),
             input_format: RnaReadInputFormat::Fasta,
-            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
             origin_mode: RnaReadOriginMode::SingleGene,
             target_gene_ids: vec![],
             roi_seed_capture_enabled: false,
@@ -28822,7 +28822,7 @@ fn test_interpret_rna_reads_checkpoint_resume_matches_uninterrupted_run() {
             .build_splicing_expert_view(
                 "seq_a",
                 feature_id,
-                SplicingScopePreset::AllOverlappingBothStrands,
+                SplicingScopePreset::AllOverlappingAnyStrand,
             )
             .expect("splicing view");
         let dna = engine
@@ -28851,7 +28851,7 @@ fn test_interpret_rna_reads_checkpoint_resume_matches_uninterrupted_run() {
             RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path.to_str().expect("path"),
             RnaReadInputFormat::Fasta,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
             RnaReadOriginMode::SingleGene,
             &[],
             false,
@@ -28871,7 +28871,7 @@ fn test_interpret_rna_reads_checkpoint_resume_matches_uninterrupted_run() {
             RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path.to_str().expect("path"),
             RnaReadInputFormat::Fasta,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
             RnaReadOriginMode::SingleGene,
             &[],
             false,
@@ -28911,7 +28911,7 @@ fn test_interpret_rna_reads_checkpoint_resume_matches_uninterrupted_run() {
             RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_path.to_str().expect("path"),
             RnaReadInputFormat::Fasta,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
             RnaReadOriginMode::SingleGene,
             &[],
             false,
@@ -28984,7 +28984,7 @@ fn test_export_rna_seed_hash_catalog_writes_hash_sequences_and_positions() {
         .export_rna_seed_hash_catalog(
             "seq_a",
             feature_id,
-            SplicingScopePreset::AllOverlappingBothStrands,
+            SplicingScopePreset::AllOverlappingAnyStrand,
             &seed_filter,
             output_path.to_str().expect("catalog path"),
         )

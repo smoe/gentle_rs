@@ -28,7 +28,7 @@
           "target": {
             "splicing_feature": {
               "feature_id": 2,
-              "scope": "all_overlapping_both_strands"
+              "scope": "all_overlapping_any_strand"
             }
           },
           "path": "exports/tp53_tp53_201.splicing.expert.svg"
