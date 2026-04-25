@@ -274,6 +274,15 @@ Notes:
     artifacts
   - browser/OpenClaw inline image rendering remains a later ClawBio-side
     attachment/UI task
+- capabilities/interaction contract for ClawBio/OpenClaw:
+  - `request_capabilities.json` still runs the normal `gentle_cli capabilities`
+    route
+  - the wrapper now also performs a best-effort shared `ui intents` probe and,
+    when available, lifts that payload into `result.json.ui_intent_catalog`
+  - those capabilities replies may now also carry `suggested_actions[]` with
+    `kind = ui_intent`, executable `ui open TARGET` shell lines, and attached
+    `ui_intent` metadata so operators can be handed into current GUI surfaces
+    without ClawBio hard-coding the target list
 
 `gentle_local_checkout_cli.sh` defaults these paths when unset:
 

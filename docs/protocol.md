@@ -2959,6 +2959,17 @@ ClawBio/OpenClaw integration scaffold schemas:
     adding nested `gentle.clawbio_skill_request.v1` payloads where an action is
     executable so conversational confirmation/execution does not need to parse
     the raw GENtle payload
+  - `skill-info` now also reports `ui_intent_support` metadata describing how
+    the wrapper surfaces shared UI-intent discovery through `capabilities`
+  - `capabilities` now performs a best-effort auxiliary `ui intents` probe
+    through the same resolved runtime
+    - on success, `result.json.ui_intent_catalog` carries the shared
+      `gentle.ui_intents.v1` payload and `suggested_actions[]` gains
+      `kind = ui_intent` entries with structured `ui_intent` metadata plus
+      executable `ui open TARGET` shell requests
+    - on failure or older runtimes, `result.json.ui_intent_catalog_error`
+      captures the non-fatal probe failure while the main `capabilities`
+      request still succeeds
 - reproducibility outputs:
   - `report.md`
   - `result.json`

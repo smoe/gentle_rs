@@ -26,6 +26,8 @@ REQUEST_SCHEMA = "gentle.clawbio_skill_request.v1"
 RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
 SKILL_INFO_SCHEMA = "gentle.clawbio_skill_info.v1"
 SKILL_NAME = "gentle-cloning"
+UI_INTENT_CATALOG_SCHEMA = "gentle.ui_intents.v1"
+UI_INTENT_DISCOVERY_SHELL_LINE = "ui intents"
 SUPPORTED_REQUEST_MODES = (
     "skill-info",
     "version",
@@ -159,6 +161,14 @@ def _skill_info_payload(script_path: Path) -> dict[str, Any]:
         "catalog_entry_loaded": bool(catalog_entry),
         "runtime_version_command": "gentle_cli --version",
         "runtime_version_request_mode": "version",
+        "ui_intent_support": {
+            "catalog_request_mode": "capabilities",
+            "catalog_shell_line": UI_INTENT_DISCOVERY_SHELL_LINE,
+            "catalog_result_field": "ui_intent_catalog",
+            "catalog_error_field": "ui_intent_catalog_error",
+            "suggested_action_kind": "ui_intent",
+            "suggested_action_ui_intent_field": "ui_intent",
+        },
     }
 
 
@@ -1589,6 +1599,33 @@ def _make_shell_request(shell_line: str, timeout_secs: int) -> dict[str, Any]:
     }
 
 
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if isinstance(item, str) and item.strip()]
+
+
+def _normalize_ui_intent_metadata(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    action = str(value.get("action") or "").strip()
+    target = str(value.get("target") or "").strip()
+    if not action or not target:
+        return None
+    normalized: dict[str, Any] = {
+        "action": action,
+        "target": target,
+    }
+    for key in ("title", "detail", "keywords", "menu_path"):
+        field = str(value.get(key) or "").strip()
+        if field:
+            normalized[key] = field
+    optional_arguments = _string_list(value.get("optional_arguments"))
+    if optional_arguments:
+        normalized["optional_arguments"] = optional_arguments
+    return normalized
+
+
 def _suggested_action(
     *,
     label: str,
@@ -1600,6 +1637,7 @@ def _suggested_action(
     expected_artifacts: list[str] | None = None,
     resource_key: str | None = None,
     lifecycle_status: str | None = None,
+    ui_intent: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     action = {
         "action_id": _action_id_from_label(label),
@@ -1618,6 +1656,8 @@ def _suggested_action(
         action["resource_key"] = resource_key
     if lifecycle_status:
         action["lifecycle_status"] = lifecycle_status
+    if ui_intent:
+        action["ui_intent"] = ui_intent
     return action
 
 
@@ -1649,6 +1689,7 @@ def _normalize_stdout_suggested_action(action: Any) -> dict[str, Any] | None:
         expected_artifacts=expected_artifacts or None,
         resource_key=str(action.get("resource_key") or "").strip() or None,
         lifecycle_status=str(action.get("lifecycle_status") or "").strip() or None,
+        ui_intent=_normalize_ui_intent_metadata(action.get("ui_intent")),
     )
     action_id = str(action.get("action_id") or "").strip()
     if action_id:
@@ -1996,6 +2037,111 @@ def _extract_suggested_actions(
     return unique
 
 
+def _merge_suggested_actions(
+    base_actions: list[dict[str, Any]] | None,
+    extra_actions: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    if not extra_actions:
+        return base_actions
+
+    merged = list(base_actions or [])
+    seen = {
+        (
+            str(action.get("kind") or "").strip(),
+            str(action.get("shell_line") or "").strip(),
+        )
+        for action in merged
+        if isinstance(action, dict)
+    }
+    for action in extra_actions:
+        if not isinstance(action, dict):
+            continue
+        key = (
+            str(action.get("kind") or "").strip(),
+            str(action.get("shell_line") or "").strip(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(action)
+    return merged or None
+
+
+def _normalize_ui_intent_catalog_row(row: Any) -> dict[str, Any] | None:
+    if not isinstance(row, dict):
+        return None
+    target = str(row.get("target") or "").strip()
+    title = str(row.get("title") or "").strip()
+    if not target or not title:
+        return None
+    return {
+        "target": target,
+        "title": title,
+        "detail": str(row.get("detail") or "").strip(),
+        "keywords": str(row.get("keywords") or "").strip(),
+        "menu_path": str(row.get("menu_path") or "").strip(),
+        "actions": _string_list(row.get("actions")),
+        "optional_arguments": _string_list(row.get("optional_arguments")),
+    }
+
+
+def _ui_intent_catalog_target_rows(
+    ui_intent_catalog: Any,
+) -> list[dict[str, Any]]:
+    if not isinstance(ui_intent_catalog, dict):
+        return []
+    rows = ui_intent_catalog.get("target_details")
+    if not isinstance(rows, list):
+        return []
+    return [
+        normalized
+        for normalized in (
+            _normalize_ui_intent_catalog_row(row) for row in rows
+        )
+        if normalized is not None
+    ]
+
+
+def _ui_intent_catalog_suggested_actions(
+    ui_intent_catalog: Any,
+) -> list[dict[str, Any]] | None:
+    actions: list[dict[str, Any]] = []
+    for row in _ui_intent_catalog_target_rows(ui_intent_catalog):
+        supported_actions = row.get("actions") or []
+        if "open" not in supported_actions:
+            continue
+        title = str(row.get("title") or row["target"]).strip()
+        detail = str(row.get("detail") or "").strip()
+        menu_path = str(row.get("menu_path") or "").strip()
+        rationale = detail.rstrip(".") if detail else f"Open the shared `{row['target']}` UI intent"
+        if menu_path:
+            rationale = f"{rationale}. Operator handoff target under the {menu_path} menu."
+        else:
+            rationale = f"{rationale}. Operator handoff target from the shared UI-intent catalog."
+        actions.append(
+            _suggested_action(
+                label=f"Open {title}",
+                kind="ui_intent",
+                shell_line=f"ui open {row['target']}",
+                timeout_secs=180,
+                rationale=rationale,
+                requires_confirmation=False,
+                ui_intent=_normalize_ui_intent_metadata(
+                    {
+                        "action": "open",
+                        "target": row["target"],
+                        "title": title,
+                        "detail": detail,
+                        "keywords": row.get("keywords"),
+                        "menu_path": menu_path,
+                        "optional_arguments": row.get("optional_arguments"),
+                    }
+                ),
+            )
+        )
+    return actions or None
+
+
 def _is_default_demo_request(request: Request | None) -> bool:
     if request is None:
         return False
@@ -2059,6 +2205,71 @@ def _ensure_default_demo_suggested_action(
     return actions
 
 
+def _probe_ui_intent_catalog(
+    request: Request,
+    resolution: CliResolution,
+    execution_cwd: Path,
+    script_path: Path,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str | None]:
+    probe_request = Request(
+        mode="shell",
+        timeout_secs=min(request.timeout_secs, 180),
+        state_path=request.state_path,
+        shell_line=UI_INTENT_DISCOVERY_SHELL_LINE,
+    )
+    probe_result, probe_step = _run_cli_command(
+        resolution,
+        _build_cli_args(probe_request, script_path),
+        execution_cwd,
+        probe_request.timeout_secs,
+    )
+    failure_summary = _build_failure_summary(
+        stage="ui_intent_catalog_probe",
+        step=probe_step,
+        execution_cwd=execution_cwd,
+    )
+    if probe_result.returncode != 0:
+        return (
+            None,
+            probe_step,
+            _build_failure_message(
+                headline=(
+                    "best-effort `ui intents` discovery probe failed; "
+                    "UI-intent handoff suggestions were skipped."
+                ),
+                failure_summary=failure_summary,
+            ),
+        )
+    payload = _parse_stdout_json(probe_result.stdout)
+    if not isinstance(payload, dict):
+        return (
+            None,
+            probe_step,
+            _build_failure_message(
+                headline=(
+                    "best-effort `ui intents` discovery probe did not return valid "
+                    "JSON; UI-intent handoff suggestions were skipped."
+                ),
+                failure_summary=failure_summary,
+            ),
+        )
+    schema = str(payload.get("schema") or "").strip()
+    if schema != UI_INTENT_CATALOG_SCHEMA:
+        return (
+            None,
+            probe_step,
+            _build_failure_message(
+                headline=(
+                    "best-effort `ui intents` discovery probe returned unexpected "
+                    f"schema `{schema or '(missing)'}`; UI-intent handoff suggestions "
+                    "were skipped."
+                ),
+                failure_summary=failure_summary,
+            ),
+        )
+    return payload, probe_step, None
+
+
 def _write_report(
     path: Path,
     request: Request | None,
@@ -2079,6 +2290,8 @@ def _write_report(
     suggested_actions: list[dict[str, Any]] | None,
     preferred_demo_actions: list[dict[str, Any]] | None,
     blocked_actions: list[dict[str, Any]] | None,
+    ui_intent_catalog: dict[str, Any] | None,
+    ui_intent_catalog_error: str | None,
 ) -> None:
     command_text = _format_command_text(command)
     stdout = run_result.stdout if run_result else ""
@@ -2106,6 +2319,12 @@ def _write_report(
     lines.append(f"- Stderr preview: `{stderr_preview or '(empty)'}`")
     if isinstance(stdout_json, dict) and isinstance(stdout_json.get("schema"), str):
         lines.append(f"- Parsed stdout JSON schema: `{stdout_json['schema']}`")
+    if isinstance(ui_intent_catalog, dict):
+        target_rows = ui_intent_catalog.get("target_details")
+        target_count = len(target_rows) if isinstance(target_rows, list) else 0
+        lines.append(f"- UI intent catalog targets: `{target_count}`")
+    if ui_intent_catalog_error:
+        lines.append(f"- UI intent catalog probe: `{ui_intent_catalog_error}`")
     if error_message:
         lines.append(f"- Error: `{error_message}`")
     if failure_summary:
@@ -2408,6 +2627,9 @@ def main() -> int:
     suggested_actions: list[dict[str, Any]] | None = None
     preferred_demo_actions: list[dict[str, Any]] | None = None
     blocked_actions: list[dict[str, Any]] | None = None
+    ui_intent_catalog: dict[str, Any] | None = None
+    ui_intent_catalog_error: str | None = None
+    auxiliary_steps: list[dict[str, Any]] = []
 
     try:
         if args.skill_info:
@@ -2478,6 +2700,23 @@ def main() -> int:
             suggested_actions = _extract_suggested_actions(stdout_json, request)
             preferred_demo_actions = _extract_preferred_demo_actions(stdout_json)
             blocked_actions = _extract_blocked_actions(stdout_json)
+            if request.mode == "capabilities" and run_result.returncode == 0:
+                (
+                    ui_intent_catalog,
+                    ui_intent_step,
+                    ui_intent_catalog_error,
+                ) = _probe_ui_intent_catalog(
+                    request,
+                    resolution,
+                    execution_cwd,
+                    Path(__file__),
+                )
+                if ui_intent_step is not None:
+                    auxiliary_steps.append(ui_intent_step)
+                suggested_actions = _merge_suggested_actions(
+                    suggested_actions,
+                    _ui_intent_catalog_suggested_actions(ui_intent_catalog),
+                )
             collected_artifacts = _copy_collected_artifacts(
                 request, output_dir, execution_cwd
             )
@@ -2559,6 +2798,8 @@ def main() -> int:
         suggested_actions=suggested_actions,
         preferred_demo_actions=preferred_demo_actions,
         blocked_actions=blocked_actions,
+        ui_intent_catalog=ui_intent_catalog,
+        ui_intent_catalog_error=ui_intent_catalog_error,
     )
 
     command_lines = [
@@ -2568,6 +2809,11 @@ def main() -> int:
     ]
     if command:
         command_lines.append(" ".join(shlex.quote(v) for v in command))
+    command_lines.extend(
+        " ".join(shlex.quote(v) for v in step.get("command", []))
+        for step in auxiliary_steps
+        if step.get("command")
+    )
     if not command_lines:
         command_lines = ["# no command executed"]
     commands_text = "\n".join(
@@ -2602,6 +2848,8 @@ def main() -> int:
         "suggested_actions": suggested_actions,
         "preferred_demo_actions": preferred_demo_actions,
         "blocked_actions": blocked_actions,
+        "ui_intent_catalog": ui_intent_catalog,
+        "ui_intent_catalog_error": ui_intent_catalog_error,
         "error": error_message,
         "failure_summary": failure_summary,
         "preflight": {

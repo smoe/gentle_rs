@@ -445,6 +445,9 @@ Mode-specific fields:
 
 - `skill-info`: no extra fields; reports skill/catalog schema metadata without
   invoking `gentle_cli`
+- `capabilities`: no extra fields; runs `gentle_cli capabilities` and then a
+  best-effort shared `ui intents` probe so operator-handoff surfaces can reuse
+  the current UI-intent catalog when the installed runtime supports it
 - `version`: no extra fields; invokes `gentle_cli --version` and promotes a
   chat-safe installed-runtime summary
 - `shell`: `shell_line`
@@ -483,6 +486,16 @@ command has parseable output but no more specific biological summary. This
 prevents confirmed actions such as `capabilities` from appearing in chat as
 empty `Command` / `Stdout` / `Stderr` headings if the messenger strips fenced
 Markdown blocks.
+
+For `capabilities`, the wrapper may also populate:
+
+- `result.json.ui_intent_catalog` with the shared `gentle.ui_intents.v1`
+  payload returned by `ui intents`
+- `result.json.ui_intent_catalog_error` when that auxiliary probe fails or the
+  installed runtime is older than the current scaffold
+- `result.json.suggested_actions[]` entries with `kind = ui_intent` and a
+  structured `ui_intent` block so ClawBio/OpenClaw can hand an operator into
+  `ui open TARGET` flows without hard-coding the target list locally
 
 For `services handoff`, the wrapper also lifts GENtle-owned
 `preferred_demo_actions[]` and `blocked_actions[]` to the top level of

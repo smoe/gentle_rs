@@ -1021,6 +1021,9 @@ Apply the following methodology:
   `shell`, `op`, `workflow`, or `raw`.
 - `skill-info`: reports ClawBio skill/catalog schema metadata without invoking
   `gentle_cli`; use it when checking which copied skill scaffold is installed.
+- `capabilities`: runs `gentle_cli capabilities` and then a best-effort shared
+  `ui intents` probe; use it when OpenClaw/ClawBio needs both the installed
+  runtime surface and the current operator-handoff UI-intent catalog.
 - `version`: invokes `gentle_cli --version`; use it when checking which GENtle
   runtime binary is installed behind the copied ClawBio skill.
 - `timeout_secs`: command timeout in seconds; default `180`.
@@ -1318,6 +1321,17 @@ For status/readiness outputs, `result.json` may additionally include:
   but no domain-specific summary, so confirmed actions such as `capabilities`
   still show command/output content in Telegram-style chat surfaces even when
   fenced Markdown blocks are stripped
+  - `capabilities` now also adds `kind = ui_intent` follow-up entries when the
+    runtime exposes the shared `ui intents` catalog
+    - each such action keeps the exact executable `shell_line`
+      (`ui open TARGET`) plus a structured `ui_intent` block carrying the same
+      `target`, `title`, `detail`, `menu_path`, and `optional_arguments`
+      metadata from the shared catalog
+- `ui_intent_catalog` for the shared `gentle.ui_intents.v1` payload lifted by
+  `capabilities`
+- `ui_intent_catalog_error` when that auxiliary `ui intents` probe fails or
+  returns an older/incompatible runtime response; this is non-fatal and keeps
+  the main `capabilities` request successful
 - `preferred_demo_actions[]` for `services handoff` demo commands that are
   already shaped as ClawBio request objects
 - `blocked_actions[]` for `services handoff` setup steps that are useful but

@@ -1433,6 +1433,13 @@ order. Durable architecture constraints and decisions remain in
           `stdout_json.blocked_actions[]` from `services handoff` into
           top-level `result.json` fields, including nested ClawBio request
           payloads where an action is executable
+        - `capabilities` on that same wrapper path now also performs a
+          best-effort shared `ui intents` probe:
+          `result.json.ui_intent_catalog` mirrors the current shared target
+          catalog when the runtime supports it, and matching
+          `kind = ui_intent` suggested actions now let ClawBio/OpenClaw hand
+          operators into `ui open TARGET` flows without maintaining a separate
+          hard-coded target enum
       - remaining gap on this track:
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo
@@ -4273,6 +4280,9 @@ Current baseline:
     (`Prepare Helper Genome`, `Retrieve Helper Sequence`, `BLAST Helper Sequence`)
   - the GUI command palette consumes the shared `UiIntentTarget` catalog instead
     of hard-coding one action per intent target
+  - the ClawBio/OpenClaw `gentle-cloning` wrapper now lifts the same shared
+    catalog into `capabilities` replies and emits matching `ui open TARGET`
+    handoff actions instead of keeping a separate wrapper-local target list
 - Prepared references supports one-shot disambiguation/open flow:
   - `ui open prepared-references --species human --latest`
   - explicit `--genome-id` still overrides query-based selection

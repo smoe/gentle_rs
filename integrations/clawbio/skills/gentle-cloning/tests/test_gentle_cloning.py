@@ -255,6 +255,14 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         "catalog_entry_loaded": True,
         "runtime_version_command": "gentle_cli --version",
         "runtime_version_request_mode": "version",
+        "ui_intent_support": {
+            "catalog_request_mode": "capabilities",
+            "catalog_shell_line": "ui intents",
+            "catalog_result_field": "ui_intent_catalog",
+            "catalog_error_field": "ui_intent_catalog_error",
+            "suggested_action_kind": "ui_intent",
+            "suggested_action_ui_intent_field": "ui_intent",
+        },
     }
     assert payload["chat_summary_lines"] == [
         "gentle-cloning skill version 0.1.0 (mvp).",
@@ -301,6 +309,183 @@ def test_skill_info_request_mode_reports_catalog_version(
     assert payload["stdout_json"]["version"] == "0.1.0"
     assert payload["resolver"] is None
     assert payload["command"] is None
+
+
+def test_capabilities_mode_surfaces_ui_intent_catalog_and_handoff_actions(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps({"schema": "gentle.clawbio_skill_request.v1", "mode": "capabilities"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "capture=\"${FAKE_CLI_CAPTURE:?}\"\n"
+        "printf '%s\\n' \"$*\" >> \"$capture\"\n"
+        "if [ \"$1\" = \"capabilities\" ]; then\n"
+        "  printf '{\"protocol_version\":\"v1\",\"supported_operations\":[],\"supported_export_formats\":[],\"deterministic_operation_log\":true}\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        "if [ \"$1\" = \"shell\" ] && [ \"$2\" = \"ui intents\" ]; then\n"
+        "  cat <<'JSON'\n"
+        "{\"schema\":\"gentle.ui_intents.v1\",\"targets\":[\"prepared-references\",\"pcr-design\"],\"target_details\":[{\"target\":\"prepared-references\",\"title\":\"Prepared References\",\"detail\":\"Inspect prepared reference/helper genome installations.\",\"keywords\":\"genome prepared references helpers inspector\",\"menu_path\":\"Genome\",\"actions\":[\"open\",\"focus\"],\"optional_arguments\":[\"genome-id\",\"helpers\",\"catalog\",\"cache-dir\",\"filter\",\"species\",\"latest\"]},{\"target\":\"pcr-design\",\"title\":\"PCR Designer\",\"detail\":\"Paint-first pair-PCR specialist with queue and live geometry.\",\"keywords\":\"pcr primer pair roi paint queue designer\",\"menu_path\":\"Patterns\",\"actions\":[\"open\",\"focus\"],\"optional_arguments\":[]}],\"commands\":[\"ui intents\",\"ui open TARGET\",\"ui focus TARGET\"],\"notes\":[\"target_details rows carry stable titles and menu paths.\"]}\n"
+        "JSON\n"
+        "  exit 0\n"
+        "fi\n"
+        "printf '{}\\n'\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    capture_path = tmp_path / "captured.txt"
+    output_dir = tmp_path / "out"
+    env = dict(os.environ)
+    env["FAKE_CLI_CAPTURE"] = str(capture_path)
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "ok"
+    assert result["ui_intent_catalog"]["schema"] == "gentle.ui_intents.v1"
+    assert result["ui_intent_catalog_error"] is None
+    assert [action["shell_line"] for action in result["suggested_actions"]] == [
+        "ui open prepared-references",
+        "ui open pcr-design",
+    ]
+    prepared_action = result["suggested_actions"][0]
+    assert prepared_action["kind"] == "ui_intent"
+    assert prepared_action["request"] == {
+        "schema": "gentle.clawbio_skill_request.v1",
+        "mode": "shell",
+        "shell_line": "ui open prepared-references",
+        "timeout_secs": 180,
+    }
+    assert prepared_action["ui_intent"] == {
+        "action": "open",
+        "target": "prepared-references",
+        "title": "Prepared References",
+        "detail": "Inspect prepared reference/helper genome installations.",
+        "keywords": "genome prepared references helpers inspector",
+        "menu_path": "Genome",
+        "optional_arguments": [
+            "genome-id",
+            "helpers",
+            "catalog",
+            "cache-dir",
+            "filter",
+            "species",
+            "latest",
+        ],
+    }
+    assert prepared_action["requires_confirmation"] is False
+    pcr_action = result["suggested_actions"][1]
+    assert pcr_action["ui_intent"] == {
+        "action": "open",
+        "target": "pcr-design",
+        "title": "PCR Designer",
+        "detail": "Paint-first pair-PCR specialist with queue and live geometry.",
+        "keywords": "pcr primer pair roi paint queue designer",
+        "menu_path": "Patterns",
+    }
+    commands_text = (output_dir / "reproducibility" / "commands.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "\n" + shlex.quote(str(fake_cli)) + " capabilities\n" in commands_text
+    assert (
+        "\n" + shlex.quote(str(fake_cli)) + " shell 'ui intents'\n"
+        in commands_text
+    )
+    assert capture_path.read_text(encoding="utf-8").splitlines() == [
+        "capabilities",
+        "shell ui intents",
+    ]
+
+
+def test_capabilities_mode_tolerates_missing_ui_intents_probe(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps({"schema": "gentle.clawbio_skill_request.v1", "mode": "capabilities"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "if [ \"$1\" = \"capabilities\" ]; then\n"
+        "  printf '{\"protocol_version\":\"v1\"}\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        "if [ \"$1\" = \"shell\" ] && [ \"$2\" = \"ui intents\" ]; then\n"
+        "  printf \"Unknown shell command 'ui'. Try: help\\n\" >&2\n"
+        "  exit 1\n"
+        "fi\n"
+        "printf '{}\\n'\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "ok"
+    assert result["ui_intent_catalog"] is None
+    assert result["suggested_actions"] is None
+    assert result["error"] is None
+    assert "ui intents" in result["ui_intent_catalog_error"]
+    assert "older than the current ClawBio skill scaffold" in result[
+        "ui_intent_catalog_error"
+    ]
+    commands_text = (output_dir / "reproducibility" / "commands.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "\n" + shlex.quote(str(fake_cli)) + " capabilities\n" in commands_text
+    assert (
+        "\n" + shlex.quote(str(fake_cli)) + " shell 'ui intents'\n"
+        in commands_text
+    )
 
 
 def test_version_mode_reports_installed_gentle_runtime(tmp_path: Path) -> None:
