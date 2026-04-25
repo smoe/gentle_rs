@@ -177,6 +177,16 @@ The shortest investigation path is:
    re-test with a wording that strongly invites the skill, for example:
    - `Please use the GENtle cloning skill to tell me whether Ensembl-backed human reference data is available or can be prepared locally.`
 
+If Roboterry replies with wording such as "I don't have the capability to run
+GENtle" while the direct `python clawbio.py run gentle-cloning ...` checks
+succeed, treat that as a Roboterry dispatch failure. GENtle is not being
+called. Check that Roboterry is using the same ClawBio checkout, has been
+restarted after the skill/catalog update, has tool execution enabled for the
+current chat, and logs a `clawbio.py run gentle-cloning ...` subprocess for
+the Telegram message. Successful GENtle skill runs include the marker
+`GENtle ClawBio skill wrapper invoked` in both `result.json` and `report.md`;
+grep Roboterry subprocess logs for that marker when stdout/stderr is captured.
+
 If a direct run now fails with a message like `Unknown shell command
 'services'`, treat that as a GENtle version mismatch first:
 

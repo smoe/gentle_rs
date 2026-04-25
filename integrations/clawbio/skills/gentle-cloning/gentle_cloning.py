@@ -26,6 +26,7 @@ REQUEST_SCHEMA = "gentle.clawbio_skill_request.v1"
 RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
 SKILL_INFO_SCHEMA = "gentle.clawbio_skill_info.v1"
 SKILL_NAME = "gentle-cloning"
+INVOCATION_MARKER = "GENtle ClawBio skill wrapper invoked"
 UI_INTENT_CATALOG_SCHEMA = "gentle.ui_intents.v1"
 UI_INTENT_DISCOVERY_SHELL_LINE = "ui intents"
 SUPPORTED_REQUEST_MODES = (
@@ -2311,6 +2312,7 @@ def _write_report(
         f"- Ended (UTC): `{ended_utc}`",
         f"- Status: `{status}`",
         f"- Mode: `{request.mode if request is not None else 'unknown'}`",
+        f"- Invocation marker: `{INVOCATION_MARKER}`",
     ]
     if request is not None and request.state_path:
         lines.append(f"- State path: `{request.state_path}`")
@@ -2838,6 +2840,7 @@ def main() -> int:
 
     result_payload = {
         "schema": RESULT_SCHEMA,
+        "invocation_marker": INVOCATION_MARKER,
         "status": status,
         "request": (dataclasses.asdict(request) if request is not None else None),
         "started_utc": started,

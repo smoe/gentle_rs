@@ -107,6 +107,71 @@ Catalog registration:
 2. Add the object under `skills[]` in `skills/catalog.json` (or regenerate
    catalog via ClawBio's `scripts/generate_catalog.py` flow).
 
+Recognition smoke tests:
+
+1. Confirm the skill files are visible from the ClawBio checkout:
+
+   ```bash
+   ls -l skills/gentle-cloning/SKILL.md
+   ls -l skills/gentle-cloning/examples/request_runtime_version.json
+   ```
+
+2. Confirm the ClawBio runtime registry knows the skill:
+
+   ```bash
+   python clawbio.py list | grep -F gentle-cloning
+   ```
+
+   If this fails, Roboterry cannot route to GENtle yet. The problem is skill
+   registration/catalog loading, not GENtle execution.
+
+3. Confirm direct skill execution works without the chat router:
+
+   ```bash
+   python clawbio.py run gentle-cloning \
+     --input skills/gentle-cloning/examples/request_runtime_version.json \
+     --output /tmp/gentle_runtime_version
+   cat /tmp/gentle_runtime_version/result.json
+   grep -R "GENtle ClawBio skill wrapper invoked" /tmp/gentle_runtime_version
+   ```
+
+   Expected result: `status` is `ok`, `request.mode` is `version`, and
+   `chat_summary_lines[]` contains the installed GENtle runtime version.
+   The `result.json` and `report.md` files also carry the invocation marker
+   `GENtle ClawBio skill wrapper invoked`; this marker is safe to grep for in
+   ClawBio/Roboterry subprocess logs.
+
+4. Confirm Roboterry/chat routing invokes the skill, not only prose:
+
+   ```text
+   Please use the gentle-cloning skill to run the GENtle runtime version check.
+   ```
+
+   A good reply should mention that the `gentle-cloning` skill was run and
+   should produce or reference a ClawBio output bundle. If direct execution
+   works but Roboterry does not invoke the skill, the remaining issue is
+   Roboterry routing, prompt policy, or process caching. Restart the Roboterry
+   / ClawBio chat process after updating linked or copied skill files.
+
+Roboterry failure interpretation:
+
+- If steps 1-3 pass but Roboterry replies with prose such as
+  "I don't have the capability to run GENtle", GENtle and the ClawBio skill are
+  working. The chat layer did not dispatch to `clawbio.py run gentle-cloning`.
+- In that case, inspect the Roboterry process/configuration rather than the
+  GENtle wrapper:
+  - confirm Roboterry is running from the same ClawBio checkout where
+    `python clawbio.py list | grep -F gentle-cloning` succeeds
+  - confirm Roboterry has been restarted after skill/catalog changes
+  - confirm Roboterry has tool/skill execution enabled for the current chat
+    channel or user
+  - inspect Roboterry logs for the raw Telegram text, selected route/skill,
+    and whether any `clawbio.py run gentle-cloning ...` subprocess was started
+  - if no subprocess was started, fix Roboterry routing/prompt policy; if a
+    subprocess was started, inspect that run bundle's `result.json`
+  - if the subprocess stdout/stderr is logged, grep for
+    `GENtle ClawBio skill wrapper invoked`
+
 The wrapper emits the standard ClawBio-style bundle:
 
 - `report.md`

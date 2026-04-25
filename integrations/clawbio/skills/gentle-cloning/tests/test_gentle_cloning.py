@@ -530,6 +530,7 @@ def test_version_mode_reports_installed_gentle_runtime(tmp_path: Path) -> None:
 
     payload = json.loads(run.stdout)
     assert payload["status"] == "ok"
+    assert payload["invocation_marker"] == "GENtle ClawBio skill wrapper invoked"
     assert payload["request"]["mode"] == "version"
     assert payload["command"] == [str(fake_cli), "--version"]
     assert payload["stdout"] == "GENtle 0.1.0-test\n"
@@ -538,6 +539,9 @@ def test_version_mode_reports_installed_gentle_runtime(tmp_path: Path) -> None:
         "Installed GENtle runtime version: GENtle 0.1.0-test"
     ]
     assert argv_path.read_text(encoding="utf-8").splitlines() == ["--version"]
+    assert "Invocation marker: `GENtle ClawBio skill wrapper invoked`" in (
+        output_dir / "report.md"
+    ).read_text(encoding="utf-8")
 
 
 def test_clawbio_style_input_path_resolves_from_skill_cwd(tmp_path: Path) -> None:
