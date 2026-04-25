@@ -91,8 +91,8 @@ use crate::{
         UniprotProjectionAuditReport,
     },
     engine_shell::{
-        ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
-        parse_shell_line,
+        ShellCommand, ShellExecutionOptions, UiIntentAction, UiIntentTarget,
+        execute_shell_command_with_options, parse_shell_line,
     },
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary},
     enzymes,
@@ -2324,20 +2324,10 @@ enum CommandPaletteAction {
     OpenUniprot,
     OpenGenbank,
     OpenConfiguration,
-    OpenPrepareGenome,
-    OpenRetrieveGenome,
-    OpenBlastGenome,
-    OpenGenomeTracks,
     OpenGibson,
-    OpenPcrDesign,
-    OpenSequencingConfirmation,
     OpenPlanning,
     OpenRoutineAssistant,
-    OpenAgentAssistant,
-    OpenPreparedInspector,
-    OpenPrepareHelperGenome,
-    OpenRetrieveHelperSequence,
-    OpenBlastHelperSequence,
+    UiIntent(UiIntentTarget),
     OpenGuiManual,
     OpenCliManual,
     OpenAgentInterfaceManual,
@@ -2357,6 +2347,22 @@ struct CommandPaletteEntry {
     detail: String,
     keywords: String,
     action: CommandPaletteAction,
+}
+
+impl CommandPaletteEntry {
+    fn ui_intent(target: UiIntentTarget) -> Self {
+        Self {
+            title: target.discoverability_title().to_string(),
+            detail: target.discoverability_detail().to_string(),
+            keywords: format!(
+                "{} {} {}",
+                target.discoverability_keywords(),
+                target.menu_path().to_ascii_lowercase(),
+                target.as_str()
+            ),
+            action: CommandPaletteAction::UiIntent(target),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -4955,23 +4961,6 @@ Error: `{err}`"
         }
     }
 
-    fn command_palette_ui_intent_entry(
-        target: UiIntentTarget,
-        action: CommandPaletteAction,
-    ) -> CommandPaletteEntry {
-        CommandPaletteEntry {
-            title: target.discoverability_title().to_string(),
-            detail: target.discoverability_detail().to_string(),
-            keywords: format!(
-                "{} {} {}",
-                target.discoverability_keywords(),
-                target.menu_path().to_ascii_lowercase(),
-                target.as_str()
-            ),
-            action,
-        }
-    }
-
     fn collect_command_palette_entries(&self) -> Vec<CommandPaletteEntry> {
         let mut entries = vec![
             CommandPaletteEntry {
@@ -5029,22 +5018,6 @@ Error: `{err}`"
                 keywords: "settings config preferences".to_string(),
                 action: CommandPaletteAction::OpenConfiguration,
             },
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::PrepareReferenceGenome,
-                CommandPaletteAction::OpenPrepareGenome,
-            ),
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::RetrieveGenomeSequence,
-                CommandPaletteAction::OpenRetrieveGenome,
-            ),
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::BlastGenomeSequence,
-                CommandPaletteAction::OpenBlastGenome,
-            ),
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::ImportGenomeTrack,
-                CommandPaletteAction::OpenGenomeTracks,
-            ),
             CommandPaletteEntry {
                 title: "Gibson".to_string(),
                 detail: "Plan one destination-first Gibson assembly with cartoon preview."
@@ -5052,14 +5025,6 @@ Error: `{err}`"
                 keywords: "gibson cloning overlaps primers cartoon".to_string(),
                 action: CommandPaletteAction::OpenGibson,
             },
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::PcrDesign,
-                CommandPaletteAction::OpenPcrDesign,
-            ),
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::SequencingConfirmation,
-                CommandPaletteAction::OpenSequencingConfirmation,
-            ),
             CommandPaletteEntry {
                 title: "Planning".to_string(),
                 detail: "Edit planning profiles/objectives and resolve suggestions".to_string(),
@@ -5072,26 +5037,6 @@ Error: `{err}`"
                 keywords: "routine assistant cloning preflight".to_string(),
                 action: CommandPaletteAction::OpenRoutineAssistant,
             },
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::AgentAssistant,
-                CommandPaletteAction::OpenAgentAssistant,
-            ),
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::PreparedReferences,
-                CommandPaletteAction::OpenPreparedInspector,
-            ),
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::PrepareHelperGenome,
-                CommandPaletteAction::OpenPrepareHelperGenome,
-            ),
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::RetrieveHelperSequence,
-                CommandPaletteAction::OpenRetrieveHelperSequence,
-            ),
-            Self::command_palette_ui_intent_entry(
-                UiIntentTarget::BlastHelperSequence,
-                CommandPaletteAction::OpenBlastHelperSequence,
-            ),
             CommandPaletteEntry {
                 title: "GUI Manual".to_string(),
                 detail: "Open in-app GUI help".to_string(),
@@ -5141,6 +5086,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::ToggleHistoryPanel,
             },
         ];
+        entries.extend(
+            UiIntentTarget::all()
+                .iter()
+                .copied()
+                .map(CommandPaletteEntry::ui_intent),
+        );
         for entry in self.collect_open_window_entries() {
             entries.push(CommandPaletteEntry {
                 title: format!("Focus: {}", entry.title),
@@ -5167,30 +5118,25 @@ Error: `{err}`"
             CommandPaletteAction::OpenUniprot => self.open_uniprot_dialog(),
             CommandPaletteAction::OpenGenbank => self.open_genbank_dialog(),
             CommandPaletteAction::OpenConfiguration => self.open_configuration_dialog(),
-            CommandPaletteAction::OpenPrepareGenome => self.open_reference_genome_prepare_dialog(),
-            CommandPaletteAction::OpenRetrieveGenome => {
-                self.open_reference_genome_retrieve_dialog()
-            }
-            CommandPaletteAction::OpenBlastGenome => self.open_reference_genome_blast_dialog(),
-            CommandPaletteAction::OpenGenomeTracks => self.open_genome_bed_track_dialog(),
             CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
-            CommandPaletteAction::OpenPcrDesign => self.open_pcr_design_dialog(),
-            CommandPaletteAction::OpenSequencingConfirmation => {
-                self.open_sequencing_confirmation_dialog()
-            }
             CommandPaletteAction::OpenPlanning => self.open_planning_dialog(),
             CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
-            CommandPaletteAction::OpenAgentAssistant => self.open_agent_assistant_dialog(),
-            CommandPaletteAction::OpenPreparedInspector => {
-                self.open_reference_genome_inspector_dialog()
+            CommandPaletteAction::UiIntent(target) => {
+                let command = ShellCommand::UiIntent {
+                    action: UiIntentAction::Open,
+                    target,
+                    genome_id: None,
+                    helper_mode: false,
+                    catalog_path: None,
+                    cache_dir: None,
+                    filter: None,
+                    species: None,
+                    latest: false,
+                };
+                if let Some(summary) = self.try_apply_shell_ui_intent(&command) {
+                    self.app_status = summary;
+                }
             }
-            CommandPaletteAction::OpenPrepareHelperGenome => {
-                self.open_helper_genome_prepare_dialog()
-            }
-            CommandPaletteAction::OpenRetrieveHelperSequence => {
-                self.open_helper_genome_retrieve_dialog()
-            }
-            CommandPaletteAction::OpenBlastHelperSequence => self.open_helper_genome_blast_dialog(),
             CommandPaletteAction::OpenGuiManual => self.open_help_doc(HelpDoc::Gui),
             CommandPaletteAction::OpenCliManual => self.open_help_doc(HelpDoc::Cli),
             CommandPaletteAction::OpenAgentInterfaceManual => {
@@ -48442,15 +48388,20 @@ mod tests {
     }
 
     #[test]
-    fn command_palette_includes_all_ui_intent_targets() {
+    fn command_palette_includes_shared_ui_intent_entries() {
         let app = GENtleApp::default();
         let entries = app.collect_command_palette_entries();
+
         for target in UiIntentTarget::all() {
             assert!(
-                entries
-                    .iter()
-                    .any(|entry| entry.title == target.discoverability_title()),
-                "missing command-palette entry for ui target '{}'",
+                entries.iter().any(|entry| {
+                    entry.title == target.discoverability_title()
+                        && entry.detail == target.discoverability_detail()
+                        && entry.keywords.contains(target.discoverability_keywords())
+                        && entry.keywords.contains(target.as_str())
+                        && matches!(entry.action, CommandPaletteAction::UiIntent(entry_target) if entry_target == *target)
+                }),
+                "missing command palette entry for {}",
                 target.as_str()
             );
         }
@@ -48506,7 +48457,7 @@ mod tests {
 
         app.execute_command_palette_action(
             &egui::Context::default(),
-            CommandPaletteAction::OpenPcrDesign,
+            CommandPaletteAction::UiIntent(UiIntentTarget::PcrDesign),
         );
 
         assert!(app.show_pcr_design_dialog);
@@ -48525,7 +48476,7 @@ mod tests {
 
         app.execute_command_palette_action(
             &egui::Context::default(),
-            CommandPaletteAction::OpenSequencingConfirmation,
+            CommandPaletteAction::UiIntent(UiIntentTarget::SequencingConfirmation),
         );
 
         assert!(app.show_sequencing_confirmation_dialog);
@@ -48533,29 +48484,33 @@ mod tests {
     }
 
     #[test]
-    fn execute_command_palette_action_opens_helper_genome_dialogs() {
+    fn execute_command_palette_ui_intents_open_helper_genome_dialogs() {
         let mut app = GENtleApp::default();
 
         app.execute_command_palette_action(
             &egui::Context::default(),
-            CommandPaletteAction::OpenPrepareHelperGenome,
+            CommandPaletteAction::UiIntent(UiIntentTarget::PrepareHelperGenome),
         );
-        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
         assert!(app.show_reference_genome_prepare_dialog);
+        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
 
+        app.show_reference_genome_prepare_dialog = false;
+        app.genome_dialog_scope = GenomeDialogScope::Reference;
         app.execute_command_palette_action(
             &egui::Context::default(),
-            CommandPaletteAction::OpenRetrieveHelperSequence,
+            CommandPaletteAction::UiIntent(UiIntentTarget::RetrieveHelperSequence),
         );
-        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
         assert!(app.show_reference_genome_retrieve_dialog);
+        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
 
+        app.show_reference_genome_retrieve_dialog = false;
+        app.genome_dialog_scope = GenomeDialogScope::Reference;
         app.execute_command_palette_action(
             &egui::Context::default(),
-            CommandPaletteAction::OpenBlastHelperSequence,
+            CommandPaletteAction::UiIntent(UiIntentTarget::BlastHelperSequence),
         );
-        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
         assert!(app.show_reference_genome_blast_dialog);
+        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
     }
 
     #[test]

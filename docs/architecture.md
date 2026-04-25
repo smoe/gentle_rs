@@ -745,6 +745,10 @@ Current baseline:
   existing dialog openers (Prepared References, prepare/retrieve/blast, track
   import, agent assistant, helper-genome dialogs).
 - UI-intent capability/introspection output is available via `ui intents`.
+- Command Palette entries for UI-intent targets are generated from the shared
+  `UiIntentTarget` metadata (title, detail, keywords) instead of duplicating
+  those labels inside the GUI adapter; helper-genome targets participate in
+  the same metadata path.
 - Query helpers are implemented and can be composed with open/focus for
   prepared-reference selection, for example:
   - `ui open prepared-references --species human --latest`

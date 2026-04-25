@@ -4258,6 +4258,9 @@ Current baseline:
   - `ui open|focus TARGET ...`
   - `ui prepared-genomes ...`
   - `ui latest-prepared SPECIES ...`
+- `ui intents` now exposes shared per-target metadata (`title`, `detail`,
+  `keywords`, supported actions) that GUI command palettes and agent catalogs
+  consume instead of duplicating UI-intent labels.
 - specialist targets now include shared-shell/GUI parity for:
   - `pcr-design`
   - `sequencing-confirmation`
@@ -4268,6 +4271,8 @@ Current baseline:
     including `pcr-design` and `sequencing-confirmation`
   - the GUI command palette now also exposes the helper-genome intent trio
     (`Prepare Helper Genome`, `Retrieve Helper Sequence`, `BLAST Helper Sequence`)
+  - the GUI command palette consumes the shared `UiIntentTarget` catalog instead
+    of hard-coding one action per intent target
 - Prepared references supports one-shot disambiguation/open flow:
   - `ui open prepared-references --species human --latest`
   - explicit `--genome-id` still overrides query-based selection

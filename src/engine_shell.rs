@@ -610,6 +610,11 @@ impl UiIntentTarget {
         }
     }
 
+    /// Compatibility alias for command-catalog call sites.
+    pub fn title(self) -> &'static str {
+        self.discoverability_title()
+    }
+
     /// Short discoverability copy for command palettes, agent helpers, and MCP.
     pub fn discoverability_detail(self) -> &'static str {
         match self {
@@ -633,6 +638,11 @@ impl UiIntentTarget {
         }
     }
 
+    /// Compatibility alias for command-catalog call sites.
+    pub fn detail(self) -> &'static str {
+        self.discoverability_detail()
+    }
+
     /// Search keywords shared across UI-intent discoverability surfaces.
     pub fn discoverability_keywords(self) -> &'static str {
         match self {
@@ -650,6 +660,11 @@ impl UiIntentTarget {
             Self::RetrieveHelperSequence => "helper genome retrieve extract sequence",
             Self::BlastHelperSequence => "helper genome blast",
         }
+    }
+
+    /// Compatibility alias for command-catalog call sites.
+    pub fn keywords(self) -> &'static str {
+        self.discoverability_keywords()
     }
 
     /// Primary GUI menu location for the target.
@@ -26413,27 +26428,48 @@ fn execute_ui_command(
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     match command {
-        ShellCommand::UiListIntents => Ok(ShellRunResult {
-            state_changed: false,
-            output: json!({
-                "schema": "gentle.ui_intents.v1",
-                "targets": UiIntentTarget::all().iter().map(|target| target.as_str()).collect::<Vec<_>>(),
-                "target_details": ui_intent_target_catalog(),
-                "commands": [
-                    "ui intents",
-                    "ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
-                    "ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
-                    "ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
-                    "ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]"
-                ],
-                "notes": [
-                    "UI intent commands are host-application intents and require GUI host integration to apply.",
-                    "CLI execution returns deterministic intent/query payloads for agents/automation.",
-                    "prepared-references target accepts query flags to resolve selected_genome_id; explicit --genome-id overrides query selection.",
-                    "target_details rows carry stable titles, menu paths, keywords, and optional arguments for discoverability surfaces such as the GUI command palette and MCP clients."
-                ]
-            }),
-        }),
+        ShellCommand::UiListIntents => {
+            let targets: Vec<&'static str> = UiIntentTarget::all()
+                .iter()
+                .map(|target| target.as_str())
+                .collect();
+            let target_details = ui_intent_target_catalog();
+            let target_metadata: Vec<serde_json::Value> = target_details
+                .iter()
+                .map(|row| {
+                    json!({
+                        "target": row.target,
+                        "title": row.title,
+                        "detail": row.detail,
+                        "keywords": row.keywords,
+                        "actions": row.actions
+                    })
+                })
+                .collect();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.ui_intents.v1",
+                    "targets": targets,
+                    "target_details": target_details,
+                    "target_metadata": target_metadata,
+                    "commands": [
+                        "ui intents",
+                        "ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
+                        "ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
+                        "ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]",
+                        "ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]"
+                    ],
+                    "notes": [
+                        "UI intent commands are host-application intents and require GUI host integration to apply.",
+                        "CLI execution returns deterministic intent/query payloads for agents/automation.",
+                        "prepared-references target accepts query flags to resolve selected_genome_id; explicit --genome-id overrides query selection.",
+                        "target_details rows carry stable titles, menu paths, keywords, and optional arguments for discoverability surfaces such as the GUI command palette and MCP clients.",
+                        "target_metadata is retained as a compatibility alias for older command-catalog clients."
+                    ]
+                }),
+            })
+        }
         ShellCommand::UiIntent {
             action,
             target,

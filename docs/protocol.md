@@ -2416,10 +2416,14 @@ Shell/engine quick-install contracts:
     - executes shared shell command: `ui intents`
   - result:
     - structured payload schema: `gentle.ui_intents.v1`
-    - includes stable `targets`, `target_details`, `commands`, and deterministic notes
+    - includes stable `targets`, `target_details`, `target_metadata`,
+      `commands`, and deterministic notes
     - `target_details[]` now carries per-target discoverability metadata:
       `title`, `detail`, `keywords`, `menu_path`, supported `actions`, and
       stable `optional_arguments`
+    - `target_metadata[]` is retained as a compatibility alias for older
+      command-catalog clients that consumed only title/detail/keyword/action
+      records
 
 - `ui_intent`
   - arguments:

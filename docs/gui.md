@@ -2596,6 +2596,9 @@ In `Main window -> Graph` view:
 - Command Palette:
   - open via `Cmd/Ctrl+K` or `Edit -> Command Palette...`
   - searchable action list for project, genome, planning, help, and window actions
+  - UI-intent entries for reference genomes, helper genomes, PCR, sequencing,
+    and agent assistant are generated from the shared `UiIntentTarget`
+    metadata used by shell/agent capability discovery
   - includes `Planning` action (`Patterns -> Planning...` equivalent)
   - supports keyboard navigation (`Up`/`Down`, `Enter`, `Esc`)
 - Operation History panel:

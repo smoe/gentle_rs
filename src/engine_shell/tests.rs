@@ -15793,7 +15793,51 @@ fn parse_ui_open_and_prepared_commands() {
     assert!(
             err.contains("only supports --helpers/--catalog/--cache-dir/--filter/--species/--latest when TARGET is prepared-references"),
             "unexpected parse error: {err}"
+    );
+}
+
+#[test]
+fn execute_ui_intents_lists_shared_target_metadata() {
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(&mut engine, &ShellCommand::UiListIntents)
+        .expect("execute ui intents");
+
+    assert!(!out.state_changed);
+    assert_eq!(out.output["schema"].as_str(), Some("gentle.ui_intents.v1"));
+    let targets = out.output["targets"].as_array().expect("targets array");
+    let metadata = out.output["target_metadata"]
+        .as_array()
+        .expect("target metadata array");
+    assert_eq!(targets.len(), UiIntentTarget::all().len());
+    assert_eq!(metadata.len(), UiIntentTarget::all().len());
+
+    for target in UiIntentTarget::all() {
+        assert!(
+            targets
+                .iter()
+                .any(|value| value.as_str() == Some(target.as_str())),
+            "missing target string for {}",
+            target.as_str()
         );
+        let row = metadata
+            .iter()
+            .find(|value| value["target"].as_str() == Some(target.as_str()))
+            .unwrap_or_else(|| panic!("missing target metadata for {}", target.as_str()));
+        assert_eq!(row["title"].as_str(), Some(target.title()));
+        assert_eq!(row["detail"].as_str(), Some(target.detail()));
+        assert_eq!(row["keywords"].as_str(), Some(target.keywords()));
+        let actions = row["actions"].as_array().expect("actions array");
+        assert!(
+            actions
+                .iter()
+                .any(|value| value.as_str() == Some(UiIntentAction::Open.as_str()))
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|value| value.as_str() == Some(UiIntentAction::Focus.as_str()))
+        );
+    }
 }
 
 #[test]
