@@ -540,6 +540,47 @@ def test_version_mode_reports_installed_gentle_runtime(tmp_path: Path) -> None:
     assert argv_path.read_text(encoding="utf-8").splitlines() == ["--version"]
 
 
+def test_clawbio_style_input_path_resolves_from_skill_cwd(tmp_path: Path) -> None:
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [ \"${1:-}\" = \"--version\" ]; then\n"
+        "  echo 'GENtle 0.1.0-test'\n"
+        "  exit 0\n"
+        "fi\n"
+        "echo 'unexpected args' >&2\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            "skills/gentle-cloning/examples/request_runtime_version.json",
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=_skill_script().parent,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "ok"
+    assert result["request"]["mode"] == "version"
+    assert result["chat_summary_lines"] == [
+        "Installed GENtle runtime version: GENtle 0.1.0-test"
+    ]
+
+
 def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(
@@ -2462,6 +2503,11 @@ def test_confirmed_capabilities_action_gets_telegram_safe_summary(
 def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() -> None:
     examples_dir = Path(__file__).resolve().parents[1] / "examples"
     expected = {
+        "request_runtime_version.json": (
+            "version",
+            None,
+            180,
+        ),
         "request_version_installed.json": (
             "version",
             None,

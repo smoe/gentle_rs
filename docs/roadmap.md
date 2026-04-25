@@ -1408,7 +1408,8 @@ order. Durable architecture constraints and decisions remain in
         - the ClawBio wrapper now also has a first-class `version` request mode
           that invokes `gentle_cli --version`, promotes a chat-safe installed
           runtime summary, and is documented through
-          `request_version_installed.json`; the skill wording now also directs
+          `request_runtime_version.json` plus the older
+          `request_version_installed.json` synonym; the skill wording now also directs
           generic "installed databases/resources" questions to `services
           status`, `resources status`, `genomes status/list`, and
           `helpers status/list` rather than allowing chat layers to answer

@@ -78,7 +78,8 @@ intended framing is:
   tools. Its added value is deterministic preparation, cataloging, provenance,
   and reuse in the same workflow.
 - GENtle can report the installed runtime version via
-  `examples/request_version_installed.json` and can answer installed
+  `examples/request_runtime_version.json` (or the synonym
+  `examples/request_version_installed.json`) and can answer installed
   database/resource questions by running `services status`, `resources status`,
   `genomes status`, `helpers status`, or the relevant list route.
 
@@ -153,11 +154,12 @@ the chat layer did not actually invoke the refreshed `gentle-cloning` skill.
 The shortest investigation path is:
 
 1. verify the copied remote skill bundle really contains:
+   - `examples/request_runtime_version.json`
    - `examples/request_version_installed.json`
    - `examples/request_services_status.json`
    - the `Ensembl availability answers` section in `SKILL.md`
 2. run the skill directly from the ClawBio checkout:
-   - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_version_installed.json --output /tmp/gentle_version`
+   - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_runtime_version.json --output /tmp/gentle_runtime_version`
    - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_status.json --output /tmp/gentle_services_status`
    - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38`
    - the wrapper now resolves relative `--input` paths not only from the
@@ -204,7 +206,7 @@ export GENTLE_CLI_CMD=/home/clawbio/ClawBio/skills/gentle-cloning/gentle_local_c
 
 cd /home/clawbio/ClawBio
 python clawbio.py run gentle-cloning --demo
-python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_version_installed.json --output /tmp/gentle_version
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_runtime_version.json --output /tmp/gentle_runtime_version
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_list_human.json --output /tmp/gentle_list_human
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_list_gst.json --output /tmp/gentle_list_helpers
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_hosts_list_deor.json --output /tmp/gentle_list_hosts
@@ -522,6 +524,7 @@ working after the scaffold is copied into a separate ClawBio checkout.
 
 Included first-run bootstrap requests:
 
+- `examples/request_runtime_version.json`
 - `examples/request_version_installed.json`
 - `examples/request_genomes_list_human.json`
 - `examples/request_helpers_list_gst.json`

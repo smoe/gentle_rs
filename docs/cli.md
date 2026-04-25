@@ -189,7 +189,7 @@ export GENTLE_CLI_CMD=/home/clawbio/ClawBio/skills/gentle-cloning/gentle_local_c
 
 cd /home/clawbio/ClawBio
 python clawbio.py run gentle-cloning --demo
-python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_version_installed.json --output /tmp/gentle_version
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_runtime_version.json --output /tmp/gentle_runtime_version
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_list_human.json --output /tmp/gentle_list_human
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_list_gst.json --output /tmp/gentle_list_helpers
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_hosts_list_deor.json --output /tmp/gentle_list_hosts
@@ -335,6 +335,7 @@ export GENTLE_CLI_CMD='skills/gentle-cloning/gentle_apptainer_cli.sh /absolute/p
 
 Included first-run bootstrap request examples:
 
+- `request_runtime_version.json`
 - `request_version_installed.json`
 - `request_genomes_list_human.json`
 - `request_helpers_list_gst.json`

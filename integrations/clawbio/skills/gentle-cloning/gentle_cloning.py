@@ -225,6 +225,11 @@ def _request_path_candidates(raw_path: str, script_path: Path) -> list[Path]:
         return [path]
 
     candidates: list[Path] = [Path.cwd() / path]
+    parts = path.parts
+    if len(parts) >= 2 and parts[0] == "skills" and parts[1] == SKILL_NAME:
+        candidates.append(script_path.resolve().parent / Path(*parts[2:]))
+    elif parts and parts[0] == SKILL_NAME:
+        candidates.append(script_path.resolve().parent / Path(*parts[1:]))
     for base in script_path.resolve().parents:
         candidates.append(base / path)
     configured_repo_root = os.environ.get("GENTLE_REPO_ROOT", "").strip()

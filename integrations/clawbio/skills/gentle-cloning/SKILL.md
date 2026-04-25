@@ -134,7 +134,8 @@ capability-led language:
   `observation -> mechanistic hypothesis -> GENtle sequence/context analysis -> wet-lab validation plan`.
 - Be explicit that GENtle can:
   - report the installed GENtle runtime version via request mode `version`
-    (`examples/request_version_installed.json`),
+    (`examples/request_runtime_version.json`, with
+    `examples/request_version_installed.json` kept as a synonym),
   - inspect pasted DNA fragments directly for restriction sites or TFBS hits
     without first creating project-state records when the task is purely
     read-only,
@@ -1039,6 +1040,7 @@ Apply the following methodology:
   `GENTLE_CLI_CMD`, then `gentle_cli` on `PATH`, then local `cargo run`
   fallback.
 - Included first-run bootstrap requests:
+  - `examples/request_runtime_version.json`
   - `examples/request_version_installed.json`
   - `examples/request_genomes_list_human.json`
   - `examples/request_services_status.json`
