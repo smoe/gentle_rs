@@ -1289,6 +1289,10 @@ MCP tool result envelope behavior:
   - `gentle.ui_intent.v1`
   - `gentle.ui_prepared_genomes.v1`
   - `gentle.ui_latest_prepared.v1`
+- `gentle.ui_intents.v1` now includes per-target `target_details[]` rows with
+  stable `title`, `detail`, `keywords`, `menu_path`, supported `actions`, and
+  `optional_arguments` metadata so GUI command-palette and MCP discovery stay
+  aligned with the shared shell target catalog.
 - catalog-entry MCP tools match the shared shell list payload shape:
   - `catalog_path`
   - `filter`

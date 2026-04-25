@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-24
+Last updated: 2026-04-25
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -4261,6 +4261,13 @@ Current baseline:
 - specialist targets now include shared-shell/GUI parity for:
   - `pcr-design`
   - `sequencing-confirmation`
+- UI-intent discoverability is now less drift-prone across current surfaces:
+  - shared `ui intents` output now carries per-target titles/details/keywords,
+    primary GUI menu path, and stable optional-argument metadata
+  - MCP `tools/list` now advertises the full shared `ui_intent` target set,
+    including `pcr-design` and `sequencing-confirmation`
+  - the GUI command palette now also exposes the helper-genome intent trio
+    (`Prepare Helper Genome`, `Retrieve Helper Sequence`, `BLAST Helper Sequence`)
 - Prepared references supports one-shot disambiguation/open flow:
   - `ui open prepared-references --species human --latest`
   - explicit `--genome-id` still overrides query-based selection

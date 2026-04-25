@@ -2335,6 +2335,9 @@ enum CommandPaletteAction {
     OpenRoutineAssistant,
     OpenAgentAssistant,
     OpenPreparedInspector,
+    OpenPrepareHelperGenome,
+    OpenRetrieveHelperSequence,
+    OpenBlastHelperSequence,
     OpenGuiManual,
     OpenCliManual,
     OpenAgentInterfaceManual,
@@ -4952,6 +4955,23 @@ Error: `{err}`"
         }
     }
 
+    fn command_palette_ui_intent_entry(
+        target: UiIntentTarget,
+        action: CommandPaletteAction,
+    ) -> CommandPaletteEntry {
+        CommandPaletteEntry {
+            title: target.discoverability_title().to_string(),
+            detail: target.discoverability_detail().to_string(),
+            keywords: format!(
+                "{} {} {}",
+                target.discoverability_keywords(),
+                target.menu_path().to_ascii_lowercase(),
+                target.as_str()
+            ),
+            action,
+        }
+    }
+
     fn collect_command_palette_entries(&self) -> Vec<CommandPaletteEntry> {
         let mut entries = vec![
             CommandPaletteEntry {
@@ -5009,30 +5029,22 @@ Error: `{err}`"
                 keywords: "settings config preferences".to_string(),
                 action: CommandPaletteAction::OpenConfiguration,
             },
-            CommandPaletteEntry {
-                title: "Prepare Reference Genome".to_string(),
-                detail: "Download/index selected genome".to_string(),
-                keywords: "genome prepare reference".to_string(),
-                action: CommandPaletteAction::OpenPrepareGenome,
-            },
-            CommandPaletteEntry {
-                title: "Retrieve Genomic Sequence".to_string(),
-                detail: "Extract region/gene from prepared genome".to_string(),
-                keywords: "genome retrieve extract anchor".to_string(),
-                action: CommandPaletteAction::OpenRetrieveGenome,
-            },
-            CommandPaletteEntry {
-                title: "BLAST Genome Sequence".to_string(),
-                detail: "Run BLAST against prepared genome indices".to_string(),
-                keywords: "genome blast".to_string(),
-                action: CommandPaletteAction::OpenBlastGenome,
-            },
-            CommandPaletteEntry {
-                title: "Import Genome Tracks".to_string(),
-                detail: "Import BED/BigWig/VCF onto anchored sequences".to_string(),
-                keywords: "genome tracks bed bigwig vcf".to_string(),
-                action: CommandPaletteAction::OpenGenomeTracks,
-            },
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::PrepareReferenceGenome,
+                CommandPaletteAction::OpenPrepareGenome,
+            ),
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::RetrieveGenomeSequence,
+                CommandPaletteAction::OpenRetrieveGenome,
+            ),
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::BlastGenomeSequence,
+                CommandPaletteAction::OpenBlastGenome,
+            ),
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::ImportGenomeTrack,
+                CommandPaletteAction::OpenGenomeTracks,
+            ),
             CommandPaletteEntry {
                 title: "Gibson".to_string(),
                 detail: "Plan one destination-first Gibson assembly with cartoon preview."
@@ -5040,19 +5052,14 @@ Error: `{err}`"
                 keywords: "gibson cloning overlaps primers cartoon".to_string(),
                 action: CommandPaletteAction::OpenGibson,
             },
-            CommandPaletteEntry {
-                title: "PCR Designer".to_string(),
-                detail: "Paint-first pair-PCR specialist with queue and live geometry".to_string(),
-                keywords: "pcr primer pair roi paint queue designer".to_string(),
-                action: CommandPaletteAction::OpenPcrDesign,
-            },
-            CommandPaletteEntry {
-                title: "Sequencing Confirmation".to_string(),
-                detail: "Confirm an expected construct from reads or imported traces".to_string(),
-                keywords: "sequencing confirmation sanger construct reads trace junction"
-                    .to_string(),
-                action: CommandPaletteAction::OpenSequencingConfirmation,
-            },
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::PcrDesign,
+                CommandPaletteAction::OpenPcrDesign,
+            ),
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::SequencingConfirmation,
+                CommandPaletteAction::OpenSequencingConfirmation,
+            ),
             CommandPaletteEntry {
                 title: "Planning".to_string(),
                 detail: "Edit planning profiles/objectives and resolve suggestions".to_string(),
@@ -5065,18 +5072,26 @@ Error: `{err}`"
                 keywords: "routine assistant cloning preflight".to_string(),
                 action: CommandPaletteAction::OpenRoutineAssistant,
             },
-            CommandPaletteEntry {
-                title: "Agent Assistant".to_string(),
-                detail: "Ask configured agent systems and run suggested commands".to_string(),
-                keywords: "agent assistant chat automation support".to_string(),
-                action: CommandPaletteAction::OpenAgentAssistant,
-            },
-            CommandPaletteEntry {
-                title: "Prepared References".to_string(),
-                detail: "Inspect prepared genome installs".to_string(),
-                keywords: "genome inspector prepared".to_string(),
-                action: CommandPaletteAction::OpenPreparedInspector,
-            },
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::AgentAssistant,
+                CommandPaletteAction::OpenAgentAssistant,
+            ),
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::PreparedReferences,
+                CommandPaletteAction::OpenPreparedInspector,
+            ),
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::PrepareHelperGenome,
+                CommandPaletteAction::OpenPrepareHelperGenome,
+            ),
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::RetrieveHelperSequence,
+                CommandPaletteAction::OpenRetrieveHelperSequence,
+            ),
+            Self::command_palette_ui_intent_entry(
+                UiIntentTarget::BlastHelperSequence,
+                CommandPaletteAction::OpenBlastHelperSequence,
+            ),
             CommandPaletteEntry {
                 title: "GUI Manual".to_string(),
                 detail: "Open in-app GUI help".to_string(),
@@ -5169,6 +5184,13 @@ Error: `{err}`"
             CommandPaletteAction::OpenPreparedInspector => {
                 self.open_reference_genome_inspector_dialog()
             }
+            CommandPaletteAction::OpenPrepareHelperGenome => {
+                self.open_helper_genome_prepare_dialog()
+            }
+            CommandPaletteAction::OpenRetrieveHelperSequence => {
+                self.open_helper_genome_retrieve_dialog()
+            }
+            CommandPaletteAction::OpenBlastHelperSequence => self.open_helper_genome_blast_dialog(),
             CommandPaletteAction::OpenGuiManual => self.open_help_doc(HelpDoc::Gui),
             CommandPaletteAction::OpenCliManual => self.open_help_doc(HelpDoc::Cli),
             CommandPaletteAction::OpenAgentInterfaceManual => {
@@ -44395,6 +44417,7 @@ mod tests {
             TranslationSpeedMark, TranslationSpeedProfile, TranslationSpeedProfileSource,
             UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
         },
+        engine_shell::UiIntentTarget,
         ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary, EnsemblProteinFeature},
         genomes::{
             EnsemblCatalogUpdatePreview, EnsemblInstallableGenomeCatalog,
@@ -48419,6 +48442,21 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_includes_all_ui_intent_targets() {
+        let app = GENtleApp::default();
+        let entries = app.collect_command_palette_entries();
+        for target in UiIntentTarget::all() {
+            assert!(
+                entries
+                    .iter()
+                    .any(|entry| entry.title == target.discoverability_title()),
+                "missing command-palette entry for ui target '{}'",
+                target.as_str()
+            );
+        }
+    }
+
+    #[test]
     fn execute_command_palette_action_opens_routine_assistant_dialog() {
         let mut app = GENtleApp::default();
         app.routine_assistant_candidates
@@ -48492,6 +48530,32 @@ mod tests {
 
         assert!(app.show_sequencing_confirmation_dialog);
         assert_eq!(app.sequencing_confirmation_seq_id, "seq1");
+    }
+
+    #[test]
+    fn execute_command_palette_action_opens_helper_genome_dialogs() {
+        let mut app = GENtleApp::default();
+
+        app.execute_command_palette_action(
+            &egui::Context::default(),
+            CommandPaletteAction::OpenPrepareHelperGenome,
+        );
+        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
+        assert!(app.show_reference_genome_prepare_dialog);
+
+        app.execute_command_palette_action(
+            &egui::Context::default(),
+            CommandPaletteAction::OpenRetrieveHelperSequence,
+        );
+        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
+        assert!(app.show_reference_genome_retrieve_dialog);
+
+        app.execute_command_palette_action(
+            &egui::Context::default(),
+            CommandPaletteAction::OpenBlastHelperSequence,
+        );
+        assert_eq!(app.genome_dialog_scope, GenomeDialogScope::Helper);
+        assert!(app.show_reference_genome_blast_dialog);
     }
 
     #[test]

@@ -3487,6 +3487,8 @@ standalone window/viewport (not embedded in the project canvas):
 - `Genome -> BLAST Helper Sequence...`
 - `Genome -> Import Genome Track...`
 - `File -> Agent Assistant...`
+- the same helper-genome and agent-assistant entries are also available from
+  the command palette under the same titles.
 
 Scope behavior:
 

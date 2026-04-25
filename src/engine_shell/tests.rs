@@ -15797,6 +15797,45 @@ fn parse_ui_open_and_prepared_commands() {
 }
 
 #[test]
+fn execute_ui_intents_catalog_includes_target_details() {
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(&mut engine, &ShellCommand::UiListIntents)
+        .expect("execute ui intents catalog");
+    assert!(!out.state_changed);
+    let targets = out.output["targets"]
+        .as_array()
+        .expect("ui intents targets array");
+    assert_eq!(targets.len(), UiIntentTarget::all().len());
+    let target_details = out.output["target_details"]
+        .as_array()
+        .expect("ui intents target_details array");
+    assert_eq!(target_details.len(), UiIntentTarget::all().len());
+    let pcr = target_details
+        .iter()
+        .find(|row| row["target"].as_str() == Some("pcr-design"))
+        .expect("pcr-design catalog row");
+    assert_eq!(pcr["title"].as_str(), Some("PCR Designer"));
+    assert_eq!(pcr["menu_path"].as_str(), Some("Patterns"));
+    assert_eq!(
+        pcr["optional_arguments"]
+            .as_array()
+            .map(|items| items.len()),
+        Some(1)
+    );
+    let prepared = target_details
+        .iter()
+        .find(|row| row["target"].as_str() == Some("prepared-references"))
+        .expect("prepared-references catalog row");
+    assert_eq!(prepared["menu_path"].as_str(), Some("Genome"));
+    assert_eq!(
+        prepared["optional_arguments"]
+            .as_array()
+            .map(|items| items.len()),
+        Some(7)
+    );
+}
+
+#[test]
 fn execute_ui_prepared_and_latest_prepared_queries() {
     let td = tempdir().expect("tempdir");
     let fasta_113 = td.path().join("h113.fa");

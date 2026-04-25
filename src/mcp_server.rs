@@ -10,7 +10,10 @@ use crate::{
     engine::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, Engine, GentleEngine, Operation, ProjectState, Workflow,
     },
-    engine_shell::{ShellExecutionOptions, execute_shell_command_with_options, parse_shell_tokens},
+    engine_shell::{
+        ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
+        parse_shell_tokens,
+    },
     genomes::{default_catalog_discovery_label, default_catalog_discovery_token},
     shell_docs::{
         shell_help_json, shell_help_markdown, shell_help_text, shell_topic_help_json,
@@ -171,6 +174,10 @@ fn write_framed_json<W: Write>(writer: &mut W, payload: &Value) -> Result<(), St
 }
 
 fn tool_list() -> Value {
+    let ui_intent_target_enum: Vec<&str> = UiIntentTarget::all()
+        .iter()
+        .map(|target| target.as_str())
+        .collect();
     json!([
         {
             "name": "capabilities",
@@ -598,17 +605,7 @@ fn tool_list() -> Value {
                     },
                     "target": {
                         "type": "string",
-                        "enum": [
-                            "prepared-references",
-                            "prepare-reference-genome",
-                            "retrieve-genome-sequence",
-                            "blast-genome-sequence",
-                            "import-genome-track",
-                            "agent-assistant",
-                            "prepare-helper-genome",
-                            "retrieve-helper-sequence",
-                            "blast-helper-sequence"
-                        ]
+                        "enum": ui_intent_target_enum
                     },
                     "genome_id": {
                         "type": "string"
@@ -2523,6 +2520,28 @@ mod tests {
             .filter(|part| !part.trim().is_empty())
             .collect::<Vec<_>>();
         assert_eq!(parts.len(), 2);
+    }
+
+    #[test]
+    fn tools_list_ui_intent_schema_matches_shared_target_catalog() {
+        let tools = tool_list();
+        let ui_intent = tools
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("ui_intent"))
+            .expect("ui_intent tool");
+        let actual = ui_intent["inputSchema"]["properties"]["target"]["enum"]
+            .as_array()
+            .expect("ui_intent target enum")
+            .iter()
+            .map(|value| value.as_str().expect("enum string").to_string())
+            .collect::<Vec<_>>();
+        let expected = UiIntentTarget::all()
+            .iter()
+            .map(|target| target.as_str().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
     }
 
     #[test]
