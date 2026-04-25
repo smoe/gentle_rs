@@ -1,6 +1,6 @@
 # ClawBio integration scaffold
 
-This directory contains a copy-ready skill scaffold for exposing GENtle through
+This directory contains a deployable skill scaffold for exposing GENtle through
 the ClawBio/OpenClaw skill system.
 
 Current scaffold:
@@ -28,11 +28,47 @@ Current scaffold:
   variant" to route through external evidence plus GENtle assay-planning
   artifacts)
 
-Intended use:
+Deployment into a ClawBio checkout:
 
-1. Copy `integrations/clawbio/skills/gentle-cloning/` into a ClawBio checkout
-   under `skills/gentle-cloning/`.
-2. Set `GENTLE_CLI_CMD` to the recommended Docker-backed GENtle CLI route, for
+Choose one of these layouts:
+
+- Local development: use a symbolic link so ClawBio always sees the live GENtle
+  checkout.
+
+  ```bash
+  cd /path/to/ClawBio
+  mkdir -p skills
+  ln -sfn /path/to/gentle_rs/integrations/clawbio/skills/gentle-cloning \
+    skills/gentle-cloning
+  ```
+
+  This is the preferred developer setup when GENtle and ClawBio are on the same
+  machine/filesystem. If ClawBio caches skill metadata or prompt files, restart
+  the ClawBio process after changing the GENtle checkout.
+
+- Remote checkout or container staging: use `rsync` so executable bits and
+  deletions stay in sync.
+
+  ```bash
+  rsync -a --delete \
+    /path/to/gentle_rs/integrations/clawbio/skills/gentle-cloning/ \
+    /path/to/ClawBio/skills/gentle-cloning/
+  ```
+
+- Shell-only transfer between two directories: use a tandem tar stream.
+
+  ```bash
+  mkdir -p /path/to/ClawBio/skills
+  (cd /path/to/gentle_rs/integrations/clawbio/skills && tar -cf - gentle-cloning) \
+    | (cd /path/to/ClawBio/skills && tar -xpf -)
+  ```
+
+- Simple one-off install: copy the directory into the ClawBio checkout under
+  `skills/gentle-cloning/`.
+
+After placing the skill directory:
+
+1. Set `GENTLE_CLI_CMD` to the recommended Docker-backed GENtle CLI route, for
    example:
 
    ```bash
@@ -54,7 +90,7 @@ Intended use:
    - install `gentle_cli` locally and rely on `PATH`
    - pass `--gentle-cli "<command>"`
    - use repository-local `cargo run --quiet --bin gentle_cli --`
-3. Run:
+2. Run:
    - `python clawbio.py run gentle-cloning --demo`
    - `python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_skill_info.json --output <dir>`
    - `python clawbio.py run gentle-cloning --input <request.json> --output <dir>`
@@ -65,8 +101,9 @@ Intended use:
 
 Catalog registration:
 
-1. Copy `integrations/clawbio/skills/gentle-cloning/catalog_entry.json`
-   into your ClawBio checkout.
+1. Register the object from `skills/gentle-cloning/catalog_entry.json`.
+   - symlink setups can read it directly from the linked skill directory
+   - `rsync`, tar, and copy setups place it under the ClawBio checkout
 2. Add the object under `skills[]` in `skills/catalog.json` (or regenerate
    catalog via ClawBio's `scripts/generate_catalog.py` flow).
 
