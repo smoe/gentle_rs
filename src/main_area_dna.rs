@@ -9367,6 +9367,26 @@ mod tests {
     }
 
     #[test]
+    fn sync_rna_read_evidence_selection_to_mapping_report_clears_report_scoped_row_state() {
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.rna_read_evidence_ui.selected_report_id = "old_report".to_string();
+        area.rna_reads_ui.report_id = "new_report".to_string();
+        area.rna_seed_selected_record_indices = BTreeSet::from([2usize, 7usize]);
+        area.rna_seed_highlight_record_index = Some(7);
+        area.rna_read_alignment_effect_score_bin_index = Some(39);
+        area.rna_read_alignment_detail_visible_key = Some("old_report|7".to_string());
+
+        area.sync_rna_read_evidence_selection_to_mapping_report();
+
+        assert_eq!(area.rna_read_evidence_ui.selected_report_id, "new_report");
+        assert!(area.rna_seed_selected_record_indices.is_empty());
+        assert_eq!(area.rna_seed_highlight_record_index, None);
+        assert_eq!(area.rna_read_alignment_effect_score_bin_index, None);
+        assert_eq!(area.rna_read_alignment_detail_visible_key, None);
+    }
+
+    #[test]
     fn mapping_workspace_ignores_saved_report_progress_for_other_splicing_view() {
         let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
         let mut state = ProjectState::default();
@@ -27409,14 +27429,22 @@ impl MainAreaDna {
                     .unwrap_or_else(|| "<none>".to_string()),
             )
             .show_ui(ui, |ui| {
+                let mut next_report_id = self.rna_read_evidence_ui.selected_report_id.clone();
+                let mut report_selection_changed = false;
                 for row in summaries.iter() {
-                    persist_ui_state |= ui
+                    report_selection_changed |= ui
                         .selectable_value(
-                            &mut self.rna_read_evidence_ui.selected_report_id,
+                            &mut next_report_id,
                             row.report_id.clone(),
                             Self::format_rna_read_report_summary_picker_label(row),
                         )
+                        .on_hover_text(
+                            "Switch the saved RNA-read report used by this splicing evidence panel.",
+                        )
                         .changed();
+                }
+                if report_selection_changed {
+                    persist_ui_state |= self.set_selected_rna_read_evidence_report_id(next_report_id);
                 }
             });
         });
@@ -30950,16 +30978,13 @@ impl MainAreaDna {
         let started = Instant::now();
         let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
         self.rna_read_progress = None;
-        self.rna_seed_highlight_record_index = None;
-        self.rna_seed_selected_record_indices.clear();
-        self.rna_read_alignment_effect_score_bin_index = None;
-        self.rna_read_alignment_detail_visible_key = None;
+        self.clear_rna_read_report_scoped_selection_state();
         self.rna_stream_eta_text = None;
         self.rna_stream_eta_reads_processed = 0;
         if let Some(report_id) = task_report_id_hint.as_deref()
             && !report_id.trim().is_empty()
         {
-            self.rna_read_evidence_ui.selected_report_id = report_id.to_string();
+            self.set_selected_rna_read_evidence_report_id(report_id.to_string());
         }
         self.op_status = match &op {
             Operation::InterpretRnaReads {
@@ -33128,7 +33153,13 @@ impl MainAreaDna {
 
         ui.horizontal_wrapped(|ui| {
             ui.menu_button("Selection tools", |ui| {
-                if ui.button("Select max-score ties").clicked() {
+                if ui
+                    .button("Select max-score ties")
+                    .on_hover_text(
+                        "Select all saved-report rows tied for the highest retained phase-1 seed score.",
+                    )
+                    .clicked()
+                {
                     self.clear_rna_read_alignment_score_bin_focus();
                     self.rna_seed_selected_record_indices =
                         Self::select_rna_read_report_max_score_record_indices(report)
@@ -33140,7 +33171,13 @@ impl MainAreaDna {
                     );
                     ui.close();
                 }
-                if ui.button("Select rightmost score bin").clicked() {
+                if ui
+                    .button("Select rightmost score bin")
+                    .on_hover_text(
+                        "Select saved-report rows from the highest non-empty score-density bin under the current density mode.",
+                    )
+                    .clicked()
+                {
                     let bin_count = report.score_density_bins.len().max(40);
                     let selected_record_indices =
                         Self::select_rna_read_report_rightmost_score_bin_record_indices(
@@ -33172,7 +33209,13 @@ impl MainAreaDna {
                     );
                     ui.close();
                 }
-                if ui.button("Select filtered rows").clicked() {
+                if ui
+                    .button("Select filtered rows")
+                    .on_hover_text(
+                        "Select every aligned row currently visible after the active filter and search text.",
+                    )
+                    .clicked()
+                {
                     self.clear_rna_read_alignment_score_bin_focus();
                     self.rna_seed_selected_record_indices =
                         displayed_record_indices.iter().copied().collect::<BTreeSet<_>>();
@@ -33182,7 +33225,13 @@ impl MainAreaDna {
                     );
                     ui.close();
                 }
-                if ui.button("Select aligned rows").clicked() {
+                if ui
+                    .button("Select aligned rows")
+                    .on_hover_text(
+                        "Select all phase-2 aligned rows in this report, ignoring the current table filter.",
+                    )
+                    .clicked()
+                {
                     self.clear_rna_read_alignment_score_bin_focus();
                     self.rna_seed_selected_record_indices = inspection
                         .rows
@@ -33191,17 +33240,28 @@ impl MainAreaDna {
                         .collect::<BTreeSet<_>>();
                     ui.close();
                 }
-                if ui.button("Clear selected").clicked() {
+                if ui
+                    .button("Clear selected")
+                    .on_hover_text("Clear the current saved-report row selection.")
+                    .clicked()
+                {
                     self.clear_rna_read_alignment_score_bin_focus();
                     self.rna_seed_selected_record_indices.clear();
                     ui.close();
                 }
             });
             let selected_count = self.rna_seed_selected_record_indices.len();
+            let selected_report_hits_available = selected_count > 0
+                && report.hits.iter().any(|hit| {
+                    self.rna_seed_selected_record_indices
+                        .contains(&hit.record_index)
+                });
+            let highlighted_report_hit_available =
+                self.selected_highlighted_rna_report_hit(report).is_some();
             if allow_mapping_actions
                 && ui
                     .add_enabled(
-                        self.rna_read_task.is_none() && selected_count > 0,
+                        self.rna_read_task.is_none() && selected_report_hits_available,
                         egui::Button::new(format!(
                             "Evaluate Selected (phase-2) [{selected_count}]"
                         )),
@@ -33219,14 +33279,29 @@ impl MainAreaDna {
                 self.run_splicing_rna_read_alignment_phase_for_selected(view, selected_indices);
             }
             if ui
-                .button(format!("Copy selected FASTA ({selected_count})"))
+                .add_enabled(
+                    selected_report_hits_available,
+                    egui::Button::new(format!("Copy selected FASTA ({selected_count})")),
+                )
+                .on_hover_text(
+                    "Copy FASTA for selected rows that are present in the active saved report.",
+                )
                 .clicked()
             {
                 let hits =
                     Self::selected_rna_report_hits(report, &self.rna_seed_selected_record_indices);
                 self.copy_rna_report_hits_as_fasta(ui, &hits, "selected report reads");
             }
-            if ui.button("Copy highlighted FASTA").clicked() {
+            if ui
+                .add_enabled(
+                    highlighted_report_hit_available,
+                    egui::Button::new("Copy highlighted FASTA"),
+                )
+                .on_hover_text(
+                    "Copy FASTA for the highlighted row when it is present in the active saved report.",
+                )
+                .clicked()
+            {
                 let hits = self
                     .selected_highlighted_rna_report_hit(report)
                     .into_iter()
@@ -33246,9 +33321,10 @@ impl MainAreaDna {
                 ] {
                     if ui
                         .add_enabled(
-                            selected_count > 0,
+                            selected_report_hits_available,
                             egui::Button::new(export_kind.menu_label()),
                         )
+                        .on_hover_text(export_kind.hover_text())
                         .clicked()
                     {
                         self.export_selected_rna_read_subset(export_kind);
@@ -33272,6 +33348,7 @@ impl MainAreaDna {
                             visible_count > 0,
                             egui::Button::new(export_kind.menu_label()),
                         )
+                        .on_hover_text(export_kind.hover_text())
                         .clicked()
                     {
                         self.export_rna_read_subset_with_record_indices(
@@ -33285,26 +33362,47 @@ impl MainAreaDna {
                 }
             });
             if ui
-                .add_enabled(selected_count > 0, egui::Button::new("Materialize selected"))
+                .add_enabled(
+                    selected_report_hits_available,
+                    egui::Button::new("Materialize selected"),
+                )
+                .on_hover_text(
+                    "Create project sequence entries from selected rows in the active saved report.",
+                )
                 .clicked()
             {
                 self.materialize_selected_rna_read_report_hits();
             }
             if ui
                 .add_enabled(
-                    self.rna_seed_highlight_record_index.is_some(),
+                    highlighted_report_hit_available,
                     egui::Button::new("Materialize highlighted"),
+                )
+                .on_hover_text(
+                    "Create a project sequence entry from the highlighted row in the active saved report.",
                 )
                 .clicked()
             {
                 self.materialize_highlighted_rna_read_report_hit();
             }
             ui.menu_button("Dotplots", |ui| {
-                if ui.button("Export dotplot for highlighted read...").clicked() {
+                if ui
+                    .button("Export dotplot for highlighted read...")
+                    .on_hover_text(
+                        "Write an SVG dotplot for the currently highlighted read against its mapped transcript template.",
+                    )
+                    .clicked()
+                {
                     self.export_highlighted_rna_read_sequence_dotplot_svg(view, progress);
                     ui.close();
                 }
-                if ui.button("Export dotplots for selected reads...").clicked() {
+                if ui
+                    .button("Export dotplots for selected reads...")
+                    .on_hover_text(
+                        "Write SVG dotplots for all selected reads that can be resolved in the active report.",
+                    )
+                    .clicked()
+                {
                     self.export_selected_rna_read_sequence_dotplot_svgs(view);
                     ui.close();
                 }
@@ -34842,12 +34940,22 @@ impl MainAreaDna {
         .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.small(&preview_note);
-                    if ui.button("Clear highlight").clicked() {
+                    if ui
+                        .button("Clear highlight")
+                        .on_hover_text("Clear the currently highlighted top-hit/read-effect row.")
+                        .clicked()
+                    {
                         next_selection = Some(None);
                     }
                     ui.menu_button("Selection tools", |ui| {
                         if let Some(report) = saved_report.as_ref() {
-                            if ui.button("Select max-score ties").clicked() {
+                            if ui
+                                .button("Select max-score ties")
+                                .on_hover_text(
+                                    "Select all saved-report rows tied for the highest retained phase-1 seed score.",
+                                )
+                                .clicked()
+                            {
                                 self.rna_seed_selected_record_indices =
                                     Self::select_rna_read_report_max_score_record_indices(report)
                                         .into_iter()
@@ -34858,7 +34966,13 @@ impl MainAreaDna {
                                 );
                                 ui.close();
                             }
-                            if ui.button("Select rightmost score bin").clicked() {
+                            if ui
+                                .button("Select rightmost score bin")
+                                .on_hover_text(
+                                    "Select saved-report rows from the highest non-empty score-density bin under the current density mode.",
+                                )
+                                .clicked()
+                            {
                                 self.rna_seed_selected_record_indices =
                                     Self::select_rna_read_report_rightmost_score_bin_record_indices(
                                         &report,
@@ -34876,11 +34990,21 @@ impl MainAreaDna {
                         } else {
                             ui.small("Save/load a report before using saved-report selection helpers.");
                         }
-                        if ui.button("Select listed rows").clicked() {
+                        if ui
+                            .button("Select listed rows")
+                            .on_hover_text(
+                                "Select every row currently listed in the top-hit preview table.",
+                            )
+                            .clicked()
+                        {
                             self.rna_seed_selected_record_indices = visible_record_indices.clone();
                             ui.close();
                         }
-                        if ui.button("Clear selected").clicked() {
+                        if ui
+                            .button("Clear selected")
+                            .on_hover_text("Clear the current top-hit/read-effect row selection.")
+                            .clicked()
+                        {
                             self.rna_seed_selected_record_indices.clear();
                             ui.close();
                         }
@@ -34901,10 +35025,33 @@ impl MainAreaDna {
                         self.run_splicing_rna_read_alignment_phase(view);
                     }
                     let selected_count = self.rna_seed_selected_record_indices.len();
+                    let selected_top_hits_available = selected_count > 0
+                        && saved_report.as_ref().map_or_else(
+                            || {
+                                preview_rows.iter().any(|row| {
+                                    self.rna_seed_selected_record_indices
+                                        .contains(&row.record_index)
+                                })
+                            },
+                            |report| {
+                                report.hits.iter().any(|hit| {
+                                    self.rna_seed_selected_record_indices
+                                        .contains(&hit.record_index)
+                                })
+                            },
+                        );
+                    let highlighted_top_hit_available = saved_report.as_ref().map_or_else(
+                        || {
+                            preview_rows.iter().any(|row| {
+                                self.rna_seed_highlight_record_index == Some(row.record_index)
+                            })
+                        },
+                        |report| self.selected_highlighted_rna_report_hit(report).is_some(),
+                    );
                     if allow_mapping_actions
                         && ui
                             .add_enabled(
-                                self.rna_read_task.is_none() && selected_count > 0,
+                                self.rna_read_task.is_none() && selected_top_hits_available,
                                 egui::Button::new(format!(
                                     "Evaluate Selected (phase-2) [{selected_count}]"
                                 )),
@@ -34925,7 +35072,13 @@ impl MainAreaDna {
                         );
                     }
                     if ui
-                        .button(format!("Copy selected FASTA ({selected_count})"))
+                        .add_enabled(
+                            selected_top_hits_available,
+                            egui::Button::new(format!("Copy selected FASTA ({selected_count})")),
+                        )
+                        .on_hover_text(
+                            "Copy FASTA for selected rows that are present in the current preview/report.",
+                        )
                         .clicked()
                     {
                         if let Some(report) = saved_report.as_ref() {
@@ -34950,7 +35103,16 @@ impl MainAreaDna {
                             );
                         }
                     }
-                    if ui.button("Copy highlighted FASTA").clicked() {
+                    if ui
+                        .add_enabled(
+                            highlighted_top_hit_available,
+                            egui::Button::new("Copy highlighted FASTA"),
+                        )
+                        .on_hover_text(
+                            "Copy FASTA for the highlighted row when it is present in the current preview/report.",
+                        )
+                        .clicked()
+                    {
                         if let Some(report) = saved_report.as_ref() {
                             let hits = self
                                 .selected_highlighted_rna_report_hit(report)
@@ -34978,11 +35140,23 @@ impl MainAreaDna {
                         }
                     }
                     ui.menu_button("Dotplots", |ui| {
-                        if ui.button("Export dotplot for highlighted read...").clicked() {
+                        if ui
+                            .button("Export dotplot for highlighted read...")
+                            .on_hover_text(
+                                "Write an SVG dotplot for the currently highlighted read against its mapped transcript template.",
+                            )
+                            .clicked()
+                        {
                             self.export_highlighted_rna_read_sequence_dotplot_svg(view, progress);
                             ui.close();
                         }
-                        if ui.button("Export dotplots for selected reads...").clicked() {
+                        if ui
+                            .button("Export dotplots for selected reads...")
+                            .on_hover_text(
+                                "Write SVG dotplots for all selected reads that can be resolved in the current preview/report.",
+                            )
+                            .clicked()
+                        {
                             self.export_selected_rna_read_sequence_dotplot_svgs(view);
                             ui.close();
                         }

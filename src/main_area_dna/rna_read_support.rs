@@ -249,6 +249,21 @@ impl RnaReadSelectedExportKind {
         }
     }
 
+    pub(super) fn hover_text(self) -> &'static str {
+        match self {
+            Self::Fasta => "Export the selected or filtered aligned reads as FASTA sequences.",
+            Self::AlignmentsTsv => {
+                "Export phase-2 alignment metrics for the selected or filtered aligned reads."
+            }
+            Self::ExonPathsTsv => {
+                "Export the mapped exon path attribution for each selected or filtered read."
+            }
+            Self::ExonAbundanceTsv => {
+                "Export per-exon support counts derived from the selected or filtered aligned reads."
+            }
+        }
+    }
+
     pub(super) fn missing_report_message(self) -> &'static str {
         match self {
             Self::Fasta => "Set a Report ID first to export selected reads",
@@ -412,13 +427,32 @@ impl MainAreaDna {
         let Some(report_id) = self.current_rna_read_mapping_workspace_report_id() else {
             return;
         };
-        if !self
+        self.set_selected_rna_read_evidence_report_id(report_id);
+    }
+
+    pub(super) fn set_selected_rna_read_evidence_report_id(&mut self, report_id: String) -> bool {
+        let report_id = report_id.trim().to_string();
+        let report_changed = !self
             .rna_read_evidence_ui
             .selected_report_id
-            .eq_ignore_ascii_case(&report_id)
-        {
+            .trim()
+            .eq_ignore_ascii_case(&report_id);
+        if self.rna_read_evidence_ui.selected_report_id != report_id {
             self.rna_read_evidence_ui.selected_report_id = report_id;
         }
+        if report_changed {
+            self.clear_rna_read_report_scoped_selection_state();
+        }
+        report_changed
+    }
+
+    pub(super) fn clear_rna_read_report_scoped_selection_state(&mut self) {
+        self.rna_seed_selected_record_indices.clear();
+        self.rna_seed_highlight_record_index = None;
+        self.rna_read_alignment_effect_score_bin_index = None;
+        self.rna_read_alignment_detail_visible_key = None;
+        self.cached_rna_read_alignment_detail = None;
+        self.cached_rna_read_alignment_display = None;
     }
 
     pub(super) fn invalidate_rna_read_report_display_cache(&mut self) {
@@ -611,8 +645,9 @@ impl MainAreaDna {
         if selected_matches {
             return summaries;
         }
-        self.rna_read_evidence_ui.selected_report_id =
-            Self::latest_matching_rna_read_report_id(&summaries).unwrap_or_default();
+        self.set_selected_rna_read_evidence_report_id(
+            Self::latest_matching_rna_read_report_id(&summaries).unwrap_or_default(),
+        );
         summaries
     }
 
