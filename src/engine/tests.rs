@@ -32302,6 +32302,98 @@ fn annotate_promoter_windows_collapses_identical_spans_and_records_transcript_co
 }
 
 #[test]
+fn summarize_alternative_promoter_comparison_collapses_exact_shared_spans() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(4000)).expect("sequence");
+    for (transcript_id, transcript_label) in [("ENSTTP73A", "TP73-201"), ("ENSTTP73B", "TP73-202")]
+    {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(1200, 1800),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_label.to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_alt_promoter_demo".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .summarize_alternative_promoter_comparison(
+            "tp73_alt_promoter_demo",
+            Some("TP73"),
+            None,
+            1000,
+            200,
+        )
+        .expect("alternative promoter comparison");
+
+    assert_eq!(report.schema, ALTERNATIVE_PROMOTER_COMPARISON_SCHEMA);
+    assert_eq!(report.transcript_window_count, 2);
+    assert_eq!(report.collapsed_window_count, 1);
+    assert_eq!(report.rows.len(), 1);
+    assert_eq!(report.rows[0].transcript_count, 2);
+    assert_eq!(report.rows[0].transcript_ids.len(), 2);
+    assert!(
+        report.rows[0].label.contains("(2 tx)"),
+        "label was: {}",
+        report.rows[0].label
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Collapsed 2 transcript-level promoter interpretation")),
+        "warnings were: {:?}",
+        report.warnings
+    );
+}
+
+#[test]
+fn apply_summarize_alternative_promoter_comparison_operation_returns_payload() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(4000)).expect("sequence");
+    for (transcript_id, transcript_label) in [("ENSTTP73A", "TP73-201"), ("ENSTTP73B", "TP73-202")]
+    {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(1200, 1800),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_label.to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_alt_promoter_apply".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::SummarizeAlternativePromoterComparison {
+            input: "tp73_alt_promoter_apply".to_string(),
+            gene_label: Some("TP73".to_string()),
+            transcript_id: None,
+            promoter_upstream_bp: 1000,
+            promoter_downstream_bp: 200,
+            path: None,
+        })
+        .expect("apply alternative promoter comparison");
+
+    let report = result
+        .alternative_promoter_comparison
+        .expect("alternative promoter comparison payload");
+    assert_eq!(report.seq_id, "tp73_alt_promoter_apply");
+    assert_eq!(report.collapsed_window_count, 1);
+    assert_eq!(report.rows.len(), 1);
+}
+
+#[test]
 fn build_construct_reasoning_graph_derives_promoter_assay_from_generated_promoter_window() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

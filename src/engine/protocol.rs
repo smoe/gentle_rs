@@ -1832,6 +1832,63 @@ pub struct PromoterWindowRecord {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One grouped transcript-derived promoter interpretation row used for
+/// alternative-promoter comparison in Promoter design.
+pub struct AlternativePromoterComparisonRow {
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_transcript_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_transcript_feature_id: Option<usize>,
+    pub transcript_count: usize,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub transcript_labels: Vec<String>,
+    pub strand: String,
+    pub representative_tss_local_0based: usize,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    #[serde(default)]
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable grouped transcript-derived promoter comparison for one locus.
+pub struct AlternativePromoterComparisonReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label_filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    pub promoter_upstream_bp: usize,
+    pub promoter_downstream_bp: usize,
+    pub transcript_window_count: usize,
+    pub collapsed_window_count: usize,
+    #[serde(default)]
+    pub rows: Vec<AlternativePromoterComparisonRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One overlapping annotation/evidence row surfaced in a variant-promoter
 /// context report.
 pub struct VariantPromoterContextEvidenceRow {
@@ -2872,6 +2929,8 @@ pub struct OpResult {
     pub sequence_context_bundle: Option<SequenceContextBundleExport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant_promoter_context: Option<VariantPromoterContextReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alternative_promoter_comparison: Option<AlternativePromoterComparisonReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_candidates: Option<PromoterReporterCandidateSet>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

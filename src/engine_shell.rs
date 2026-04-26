@@ -1150,6 +1150,11 @@ pub enum ShellCommand {
         scope: Option<String>,
         output: Option<String>,
     },
+    ServicesGuide {
+        channel: Option<String>,
+        section: Option<String>,
+        gene: Option<String>,
+    },
     RoutinesList {
         catalog_path: Option<String>,
         family: Option<String>,
@@ -6136,6 +6141,16 @@ impl ShellCommand {
                 "build service handoff report for chat gateways (scope='{}', output='{}')",
                 scope.as_deref().unwrap_or("clawbio"),
                 output.as_deref().unwrap_or("-"),
+            ),
+            Self::ServicesGuide {
+                channel,
+                section,
+                gene,
+            } => format!(
+                "build Telegram-compatible GENtle guide (channel='{}', section='{}', gene='{}')",
+                channel.as_deref().unwrap_or("telegram"),
+                section.as_deref().unwrap_or("overview"),
+                gene.as_deref().unwrap_or("-"),
             ),
             Self::RoutinesList {
                 catalog_path,
@@ -17063,7 +17078,9 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "services" => {
             if tokens.len() < 2 {
-                return Err("services requires a subcommand: status or handoff".to_string());
+                return Err(
+                    "services requires a subcommand: status, handoff, doctor or guide".to_string(),
+                );
             }
             match tokens[1].as_str() {
                 "status" => {
@@ -17101,8 +17118,49 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     Ok(ShellCommand::ServicesHandoff { scope, output })
                 }
+                "guide" => {
+                    let mut channel: Option<String> = None;
+                    let mut section: Option<String> = None;
+                    let mut gene: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--channel" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing NAME after --channel".to_string());
+                                }
+                                channel = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--section" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing SECTION after --section".to_string());
+                                }
+                                section = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--gene" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing SYMBOL after --gene".to_string());
+                                }
+                                gene = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for services guide"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ServicesGuide {
+                        channel,
+                        section,
+                        gene,
+                    })
+                }
                 other => Err(format!(
-                    "Unknown services subcommand '{other}' (expected status, handoff or doctor)"
+                    "Unknown services subcommand '{other}' (expected status, handoff, doctor or guide)"
                 )),
             }
         }
@@ -20322,6 +20380,22 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(report)
                     .map_err(|e| format!("Could not serialize service handoff report: {e}"))?,
+            })
+        }
+        ShellCommand::ServicesGuide {
+            channel,
+            section,
+            gene,
+        } => {
+            let report = service_readiness::telegram_guide_report(
+                channel.as_deref(),
+                section.as_deref(),
+                gene.as_deref(),
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize Telegram guide report: {e}"))?,
             })
         }
         _ => unreachable!("non-export/import/resource command passed to helper"),
@@ -26845,6 +26919,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ResourcesStatus
             | ShellCommand::ServicesStatus
             | ShellCommand::ServicesHandoff { .. }
+            | ShellCommand::ServicesGuide { .. }
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
             | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
@@ -27440,6 +27515,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesStatus
         | ShellCommand::ServicesStatus
         | ShellCommand::ServicesHandoff { .. }
+        | ShellCommand::ServicesGuide { .. }
         | ShellCommand::ResourcesSyncRebase { .. }
         | ShellCommand::ResourcesSyncJaspar { .. }
         | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }

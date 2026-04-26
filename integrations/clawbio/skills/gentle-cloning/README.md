@@ -127,9 +127,27 @@ GENtle know about locally?", do not answer from memory and do not say the
 skill cannot know. Run the status routes:
 
 - `services status` for the ClawBio-facing readiness overview
+- `services guide --channel telegram` for a bench-user guide with clickable
+  section actions and optional gene personalization
 - `resources status` for integrated JASPAR/REBASE/ATtRACT-style resources
 - `genomes status ...` or `genomes list` for reference-genome catalogs/caches
 - `helpers status ...` or `helpers list` for helper/vector assets
+
+### Telegram guide route
+
+For prompts such as "What can GENtle do?", "Show me the GENtle guide", or
+"Help me use GENtle in Telegram", run:
+
+```bash
+gentle_cli shell 'services guide --channel telegram'
+```
+
+The route returns `gentle.telegram_guide.v1`. Its `suggested_actions[]` entries
+act like navigation links with `kind = guide_section` and
+`requires_confirmation = false`, while any prepare/sync/download actions remain
+confirmation-gated through the normal status and handoff routes. If the user
+names a gene, preserve it with `--gene SYMBOL`; otherwise GENtle uses defaults
+such as TERT/TP73 for promoter-TFBS and TP73/TP53 for isoform demos.
 
 ### Preparation for likely user questions
 
@@ -137,13 +155,14 @@ When ClawBio/OpenClaw is being readied for broader user questions, the intended
 order is:
 
 1. `services status`
-2. `services handoff --scope clawbio --output artifacts/service_handoff.json`
-3. `genomes status "Human GRCh38 Ensembl 116"`
-4. `genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200` if needed
-5. `helpers status "Plasmid pUC19 (online)"`
-6. `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800` if likely
+2. `services guide --channel telegram`
+3. `services handoff --scope clawbio --output artifacts/service_handoff.json`
+4. `genomes status "Human GRCh38 Ensembl 116"`
+5. `genomes prepare "Human GRCh38 Ensembl 116" --timeout-secs 7200` if needed
+6. `helpers status "Plasmid pUC19 (online)"`
+7. `helpers prepare "Plasmid pUC19 (online)" --timeout-secs 1800` if likely
    cloning/vector work is expected
-7. `resources status`
+8. `resources status`
 
 Interpret resource preparation honestly:
 
@@ -236,6 +255,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_install_ensembl_mouse.json --output /tmp/gentle_install_mouse
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_shell_state_summary.json --output /tmp/gentle_state_summary
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_status.json --output /tmp/gentle_services_status
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_telegram_guide.json --output /tmp/gentle_telegram_guide
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_handoff.json --output /tmp/gentle_services_handoff
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_resources_status.json --output /tmp/gentle_resources_status
@@ -504,6 +524,11 @@ Each entry contains:
 That gives chat layers a deterministic way to offer "Would you like me to run
 this next?" without scraping the human-readable report.
 
+For `services guide --channel telegram`, those same `suggested_actions[]`
+entries are used as lightweight section navigation. Guide actions are marked
+`requires_confirmation = false`; setup actions that download, prepare, or sync
+shared data remain confirmation-gated.
+
 The wrapper also writes a Telegram-safe execution summary into both
 `result.json.chat_summary_lines[]` and `report.md` whenever a successful
 command has parseable output but no more specific biological summary. This
@@ -555,6 +580,7 @@ Included first-run bootstrap requests:
 - `examples/request_genomes_install_ensembl_mouse.json`
 - `examples/request_shell_state_summary.json`
 - `examples/request_services_status.json`
+- `examples/request_services_telegram_guide.json`
 - `examples/request_services_handoff.json`
 - `examples/request_genomes_status_grch38.json`
 - `examples/request_resources_status.json`

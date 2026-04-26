@@ -209,6 +209,32 @@ Always keep the boundary explicit:
 - experimental test: the luciferase/minigene/RT-PCR/cloning or other wet-lab
   step still needed to validate that hypothesis
 
+### Telegram Guide Route
+
+For broad Telegram-facing prompts such as "What can GENtle do?", "Show me the
+GENtle guide", or "Help me use GENtle in Telegram", run:
+
+- `services guide --channel telegram`
+
+This route is for bench-user orientation, not operator setup. It returns
+`gentle.telegram_guide.v1` with short `summary_lines[]`, compact
+`menu_sections[]`, lifecycle-aware readiness notes, and `suggested_actions[]`
+that behave like section links. The first answer should invite optional gene
+personalization:
+
+> If you have a gene of interest, tell me its symbol. Otherwise I will use
+> defaults for each section.
+
+When the user supplies a gene symbol, pass it through as `--gene SYMBOL`, for
+example:
+
+- `services guide --channel telegram --section tfbs --gene TERT`
+
+Guide navigation actions use `kind = guide_section` and
+`requires_confirmation = false`. Long-running prepare/sync/download actions
+remain confirmation-gated and should come from the status/handoff payloads, not
+from prose.
+
 ## Ensembl / Remote-Data Answer Rule
 
 When users ask questions such as:
@@ -361,6 +387,7 @@ Current shared GENtle routes behind this capability:
 
 - request mode `version`
 - `services status`
+- `services guide --channel telegram`
 - `services handoff --scope clawbio ...`
 - `resources status`
 - `genomes list`, `genomes status ...`
@@ -711,6 +738,9 @@ python clawbio.py run gentle-cloning \
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_services_status.json \
   --output /tmp/gentle_clawbio_services_status
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_services_telegram_guide.json \
+  --output /tmp/gentle_clawbio_telegram_guide
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_services_handoff.json \
   --output /tmp/gentle_clawbio_services_handoff
@@ -1071,6 +1101,7 @@ Apply the following methodology:
   - `examples/request_version_installed.json`
   - `examples/request_genomes_list_human.json`
   - `examples/request_services_status.json`
+  - `examples/request_services_telegram_guide.json`
   - `examples/request_services_handoff.json`
   - `examples/request_genomes_status_grch38.json`
   - `examples/request_resources_status.json`

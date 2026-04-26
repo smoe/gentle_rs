@@ -65,7 +65,9 @@ use crate::{
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, AnnotationCandidate,
         AnnotationCandidateSummary, AttractPwmMappingPolicy, AttractRegionClass,
-        AttractSplicingEvidenceSettings, AttractSplicingEvidenceView,
+        AttractSplicingEvidenceHitRow, AttractSplicingEvidenceSettings,
+        AttractSplicingEvidenceView, AlternativePromoterComparisonReport,
+        AlternativePromoterComparisonRow,
         CandidateFeatureStrandRelation, CandidateRecord, CandidateSetOperator,
         ConstructReasoningGraph, ConstructRole, DecisionMethod, DesignDecisionNode, DesignFact,
         DisplaySettings, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
@@ -1215,16 +1217,19 @@ mod tests {
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
         dna_sequence::DNAsequence,
         engine::{
-            AnnotationCandidateSummary, ConstructRole, DotplotMode, DotplotOverlayAnchorExonRef,
-            DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EvidenceClass,
-            FlexibilityModel, FlexibilityTrack, GentleEngine, LinearSequenceLetterLayoutMode,
-            OpResult, Operation, PairwiseAlignmentMode, PrimerDesignBackend,
-            PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignSideConstraint,
-            ProjectState, PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
-            RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
-            RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
-            RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
-            RnaReadInterpretationProfile, RnaReadInterpretationReport,
+            AlternativePromoterComparisonRow, AnnotationCandidateSummary, AttractRegionClass,
+            AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow,
+            AttractSplicingEvidenceSettings, AttractSplicingEvidenceView, ConstructRole,
+            DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
+            EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack,
+            GentleEngine, LinearSequenceLetterLayoutMode, OpResult, Operation,
+            PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
+            PrimerDesignProgress, PrimerDesignSideConstraint, ProjectState,
+            PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
+            RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode,
+            RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
+            RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
+            RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
             RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
@@ -1235,8 +1240,9 @@ mod tests {
             SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
             SequencingPrimerProposalRow, SequencingTraceChannelData, SequencingTraceFormat,
             SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
-            TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
-            VariantPromoterContextReport, parse_required_usize_or_formula_text_on_sequence,
+            TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+            TfbsTrackSimilarityReport, VariantPromoterContextReport,
+            parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -1771,6 +1777,7 @@ mod tests {
             jaspar_entry_presentation: None,
             sequence_context_view: None,
             sequence_context_bundle: None,
+            alternative_promoter_comparison: None,
             variant_promoter_context: None,
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
@@ -4734,6 +4741,7 @@ mod tests {
                 jaspar_entry_presentation: None,
                 sequence_context_view: None,
                 sequence_context_bundle: None,
+                alternative_promoter_comparison: None,
                 variant_promoter_context: None,
                 promoter_reporter_candidates: None,
                 uniprot_projection_audit: None,
@@ -8123,6 +8131,24 @@ mod tests {
             TfbsScoreTrackValueKind::LlrBits
         );
         assert!(area.variant_followup_ui.score_track_clip_negative);
+        assert_eq!(area.variant_followup_ui.tfbs_track_similarity_anchor_motif, "");
+        assert!(area.variant_followup_ui.tfbs_track_similarity_all_candidates);
+        assert_eq!(area.variant_followup_ui.tfbs_track_similarity_limit, "25");
+        assert_eq!(
+            area.variant_followup_ui.tfbs_track_similarity_ranking_metric,
+            TfbsTrackSimilarityRankingMetric::SmoothedSpearman
+        );
+        assert!(
+            !area
+                .variant_followup_ui
+                .tfbs_track_similarity_include_remote_metadata
+        );
+        assert!(area.variant_followup_ui.cached_tfbs_track_similarity.is_none());
+        assert!(
+            area.variant_followup_ui
+                .cached_alternative_promoter_comparison
+                .is_none()
+        );
     }
 
     #[test]
@@ -8231,6 +8257,279 @@ mod tests {
         assert_eq!(area.variant_followup_ui.source_feature_id, Some(0));
         assert_eq!(area.variant_followup_ui.gene_label, "TP73");
         assert_eq!(area.variant_followup_ui.transcript_id, "ENSTTP73A");
+    }
+
+    #[test]
+    fn use_variant_followup_alternative_promoter_row_retargets_promoter_design_span() {
+        let dna = DNAsequence::from_sequence(&"A".repeat(4000)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("tp73_context".to_string()), None);
+        area.variant_followup_ui.cached_score_tracks = Some(TfbsScoreTrackReport::default());
+        area.variant_followup_ui.cached_tfbs_track_similarity =
+            Some(TfbsTrackSimilarityReport::default());
+        area.variant_followup_ui.cached_report = Some(VariantPromoterContextReport::default());
+        area.variant_followup_ui.cached_candidates = Some(PromoterReporterCandidateSet::default());
+
+        let row = AlternativePromoterComparisonRow {
+            label: "TP73 promoter window (2 tx)".to_string(),
+            gene_label: Some("TP73".to_string()),
+            gene_id: None,
+            representative_transcript_id: Some("ENSTTP73A".to_string()),
+            representative_transcript_label: Some("TP73-201".to_string()),
+            representative_transcript_feature_id: Some(7),
+            transcript_count: 2,
+            transcript_ids: vec!["ENSTTP73A".to_string(), "ENSTTP73B".to_string()],
+            transcript_labels: vec!["TP73-201".to_string(), "TP73-202".to_string()],
+            strand: "+".to_string(),
+            representative_tss_local_0based: 1200,
+            start_0based: 200,
+            end_0based_exclusive: 1400,
+            upstream_bp: 1000,
+            downstream_bp: 200,
+            source: "transcript_tss".to_string(),
+        };
+
+        area.use_variant_followup_alternative_promoter_row(&row);
+
+        assert_eq!(area.variant_followup_ui.transcript_id, "ENSTTP73A");
+        assert_eq!(area.variant_followup_ui.gene_label, "TP73");
+        assert_eq!(area.variant_followup_ui.promoter_upstream_bp, "1000");
+        assert_eq!(area.variant_followup_ui.promoter_downstream_bp, "200");
+        assert_eq!(area.variant_followup_ui.score_track_start_0based, "200");
+        assert_eq!(
+            area.variant_followup_ui.score_track_end_0based_exclusive,
+            "1400"
+        );
+        assert!(area.variant_followup_ui.cached_score_tracks.is_none());
+        assert!(area.variant_followup_ui.cached_tfbs_track_similarity.is_none());
+        assert!(area.variant_followup_ui.cached_report.is_none());
+        assert!(area.variant_followup_ui.cached_candidates.is_none());
+        assert!(
+            area.op_status.contains("ENSTTP73A"),
+            "status was: {}",
+            area.op_status
+        );
+    }
+
+    #[test]
+    fn splicing_intron_regulatory_rows_merge_cached_attract_hits_with_intron_signals() {
+        let view = SplicingExpertView {
+            seq_id: "tp73".to_string(),
+            target_feature_id: 1,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 30,
+            transcript_count: 1,
+            unique_exon_count: 2,
+            instruction: String::new(),
+            transcripts: vec![SplicingTranscriptLane {
+                transcript_feature_id: 1,
+                transcript_id: "ENSTTP73A".to_string(),
+                label: "TP73-201".to_string(),
+                strand: "+".to_string(),
+                exons: vec![
+                    SplicingRange {
+                        start_1based: 1,
+                        end_1based: 10,
+                    },
+                    SplicingRange {
+                        start_1based: 21,
+                        end_1based: 30,
+                    },
+                ],
+                exon_cds_phases: vec![],
+                introns: vec![SplicingRange {
+                    start_1based: 11,
+                    end_1based: 20,
+                }],
+                has_target_feature: true,
+            }],
+            unique_exons: vec![
+                SplicingExonSummary {
+                    start_1based: 1,
+                    end_1based: 10,
+                    support_transcript_count: 1,
+                    constitutive: true,
+                },
+                SplicingExonSummary {
+                    start_1based: 21,
+                    end_1based: 30,
+                    support_transcript_count: 1,
+                    constitutive: true,
+                },
+            ],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![SplicingIntronSignal {
+                transcript_feature_id: 1,
+                transcript_id: "ENSTTP73A".to_string(),
+                donor_position_1based: 10,
+                acceptor_position_1based: 21,
+                intron_length_bp: 10,
+                branchpoint_position_1based: Some(17),
+                branchpoint_motif: "TACTAAC".to_string(),
+                branchpoint_score: 9.5,
+                branchpoint_annotation: "heuristic".to_string(),
+                polypyrimidine_start_1based: Some(18),
+                polypyrimidine_end_1based: Some(20),
+                polypyrimidine_fraction: 0.91,
+                polypyrimidine_annotation: "tract".to_string(),
+            }],
+            junctions: vec![],
+            events: vec![],
+        };
+        let evidence = AttractSplicingEvidenceView {
+            schema: "gentle.attract_splicing_evidence.v1".to_string(),
+            seq_id: "tp73".to_string(),
+            target_feature_id: 1,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            group_label: "TP73".to_string(),
+            target_strand: "+".to_string(),
+            settings: AttractSplicingEvidenceSettings::default(),
+            requested_organism: Some("Homo sapiens".to_string()),
+            resolved_organism: Some("Homo sapiens".to_string()),
+            species_match_mode: AttractSpeciesMatchMode::ExactOrganism,
+            scanned_transcript_count: 1,
+            scanned_window_count: 3,
+            unique_rbp_count: 3,
+            hit_count: 4,
+            pwm_scored_hit_count: 0,
+            exact_length_pwm_hit_count: 0,
+            windowed_pwm_hit_count: 0,
+            consensus_hit_count: 4,
+            active_resource_source: "synthetic".to_string(),
+            active_resource_item_count: 4,
+            active_resource_pwm_row_count: 0,
+            active_resource_consensus_only_row_count: 4,
+            active_resource_fingerprint: None,
+            alternate_policy_summary: None,
+            summary_rows: vec![],
+            hit_rows: vec![
+                AttractSplicingEvidenceHitRow {
+                    transcript_feature_id: 1,
+                    transcript_id: "ENSTTP73A".to_string(),
+                    transcript_label: "TP73-201".to_string(),
+                    transcript_strand: "+".to_string(),
+                    gene_name: "SRSF1".to_string(),
+                    organism: "Homo sapiens".to_string(),
+                    matrix_id: "M001".to_string(),
+                    motif_iupac: "GAAGAA".to_string(),
+                    model_kind: "consensus_iupac".to_string(),
+                    region_class: AttractRegionClass::DonorFlank,
+                    region_start_1based: 9,
+                    region_end_1based: 11,
+                    region_local_start_1based: 1,
+                    region_local_end_1based: 3,
+                    matched_sequence: "GAA".to_string(),
+                    match_score: 1.0,
+                    match_score_kind: "llr_bits".to_string(),
+                    match_score_quantile: None,
+                    quality_score: 3.0,
+                    exact_species_match: true,
+                    pwm_mapping_status: "none".to_string(),
+                    mapping_policy_used: "strict".to_string(),
+                    pfm_subwindow_start_1based: None,
+                    pfm_subwindow_end_1based: None,
+                    warnings: vec![],
+                },
+                AttractSplicingEvidenceHitRow {
+                    transcript_feature_id: 1,
+                    transcript_id: "ENSTTP73A".to_string(),
+                    transcript_label: "TP73-201".to_string(),
+                    transcript_strand: "+".to_string(),
+                    gene_name: "PTBP1".to_string(),
+                    organism: "Homo sapiens".to_string(),
+                    matrix_id: "M002".to_string(),
+                    motif_iupac: "TCTT".to_string(),
+                    model_kind: "consensus_iupac".to_string(),
+                    region_class: AttractRegionClass::AcceptorFlank,
+                    region_start_1based: 20,
+                    region_end_1based: 22,
+                    region_local_start_1based: 1,
+                    region_local_end_1based: 3,
+                    matched_sequence: "TCT".to_string(),
+                    match_score: 1.0,
+                    match_score_kind: "llr_bits".to_string(),
+                    match_score_quantile: None,
+                    quality_score: 3.0,
+                    exact_species_match: true,
+                    pwm_mapping_status: "none".to_string(),
+                    mapping_policy_used: "strict".to_string(),
+                    pfm_subwindow_start_1based: None,
+                    pfm_subwindow_end_1based: None,
+                    warnings: vec![],
+                },
+                AttractSplicingEvidenceHitRow {
+                    transcript_feature_id: 1,
+                    transcript_id: "ENSTTP73A".to_string(),
+                    transcript_label: "TP73-201".to_string(),
+                    transcript_strand: "+".to_string(),
+                    gene_name: "RBM5".to_string(),
+                    organism: "Homo sapiens".to_string(),
+                    matrix_id: "M003".to_string(),
+                    motif_iupac: "UGCAUG".to_string(),
+                    model_kind: "consensus_iupac".to_string(),
+                    region_class: AttractRegionClass::IntronBody,
+                    region_start_1based: 12,
+                    region_end_1based: 18,
+                    region_local_start_1based: 1,
+                    region_local_end_1based: 7,
+                    matched_sequence: "TGCATG".to_string(),
+                    match_score: 1.0,
+                    match_score_kind: "llr_bits".to_string(),
+                    match_score_quantile: None,
+                    quality_score: 3.0,
+                    exact_species_match: true,
+                    pwm_mapping_status: "none".to_string(),
+                    mapping_policy_used: "strict".to_string(),
+                    pfm_subwindow_start_1based: None,
+                    pfm_subwindow_end_1based: None,
+                    warnings: vec![],
+                },
+                AttractSplicingEvidenceHitRow {
+                    transcript_feature_id: 99,
+                    transcript_id: "OTHER".to_string(),
+                    transcript_label: "OTHER".to_string(),
+                    transcript_strand: "+".to_string(),
+                    gene_name: "IGNORE".to_string(),
+                    organism: "Homo sapiens".to_string(),
+                    matrix_id: "M004".to_string(),
+                    motif_iupac: "AAAA".to_string(),
+                    model_kind: "consensus_iupac".to_string(),
+                    region_class: AttractRegionClass::IntronBody,
+                    region_start_1based: 12,
+                    region_end_1based: 18,
+                    region_local_start_1based: 1,
+                    region_local_end_1based: 7,
+                    matched_sequence: "AAAA".to_string(),
+                    match_score: 1.0,
+                    match_score_kind: "llr_bits".to_string(),
+                    match_score_quantile: None,
+                    quality_score: 3.0,
+                    exact_species_match: true,
+                    pwm_mapping_status: "none".to_string(),
+                    mapping_policy_used: "strict".to_string(),
+                    pfm_subwindow_start_1based: None,
+                    pfm_subwindow_end_1based: None,
+                    warnings: vec![],
+                },
+            ],
+            warnings: vec![],
+        };
+
+        let rows = MainAreaDna::splicing_intron_regulatory_rows(&view, Some(&evidence));
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].donor_flank_hit_count, 1);
+        assert_eq!(rows[0].acceptor_flank_hit_count, 1);
+        assert_eq!(rows[0].intron_body_hit_count, 1);
+        assert_eq!(rows[0].unique_rbp_count, 3);
+        assert_eq!(rows[0].top_rbps, vec!["SRSF1", "PTBP1", "RBM5"]);
+        let summary = MainAreaDna::splicing_intron_regulatory_summary_text(&rows[0]);
+        assert!(summary.contains("branchpoint-like @ 17"));
+        assert!(summary.contains("polyY tract 18..20"));
+        assert!(summary.contains("3 unique RBP(s): SRSF1, PTBP1, RBM5"));
     }
 
     #[test]
@@ -11870,6 +12169,23 @@ struct SplicingIntronSignalRow {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct SplicingIntronRegulatoryRow {
+    transcript_feature_id: usize,
+    transcript_id: String,
+    donor_position_1based: usize,
+    acceptor_position_1based: usize,
+    intron_length_bp: usize,
+    branchpoint_position_1based: Option<usize>,
+    polypyrimidine_start_1based: Option<usize>,
+    polypyrimidine_end_1based: Option<usize>,
+    donor_flank_hit_count: usize,
+    acceptor_flank_hit_count: usize,
+    intron_body_hit_count: usize,
+    unique_rbp_count: usize,
+    top_rbps: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct SplicingIntronSignalKey {
     transcript_feature_id: usize,
     donor_position_1based: usize,
@@ -12039,6 +12355,7 @@ enum TfbsTaskKind {
     ActiveSequenceScoreTracks { source_label: String },
     ActiveSequenceTrackSimilarity { source_label: String },
     VariantFollowupScoreTracks,
+    VariantFollowupTrackSimilarity,
 }
 
 #[derive(Clone, Debug)]
@@ -12538,6 +12855,13 @@ struct VariantFollowupUiState {
     score_track_clip_negative: bool,
     score_track_correlation_metric: TfbsScoreTrackCorrelationMetric,
     score_track_correlation_signal_source: TfbsScoreTrackCorrelationSignalSource,
+    tfbs_track_similarity_anchor_motif: String,
+    tfbs_track_similarity_all_candidates: bool,
+    tfbs_track_similarity_candidate_motifs: String,
+    tfbs_track_similarity_species_filters: String,
+    tfbs_track_similarity_include_remote_metadata: bool,
+    tfbs_track_similarity_limit: String,
+    tfbs_track_similarity_ranking_metric: TfbsTrackSimilarityRankingMetric,
     promoter_upstream_bp: String,
     promoter_downstream_bp: String,
     tfbs_focus_half_window_bp: String,
@@ -12551,7 +12875,9 @@ struct VariantFollowupUiState {
     reporter_backbone_path: String,
     reporter_output_prefix: String,
     cached_score_tracks: Option<TfbsScoreTrackReport>,
+    cached_tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     cached_report: Option<VariantPromoterContextReport>,
+    cached_alternative_promoter_comparison: Option<AlternativePromoterComparisonReport>,
     cached_candidates: Option<PromoterReporterCandidateSet>,
 }
 
@@ -12571,6 +12897,14 @@ impl Default for VariantFollowupUiState {
             score_track_correlation_metric: TfbsScoreTrackCorrelationMetric::Pearson,
             score_track_correlation_signal_source:
                 TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+            tfbs_track_similarity_anchor_motif: String::new(),
+            tfbs_track_similarity_all_candidates: true,
+            tfbs_track_similarity_candidate_motifs: String::new(),
+            tfbs_track_similarity_species_filters: String::new(),
+            tfbs_track_similarity_include_remote_metadata: false,
+            tfbs_track_similarity_limit: "25".to_string(),
+            tfbs_track_similarity_ranking_metric:
+                TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
             promoter_upstream_bp: "1000".to_string(),
             promoter_downstream_bp: "200".to_string(),
             tfbs_focus_half_window_bp: "100".to_string(),
@@ -12585,7 +12919,9 @@ impl Default for VariantFollowupUiState {
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
             reporter_output_prefix: String::new(),
             cached_score_tracks: None,
+            cached_tfbs_track_similarity: None,
             cached_report: None,
+            cached_alternative_promoter_comparison: None,
             cached_candidates: None,
         }
     }
@@ -24198,6 +24534,117 @@ impl MainAreaDna {
         )
     }
 
+    fn attract_hit_matches_intron_signal(
+        hit: &AttractSplicingEvidenceHitRow,
+        row: &SplicingIntronSignalRow,
+    ) -> bool {
+        if hit.transcript_feature_id != row.transcript_feature_id {
+            return false;
+        }
+        match hit.region_class {
+            AttractRegionClass::DonorFlank => {
+                hit.region_start_1based <= row.donor_position_1based
+                    && hit.region_end_1based >= row.donor_position_1based
+            }
+            AttractRegionClass::AcceptorFlank => {
+                hit.region_start_1based <= row.acceptor_position_1based
+                    && hit.region_end_1based >= row.acceptor_position_1based
+            }
+            AttractRegionClass::IntronBody => {
+                hit.region_start_1based >= row.donor_position_1based
+                    && hit.region_end_1based <= row.acceptor_position_1based
+            }
+            AttractRegionClass::ExonBody => false,
+        }
+    }
+
+    fn splicing_intron_regulatory_rows(
+        view: &SplicingExpertView,
+        evidence: Option<&AttractSplicingEvidenceView>,
+    ) -> Vec<SplicingIntronRegulatoryRow> {
+        let signal_rows = Self::splicing_intron_signal_rows(view);
+        signal_rows
+            .into_iter()
+            .map(|row| {
+                let matching_hits = evidence
+                    .map(|evidence| {
+                        evidence
+                            .hit_rows
+                            .iter()
+                            .filter(|hit| Self::attract_hit_matches_intron_signal(hit, &row))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                let donor_flank_hit_count = matching_hits
+                    .iter()
+                    .filter(|hit| hit.region_class == AttractRegionClass::DonorFlank)
+                    .count();
+                let acceptor_flank_hit_count = matching_hits
+                    .iter()
+                    .filter(|hit| hit.region_class == AttractRegionClass::AcceptorFlank)
+                    .count();
+                let intron_body_hit_count = matching_hits
+                    .iter()
+                    .filter(|hit| hit.region_class == AttractRegionClass::IntronBody)
+                    .count();
+                let mut rbp_set = BTreeSet::new();
+                let mut top_rbps = vec![];
+                for hit in &matching_hits {
+                    let rbp = hit.gene_name.trim();
+                    if rbp.is_empty() {
+                        continue;
+                    }
+                    let normalized = rbp.to_ascii_uppercase();
+                    if rbp_set.insert(normalized) && top_rbps.len() < 4 {
+                        top_rbps.push(rbp.to_string());
+                    }
+                }
+                SplicingIntronRegulatoryRow {
+                    transcript_feature_id: row.transcript_feature_id,
+                    transcript_id: row.transcript_id,
+                    donor_position_1based: row.donor_position_1based,
+                    acceptor_position_1based: row.acceptor_position_1based,
+                    intron_length_bp: row.intron_length_bp,
+                    branchpoint_position_1based: row.branchpoint_position_1based,
+                    polypyrimidine_start_1based: row.polypyrimidine_start_1based,
+                    polypyrimidine_end_1based: row.polypyrimidine_end_1based,
+                    donor_flank_hit_count,
+                    acceptor_flank_hit_count,
+                    intron_body_hit_count,
+                    unique_rbp_count: rbp_set.len(),
+                    top_rbps,
+                }
+            })
+            .collect()
+    }
+
+    fn splicing_intron_regulatory_summary_text(row: &SplicingIntronRegulatoryRow) -> String {
+        let branchpoint = row
+            .branchpoint_position_1based
+            .map(|pos| format!("branchpoint-like @ {pos}"))
+            .unwrap_or_else(|| "no branchpoint-like site".to_string());
+        let polyy = match (
+            row.polypyrimidine_start_1based,
+            row.polypyrimidine_end_1based,
+        ) {
+            (Some(start), Some(end)) => format!("polyY tract {start}..{end}"),
+            _ => "no polyY tract".to_string(),
+        };
+        let rbp = if row.unique_rbp_count == 0 {
+            "no cached RBP hits".to_string()
+        } else {
+            format!(
+                "{} unique RBP(s): {}",
+                row.unique_rbp_count,
+                row.top_rbps.join(", ")
+            )
+        };
+        format!(
+            "{branchpoint}; {polyy}; donor flank hits={}, acceptor flank hits={}, intron-body hits={}; {rbp}.",
+            row.donor_flank_hit_count, row.acceptor_flank_hit_count, row.intron_body_hit_count
+        )
+    }
+
     fn render_splicing_lane_canvas_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -35606,6 +36053,7 @@ impl MainAreaDna {
             TfbsTaskKind::ActiveSequenceScoreTracks { .. } => "TFBS score tracks",
             TfbsTaskKind::ActiveSequenceTrackSimilarity { .. } => "TFBS similarity ranking",
             TfbsTaskKind::VariantFollowupScoreTracks => "Promoter TF score tracks",
+            TfbsTaskKind::VariantFollowupTrackSimilarity => "Promoter TFBS similarity ranking",
         }
     }
 
@@ -35781,7 +36229,22 @@ impl MainAreaDna {
                     self.op_error_popup = None;
                     return;
                 }
+                TfbsTaskKind::VariantFollowupTrackSimilarity => {}
                 TfbsTaskKind::ActiveSequenceTrackSimilarity { .. } => {}
+            }
+        }
+        if let Some(report) = result.tfbs_track_similarity.clone() {
+            if matches!(task_kind, TfbsTaskKind::VariantFollowupTrackSimilarity) {
+                self.variant_followup_ui.cached_tfbs_track_similarity = Some(report.clone());
+                self.op_status = format!(
+                    "Promoter TFBS similarity updated for '{}' across {}..{} [{}]",
+                    report.target_label,
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.ranking_metric.as_str()
+                );
+                self.op_error_popup = None;
+                return;
             }
         }
         self.handle_operation_success(result, started);

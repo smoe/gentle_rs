@@ -12559,6 +12559,24 @@ fn parse_services_handoff_with_scope_and_output() {
 }
 
 #[test]
+fn parse_services_guide_with_telegram_section_and_gene() {
+    let cmd = parse_shell_line("services guide --channel telegram --section tfbs --gene TERT")
+        .expect("parse services guide");
+    match cmd {
+        ShellCommand::ServicesGuide {
+            channel,
+            section,
+            gene,
+        } => {
+            assert_eq!(channel.as_deref(), Some("telegram"));
+            assert_eq!(section.as_deref(), Some("tfbs"));
+            assert_eq!(gene.as_deref(), Some("TERT"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_attract_inspect_splicing() {
     let cmd = parse_shell_line(
         "attract inspect-splicing seq_1 5 --scope target_group_target_strand --organism \"Homo sapiens\" --flank-bp 12 --min-score 3.0 --min-match-quantile 0.975 --pwm-mapping windowed_submatrix --compare-policies --all-transcripts --no-fallback",
@@ -13296,6 +13314,82 @@ fn execute_services_handoff_reports_actions_and_writes_json() {
     assert_eq!(
         persisted["preferred_artifacts"][0]["recommended_use"].as_str(),
         Some("installation_doctor_payload")
+    );
+}
+
+#[test]
+fn execute_services_telegram_guide_reports_menu_and_section_actions() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesGuide {
+            channel: Some("telegram".to_string()),
+            section: Some("overview".to_string()),
+            gene: None,
+        },
+    )
+    .expect("execute services guide");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.telegram_guide.v1")
+    );
+    assert_eq!(out.output["channel"].as_str(), Some("telegram"));
+    assert_eq!(out.output["section"].as_str(), Some("overview"));
+    assert_eq!(out.output["gene"].as_str(), None);
+    assert_eq!(out.output["gene_supplied"].as_bool(), Some(false));
+    assert!(
+        out.output["summary_lines"]
+            .as_array()
+            .map(|rows| rows.iter().any(|line| line
+                .as_str()
+                .map(|line| line.contains("If you have a gene of interest"))
+                .unwrap_or(false)))
+            .unwrap_or(false)
+    );
+    assert!(
+        out.output["menu_sections"]
+            .as_array()
+            .map(|rows| rows.iter().any(|row| row["section_id"].as_str() == Some("tfbs")))
+            .unwrap_or(false)
+    );
+    assert!(
+        out.output["suggested_actions"]
+            .as_array()
+            .map(|actions| actions.iter().any(|action| {
+                action["kind"].as_str() == Some("guide_section")
+                    && action["shell_line"].as_str()
+                        == Some("services guide --channel telegram --section tfbs")
+                    && action["requires_confirmation"].as_bool() == Some(false)
+            }))
+            .unwrap_or(false)
+    );
+}
+
+#[test]
+fn execute_services_telegram_guide_tfbs_uses_gene_personalization() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesGuide {
+            channel: Some("telegram".to_string()),
+            section: Some("tfbs".to_string()),
+            gene: Some("tert".to_string()),
+        },
+    )
+    .expect("execute personalized services guide");
+    assert!(!out.state_changed);
+    assert_eq!(out.output["section"].as_str(), Some("tfbs"));
+    assert_eq!(out.output["gene"].as_str(), Some("TERT"));
+    assert_eq!(out.output["gene_supplied"].as_bool(), Some(true));
+    assert!(
+        out.output["suggested_actions"]
+            .as_array()
+            .map(|actions| actions.iter().any(|action| action["shell_line"]
+                .as_str()
+                .map(|line| line.contains("promoter-tfbs-svg") && line.contains("--gene \"TERT\""))
+                .unwrap_or(false)))
+            .unwrap_or(false)
     );
 }
 

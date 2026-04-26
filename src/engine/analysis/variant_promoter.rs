@@ -616,6 +616,132 @@ impl GentleEngine {
         Ok(collapsed_records)
     }
 
+    pub(crate) fn summarize_alternative_promoter_comparison(
+        &self,
+        input: &str,
+        gene_label: Option<&str>,
+        transcript_id: Option<&str>,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+    ) -> Result<AlternativePromoterComparisonReport, EngineError> {
+        let dna = self.state.sequences.get(input).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Sequence '{}' not found", input),
+        })?;
+        let transcript_windows = self.derive_promoter_window_records(
+            dna,
+            gene_label,
+            transcript_id,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            PromoterWindowCollapseMode::Transcript,
+        );
+        if transcript_windows.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No transcript-derived promoter windows matched the requested filters on '{}'",
+                    input
+                ),
+            });
+        }
+        let collapsed_windows =
+            Self::collapse_promoter_window_records_by_exact_span(transcript_windows.clone());
+        let transcript_window_count = transcript_windows.len();
+        let collapsed_window_count = collapsed_windows.len();
+        let mut rows = collapsed_windows
+            .into_iter()
+            .map(|record| {
+                let transcript_count = record.transcript_count.max(record.transcript_ids.len().max(1));
+                let base_label = record
+                    .gene_label
+                    .clone()
+                    .unwrap_or_else(|| record.transcript_label.clone());
+                let label = if transcript_count > 1 {
+                    format!("{base_label} promoter window ({transcript_count} tx)")
+                } else {
+                    format!("{base_label} promoter window")
+                };
+                AlternativePromoterComparisonRow {
+                    label,
+                    gene_label: record.gene_label.clone(),
+                    gene_id: record.gene_id.clone(),
+                    representative_transcript_id: Some(record.transcript_id.clone()),
+                    representative_transcript_label: Some(record.transcript_label.clone()),
+                    representative_transcript_feature_id: record.transcript_feature_id,
+                    transcript_count,
+                    transcript_ids: record.transcript_ids.clone(),
+                    transcript_labels: record.transcript_labels.clone(),
+                    strand: record.strand.clone(),
+                    representative_tss_local_0based: record.tss_local_0based,
+                    start_0based: record.start_0based,
+                    end_0based_exclusive: record.end_0based_exclusive,
+                    upstream_bp: record.upstream_bp,
+                    downstream_bp: record.downstream_bp,
+                    source: record.source.clone(),
+                }
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            right
+                .transcript_count
+                .cmp(&left.transcript_count)
+                .then_with(|| left.start_0based.cmp(&right.start_0based))
+                .then_with(|| left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                .then_with(|| left.strand.cmp(&right.strand))
+                .then_with(|| left.label.to_ascii_lowercase().cmp(&right.label.to_ascii_lowercase()))
+        });
+        let mut warnings = vec![];
+        if transcript_window_count > collapsed_window_count {
+            warnings.push(format!(
+                "Collapsed {} transcript-level promoter interpretation(s) into {} distinct DNA-level promoter window(s) by exact genomic span.",
+                transcript_window_count, collapsed_window_count
+            ));
+        }
+        Ok(AlternativePromoterComparisonReport {
+            schema: ALTERNATIVE_PROMOTER_COMPARISON_SCHEMA.to_string(),
+            seq_id: input.to_string(),
+            sequence_length_bp: dna.len(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            gene_label_filter: gene_label
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
+            transcript_id_filter: transcript_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            transcript_window_count,
+            collapsed_window_count,
+            rows,
+            warnings,
+        })
+    }
+
+    pub(crate) fn write_alternative_promoter_comparison_json(
+        &self,
+        report: &AlternativePromoterComparisonReport,
+        path: &str,
+    ) -> Result<(), EngineError> {
+        let text = serde_json::to_string_pretty(report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize alternative-promoter comparison report '{}' for '{}': {e}",
+                report.seq_id, path
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write alternative-promoter comparison report to '{path}': {e}"
+            ),
+        })
+    }
+
     pub(crate) fn build_construct_reasoning_generated_promoter_evidence(
         &self,
         seq_id: &str,

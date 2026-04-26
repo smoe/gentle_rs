@@ -1183,6 +1183,14 @@ order. Durable architecture constraints and decisions remain in
           now collapse to one promoter annotation with transcript-count
           labeling instead of rendering one stacked copy per downstream splice
           variant
+        - the same transcript-derived promoter geometry now also feeds one
+          dedicated alternative-promoter comparison report in Promoter design:
+          - transcript-level promoter interpretations are grouped by exact
+            genomic span
+          - grouped rows keep transcript multiplicity plus representative
+            transcript/TSS provenance
+          - `Use this row` retargets the Promoter design span to that grouped
+            promoter window without manual coordinate copying
         - map/description actions can now open `Promoter design` directly from
           a reasoning-derived promoter span by resolving the stored transcript
           provenance back to the source transcript feature
@@ -1264,6 +1272,12 @@ order. Durable architecture constraints and decisions remain in
           - GUI controls for anchor motif, candidate scope, ranking metric,
             optional cached remote-metadata enrichment, species filters, and
             optional row limit
+        - Promoter design parity is now also in place for that ranking route:
+          - the dedicated window exposes the same anchor motif, candidate
+            scope, ranking metric, cached remote-metadata enrichment, species
+            filters, and row-limit controls
+          - cached ranked rows can be exported as JSON from the same shared
+            `SummarizeTfbsTrackSimilarity` report
         - one small release-signoff/demo slice now also exists for that path:
           - hand-written GUI walkthrough:
             `docs/tutorial/tfbs_similarity_ranking_gui.md`
@@ -1275,9 +1289,8 @@ order. Durable architecture constraints and decisions remain in
             fixture as the broader stateless inspection tutorial so release
             sign-off stays fast and offline-friendly
         - still open on that track:
-          explicit pre-rank vs post-rank species-filtering controls, richer
-          metadata facets such as TF family/class/tax-group pivots, and the
-          same ranked-table surface inside the dedicated promoter-design window
+          explicit pre-rank vs post-rank species-filtering controls and richer
+          metadata facets such as TF family/class/tax-group pivots
         - the same shared score-track renderer now labels tracks as
           `TF (JASPAR id)` when possible and can recover one explicit TSS
           marker from promoter-slice provenance even when the extracted span
@@ -1435,6 +1448,18 @@ order. Durable architecture constraints and decisions remain in
           `genomes prepare`, `helpers prepare`, `resources sync-attract`, or a
           post-prepare `services status` refresh instead of stopping at static
           prose
+        - GENtle now also has a Telegram-facing guide route:
+          `services guide --channel telegram [--section SECTION] [--gene SYMBOL]`
+          returns `gentle.telegram_guide.v1` with compact guide text,
+          readiness notes, menu sections, blocked setup actions, and
+          `suggested_actions[]` section links (`kind = guide_section`,
+          `requires_confirmation = false`) so ClawBio can offer
+          hyperlink-like navigation without inventing a separate guide
+          protocol
+        - the guide route accepts optional gene personalization while keeping
+          useful defaults for no-gene sessions:
+          `TERT`/`TP73` for promoter-TFBS, `TP73` for gene context, and
+          `TP73`/`TP53` for isoform/protein-gel demos
         - the wrapper also normalizes GENtle-owned
           `stdout_json.suggested_actions[]`,
           `stdout_json.preferred_demo_actions[]`, and
@@ -3575,6 +3600,14 @@ Status:
     - intron-signal rows are now clickable so the corresponding intron stays
       highlighted in the lane view and the expert shows a short, selected-signal
       description instead of leaving the heuristics as passive rows
+  - Splicing Expert now also surfaces one intron-centered regulatory
+    interpretation layer on top of those heuristics:
+    - already cached ATtRACT/RBP evidence for the same splicing target is
+      summarized per intron as donor-flank / acceptor-flank / intron-body hit
+      counts
+    - the same rows keep the selected intron focused in the lane view so
+      heuristic splice context and cached intronic regulator support can be
+      read together rather than in disconnected panels
   - RNA-read reports persist exon-support and exon-exon junction-support
     frequency schema fields; phase-1 seed-only runs populate placeholders until
     the explicit phase-2 alignment step is run.

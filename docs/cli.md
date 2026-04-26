@@ -196,6 +196,7 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_ensembl_available_human.json --output /tmp/gentle_ensembl_human
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_install_ensembl_mouse.json --output /tmp/gentle_install_mouse
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_shell_state_summary.json --output /tmp/gentle_state_summary
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_services_telegram_guide.json --output /tmp/gentle_telegram_guide
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_status_grch38.json --output /tmp/gentle_status_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_prepare_grch38.json --output /tmp/gentle_prepare_grch38
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_blast_grch38_short.json --output /tmp/gentle_grch38_blast
@@ -343,6 +344,7 @@ Included first-run bootstrap request examples:
 - `request_genomes_ensembl_available_human.json`
 - `request_genomes_install_ensembl_mouse.json`
 - `request_shell_state_summary.json`
+- `request_services_telegram_guide.json`
 - `request_genomes_status_grch38.json`
 - `request_genomes_prepare_grch38.json`
 - `request_helpers_status_puc19.json`
@@ -1532,6 +1534,7 @@ cargo run --bin gentle_cli -- ladders export rna_ladders.snapshot.json --molecul
 cargo run --bin gentle_cli -- export-pool frag_1,frag_2 digest.pool.gentle.json "BamHI+EcoRI digest pool"
 cargo run --bin gentle_cli -- import-pool digest.pool.gentle.json imported
 cargo run --bin gentle_cli -- services status
+cargo run --bin gentle_cli -- services guide --channel telegram
 cargo run --bin gentle_cli -- services handoff --scope clawbio --output artifacts/service_handoff.json
 cargo run --bin gentle_cli -- resources status
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
@@ -2723,6 +2726,20 @@ Resource sync commands:
   - Includes compact `summary_lines` that chat/report layers such as
     ClawBio/OpenClaw can surface directly before deciding whether they should
     fetch, prepare, or render.
+- `services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]`
+  - Builds a Telegram-compatible bench-user guide with schema
+    `gentle.telegram_guide.v1`.
+  - The guide includes compact `summary_lines[]`, `readiness_summary_lines[]`,
+    `menu_sections[]`, `blocked_actions[]`, and `suggested_actions[]`.
+  - Its `suggested_actions[]` entries act like navigation links:
+    `kind = guide_section`, `requires_confirmation = false`, and the
+    `shell_line` points back to another guide section.
+  - When `--gene SYMBOL` is supplied, gene-aware sections personalize example
+    actions to that symbol. Without a gene, GENtle uses section defaults such
+    as `TERT`/`TP73` for promoter-TFBS and `TP73`/`TP53` for isoform demos.
+  - This route is for bench-user Telegram orientation. Operator/setup status
+    and confirmation-gated prepare/sync actions still come from
+    `services status` and `services handoff`.
 - `services handoff [--scope NAME] [--output PATH]`
   - Builds a chat-gateway handoff/doctor report with schema
     `gentle.service_handoff.v1`.

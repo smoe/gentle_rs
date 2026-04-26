@@ -1939,6 +1939,15 @@ Sequencing-trace evidence notes:
     suggested assay ids
   - reuses TFBS summary logic for the `variant ± half_window` neighborhood when
     TFBS features are already present
+- `SummarizeAlternativePromoterComparison { input, gene_label?, transcript_id?, promoter_upstream_bp=1000, promoter_downstream_bp=200, path? }`
+  - emits portable record schema `gentle.alternative_promoter_comparison.v1`
+  - groups transcript-derived promoter windows by exact DNA span so alternative
+    promoter usage can be compared without stacking redundant downstream splice
+    variation
+  - each grouped row retains transcript-count / transcript-id provenance plus a
+    representative transcript/TSS for GUI retargeting back into Promoter design
+  - warnings make the transcript-level to DNA-level collapse explicit when
+    several transcript TSS interpretations reduce to one genomic promoter span
 - `SuggestPromoterReporterFragments { input, variant_label_or_id?, gene_label?, transcript_id?, retain_downstream_from_tss_bp=200, retain_upstream_beyond_variant_bp=500, max_candidates=5, path? }`
   - emits portable record schema `gentle.promoter_reporter_candidates.v1`
   - ranks transcript-aware, strand-aware promoter fragment candidates and marks
@@ -2983,6 +2992,25 @@ ClawBio/OpenClaw integration scaffold schemas:
     - on failure or older runtimes, `result.json.ui_intent_catalog_error`
       captures the non-fatal probe failure while the main `capabilities`
       request still succeeds
+- Telegram guide payload: `gentle.telegram_guide.v1`
+  - produced by
+    `services guide --channel telegram [--section SECTION] [--gene SYMBOL]`
+  - intended for bench-user chat orientation, while
+    `services handoff --scope clawbio` remains the operator/setup route
+  - fields:
+    - `summary_lines[]` with a compact introduction and optional gene prompt
+    - `readiness_summary_lines[]` copied from the current service-readiness
+      view
+    - `menu_sections[]` for the available guide chapters
+    - `suggested_actions[]` as lightweight navigation links
+    - `blocked_actions[]` copied from GENtle-owned setup/readiness state
+  - guide navigation uses normal action records with
+    `kind = guide_section`, `requires_confirmation = false`, and a `shell_line`
+    that invokes another guide section such as
+    `services guide --channel telegram --section tfbs --gene TP73`
+  - when `--gene` is omitted, gene-aware sections use deterministic defaults
+    such as `TERT`/`TP73` for promoter-TFBS, `TP73` for gene context, and
+    `TP73`/`TP53` for isoform demos
 - reproducibility outputs:
   - `report.md`
   - `result.json`
@@ -2991,6 +3019,7 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `reproducibility/checksums.sha256`
 - included bootstrap example requests:
   - `request_services_status.json`
+  - `request_services_telegram_guide.json`
   - `request_services_handoff.json`
   - `request_genomes_list_human.json`
   - `request_genomes_status_grch38.json`
@@ -5293,6 +5322,18 @@ Splicing-reference derivation + pairwise alignment operation contract (implement
     - rows without a mapped PWM block continue to use deterministic
       consensus/IUPAC exact matching only
     - interpretation guidance:
+
+Splicing-expert composition note:
+
+- the GUI now also combines `SplicingExpertView.intron_signals` with an
+  already-cached `gentle.attract_splicing_evidence.v1` payload to produce one
+  intron-centered regulatory interpretation table:
+  - branchpoint-like / polypyrimidine heuristics stay visible as conservative
+    splice-mechanistic context
+  - cached RBP hits are summarized per intron as donor-flank, acceptor-flank,
+    and intron-body support counts
+  - no extra biology is recomputed in the GUI; the view is a deterministic
+    composition of existing shared payloads
       - `strict_same_length` is the canonical conservative mode
       - `windowed_submatrix` is an engine-supported GENtle heuristic, not an
         ATtRACT-published mapping rule

@@ -18,6 +18,7 @@ use std::{
 
 pub const SERVICE_READINESS_SCHEMA: &str = "gentle.service_readiness.v1";
 pub const SERVICE_HANDOFF_SCHEMA: &str = "gentle.service_handoff.v1";
+pub const TELEGRAM_GUIDE_SCHEMA: &str = "gentle.telegram_guide.v1";
 pub const DEFAULT_REFERENCE_GENOME_IDS: &[&str] = &["Human GRCh38 Ensembl 116"];
 pub const DEFAULT_HELPER_IDS: &[&str] = &["Plasmid pUC19 (online)"];
 
@@ -135,6 +136,31 @@ pub struct ServiceHandoffEnvironmentHint {
     pub current_value: Option<String>,
     pub purpose: String,
     pub recommended_when: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TelegramGuideReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub channel: String,
+    pub section: String,
+    pub gene: Option<String>,
+    pub gene_supplied: bool,
+    pub summary_lines: Vec<String>,
+    pub readiness_summary_lines: Vec<String>,
+    pub menu_sections: Vec<TelegramGuideSection>,
+    pub suggested_actions: Vec<ServiceHandoffAction>,
+    pub blocked_actions: Vec<ServiceHandoffBlockedAction>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TelegramGuideSection {
+    pub section_id: String,
+    pub title: String,
+    pub summary: String,
+    pub example_prompts: Vec<String>,
+    pub default_genes: Vec<String>,
 }
 
 fn now_unix_ms() -> u128 {
@@ -693,6 +719,492 @@ fn build_preferred_demo_actions(reference_ready: bool) -> Vec<ServiceHandoffActi
     actions
 }
 
+fn normalize_telegram_section(section: Option<&str>) -> Result<String, String> {
+    let normalized = section
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("overview")
+        .to_ascii_lowercase()
+        .replace('_', "-");
+    match normalized.as_str() {
+        "overview" | "readiness" | "gene-context" | "tfbs" | "inline-dna" | "cloning"
+        | "isoforms" | "follow-up" => Ok(normalized),
+        other => Err(format!(
+            "Unknown services guide section '{other}' (expected overview, readiness, gene-context, tfbs, inline-dna, cloning, isoforms or follow-up)"
+        )),
+    }
+}
+
+fn normalize_gene_symbol(gene: Option<&str>) -> Option<String> {
+    gene.map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_uppercase())
+}
+
+fn guide_section_action(
+    label: impl Into<String>,
+    section: &str,
+    gene: Option<&str>,
+    rationale: impl Into<String>,
+) -> ServiceHandoffAction {
+    let mut shell_line = format!("services guide --channel telegram --section {section}");
+    if let Some(gene) = gene {
+        shell_line.push_str(" --gene ");
+        shell_line.push_str(&shell_quote_arg(gene));
+    }
+    handoff_action(
+        label,
+        "guide_section",
+        shell_line,
+        180,
+        rationale,
+        false,
+        None,
+        None,
+        vec![],
+    )
+}
+
+fn default_guide_sections() -> Vec<TelegramGuideSection> {
+    vec![
+        TelegramGuideSection {
+            section_id: "readiness".to_string(),
+            title: "Data/readiness".to_string(),
+            summary: "Check GENtle version, prepared references, helper vectors, and resource snapshots.".to_string(),
+            example_prompts: vec![
+                "What GENtle data are ready?".to_string(),
+                "Can you prepare Ensembl-backed human data?".to_string(),
+            ],
+            default_genes: vec![],
+        },
+        TelegramGuideSection {
+            section_id: "gene-context".to_string(),
+            title: "Gene context".to_string(),
+            summary: "Extract a gene, promoter, or anchored locus from prepared Ensembl-backed references.".to_string(),
+            example_prompts: vec![
+                "Show me the TP73 gene context.".to_string(),
+                "Extract the TERT promoter.".to_string(),
+            ],
+            default_genes: vec!["TP73".to_string()],
+        },
+        TelegramGuideSection {
+            section_id: "tfbs".to_string(),
+            title: "Promoter and TFBS".to_string(),
+            summary: "Summarize or render TFBS/PSSM score tracks for promoter windows and factor groups.".to_string(),
+            example_prompts: vec![
+                "Show stemness and SP1 TFBS upstream of TERT.".to_string(),
+                "Compare promoter TFBS score tracks for TP73.".to_string(),
+            ],
+            default_genes: vec!["TERT".to_string(), "TP73".to_string()],
+        },
+        TelegramGuideSection {
+            section_id: "inline-dna".to_string(),
+            title: "Pasted DNA inspection".to_string(),
+            summary: "Scan pasted DNA without creating project state when the request is read-only.".to_string(),
+            example_prompts: vec![
+                "Scan this DNA for EcoRI and SmaI.".to_string(),
+                "Find SP1-like TFBS hits in this sequence.".to_string(),
+            ],
+            default_genes: vec![],
+        },
+        TelegramGuideSection {
+            section_id: "cloning".to_string(),
+            title: "Cloning and vectors".to_string(),
+            summary: "Render cloning cartoons, inspect helper vectors, and prepare vector/helper caches.".to_string(),
+            example_prompts: vec![
+                "Show me a Gibson assembly cartoon.".to_string(),
+                "Is pUC19 prepared for helper-vector workflows?".to_string(),
+            ],
+            default_genes: vec![],
+        },
+        TelegramGuideSection {
+            section_id: "isoforms".to_string(),
+            title: "Isoforms and protein gels".to_string(),
+            summary: "Compare transcript-native isoforms with gel, 2D-gel, or digest-style figures.".to_string(),
+            example_prompts: vec![
+                "Show TP73 isoforms as a protein gel.".to_string(),
+                "Can you compare TP53 splicing or isoform architecture?".to_string(),
+            ],
+            default_genes: vec!["TP73".to_string(), "TP53".to_string()],
+        },
+        TelegramGuideSection {
+            section_id: "follow-up".to_string(),
+            title: "Experimental follow-up".to_string(),
+            summary: "Turn a SNP, expression, or splicing observation into a reproducible validation-planning handoff.".to_string(),
+            example_prompts: vec![
+                "Plan a promoter-reporter follow-up for this SNP.".to_string(),
+                "What should we validate for this differentially expressed gene?".to_string(),
+            ],
+            default_genes: vec!["VKORC1".to_string(), "TERT".to_string()],
+        },
+    ]
+}
+
+fn gene_or_default<'a>(gene: Option<&'a str>, default_gene: &'a str) -> String {
+    gene.unwrap_or(default_gene).to_string()
+}
+
+fn promoter_tfbs_genes(gene: Option<&str>) -> Vec<String> {
+    match gene {
+        Some(gene) => vec![gene.to_string()],
+        None => vec!["TERT".to_string(), "TP73".to_string()],
+    }
+}
+
+fn gene_shell_args(genes: &[String]) -> String {
+    genes
+        .iter()
+        .map(|gene| format!("--gene {}", shell_quote_arg(gene)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn first_expected_artifact(path: impl Into<String>) -> Vec<String> {
+    vec![path.into()]
+}
+
+fn guide_actions_for_section(
+    section: &str,
+    gene: Option<&str>,
+    handoff: &ServiceHandoffReport,
+) -> Vec<ServiceHandoffAction> {
+    match section {
+        "readiness" => {
+            let mut actions = vec![handoff_action(
+                "Refresh GENtle readiness",
+                "refresh_status",
+                "services status",
+                180,
+                "Refresh the combined reference/helper/resource readiness view.",
+                false,
+                None,
+                None,
+                vec![],
+            )];
+            actions.extend(handoff.running_actions.iter().take(2).cloned());
+            actions.extend(handoff.suggested_actions.iter().take(2).cloned());
+            actions.truncate(4);
+            actions
+        }
+        "gene-context" => {
+            let gene = gene_or_default(gene, "TP73");
+            let gene_slug = action_slug(&gene);
+            vec![
+                handoff_action(
+                    format!("Extract {gene} gene context"),
+                    "gene_context",
+                    format!(
+                        "genomes extract-gene \"Human GRCh38 Ensembl 116\" {} --occurrence 1 --output-id grch38_{}",
+                        shell_quote_arg(&gene),
+                        gene_slug
+                    ),
+                    1200,
+                    format!("Extract {gene} from the prepared human Ensembl-backed reference."),
+                    true,
+                    Some("reference_genome:Human GRCh38 Ensembl 116".to_string()),
+                    None,
+                    vec![],
+                ),
+                handoff_action(
+                    format!("Extract {gene} promoter"),
+                    "gene_context",
+                    format!(
+                        "genomes extract-promoter \"Human GRCh38 Ensembl 116\" {} --output-id grch38_{}_promoter --upstream-bp 1000 --downstream-bp 200",
+                        shell_quote_arg(&gene),
+                        gene_slug
+                    ),
+                    1200,
+                    format!("Extract a default 1000 bp upstream / 200 bp downstream promoter window for {gene}."),
+                    true,
+                    Some("reference_genome:Human GRCh38 Ensembl 116".to_string()),
+                    None,
+                    vec![],
+                ),
+                guide_section_action(
+                    format!("Show promoter/TFBS options for {gene}"),
+                    "tfbs",
+                    Some(&gene),
+                    "Jump to promoter and transcription-factor analyses for the same gene.",
+                ),
+            ]
+        }
+        "tfbs" => {
+            let genes = promoter_tfbs_genes(gene);
+            let genes_label = genes.join("/");
+            let genes_slug = genes
+                .iter()
+                .map(|gene| action_slug(gene))
+                .collect::<Vec<_>>()
+                .join("_");
+            let gene_args = gene_shell_args(&genes);
+            let summary_path =
+                format!("artifacts/grch38_{genes_slug}_promoters.stemness_sp1.summary.json");
+            let svg_path = format!("artifacts/grch38_{genes_slug}_promoters.stemness_sp1.svg");
+            vec![
+                handoff_action(
+                    format!("Summarize {genes_label} promoter TFBS"),
+                    "promoter_tfbs_summary",
+                    format!(
+                        "genomes promoter-tfbs-summary \"Human GRCh38 Ensembl 116\" {gene_args} --motif stemness --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 --path {summary_path}",
+                    ),
+                    1800,
+                    format!("Summarize stemness/Yamanaka and SP1 motif evidence across the {genes_label} promoter window."),
+                    true,
+                    Some("reference_genome:Human GRCh38 Ensembl 116".to_string()),
+                    None,
+                    first_expected_artifact(summary_path),
+                ),
+                handoff_action(
+                    format!("Render {genes_label} promoter TFBS figure"),
+                    "promoter_tfbs_svg",
+                    format!(
+                        "genomes promoter-tfbs-svg \"Human GRCh38 Ensembl 116\" {gene_args} --motif stemness --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 {svg_path}",
+                    ),
+                    1800,
+                    "Render a Telegram-friendly promoter/TFBS SVG that the wrapper can rasterize into PNG.",
+                    true,
+                    Some("reference_genome:Human GRCh38 Ensembl 116".to_string()),
+                    None,
+                    first_expected_artifact(svg_path),
+                ),
+                handoff_action(
+                    "Resolve stemness and KLF TF names",
+                    "tf_query",
+                    "resources resolve-tf-query stemness OCT4 \"KLF family\" --output artifacts/tf_query_resolution.stemness_oct4_klf.json",
+                    180,
+                    "Show how GENtle expands user-supplied TF groups or family names before scanning.",
+                    false,
+                    Some("resource:jaspar".to_string()),
+                    Some("ready".to_string()),
+                    first_expected_artifact("artifacts/tf_query_resolution.stemness_oct4_klf.json"),
+                ),
+            ]
+        }
+        "inline-dna" => vec![
+            handoff_action(
+                "Run stateless pasted-DNA demo",
+                "inline_dna_demo",
+                "workflow @docs/examples/workflows/inline_sequence_inspection_stateless_offline.json",
+                300,
+                "Demonstrate read-only restriction and TFBS inspection without creating project state.",
+                false,
+                None,
+                None,
+                vec![],
+            ),
+            handoff_action(
+                "Check restriction and motif resources",
+                "refresh_status",
+                "resources status",
+                180,
+                "Confirm REBASE and JASPAR are active before scanning pasted DNA.",
+                false,
+                None,
+                None,
+                vec![],
+            ),
+        ],
+        "cloning" => {
+            let mut actions = handoff
+                .preferred_demo_actions
+                .iter()
+                .filter(|action| action.kind == "demo_graphic")
+                .take(1)
+                .cloned()
+                .collect::<Vec<_>>();
+            if actions.is_empty() {
+                actions.push(handoff_action(
+                    "Render Gibson protocol cartoon",
+                    "demo_graphic",
+                    "protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg",
+                    180,
+                    "Fast graphical cloning demo that does not require Ensembl preparation.",
+                    false,
+                    None,
+                    None,
+                    first_expected_artifact("artifacts/gibson.two_fragment.protocol.svg"),
+                ));
+            }
+            actions.push(handoff_action(
+                "Check pUC19 helper status",
+                "helper_status",
+                "helpers status \"Plasmid pUC19 (online)\"",
+                180,
+                "Check whether the canonical pUC19 helper vector is prepared for vector-backed workflows.",
+                false,
+                Some("helper_genome:Plasmid pUC19 (online)".to_string()),
+                None,
+                vec![],
+            ));
+            actions.truncate(3);
+            actions
+        }
+        "isoforms" => {
+            let gene = gene_or_default(gene, "TP73");
+            let mut actions = vec![
+                handoff_action(
+                    "Show TP73 protein gel demo",
+                    "isoform_protein_gel",
+                    "workflow @docs/examples/workflows/tp73_isoform_protein_gel_offline.json",
+                    300,
+                    "Render the offline curated TP73 isoform molecular-weight gel.",
+                    false,
+                    None,
+                    None,
+                    first_expected_artifact("exports/tp73_isoform_protein_gel.svg"),
+                ),
+                handoff_action(
+                    "Show TP73 2D protein gel demo",
+                    "isoform_protein_2d_gel",
+                    "workflow @docs/examples/workflows/tp73_isoform_protein_2d_gel_offline.json",
+                    300,
+                    "Render the offline curated TP73 pI-vs-molecular-weight gel.",
+                    false,
+                    None,
+                    None,
+                    first_expected_artifact("exports/tp73_isoform_protein_2d_gel.svg"),
+                ),
+            ];
+            if gene != "TP73" {
+                actions.push(guide_section_action(
+                    format!("Start with {gene} gene context"),
+                    "gene-context",
+                    Some(&gene),
+                    "Use the selected gene as context before choosing an isoform-specific route.",
+                ));
+            }
+            actions
+        }
+        "follow-up" => {
+            let gene = gene_or_default(gene, "TERT");
+            vec![
+                guide_section_action(
+                    format!("Inspect promoter/TFBS for {gene} first"),
+                    "tfbs",
+                    Some(&gene),
+                    "Jump to promoter evidence before proposing wet-lab validation.",
+                ),
+                handoff_action(
+                    "Run VKORC1 promoter-reporter planning demo",
+                    "experimental_followup_demo",
+                    "workflow @docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json",
+                    1800,
+                    "Show a deterministic SNP-to-promoter-reporter validation planning example.",
+                    false,
+                    None,
+                    None,
+                    vec![
+                        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg".to_string(),
+                        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg".to_string(),
+                        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg".to_string(),
+                    ],
+                ),
+            ]
+        }
+        _ => {
+            let mut actions = vec![guide_section_action(
+                "Continue with default genes",
+                "overview",
+                None,
+                "Show the default Telegram guide without gene personalization.",
+            )];
+            let gene_for_links = gene;
+            for (section, label) in [
+                ("readiness", "Data/readiness"),
+                ("gene-context", "Gene context"),
+                ("tfbs", "Promoter and TFBS"),
+                ("inline-dna", "Pasted DNA inspection"),
+                ("cloning", "Cloning and vectors"),
+                ("isoforms", "Isoforms and protein gels"),
+                ("follow-up", "Experimental follow-up"),
+            ] {
+                actions.push(guide_section_action(
+                    label,
+                    section,
+                    gene_for_links,
+                    format!("Open the {label} guide section."),
+                ));
+            }
+            actions
+        }
+    }
+}
+
+fn build_telegram_guide_from_handoff(
+    handoff: ServiceHandoffReport,
+    channel: &str,
+    section: &str,
+    gene: Option<String>,
+) -> TelegramGuideReport {
+    let gene_supplied = gene.is_some();
+    let gene_ref = gene.as_deref();
+    let mut summary_lines = vec![
+        "GENtle can guide reproducible sequence, promoter, cloning, isoform, and follow-up work from Telegram.".to_string(),
+        "If you have a gene of interest, tell me its symbol. Otherwise I will use defaults for each section.".to_string(),
+    ];
+    if let Some(gene) = gene_ref {
+        summary_lines.push(format!("Personalized guide context: using gene {gene}."));
+    } else {
+        summary_lines.push("Default guide context: TERT/TP73 for promoter-TFBS, TP73/TP53 for isoforms, TP73 for gene context.".to_string());
+    }
+    if section != "overview" {
+        summary_lines.push(format!("Opened GENtle guide section: {section}."));
+    }
+
+    let mut warnings = handoff.warnings.clone();
+    if channel != "telegram" {
+        warnings.push(format!(
+            "Guide channel '{channel}' was accepted, but the current compact presentation is optimized for Telegram."
+        ));
+    }
+    let readiness_summary_lines = handoff
+        .service_readiness
+        .summary_lines
+        .iter()
+        .take(5)
+        .cloned()
+        .collect();
+    let suggested_actions = guide_actions_for_section(section, gene_ref, &handoff);
+
+    TelegramGuideReport {
+        schema: TELEGRAM_GUIDE_SCHEMA.to_string(),
+        generated_at_unix_ms: now_unix_ms(),
+        channel: channel.to_string(),
+        section: section.to_string(),
+        gene,
+        gene_supplied,
+        summary_lines,
+        readiness_summary_lines,
+        menu_sections: default_guide_sections(),
+        suggested_actions,
+        blocked_actions: handoff.blocked_actions,
+        warnings,
+    }
+}
+
+pub fn telegram_guide_report(
+    channel: Option<&str>,
+    section: Option<&str>,
+    gene: Option<&str>,
+) -> Result<TelegramGuideReport, String> {
+    let channel = channel
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("telegram")
+        .to_ascii_lowercase();
+    if channel != "telegram" {
+        return Err(format!(
+            "Unknown services guide channel '{channel}' (expected telegram)"
+        ));
+    }
+    let section = normalize_telegram_section(section)?;
+    let gene = normalize_gene_symbol(gene);
+    let handoff = service_handoff_report(Some("telegram"), None)?;
+    Ok(build_telegram_guide_from_handoff(
+        handoff, &channel, &section, gene,
+    ))
+}
+
 pub fn service_handoff_report(
     scope: Option<&str>,
     export_path: Option<String>,
@@ -938,6 +1450,37 @@ mod tests {
         }
     }
 
+    fn fake_handoff_report(
+        reference: ServiceDependencyStatus,
+        suggested_actions: Vec<ServiceHandoffAction>,
+        running_actions: Vec<ServiceHandoffAction>,
+    ) -> ServiceHandoffReport {
+        let resources = resource_catalog_status();
+        let summary_lines = build_summary_lines(std::slice::from_ref(&reference), &[], &resources);
+        ServiceHandoffReport {
+            schema: SERVICE_HANDOFF_SCHEMA.to_string(),
+            generated_at_unix_ms: 42,
+            scope: "telegram".to_string(),
+            service_readiness: ServiceReadinessReport {
+                schema: SERVICE_READINESS_SCHEMA.to_string(),
+                generated_at_unix_ms: 41,
+                references: vec![reference.clone()],
+                helpers: vec![],
+                resources,
+                summary_lines,
+            },
+            readiness: vec![dependency_readiness_row(&reference)],
+            summary_lines: vec!["GENtle handoff ready".to_string()],
+            suggested_actions,
+            running_actions,
+            blocked_actions: vec![],
+            preferred_demo_actions: build_preferred_demo_actions(false),
+            preferred_artifacts: vec![],
+            environment_hints: vec![],
+            warnings: vec![],
+        }
+    }
+
     #[test]
     fn build_summary_lines_reports_active_prepare_for_unprepared_reference() {
         let resources = resource_catalog_status();
@@ -1001,5 +1544,118 @@ mod tests {
         );
         assert_eq!(action.lifecycle_status.as_deref(), Some("missing"));
         assert!(action.requires_confirmation);
+    }
+
+    #[test]
+    fn telegram_guide_overview_uses_suggested_actions_as_section_links() {
+        let reference = fake_dependency(false, "missing", None);
+        let handoff = fake_handoff_report(reference, vec![], vec![]);
+        let guide = build_telegram_guide_from_handoff(handoff, "telegram", "overview", None);
+
+        assert_eq!(guide.schema, TELEGRAM_GUIDE_SCHEMA);
+        assert_eq!(guide.section, "overview");
+        assert_eq!(guide.gene, None);
+        assert!(!guide.gene_supplied);
+        assert!(guide
+            .summary_lines
+            .iter()
+            .any(|line| line.contains("If you have a gene of interest")));
+        assert!(guide
+            .menu_sections
+            .iter()
+            .any(|section| section.section_id == "tfbs"));
+        assert!(guide.suggested_actions.iter().any(|action| {
+            action.kind == "guide_section"
+                && action.label == "Continue with default genes"
+                && action.shell_line == "services guide --channel telegram --section overview"
+                && !action.requires_confirmation
+        }));
+        assert!(guide.suggested_actions.iter().any(|action| {
+            action.kind == "guide_section"
+                && action.shell_line == "services guide --channel telegram --section tfbs"
+                && !action.requires_confirmation
+        }));
+    }
+
+    #[test]
+    fn telegram_guide_tfbs_defaults_to_tert_and_tp73_without_gene() {
+        let reference = fake_dependency(false, "missing", None);
+        let handoff = fake_handoff_report(reference, vec![], vec![]);
+        let guide = build_telegram_guide_from_handoff(handoff, "telegram", "tfbs", None);
+
+        assert_eq!(guide.section, "tfbs");
+        let shell_lines = guide
+            .suggested_actions
+            .iter()
+            .map(|action| action.shell_line.as_str())
+            .collect::<Vec<_>>();
+        assert!(shell_lines.iter().any(|line| {
+            line.contains("promoter-tfbs-summary")
+                && line.contains("--gene \"TERT\"")
+                && line.contains("--gene \"TP73\"")
+        }));
+        assert!(shell_lines.iter().any(|line| {
+            line.contains("promoter-tfbs-svg")
+                && line.contains("--gene \"TERT\"")
+                && line.contains("--gene \"TP73\"")
+        }));
+    }
+
+    #[test]
+    fn telegram_guide_tfbs_personalizes_gene_actions() {
+        let reference = fake_dependency(false, "missing", None);
+        let handoff = fake_handoff_report(reference, vec![], vec![]);
+        let guide = build_telegram_guide_from_handoff(
+            handoff,
+            "telegram",
+            "tfbs",
+            Some("BACH2".to_string()),
+        );
+
+        assert_eq!(guide.gene.as_deref(), Some("BACH2"));
+        assert!(guide.gene_supplied);
+        assert!(guide.suggested_actions.iter().any(|action| {
+            action.shell_line.contains("--gene \"BACH2\"")
+                && !action.shell_line.contains("--gene \"TERT\"")
+                && !action.shell_line.contains("--gene \"TP73\"")
+        }));
+    }
+
+    #[test]
+    fn telegram_guide_readiness_suppresses_prepare_when_target_is_running() {
+        let reference = fake_dependency(
+            false,
+            "running",
+            Some(fake_activity("running", "download_sequence", 37.0)),
+        );
+        let running_action = handoff_action(
+            "Re-check Human GRCh38 Ensembl 116 status",
+            "refresh_status",
+            "genomes status \"Human GRCh38 Ensembl 116\"",
+            180,
+            "Reference is already being prepared.",
+            false,
+            Some("reference_genome:Human GRCh38 Ensembl 116".to_string()),
+            Some("running".to_string()),
+            vec![],
+        );
+        let handoff = fake_handoff_report(reference, vec![status_refresh_action()], vec![
+            running_action,
+        ]);
+        let guide = build_telegram_guide_from_handoff(
+            handoff,
+            "telegram",
+            "readiness",
+            Some("TERT".to_string()),
+        );
+
+        assert!(guide
+            .suggested_actions
+            .iter()
+            .any(|action| action.kind == "refresh_status"));
+        assert!(!guide
+            .suggested_actions
+            .iter()
+            .any(|action| action.kind == "prepare_reference"));
     }
 }

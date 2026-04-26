@@ -1129,6 +1129,83 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
     ]
 
 
+def test_services_telegram_guide_promotes_section_actions(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "services guide --channel telegram",
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.telegram_guide.v1",'
+        '"summary_lines":["GENtle can guide reproducible work from Telegram.","If you have a gene of interest, tell me its symbol."],'
+        '"readiness_summary_lines":["Reference not prepared"],'
+        '"menu_sections":[{"section_id":"tfbs","title":"Promoter and TFBS","summary":"Promoter guide","example_prompts":["Show TFBS upstream of TERT"],"default_genes":["TERT","TP73"]}],'
+        '"suggested_actions":[{"action_id":"promoter_and_tfbs","label":"Promoter and TFBS","kind":"guide_section","shell_line":"services guide --channel telegram --section tfbs","timeout_secs":180,"rationale":"Open the TFBS guide section.","requires_confirmation":false}],'
+        '"blocked_actions":[]}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["stdout_json"]["schema"] == "gentle.telegram_guide.v1"
+    assert result["chat_summary_lines"] == [
+        "GENtle can guide reproducible work from Telegram.",
+        "If you have a gene of interest, tell me its symbol.",
+    ]
+    assert result["suggested_actions"] == [
+        {
+            "action_id": "promoter_and_tfbs",
+            "label": "Promoter and TFBS",
+            "kind": "guide_section",
+            "shell_line": "services guide --channel telegram --section tfbs",
+            "timeout_secs": 180,
+            "request": {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "shell",
+                "shell_line": "services guide --channel telegram --section tfbs",
+                "timeout_secs": 180,
+            },
+            "rationale": "Open the TFBS guide section.",
+            "requires_confirmation": False,
+        }
+    ]
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Suggested Next Step" in report
+    assert "services guide --channel telegram --section tfbs" in report
+
+
 def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(
@@ -2660,6 +2737,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         "request_services_handoff.json": (
             "shell",
             "services handoff --scope clawbio --output artifacts/service_handoff.json",
+            180,
+        ),
+        "request_services_telegram_guide.json": (
+            "shell",
+            "services guide --channel telegram",
             180,
         ),
         "request_helpers_status_puc19.json": (

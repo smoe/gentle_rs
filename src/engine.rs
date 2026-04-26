@@ -484,6 +484,8 @@ const JASPAR_CATALOG_REPORT_SCHEMA: &str = "gentle.jaspar_catalog.v1";
 const JASPAR_REMOTE_METADATA_SNAPSHOT_SCHEMA: &str = "gentle.jaspar_remote_metadata_snapshot.v1";
 const TF_QUERY_RESOLUTION_REPORT_SCHEMA: &str = "gentle.tf_query_resolution.v1";
 const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v1";
+const ALTERNATIVE_PROMOTER_COMPARISON_SCHEMA: &str =
+    "gentle.alternative_promoter_comparison.v1";
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
 const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
@@ -3795,6 +3797,19 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    SummarizeAlternativePromoterComparison {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        promoter_upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        promoter_downstream_bp: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     SuggestPromoterReporterFragments {
         input: SeqId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5088,6 +5103,7 @@ impl GentleEngine {
                 "SummarizeTfbsRegion".to_string(),
                 "SummarizeTfbsScoreTracks".to_string(),
                 "SummarizeTfbsTrackSimilarity".to_string(),
+                "SummarizeAlternativePromoterComparison".to_string(),
                 "SummarizeMultiGenePromoterTfbs".to_string(),
                 "RenderMultiGenePromoterTfbsSvg".to_string(),
                 "ScanTfbsHits".to_string(),
@@ -7178,6 +7194,7 @@ impl GentleEngine {
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
                 | Operation::SummarizeTfbsTrackSimilarity { .. }
+                | Operation::SummarizeAlternativePromoterComparison { .. }
                 | Operation::SummarizeMultiGenePromoterTfbs { .. }
                 | Operation::RenderMultiGenePromoterTfbsSvg { .. }
                 | Operation::ScanTfbsHits { .. }

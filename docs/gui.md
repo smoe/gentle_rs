@@ -541,20 +541,28 @@ Feature tree grouping:
     - canonical major-spliceosome `GT-AG` sites stay green/teal, known
       non-canonical classes such as `GC-AG` and `AT-AC` use distinct colors,
       and other non-canonical signatures remain red
-  - acceptor-proximal intron heuristics are now surfaced conservatively:
-    - intron lines can highlight a branchpoint-like site and a pyrimidine-rich
-      tract near the acceptor when the simple heuristics find one
-    - hovering an intron line reports the current branchpoint-like motif/score
-      and the best detected polypyrimidine tract span
+- acceptor-proximal intron heuristics are now surfaced conservatively:
+  - intron lines can highlight a branchpoint-like site and a pyrimidine-rich
+    tract near the acceptor when the simple heuristics find one
+  - hovering an intron line reports the current branchpoint-like motif/score
+    and the best detected polypyrimidine tract span
     - an `Acceptor-proximal intron signals` table summarizes those heuristics
       explicitly and labels them as heuristic evidence rather than a splice
       predictor
-    - rows in that intron-signal table are clickable:
-      selecting one keeps the corresponding intron highlighted in the lane view
-      and shows a small description block with the current branchpoint-like and
-      polypyrimidine-tract interpretation
-  - exon columns include support as `n/N (%)` (plus `const` for constitutive
-    exons)
+  - rows in that intron-signal table are clickable:
+    selecting one keeps the corresponding intron highlighted in the lane view
+    and shows a small description block with the current branchpoint-like and
+    polypyrimidine-tract interpretation
+  - the same selected introns now also feed one `Intron-centered regulatory
+    interpretation` table:
+    - it combines those conservative intron heuristics with any already cached
+      ATtRACT/RBP evidence for the same splicing target
+    - each row reports donor-flank, acceptor-flank, and intron-body hit
+      counts plus a short top-RBP summary
+    - clicking those rows keeps the same intron focused in the lane view, so
+      splice-mechanistic and regulatory context stay aligned
+- exon columns include support as `n/N (%)` (plus `const` for constitutive
+  exons)
   - exon lane glyphs can show CDS flank phase coloring on the left/right exon
     edges (`0/1/2`) when transcript `cds_ranges_1based` are available
   - exon columns also expose `len%3` color cues (`0/1/2`) based on genomic
@@ -4069,6 +4077,21 @@ Tutorial projects:
     target-span scanning do not look like a stall on longer/randomized runs
     - a signed peak offset reports whether one motif’s strongest window leads
       or trails another
+  - the same window now also exposes `TFBS similarity`, which brings the
+    newer anchor-vs-candidate ranking route directly into Promoter design:
+    - one anchor motif is compared against either all JASPAR motifs or one
+      restricted candidate list over the exact same promoter span used for
+      score tracks
+    - ranking metric, optional species filters, cached remote-metadata
+      enrichment, and result limit are controlled in the window
+    - the ranked table is cached in-window and can be exported as JSON through
+      the same shared engine report instead of becoming a GUI-only table
+  - the same window now also exposes `Compare alternative promoters`, which
+    groups transcript-derived promoter windows by exact DNA span:
+    - rows show transcript multiplicity (`n tx`) instead of visually stacking
+      identical promoter windows that only differ by downstream splice usage
+    - `Use this row` retargets the Promoter design score-track / similarity
+      span to that grouped promoter interval and representative transcript
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style

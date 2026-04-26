@@ -5279,6 +5279,112 @@ impl MainAreaDna {
                         );
                     });
             }
+
+            let attract_view = self.cached_splicing_attract_evidence.as_ref().and_then(|cached| {
+                (cached.seq_id == view.seq_id && cached.target_feature_id == view.target_feature_id)
+                    .then_some(cached.view.as_ref())
+            });
+            let regulatory_rows = Self::splicing_intron_regulatory_rows(view, attract_view);
+            if !regulatory_rows.is_empty() {
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new("Intron-centered regulatory interpretation")
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                );
+                ui.label(
+                    egui::RichText::new(
+                        "This view combines conservative intron heuristics (branchpoint-like and polypyrimidine summaries) with any cached ATtRACT/RBP evidence already computed for the same splicing target.",
+                    )
+                    .size(9.0)
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+                if attract_view.is_none() {
+                    ui.small(
+                        egui::RichText::new(
+                            "No cached ATtRACT evidence is attached yet. The counts below therefore only reflect the intron heuristics; expand `ATtRACT / RBP evidence` to compute splice-aware factor support for this locus.",
+                        )
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                egui::Grid::new("splicing_intron_regulatory_grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new("transcript").monospace().strong());
+                        ui.label(egui::RichText::new("intron").monospace().strong());
+                        ui.label(egui::RichText::new("signals").strong());
+                        ui.label(egui::RichText::new("RBP hits").strong());
+                        ui.label(egui::RichText::new("summary").strong());
+                        ui.end_row();
+                        for row in &regulatory_rows {
+                            let row_key = SplicingIntronSignalKey {
+                                transcript_feature_id: row.transcript_feature_id,
+                                donor_position_1based: row.donor_position_1based,
+                                acceptor_position_1based: row.acceptor_position_1based,
+                            };
+                            let is_selected = selected_signal_key
+                                .as_ref()
+                                .map(|selected| *selected == row_key)
+                                .unwrap_or(false);
+                            if ui
+                                .selectable_label(
+                                    is_selected,
+                                    egui::RichText::new(format!(
+                                        "n-{} {}",
+                                        row.transcript_feature_id, row.transcript_id
+                                    ))
+                                    .monospace()
+                                    .size(9.0),
+                                )
+                                .on_hover_text(
+                                    "Click to focus this intron and highlight it in the lane view.",
+                                )
+                                .clicked()
+                            {
+                                selected_signal_key = Some(row_key.clone());
+                            }
+                            if ui
+                                .selectable_label(
+                                    is_selected,
+                                    egui::RichText::new(format!(
+                                        "{}..{} ({} bp)",
+                                        row.donor_position_1based,
+                                        row.acceptor_position_1based,
+                                        row.intron_length_bp
+                                    ))
+                                    .monospace()
+                                    .size(9.0),
+                                )
+                                .clicked()
+                            {
+                                selected_signal_key = Some(row_key.clone());
+                            }
+                            ui.small(format!(
+                                "{} | {}",
+                                row.branchpoint_position_1based
+                                    .map(|position| format!("BP {position}"))
+                                    .unwrap_or_else(|| "BP none".to_string()),
+                                match (
+                                    row.polypyrimidine_start_1based,
+                                    row.polypyrimidine_end_1based,
+                                ) {
+                                    (Some(start), Some(end)) => format!("polyY {start}..{end}"),
+                                    _ => "polyY none".to_string(),
+                                }
+                            ));
+                            ui.small(format!(
+                                "D{} A{} I{} | {} unique",
+                                row.donor_flank_hit_count,
+                                row.acceptor_flank_hit_count,
+                                row.intron_body_hit_count,
+                                row.unique_rbp_count
+                            ));
+                            ui.small(Self::splicing_intron_regulatory_summary_text(row));
+                            ui.end_row();
+                        }
+                    });
+            }
+            self.splicing_expert_selected_intron_signal_key = selected_signal_key.clone();
         }
 
         if !view.matrix_rows.is_empty() && !view.unique_exons.is_empty() {

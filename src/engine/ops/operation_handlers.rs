@@ -7043,6 +7043,7 @@ impl GentleEngine {
             sequence_context_view: None,
             sequence_context_bundle: None,
             variant_promoter_context: None,
+            alternative_promoter_comparison: None,
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
@@ -14437,6 +14438,41 @@ impl GentleEngine {
                     report.transcript_ambiguity_status
                 ));
                     result.variant_promoter_context = Some(report);
+                }
+                Operation::SummarizeAlternativePromoterComparison {
+                    input,
+                    gene_label,
+                    transcript_id,
+                    promoter_upstream_bp,
+                    promoter_downstream_bp,
+                    path,
+                } => {
+                    let mut report = self.summarize_alternative_promoter_comparison(
+                        &input,
+                        gene_label.as_deref(),
+                        transcript_id.as_deref(),
+                        promoter_upstream_bp,
+                        promoter_downstream_bp,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_alternative_promoter_comparison_json(&report, path)?;
+                        result.messages.push(format!(
+                            "Wrote alternative-promoter comparison report for '{}' to '{}'",
+                            report.seq_id, path
+                        ));
+                    }
+                    for warning in &report.warnings {
+                        result.warnings.push(warning.clone());
+                    }
+                    result.messages.push(format!(
+                        "Alternative-promoter comparison for '{}' collapsed {} transcript-level promoter window(s) into {} DNA-level promoter group(s)",
+                        report.seq_id,
+                        report.transcript_window_count,
+                        report.collapsed_window_count
+                    ));
+                    result.alternative_promoter_comparison = Some(report);
                 }
                 Operation::SuggestPromoterReporterFragments {
                     input,

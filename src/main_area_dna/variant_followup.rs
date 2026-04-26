@@ -267,6 +267,14 @@ impl MainAreaDna {
             score_track_correlation_metric: TfbsScoreTrackCorrelationMetric::Pearson,
             score_track_correlation_signal_source:
                 TfbsScoreTrackCorrelationSignalSource::MaxStrands,
+            tfbs_track_similarity_anchor_motif: String::new(),
+            tfbs_track_similarity_all_candidates: true,
+            tfbs_track_similarity_candidate_motifs: String::new(),
+            tfbs_track_similarity_species_filters: String::new(),
+            tfbs_track_similarity_include_remote_metadata: false,
+            tfbs_track_similarity_limit: "25".to_string(),
+            tfbs_track_similarity_ranking_metric:
+                TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
             promoter_upstream_bp: "1000".to_string(),
             promoter_downstream_bp: "200".to_string(),
             tfbs_focus_half_window_bp: "100".to_string(),
@@ -281,7 +289,9 @@ impl MainAreaDna {
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
             reporter_output_prefix: format!("{token}_reporter"),
             cached_score_tracks: None,
+            cached_tfbs_track_similarity: None,
             cached_report: None,
+            cached_alternative_promoter_comparison: None,
             cached_candidates: None,
         };
         Ok(())
@@ -541,27 +551,10 @@ impl MainAreaDna {
         self.start_variant_followup_score_tracks();
     }
 
-    fn variant_followup_score_track_request(
+    fn variant_followup_score_track_span_request(
         &self,
-    ) -> Result<
-        (
-            String,
-            Vec<String>,
-            usize,
-            usize,
-            TfbsScoreTrackValueKind,
-            bool,
-        ),
-        String,
-    > {
+    ) -> Result<(String, usize, usize, TfbsScoreTrackValueKind, bool), String> {
         let seq_id = self.variant_followup_input_seq_id()?;
-        let motifs =
-            Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs);
-        if motifs.is_empty() {
-            return Err(
-                "Promoter design score tracks require at least one TF motif token".to_string(),
-            );
-        }
         let start_0based = Self::parse_optional_usize_text(
             &self.variant_followup_ui.score_track_start_0based,
             "score-track start bp",
@@ -583,12 +576,339 @@ impl MainAreaDna {
         }
         Ok((
             seq_id,
-            motifs,
             start_0based,
             end_0based_exclusive,
             self.variant_followup_ui.score_track_value_kind,
             self.variant_followup_ui.score_track_clip_negative,
         ))
+    }
+
+    fn variant_followup_score_track_request(
+        &self,
+    ) -> Result<
+        (
+            String,
+            Vec<String>,
+            usize,
+            usize,
+            TfbsScoreTrackValueKind,
+            bool,
+        ),
+        String,
+    > {
+        let (seq_id, start_0based, end_0based_exclusive, score_kind, clip_negative) =
+            self.variant_followup_score_track_span_request()?;
+        let motifs =
+            Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs);
+        if motifs.is_empty() {
+            return Err(
+                "Promoter design score tracks require at least one TF motif token".to_string(),
+            );
+        }
+        Ok((
+            seq_id,
+            motifs,
+            start_0based,
+            end_0based_exclusive,
+            score_kind,
+            clip_negative,
+        ))
+    }
+
+    fn variant_followup_resolve_similarity_anchor_motif(&self) -> Result<String, String> {
+        let anchor = self
+            .variant_followup_ui
+            .tfbs_track_similarity_anchor_motif
+            .trim();
+        if !anchor.is_empty() {
+            return Ok(anchor.to_string());
+        }
+        Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs)
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                "Provide an anchor TF motif, or keep at least one promoter-design TF motif selected".to_string()
+            })
+    }
+
+    fn variant_followup_collect_similarity_candidate_tokens(
+        &self,
+        anchor_motif: &str,
+    ) -> Result<Vec<String>, String> {
+        if self.variant_followup_ui.tfbs_track_similarity_all_candidates {
+            return Ok(vec!["ALL".to_string()]);
+        }
+        let mut tokens = Self::promoter_design_parse_motif_tokens(
+            &self.variant_followup_ui.tfbs_track_similarity_candidate_motifs,
+        );
+        if tokens.is_empty() {
+            tokens =
+                Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs);
+        }
+        let anchor_upper = anchor_motif.trim().to_ascii_uppercase();
+        let mut seen = BTreeSet::new();
+        let filtered = tokens
+            .into_iter()
+            .filter_map(|token| {
+                let trimmed = token.trim();
+                if trimmed.is_empty() || trimmed.eq_ignore_ascii_case(anchor_upper.as_str()) {
+                    return None;
+                }
+                let normalized = trimmed.to_ascii_uppercase();
+                if seen.insert(normalized) {
+                    Some(trimmed.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        if filtered.is_empty() {
+            Err(
+                "Provide at least one candidate TF motif, keep non-anchor promoter-design motifs selected, or enable `all JASPAR motifs`".to_string(),
+            )
+        } else {
+            Ok(filtered)
+        }
+    }
+
+    fn variant_followup_parse_similarity_limit(&self) -> Result<Option<usize>, String> {
+        let trimmed = self.variant_followup_ui.tfbs_track_similarity_limit.trim();
+        if trimmed.is_empty() {
+            Ok(None)
+        } else {
+            Self::parse_positive_usize_text(trimmed, "Promoter design TFBS similarity limit")
+                .map(Some)
+        }
+    }
+
+    fn variant_followup_tfbs_track_similarity_request(
+        &self,
+    ) -> Result<
+        (
+            SequenceScanTarget,
+            String,
+            Vec<String>,
+            TfbsTrackSimilarityRankingMetric,
+            TfbsScoreTrackValueKind,
+            bool,
+            Vec<String>,
+            bool,
+            Option<usize>,
+        ),
+        String,
+    > {
+        let (seq_id, start_0based, end_0based_exclusive, score_kind, clip_negative) =
+            self.variant_followup_score_track_span_request()?;
+        let anchor_motif = self.variant_followup_resolve_similarity_anchor_motif()?;
+        let candidate_motifs =
+            self.variant_followup_collect_similarity_candidate_tokens(&anchor_motif)?;
+        let species_filters = Self::parse_ids(
+            &self.variant_followup_ui.tfbs_track_similarity_species_filters,
+        );
+        Ok((
+            SequenceScanTarget::SeqId {
+                seq_id,
+                span_start_0based: Some(start_0based),
+                span_end_0based_exclusive: Some(end_0based_exclusive),
+            },
+            anchor_motif,
+            candidate_motifs,
+            self.variant_followup_ui.tfbs_track_similarity_ranking_metric,
+            score_kind,
+            clip_negative,
+            species_filters,
+            self.variant_followup_ui
+                .tfbs_track_similarity_include_remote_metadata,
+            self.variant_followup_parse_similarity_limit()?,
+        ))
+    }
+
+    fn start_variant_followup_tfbs_track_similarity(&mut self) {
+        let (
+            target,
+            anchor_motif,
+            candidate_motifs,
+            ranking_metric,
+            score_kind,
+            clip_negative,
+            species_filters,
+            include_remote_metadata,
+            limit,
+        ) = match self.variant_followup_tfbs_track_similarity_request() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        self.start_tfbs_operation(
+            Operation::SummarizeTfbsTrackSimilarity {
+                target,
+                anchor_motif,
+                candidate_motifs,
+                ranking_metric,
+                score_kind,
+                clip_negative,
+                species_filters,
+                include_remote_metadata,
+                limit,
+                path: None,
+            },
+            TfbsTaskKind::VariantFollowupTrackSimilarity,
+            "Promoter TFBS similarity",
+        );
+    }
+
+    fn export_variant_followup_tfbs_track_similarity_json(&mut self) {
+        let Some(report) = self.variant_followup_ui.cached_tfbs_track_similarity.clone() else {
+            self.op_status = "No cached Promoter design TFBS similarity ranking available for JSON export".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_tfbs_similarity_{}_{}-{}.json",
+            Self::sanitize_export_name_component(&report.target_label, "promoter_design"),
+            Self::sanitize_export_name_component(&report.anchor_tf_id, "anchor"),
+            report.view_start_0based,
+            report.view_end_0based_exclusive
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Promoter design TFBS similarity export canceled".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizeTfbsTrackSimilarity {
+                target: SequenceScanTarget::SeqId {
+                    seq_id: report.seq_id.clone(),
+                    span_start_0based: Some(report.view_start_0based),
+                    span_end_0based_exclusive: Some(report.view_end_0based_exclusive),
+                },
+                anchor_motif: report.anchor_requested.clone(),
+                candidate_motifs: report.candidates_requested.clone(),
+                ranking_metric: report.ranking_metric,
+                score_kind: report.score_kind,
+                clip_negative: report.clip_negative,
+                species_filters: report.species_filters.clone(),
+                include_remote_metadata: report.include_remote_metadata,
+                limit: Some(report.returned_candidate_count),
+                path: Some(path.display().to_string()),
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.tfbs_track_similarity) {
+            self.variant_followup_ui.cached_tfbs_track_similarity = Some(report);
+        }
+    }
+
+    fn summarize_variant_followup_alternative_promoters(&mut self) {
+        let input = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizeAlternativePromoterComparison {
+                input,
+                gene_label: Self::variant_followup_optional_text(&self.variant_followup_ui.gene_label),
+                transcript_id: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.transcript_id,
+                ),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                path: None,
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.alternative_promoter_comparison) {
+            self.variant_followup_ui.cached_alternative_promoter_comparison = Some(report);
+        }
+    }
+
+    fn export_variant_followup_alternative_promoter_comparison_json(&mut self) {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_alternative_promoter_comparison
+            .clone()
+        else {
+            self.op_status =
+                "No cached alternative-promoter comparison available for JSON export".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_alternative_promoters.json",
+            Self::sanitize_export_name_component(&report.seq_id, "promoter_design")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Alternative-promoter comparison export canceled".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizeAlternativePromoterComparison {
+                input: report.seq_id.clone(),
+                gene_label: report.gene_label_filter.clone(),
+                transcript_id: report.transcript_id_filter.clone(),
+                promoter_upstream_bp: report.promoter_upstream_bp,
+                promoter_downstream_bp: report.promoter_downstream_bp,
+                path: Some(path.display().to_string()),
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.alternative_promoter_comparison) {
+            self.variant_followup_ui.cached_alternative_promoter_comparison = Some(report);
+        }
+    }
+
+    pub(super) fn use_variant_followup_alternative_promoter_row(
+        &mut self,
+        row: &AlternativePromoterComparisonRow,
+    ) {
+        if let Some(transcript_id) = row.representative_transcript_id.as_deref() {
+            self.variant_followup_ui.transcript_id = transcript_id.to_string();
+        }
+        if let Some(gene_label) = row.gene_label.as_deref() {
+            self.variant_followup_ui.gene_label = gene_label.to_string();
+        }
+        self.variant_followup_ui.promoter_upstream_bp = row.upstream_bp.to_string();
+        self.variant_followup_ui.promoter_downstream_bp = row.downstream_bp.to_string();
+        self.variant_followup_ui.score_track_start_0based = row.start_0based.to_string();
+        self.variant_followup_ui.score_track_end_0based_exclusive =
+            row.end_0based_exclusive.to_string();
+        self.variant_followup_ui.cached_score_tracks = None;
+        self.variant_followup_ui.cached_tfbs_track_similarity = None;
+        self.variant_followup_ui.cached_report = None;
+        self.variant_followup_ui.cached_candidates = None;
+        self.op_status = format!(
+            "Promoter design now targets '{}' at {}..{}",
+            row.representative_transcript_id
+                .as_deref()
+                .unwrap_or(row.label.as_str()),
+            row.start_0based,
+            row.end_0based_exclusive
+        );
     }
 
     fn export_variant_followup_score_tracks_svg(&mut self) {
@@ -2581,6 +2901,222 @@ impl MainAreaDna {
             .score_track_correlation_signal_source = correlation_signal_source;
     }
 
+    fn render_variant_followup_tfbs_track_similarity_summary(&mut self, ui: &mut egui::Ui) {
+        if let Some(task) = self
+            .tfbs_task
+            .as_ref()
+            .filter(|task| matches!(task.task_kind, TfbsTaskKind::VariantFollowupTrackSimilarity))
+        {
+            if Self::render_tfbs_task_progress_panel(ui, task, self.tfbs_progress.as_ref(), true) {
+                task.cancel_requested.store(true, AtomicOrdering::Relaxed);
+                self.op_status = format!("Cancel requested for {}", task.operation_label);
+            }
+            ui.add_space(6.0);
+        }
+        let Some(report) = self.variant_followup_ui.cached_tfbs_track_similarity.as_ref() else {
+            ui.small(
+                egui::RichText::new(
+                    "No Promoter design TFBS similarity ranking cached yet. Run `Show TFBS similarity ranking` to compare one anchor motif against the current promoter span.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Promoter TFBS similarity ranking").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "anchor {} | {} returned of {} scanned candidate(s) across {}..{} | {} | score {}{}",
+                    Self::promoter_design_track_label(
+                        &report.anchor_tf_id,
+                        report.anchor_tf_name.as_deref(),
+                    ),
+                    report.returned_candidate_count,
+                    report.scanned_candidate_count,
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                    report.ranking_metric.display_label(),
+                    report.score_kind.as_str(),
+                    if report.clip_negative {
+                        " | clipped"
+                    } else {
+                        " | unclipped"
+                    }
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            if !report.species_filters.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Species filters currently restrict the candidate set before ranking: {}",
+                        report.species_filters.join(", ")
+                    ))
+                    .color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            for warning in &report.warnings {
+                ui.small(
+                    egui::RichText::new(warning).color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            if report.rows.is_empty() {
+                ui.small(
+                    egui::RichText::new(
+                        "The cached similarity ranking finished successfully but returned no candidate motifs for the selected settings.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .id_salt((
+                    "variant_followup_tfbs_similarity_scroll",
+                    report.seq_id.as_str(),
+                    report.view_start_0based,
+                    report.view_end_0based_exclusive,
+                ))
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    egui::Grid::new((
+                        "variant_followup_tfbs_similarity_grid",
+                        report.seq_id.as_str(),
+                        report.view_start_0based,
+                        report.view_end_0based_exclusive,
+                    ))
+                    .num_columns(6)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("#").strong());
+                        ui.small(egui::RichText::new("candidate").strong());
+                        ui.small(
+                            egui::RichText::new(report.ranking_metric.display_label()).strong(),
+                        );
+                        ui.small(egui::RichText::new("Smoothed Pearson").strong());
+                        ui.small(egui::RichText::new("Peak offset").strong());
+                        ui.small(egui::RichText::new("Metadata").strong());
+                        ui.end_row();
+                        for (index, row) in report.rows.iter().enumerate() {
+                            ui.small((index + 1).to_string());
+                            ui.small(Self::promoter_design_track_label(
+                                &row.candidate_tf_id,
+                                row.candidate_tf_name.as_deref(),
+                            ));
+                            ui.monospace(format!(
+                                "{:+.3}",
+                                Self::tfbs_track_similarity_metric_value(
+                                    row,
+                                    report.ranking_metric,
+                                )
+                            ));
+                            ui.monospace(format!("{:+.3}", row.smoothed_pearson));
+                            ui.monospace(
+                                row.signed_primary_peak_offset_bp
+                                    .map(|value| format!("{value:+} bp"))
+                                    .unwrap_or_else(|| "n/a".to_string()),
+                            );
+                            ui.small(Self::tfbs_track_similarity_remote_summary_label(
+                                row.remote_summary.as_ref(),
+                            ));
+                            ui.end_row();
+                        }
+                    });
+                });
+        });
+    }
+
+    fn render_variant_followup_alternative_promoter_summary(&mut self, ui: &mut egui::Ui) {
+        let mut use_row: Option<AlternativePromoterComparisonRow> = None;
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_alternative_promoter_comparison
+            .as_ref()
+        else {
+            ui.small(
+                egui::RichText::new(
+                    "No alternative-promoter comparison cached yet. Run `Compare alternative promoters` to collapse transcript-derived promoter interpretations into distinct DNA-level promoter windows for this locus.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Alternative promoter comparison").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} transcript-level promoter interpretation(s) collapsed into {} distinct DNA-level promoter window(s) using {} bp upstream / {} bp downstream",
+                    report.transcript_window_count,
+                    report.collapsed_window_count,
+                    report.promoter_upstream_bp,
+                    report.promoter_downstream_bp
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            for warning in &report.warnings {
+                ui.small(
+                    egui::RichText::new(warning).color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            egui::ScrollArea::vertical()
+                .id_salt(("variant_followup_alternative_promoter_scroll", report.seq_id.as_str()))
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    egui::Grid::new((
+                        "variant_followup_alternative_promoter_grid",
+                        report.seq_id.as_str(),
+                    ))
+                    .num_columns(7)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("window").strong());
+                        ui.small(egui::RichText::new("tx").strong());
+                        ui.small(egui::RichText::new("strand").strong());
+                        ui.small(egui::RichText::new("TSS").strong());
+                        ui.small(egui::RichText::new("span").strong());
+                        ui.small(egui::RichText::new("representative").strong());
+                        ui.small(egui::RichText::new("action").strong());
+                        ui.end_row();
+                        for row in &report.rows {
+                            ui.small(row.label.as_str());
+                            ui.small(row.transcript_count.to_string());
+                            ui.small(row.strand.as_str());
+                            ui.monospace(format!("{}", row.representative_tss_local_0based));
+                            ui.monospace(format!(
+                                "{}..{}",
+                                row.start_0based, row.end_0based_exclusive
+                            ));
+                            ui.small(
+                                row.representative_transcript_id
+                                    .as_deref()
+                                    .unwrap_or("n/a"),
+                            )
+                            .on_hover_text(if row.transcript_labels.is_empty() {
+                                row.transcript_ids.join(", ")
+                            } else {
+                                format!(
+                                    "{}\n{}",
+                                    row.transcript_ids.join(", "),
+                                    row.transcript_labels.join(", ")
+                                )
+                            });
+                            if ui
+                                .small_button("Use")
+                                .on_hover_text(
+                                    "Use this promoter window as the current Promoter design transcript/range seed for score tracks and downstream fragment planning.",
+                                )
+                                .clicked()
+                            {
+                                use_row = Some(row.clone());
+                            }
+                            ui.end_row();
+                        }
+                    });
+                });
+        });
+        if let Some(row) = use_row {
+            self.use_variant_followup_alternative_promoter_row(&row);
+        }
+    }
+
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
@@ -2593,6 +3129,7 @@ impl MainAreaDna {
             "gene/promoter-seeded"
         };
         let mut score_track_params_changed = false;
+        let mut similarity_params_changed = false;
         let mut summary_params_changed = false;
         let mut candidate_params_changed = false;
 
@@ -2664,6 +3201,7 @@ impl MainAreaDna {
                     .changed()
                 {
                     score_track_params_changed = true;
+                    similarity_params_changed = true;
                 }
                 ui.horizontal_wrapped(|ui| {
                     if ui
@@ -2673,6 +3211,7 @@ impl MainAreaDna {
                     {
                         self.variant_followup_ui.score_track_motifs = "SP1".to_string();
                         score_track_params_changed = true;
+                        similarity_params_changed = true;
                     }
                     if ui
                         .small_button("Yamanaka + NANOG")
@@ -2682,6 +3221,7 @@ impl MainAreaDna {
                         self.variant_followup_ui.score_track_motifs =
                             "POU5F1,SOX2,KLF4,MYC,NANOG".to_string();
                         score_track_params_changed = true;
+                        similarity_params_changed = true;
                     }
                     if ui
                         .small_button("TP73 set")
@@ -2693,6 +3233,7 @@ impl MainAreaDna {
                         self.variant_followup_ui.score_track_motifs =
                             "TP73,SP1,BACH2,PATZ1".to_string();
                         score_track_params_changed = true;
+                        similarity_params_changed = true;
                     }
                 });
             });
@@ -2705,6 +3246,7 @@ impl MainAreaDna {
                     .changed()
                 {
                     score_track_params_changed = true;
+                    similarity_params_changed = true;
                 }
                 ui.label("..");
                 if ui
@@ -2714,6 +3256,7 @@ impl MainAreaDna {
                     .changed()
                 {
                     score_track_params_changed = true;
+                    similarity_params_changed = true;
                 }
                 egui::ComboBox::from_id_salt("promoter_design_score_track_value_kind")
                     .selected_text(self.variant_followup_ui.score_track_value_kind.as_str())
@@ -2737,6 +3280,7 @@ impl MainAreaDna {
                                 .changed()
                             {
                                 score_track_params_changed = true;
+                                similarity_params_changed = true;
                             }
                         }
                     });
@@ -2748,6 +3292,7 @@ impl MainAreaDna {
                     .changed()
                 {
                     score_track_params_changed = true;
+                    similarity_params_changed = true;
                 }
             });
             ui.small(
@@ -2756,6 +3301,110 @@ impl MainAreaDna {
                 )
                 .color(egui::Color32::from_rgb(100, 116, 139)),
             );
+            ui.end_row();
+
+            ui.label("TFBS similarity");
+            ui.vertical(|ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("anchor");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.tfbs_track_similarity_anchor_motif,
+                        )
+                        .changed()
+                    {
+                        similarity_params_changed = true;
+                    }
+                    ui.label("metric");
+                    egui::ComboBox::from_id_salt("promoter_design_tfbs_similarity_metric")
+                        .selected_text(
+                            self.variant_followup_ui
+                                .tfbs_track_similarity_ranking_metric
+                                .display_label(),
+                        )
+                        .show_ui(ui, |ui| {
+                            for metric in Self::tfbs_track_similarity_ranking_metric_options() {
+                                if ui
+                                    .selectable_value(
+                                        &mut self
+                                            .variant_followup_ui
+                                            .tfbs_track_similarity_ranking_metric,
+                                        metric,
+                                        metric.display_label(),
+                                    )
+                                    .changed()
+                                {
+                                    similarity_params_changed = true;
+                                }
+                            }
+                        });
+                });
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .checkbox(
+                            &mut self.variant_followup_ui.tfbs_track_similarity_all_candidates,
+                            "all JASPAR motifs",
+                        )
+                        .changed()
+                    {
+                        similarity_params_changed = true;
+                    }
+                    if ui
+                        .checkbox(
+                            &mut self
+                                .variant_followup_ui
+                                .tfbs_track_similarity_include_remote_metadata,
+                            "include cached remote metadata",
+                        )
+                        .changed()
+                    {
+                        similarity_params_changed = true;
+                    }
+                    ui.label("limit");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self.variant_followup_ui.tfbs_track_similarity_limit,
+                        )
+                        .changed()
+                    {
+                        similarity_params_changed = true;
+                    }
+                });
+                if !self.variant_followup_ui.tfbs_track_similarity_all_candidates {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("candidate motifs");
+                        if ui
+                            .text_edit_singleline(
+                                &mut self
+                                    .variant_followup_ui
+                                    .tfbs_track_similarity_candidate_motifs,
+                            )
+                            .changed()
+                        {
+                            similarity_params_changed = true;
+                        }
+                    });
+                }
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("species filters");
+                    if ui
+                        .text_edit_singleline(
+                            &mut self
+                                .variant_followup_ui
+                                .tfbs_track_similarity_species_filters,
+                        )
+                        .changed()
+                    {
+                        similarity_params_changed = true;
+                    }
+                });
+                ui.small(
+                    egui::RichText::new(
+                        "Leave `anchor` empty to reuse the first motif from `TF motifs`. Species filters currently restrict the candidate set before ranking.",
+                    )
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            });
             ui.end_row();
 
             ui.label("Gene label");
@@ -2867,8 +3516,14 @@ impl MainAreaDna {
         if score_track_params_changed {
             self.variant_followup_ui.cached_score_tracks = None;
         }
+        if similarity_params_changed {
+            self.variant_followup_ui.cached_tfbs_track_similarity = None;
+        }
         if summary_params_changed || candidate_params_changed {
             self.variant_followup_ui.cached_candidates = None;
+        }
+        if summary_params_changed {
+            self.variant_followup_ui.cached_alternative_promoter_comparison = None;
         }
 
         ui.separator();
@@ -2884,6 +3539,18 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.summarize_variant_followup_score_tracks();
+            }
+            if ui
+                .add_enabled(
+                    engine_available && !source_missing && self.tfbs_task.is_none(),
+                    egui::Button::new("Show TFBS similarity ranking"),
+                )
+                .on_hover_text(
+                    "Rank other TF motifs by how similarly their score tracks travel across the current promoter-design span.",
+                )
+                .clicked()
+            {
+                self.start_variant_followup_tfbs_track_similarity();
             }
             if ui
                 .add_enabled(
@@ -2911,6 +3578,21 @@ impl MainAreaDna {
             }
             if ui
                 .add_enabled(
+                    engine_available
+                        && !source_missing
+                        && self.variant_followup_ui.cached_tfbs_track_similarity.is_some()
+                        && self.tfbs_task.is_none(),
+                    egui::Button::new("Export TFBS similarity JSON..."),
+                )
+                .on_hover_text(
+                    "Write the current Promoter design TFBS similarity ranking as JSON through the shared engine report route.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_tfbs_track_similarity_json();
+            }
+            if ui
+                .add_enabled(
                     engine_available && !source_missing,
                     egui::Button::new("Annotate promoter windows"),
                 )
@@ -2920,6 +3602,18 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.annotate_variant_followup_promoter_windows();
+            }
+            if ui
+                .add_enabled(
+                    engine_available && !source_missing,
+                    egui::Button::new("Compare alternative promoters"),
+                )
+                .on_hover_text(
+                    "Collapse transcript-derived promoter interpretations into distinct DNA-level promoter windows and compare the alternative promoter groups for this locus.",
+                )
+                .clicked()
+            {
+                self.summarize_variant_followup_alternative_promoters();
             }
             if ui
                 .add_enabled(
@@ -2948,6 +3642,23 @@ impl MainAreaDna {
         });
 
         ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    engine_available
+                        && !source_missing
+                        && self
+                            .variant_followup_ui
+                            .cached_alternative_promoter_comparison
+                            .is_some(),
+                    egui::Button::new("Export promoter comparison JSON..."),
+                )
+                .on_hover_text(
+                    "Write the currently cached alternative-promoter comparison as JSON through the shared engine route.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_alternative_promoter_comparison_json();
+            }
             let has_candidates = self.variant_followup_ui.cached_candidates.is_some();
             if ui
                 .add_enabled(
@@ -3004,6 +3715,10 @@ impl MainAreaDna {
 
         ui.separator();
         self.render_variant_followup_score_track_summary(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_tfbs_track_similarity_summary(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_alternative_promoter_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_report_summary(ui);
         ui.add_space(8.0);
