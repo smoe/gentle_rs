@@ -3415,9 +3415,13 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   X axis and log-scaled molecular weight on the Y axis.
 - Uses the same deterministic ladder-selection logic for Y-axis references as
   the 1D protein-gel renderer, or honors the explicit `ladders` override.
+- Renders plot-internal pI and molecular-weight axis labels plus ladder-derived
+  kDa tick labels so messenger PNG previews remain interpretable without
+  relying on surrounding report text.
 - Renders derived protein `product` labels when available, keeps transcript /
-  protein accessions in the spot details, and records the source report plus
-  transcript-selection summary in the provenance panel.
+  protein accessions in the spot details, labels spots directly in the plot,
+  and records the source report plus transcript-selection summary in the
+  provenance panel.
 - This is the canonical 2D protein-gel route for transcript-native spot-map
   demos and for ClawBio's parameterized Ensembl `gene-protein-2d-gel` request
   mode; `RenderProteinGelSvg` remains the 1D lane-based route and

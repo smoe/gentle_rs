@@ -143,6 +143,58 @@
       ]
     },
     {
+      "intent_id": "ensembl_gene_protein_2d_gel",
+      "description": "Render a protein pI-vs-kDa 2D gel for a requested Ensembl gene symbol.",
+      "trigger_terms": [
+        "2d protein gel",
+        "protein 2d gel",
+        "gene protein 2d gel",
+        "ensembl protein 2d gel",
+        "ensembl gene protein 2d gel",
+        "isoforms from ensembl",
+        "from ensembl"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "gene_symbol": {
+              "required": true
+            },
+            "species": {
+              "required": false,
+              "default": "homo_sapiens",
+              "aliases": {
+                "human": "homo_sapiens",
+                "homo sapiens": "homo_sapiens"
+              }
+            },
+            "source": {
+              "required": false,
+              "default": "ensembl",
+              "choices": [
+                "ensembl"
+              ]
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "gene-protein-2d-gel",
+            "state_path": ".gentle_state.json",
+            "source": "{source}",
+            "species": "{species}",
+            "gene_symbol": "{gene_symbol}",
+            "ladders": [
+              "Protein Ladder 10-100 kDa"
+            ],
+            "timeout_secs": 600
+          }
+        }
+      ]
+    },
+    {
       "intent_id": "demo_ensembl_gene_protein_2d_gel",
       "description": "Run an online Ensembl gene protein pI-vs-kDa 2D gel example using the parameterized gene-protein-2d-gel request mode.",
       "trigger_terms": [

@@ -7,8 +7,8 @@
 
 use std::sync::LazyLock;
 
-use svg::Document;
 use svg::node::element::{Circle, Line, Rectangle, Text};
+use svg::Document;
 
 const SVG_WIDTH: f32 = 1900.0;
 const SVG_HEIGHT: f32 = 840.0;
@@ -845,6 +845,36 @@ fn format_pi_label(pi: f32) -> String {
     }
 }
 
+fn truncate_plot_label(label: &str, max_chars: usize) -> String {
+    let trimmed = label.trim();
+    if trimmed.chars().count() <= max_chars {
+        return trimmed.to_string();
+    }
+
+    let keep = max_chars.saturating_sub(3);
+    let mut truncated = trimmed.chars().take(keep).collect::<String>();
+    truncated.push_str("...");
+    truncated
+}
+
+fn compact_protein_spot_name(name: &str) -> String {
+    let trimmed = name.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    for marker in ["isoform ", "transcript variant ", "variant "] {
+        if let Some(offset) = lower.find(marker) {
+            return trimmed[offset..].to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
+fn protein_2d_spot_plot_label(idx: usize, spot: &Protein2dGelSpot) -> String {
+    truncate_plot_label(
+        &format!("{}. {}", idx + 1, compact_protein_spot_name(&spot.name)),
+        24,
+    )
+}
+
 fn protein_pi_x(layout: &Protein2dGelLayout, pi: f32, left: f32, right: f32) -> f32 {
     let min_pi = layout.range_min_pi.min(layout.range_max_pi);
     let max_pi = layout.range_max_pi.max(layout.range_min_pi);
@@ -855,7 +885,11 @@ fn protein_pi_x(layout: &Protein2dGelLayout, pi: f32, left: f32, right: f32) -> 
 
 fn protein_pi_tick_step(layout: &Protein2dGelLayout) -> f32 {
     let span = (layout.range_max_pi - layout.range_min_pi).abs();
-    if span <= 6.0 { 0.5 } else { 1.0 }
+    if span <= 6.0 {
+        0.5
+    } else {
+        1.0
+    }
 }
 
 fn protein_pi_tick_values(layout: &Protein2dGelLayout) -> Vec<f32> {
@@ -1097,11 +1131,11 @@ pub fn export_protein_2d_gel_svg(layout: &Protein2dGelLayout) -> String {
             .add(
                 Text::new(format_pi_label(*pi))
                     .set("x", x)
-                    .set("y", plot_bottom + 18.0)
+                    .set("y", plot_bottom - 14.0)
                     .set("text-anchor", "middle")
                     .set("font-family", "monospace")
-                    .set("font-size", 11)
-                    .set("fill", "#334155"),
+                    .set("font-size", 12)
+                    .set("fill", "#cbd5e1"),
             );
     }
 
@@ -1125,13 +1159,34 @@ pub fn export_protein_2d_gel_svg(layout: &Protein2dGelLayout) -> String {
             )
             .add(
                 Text::new(format_kda_label(*kda))
-                    .set("x", plot_right + 12.0)
+                    .set("x", plot_left + 12.0)
                     .set("y", y + 4.0)
                     .set("font-family", "monospace")
-                    .set("font-size", 12)
-                    .set("fill", "#374151"),
+                    .set("font-size", 13)
+                    .set("fill", "#dbeafe"),
             );
     }
+
+    doc = doc
+        .add(
+            Text::new("pI (isoelectric point)")
+                .set("x", (plot_left + plot_right) / 2.0)
+                .set("y", plot_bottom - 38.0)
+                .set("text-anchor", "middle")
+                .set("font-family", "monospace")
+                .set("font-size", 16)
+                .set("font-weight", 700)
+                .set("fill", "#f8fafc"),
+        )
+        .add(
+            Text::new("Molecular weight (kDa, log scale)")
+                .set("x", plot_left + 16.0)
+                .set("y", plot_top + 28.0)
+                .set("font-family", "monospace")
+                .set("font-size", 16)
+                .set("font-weight", 700)
+                .set("fill", "#f8fafc"),
+        );
 
     for (idx, spot) in layout.spots.iter().enumerate() {
         let x = protein_pi_x(
@@ -1169,6 +1224,24 @@ pub fn export_protein_2d_gel_svg(layout: &Protein2dGelLayout) -> String {
                     .set("font-weight", 700)
                     .set("fill", "#ffffff"),
             );
+        let label = protein_2d_spot_plot_label(idx, spot);
+        let label_on_left = x > plot_right - 260.0;
+        let label_x = if label_on_left { x - 18.0 } else { x + 18.0 };
+        let label_anchor = if label_on_left { "end" } else { "start" };
+        doc = doc.add(
+            Text::new(label)
+                .set("x", label_x)
+                .set("y", y - 12.0)
+                .set("text-anchor", label_anchor)
+                .set("font-family", "monospace")
+                .set("font-size", 11)
+                .set("font-weight", 700)
+                .set("fill", "#f8fafc")
+                .set("stroke", "#101317")
+                .set("stroke-width", 3)
+                .set("paint-order", "stroke fill")
+                .set("opacity", 0.96),
+        );
     }
 
     let ladder_caption = if layout.selected_ladders.is_empty() {
@@ -1350,6 +1423,9 @@ mod tests {
         assert!(svg.contains("Protein 2D Gel Preview"));
         assert!(svg.contains("Selection notes"));
         assert!(svg.contains("Spot details"));
+        assert!(svg.contains("pI (isoelectric point)"));
+        assert!(svg.contains("Molecular weight (kDa, log scale)"));
+        assert!(svg.contains("1. NM_005427.4"));
         assert!(svg.contains("NM_005427.4"));
         assert!(svg.contains("pI"));
         assert!(svg.contains("kDa"));

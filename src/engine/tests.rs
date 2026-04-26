@@ -9739,9 +9739,12 @@ fn test_isoform_protein_2d_gel_demo_loads_derives_and_renders() {
     assert!(svg.contains("Protein 2D Gel Preview"));
     assert!(svg.contains("Selection notes"));
     assert!(svg.contains("Spot details"));
+    assert!(svg.contains("pI (isoelectric point)"));
+    assert!(svg.contains("Molecular weight (kDa, log scale)"));
     assert!(svg.contains("isoform_protein_2d_gel_demo"));
     assert!(svg.contains("Protein Ladder 10-100 kDa"));
     assert!(svg.contains("tumor protein p73 isoform a"));
+    assert!(svg.contains("1. isoform a"));
     assert!(svg.contains("NM_005427.4"));
     assert!(svg.contains("pI"));
     assert!(svg.contains("kDa"));

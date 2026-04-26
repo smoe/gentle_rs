@@ -3630,6 +3630,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "runtime_version",
         "services_status",
         "resources_status",
+        "ensembl_gene_protein_2d_gel",
         "demo_isoform_protein_gel",
         "demo_isoform_protein_2d_gel",
         "demo_ensembl_gene_protein_2d_gel",
@@ -3642,6 +3643,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "runtime_version": "examples/request_runtime_version.json",
         "services_status": "examples/request_services_status.json",
         "resources_status": "examples/request_resources_status.json",
+        "ensembl_gene_protein_2d_gel": None,
         "demo_isoform_protein_gel": "examples/request_workflow_isoform_protein_gel_demo.json",
         "demo_isoform_protein_2d_gel": (
             "examples/request_workflow_isoform_protein_2d_gel_demo.json"
@@ -3662,14 +3664,22 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         assert route["demo_policy"] == expected_demo_policy
         assert route["trigger_terms"], intent_id
         assert route["description"], intent_id
-        assert route["plan"] == [
-            {
-                "kind": "skill_run",
-                "skill": "gentle-cloning",
-                "input": expected_input,
-            }
-        ]
-        assert (skill_root / expected_input).exists(), intent_id
+        if expected_input is None:
+            step = route["plan"][0]
+            assert step["kind"] == "skill_run"
+            assert step["skill"] == "gentle-cloning"
+            assert step["input_template"]["mode"] == "gene-protein-2d-gel"
+            assert step["input_template"]["gene_symbol"] == "{gene_symbol}"
+            assert step["slots"]["gene_symbol"]["required"] is True
+        else:
+            assert route["plan"] == [
+                {
+                    "kind": "skill_run",
+                    "skill": "gentle-cloning",
+                    "input": expected_input,
+                }
+            ]
+            assert (skill_root / expected_input).exists(), intent_id
 
     demo_route = routes["explicit_demo"]
     assert demo_route["demo_policy"] == "only_when_explicit"
@@ -3685,6 +3695,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "version" in routes["runtime_version"]["trigger_terms"]
     assert "local resources" in routes["services_status"]["trigger_terms"]
     assert "installed databases" in routes["resources_status"]["trigger_terms"]
+    assert "2d protein gel" in routes["ensembl_gene_protein_2d_gel"][
+        "trigger_terms"
+    ]
     assert "protein gel demo" in routes["demo_isoform_protein_gel"][
         "trigger_terms"
     ]

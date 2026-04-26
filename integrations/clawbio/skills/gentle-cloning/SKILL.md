@@ -96,9 +96,9 @@ This skill is execution-first.
 
 ClawBio shared chat adapters should consume `INTENTS.json` first. That
 `clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
-installed-database/resource, bundled example protein-gel, bundled example
-2D-gel, Ensembl gene 2D-gel example, trypsin-digest, capability, skill-info,
-and explicit-demo wording to concrete
+installed-database/resource, parameterized Ensembl gene 2D-gel, bundled
+example protein-gel, bundled example 2D-gel, Ensembl gene 2D-gel example,
+trypsin-digest, capability, skill-info, and explicit-demo wording to concrete
 `examples/*.json` requests. Descriptor-only skill directories are discoverable,
 but execution still requires `gentle-cloning` to be registered in ClawBio's
 top-level `SKILLS` table.
@@ -183,6 +183,9 @@ capability-led language:
   `species` fields; the wrapper fetches the Ensembl gene, imports
   transcript/exon/CDS structure, derives protein products from protein-coding
   mRNAs, renders the 2D gel, and promotes the SVG to a PNG-first artifact.
+  Free-text chat adapters can route this through descriptor intent
+  `ensembl_gene_protein_2d_gel`, which extracts a gene symbol and fills the
+  `gene-protein-2d-gel` request template.
 - Never jump from association to mechanism without naming the experimental test
   or validation class still required.
 
