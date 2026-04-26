@@ -9653,6 +9653,93 @@ fn test_isoform_protein_gel_demo_loads_derives_and_renders() {
 }
 
 #[test]
+fn test_grouped_isoform_protein_gel_renders_report_columns() {
+    let mut engine = GentleEngine::default();
+    for (seq_id, prefix, report_id) in [
+        (
+            "patz1_ensembl_locus",
+            "patz1_ensembl_protein",
+            "patz1_ensembl_protein_gel",
+        ),
+        (
+            "tp53_ensembl_locus",
+            "tp53_ensembl_protein",
+            "tp53_ensembl_protein_gel",
+        ),
+    ] {
+        engine
+            .apply(Operation::LoadFile {
+                path: "test_files/tp73.ncbi.gb".to_string(),
+                as_id: Some(seq_id.to_string()),
+            })
+            .expect("load bundled transcript-rich locus fixture");
+
+        let feature_query = SequenceFeatureQuery {
+            seq_id: seq_id.to_string(),
+            kind_in: vec!["mRNA".to_string()],
+            label_regex: Some("^tumor protein p73, transcript variant [0-9]+$".to_string()),
+            qualifier_filters: vec![
+                SequenceFeatureQualifierFilter {
+                    key: "gene".to_string(),
+                    value_contains: Some("TP73".to_string()),
+                    value_regex: Some("^TP73$".to_string()),
+                    case_sensitive: true,
+                },
+                SequenceFeatureQualifierFilter {
+                    key: "transcript_id".to_string(),
+                    value_contains: Some("NM_".to_string()),
+                    value_regex: Some("^NM_".to_string()),
+                    case_sensitive: true,
+                },
+            ],
+            limit: Some(2),
+            sort_by: SequenceFeatureSortBy::FeatureId,
+            ..SequenceFeatureQuery::default()
+        };
+
+        let derive_result = engine
+            .apply(Operation::DeriveProteinSequences {
+                seq_id: seq_id.to_string(),
+                feature_ids: vec![],
+                feature_query: Some(feature_query),
+                scope: None,
+                output_prefix: Some(prefix.to_string()),
+                report_id: Some(report_id.to_string()),
+            })
+            .expect("derive fixture proteins for grouped gel");
+        assert_eq!(derive_result.created_seq_ids.len(), 2);
+    }
+
+    let svg_dir = tempdir().expect("tempdir");
+    let svg_path = svg_dir.path().join("gene_panel_isoform_protein_gel.svg");
+    let result = engine
+        .apply(Operation::RenderProteinGelReportsSvg {
+            report_ids: vec![
+                "patz1_ensembl_protein_gel".to_string(),
+                "tp53_ensembl_protein_gel".to_string(),
+            ],
+            path: svg_path.display().to_string(),
+            ladders: Some(vec!["Protein Ladder 10-250 kDa".to_string()]),
+        })
+        .expect("render grouped protein gel");
+
+    assert!(result.messages.iter().any(|message| {
+        message.contains("Wrote grouped protein gel SVG")
+            && message.contains("2 report column(s)")
+            && message.contains("4 protein band(s)")
+    }));
+    let svg = fs::read_to_string(&svg_path).expect("rendered grouped protein gel svg");
+    assert!(svg.contains("Protein Gel Preview"));
+    assert!(svg.contains("Selection notes"));
+    assert!(svg.contains("Lane details"));
+    assert!(svg.contains("PATZ1"));
+    assert!(svg.contains("TP53"));
+    assert!(svg.contains("Protein Ladder 10-250 kDa"));
+    assert!(svg.contains("2 bands:"));
+    assert!(svg.contains("kDa"));
+}
+
+#[test]
 fn test_isoform_protein_2d_gel_demo_loads_derives_and_renders() {
     let mut engine = GentleEngine::default();
     engine

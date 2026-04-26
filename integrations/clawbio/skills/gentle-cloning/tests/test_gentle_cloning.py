@@ -2879,6 +2879,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             300,
         ),
+        "request_workflow_gene_panel_isoform_protein_gel_ensembl.json": (
+            "workflow",
+            None,
+            1800,
+        ),
         "request_gene_protein_2d_gel_ensembl_demo.json": (
             "gene-protein-2d-gel",
             None,
@@ -3174,6 +3179,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 "exports/tp73_isoform_protein_2d_gel.svg"
             ]
             assert payload["timeout_secs"] == 300
+        if name == "request_workflow_gene_panel_isoform_protein_gel_ensembl.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "docs/examples/workflows/gene_panel_isoform_protein_gel_ensembl.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "exports/gene_panel_isoform_protein_gel.svg"
+            ]
+            assert payload["timeout_secs"] == 1800
         if name == "request_gene_protein_2d_gel_ensembl_demo.json":
             assert payload["state_path"] == ".gentle_state.json"
             assert payload["mode"] == "gene-protein-2d-gel"
@@ -3602,6 +3617,8 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "molecular weight gel" in trigger_keywords
     assert "gene protein 2d gel" in trigger_keywords
     assert "ensembl protein 2d gel" in trigger_keywords
+    assert "gene panel protein gel" in trigger_keywords
+    assert "multi gene protein gel" in trigger_keywords
     assert "isoform protein gel" in trigger_keywords
     assert "isoform protein 2d gel" in trigger_keywords
     assert "protease digest" in trigger_keywords
@@ -3633,6 +3650,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "ensembl_gene_protein_2d_gel",
         "demo_isoform_protein_gel",
         "demo_isoform_protein_2d_gel",
+        "ensembl_gene_panel_protein_gel",
         "demo_ensembl_gene_protein_2d_gel",
         "demo_trypsin_digest_gel",
         "explicit_demo",
@@ -3647,6 +3665,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "demo_isoform_protein_gel": "examples/request_workflow_isoform_protein_gel_demo.json",
         "demo_isoform_protein_2d_gel": (
             "examples/request_workflow_isoform_protein_2d_gel_demo.json"
+        ),
+        "ensembl_gene_panel_protein_gel": (
+            "examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json"
         ),
         "demo_ensembl_gene_protein_2d_gel": (
             "examples/request_gene_protein_2d_gel_ensembl_demo.json"
@@ -3702,6 +3723,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "trigger_terms"
     ]
     assert "isoelectric point demo" in routes["demo_isoform_protein_2d_gel"][
+        "trigger_terms"
+    ]
+    assert "gene panel protein gel" in routes["ensembl_gene_panel_protein_gel"][
         "trigger_terms"
     ]
     assert "gene protein 2d gel demo" in routes["demo_ensembl_gene_protein_2d_gel"][

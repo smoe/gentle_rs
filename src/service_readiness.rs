@@ -823,9 +823,17 @@ fn default_guide_sections() -> Vec<TelegramGuideSection> {
             summary: "Compare transcript-native isoforms with gel, 2D-gel, or digest-style figures.".to_string(),
             example_prompts: vec![
                 "Show TP73 isoforms as a protein gel.".to_string(),
+                "Compare PATZ1, TP73, TP53, TP63, SP1, and BACH2 isoforms on a 1D protein gel.".to_string(),
                 "Can you compare TP53 splicing or isoform architecture?".to_string(),
             ],
-            default_genes: vec!["TP73".to_string(), "TP53".to_string()],
+            default_genes: vec![
+                "PATZ1".to_string(),
+                "TP73".to_string(),
+                "TP53".to_string(),
+                "TP63".to_string(),
+                "SP1".to_string(),
+                "BACH2".to_string(),
+            ],
         },
         TelegramGuideSection {
             section_id: "follow-up".to_string(),
@@ -1064,6 +1072,17 @@ fn guide_actions_for_section(
                     None,
                     first_expected_artifact("exports/tp73_isoform_protein_2d_gel.svg"),
                 ),
+                handoff_action(
+                    "Show PATZ1/TP73/TP53/TP63/SP1/BACH2 1D protein gel",
+                    "gene_panel_isoform_protein_gel",
+                    "workflow @docs/examples/workflows/gene_panel_isoform_protein_gel_ensembl.json",
+                    1800,
+                    "Fetch the six-gene Ensembl panel, derive protein-coding isoforms, and render one molecular-weight gel column per gene with side ladders.",
+                    true,
+                    Some("service:ensembl_rest".to_string()),
+                    None,
+                    first_expected_artifact("exports/gene_panel_isoform_protein_gel.svg"),
+                ),
             ];
             if gene != "TP73" {
                 actions.push(guide_section_action(
@@ -1145,7 +1164,7 @@ fn build_telegram_guide_from_handoff(
     if let Some(gene) = gene_ref {
         summary_lines.push(format!("Personalized guide context: using gene {gene}."));
     } else {
-        summary_lines.push("Default guide context: TERT/TP73 for promoter-TFBS, TP73/TP53 for isoforms, TP73 for gene context.".to_string());
+        summary_lines.push("Default guide context: TERT/TP73 for promoter-TFBS, PATZ1/TP73/TP53/TP63/SP1/BACH2 for isoform panels, TP73 for gene context.".to_string());
     }
     if section != "overview" {
         summary_lines.push(format!("Opened GENtle guide section: {section}."));
@@ -1619,6 +1638,34 @@ mod tests {
                 && !action.shell_line.contains("--gene \"TERT\"")
                 && !action.shell_line.contains("--gene \"TP73\"")
         }));
+    }
+
+    #[test]
+    fn telegram_guide_isoforms_offers_gene_panel_protein_gel() {
+        let reference = fake_dependency(false, "missing", None);
+        let handoff = fake_handoff_report(reference, vec![], vec![]);
+        let guide = build_telegram_guide_from_handoff(handoff, "telegram", "isoforms", None);
+
+        let action = guide
+            .suggested_actions
+            .iter()
+            .find(|action| action.kind == "gene_panel_isoform_protein_gel")
+            .expect("gene-panel isoform protein-gel action");
+        assert!(action.label.contains("PATZ1/TP73/TP53/TP63/SP1/BACH2"));
+        assert_eq!(
+            action.shell_line,
+            "workflow @docs/examples/workflows/gene_panel_isoform_protein_gel_ensembl.json"
+        );
+        assert_eq!(action.timeout_secs, 1800);
+        assert!(action.requires_confirmation);
+        assert_eq!(
+            action.resource_key.as_deref(),
+            Some("service:ensembl_rest")
+        );
+        assert!(action
+            .expected_artifacts
+            .iter()
+            .any(|artifact| artifact == "exports/gene_panel_isoform_protein_gel.svg"));
     }
 
     #[test]

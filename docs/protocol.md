@@ -1612,6 +1612,7 @@ Current draft operations:
 - `RenderLineageSvg { path }`
 - `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id?, conditions? }`
 - `RenderProteinGelSvg { report_id, path, ladders? }`
+- `RenderProteinGelReportsSvg { report_ids[], path, ladders? }`
 - `RenderProteaseDigestGelSvg { seq_id?, report_id?, transcript_id?, proteases[], path, min_length_aa?, ladders? }`
 - `RenderProtein2dGelSvg { report_id, path, ladders? }`
 - `CreateArrangementSerial { container_ids, arrangement_id?, name?, ladders? }`
@@ -3383,6 +3384,19 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   panel records the source report and selection summary.
 - This is the canonical protein-gel route for transcript-native demos such as
   the TP73 isoform workflow; `RenderPoolGelSvg` remains DNA/bp-based.
+
+`RenderProteinGelReportsSvg` semantics:
+
+- Accepts two or more persisted `ProteinDerivationReport` ids plus an output
+  SVG `path`; one report is also accepted for deterministic scripting parity.
+- Reuses the same first-class protein sequence entries as `RenderProteinGelSvg`
+  and never re-derives proteins at render time.
+- Renders one gel column per report/gene and one band per derived isoform
+  product inside that column, with ladder lanes placed at the side(s) by the
+  shared protein-ladder resolver.
+- This is the canonical multi-gene 1D protein-gel route for ClawBio guide
+  figures such as PATZ1/TP73/TP53/TP63/SP1/BACH2 isoform molecular-weight
+  comparisons.
 
 `RenderProteaseDigestGelSvg` semantics:
 

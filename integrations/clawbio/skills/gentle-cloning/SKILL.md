@@ -7,7 +7,8 @@ description: >-
   sequence-grounded mechanistic follow-up, assay-planning artifacts,
   stateless sequence inspection, reusable local reference-preparation
   workflows, and transcript-native protein-gel / protein 2D-gel / protease
-  digest figures for bundled example loci and parameterized Ensembl genes.
+  digest figures for bundled example loci, parameterized Ensembl genes, and
+  Ensembl gene panels.
 version: 0.1.0
 author: GENtle project
 license: MIT
@@ -58,6 +59,8 @@ metadata:
       - installed databases
       - resources status
       - protein gel
+      - gene panel protein gel
+      - multi gene protein gel
       - protein 2d gel
       - 2d gel
       - molecular weight gel
@@ -96,12 +99,13 @@ This skill is execution-first.
 
 ClawBio shared chat adapters should consume `INTENTS.json` first. That
 `clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
-installed-database/resource, parameterized Ensembl gene 2D-gel, bundled
-example protein-gel, bundled example 2D-gel, Ensembl gene 2D-gel example,
-trypsin-digest, capability, skill-info, and explicit-demo wording to concrete
-`examples/*.json` requests. Descriptor-only skill directories are discoverable,
-but execution still requires `gentle-cloning` to be registered in ClawBio's
-top-level `SKILLS` table.
+installed-database/resource, parameterized Ensembl gene 2D-gel, Ensembl
+gene-panel 1D protein-gel, bundled example protein-gel, bundled example
+2D-gel, Ensembl gene 2D-gel example, trypsin-digest, capability, skill-info,
+and explicit-demo wording to concrete `examples/*.json` requests.
+Descriptor-only skill directories are discoverable, but execution still
+requires `gentle-cloning` to be registered in ClawBio's top-level `SKILLS`
+table.
 
 Preferred behavior by request type:
 
@@ -177,12 +181,15 @@ capability-led language:
   `genomes status ...`, `helpers status ...`, or list routes for the requested
   resource family.
 - GENtle now also covers transcript-native protein-gel rendering for curated
-  isoform sets, including the 1D molecular-weight lane route and the 2D pI vs
-  molecular-weight spot-map route used by bundled offline demos. For arbitrary Ensembl
-  genes, use request mode `gene-protein-2d-gel` with `gene_symbol` and optional
-  `species` fields; the wrapper fetches the Ensembl gene, imports
-  transcript/exon/CDS structure, derives protein products from protein-coding
-  mRNAs, renders the 2D gel, and promotes the SVG to a PNG-first artifact.
+  isoform sets, including the 1D molecular-weight lane route, a multi-gene
+  1D protein-gel route with one Ensembl report/gene per column, and the 2D
+  pI vs molecular-weight spot-map route used by bundled offline demos. For
+  arbitrary Ensembl genes, use request mode `gene-protein-2d-gel` with
+  `gene_symbol` and optional `species` fields; the wrapper fetches the Ensembl
+  gene, imports transcript/exon/CDS structure, derives protein products from
+  protein-coding mRNAs, renders the 2D gel, and promotes the SVG to a PNG-first
+  artifact. For the guide-ready 1D panel, run
+  `examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json`.
   Free-text chat adapters can route this through descriptor intent
   `ensembl_gene_protein_2d_gel`, which extracts a gene symbol and fills the
   `gene-protein-2d-gel` request template.
@@ -564,9 +571,11 @@ Current shared GENtle routes behind this capability:
 
 - `DeriveProteinSequences`
 - `RenderProteinGelSvg`
+- `RenderProteinGelReportsSvg`
 - `RenderProtein2dGelSvg`
 - `DigestProteinSequence`
 - `examples/request_workflow_isoform_protein_gel_demo.json`
+- `examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json`
 - `examples/request_workflow_isoform_protein_2d_gel_demo.json`
 - `examples/request_workflow_trypsin_digest_gel_demo.json`
 - `examples/request_gene_protein_2d_gel_ensembl_demo.json`
@@ -1184,6 +1193,10 @@ Apply the following methodology:
       asset, derives curated `NM_` protein isoforms, renders one protein
       molecular-weight gel with a deterministic kDa ladder, and lets ClawBio
       rasterize the SVG into the PNG-first bundle contract
+  - `examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json`
+    - online Ensembl gene-panel protein-gel route for PATZ1, TP73, TP53, TP63,
+      SP1, and BACH2; it renders one molecular-weight gel column per gene with
+      side ladders
   - `examples/request_workflow_isoform_protein_2d_gel_demo.json`
     - matching offline TP73 protein 2D-gel demo: reuses the same curated
       isoform derivation, renders a protein spot map with pI on the X axis

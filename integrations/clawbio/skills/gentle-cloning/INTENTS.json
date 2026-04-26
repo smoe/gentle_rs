@@ -143,6 +143,26 @@
       ]
     },
     {
+      "intent_id": "ensembl_gene_panel_protein_gel",
+      "description": "Render the guide-ready PATZ1/TP73/TP53/TP63/SP1/BACH2 Ensembl isoform molecular-weight gel.",
+      "trigger_terms": [
+        "gene panel protein gel",
+        "multi gene protein gel",
+        "1d protein gel",
+        "molecular weight isoform panel",
+        "PATZ1 TP73 TP53 TP63 SP1 BACH2",
+        "PATZ1 TP73 TP53 TP63 SP1 BACH2 protein gel"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json"
+        }
+      ]
+    },
+    {
       "intent_id": "ensembl_gene_protein_2d_gel",
       "description": "Render a protein pI-vs-kDa 2D gel for a requested Ensembl gene symbol.",
       "trigger_terms": [

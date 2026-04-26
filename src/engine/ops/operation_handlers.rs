@@ -18,8 +18,9 @@ use crate::{
     genomes::{default_catalog_discovery_label, default_catalog_discovery_token},
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     protein_gel::{
-        Protein2dGelSpot, ProteinGelSample, build_protein_2d_gel_layout, build_protein_gel_layout,
-        export_protein_2d_gel_svg, export_protein_gel_svg,
+        Protein2dGelSpot, ProteinGelGroup, ProteinGelSample, build_grouped_protein_gel_layout,
+        build_protein_2d_gel_layout, build_protein_gel_layout, export_protein_2d_gel_svg,
+        export_protein_gel_svg,
     },
     uniprot::UniprotNucleotideXref,
 };
@@ -2890,6 +2891,73 @@ impl GentleEngine {
         }
         detail_parts.push(format!("{} aa", row.derivation.protein_length_aa));
         (name, detail_parts.join(" | "))
+    }
+
+    fn protein_gel_report_lane_label(report: &ProteinDerivationReport) -> String {
+        let mut base = report.seq_id.trim();
+        for suffix in ["_ensembl_locus", "_gene_seq", "_locus"] {
+            if let Some(stripped) = base.strip_suffix(suffix) {
+                base = stripped;
+                break;
+            }
+        }
+        let token = base
+            .split('_')
+            .find(|part| !part.trim().is_empty())
+            .unwrap_or(base)
+            .trim();
+        if token.is_empty() {
+            report.report_id.to_ascii_uppercase()
+        } else {
+            token.to_ascii_uppercase()
+        }
+    }
+
+    fn protein_gel_samples_from_report(
+        &self,
+        report: &ProteinDerivationReport,
+    ) -> Result<Vec<ProteinGelSample>, EngineError> {
+        let mut samples: Vec<ProteinGelSample> = vec![];
+        for row in &report.rows {
+            let protein = self
+                .state
+                .sequences
+                .get(&row.protein_seq_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Protein '{}' from report '{}' was not found in state",
+                        row.protein_seq_id, report.report_id
+                    ),
+                })?;
+            if !protein.is_protein_sequence() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Protein '{}' from report '{}' is not a protein sequence",
+                        row.protein_seq_id, report.report_id
+                    ),
+                });
+            }
+            let sequence = protein.get_forward_string();
+            let molecular_weight_kda = Self::estimate_protein_molecular_weight_kda(&sequence);
+            if molecular_weight_kda <= 0.0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not estimate molecular weight for protein '{}'",
+                        row.protein_seq_id
+                    ),
+                });
+            }
+            let (name, detail) = Self::protein_derivation_gel_label(row, protein);
+            samples.push(ProteinGelSample {
+                name,
+                detail: Some(detail),
+                molecular_weight_kda,
+            });
+        }
+        Ok(samples)
     }
 
     fn protease_digest_context(protein_sequence: &str, boundary_0based: usize) -> String {
@@ -7485,47 +7553,7 @@ impl GentleEngine {
                     } else {
                         notes.push("Selection: explicit feature_ids / scope".to_string());
                     }
-                    let mut samples: Vec<ProteinGelSample> = vec![];
-                    for row in &report.rows {
-                        let protein =
-                            self.state
-                                .sequences
-                                .get(&row.protein_seq_id)
-                                .ok_or_else(|| EngineError {
-                                    code: ErrorCode::NotFound,
-                                    message: format!(
-                                        "Protein '{}' from report '{}' was not found in state",
-                                        row.protein_seq_id, report.report_id
-                                    ),
-                                })?;
-                        if !protein.is_protein_sequence() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Protein '{}' from report '{}' is not a protein sequence",
-                                    row.protein_seq_id, report.report_id
-                                ),
-                            });
-                        }
-                        let sequence = protein.get_forward_string();
-                        let molecular_weight_kda =
-                            Self::estimate_protein_molecular_weight_kda(&sequence);
-                        if molecular_weight_kda <= 0.0 {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "Could not estimate molecular weight for protein '{}'",
-                                    row.protein_seq_id
-                                ),
-                            });
-                        }
-                        let (name, detail) = Self::protein_derivation_gel_label(row, protein);
-                        samples.push(ProteinGelSample {
-                            name,
-                            detail: Some(detail),
-                            molecular_weight_kda,
-                        });
-                    }
+                    let samples = self.protein_gel_samples_from_report(&report)?;
                     let requested_ladders: &[String] = ladders.as_deref().unwrap_or(&[]);
                     let layout = build_protein_gel_layout(&samples, requested_ladders, notes)
                         .map_err(|message| EngineError {
@@ -7546,6 +7574,76 @@ impl GentleEngine {
                         "Wrote protein gel SVG for report '{}' with {} protein lane(s) to '{}' (ladders: {})",
                         report.report_id,
                         layout.sample_count,
+                        path,
+                        ladders_used
+                    ));
+                }
+                Operation::RenderProteinGelReportsSvg {
+                    report_ids,
+                    path,
+                    ladders,
+                } => {
+                    if report_ids.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "RenderProteinGelReportsSvg requires at least one report_id"
+                                .to_string(),
+                        });
+                    }
+                    let mut groups: Vec<ProteinGelGroup> = vec![];
+                    let mut column_labels: Vec<String> = vec![];
+                    let mut notes = vec![format!("Reports: {}", report_ids.len())];
+                    for report_id in &report_ids {
+                        let report = self.get_protein_derivation_report(report_id)?;
+                        if report.rows.is_empty() {
+                            return Err(EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!(
+                                    "Protein derivation report '{}' did not contain any protein rows",
+                                    report.report_id
+                                ),
+                            });
+                        }
+                        let lane_label = Self::protein_gel_report_lane_label(&report);
+                        let samples = self.protein_gel_samples_from_report(&report)?;
+                        notes.push(format!(
+                            "{}: {} protein product(s) from {}",
+                            lane_label,
+                            samples.len(),
+                            report.seq_id
+                        ));
+                        column_labels.push(lane_label.clone());
+                        groups.push(ProteinGelGroup {
+                            name: lane_label,
+                            detail: Some(format!("{} isoform product(s)", samples.len())),
+                            samples,
+                        });
+                    }
+                    notes.insert(0, format!("Columns: {}", column_labels.join(", ")));
+                    let requested_ladders: &[String] = ladders.as_deref().unwrap_or(&[]);
+                    let layout = build_grouped_protein_gel_layout(
+                        &groups,
+                        requested_ladders,
+                        notes,
+                    )
+                    .map_err(|message| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message,
+                    })?;
+                    let svg = export_protein_gel_svg(&layout);
+                    std::fs::write(&path, svg).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not write SVG output '{path}': {e}"),
+                    })?;
+                    let ladders_used = if layout.selected_ladders.is_empty() {
+                        "auto".to_string()
+                    } else {
+                        layout.selected_ladders.join(" + ")
+                    };
+                    result.messages.push(format!(
+                        "Wrote grouped protein gel SVG for {} report column(s), {} protein band(s) to '{}' (ladders: {})",
+                        layout.sample_count,
+                        layout.protein_count,
                         path,
                         ladders_used
                     ));

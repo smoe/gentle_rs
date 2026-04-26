@@ -397,6 +397,11 @@ cargo run --locked --bin gentle_cli -- --version
   curated `NM_` isoform proteins, renders one protein molecular-weight gel
   with a deterministic kDa ladder, and lets the wrapper promote the SVG into
   the PNG-first bundle contract
+- `request_workflow_gene_panel_isoform_protein_gel_ensembl.json` is the
+  guide-ready online 1D gene-panel gel: it fetches PATZ1, TP73, TP53, TP63,
+  SP1, and BACH2 from Ensembl, derives protein-coding isoform products, and
+  renders one molecular-weight gel column per gene with protein ladders at the
+  sides
 - `request_workflow_tp73_isoform_protein_2d_gel.json` is the matching 2D
   offline TP73 demo: it reuses the same curated isoform derivation and
   renders one protein spot map with pI on the X axis and molecular weight on
@@ -659,6 +664,10 @@ Included follow-on analysis/planning/graphics requests:
     asset, derives curated `NM_` protein isoforms, renders one protein
     molecular-weight gel with a deterministic kDa ladder, and lets ClawBio
     rasterize the SVG into the PNG-first bundle contract
+- `examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json`
+  - online Ensembl gene-panel protein-gel route for PATZ1, TP73, TP53, TP63,
+    SP1, and BACH2; it renders one molecular-weight gel column per gene with
+    side ladders
 - `examples/request_workflow_tp73_isoform_protein_2d_gel.json`
   - offline TP73 isoform protein spot-map demo that reuses the same curated
     protein isoforms, renders one protein 2D gel with pI on the X axis and

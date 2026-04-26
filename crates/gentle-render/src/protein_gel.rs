@@ -28,6 +28,13 @@ pub struct ProteinGelSample {
 }
 
 #[derive(Clone, Debug)]
+pub struct ProteinGelGroup {
+    pub name: String,
+    pub detail: Option<String>,
+    pub samples: Vec<ProteinGelSample>,
+}
+
+#[derive(Clone, Debug)]
 pub struct ProteinGelBand {
     pub kda: f32,
     pub intensity: f32,
@@ -531,6 +538,186 @@ pub fn build_protein_gel_layout(
     })
 }
 
+pub fn build_grouped_protein_gel_layout(
+    groups: &[ProteinGelGroup],
+    requested_ladders: &[String],
+    notes: Vec<String>,
+) -> Result<ProteinGelLayout, String> {
+    if groups.is_empty() {
+        return Err("Grouped protein gel needs at least one sample lane".to_string());
+    }
+
+    let mut normalized_groups: Vec<ProteinGelGroup> = vec![];
+    let mut all_band_kdas: Vec<f32> = vec![];
+    let mut protein_count = 0usize;
+    for (group_idx, group) in groups.iter().enumerate() {
+        let group_name = group.name.trim().to_string();
+        if group_name.is_empty() {
+            return Err(format!("Protein group lane {} has an empty name", group_idx + 1));
+        }
+        if group.samples.is_empty() {
+            return Err(format!("Protein group lane '{group_name}' has no protein samples"));
+        }
+        let mut normalized_samples = vec![];
+        for (sample_idx, sample) in group.samples.iter().enumerate() {
+            let name = sample.name.trim().to_string();
+            if name.is_empty() {
+                return Err(format!(
+                    "Protein group lane '{group_name}' sample {} has an empty name",
+                    sample_idx + 1
+                ));
+            }
+            let kda = sample.molecular_weight_kda;
+            if !kda.is_finite() || kda <= 0.0 {
+                return Err(format!(
+                    "Protein group lane '{group_name}' sample '{name}' has an invalid molecular weight ({kda})"
+                ));
+            }
+            all_band_kdas.push(kda);
+            normalized_samples.push(ProteinGelSample {
+                name,
+                detail: sample.detail.clone(),
+                molecular_weight_kda: kda,
+            });
+        }
+        protein_count += normalized_samples.len();
+        normalized_groups.push(ProteinGelGroup {
+            name: group_name,
+            detail: group.detail.clone(),
+            samples: normalized_samples,
+        });
+    }
+
+    let pool_min = all_band_kdas
+        .iter()
+        .copied()
+        .reduce(f32::min)
+        .unwrap_or(1.0);
+    let pool_max = all_band_kdas
+        .iter()
+        .copied()
+        .reduce(f32::max)
+        .unwrap_or(pool_min);
+    let selected_ladders = resolve_ladder_names(requested_ladders, pool_min, pool_max);
+    if selected_ladders.is_empty() {
+        return Err("No protein ladders available for grouped protein-gel rendering".to_string());
+    }
+
+    let mut lanes: Vec<ProteinGelLane> = vec![];
+    let mut all_band_values: Vec<f32> = all_band_kdas.clone();
+    let display_ladders = ladder_lane_names_for_display(&selected_ladders);
+    let left_ladders = display_ladders
+        .iter()
+        .take(display_ladders.len().div_ceil(2))
+        .cloned()
+        .collect::<Vec<_>>();
+    let right_ladders = display_ladders
+        .iter()
+        .skip(display_ladders.len().div_ceil(2))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for ladder_name in &left_ladders {
+        let Some(ladder) = PROTEIN_LADDERS.get(ladder_name) else {
+            continue;
+        };
+        let bands = ladder
+            .bands
+            .iter()
+            .map(|band| {
+                all_band_values.push(band.kda);
+                protein_ladder_band(
+                    band.kda,
+                    (0.20 + 0.80 * band.relative_strength).clamp(0.20, 1.0),
+                )
+            })
+            .collect::<Vec<_>>();
+        lanes.push(ProteinGelLane {
+            name: ladder.name.to_string(),
+            detail: Some("protein ladder".to_string()),
+            is_ladder: true,
+            bands,
+        });
+    }
+    if lanes.is_empty() {
+        return Err("None of the selected protein ladders could be resolved".to_string());
+    }
+
+    for group in &normalized_groups {
+        let bands = group
+            .samples
+            .iter()
+            .map(|sample| ProteinGelBand {
+                kda: sample.molecular_weight_kda,
+                intensity: 0.88,
+                label: format!(
+                    "{} {}",
+                    truncate_plot_label(&sample.name, 18),
+                    format_kda_label(sample.molecular_weight_kda)
+                ),
+            })
+            .collect::<Vec<_>>();
+        lanes.push(ProteinGelLane {
+            name: group.name.clone(),
+            detail: group
+                .detail
+                .clone()
+                .or_else(|| Some(format!("{} isoform product(s)", group.samples.len()))),
+            is_ladder: false,
+            bands,
+        });
+    }
+
+    for ladder_name in &right_ladders {
+        let Some(ladder) = PROTEIN_LADDERS.get(ladder_name) else {
+            continue;
+        };
+        let bands = ladder
+            .bands
+            .iter()
+            .map(|band| {
+                all_band_values.push(band.kda);
+                protein_ladder_band(
+                    band.kda,
+                    (0.20 + 0.80 * band.relative_strength).clamp(0.20, 1.0),
+                )
+            })
+            .collect::<Vec<_>>();
+        lanes.push(ProteinGelLane {
+            name: ladder.name.to_string(),
+            detail: Some("protein ladder".to_string()),
+            is_ladder: true,
+            bands,
+        });
+    }
+
+    let min_band = all_band_values
+        .iter()
+        .copied()
+        .reduce(f32::min)
+        .unwrap_or(pool_min);
+    let max_band = all_band_values
+        .iter()
+        .copied()
+        .reduce(f32::max)
+        .unwrap_or(pool_max);
+    let range_min_kda = ((min_band as f64) * 0.72).floor().max(1.0) as f32;
+    let mut range_max_kda = ((max_band as f64) * 1.28).ceil().max(2.0) as f32;
+    if range_max_kda <= range_min_kda {
+        range_max_kda = range_min_kda + 1.0;
+    }
+
+    Ok(ProteinGelLayout {
+        lanes,
+        selected_ladders,
+        sample_count: normalized_groups.len(),
+        protein_count,
+        range_min_kda,
+        range_max_kda,
+        notes,
+    })
+}
+
 pub fn export_protein_gel_svg(layout: &ProteinGelLayout) -> String {
     let lane_count = layout.lanes.len().max(1);
     let lane_gap = (GEL_RIGHT - GEL_LEFT) / (lane_count as f32 + 1.0);
@@ -687,13 +874,21 @@ pub fn export_protein_gel_svg(layout: &ProteinGelLayout) -> String {
                     .set("opacity", (0.45 + 0.55 * band.intensity).clamp(0.35, 1.0)),
             );
             if !lane.is_ladder {
+                let visible_label = if lane.bands.len() > 1 {
+                    format_kda_label(band.kda)
+                } else {
+                    band.label.clone()
+                };
                 doc = doc.add(
-                    Text::new(band.label.clone())
+                    Text::new(visible_label)
                         .set("x", x + 40.0)
                         .set("y", y + 4.0)
                         .set("font-family", "monospace")
                         .set("font-size", 11)
-                        .set("fill", "#111827"),
+                        .set("fill", "#f8fafc")
+                        .set("stroke", "#101317")
+                        .set("stroke-width", 3)
+                        .set("paint-order", "stroke fill"),
                 );
             }
         }
@@ -797,10 +992,23 @@ pub fn export_protein_gel_svg(layout: &ProteinGelLayout) -> String {
             .as_deref()
             .filter(|text| !text.trim().is_empty())
             .unwrap_or("");
-        let line = if detail.is_empty() {
-            format!("{} | {}", lane.name, lane.bands[0].label)
+        let band_summary = if lane.bands.len() == 1 {
+            lane.bands[0].label.clone()
         } else {
-            format!("{} | {} | {}", lane.name, detail, lane.bands[0].label)
+            format!(
+                "{} bands: {}",
+                lane.bands.len(),
+                lane.bands
+                    .iter()
+                    .map(|band| band.label.clone())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )
+        };
+        let line = if detail.is_empty() {
+            format!("{} | {}", lane.name, band_summary)
+        } else {
+            format!("{} | {} | {}", lane.name, detail, band_summary)
         };
         doc = doc.add(
             Text::new(line)
@@ -1393,6 +1601,50 @@ mod tests {
         assert!(svg.contains("Lane details"));
         assert!(svg.contains("NM_005427.4"));
         assert!(svg.contains("kDa"));
+    }
+
+    #[test]
+    fn grouped_protein_gel_layout_renders_gene_columns_and_side_ladders() {
+        let layout = build_grouped_protein_gel_layout(
+            &[
+                ProteinGelGroup {
+                    name: "PATZ1".to_string(),
+                    detail: Some("2 isoforms".to_string()),
+                    samples: vec![
+                        ProteinGelSample {
+                            name: "PATZ1-201".to_string(),
+                            detail: None,
+                            molecular_weight_kda: 74.2,
+                        },
+                        ProteinGelSample {
+                            name: "PATZ1-202".to_string(),
+                            detail: None,
+                            molecular_weight_kda: 68.4,
+                        },
+                    ],
+                },
+                ProteinGelGroup {
+                    name: "TP53".to_string(),
+                    detail: Some("1 isoform".to_string()),
+                    samples: vec![ProteinGelSample {
+                        name: "TP53-201".to_string(),
+                        detail: None,
+                        molecular_weight_kda: 43.7,
+                    }],
+                },
+            ],
+            &["Protein Ladder 10-250 kDa".to_string()],
+            vec!["Columns: PATZ1, TP53".to_string()],
+        )
+        .expect("grouped protein gel layout");
+        let svg = export_protein_gel_svg(&layout);
+        assert_eq!(layout.sample_count, 2);
+        assert_eq!(layout.protein_count, 3);
+        assert!(svg.contains("PATZ1"));
+        assert!(svg.contains("TP53"));
+        assert!(svg.contains("PATZ1-201"));
+        assert!(svg.contains("Protein Ladder 10-250 kDa"));
+        assert!(svg.matches("protein ladder").count() >= 2);
     }
 
     #[test]

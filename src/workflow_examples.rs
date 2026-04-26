@@ -1389,6 +1389,11 @@ fn rewrite_example_paths_for_execution(
             ensure_parent_exists(path)?;
             continue;
         }
+        if let Operation::RenderProteinGelReportsSvg { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
         if let Operation::RenderProteaseDigestGelSvg { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;

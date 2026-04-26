@@ -1309,6 +1309,7 @@ impl GentleEngine {
             | Operation::RenderLineageSvg { path }
             | Operation::RenderPoolGelSvg { path, .. }
             | Operation::RenderProteinGelSvg { path, .. }
+            | Operation::RenderProteinGelReportsSvg { path, .. }
             | Operation::RenderProteaseDigestGelSvg { path, .. }
             | Operation::RenderProtein2dGelSvg { path, .. }
             | Operation::RenderProtocolCartoonSvg { path, .. }

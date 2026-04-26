@@ -1505,6 +1505,13 @@ order. Durable architecture constraints and decisions remain in
           `species`, plus a PATZ1 Ensembl request example; upstream chat
           planners still need slot extraction before arbitrary gene names can
           be synthesized directly from free text instead of fixed examples
+        - grouped multi-report protein gels are now engine-owned through
+          `RenderProteinGelReportsSvg`: ClawBio can run the online
+          `gene_panel_isoform_protein_gel_ensembl` workflow to fetch
+          PATZ1/TP73/TP53/TP63/SP1/BACH2 from Ensembl, derive protein-coding
+          isoform products, and render one molecular-weight gel column per gene
+          with side ladders instead of stitching single-gene figures in the
+          wrapper
         - shared TF query resolution is now in place for CLI/ClawBio-facing
           promoter work too:
           aliases such as `OCT4`, built-in groups such as `Yamanaka factors` /

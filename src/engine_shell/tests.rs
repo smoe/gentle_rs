@@ -13394,6 +13394,42 @@ fn execute_services_telegram_guide_tfbs_uses_gene_personalization() {
 }
 
 #[test]
+fn execute_services_telegram_guide_isoforms_offers_gene_panel_gel() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesGuide {
+            channel: Some("telegram".to_string()),
+            section: Some("isoforms".to_string()),
+            gene: None,
+        },
+    )
+    .expect("execute isoform services guide");
+    assert!(!out.state_changed);
+    assert_eq!(out.output["section"].as_str(), Some("isoforms"));
+    assert!(
+        out.output["suggested_actions"]
+            .as_array()
+            .map(|actions| actions.iter().any(|action| {
+                action["kind"].as_str() == Some("gene_panel_isoform_protein_gel")
+                    && action["shell_line"].as_str()
+                        == Some(
+                            "workflow @docs/examples/workflows/gene_panel_isoform_protein_gel_ensembl.json",
+                        )
+                    && action["requires_confirmation"].as_bool() == Some(true)
+                    && action["expected_artifacts"]
+                        .as_array()
+                        .map(|artifacts| artifacts.iter().any(|artifact| {
+                            artifact.as_str()
+                                == Some("exports/gene_panel_isoform_protein_gel.svg")
+                        }))
+                        .unwrap_or(false)
+            }))
+            .unwrap_or(false)
+    );
+}
+
+#[test]
 fn execute_resources_sync_jaspar_reloads_motif_registry_from_synced_output() {
     let _serial = lock_jaspar_tests();
     crate::tf_motifs::reload();
