@@ -3385,6 +3385,7 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "installed-runtime and resource-readiness checks" in description
     assert "reusable local reference assets" in description
     assert "protease-digest figures" in description
+    assert "skill-intent descriptor" in description
 
     tags = set(catalog_entry["tags"])
     assert "runtime-status" in tags
@@ -3409,15 +3410,107 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "tfbs score tracks" in trigger_keywords
     assert "jaspar motif" in trigger_keywords
     assert "gentle version" in trigger_keywords
+    assert "runtime version" in trigger_keywords
     assert "installed gentle" in trigger_keywords
+    assert "service status" in trigger_keywords
+    assert "services status" in trigger_keywords
+    assert "readiness" in trigger_keywords
+    assert "local resources" in trigger_keywords
     assert "database status" in trigger_keywords
     assert "installed databases" in trigger_keywords
     assert "resources status" in trigger_keywords
     assert "protein gel" in trigger_keywords
     assert "protein 2d gel" in trigger_keywords
+    assert "2d gel" in trigger_keywords
+    assert "molecular weight gel" in trigger_keywords
     assert "protease digest" in trigger_keywords
     assert "trypsin digest" in trigger_keywords
+    assert "trypsin digest gel" in trigger_keywords
     assert "tp73 isoform" in trigger_keywords
+    assert "tp73 protein gel" in trigger_keywords
+    assert "tp73 2d gel" in trigger_keywords
+    assert "pi vs kda" in trigger_keywords
+
+
+def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -> None:
+    skill_root = Path(__file__).resolve().parents[1]
+    intents = json.loads((skill_root / "INTENTS.json").read_text(encoding="utf-8"))
+
+    assert intents["schema"] == "clawbio.skill_intents.v1"
+    assert intents["skill"] == "gentle-cloning"
+    assert set(intents["aliases"]) >= {
+        "gentle",
+        "GENtle",
+        "gentle cloning",
+        "gentle-cloning",
+    }
+
+    routes = {route["intent_id"]: route for route in intents["routes"]}
+    assert set(routes) == {
+        "skill_info",
+        "capabilities",
+        "runtime_version",
+        "services_status",
+        "resources_status",
+        "tp73_isoform_protein_gel",
+        "tp73_isoform_protein_2d_gel",
+        "tp73_variant1_trypsin_digest_gel",
+        "explicit_demo",
+    }
+    expected_inputs = {
+        "skill_info": "examples/request_skill_info.json",
+        "capabilities": "examples/request_capabilities.json",
+        "runtime_version": "examples/request_runtime_version.json",
+        "services_status": "examples/request_services_status.json",
+        "resources_status": "examples/request_resources_status.json",
+        "tp73_isoform_protein_gel": (
+            "examples/request_workflow_tp73_isoform_protein_gel.json"
+        ),
+        "tp73_isoform_protein_2d_gel": (
+            "examples/request_workflow_tp73_isoform_protein_2d_gel.json"
+        ),
+        "tp73_variant1_trypsin_digest_gel": (
+            "examples/request_workflow_tp73_variant1_trypsin_digest_gel.json"
+        ),
+    }
+
+    for intent_id, expected_input in expected_inputs.items():
+        route = routes[intent_id]
+        assert route["demo_policy"] == "never_unless_explicit"
+        assert route["trigger_terms"], intent_id
+        assert route["description"], intent_id
+        assert route["plan"] == [
+            {
+                "kind": "skill_run",
+                "skill": "gentle-cloning",
+                "input": expected_input,
+            }
+        ]
+        assert (skill_root / expected_input).exists(), intent_id
+
+    demo_route = routes["explicit_demo"]
+    assert demo_route["demo_policy"] == "only_when_explicit"
+    assert demo_route["plan"] == [
+        {
+            "kind": "skill_run",
+            "skill": "gentle-cloning",
+            "demo": True,
+        }
+    ]
+    assert "demo" in demo_route["trigger_terms"]
+
+    assert "version" in routes["runtime_version"]["trigger_terms"]
+    assert "local resources" in routes["services_status"]["trigger_terms"]
+    assert "installed databases" in routes["resources_status"]["trigger_terms"]
+    assert "tp73 protein gel" in routes["tp73_isoform_protein_gel"][
+        "trigger_terms"
+    ]
+    assert "isoelectric point" in routes["tp73_isoform_protein_2d_gel"][
+        "trigger_terms"
+    ]
+    assert "trypsin digest gel" in routes["tp73_variant1_trypsin_digest_gel"][
+        "trigger_terms"
+    ]
 
 
 def test_experimental_followup_request_catalog_covers_core_intents_and_paths() -> None:

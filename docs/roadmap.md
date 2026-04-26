@@ -1414,6 +1414,12 @@ order. Durable architecture constraints and decisions remain in
           status`, `resources status`, `genomes status/list`, and
           `helpers status/list` rather than allowing chat layers to answer
           from memory
+        - GENtle now also ships a ClawBio `clawbio.skill_intents.v1`
+          descriptor as `integrations/clawbio/skills/gentle-cloning/INTENTS.json`,
+          making version, service-readiness, resource/database, TP73
+          protein-gel, TP73 2D-gel, and trypsin-digest route aliases explicit
+          for shared chat adapters before upstream ClawBio learns to execute
+          richer `suggested_actions[]` follow-ups
         - the lowest-hanging graphical demo on that same path is now explicit:
           one request can auto-prepare `Human GRCh38 Ensembl 116`, fetch
           `rs9923231`, and export a linear `VKORC1` genomic-context SVG for

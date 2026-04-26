@@ -48,16 +48,27 @@ metadata:
       - fetch genbank
       - design assay
       - gentle version
+      - runtime version
       - installed gentle
+      - service status
+      - services status
+      - readiness
+      - local resources
       - database status
       - installed databases
       - resources status
       - protein gel
       - protein 2d gel
+      - 2d gel
+      - molecular weight gel
       - protein isoform
       - protease digest
       - trypsin digest
+      - trypsin digest gel
       - tp73 isoform
+      - tp73 protein gel
+      - tp73 2d gel
+      - pi vs kda
       - isoelectric point
 ---
 
@@ -81,6 +92,14 @@ This skill is execution-first.
   answer.
 - If the request is too broad, start with the lightest executable status route
   that meaningfully answers it, then report what GENtle found.
+
+ClawBio shared chat adapters should consume `INTENTS.json` first. That
+`clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
+installed-database/resource, TP73 protein-gel, TP73 2D-gel, trypsin-digest,
+capability, skill-info, and explicit-demo wording to concrete
+`examples/*.json` requests. Descriptor-only skill directories are discoverable,
+but execution still requires `gentle-cloning` to be registered in ClawBio's
+top-level `SKILLS` table.
 
 Preferred behavior by request type:
 

@@ -49,9 +49,21 @@ splice variant", see
 surface as machine-readable intent records for planners that should not scrape
 free text.
 
+The immediate chat-adapter routing layer is `INTENTS.json`. It maps broad user
+wording for runtime version, service readiness, installed databases/resources,
+TP73 protein gel, TP73 2D gel, trypsin-digest gel, capabilities, skill info,
+and explicit demo requests to stable `examples/*.json` payloads. Descriptor-only
+skill directories are discoverable by the current ClawBio planner, but
+execution still requires registering `gentle-cloning` in ClawBio's top-level
+`SKILLS` table.
+
 ## Files
 
 - `SKILL.md`: skill metadata + routing/instructions
+- `INTENTS.json`: ClawBio `clawbio.skill_intents.v1` descriptor mapping
+  chat-runner-neutral intents to concrete request examples; it is consumed by
+  shared Roboterri/Discord planners once `gentle-cloning` is registered in
+  ClawBio's `SKILLS`
 - `gentle_cloning.py`: wrapper executable
 - `gentle_local_checkout_cli.sh`: local-checkout launcher for `cargo run --bin gentle_cli --`
 - `gentle_apptainer_cli.sh`: Apptainer/Singularity launcher for `gentle_cli`

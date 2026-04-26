@@ -8,6 +8,9 @@ Current scaffold:
 - `skills/gentle-cloning/SKILL.md`
 - `skills/gentle-cloning/gentle_cloning.py`
 - `skills/gentle-cloning/gentle_apptainer_cli.sh`
+- `skills/gentle-cloning/INTENTS.json` (ClawBio
+  `clawbio.skill_intents.v1` descriptor for chat-runner-neutral intent
+  planning)
 - `skills/gentle-cloning/examples/*.json`
 - `skills/gentle-cloning/tests/*`
 - `skills/gentle-cloning/catalog_entry.json` (ready-to-paste
@@ -106,6 +109,26 @@ Catalog registration:
    - `rsync`, tar, and copy setups place it under the ClawBio checkout
 2. Add the object under `skills[]` in `skills/catalog.json` (or regenerate
    catalog via ClawBio's `scripts/generate_catalog.py` flow).
+
+Shared skill-intent descriptor:
+
+- GENtle ships `skills/gentle-cloning/INTENTS.json` using ClawBio's
+  `clawbio.skill_intents.v1` descriptor shape. This is intentionally
+  chat-runner-neutral: Roboterri, a Discord bot, and future chat adapters can
+  consume the same route table.
+- The descriptor maps user intents such as runtime version, service readiness,
+  installed databases/resources, TP73 protein gel, TP73 2D protein gel, and
+  trypsin-digest gel requests to concrete
+  `skills/gentle-cloning/examples/*.json` request files.
+- This descriptor sits before richer `suggested_actions[]` support:
+  ClawBio can dispatch the correct first request even when it has not yet
+  learned to execute follow-up actions from a previous result.
+- `mode='demo'` should only be planned when the user explicitly asks for a
+  demo. Runtime version, readiness, resource/database, and canonical TP73 gel
+  requests should use the mapped request JSON files instead.
+- Keep Telegram/Discord-specific permissions, chat delivery, and subprocess
+  execution in ClawBio. GENtle only owns portable route names and request
+  paths.
 
 Recognition smoke tests:
 

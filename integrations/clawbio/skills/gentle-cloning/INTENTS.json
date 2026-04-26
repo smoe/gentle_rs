@@ -1,0 +1,187 @@
+{
+  "schema": "clawbio.skill_intents.v1",
+  "skill": "gentle-cloning",
+  "aliases": [
+    "gentle",
+    "GENtle",
+    "gentle cloning",
+    "gentle-cloning",
+    "cloning"
+  ],
+  "routes": [
+    {
+      "intent_id": "skill_info",
+      "description": "Report GENtle ClawBio skill metadata without requiring a GENtle runtime.",
+      "trigger_terms": [
+        "skill info",
+        "skill metadata",
+        "what can gentle do",
+        "gentle skill"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_skill_info.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "capabilities",
+      "description": "Ask the installed GENtle runtime for its deterministic capability surface.",
+      "trigger_terms": [
+        "capabilities",
+        "available operations",
+        "what operations",
+        "what commands"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_capabilities.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "runtime_version",
+      "description": "Check the installed GENtle runtime version through the ClawBio skill bundle.",
+      "trigger_terms": [
+        "version",
+        "runtime version",
+        "installed version",
+        "installed gentle",
+        "gentle runtime"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_runtime_version.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "services_status",
+      "description": "Check which GENtle services, references, helpers, and local resources are ready.",
+      "trigger_terms": [
+        "services status",
+        "service status",
+        "services",
+        "readiness",
+        "ready",
+        "local resources",
+        "resources are ready"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_status.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "resources_status",
+      "description": "Check GENtle external resource and installed database readiness.",
+      "trigger_terms": [
+        "resources status",
+        "resource status",
+        "resources",
+        "databases",
+        "installed databases",
+        "jaspar",
+        "rebase",
+        "attract"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_resources_status.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "tp73_isoform_protein_gel",
+      "description": "Run the canonical offline TP73 isoform protein molecular-weight gel workflow.",
+      "trigger_terms": [
+        "tp73 protein gel",
+        "tp73 isoform gel",
+        "tp73 isoform protein gel",
+        "protein gel",
+        "molecular weight gel"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_tp73_isoform_protein_gel.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "tp73_isoform_protein_2d_gel",
+      "description": "Run the canonical offline TP73 protein pI-vs-kDa 2D gel workflow.",
+      "trigger_terms": [
+        "tp73 2d gel",
+        "tp73 protein 2d gel",
+        "2d gel",
+        "protein 2d gel",
+        "isoelectric point",
+        "pi vs kda"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_tp73_isoform_protein_2d_gel.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "tp73_variant1_trypsin_digest_gel",
+      "description": "Run the canonical offline TP73 variant-1 trypsin digest gel workflow.",
+      "trigger_terms": [
+        "tp73 trypsin digest",
+        "trypsin digest gel",
+        "protease digest",
+        "tp73 peptide gel"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_tp73_variant1_trypsin_digest_gel.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "explicit_demo",
+      "description": "Run the explicit GENtle ClawBio demo when the user asks for a demo.",
+      "trigger_terms": [
+        "gentle demo",
+        "cloning demo",
+        "demo",
+        "demonstration",
+        "example"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "demo": true
+        }
+      ]
+    }
+  ]
+}
