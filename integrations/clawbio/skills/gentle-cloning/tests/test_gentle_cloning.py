@@ -243,6 +243,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "shell",
             "op",
             "workflow",
+            "gene-protein-2d-gel",
             "agent-plan",
             "agent-execute-plan",
             "raw",
@@ -2053,7 +2054,7 @@ def test_shipped_graphics_example_emits_png_first_artifacts(tmp_path: Path) -> N
     ).exists()
 
 
-def test_tp73_isoform_protein_gel_request_promotes_png_first_artifact(
+def test_isoform_protein_gel_demo_request_promotes_png_first_artifact(
     tmp_path: Path,
 ) -> None:
     fake_cli = tmp_path / "fake_cli.sh"
@@ -2080,7 +2081,12 @@ def test_tp73_isoform_protein_gel_request_promotes_png_first_artifact(
             sys.executable,
             str(_skill_script()),
             "--input",
-            str((_examples_dir() / "request_workflow_tp73_isoform_protein_gel.json").resolve()),
+            str(
+                (
+                    _examples_dir()
+                    / "request_workflow_isoform_protein_gel_demo.json"
+                ).resolve()
+            ),
             "--output",
             str(output_dir),
             "--gentle-cli",
@@ -2108,7 +2114,7 @@ def test_tp73_isoform_protein_gel_request_promotes_png_first_artifact(
     assert (output_dir / "generated" / "exports" / "tp73_isoform_protein_gel.png").exists()
 
 
-def test_tp73_isoform_protein_2d_gel_request_promotes_png_first_artifact(
+def test_isoform_protein_2d_gel_demo_request_promotes_png_first_artifact(
     tmp_path: Path,
 ) -> None:
     fake_cli = tmp_path / "fake_cli.sh"
@@ -2136,7 +2142,10 @@ def test_tp73_isoform_protein_2d_gel_request_promotes_png_first_artifact(
             str(_skill_script()),
             "--input",
             str(
-                (_examples_dir() / "request_workflow_tp73_isoform_protein_2d_gel.json").resolve()
+                (
+                    _examples_dir()
+                    / "request_workflow_isoform_protein_2d_gel_demo.json"
+                ).resolve()
             ),
             "--output",
             str(output_dir),
@@ -2164,6 +2173,77 @@ def test_tp73_isoform_protein_2d_gel_request_promotes_png_first_artifact(
     assert preferred[0]["derived_from"] == "exports/tp73_isoform_protein_2d_gel.svg"
     assert (
         output_dir / "generated" / "exports" / "tp73_isoform_protein_2d_gel.png"
+    ).exists()
+
+
+def test_gene_protein_2d_gel_request_builds_parameterized_ensembl_workflow(
+    tmp_path: Path,
+) -> None:
+    request_path = (
+        _examples_dir() / "request_gene_protein_2d_gel_ensembl_demo.json"
+    ).resolve()
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        _fake_cli_with_svg_png(
+            "python3 - \"$@\" <<'PY'\n"
+            "import json, sys\n"
+            "from pathlib import Path\n"
+            "args = sys.argv[1:]\n"
+            "assert args[:2] == ['--state', '.gentle_state.json'], args\n"
+            "assert args[2] == 'workflow', args\n"
+            "workflow = json.loads(args[3])\n"
+            "assert workflow['run_id'] == 'clawbio_patz1_ensembl_protein_2d_gel'\n"
+            "ops = workflow['ops']\n"
+            "assert ops[0]['FetchEnsemblGene']['query'] == 'PATZ1'\n"
+            "assert ops[0]['FetchEnsemblGene']['species'] == 'homo_sapiens'\n"
+            "assert ops[1]['ImportEnsemblGeneSequence']['output_id'] == 'patz1_ensembl_locus'\n"
+            "derive = ops[2]['DeriveProteinSequences']\n"
+            "assert derive['seq_id'] == 'patz1_ensembl_locus'\n"
+            "assert derive['feature_query']['kind_in'] == ['mRNA']\n"
+            "assert derive['feature_query']['qualifier_filters'][0]['key'] == 'biotype'\n"
+            "render = ops[3]['RenderProtein2dGelSvg']\n"
+            "assert render['path'] == 'exports/patz1_ensembl_protein_2d_gel.svg'\n"
+            "Path('exports').mkdir(exist_ok=True)\n"
+            "Path(render['path']).write_text('<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"32\"/>\\n', encoding='utf-8')\n"
+            "print(json.dumps({'schema':'gentle.workflow_run.v1','run_id':workflow['run_id']}))\n"
+            "PY\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["request"]["mode"] == "gene-protein-2d-gel"
+    assert result["request"]["gene_symbol"] == "PATZ1"
+    assert result["request"]["species"] == "homo_sapiens"
+    assert result["artifacts"]["collected"][0]["declared_path"] == (
+        "exports/patz1_ensembl_protein_2d_gel.svg"
+    )
+    assert result["preferred_artifacts"][0]["path"] == (
+        "generated/exports/patz1_ensembl_protein_2d_gel.png"
+    )
+    assert result["preferred_artifacts"][0]["is_best_first_artifact"] is True
+    assert (
+        output_dir / "generated" / "exports" / "patz1_ensembl_protein_2d_gel.png"
     ).exists()
 
 
@@ -2707,17 +2787,22 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             300,
         ),
-        "request_workflow_tp73_isoform_protein_gel.json": (
+        "request_workflow_isoform_protein_gel_demo.json": (
             "workflow",
             None,
             300,
         ),
-        "request_workflow_tp73_isoform_protein_2d_gel.json": (
+        "request_workflow_isoform_protein_2d_gel_demo.json": (
             "workflow",
             None,
             300,
         ),
-        "request_workflow_tp73_variant1_trypsin_digest_gel.json": (
+        "request_gene_protein_2d_gel_ensembl_demo.json": (
+            "gene-protein-2d-gel",
+            None,
+            600,
+        ),
+        "request_workflow_trypsin_digest_gel_demo.json": (
             "workflow",
             None,
             300,
@@ -2987,7 +3072,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["expected_artifacts"] == [
                 "artifacts/tp73_upstream_tfbs_score_tracks.svg"
             ]
-        if name == "request_workflow_tp73_isoform_protein_gel.json":
+        if name == "request_workflow_isoform_protein_gel_demo.json":
             assert payload["state_path"] == ".gentle_state.json"
             assert (
                 payload["workflow_path"]
@@ -2997,7 +3082,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 "exports/tp73_isoform_protein_gel.svg"
             ]
             assert payload["timeout_secs"] == 300
-        if name == "request_workflow_tp73_isoform_protein_2d_gel.json":
+        if name == "request_workflow_isoform_protein_2d_gel_demo.json":
             assert payload["state_path"] == ".gentle_state.json"
             assert (
                 payload["workflow_path"]
@@ -3007,7 +3092,17 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 "exports/tp73_isoform_protein_2d_gel.svg"
             ]
             assert payload["timeout_secs"] == 300
-        if name == "request_workflow_tp73_variant1_trypsin_digest_gel.json":
+        if name == "request_gene_protein_2d_gel_ensembl_demo.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert payload["mode"] == "gene-protein-2d-gel"
+            assert payload["source"] == "ensembl"
+            assert payload["species"] == "homo_sapiens"
+            assert payload["gene_symbol"] == "PATZ1"
+            assert payload["expected_artifacts"] == [
+                "exports/patz1_ensembl_protein_2d_gel.svg"
+            ]
+            assert payload["timeout_secs"] == 600
+        if name == "request_workflow_trypsin_digest_gel_demo.json":
             assert payload["state_path"] == ".gentle_state.json"
             assert (
                 payload["workflow_path"]
@@ -3423,12 +3518,13 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "protein 2d gel" in trigger_keywords
     assert "2d gel" in trigger_keywords
     assert "molecular weight gel" in trigger_keywords
+    assert "gene protein 2d gel" in trigger_keywords
+    assert "ensembl protein 2d gel" in trigger_keywords
+    assert "isoform protein gel" in trigger_keywords
+    assert "isoform protein 2d gel" in trigger_keywords
     assert "protease digest" in trigger_keywords
     assert "trypsin digest" in trigger_keywords
     assert "trypsin digest gel" in trigger_keywords
-    assert "tp73 isoform" in trigger_keywords
-    assert "tp73 protein gel" in trigger_keywords
-    assert "tp73 2d gel" in trigger_keywords
     assert "pi vs kda" in trigger_keywords
 
 
@@ -3452,9 +3548,10 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "runtime_version",
         "services_status",
         "resources_status",
-        "tp73_isoform_protein_gel",
-        "tp73_isoform_protein_2d_gel",
-        "tp73_variant1_trypsin_digest_gel",
+        "demo_isoform_protein_gel",
+        "demo_isoform_protein_2d_gel",
+        "demo_ensembl_gene_protein_2d_gel",
+        "demo_trypsin_digest_gel",
         "explicit_demo",
     }
     expected_inputs = {
@@ -3463,20 +3560,24 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "runtime_version": "examples/request_runtime_version.json",
         "services_status": "examples/request_services_status.json",
         "resources_status": "examples/request_resources_status.json",
-        "tp73_isoform_protein_gel": (
-            "examples/request_workflow_tp73_isoform_protein_gel.json"
+        "demo_isoform_protein_gel": "examples/request_workflow_isoform_protein_gel_demo.json",
+        "demo_isoform_protein_2d_gel": (
+            "examples/request_workflow_isoform_protein_2d_gel_demo.json"
         ),
-        "tp73_isoform_protein_2d_gel": (
-            "examples/request_workflow_tp73_isoform_protein_2d_gel.json"
+        "demo_ensembl_gene_protein_2d_gel": (
+            "examples/request_gene_protein_2d_gel_ensembl_demo.json"
         ),
-        "tp73_variant1_trypsin_digest_gel": (
-            "examples/request_workflow_tp73_variant1_trypsin_digest_gel.json"
-        ),
+        "demo_trypsin_digest_gel": "examples/request_workflow_trypsin_digest_gel_demo.json",
     }
 
     for intent_id, expected_input in expected_inputs.items():
         route = routes[intent_id]
-        assert route["demo_policy"] == "never_unless_explicit"
+        expected_demo_policy = (
+            "only_when_explicit"
+            if intent_id.startswith("demo_")
+            else "never_unless_explicit"
+        )
+        assert route["demo_policy"] == expected_demo_policy
         assert route["trigger_terms"], intent_id
         assert route["description"], intent_id
         assert route["plan"] == [
@@ -3502,13 +3603,16 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "version" in routes["runtime_version"]["trigger_terms"]
     assert "local resources" in routes["services_status"]["trigger_terms"]
     assert "installed databases" in routes["resources_status"]["trigger_terms"]
-    assert "tp73 protein gel" in routes["tp73_isoform_protein_gel"][
+    assert "protein gel demo" in routes["demo_isoform_protein_gel"][
         "trigger_terms"
     ]
-    assert "isoelectric point" in routes["tp73_isoform_protein_2d_gel"][
+    assert "isoelectric point demo" in routes["demo_isoform_protein_2d_gel"][
         "trigger_terms"
     ]
-    assert "trypsin digest gel" in routes["tp73_variant1_trypsin_digest_gel"][
+    assert "gene protein 2d gel demo" in routes["demo_ensembl_gene_protein_2d_gel"][
+        "trigger_terms"
+    ]
+    assert "trypsin digest gel demo" in routes["demo_trypsin_digest_gel"][
         "trigger_terms"
     ]
 

@@ -37,6 +37,7 @@ SUPPORTED_REQUEST_MODES = (
     "shell",
     "op",
     "workflow",
+    "gene-protein-2d-gel",
     "agent-plan",
     "agent-execute-plan",
     "raw",
@@ -83,6 +84,10 @@ class Request:
     confirm: bool | None = None
     expected_artifacts: list[str] | None = None
     ensure_reference_prepared: Any = None
+    gene_symbol: str | None = None
+    species: str | None = None
+    source: str | None = None
+    ladders: list[str] | None = None
 
 
 @dataclasses.dataclass
@@ -315,6 +320,59 @@ def _resolve_cli(explicit: str | None, script_path: Path) -> CliResolution:
     )
 
 
+def _safe_id_component(value: str, fallback: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9]+", "_", value.strip().lower()).strip("_")
+    return safe or fallback
+
+
+def _gene_protein_2d_gel_svg_path(request: Request) -> str:
+    if request.expected_artifacts:
+        return request.expected_artifacts[0]
+    gene_id = _safe_id_component(request.gene_symbol or "", "gene")
+    return f"exports/{gene_id}_ensembl_protein_2d_gel.svg"
+
+
+def _normalise_gene_protein_2d_gel_request(request: Request) -> None:
+    if not isinstance(request.gene_symbol, str) or not request.gene_symbol.strip():
+        raise SkillError(
+            "mode=gene-protein-2d-gel requires non-empty string field 'gene_symbol'"
+        )
+    request.gene_symbol = request.gene_symbol.strip()
+
+    if request.species is None:
+        request.species = "homo_sapiens"
+    if not isinstance(request.species, str) or not request.species.strip():
+        raise SkillError("species must be a non-empty string when present")
+    request.species = request.species.strip()
+
+    if request.source is None:
+        request.source = "ensembl"
+    if not isinstance(request.source, str) or not request.source.strip():
+        raise SkillError("source must be a non-empty string when present")
+    request.source = request.source.strip().lower()
+    if request.source != "ensembl":
+        raise SkillError("mode=gene-protein-2d-gel currently supports source='ensembl'")
+
+    if request.ladders is None:
+        request.ladders = ["Protein Ladder 10-100 kDa"]
+    if not isinstance(request.ladders, list) or not request.ladders:
+        raise SkillError("ladders must be a non-empty string array when present")
+    if not all(isinstance(v, str) and v.strip() for v in request.ladders):
+        raise SkillError("ladders must contain non-empty strings")
+    request.ladders = [v.strip() for v in request.ladders]
+
+    if request.expected_artifacts is None:
+        request.expected_artifacts = [_gene_protein_2d_gel_svg_path(request)]
+    if len(request.expected_artifacts) != 1:
+        raise SkillError(
+            "mode=gene-protein-2d-gel expects exactly one SVG expected_artifacts path"
+        )
+    if not request.expected_artifacts[0].lower().endswith(".svg"):
+        raise SkillError(
+            "mode=gene-protein-2d-gel expected_artifacts path must end with .svg"
+        )
+
+
 def _coerce_request(payload: dict[str, Any]) -> Request:
     schema = payload.get("schema")
     if schema != REQUEST_SCHEMA:
@@ -354,6 +412,10 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         confirm=payload.get("confirm"),
         expected_artifacts=payload.get("expected_artifacts"),
         ensure_reference_prepared=payload.get("ensure_reference_prepared"),
+        gene_symbol=payload.get("gene_symbol"),
+        species=payload.get("species"),
+        source=payload.get("source"),
+        ladders=payload.get("ladders"),
     )
     if request.expected_artifacts is not None:
         if not isinstance(request.expected_artifacts, list):
@@ -374,6 +436,8 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
     elif request.mode == "workflow":
         if request.workflow is None and not request.workflow_path:
             raise SkillError("mode=workflow requires 'workflow' or 'workflow_path'")
+    elif request.mode == "gene-protein-2d-gel":
+        _normalise_gene_protein_2d_gel_request(request)
     elif request.mode == "agent-plan":
         if not isinstance(request.system_id, str) or not request.system_id.strip():
             raise SkillError("mode=agent-plan requires non-empty string field 'system_id'")
@@ -465,6 +529,67 @@ def _json_arg(value: Any) -> str:
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+
+
+def _gene_protein_2d_gel_workflow(request: Request) -> dict[str, Any]:
+    gene_symbol = request.gene_symbol or "gene"
+    species = request.species or "homo_sapiens"
+    gene_id = _safe_id_component(gene_symbol, "gene")
+    entry_id = f"{gene_id}_ensembl_gene"
+    locus_id = f"{gene_id}_ensembl_locus"
+    report_id = Path(_gene_protein_2d_gel_svg_path(request)).stem
+    return {
+        "run_id": f"clawbio_{report_id}",
+        "ops": [
+            {
+                "FetchEnsemblGene": {
+                    "query": gene_symbol,
+                    "species": species,
+                    "entry_id": entry_id,
+                }
+            },
+            {
+                "ImportEnsemblGeneSequence": {
+                    "entry_id": entry_id,
+                    "output_id": locus_id,
+                }
+            },
+            {
+                "DeriveProteinSequences": {
+                    "seq_id": locus_id,
+                    "feature_query": {
+                        "seq_id": locus_id,
+                        "include_source": False,
+                        "include_qualifiers": False,
+                        "kind_in": ["mRNA"],
+                        "kind_not_in": [],
+                        "range_relation": "overlap",
+                        "strand": "any",
+                        "qualifier_filters": [
+                            {
+                                "key": "biotype",
+                                "value_contains": "protein_coding",
+                                "value_regex": "^protein_coding$",
+                                "case_sensitive": True,
+                            }
+                        ],
+                        "sort_by": "feature_id",
+                        "descending": False,
+                        "offset": 0,
+                    },
+                    "output_prefix": f"{gene_id}_ensembl_protein",
+                    "report_id": report_id,
+                }
+            },
+            {
+                "RenderProtein2dGelSvg": {
+                    "report_id": report_id,
+                    "path": _gene_protein_2d_gel_svg_path(request),
+                    "ladders": request.ladders or ["Protein Ladder 10-100 kDa"],
+                }
+            },
+        ],
+    }
 
 
 def _preview_text(text: str, *, max_lines: int = 6, max_chars: int = 600) -> str | None:
@@ -1162,6 +1287,8 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
             args.extend(["workflow", f"@{resolved_workflow_path}"])
         else:
             args.extend(["workflow", _json_arg(request.workflow)])
+    elif request.mode == "gene-protein-2d-gel":
+        args.extend(["workflow", _json_arg(_gene_protein_2d_gel_workflow(request))])
     elif request.mode == "agent-plan":
         tokens = ["agents", "plan", request.system_id.strip(), "--prompt", request.prompt.strip()]
         if request.catalog_path:

@@ -1684,6 +1684,75 @@ impl GentleEngine {
         matches
     }
 
+    fn transcript_variant_token_from_text(text: &str) -> Option<String> {
+        let marker = "transcript variant";
+        let lower = text.to_ascii_lowercase();
+        let marker_start = lower.find(marker)?;
+        let after_marker = &text[marker_start + marker.len()..];
+        let token = after_marker
+            .trim_start_matches(|c: char| c.is_whitespace() || c == ':' || c == '=')
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+            .collect::<String>();
+        (!token.is_empty()).then_some(token)
+    }
+
+    fn transcript_variant_token_for_derivation_feature(
+        feature: &gb_io::seq::Feature,
+    ) -> Option<String> {
+        for key in ["product", "note"] {
+            if let Some(value) = Self::qualifier_text_for_derivation(feature, key) {
+                if let Some(token) = Self::transcript_variant_token_from_text(&value) {
+                    return Some(token);
+                }
+            }
+        }
+        None
+    }
+
+    fn collect_cds_features_by_transcript_variant_annotation<'a>(
+        source_features: &'a [gb_io::seq::Feature],
+        source_feature: &gb_io::seq::Feature,
+    ) -> Vec<&'a gb_io::seq::Feature> {
+        let Some(transcript_variant) =
+            Self::transcript_variant_token_for_derivation_feature(source_feature)
+        else {
+            return vec![];
+        };
+        let transcript_gene = Self::first_nonempty_qualifier_for_derivation(
+            source_feature,
+            &["gene_id", "gene", "locus_tag"],
+        );
+        let transcript_reverse = feature_is_reverse(source_feature);
+        let mut matches = source_features
+            .iter()
+            .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+            .filter(|feature| feature_is_reverse(feature) == transcript_reverse)
+            .filter(|feature| {
+                if let Some(transcript_gene) = transcript_gene.as_deref() {
+                    if let Some(cds_gene) = Self::first_nonempty_qualifier_for_derivation(
+                        feature,
+                        &["gene_id", "gene", "locus_tag"],
+                    ) {
+                        if !cds_gene.eq_ignore_ascii_case(transcript_gene) {
+                            return false;
+                        }
+                    }
+                }
+                Self::transcript_variant_token_for_derivation_feature(feature)
+                    .is_some_and(|token| token.eq_ignore_ascii_case(&transcript_variant))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(|left, right| {
+            let mut left_ranges = Self::feature_ranges_0based_for_derivation(left);
+            let mut right_ranges = Self::feature_ranges_0based_for_derivation(right);
+            left_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            right_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            left_ranges.cmp(&right_ranges)
+        });
+        matches
+    }
+
     pub(crate) fn map_source_ranges_to_transcript_local_ranges_0based(
         source_ranges_0based: &[(usize, usize)],
         exon_segments_forward: &[(usize, usize, usize, usize)],
@@ -2793,6 +2862,34 @@ impl GentleEngine {
             .features()
             .iter()
             .find_map(|feature| Self::qualifier_text_for_derivation(feature, key))
+    }
+
+    fn protein_derivation_gel_label(
+        row: &ProteinDerivationReportRow,
+        protein: &DNAsequence,
+    ) -> (String, String) {
+        let transcript_id = row.derivation.transcript_id.trim();
+        let protein_id = Self::protein_feature_qualifier(protein, "protein_id")
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let product = Self::protein_feature_qualifier(protein, "product")
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let protein_name = row.protein_name.trim();
+        let name = product
+            .or_else(|| (!protein_name.is_empty()).then(|| protein_name.to_string()))
+            .unwrap_or_else(|| transcript_id.to_string());
+        let mut detail_parts = vec![];
+        if !transcript_id.is_empty() && !name.contains(transcript_id) {
+            detail_parts.push(transcript_id.to_string());
+        }
+        if let Some(protein_id) = protein_id {
+            if !name.contains(&protein_id) {
+                detail_parts.push(protein_id);
+            }
+        }
+        detail_parts.push(format!("{} aa", row.derivation.protein_length_aa));
+        (name, detail_parts.join(" | "))
     }
 
     fn protease_digest_context(protein_sequence: &str, boundary_0based: usize) -> String {
@@ -7421,9 +7518,10 @@ impl GentleEngine {
                                 ),
                             });
                         }
+                        let (name, detail) = Self::protein_derivation_gel_label(row, protein);
                         samples.push(ProteinGelSample {
-                            name: row.derivation.transcript_id.clone(),
-                            detail: Some(format!("{} aa", row.derivation.protein_length_aa)),
+                            name,
+                            detail: Some(detail),
                             molecular_weight_kda,
                         });
                     }
@@ -7621,9 +7719,10 @@ impl GentleEngine {
                                     row.protein_seq_id
                                 ),
                             })?;
+                        let (name, detail) = Self::protein_derivation_gel_label(row, protein);
                         spots.push(Protein2dGelSpot {
-                            name: row.derivation.transcript_id.clone(),
-                            detail: Some(format!("{} aa", row.derivation.protein_length_aa)),
+                            name,
+                            detail: Some(detail),
                             molecular_weight_kda,
                             isoelectric_point,
                         });
@@ -12233,7 +12332,15 @@ impl GentleEngine {
                                 &Self::feature_ranges_0based_for_derivation(source_feature),
                             )
                             .into_iter()
-                            .next();
+                            .next()
+                            .or_else(|| {
+                                Self::collect_cds_features_by_transcript_variant_annotation(
+                                    &source_features,
+                                    source_feature,
+                                )
+                                .into_iter()
+                                .next()
+                            });
                         let derivation = match annotated_derivation {
                             Some(derivation) => Some(derivation),
                             None => Self::infer_transcript_protein_derivation_without_annotation(

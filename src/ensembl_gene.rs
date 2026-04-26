@@ -20,6 +20,34 @@ pub struct EnsemblGeneTranscriptSummary {
     pub start_1based: Option<usize>,
     pub end_1based: Option<usize>,
     pub strand: Option<i8>,
+    pub is_canonical: Option<bool>,
+    pub gencode_primary: Option<bool>,
+    pub translation: Option<EnsemblGeneTranslationSummary>,
+    #[serde(default)]
+    pub exons: Vec<EnsemblGeneExonSummary>,
+}
+
+/// Exon geometry for one transcript in an expanded Ensembl gene lookup.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct EnsemblGeneExonSummary {
+    pub exon_id: String,
+    pub exon_version: Option<usize>,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: Option<i8>,
+    pub seq_region_name: Option<String>,
+}
+
+/// Translation geometry for one protein-coding transcript.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct EnsemblGeneTranslationSummary {
+    pub translation_id: String,
+    pub translation_version: Option<usize>,
+    pub length_aa: Option<usize>,
+    pub genomic_start_1based: Option<usize>,
+    pub genomic_end_1based: Option<usize>,
 }
 
 /// Canonical parsed Ensembl gene entry persisted in project metadata.
@@ -181,6 +209,81 @@ pub fn parse_gene_lookup_json(text: &str) -> Result<EnsemblGeneLookupRecord, Str
                     if transcript_id.is_empty() {
                         return None;
                     }
+                    let translation = row.get("Translation").and_then(|translation| {
+                        let translation_id = translation
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .trim()
+                            .to_string();
+                        if translation_id.is_empty() {
+                            return None;
+                        }
+                        Some(EnsemblGeneTranslationSummary {
+                            translation_id,
+                            translation_version: translation
+                                .get("version")
+                                .and_then(|v| v.as_u64())
+                                .and_then(|v| usize::try_from(v).ok()),
+                            length_aa: translation
+                                .get("length")
+                                .and_then(|v| v.as_u64())
+                                .and_then(|v| usize::try_from(v).ok()),
+                            genomic_start_1based: translation
+                                .get("start")
+                                .and_then(|v| v.as_u64())
+                                .and_then(|v| usize::try_from(v).ok()),
+                            genomic_end_1based: translation
+                                .get("end")
+                                .and_then(|v| v.as_u64())
+                                .and_then(|v| usize::try_from(v).ok()),
+                        })
+                    });
+                    let exons = row
+                        .get("Exon")
+                        .and_then(|v| v.as_array())
+                        .map(|exon_rows| {
+                            exon_rows
+                                .iter()
+                                .filter_map(|exon| {
+                                    let exon_id = exon
+                                        .get("id")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default()
+                                        .trim()
+                                        .to_string();
+                                    let start_1based = exon
+                                        .get("start")
+                                        .and_then(|v| v.as_u64())
+                                        .and_then(|v| usize::try_from(v).ok())?;
+                                    let end_1based = exon
+                                        .get("end")
+                                        .and_then(|v| v.as_u64())
+                                        .and_then(|v| usize::try_from(v).ok())?;
+                                    if exon_id.is_empty() || end_1based < start_1based {
+                                        return None;
+                                    }
+                                    Some(EnsemblGeneExonSummary {
+                                        exon_id,
+                                        exon_version: exon
+                                            .get("version")
+                                            .and_then(|v| v.as_u64())
+                                            .and_then(|v| usize::try_from(v).ok()),
+                                        start_1based,
+                                        end_1based,
+                                        strand: exon
+                                            .get("strand")
+                                            .and_then(|v| v.as_i64())
+                                            .and_then(|v| i8::try_from(v).ok()),
+                                        seq_region_name: exon
+                                            .get("seq_region_name")
+                                            .and_then(|v| v.as_str())
+                                            .map(|v| v.to_string()),
+                                    })
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
                     Some(EnsemblGeneTranscriptSummary {
                         transcript_id,
                         transcript_version: row
@@ -207,6 +310,16 @@ pub fn parse_gene_lookup_json(text: &str) -> Result<EnsemblGeneLookupRecord, Str
                             .get("strand")
                             .and_then(|v| v.as_i64())
                             .and_then(|v| i8::try_from(v).ok()),
+                        is_canonical: row
+                            .get("is_canonical")
+                            .and_then(|v| v.as_u64())
+                            .map(|v| v != 0),
+                        gencode_primary: row
+                            .get("gencode_primary")
+                            .and_then(|v| v.as_u64())
+                            .map(|v| v != 0),
+                        translation,
+                        exons,
                     })
                 })
                 .collect::<Vec<_>>()

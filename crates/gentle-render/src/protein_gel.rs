@@ -758,7 +758,7 @@ pub fn export_protein_gel_svg(layout: &ProteinGelLayout) -> String {
                 .set("fill", "#0f172a"),
         )
         .add(
-            Text::new("TP73 isoform proteins are derived from the bundled GenBank asset")
+            Text::new("Protein products are derived from the selected transcript features")
                 .set("x", DETAIL_PANEL_LEFT + 4.0)
                 .set("y", header_y + 16.0)
                 .set("font-family", "monospace")
@@ -1217,7 +1217,7 @@ pub fn export_protein_2d_gel_svg(layout: &Protein2dGelLayout) -> String {
                 .set("fill", "#0f172a"),
         )
         .add(
-            Text::new("Protein spots are derived from the bundled GenBank TP73 locus")
+            Text::new("Protein spots are derived from the selected transcript features")
                 .set("x", DETAIL_PANEL_LEFT + 4.0)
                 .set("y", header_y + 16.0)
                 .set("font-family", "monospace")

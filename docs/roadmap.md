@@ -1416,8 +1416,9 @@ order. Durable architecture constraints and decisions remain in
           from memory
         - GENtle now also ships a ClawBio `clawbio.skill_intents.v1`
           descriptor as `integrations/clawbio/skills/gentle-cloning/INTENTS.json`,
-          making version, service-readiness, resource/database, TP73
-          protein-gel, TP73 2D-gel, and trypsin-digest route aliases explicit
+          making version, service-readiness, resource/database,
+          protein-gel demo, 2D-gel demo, and trypsin-digest demo route aliases
+          explicit
           for shared chat adapters before upstream ClawBio learns to execute
           richer `suggested_actions[]` follow-ups
         - the lowest-hanging graphical demo on that same path is now explicit:
@@ -1470,6 +1471,15 @@ order. Durable architecture constraints and decisions remain in
           through the shared `ensembl-gene fetch|list|show|import-sequence`
           route, so ClawBio can do lightweight live gene retrieval without
           whole-reference preparation
+        - Ensembl gene import now preserves expanded transcript/exon/CDS
+          structure, including negative-strand gene-oriented coordinate
+          handling, so `DeriveProteinSequences` can feed arbitrary-gene
+          protein gel and 2D-gel renderers from a live Ensembl gene lookup
+        - the ClawBio wrapper now exposes that route as
+          `mode = gene-protein-2d-gel` with `gene_symbol` and optional
+          `species`, plus a PATZ1 Ensembl request example; upstream chat
+          planners still need slot extraction before arbitrary gene names can
+          be synthesized directly from free text instead of fixed examples
         - shared TF query resolution is now in place for CLI/ClawBio-facing
           promoter work too:
           aliases such as `OCT4`, built-in groups such as `Yamanaka factors` /
@@ -3007,7 +3017,7 @@ Notes:
      and linked as chapter `13` in `docs/tutorial/manifest.json`
    - tutorial quality gate now includes deterministic image-link existence
      coverage for TP73 cDNA-vs-genomic tutorial markdown
-     (`tutorial_tp73_cdna_genomic_markdown_image_links_exist` in
+     (`tutorial_cdna_genomic_demo_markdown_image_links_exist` in
      `src/workflow_examples.rs`)
    - publication/release visual-polish mode is still pending:
      - add a dedicated `Publication mode` preset for GUI + SVG export paths

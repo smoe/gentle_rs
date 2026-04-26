@@ -25,7 +25,10 @@ use crate::engine::{
     TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric,
 };
-use crate::ensembl_gene::{EnsemblGeneEntry, EnsemblGeneTranscriptSummary};
+use crate::ensembl_gene::{
+    EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
+    EnsemblGeneTranslationSummary,
+};
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
@@ -16583,6 +16586,23 @@ fn synthetic_ensembl_gene_entry() -> EnsemblGeneEntry {
             start_1based: Some(7668402),
             end_1based: Some(7668513),
             strand: Some(-1),
+            is_canonical: Some(true),
+            gencode_primary: Some(true),
+            translation: Some(EnsemblGeneTranslationSummary {
+                translation_id: "ENSP00000269305".to_string(),
+                translation_version: Some(4),
+                length_aa: Some(20),
+                genomic_start_1based: Some(7668412),
+                genomic_end_1based: Some(7668450),
+            }),
+            exons: vec![EnsemblGeneExonSummary {
+                exon_id: "ENSE00000000001".to_string(),
+                exon_version: Some(1),
+                start_1based: 7668402,
+                end_1based: 7668513,
+                strand: Some(-1),
+                seq_region_name: Some("17".to_string()),
+            }],
         }],
         aliases: vec![],
         source: "ensembl_rest".to_string(),

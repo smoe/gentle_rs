@@ -12,7 +12,10 @@ use super::*;
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
 };
-use crate::ensembl_gene::{EnsemblGeneEntry, EnsemblGeneTranscriptSummary};
+use crate::ensembl_gene::{
+    EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
+    EnsemblGeneTranslationSummary,
+};
 use crate::ensembl_protein::{
     EnsemblProteinEntry, EnsemblProteinFeature, EnsemblTranscriptExon, EnsemblTranscriptTranslation,
 };
@@ -223,6 +226,23 @@ fn synthetic_ensembl_gene_entry(
             start_1based: Some(7668402),
             end_1based: Some(7668513),
             strand: Some(-1),
+            is_canonical: Some(true),
+            gencode_primary: Some(true),
+            translation: Some(EnsemblGeneTranslationSummary {
+                translation_id: "ENSPTOYGENE1".to_string(),
+                translation_version: Some(1),
+                length_aa: Some(10),
+                genomic_start_1based: Some(7668412),
+                genomic_end_1based: Some(7668450),
+            }),
+            exons: vec![EnsemblGeneExonSummary {
+                exon_id: "ENSETOYGENE1".to_string(),
+                exon_version: Some(1),
+                start_1based: 7668402,
+                end_1based: 7668513,
+                strand: Some(-1),
+                seq_region_name: Some("17".to_string()),
+            }],
         }],
         aliases: vec![],
         source: "ensembl_rest".to_string(),
@@ -6546,6 +6566,165 @@ fn test_ensembl_gene_entry_store_and_import_sequence() {
             .and_then(|(_, value)| value.as_deref()),
         Some("TP53")
     );
+    assert!(
+        seq.features()
+            .iter()
+            .any(|feature| feature.kind.eq_ignore_ascii_case("mRNA")
+                && feature
+                    .qualifier_values("transcript_id")
+                    .any(|value| value == "ENSTTOYGENE1")),
+        "expanded Ensembl gene import should preserve transcript features"
+    );
+    assert!(
+        seq.features()
+            .iter()
+            .any(|feature| feature.kind.eq_ignore_ascii_case("CDS")
+                && feature
+                    .qualifier_values("protein_id")
+                    .any(|value| value == "ENSPTOYGENE1")),
+        "expanded Ensembl gene import should preserve coding translation features"
+    );
+    assert!(
+        seq.features()
+            .iter()
+            .any(|feature| feature.kind.eq_ignore_ascii_case("exon")
+                && feature
+                    .qualifier_values("exon_id")
+                    .any(|value| value == "ENSETOYGENE1")),
+        "expanded Ensembl gene import should preserve exon features"
+    );
+}
+
+#[test]
+fn test_ensembl_gene_import_negative_strand_derives_gene_oriented_protein() {
+    let mut sequence_bytes = vec![b'A'; 80];
+    sequence_bytes[10..19].copy_from_slice(b"ATGAAACCC");
+    sequence_bytes[40..52].copy_from_slice(b"GGGTTTAAATGA");
+    let sequence = String::from_utf8(sequence_bytes).expect("ascii sequence");
+    let entry = EnsemblGeneEntry {
+        schema: "gentle.ensembl_gene_entry.v1".to_string(),
+        entry_id: "toy_negative_ensembl_gene".to_string(),
+        gene_id: "ENSGTOYNEG1".to_string(),
+        gene_version: Some(1),
+        gene_symbol: Some("TOYNEG".to_string()),
+        gene_display_name: Some("TOYNEG synthetic negative-strand gene".to_string()),
+        species: Some("homo_sapiens".to_string()),
+        assembly_name: Some("GRCh38".to_string()),
+        biotype: Some("protein_coding".to_string()),
+        strand: Some(-1),
+        seq_region_name: Some("17".to_string()),
+        genomic_start_1based: Some(1000),
+        genomic_end_1based: Some(1079),
+        sequence,
+        sequence_length: 80,
+        transcripts: vec![EnsemblGeneTranscriptSummary {
+            transcript_id: "ENSTTOYNEG1".to_string(),
+            transcript_version: Some(1),
+            display_name: Some("TOYNEG-201".to_string()),
+            biotype: Some("protein_coding".to_string()),
+            start_1based: Some(1028),
+            end_1based: Some(1069),
+            strand: Some(-1),
+            is_canonical: Some(true),
+            gencode_primary: Some(true),
+            translation: Some(EnsemblGeneTranslationSummary {
+                translation_id: "ENSPTOYNEG1".to_string(),
+                translation_version: Some(1),
+                length_aa: Some(6),
+                genomic_start_1based: Some(1028),
+                genomic_end_1based: Some(1069),
+            }),
+            exons: vec![
+                EnsemblGeneExonSummary {
+                    exon_id: "ENSETOYNEG1".to_string(),
+                    exon_version: Some(1),
+                    start_1based: 1061,
+                    end_1based: 1069,
+                    strand: Some(-1),
+                    seq_region_name: Some("17".to_string()),
+                },
+                EnsemblGeneExonSummary {
+                    exon_id: "ENSETOYNEG2".to_string(),
+                    exon_version: Some(1),
+                    start_1based: 1028,
+                    end_1based: 1039,
+                    strand: Some(-1),
+                    seq_region_name: Some("17".to_string()),
+                },
+            ],
+        }],
+        aliases: vec![],
+        source: "ensembl_rest".to_string(),
+        source_query: Some("TOYNEG".to_string()),
+        imported_at_unix_ms: 0,
+        lookup_source_url: "https://rest.ensembl.org/lookup/symbol/homo_sapiens/TOYNEG?content-type=application/json;expand=1".to_string(),
+        sequence_source_url:
+            "https://rest.ensembl.org/sequence/id/ENSGTOYNEG1?content-type=application/json;type=genomic"
+                .to_string(),
+        raw_lookup_json: "{}".to_string(),
+        raw_sequence_json: "{}".to_string(),
+    };
+    let mut engine = GentleEngine::default();
+    engine
+        .upsert_ensembl_gene_entry(entry)
+        .expect("upsert negative-strand Ensembl gene entry");
+
+    engine
+        .apply(Operation::ImportEnsemblGeneSequence {
+            entry_id: "toy_negative_ensembl_gene".to_string(),
+            output_id: Some("toy_negative_locus".to_string()),
+        })
+        .expect("import negative-strand Ensembl gene");
+    let imported = engine
+        .state()
+        .sequences
+        .get("toy_negative_locus")
+        .expect("imported locus");
+    let mrna = imported
+        .features()
+        .iter()
+        .find(|feature| feature.kind.eq_ignore_ascii_case("mRNA"))
+        .expect("imported transcript feature");
+    assert!(
+        !matches!(mrna.location, gb_io::seq::Location::Complement(_)),
+        "same-strand transcripts should be forward on Ensembl's gene-oriented sequence"
+    );
+
+    let feature_query = SequenceFeatureQuery {
+        seq_id: "toy_negative_locus".to_string(),
+        kind_in: vec!["mRNA".to_string()],
+        qualifier_filters: vec![SequenceFeatureQualifierFilter {
+            key: "gene".to_string(),
+            value_contains: Some("TOYNEG".to_string()),
+            value_regex: Some("^TOYNEG$".to_string()),
+            case_sensitive: true,
+        }],
+        sort_by: SequenceFeatureSortBy::FeatureId,
+        ..SequenceFeatureQuery::default()
+    };
+    let derive = engine
+        .apply(Operation::DeriveProteinSequences {
+            seq_id: "toy_negative_locus".to_string(),
+            feature_ids: vec![],
+            feature_query: Some(feature_query),
+            scope: None,
+            output_prefix: Some("toy_negative_protein".to_string()),
+            report_id: Some("toy_negative_protein_report".to_string()),
+        })
+        .expect("derive protein from negative-strand Ensembl import");
+    assert_eq!(derive.created_seq_ids.len(), 1);
+    let protein = engine
+        .state()
+        .sequences
+        .get(&derive.created_seq_ids[0])
+        .expect("derived protein")
+        .get_forward_string();
+    assert_eq!(protein, "MKPGFK");
+    assert!(
+        derive.warnings.is_empty(),
+        "negative-strand Ensembl import should not introduce stop-codon warnings: {:?}",
+        derive.warnings
+    );
 }
 
 #[test]
@@ -9381,7 +9560,7 @@ fn test_render_protease_digest_gel_from_report_uses_latest_created_protein_id() 
 }
 
 #[test]
-fn test_tp73_isoform_protein_gel_route_loads_derives_and_renders() {
+fn test_isoform_protein_gel_demo_loads_derives_and_renders() {
     let mut engine = GentleEngine::default();
     engine
         .apply(Operation::LoadFile {
@@ -9431,9 +9610,9 @@ fn test_tp73_isoform_protein_gel_route_loads_derives_and_renders() {
             feature_query: Some(feature_query),
             scope: None,
             output_prefix: Some("tp73_isoform_protein".to_string()),
-            report_id: Some("tp73_isoform_protein_gel".to_string()),
+            report_id: Some("isoform_protein_gel_demo".to_string()),
         })
-        .expect("derive tp73 proteins");
+        .expect("derive proteins from demo transcript features");
     assert_eq!(derive_result.created_seq_ids.len(), 13);
     assert!(
         derive_result
@@ -9443,9 +9622,9 @@ fn test_tp73_isoform_protein_gel_route_loads_derives_and_renders() {
     );
 
     let report = engine
-        .get_protein_derivation_report("tp73_isoform_protein_gel")
-        .expect("tp73 protein derivation report");
-    assert_eq!(report.report_id, "tp73_isoform_protein_gel");
+        .get_protein_derivation_report("isoform_protein_gel_demo")
+        .expect("protein derivation report");
+    assert_eq!(report.report_id, "isoform_protein_gel_demo");
     assert_eq!(report.seq_id, "tp73_locus");
     assert_eq!(report.derived_count, 13);
     assert_eq!(report.selected_feature_ids.len(), 13);
@@ -9453,27 +9632,28 @@ fn test_tp73_isoform_protein_gel_route_loads_derives_and_renders() {
     assert!(report.feature_query.is_some());
 
     let svg_dir = tempdir().expect("tempdir");
-    let svg_path = svg_dir.path().join("tp73_isoform_protein_gel.svg");
+    let svg_path = svg_dir.path().join("isoform_protein_gel_demo.svg");
     engine
         .apply(Operation::RenderProteinGelSvg {
-            report_id: "tp73_isoform_protein_gel".to_string(),
+            report_id: "isoform_protein_gel_demo".to_string(),
             path: svg_path.display().to_string(),
             ladders: Some(vec!["Protein Ladder 10-100 kDa".to_string()]),
         })
-        .expect("render tp73 protein gel");
+        .expect("render protein gel demo");
 
     let svg = fs::read_to_string(&svg_path).expect("rendered protein gel svg");
     assert!(svg.contains("Protein Gel Preview"));
     assert!(svg.contains("Selection notes"));
     assert!(svg.contains("Lane details"));
-    assert!(svg.contains("tp73_isoform_protein_gel"));
+    assert!(svg.contains("isoform_protein_gel_demo"));
     assert!(svg.contains("Protein Ladder 10-100 kDa"));
+    assert!(svg.contains("tumor protein p73 isoform a"));
     assert!(svg.contains("NM_005427.4"));
     assert!(svg.contains("kDa"));
 }
 
 #[test]
-fn test_tp73_isoform_protein_2d_gel_route_loads_derives_and_renders() {
+fn test_isoform_protein_2d_gel_demo_loads_derives_and_renders() {
     let mut engine = GentleEngine::default();
     engine
         .apply(Operation::LoadFile {
@@ -9523,9 +9703,9 @@ fn test_tp73_isoform_protein_2d_gel_route_loads_derives_and_renders() {
             feature_query: Some(feature_query),
             scope: None,
             output_prefix: Some("tp73_isoform_protein".to_string()),
-            report_id: Some("tp73_isoform_protein_2d_gel".to_string()),
+            report_id: Some("isoform_protein_2d_gel_demo".to_string()),
         })
-        .expect("derive tp73 proteins");
+        .expect("derive proteins from demo transcript features");
     assert_eq!(derive_result.created_seq_ids.len(), 13);
     assert!(
         derive_result
@@ -9535,9 +9715,9 @@ fn test_tp73_isoform_protein_2d_gel_route_loads_derives_and_renders() {
     );
 
     let report = engine
-        .get_protein_derivation_report("tp73_isoform_protein_2d_gel")
-        .expect("tp73 protein derivation report");
-    assert_eq!(report.report_id, "tp73_isoform_protein_2d_gel");
+        .get_protein_derivation_report("isoform_protein_2d_gel_demo")
+        .expect("protein derivation report");
+    assert_eq!(report.report_id, "isoform_protein_2d_gel_demo");
     assert_eq!(report.seq_id, "tp73_locus");
     assert_eq!(report.derived_count, 13);
     assert_eq!(report.selected_feature_ids.len(), 13);
@@ -9546,21 +9726,22 @@ fn test_tp73_isoform_protein_2d_gel_route_loads_derives_and_renders() {
     assert_eq!(report.rows[0].derivation.transcript_id, "NM_005427.4");
 
     let svg_dir = tempdir().expect("tempdir");
-    let svg_path = svg_dir.path().join("tp73_isoform_protein_2d_gel.svg");
+    let svg_path = svg_dir.path().join("isoform_protein_2d_gel_demo.svg");
     engine
         .apply(Operation::RenderProtein2dGelSvg {
-            report_id: "tp73_isoform_protein_2d_gel".to_string(),
+            report_id: "isoform_protein_2d_gel_demo".to_string(),
             path: svg_path.display().to_string(),
             ladders: Some(vec!["Protein Ladder 10-100 kDa".to_string()]),
         })
-        .expect("render tp73 protein 2D gel");
+        .expect("render protein 2D gel demo");
 
     let svg = fs::read_to_string(&svg_path).expect("rendered protein 2D gel svg");
     assert!(svg.contains("Protein 2D Gel Preview"));
     assert!(svg.contains("Selection notes"));
     assert!(svg.contains("Spot details"));
-    assert!(svg.contains("tp73_isoform_protein_2d_gel"));
+    assert!(svg.contains("isoform_protein_2d_gel_demo"));
     assert!(svg.contains("Protein Ladder 10-100 kDa"));
+    assert!(svg.contains("tumor protein p73 isoform a"));
     assert!(svg.contains("NM_005427.4"));
     assert!(svg.contains("pI"));
     assert!(svg.contains("kDa"));
@@ -24546,7 +24727,7 @@ fn test_list_and_show_rna_read_reports_messages_include_origin_provenance() {
 }
 
 #[test]
-fn test_interpret_rna_reads_accepts_reverse_strand_tp73_ncrna_seed() {
+fn test_interpret_rna_reads_accepts_reverse_strand_demo_ncrna_seed() {
     let mut engine = GentleEngine::default();
     engine
         .apply(Operation::LoadFile {
@@ -25244,7 +25425,7 @@ fn delete_fraction_window(sequence: &[u8], start: usize, fraction: f64) -> Vec<u
 }
 
 #[test]
-fn test_tp73_seed_filter_keeps_30pct_deleted_subsequences_and_rejects_random() {
+fn test_seed_filter_keeps_deleted_demo_subsequences_and_rejects_random() {
     let mut engine = GentleEngine::default();
     engine
         .apply(Operation::LoadFile {
@@ -25389,7 +25570,7 @@ fn test_tp73_seed_filter_keeps_30pct_deleted_subsequences_and_rejects_random() {
 }
 
 #[test]
-fn test_tp73_seed_filter_cross_species_and_tp53_specificity_sets() {
+fn test_seed_filter_cross_species_and_close_family_specificity_sets() {
     let mut engine = GentleEngine::default();
     engine
         .apply(Operation::LoadFile {

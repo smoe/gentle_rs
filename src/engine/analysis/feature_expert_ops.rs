@@ -12,7 +12,7 @@
 use super::*;
 use crate::attract_motifs;
 use crate::ensembl_gene::{
-    EnsemblGeneEntry, EnsemblGeneEntryStore, EnsemblGeneEntrySummary,
+    EnsemblGeneEntry, EnsemblGeneEntryStore, EnsemblGeneEntrySummary, EnsemblGeneTranscriptSummary,
     build_entry_from_rest_payloads as build_ensembl_gene_entry_from_rest_payloads,
     normalize_entry_id as normalize_ensembl_gene_entry_id,
     resolve_query as resolve_ensembl_gene_query,
@@ -3787,6 +3787,278 @@ impl GentleEngine {
         })
     }
 
+    fn ensembl_gene_local_range_0based(
+        entry: &EnsemblGeneEntry,
+        start_1based: usize,
+        end_1based: usize,
+    ) -> Option<(i64, i64)> {
+        let gene_start = entry.genomic_start_1based?;
+        let gene_end = entry.genomic_end_1based?;
+        if start_1based < gene_start || end_1based > gene_end || end_1based < start_1based {
+            return None;
+        }
+        let (local_start, local_end) = if entry.strand == Some(-1) {
+            (
+                gene_end.checked_sub(end_1based)?,
+                gene_end.checked_sub(start_1based)?.checked_add(1)?,
+            )
+        } else {
+            (
+                start_1based.checked_sub(gene_start)?,
+                end_1based.checked_sub(gene_start)?.checked_add(1)?,
+            )
+        };
+        if local_end <= local_start || local_end > entry.sequence_length {
+            return None;
+        }
+        Some((local_start as i64, local_end as i64))
+    }
+
+    fn ensembl_gene_relative_strand(
+        entry: &EnsemblGeneEntry,
+        feature_strand: Option<i8>,
+    ) -> Option<i8> {
+        let strand = feature_strand.or(entry.strand)?;
+        if entry.strand == Some(-1) {
+            Some(-strand)
+        } else {
+            Some(strand)
+        }
+    }
+
+    fn ensembl_gene_feature_location(
+        ranges: &[(i64, i64)],
+        strand: Option<i8>,
+    ) -> Option<gb_io::seq::Location> {
+        let mut ranges = ranges
+            .iter()
+            .copied()
+            .filter(|(start, end)| end > start)
+            .collect::<Vec<_>>();
+        ranges.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        ranges.dedup();
+        let location = match ranges.as_slice() {
+            [] => return None,
+            [(start, end)] => gb_io::seq::Location::simple_range(*start, *end),
+            _ => gb_io::seq::Location::Join(
+                ranges
+                    .iter()
+                    .map(|(start, end)| gb_io::seq::Location::simple_range(*start, *end))
+                    .collect(),
+            ),
+        };
+        if strand == Some(-1) {
+            Some(gb_io::seq::Location::Complement(Box::new(location)))
+        } else {
+            Some(location)
+        }
+    }
+
+    fn ensembl_gene_transcript_exon_ranges(
+        entry: &EnsemblGeneEntry,
+        transcript: &EnsemblGeneTranscriptSummary,
+    ) -> Vec<(i64, i64)> {
+        let mut ranges = transcript
+            .exons
+            .iter()
+            .filter_map(|exon| {
+                Self::ensembl_gene_local_range_0based(entry, exon.start_1based, exon.end_1based)
+            })
+            .collect::<Vec<_>>();
+        if ranges.is_empty() {
+            if let (Some(start), Some(end)) = (transcript.start_1based, transcript.end_1based) {
+                if let Some(range) = Self::ensembl_gene_local_range_0based(entry, start, end) {
+                    ranges.push(range);
+                }
+            }
+        }
+        ranges
+    }
+
+    fn ensembl_gene_translation_ranges(
+        entry: &EnsemblGeneEntry,
+        transcript: &EnsemblGeneTranscriptSummary,
+    ) -> Vec<(i64, i64)> {
+        let Some(translation) = transcript.translation.as_ref() else {
+            return vec![];
+        };
+        let (Some(start), Some(end)) = (
+            translation.genomic_start_1based,
+            translation.genomic_end_1based,
+        ) else {
+            return vec![];
+        };
+        let coding_start = start.min(end);
+        let coding_end = start.max(end);
+        let exon_ranges = transcript
+            .exons
+            .iter()
+            .filter_map(|exon| {
+                let start = exon.start_1based.max(coding_start);
+                let end = exon.end_1based.min(coding_end);
+                (end >= start).then_some((start, end))
+            })
+            .filter_map(|(start, end)| Self::ensembl_gene_local_range_0based(entry, start, end))
+            .collect::<Vec<_>>();
+        if !exon_ranges.is_empty() {
+            return exon_ranges;
+        }
+        Self::ensembl_gene_local_range_0based(entry, coding_start, coding_end)
+            .into_iter()
+            .collect()
+    }
+
+    fn push_ensembl_gene_transcript_features(dna: &mut DNAsequence, entry: &EnsemblGeneEntry) {
+        for transcript in &entry.transcripts {
+            let transcript_ranges = Self::ensembl_gene_transcript_exon_ranges(entry, transcript);
+            let Some(transcript_location) = Self::ensembl_gene_feature_location(
+                &transcript_ranges,
+                Self::ensembl_gene_relative_strand(entry, transcript.strand),
+            ) else {
+                continue;
+            };
+            let transcript_label = transcript
+                .display_name
+                .clone()
+                .unwrap_or_else(|| transcript.transcript_id.clone());
+            let mut qualifiers = vec![
+                (
+                    "transcript_id".into(),
+                    Some(transcript.transcript_id.clone()),
+                ),
+                ("label".into(), Some(transcript_label.clone())),
+                (
+                    "product".into(),
+                    Some(format!(
+                        "{} transcript {}",
+                        entry
+                            .gene_symbol
+                            .as_deref()
+                            .unwrap_or(entry.gene_id.as_str()),
+                        transcript_label
+                    )),
+                ),
+                (
+                    "synthetic_origin".into(),
+                    Some("ensembl_gene_import_transcript".to_string()),
+                ),
+            ];
+            if let Some(version) = transcript.transcript_version {
+                qualifiers.push(("transcript_version".into(), Some(version.to_string())));
+            }
+            if let Some(symbol) = entry.gene_symbol.as_ref() {
+                qualifiers.push(("gene".into(), Some(symbol.clone())));
+            }
+            qualifiers.push(("gene_id".into(), Some(entry.gene_id.clone())));
+            if let Some(biotype) = transcript.biotype.as_ref() {
+                qualifiers.push(("biotype".into(), Some(biotype.clone())));
+            }
+            if let Some(is_canonical) = transcript.is_canonical {
+                qualifiers.push(("is_canonical".into(), Some(is_canonical.to_string())));
+            }
+            if let Some(gencode_primary) = transcript.gencode_primary {
+                qualifiers.push(("gencode_primary".into(), Some(gencode_primary.to_string())));
+            }
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "mRNA".into(),
+                location: transcript_location,
+                qualifiers,
+            });
+
+            for (exon_index, exon) in transcript.exons.iter().enumerate() {
+                let Some((start, end)) = Self::ensembl_gene_local_range_0based(
+                    entry,
+                    exon.start_1based,
+                    exon.end_1based,
+                ) else {
+                    continue;
+                };
+                let Some(exon_location) = Self::ensembl_gene_feature_location(
+                    &[(start, end)],
+                    Self::ensembl_gene_relative_strand(entry, exon.strand.or(transcript.strand)),
+                ) else {
+                    continue;
+                };
+                let mut qualifiers = vec![
+                    ("exon_id".into(), Some(exon.exon_id.clone())),
+                    ("exon_number".into(), Some((exon_index + 1).to_string())),
+                    (
+                        "transcript_id".into(),
+                        Some(transcript.transcript_id.clone()),
+                    ),
+                    ("gene_id".into(), Some(entry.gene_id.clone())),
+                    (
+                        "synthetic_origin".into(),
+                        Some("ensembl_gene_import_exon".to_string()),
+                    ),
+                ];
+                if let Some(symbol) = entry.gene_symbol.as_ref() {
+                    qualifiers.push(("gene".into(), Some(symbol.clone())));
+                }
+                if let Some(version) = exon.exon_version {
+                    qualifiers.push(("exon_version".into(), Some(version.to_string())));
+                }
+                dna.features_mut().push(gb_io::seq::Feature {
+                    kind: "exon".into(),
+                    location: exon_location,
+                    qualifiers,
+                });
+            }
+
+            let coding_ranges = Self::ensembl_gene_translation_ranges(entry, transcript);
+            let Some(cds_location) = Self::ensembl_gene_feature_location(
+                &coding_ranges,
+                Self::ensembl_gene_relative_strand(entry, transcript.strand),
+            ) else {
+                continue;
+            };
+            let Some(translation) = transcript.translation.as_ref() else {
+                continue;
+            };
+            let mut qualifiers = vec![
+                (
+                    "transcript_id".into(),
+                    Some(transcript.transcript_id.clone()),
+                ),
+                (
+                    "protein_id".into(),
+                    Some(translation.translation_id.clone()),
+                ),
+                (
+                    "product".into(),
+                    Some(format!(
+                        "{} {} protein",
+                        entry
+                            .gene_symbol
+                            .as_deref()
+                            .unwrap_or(entry.gene_id.as_str()),
+                        transcript_label
+                    )),
+                ),
+                ("gene_id".into(), Some(entry.gene_id.clone())),
+                ("codon_start".into(), Some("1".to_string())),
+                (
+                    "synthetic_origin".into(),
+                    Some("ensembl_gene_import_cds".to_string()),
+                ),
+            ];
+            if let Some(symbol) = entry.gene_symbol.as_ref() {
+                qualifiers.push(("gene".into(), Some(symbol.clone())));
+            }
+            if let Some(version) = translation.translation_version {
+                qualifiers.push(("protein_version".into(), Some(version.to_string())));
+            }
+            if let Some(length) = translation.length_aa {
+                qualifiers.push(("translation_length_aa".into(), Some(length.to_string())));
+            }
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "CDS".into(),
+                location: cds_location,
+                qualifiers,
+            });
+        }
+    }
+
     pub(super) fn import_ensembl_gene_entry_sequence(
         &mut self,
         result: &mut OpResult,
@@ -3879,6 +4151,7 @@ impl GentleEngine {
                 location: gb_io::seq::Location::simple_range(0, dna_len),
                 qualifiers,
             });
+            Self::push_ensembl_gene_transcript_features(&mut dna, &entry);
         }
         self.state.sequences.insert(seq_id.clone(), dna);
         result.changed_seq_ids.push(seq_id.clone());

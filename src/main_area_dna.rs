@@ -8765,10 +8765,10 @@ mod tests {
     }
 
     #[test]
-    fn apply_rna_reads_tp73_specificity_preset_sets_expected_seed_gates() {
+    fn apply_rna_reads_demo_specificity_preset_sets_expected_seed_gates() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let mut area = MainAreaDna::new(dna, None, None);
-        area.apply_rna_reads_tp73_specificity_preset();
+        area.apply_rna_reads_demo_specificity_preset();
         assert_eq!(
             area.rna_reads_ui.scope,
             SplicingScopePreset::TargetGroupTargetStrand
@@ -25763,13 +25763,13 @@ impl MainAreaDna {
                     )
                     .changed();
                 if ui
-                    .button("Apply TP73 specificity preset")
+                    .button("Apply demo specificity preset")
                     .on_hover_text(
                         "Apply stricter TP73-focused defaults: target-group/target-strand scope plus tighter chain, gap, and transition thresholds for focused pilot filtering.",
                     )
                     .clicked()
                 {
-                    self.apply_rna_reads_tp73_specificity_preset();
+                    self.apply_rna_reads_demo_specificity_preset();
                     persist_ui_state = true;
                     refresh_auto_report_id = true;
                 }
@@ -28451,7 +28451,7 @@ impl MainAreaDna {
         format!("workflow_rna_reads_{}_{}", seq, report)
     }
 
-    fn apply_rna_reads_tp73_specificity_preset(&mut self) {
+    fn apply_rna_reads_demo_specificity_preset(&mut self) {
         self.rna_reads_ui.scope = SplicingScopePreset::TargetGroupTargetStrand;
         self.rna_reads_ui.cdna_poly_t_flip_enabled = true;
         self.rna_reads_ui.kmer_len = "10".to_string();
@@ -28464,7 +28464,7 @@ impl MainAreaDna {
         self.rna_reads_ui.min_confirmed_exon_transitions = "1".to_string();
         self.rna_reads_ui.min_transition_support_fraction = "0.10".to_string();
         self.rna_reads_ui.show_advanced = true;
-        self.op_status = "Applied TP73 specificity preset for RNA-read seed filtering".to_string();
+        self.op_status = "Applied RNA-read demo specificity preset for seed filtering".to_string();
     }
 
     fn apply_rna_read_dense_similarity_preset(&mut self) {

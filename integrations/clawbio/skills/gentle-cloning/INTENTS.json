@@ -108,59 +108,71 @@
       ]
     },
     {
-      "intent_id": "tp73_isoform_protein_gel",
-      "description": "Run the canonical offline TP73 isoform protein molecular-weight gel workflow.",
+      "intent_id": "demo_isoform_protein_gel",
+      "description": "Run the canonical offline isoform protein molecular-weight gel demo using the bundled example locus.",
       "trigger_terms": [
-        "tp73 protein gel",
-        "tp73 isoform gel",
-        "tp73 isoform protein gel",
-        "protein gel",
-        "molecular weight gel"
+        "protein gel demo",
+        "isoform protein gel demo",
+        "molecular weight gel demo"
       ],
-      "demo_policy": "never_unless_explicit",
+      "demo_policy": "only_when_explicit",
       "plan": [
         {
           "kind": "skill_run",
           "skill": "gentle-cloning",
-          "input": "examples/request_workflow_tp73_isoform_protein_gel.json"
+          "input": "examples/request_workflow_isoform_protein_gel_demo.json"
         }
       ]
     },
     {
-      "intent_id": "tp73_isoform_protein_2d_gel",
-      "description": "Run the canonical offline TP73 protein pI-vs-kDa 2D gel workflow.",
+      "intent_id": "demo_isoform_protein_2d_gel",
+      "description": "Run the canonical offline protein pI-vs-kDa 2D gel demo using the bundled example locus.",
       "trigger_terms": [
-        "tp73 2d gel",
-        "tp73 protein 2d gel",
-        "2d gel",
-        "protein 2d gel",
-        "isoelectric point",
-        "pi vs kda"
+        "protein 2d gel demo",
+        "isoform protein 2d gel demo",
+        "isoelectric point demo",
+        "pi vs kda demo"
       ],
-      "demo_policy": "never_unless_explicit",
+      "demo_policy": "only_when_explicit",
       "plan": [
         {
           "kind": "skill_run",
           "skill": "gentle-cloning",
-          "input": "examples/request_workflow_tp73_isoform_protein_2d_gel.json"
+          "input": "examples/request_workflow_isoform_protein_2d_gel_demo.json"
         }
       ]
     },
     {
-      "intent_id": "tp73_variant1_trypsin_digest_gel",
-      "description": "Run the canonical offline TP73 variant-1 trypsin digest gel workflow.",
+      "intent_id": "demo_ensembl_gene_protein_2d_gel",
+      "description": "Run an online Ensembl gene protein pI-vs-kDa 2D gel example using the parameterized gene-protein-2d-gel request mode.",
       "trigger_terms": [
-        "tp73 trypsin digest",
-        "trypsin digest gel",
-        "protease digest",
-        "tp73 peptide gel"
+        "ensembl gene protein 2d gel demo",
+        "gene protein 2d gel demo",
+        "parameterized protein 2d gel demo"
       ],
-      "demo_policy": "never_unless_explicit",
+      "demo_policy": "only_when_explicit",
       "plan": [
         {
           "kind": "skill_run",
           "skill": "gentle-cloning",
-          "input": "examples/request_workflow_tp73_variant1_trypsin_digest_gel.json"
+          "input": "examples/request_gene_protein_2d_gel_ensembl_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "demo_trypsin_digest_gel",
+      "description": "Run the canonical offline trypsin digest gel demo using the bundled example locus.",
+      "trigger_terms": [
+        "trypsin digest gel demo",
+        "protease digest demo",
+        "peptide gel demo"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_trypsin_digest_gel_demo.json"
         }
       ]
     },

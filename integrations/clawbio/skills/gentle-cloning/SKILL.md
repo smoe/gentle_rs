@@ -7,7 +7,7 @@ description: >-
   sequence-grounded mechanistic follow-up, assay-planning artifacts,
   stateless sequence inspection, reusable local reference-preparation
   workflows, and transcript-native protein-gel / protein 2D-gel / protease
-  digest figures for isoform demos such as TP73.
+  digest figures for bundled example loci and parameterized Ensembl genes.
 version: 0.1.0
 author: GENtle project
 license: MIT
@@ -62,12 +62,13 @@ metadata:
       - 2d gel
       - molecular weight gel
       - protein isoform
+      - isoform protein gel
+      - isoform protein 2d gel
+      - gene protein 2d gel
+      - ensembl protein 2d gel
       - protease digest
       - trypsin digest
       - trypsin digest gel
-      - tp73 isoform
-      - tp73 protein gel
-      - tp73 2d gel
       - pi vs kda
       - isoelectric point
 ---
@@ -95,8 +96,9 @@ This skill is execution-first.
 
 ClawBio shared chat adapters should consume `INTENTS.json` first. That
 `clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
-installed-database/resource, TP73 protein-gel, TP73 2D-gel, trypsin-digest,
-capability, skill-info, and explicit-demo wording to concrete
+installed-database/resource, bundled example protein-gel, bundled example
+2D-gel, Ensembl gene 2D-gel example, trypsin-digest, capability, skill-info,
+and explicit-demo wording to concrete
 `examples/*.json` requests. Descriptor-only skill directories are discoverable,
 but execution still requires `gentle-cloning` to be registered in ClawBio's
 top-level `SKILLS` table.
@@ -176,7 +178,11 @@ capability-led language:
   resource family.
 - GENtle now also covers transcript-native protein-gel rendering for curated
   isoform sets, including the 1D molecular-weight lane route and the 2D pI vs
-  molecular-weight spot-map route used by the TP73 demos.
+  molecular-weight spot-map route used by bundled offline demos. For arbitrary Ensembl
+  genes, use request mode `gene-protein-2d-gel` with `gene_symbol` and optional
+  `species` fields; the wrapper fetches the Ensembl gene, imports
+  transcript/exon/CDS structure, derives protein products from protein-coding
+  mRNAs, renders the 2D gel, and promotes the SVG to a PNG-first artifact.
 - Never jump from association to mechanism without naming the experimental test
   or validation class still required.
 
@@ -520,8 +526,9 @@ Expected outputs:
 ### 7. Protein Isoform Gel and 2D-Gel Rendering
 
 Use this when the user wants a transcript-native protein figure, including
-the canonical offline TP73 isoform protein gel, TP73 2D pI-vs-kDa spot map, or
-protease-digest gel demo.
+the canonical offline isoform protein gel demo, 2D pI-vs-kDa spot-map demo, or
+protease-digest gel demo. The bundled offline examples use TP73 as data, but
+the capability and request modes are gene-agnostic.
 
 Current shared GENtle routes behind this capability:
 
@@ -529,9 +536,10 @@ Current shared GENtle routes behind this capability:
 - `RenderProteinGelSvg`
 - `RenderProtein2dGelSvg`
 - `DigestProteinSequence`
-- `docs/examples/workflows/tp73_isoform_protein_gel_offline.json`
-- `docs/examples/workflows/tp73_isoform_protein_2d_gel_offline.json`
-- `docs/examples/workflows/tp73_variant1_trypsin_digest_gel_offline.json`
+- `examples/request_workflow_isoform_protein_gel_demo.json`
+- `examples/request_workflow_isoform_protein_2d_gel_demo.json`
+- `examples/request_workflow_trypsin_digest_gel_demo.json`
+- `examples/request_gene_protein_2d_gel_ensembl_demo.json`
 
 Expected outputs:
 
@@ -764,14 +772,14 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_workflow_tp73_tfbs_score_tracks_svg.json \
   --output /tmp/gentle_clawbio_tp73_tfbs_score_tracks_svg
 python clawbio.py run gentle-cloning \
-  --input skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_gel.json \
-  --output /tmp/gentle_clawbio_tp73_isoform_protein_gel
+  --input skills/gentle-cloning/examples/request_workflow_isoform_protein_gel_demo.json \
+  --output /tmp/gentle_clawbio_isoform_protein_gel_demo
 python clawbio.py run gentle-cloning \
-  --input skills/gentle-cloning/examples/request_workflow_tp73_isoform_protein_2d_gel.json \
-  --output /tmp/gentle_clawbio_tp73_isoform_protein_2d_gel
+  --input skills/gentle-cloning/examples/request_workflow_isoform_protein_2d_gel_demo.json \
+  --output /tmp/gentle_clawbio_isoform_protein_2d_gel_demo
 python clawbio.py run gentle-cloning \
-  --input skills/gentle-cloning/examples/request_workflow_tp73_variant1_trypsin_digest_gel.json \
-  --output /tmp/gentle_clawbio_tp73_trypsin_digest_gel
+  --input skills/gentle-cloning/examples/request_workflow_trypsin_digest_gel_demo.json \
+  --output /tmp/gentle_clawbio_trypsin_digest_gel_demo
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_resources_summarize_jaspar_sp1_rest.json \
   --output /tmp/gentle_clawbio_jaspar_sp1_rest
@@ -843,7 +851,7 @@ Notes:
   it first ensures `Human GRCh38 Ensembl 116` is prepared locally, then fetches
   `rs9923231` and exports one linear genomic-context SVG into the wrapper
   bundle
-- `request_workflow_tp73_variant1_trypsin_digest_gel.json` is a compact
+- `request_workflow_trypsin_digest_gel_demo.json` is a compact
   protease-digest graphics demo:
   it derives TP73 transcript variant 1 protein, applies the shared Trypsin
   catalog rule, renders retained peptide masses as a protein-gel SVG, and lets
@@ -1137,17 +1145,17 @@ Apply the following methodology:
   - `examples/request_workflow_tp73_tfbs_score_tracks_svg.json`
     - matching workflow-backed TFBS presentation example that exports the same
       TP73 promoter score-track view as one stacked SVG figure
-  - `examples/request_workflow_tp73_isoform_protein_gel.json`
+  - `examples/request_workflow_isoform_protein_gel_demo.json`
     - offline TP73 isoform protein-gel demo: loads the bundled TP73 GenBank
       asset, derives curated `NM_` protein isoforms, renders one protein
       molecular-weight gel with a deterministic kDa ladder, and lets ClawBio
       rasterize the SVG into the PNG-first bundle contract
-  - `examples/request_workflow_tp73_isoform_protein_2d_gel.json`
+  - `examples/request_workflow_isoform_protein_2d_gel_demo.json`
     - matching offline TP73 protein 2D-gel demo: reuses the same curated
       isoform derivation, renders a protein spot map with pI on the X axis
       and molecular weight on the Y axis, and lets ClawBio rasterize the SVG
       into the PNG-first bundle contract
-  - `examples/request_workflow_tp73_variant1_trypsin_digest_gel.json`
+  - `examples/request_workflow_trypsin_digest_gel_demo.json`
     - offline TP73 variant 1 protease-digest graphics demo: applies Trypsin to
       the transcript-derived protein, renders retained peptide masses as a
       protein-gel SVG, and lets ClawBio rasterize the figure into the

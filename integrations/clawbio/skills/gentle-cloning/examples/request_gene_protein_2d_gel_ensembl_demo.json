@@ -1,0 +1,15 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "gene-protein-2d-gel",
+  "state_path": ".gentle_state.json",
+  "source": "ensembl",
+  "species": "homo_sapiens",
+  "gene_symbol": "PATZ1",
+  "ladders": [
+    "Protein Ladder 10-100 kDa"
+  ],
+  "expected_artifacts": [
+    "exports/patz1_ensembl_protein_2d_gel.svg"
+  ],
+  "timeout_secs": 600
+}

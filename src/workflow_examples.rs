@@ -2484,30 +2484,30 @@ mod tests {
     }
 
     #[test]
-    fn workflow_examples_tp73_isoform_protein_gel_writes_svg() {
+    fn workflow_examples_isoform_protein_gel_demo_writes_svg() {
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
         let loaded = examples
             .iter()
             .find(|loaded| loaded.example.id == "tp73_isoform_protein_gel_offline")
-            .expect("tp73 isoform protein gel example should exist");
+            .expect("isoform protein gel demo should exist");
         let run_dir = TempDir::new().expect("temp run dir");
         run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
             .expect("tp73 protein-gel workflow should execute");
         let svg_path = run_dir.path().join("exports/tp73_isoform_protein_gel.svg");
         assert!(svg_path.exists());
-        let svg = fs::read_to_string(&svg_path).expect("read tp73 protein gel svg");
+        let svg = fs::read_to_string(&svg_path).expect("read protein gel demo svg");
         assert!(svg.contains("Protein Gel Preview"));
         assert!(svg.contains("Protein Ladder 10-100 kDa"));
         assert!(svg.contains("Selection notes"));
     }
 
     #[test]
-    fn workflow_examples_tp73_isoform_protein_2d_gel_writes_svg() {
+    fn workflow_examples_isoform_protein_2d_gel_demo_writes_svg() {
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
         let loaded = examples
             .iter()
             .find(|loaded| loaded.example.id == "tp73_isoform_protein_2d_gel_offline")
-            .expect("tp73 isoform protein 2D gel example should exist");
+            .expect("isoform protein 2D gel demo should exist");
         let run_dir = TempDir::new().expect("temp run dir");
         run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
             .expect("tp73 protein 2D gel workflow should execute");
@@ -2523,7 +2523,7 @@ mod tests {
     }
 
     #[test]
-    fn workflow_examples_tp73_variant1_trypsin_digest_gel_writes_svg() {
+    fn workflow_examples_trypsin_digest_gel_demo_writes_svg() {
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
         let loaded = examples
             .iter()
@@ -2733,7 +2733,7 @@ mod tests {
     }
 
     #[test]
-    fn tutorial_tp73_cdna_genomic_markdown_image_links_exist() {
+    fn tutorial_cdna_genomic_demo_markdown_image_links_exist() {
         let tutorial_path = PathBuf::from("docs/tutorial/two_sequence_dotplot_gui.md");
         let tutorial_text =
             fs::read_to_string(&tutorial_path).expect("read TP73 cDNA/genomic tutorial");

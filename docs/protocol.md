@@ -1870,7 +1870,14 @@ Sequencing-trace evidence notes:
     `gentle.ensembl_gene_entries.v1`.
 - `ImportEnsemblGeneSequence { entry_id, output_id? }`
   - imports one stored Ensembl gene entry as a first-class DNA sequence with a
-    top-level imported `gene` feature and Ensembl provenance qualifiers.
+    top-level imported `gene` feature and Ensembl provenance qualifiers
+  - when the stored Ensembl lookup was fetched with expanded transcript
+    content, the import also materializes deterministic `mRNA`, `exon`, and
+    `CDS` features with Ensembl transcript/protein identifiers, display names,
+    biotype flags, canonical/Gencode-primary flags, and translation lengths.
+    Negative-strand Ensembl genes are mapped into Ensembl's gene-oriented
+    sequence coordinates so same-strand transcript/CDS features derive proteins
+    without an extra reverse-complement step.
 - `FetchGenBankAccession { accession, as_id? }`
 - `FetchDbSnpRegion { rs_id, genome_id, flank_bp?, output_id?, annotation_scope?, max_annotation_features?, catalog_path?, cache_dir? }`
 - `DeriveProteinSequences { seq_id, feature_ids[], feature_query?, scope?, output_prefix?, report_id? }`
@@ -2883,7 +2890,7 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `gentle_local_checkout_cli.sh` for local editable GENtle checkouts
   - `gentle_apptainer_cli.sh` for Apptainer/Singularity-backed `:cli` images
 - wrapper request schema: `gentle.clawbio_skill_request.v1`
-  - `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|agent-plan|agent-execute-plan|raw`
+  - `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|gene-protein-2d-gel|agent-plan|agent-execute-plan|raw`
   - optional: `state_path`, `timeout_secs`
   - optional: `expected_artifacts[]`
     - wrapper-declared output files to copy into the ClawBio output bundle
@@ -2901,6 +2908,12 @@ ClawBio/OpenClaw integration scaffold schemas:
       - relative `workflow_path` resolves via current working directory, then
         `GENTLE_REPO_ROOT`, then the local GENtle repo containing the scaffold
         when discoverable
+    - `gene-protein-2d-gel`: `gene_symbol`, optional `species` (default
+      `homo_sapiens`), optional `source` (currently `ensembl`), and optional
+      `ladders[]`; the wrapper builds a deterministic workflow that fetches
+      the expanded Ensembl gene record, imports transcript/exon/CDS features,
+      derives protein-coding mRNA products, renders a 2D pI-vs-kDa SVG, and
+      promotes the declared SVG into the PNG-first artifact bundle
     - `agent-plan`: `system_id`, `prompt`, optional planner/runtime overrides
       such as `catalog_path`, `base_url`, `model`, `max_candidates`,
       `include_state_summary`, and `allow_mutating_candidates`
@@ -3335,9 +3348,10 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   on a log-scaled kDa axis.
 - Chooses one or two protein ladders deterministically, or honors the explicit
   `ladders` override when provided.
-- Renders one lane per derived protein plus the selected ladder lane(s), with
-  transcript labels and a provenance panel that records the source report and
-  selection summary.
+- Renders one lane per derived protein plus the selected ladder lane(s), using
+  the derived protein `product` qualifier as the visible label when available
+  and keeping transcript/protein accessions in the detail text. A provenance
+  panel records the source report and selection summary.
 - This is the canonical protein-gel route for transcript-native demos such as
   the TP73 isoform workflow; `RenderPoolGelSvg` remains DNA/bp-based.
 
@@ -3372,11 +3386,13 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   X axis and log-scaled molecular weight on the Y axis.
 - Uses the same deterministic ladder-selection logic for Y-axis references as
   the 1D protein-gel renderer, or honors the explicit `ladders` override.
-- Renders transcript labels and a provenance panel recording the source report
-  and transcript-selection summary.
+- Renders derived protein `product` labels when available, keeps transcript /
+  protein accessions in the spot details, and records the source report plus
+  transcript-selection summary in the provenance panel.
 - This is the canonical 2D protein-gel route for transcript-native spot-map
-  demos such as the TP73 isoform workflow; `RenderProteinGelSvg` remains the
-  1D lane-based route and `RenderPoolGelSvg` remains DNA/bp-based.
+  demos and for ClawBio's parameterized Ensembl `gene-protein-2d-gel` request
+  mode; `RenderProteinGelSvg` remains the 1D lane-based route and
+  `RenderPoolGelSvg` remains DNA/bp-based.
 
 `CreateArrangementSerial` semantics:
 
