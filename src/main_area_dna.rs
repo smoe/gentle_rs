@@ -5674,6 +5674,54 @@ mod tests {
     }
 
     #[test]
+    fn qpcr_persisted_context_summary_preserves_transcript_aware_details() {
+        let assay = crate::engine::QpcrAssayRecord {
+            rank: 1,
+            transcript_context: Some(crate::engine::QpcrTranscriptAssayContext {
+                assay_class_label: "distinguishing junction primer".to_string(),
+                explanation: "Forward primer spans a transcript-specific exon junction."
+                    .to_string(),
+                probe_placement: "inside_shared_exon".to_string(),
+                design_transcript_feature_id: 11,
+                design_transcript_id: "NR_187362.1".to_string(),
+                design_transcript_label: "TP73-AS3 variant 1".to_string(),
+                support_transcript_count: 1,
+                support_transcript_fraction: 1.0 / 3.0,
+                supported_transcript_ids: vec!["NR_187362.1".to_string()],
+                forward_source_ranges_0based: vec![],
+                reverse_source_ranges_0based: vec![],
+                probe_source_ranges_0based: vec![],
+                amplicon_source_ranges_0based: vec![],
+                covered_junction_labels: vec!["120→241".to_string()],
+                forward_spans_junction: true,
+                reverse_spans_junction: false,
+                probe_spans_junction: false,
+                transcript_distinguishing_primer: Some("forward".to_string()),
+                satisfies_requested_targeting: true,
+            }),
+            ..Default::default()
+        };
+
+        let summary = MainAreaDna::qpcr_persisted_context_summary(&assay)
+            .expect("persisted transcript-aware summary");
+
+        assert_eq!(summary.assay_class_label, "distinguishing junction primer");
+        assert!(
+            summary
+                .explanation
+                .contains("Forward primer spans a transcript-specific exon junction.")
+        );
+        assert!(
+            summary
+                .explanation
+                .contains("Supported transcripts: 1 (33% of considered set).")
+        );
+        assert!(summary.explanation.contains("Design transcript: NR_187362.1."));
+        assert!(summary.explanation.contains("Distinguishing primer(s): forward."));
+        assert_eq!(summary.covered_junction_labels, vec!["120→241".to_string()]);
+    }
+
+    #[test]
     fn qpcr_preview_geometry_from_ui_reflects_current_lengths() {
         let dna = DNAsequence::from_sequence(
             "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
@@ -39120,6 +39168,31 @@ impl MainAreaDna {
         })
     }
 
+    fn qpcr_persisted_context_summary(
+        assay: &crate::engine::QpcrAssayRecord,
+    ) -> Option<QpcrSplicingContextSummary> {
+        let context = assay.transcript_context.as_ref()?;
+        let mut explanation = context.explanation.clone();
+        explanation.push_str(&format!(
+            " Supported transcripts: {} ({:.0}% of considered set). Design transcript: {}.",
+            context.support_transcript_count,
+            context.support_transcript_fraction * 100.0,
+            context.design_transcript_id
+        ));
+        if let Some(distinguishing_primer) =
+            context.transcript_distinguishing_primer.as_deref()
+        {
+            explanation.push_str(&format!(
+                " Distinguishing primer(s): {distinguishing_primer}."
+            ));
+        }
+        Some(QpcrSplicingContextSummary {
+            assay_class_label: context.assay_class_label.clone(),
+            explanation,
+            covered_junction_labels: context.covered_junction_labels.clone(),
+        })
+    }
+
     fn qpcr_preview_geometry_from_ui(&self) -> Result<QpcrCartoonPreviewGeometry, String> {
         let (roi_start_0based, roi_end_0based) = self.resolve_roi_range_inputs_0based(
             &self.qpcr_design_ui.roi_start_0based,
@@ -39708,6 +39781,11 @@ impl MainAreaDna {
             .and_then(|rank| Self::qpcr_assay_by_rank(&report, rank))
             .or_else(|| report.assays.first());
         let splicing_view = self.relevant_qpcr_splicing_view_for_template(report.template.as_str());
+        let show_context_column = splicing_view.is_some()
+            || report
+                .assays
+                .iter()
+                .any(|assay| assay.transcript_context.is_some());
         let prior_selected_rank = self.qpcr_design_ui.selected_assay_rank_1based.clone();
         ui.group(|ui| {
             ui.label("qPCR report preview");
@@ -39738,11 +39816,11 @@ impl MainAreaDna {
                 return;
             }
             ui.small(
-                "Saved assays with forward / reverse / probe geometry. Click a row to drive the live qPCR preview and inspect splicing-aware context when available.",
+                "Saved assays with forward / reverse / probe geometry. Click a row to drive the live qPCR preview and inspect transcript/splicing context when available.",
             );
             egui::Grid::new("qpcr_report_preview_grid")
                 .striped(true)
-                .num_columns(if splicing_view.is_some() { 10 } else { 9 })
+                .num_columns(if show_context_column { 10 } else { 9 })
                 .show(ui, |ui| {
                     ui.strong("#");
                     ui.strong("amplicon");
@@ -39753,15 +39831,18 @@ impl MainAreaDna {
                     ui.strong("ΔTm primers");
                     ui.strong("ΔTm probe");
                     ui.strong("score");
-                    if splicing_view.is_some() {
+                    if show_context_column {
                         ui.strong("context");
                     }
                     ui.end_row();
                     for assay in report.assays.iter().take(8) {
                         let selected = Some(assay.rank) == selected_rank;
-                        let context_summary = splicing_view
-                            .as_ref()
-                            .and_then(|view| Self::qpcr_splicing_context_summary(view, assay));
+                        let context_summary = Self::qpcr_persisted_context_summary(assay)
+                            .or_else(|| {
+                                splicing_view.as_ref().and_then(|view| {
+                                    Self::qpcr_splicing_context_summary(view, assay)
+                                })
+                            });
                         if ui
                             .selectable_label(selected, format!("{}", assay.rank))
                             .on_hover_text("Select this assay and drive the live qPCR preview from it.")
@@ -39856,7 +39937,7 @@ impl MainAreaDna {
                                 self.qpcr_design_ui.selected_assay_rank_1based =
                                     assay.rank.to_string();
                             }
-                        } else if splicing_view.is_some() {
+                        } else if show_context_column {
                             ui.small("-");
                         }
                         ui.end_row();
@@ -39881,11 +39962,15 @@ impl MainAreaDna {
                 ui.small(format!(
                     "Current best-assay rationale: highest retained score among assays that keep the probe inside the amplicon and satisfy both primer/probe ΔTm gates."
                 ));
-                if let Some(view) = splicing_view.as_ref()
-                    && let Some(summary) = Self::qpcr_splicing_context_summary(view, selected_assay)
+                if let Some(summary) = Self::qpcr_persisted_context_summary(selected_assay)
+                    .or_else(|| {
+                        splicing_view.as_ref().and_then(|view| {
+                            Self::qpcr_splicing_context_summary(view, selected_assay)
+                        })
+                    })
                 {
                     ui.small(format!(
-                        "Splicing context [{}]: {}",
+                        "Context [{}]: {}",
                         summary.assay_class_label, summary.explanation
                     ));
                     if !summary.covered_junction_labels.is_empty() {

@@ -1755,6 +1755,11 @@ order. Durable architecture constraints and decisions remain in
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
     including explicit side-sequence constraints and pair constraints (no raw
     JSON required for common interactive use)
+    - the dedicated GUI qPCR form still emits baseline
+      `transcript_targeting = null`; transcript-aware qPCR origination is
+      currently available through shell/CLI/agent payloads plus persisted
+      report reopen flows, and still needs first-class GUI controls for full
+      create-path parity
   - PCR Designer qPCR mode now also exposes direct export of the built-in
     `pcr.assay.qpcr` protocol cartoon so the same probe-bearing strip is easy
     to reuse in handoffs and showcase material
