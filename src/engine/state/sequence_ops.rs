@@ -1322,6 +1322,7 @@ impl GentleEngine {
             | Operation::ExportProcessRunBundle { path, .. }
             | Operation::ExportGuideOligos { path, .. }
             | Operation::ExportGuideProtocolText { path, .. }
+            | Operation::ExportPrimerDesignReport { path, .. }
             | Operation::ExportRnaReadReport { path, .. }
             | Operation::ExportRnaReadHitsFasta { path, .. }
             | Operation::ExportRnaReadSampleSheet { path, .. }

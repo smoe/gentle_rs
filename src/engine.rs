@@ -3272,6 +3272,10 @@ pub enum Operation {
         max_pairs: Option<usize>,
         report_id: Option<String>,
     },
+    ExportPrimerDesignReport {
+        report_id: String,
+        path: String,
+    },
     PrepareRestrictionCloningPcrHandoff {
         template: SeqId,
         primer_report_id: String,
@@ -5082,6 +5086,7 @@ impl GentleEngine {
                 "PcrMutagenesis".to_string(),
                 "DesignPrimerPairs".to_string(),
                 "DesignInsertionPrimerPairs".to_string(),
+                "ExportPrimerDesignReport".to_string(),
                 "PrepareRestrictionCloningPcrHandoff".to_string(),
                 "PcrOverlapExtensionMutagenesis".to_string(),
                 "DesignQpcrAssays".to_string(),
@@ -7170,6 +7175,7 @@ impl GentleEngine {
                 | Operation::RenderProteinGelReportsSvg { .. }
                 | Operation::RenderProteaseDigestGelSvg { .. }
                 | Operation::RenderProtein2dGelSvg { .. }
+                | Operation::ExportPrimerDesignReport { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
                 | Operation::ValidateProtocolCartoonTemplate { .. }

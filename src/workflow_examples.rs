@@ -1404,6 +1404,11 @@ fn rewrite_example_paths_for_execution(
             ensure_parent_exists(path)?;
             continue;
         }
+        if let Operation::ExportPrimerDesignReport { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
         if let Operation::ExportDnaLadders { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
@@ -2545,6 +2550,32 @@ mod tests {
         assert!(svg.contains("Protein Gel Preview"));
         assert!(svg.contains("Proteases: Trypsin"));
         assert!(svg.contains("Peptides shown"));
+    }
+
+    #[test]
+    fn workflow_examples_simple_pcr_primer_design_exports_report() {
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "simple_pcr_primer_design_offline")
+            .expect("simple PCR primer-design example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        run_example_workflow_in_dir(&loaded.example, Path::new("."), run_dir.path())
+            .expect("simple PCR primer-design workflow should execute");
+        let report_path = run_dir
+            .path()
+            .join("artifacts/simple_pcr_demo_primers.report.json");
+        assert!(report_path.exists());
+        let report: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(&report_path).expect("read simple PCR report"),
+        )
+        .expect("parse simple PCR report");
+        assert_eq!(
+            report["schema"].as_str(),
+            Some("gentle.primer_design_report.v1")
+        );
+        assert_eq!(report["template"].as_str(), Some("simple_pcr_template"));
+        assert_eq!(report["pair_count"].as_u64(), Some(5));
     }
 
     #[test]

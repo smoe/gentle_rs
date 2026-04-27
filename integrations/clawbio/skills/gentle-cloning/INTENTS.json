@@ -143,6 +143,26 @@
       ]
     },
     {
+      "intent_id": "simple_pcr_primer_design",
+      "description": "Run the canonical offline simple PCR primer-design workflow with explicit core ROI, flank windows, amplicon limits, and exported primer report.",
+      "trigger_terms": [
+        "simple pcr",
+        "simplest pcr",
+        "pcr primer design",
+        "design pcr primers",
+        "pcr constraints",
+        "selected region pcr"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_simple_pcr_primer_design_offline.json"
+        }
+      ]
+    },
+    {
       "intent_id": "ensembl_gene_panel_protein_gel",
       "description": "Render the guide-ready PATZ1/TP73/TP53/TP63/SP1/BACH2 Ensembl isoform molecular-weight gel.",
       "trigger_terms": [

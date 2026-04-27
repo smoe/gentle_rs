@@ -32,6 +32,9 @@ metadata:
       - gibson assembly
       - primer design
       - pcr design
+      - simple pcr
+      - design pcr primers
+      - pcr constraints
       - qpcr design
       - analyze dna sequence
       - restriction sites
@@ -99,10 +102,11 @@ This skill is execution-first.
 
 ClawBio shared chat adapters should consume `INTENTS.json` first. That
 `clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
-installed-database/resource, parameterized Ensembl gene 2D-gel, Ensembl
-gene-panel 1D protein-gel, bundled example protein-gel, bundled example
-2D-gel, Ensembl gene 2D-gel example, trypsin-digest, capability, skill-info,
-and explicit-demo wording to concrete `examples/*.json` requests.
+installed-database/resource, simple PCR primer-design, parameterized Ensembl
+gene 2D-gel, Ensembl gene-panel 1D protein-gel, bundled example protein-gel,
+bundled example 2D-gel, Ensembl gene 2D-gel example, trypsin-digest,
+capability, skill-info, and explicit-demo wording to concrete
+`examples/*.json` requests.
 Descriptor-only skill directories are discoverable, but execution still
 requires `gentle-cloning` to be registered in ClawBio's top-level `SKILLS`
 table.
@@ -605,6 +609,9 @@ rather than stopping at annotation or prioritization.
 
 Current shared GENtle routes behind this capability:
 
+- `DesignPrimerPairs`
+- `ExportPrimerDesignReport`
+- `examples/request_workflow_simple_pcr_primer_design_offline.json`
 - `FetchDbSnpRegion`
 - `AnnotatePromoterWindows`
 - `SummarizeVariantPromoterContext`
@@ -1305,6 +1312,11 @@ Apply the following methodology:
       wrapper output bundle under `generated/...`
   - `examples/request_protocol_cartoon_qpcr_svg.json`
     - matching protocol-cartoon graphics/export route for a qPCR assay layout
+  - `examples/request_workflow_simple_pcr_primer_design_offline.json`
+    - smallest ClawBio-safe PCR route: loads a local fixture, extracts a
+      compact context, encodes one core ROI plus left/right primer windows and
+      amplicon limits, runs deterministic primer-pair design, and exports the
+      ranked primer-design report JSON
   - shipped BED-export request examples now cover both common follow-on
     surfaces:
     - shell/direct CLI:

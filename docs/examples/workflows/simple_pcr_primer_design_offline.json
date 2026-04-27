@@ -1,0 +1,89 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "simple_pcr_primer_design_offline",
+  "title": "Simple PCR primer design from one selected core region (offline)",
+  "summary": "Loads one local transcript-rich locus fixture, extracts a compact PCR context around a selected core ROI, constrains primer search to the left/right flanks, designs a small ranked primer-pair set with the deterministic internal backend, and exports the primer-design report JSON.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/tp73.ncbi.gb"
+  ],
+  "tags": [
+    "pcr",
+    "primer",
+    "simple",
+    "offline",
+    "clawbio"
+  ],
+  "workflow": {
+    "run_id": "example_simple_pcr_primer_design_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/tp73.ncbi.gb",
+          "as_id": "simple_pcr_source_locus"
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "primer_design_backend",
+          "value": "internal"
+        }
+      },
+      {
+        "ExtractRegion": {
+          "input": "simple_pcr_source_locus",
+          "from": 61520,
+          "to": 62320,
+          "output_id": "simple_pcr_template"
+        }
+      },
+      {
+        "DesignPrimerPairs": {
+          "template": "simple_pcr_template",
+          "roi_start_0based": 200,
+          "roi_end_0based": 600,
+          "forward": {
+            "min_length": 18,
+            "max_length": 24,
+            "start_0based": 0,
+            "end_0based": 250,
+            "min_tm_c": 35.0,
+            "max_tm_c": 90.0,
+            "min_gc_fraction": 0.0,
+            "max_gc_fraction": 1.0,
+            "max_anneal_hits": 100000
+          },
+          "reverse": {
+            "min_length": 18,
+            "max_length": 24,
+            "start_0based": 550,
+            "end_0based": 800,
+            "min_tm_c": 35.0,
+            "max_tm_c": 90.0,
+            "min_gc_fraction": 0.0,
+            "max_gc_fraction": 1.0,
+            "max_anneal_hits": 100000
+          },
+          "pair_constraints": {
+            "require_roi_flanking": true,
+            "required_amplicon_motifs": [],
+            "forbidden_amplicon_motifs": [],
+            "fixed_amplicon_start_0based": null,
+            "fixed_amplicon_end_0based_exclusive": null
+          },
+          "min_amplicon_bp": 120,
+          "max_amplicon_bp": 800,
+          "max_tm_delta_c": 25.0,
+          "max_pairs": 5,
+          "report_id": "simple_pcr_demo_primers"
+        }
+      },
+      {
+        "ExportPrimerDesignReport": {
+          "report_id": "simple_pcr_demo_primers",
+          "path": "artifacts/simple_pcr_demo_primers.report.json"
+        }
+      }
+    ]
+  }
+}

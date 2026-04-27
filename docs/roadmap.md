@@ -1512,6 +1512,12 @@ order. Durable architecture constraints and decisions remain in
           isoform products, and render one molecular-weight gel column per gene
           with side ladders instead of stitching single-gene figures in the
           wrapper
+        - the smallest ClawBio-safe PCR path is now workflow-owned too:
+          `simple_pcr_primer_design_offline` loads an offline locus fixture,
+          extracts a compact template around one selected core ROI, constrains
+          primer design to explicit left/right flank windows and amplicon
+          limits, runs `DesignPrimerPairs`, and exports the persisted
+          `gentle.primer_design_report.v1` through `ExportPrimerDesignReport`
         - shared TF query resolution is now in place for CLI/ClawBio-facing
           promoter work too:
           aliases such as `OCT4`, built-in groups such as `Yamanaka factors` /

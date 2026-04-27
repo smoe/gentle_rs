@@ -129,6 +129,8 @@ skill cannot know. Run the status routes:
 - `services status` for the ClawBio-facing readiness overview
 - `services guide --channel telegram` for a bench-user guide with clickable
   section actions and optional gene personalization
+- `request_workflow_simple_pcr_primer_design_offline.json` for the smallest
+  safe PCR primer-design demo with explicit ROI/window/amplicon constraints
 - `resources status` for integrated JASPAR/REBASE/ATtRACT-style resources
 - `genomes status ...` or `genomes list` for reference-genome catalogs/caches
 - `helpers status ...` or `helpers list` for helper/vector assets
@@ -392,6 +394,10 @@ cargo run --locked --bin gentle_cli -- --version
   `request_workflow_tp73_tfbs_score_tracks_svg.json` expose the newer TFBS
   presentation layer for ClawBio: one JSON score-track summary and one stacked
   SVG figure over the promoter-proximal TP73 window
+- `request_workflow_simple_pcr_primer_design_offline.json` is the canonical
+  simple-PCR constraint demo: it loads an offline context, extracts a compact
+  PCR template, constrains primer search to explicit flanks around one core
+  ROI, designs a small ranked pair set, and exports the primer-design report
 - `request_workflow_tp73_isoform_protein_gel.json` is the canonical offline
   TP73 protein-gel demo: it loads the bundled TP73 GenBank asset, derives
   curated `NM_` isoform proteins, renders one protein molecular-weight gel
@@ -659,6 +665,9 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_workflow_tp73_tfbs_score_tracks_svg.json`
   - matching workflow-backed TFBS presentation example that exports the same
     TP73 promoter score-track view as one stacked SVG figure
+- `examples/request_workflow_simple_pcr_primer_design_offline.json`
+  - offline simple-PCR primer design route that constrains one selected core
+    ROI with left/right primer windows and exports a primer-design report JSON
 - `examples/request_workflow_tp73_isoform_protein_gel.json`
   - offline TP73 isoform protein-gel demo that loads the bundled TP73 GenBank
     asset, derives curated `NM_` protein isoforms, renders one protein

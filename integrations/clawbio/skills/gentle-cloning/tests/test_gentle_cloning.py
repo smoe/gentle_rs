@@ -2879,6 +2879,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             300,
         ),
+        "request_workflow_simple_pcr_primer_design_offline.json": (
+            "workflow",
+            None,
+            300,
+        ),
         "request_workflow_gene_panel_isoform_protein_gel_ensembl.json": (
             "workflow",
             None,
@@ -3177,6 +3182,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             )
             assert payload["expected_artifacts"] == [
                 "exports/tp73_isoform_protein_2d_gel.svg"
+            ]
+            assert payload["timeout_secs"] == 300
+        if name == "request_workflow_simple_pcr_primer_design_offline.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "docs/examples/workflows/simple_pcr_primer_design_offline.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "artifacts/simple_pcr_demo_primers.report.json"
             ]
             assert payload["timeout_secs"] == 300
         if name == "request_workflow_gene_panel_isoform_protein_gel_ensembl.json":
@@ -3575,6 +3590,7 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "direct DNA fragment requests" in description
     assert "mechanistic follow-up" in description
     assert "installed-runtime and resource-readiness checks" in description
+    assert "simple PCR primer-design reports" in description
     assert "reusable local reference assets" in description
     assert "protease-digest figures" in description
     assert "skill-intent descriptor" in description
@@ -3608,6 +3624,9 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "services status" in trigger_keywords
     assert "readiness" in trigger_keywords
     assert "local resources" in trigger_keywords
+    assert "simple pcr" in trigger_keywords
+    assert "design pcr primers" in trigger_keywords
+    assert "pcr constraints" in trigger_keywords
     assert "database status" in trigger_keywords
     assert "installed databases" in trigger_keywords
     assert "resources status" in trigger_keywords
@@ -3650,6 +3669,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "ensembl_gene_protein_2d_gel",
         "demo_isoform_protein_gel",
         "demo_isoform_protein_2d_gel",
+        "simple_pcr_primer_design",
         "ensembl_gene_panel_protein_gel",
         "demo_ensembl_gene_protein_2d_gel",
         "demo_trypsin_digest_gel",
@@ -3665,6 +3685,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "demo_isoform_protein_gel": "examples/request_workflow_isoform_protein_gel_demo.json",
         "demo_isoform_protein_2d_gel": (
             "examples/request_workflow_isoform_protein_2d_gel_demo.json"
+        ),
+        "simple_pcr_primer_design": (
+            "examples/request_workflow_simple_pcr_primer_design_offline.json"
         ),
         "ensembl_gene_panel_protein_gel": (
             "examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json"
@@ -3725,6 +3748,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "isoelectric point demo" in routes["demo_isoform_protein_2d_gel"][
         "trigger_terms"
     ]
+    assert "simple pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
     assert "gene panel protein gel" in routes["ensembl_gene_panel_protein_gel"][
         "trigger_terms"
     ]

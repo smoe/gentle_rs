@@ -810,9 +810,10 @@ fn default_guide_sections() -> Vec<TelegramGuideSection> {
         TelegramGuideSection {
             section_id: "cloning".to_string(),
             title: "Cloning and vectors".to_string(),
-            summary: "Render cloning cartoons, inspect helper vectors, and prepare vector/helper caches.".to_string(),
+            summary: "Render cloning cartoons, design simple PCR primers, inspect helper vectors, and prepare vector/helper caches.".to_string(),
             example_prompts: vec![
                 "Show me a Gibson assembly cartoon.".to_string(),
+                "Design the simplest PCR primers for one selected region.".to_string(),
                 "Is pUC19 prepared for helper-vector workflows?".to_string(),
             ],
             default_genes: vec![],
@@ -1033,6 +1034,17 @@ fn guide_actions_for_section(
                     first_expected_artifact("artifacts/gibson.two_fragment.protocol.svg"),
                 ));
             }
+            actions.push(handoff_action(
+                "Run simple PCR primer design",
+                "simple_pcr_primer_design",
+                "workflow @docs/examples/workflows/simple_pcr_primer_design_offline.json",
+                300,
+                "Load the offline PCR context, constrain primer search to explicit flanks around one core ROI, and export the ranked primer-pair report.",
+                false,
+                None,
+                None,
+                first_expected_artifact("artifacts/simple_pcr_demo_primers.report.json"),
+            ));
             actions.push(handoff_action(
                 "Check pUC19 helper status",
                 "helper_status",
@@ -1666,6 +1678,29 @@ mod tests {
             .expected_artifacts
             .iter()
             .any(|artifact| artifact == "exports/gene_panel_isoform_protein_gel.svg"));
+    }
+
+    #[test]
+    fn telegram_guide_cloning_offers_simple_pcr_primer_design() {
+        let reference = fake_dependency(false, "missing", None);
+        let handoff = fake_handoff_report(reference, vec![], vec![]);
+        let guide = build_telegram_guide_from_handoff(handoff, "telegram", "cloning", None);
+
+        let action = guide
+            .suggested_actions
+            .iter()
+            .find(|action| action.kind == "simple_pcr_primer_design")
+            .expect("simple PCR primer-design action");
+        assert_eq!(
+            action.shell_line,
+            "workflow @docs/examples/workflows/simple_pcr_primer_design_offline.json"
+        );
+        assert_eq!(action.timeout_secs, 300);
+        assert!(!action.requires_confirmation);
+        assert!(action
+            .expected_artifacts
+            .iter()
+            .any(|artifact| artifact == "artifacts/simple_pcr_demo_primers.report.json"));
     }
 
     #[test]

@@ -11524,6 +11524,13 @@ impl GentleEngine {
                         Some(insertion),
                     )?;
                 }
+                Operation::ExportPrimerDesignReport { report_id, path } => {
+                    let report = self.export_primer_design_report(&report_id, &path)?;
+                    result.messages.push(format!(
+                        "Exported primer-design report '{}' with {} pair(s) to '{}'",
+                        report.report_id, report.pair_count, path
+                    ));
+                }
                 Operation::PrepareRestrictionCloningPcrHandoff {
                     template,
                     primer_report_id,

@@ -1650,6 +1650,7 @@ Current draft operations:
 - `PcrAdvanced { template, forward_primer, reverse_primer, output_id?, unique? }`
 - `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
 - `DesignPrimerPairs { ... }` (implemented baseline)
+- `ExportPrimerDesignReport { report_id, path }`
 - `PcrOverlapExtensionMutagenesis { ... }` (implemented baseline; insertion/deletion/replacement overlap-extension flow)
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
@@ -4649,6 +4650,32 @@ Operation progress/cancellation semantics:
       window constraints, shift budget, and per-pair compensation rows
       (`forward_anchor_shift_bp`, `reverse_anchor_shift_bp`,
       compensation segments, and compensated primer/tail strings)
+
+`ExportPrimerDesignReport` contract:
+
+- Purpose:
+  - write a persisted `gentle.primer_design_report.v1` record to JSON so
+    wrappers such as ClawBio can attach the ranked primer-pair report as a
+    deterministic artifact.
+- Operation payload:
+  - `report_id`: existing primer-design report id.
+  - `path`: JSON output path.
+- This is the preferred workflow-owned export step after `DesignPrimerPairs`
+  when a chat adapter needs a shareable report rather than only stdout.
+
+Simple PCR constraint handoff:
+
+- ClawBio should treat a simple PCR request as four explicit constraints before
+  calling `DesignPrimerPairs`:
+  - template sequence id or retrieval workflow,
+  - core ROI that must be inside the amplicon,
+  - allowed forward/reverse flank windows,
+  - min/max amplicon and primer/Tm/GC limits.
+- For the smallest safe default, first extract a compact context around the
+  core ROI, then express the flank windows in that extracted template. This
+  keeps internal search bounded and avoids accidental whole-locus primer scans.
+- Canonical offline example:
+  `docs/examples/workflows/simple_pcr_primer_design_offline.json`.
 
 `DesignInsertionPrimerPairs` contract (implemented MVP):
 
