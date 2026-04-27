@@ -234,6 +234,21 @@
         "contributors"
       ],
       "notes": "CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft."
+    },
+    {
+      "id": "qpcr_exon_junctions_gui",
+      "title": "qPCR Across Exon Junctions",
+      "path": "docs/tutorial/qpcr_exon_junctions_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "primer_design",
+        "contributors"
+      ],
+      "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands."
     }
   ]
 }
