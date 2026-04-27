@@ -4903,6 +4903,7 @@ Primer-design shell command family (implemented):
 - Shared-shell family:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
   - `primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]`
   - `primers restriction-cloning-vector-suggestions SEQ_ID`
@@ -4923,6 +4924,10 @@ Primer-design shell command family (implemented):
   `{"DesignPrimerPairs": {...}}`.
 - `primers design-qpcr` expects an operation payload whose root variant is
   `{"DesignQpcrAssays": {...}}`.
+- `primers preflight` returns `gentle.primer3_preflight.v1` with the requested
+  backend plus configured-executable token, default-fallback marker, effective
+  executable, resolved path, working directory, and reachability/version/error
+  diagnostics.
 - `primers prepare-restriction-cloning` expects an operation payload whose root
   variant is `{"PrepareRestrictionCloningPcrHandoff": {...}}`.
 - `primers seed-restriction-cloning-handoff` is non-mutating and returns a

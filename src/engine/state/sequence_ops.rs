@@ -4493,9 +4493,38 @@ impl GentleEngine {
             .map(|line| line.to_string())
     }
 
+    fn primer3_preflight_display_path(path: &Path) -> String {
+        std::fs::canonicalize(path)
+            .unwrap_or_else(|_| path.to_path_buf())
+            .display()
+            .to_string()
+    }
+
+    fn primer3_preflight_resolved_path(executable: &str) -> Option<String> {
+        let trimmed = executable.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let candidate = Path::new(trimmed);
+        if candidate.is_absolute() || candidate.components().count() > 1 {
+            return candidate
+                .exists()
+                .then(|| Self::primer3_preflight_display_path(candidate));
+        }
+        let path_env = std::env::var_os("PATH")?;
+        for dir in std::env::split_paths(&path_env) {
+            let joined = dir.join(trimmed);
+            if joined.exists() {
+                return Some(Self::primer3_preflight_display_path(&joined));
+            }
+        }
+        None
+    }
+
     pub(super) fn probe_primer3_executable_status(executable: &str) -> Primer3PreflightReport {
         let mut report = Primer3PreflightReport {
             executable: executable.to_string(),
+            resolved_path: Self::primer3_preflight_resolved_path(executable),
             ..Primer3PreflightReport::default()
         };
         let started = Instant::now();
@@ -4528,13 +4557,16 @@ impl GentleEngine {
         let configured_executable = primer3_executable_override
             .map(str::trim)
             .unwrap_or_else(|| self.state.parameters.primer3_executable.trim());
-        let executable = if configured_executable.is_empty() {
-            "primer3_core"
-        } else {
-            configured_executable
-        };
+        let configured_executable = (!configured_executable.is_empty())
+            .then(|| configured_executable.to_string());
+        let executable = configured_executable.as_deref().unwrap_or("primer3_core");
         let mut report = Self::probe_primer3_executable_status(executable);
         report.backend = backend.as_str().to_string();
+        report.configured_executable = configured_executable;
+        report.used_default_executable = report.configured_executable.is_none();
+        report.working_directory = std::env::current_dir()
+            .ok()
+            .map(|path| path.display().to_string());
         report
     }
 

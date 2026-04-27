@@ -10668,6 +10668,11 @@ fn execute_primers_preflight_reports_reachable_primer3() {
     let tmp = tempdir().expect("tempdir");
     let fixture_path = Path::new(&primer3_fixture_path("pairs.location_5_60.kv")).to_path_buf();
     let fake_primer3 = install_fake_primer3(tmp.path(), &fixture_path);
+    let expected_path = fs::canonicalize(&fake_primer3)
+        .expect("canonical fake primer3")
+        .display()
+        .to_string();
+    let expected_cwd = env::current_dir().expect("cwd").display().to_string();
     let out = execute_shell_command(
         &mut engine,
         &ShellCommand::PrimersPreflight {
@@ -10688,8 +10693,24 @@ fn execute_primers_preflight_reports_reachable_primer3() {
     );
     assert_eq!(out.output["preflight"]["backend"].as_str(), Some("primer3"));
     assert_eq!(
+        out.output["preflight"]["configured_executable"].as_str(),
+        Some(fake_primer3.as_str())
+    );
+    assert_eq!(
+        out.output["preflight"]["used_default_executable"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
         out.output["preflight"]["executable"].as_str(),
         Some(fake_primer3.as_str())
+    );
+    assert_eq!(
+        out.output["preflight"]["resolved_path"].as_str(),
+        Some(expected_path.as_str())
+    );
+    assert_eq!(
+        out.output["preflight"]["working_directory"].as_str(),
+        Some(expected_cwd.as_str())
     );
 }
 

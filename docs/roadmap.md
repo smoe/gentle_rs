@@ -4713,6 +4713,9 @@ Phase 2 (tooling diagnostics + compatibility hardening): in progress
 
 - Shell/CLI report payload now captures executable/version diagnostics when
   Primer3 is used (or fallback metadata in auto mode).
+- shared Primer3 preflight payload now distinguishes configured executable
+  token vs effective executable, reports a default-fallback marker, and carries
+  resolved path + working directory context for installation triage.
 - GUI Engine Ops now includes dedicated Primer3 preflight/status controls:
   - backend selector (`auto|internal|primer3`)
   - executable path field (`primer3_executable`)
@@ -4723,7 +4726,8 @@ Phase 2 (tooling diagnostics + compatibility hardening): in progress
   internal-vs-Primer3 normalization parity tests (fake local Primer3 script +
   committed key/value fixture).
 - Remaining:
-  - additional config-path diagnostics for complex installations
+  - broader real-world install-matrix validation for complex PATH /
+    working-directory combinations
 - Keep failure modes deterministic and machine-readable
   (`Unsupported`/`Io`/`InvalidInput` with stable message contracts).
 

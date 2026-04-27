@@ -3547,7 +3547,11 @@ pub struct PrimerDesignBackendInfo {
 #[serde(default)]
 pub struct Primer3PreflightReport {
     pub backend: String,
+    pub configured_executable: Option<String>,
+    pub used_default_executable: bool,
     pub executable: String,
+    pub resolved_path: Option<String>,
+    pub working_directory: Option<String>,
     pub reachable: bool,
     pub version_probe_ok: bool,
     pub status_code: Option<i32>,

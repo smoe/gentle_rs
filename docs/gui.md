@@ -3001,8 +3001,8 @@ Primer backend/preflight controls:
     `primer3_executable` engine parameters)
   - `Probe Primer3` (runs availability/version probe and reports status)
   - `Reload from Engine` (refreshes controls from current engine parameters)
-- preflight status line reports reachability, resolved executable, backend, and
-  probe timing.
+- preflight status line reports configured/effective executable,
+  resolved path, working directory, backend, reachability, and probe timing.
 
 Primer pairs form:
 

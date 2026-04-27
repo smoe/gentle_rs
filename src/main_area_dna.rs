@@ -38723,12 +38723,26 @@ impl MainAreaDna {
             .or(report.version.as_deref())
             .or(report.error.as_deref())
             .unwrap_or("n/a");
+        let configured_display = report
+            .configured_executable
+            .as_deref()
+            .unwrap_or("<default: primer3_core>");
+        let effective_display = report.executable.as_str();
+        let resolved_display = report.resolved_path.as_deref().unwrap_or("-");
+        let working_directory_display = report.working_directory.as_deref().unwrap_or("-");
+        let target_display = report
+            .resolved_path
+            .as_deref()
+            .unwrap_or(effective_display);
         self.primer3_preflight_status = format!(
-            "Primer3 preflight: reachable={} version_probe_ok={} backend={} executable='{}' status={} version='{}' detail='{}' probe={} ms",
+            "Primer3 preflight: reachable={} version_probe_ok={} backend={} configured='{}' effective='{}' resolved='{}' cwd='{}' status={} version='{}' detail='{}' probe={} ms",
             report.reachable,
             report.version_probe_ok,
             report.backend,
-            report.executable,
+            configured_display,
+            effective_display,
+            resolved_display,
+            working_directory_display,
             report
                 .status_code
                 .map(|v| v.to_string())
@@ -38740,7 +38754,7 @@ impl MainAreaDna {
         if report.reachable && report.version_probe_ok {
             self.op_status = format!(
                 "Primer3 preflight OK (backend={}, executable='{}')",
-                report.backend, report.executable
+                report.backend, target_display
             );
             self.op_error_popup = None;
         } else if report.reachable {
@@ -38750,13 +38764,13 @@ impl MainAreaDna {
                     .status_code
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "signal".to_string()),
-                report.executable
+                target_display
             );
         } else {
             self.op_status = format!(
                 "Primer3 preflight failed for '{}': {}",
-                report.executable,
-                report.error.unwrap_or_else(|| "unreachable".to_string())
+                target_display,
+                report.error.as_deref().unwrap_or("unreachable")
             );
         }
     }

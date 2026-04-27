@@ -1850,6 +1850,9 @@ Shared shell command:
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
+      - returns `gentle.primer3_preflight.v1` with configured/effective
+        executable, resolved path, working directory, and
+        reachability/version diagnostics
     - `primers seed-from-feature SEQ_ID FEATURE_ID`
     - `primers seed-from-splicing SEQ_ID FEATURE_ID`
     - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`

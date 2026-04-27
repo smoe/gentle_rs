@@ -3053,8 +3053,17 @@ fn test_primer3_preflight_report_success() {
     let tmp = tempdir().expect("tempdir");
     let fake_primer3 = install_fake_primer3(tmp.path());
     let report = engine.primer3_preflight_report(None, Some(fake_primer3.as_str()));
+    let expected_path = fs::canonicalize(&fake_primer3)
+        .expect("canonical fake primer3")
+        .display()
+        .to_string();
+    let expected_cwd = env::current_dir().expect("cwd").display().to_string();
     assert_eq!(report.backend, "primer3");
+    assert_eq!(report.configured_executable.as_deref(), Some(fake_primer3.as_str()));
+    assert!(!report.used_default_executable);
     assert_eq!(report.executable, fake_primer3);
+    assert_eq!(report.resolved_path.as_deref(), Some(expected_path.as_str()));
+    assert_eq!(report.working_directory.as_deref(), Some(expected_cwd.as_str()));
     assert!(report.reachable);
     assert!(report.version_probe_ok);
     assert_eq!(
@@ -3069,11 +3078,31 @@ fn test_primer3_preflight_report_missing_executable() {
     let mut engine = GentleEngine::new();
     engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
     let report = engine.primer3_preflight_report(None, Some("/definitely/missing/primer3_core"));
+    let expected_cwd = env::current_dir().expect("cwd").display().to_string();
     assert_eq!(report.backend, "primer3");
+    assert_eq!(
+        report.configured_executable.as_deref(),
+        Some("/definitely/missing/primer3_core")
+    );
+    assert!(!report.used_default_executable);
     assert_eq!(report.executable, "/definitely/missing/primer3_core");
+    assert!(report.resolved_path.is_none());
+    assert_eq!(report.working_directory.as_deref(), Some(expected_cwd.as_str()));
     assert!(!report.reachable);
     assert!(!report.version_probe_ok);
     assert!(report.error.is_some());
+}
+
+#[test]
+fn test_primer3_preflight_report_blank_config_uses_default_executable() {
+    let mut engine = GentleEngine::new();
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+    engine.state_mut().parameters.primer3_executable.clear();
+    let report = engine.primer3_preflight_report(None, None);
+    assert_eq!(report.backend, "primer3");
+    assert!(report.configured_executable.is_none());
+    assert!(report.used_default_executable);
+    assert_eq!(report.executable, "primer3_core");
 }
 
 #[test]
