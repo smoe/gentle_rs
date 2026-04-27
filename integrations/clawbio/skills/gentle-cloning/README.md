@@ -51,11 +51,11 @@ free text.
 
 The immediate chat-adapter routing layer is `INTENTS.json`. It maps broad user
 wording for runtime version, service readiness, installed databases/resources,
-TP73 protein gel, TP73 2D gel, trypsin-digest gel, capabilities, skill info,
-and explicit demo requests to stable `examples/*.json` payloads. Descriptor-only
-skill directories are discoverable by the current ClawBio planner, but
-execution still requires registering `gentle-cloning` in ClawBio's top-level
-`SKILLS` table.
+Telegram guide overview/sections, TP73 protein gel, TP73 2D gel,
+trypsin-digest gel, capabilities, skill info, and explicit demo requests to
+stable `examples/*.json` payloads. Descriptor-only skill directories are
+discoverable by the current ClawBio planner, but execution still requires
+registering `gentle-cloning` in ClawBio's top-level `SKILLS` table.
 
 ## Files
 
@@ -152,6 +152,11 @@ act like navigation links with `kind = guide_section` and
 confirmation-gated through the normal status and handoff routes. If the user
 names a gene, preserve it with `--gene SYMBOL`; otherwise GENtle uses defaults
 such as TERT/TP73 for promoter-TFBS and TP73/TP53 for isoform demos.
+
+The guide is also useful when a chat adapter ignores `suggested_actions[]`:
+`summary_lines[]` now includes a compact text menu and deterministic phrases
+such as `Continue readiness`, `Continue cloning`, and `Continue isoforms`.
+Matching request examples exist for each guide section.
 
 ### Preparation for likely user questions
 
@@ -372,6 +377,10 @@ cargo run --locked --bin gentle_cli -- --version
     declared SVG engine outputs are rasterized into deterministic PNG bundle
     artifacts, while the original SVGs remain available as provenance/supporting
     files when useful
+  - when a run produces multiple displayable figures, the wrapper promotes only
+    one PNG in `result.json.preferred_artifacts[]` and emits
+    `continue_artifact` suggested actions for the remaining figures so
+    one-image-per-reply chat surfaces can page through them
   - browser/OpenClaw inline image rendering is still a later ClawBio-side
     attachment/UI step; this repo phase is only about producing the PNG-first
     bundle outputs
@@ -595,6 +604,7 @@ Included first-run bootstrap requests:
 - `examples/request_shell_state_summary.json`
 - `examples/request_services_status.json`
 - `examples/request_services_telegram_guide.json`
+- `examples/request_services_telegram_guide_{readiness,gene_context,tfbs,inline_dna,cloning,isoforms,follow_up}.json`
 - `examples/request_services_handoff.json`
 - `examples/request_genomes_status_grch38.json`
 - `examples/request_resources_status.json`

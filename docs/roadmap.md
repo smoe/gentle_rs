@@ -1457,10 +1457,10 @@ order. Durable architecture constraints and decisions remain in
         - GENtle now also ships a ClawBio `clawbio.skill_intents.v1`
           descriptor as `integrations/clawbio/skills/gentle-cloning/INTENTS.json`,
           making version, service-readiness, resource/database,
-          protein-gel demo, 2D-gel demo, and trypsin-digest demo route aliases
-          explicit
-          for shared chat adapters before upstream ClawBio learns to execute
-          richer `suggested_actions[]` follow-ups
+          Telegram guide overview/section, protein-gel demo, 2D-gel demo, and
+          trypsin-digest demo route aliases explicit for shared chat adapters
+          before upstream ClawBio learns to execute richer
+          `suggested_actions[]` follow-ups
         - the lowest-hanging graphical demo on that same path is now explicit:
           one request can auto-prepare `Human GRCh38 Ensembl 116`, fetch
           `rs9923231`, and export a linear `VKORC1` genomic-context SVG for
@@ -1469,6 +1469,10 @@ order. Durable architecture constraints and decisions remain in
           one explicit best-first artifact selection, and the ClawBio wrapper
           lifts that into `result.json.preferred_artifacts[]` so chat layers
           can choose a first figure without path heuristics
+        - the wrapper now constrains `preferred_artifacts[]` to one best-first
+          PNG when a run produces multiple rasterized figures, while keeping
+          every generated artifact in the bundle and adding `continue_artifact`
+          suggested actions for one-image-per-reply chat surfaces
         - the same wrapper now also emits execution-aware
           `result.json.suggested_actions[]` for status/readiness replies, so
           ClawBio can offer deterministic follow-up commands such as
@@ -1483,6 +1487,11 @@ order. Durable architecture constraints and decisions remain in
           `requires_confirmation = false`) so ClawBio can offer
           hyperlink-like navigation without inventing a separate guide
           protocol
+        - that same guide now has plain-text continuation fallbacks in
+          `summary_lines[]` (`Continue readiness`, `Continue cloning`,
+          `Continue isoforms`, etc.) plus concrete ClawBio request examples
+          for every guide section, so Telegram remains usable before action
+          buttons are wired upstream
         - the guide route accepts optional gene personalization while keeping
           useful defaults for no-gene sessions:
           `TERT`/`TP73` for promoter-TFBS, `TP73` for gene context, and

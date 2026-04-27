@@ -345,6 +345,7 @@ Included first-run bootstrap request examples:
 - `request_genomes_install_ensembl_mouse.json`
 - `request_shell_state_summary.json`
 - `request_services_telegram_guide.json`
+- `request_services_telegram_guide_{readiness,gene_context,tfbs,inline_dna,cloning,isoforms,follow_up}.json`
 - `request_genomes_status_grch38.json`
 - `request_genomes_prepare_grch38.json`
 - `request_helpers_status_puc19.json`
@@ -2734,6 +2735,10 @@ Resource sync commands:
     `gentle.telegram_guide.v1`.
   - The guide includes compact `summary_lines[]`, `readiness_summary_lines[]`,
     `menu_sections[]`, `blocked_actions[]`, and `suggested_actions[]`.
+  - `summary_lines[]` also includes a text fallback menu with phrases such as
+    `Continue readiness`, `Continue cloning`, and `Continue isoforms`, so chat
+    adapters that do not yet render `suggested_actions[]` can still let users
+    navigate the guide by sending another message.
   - Its `suggested_actions[]` entries act like navigation links:
     `kind = guide_section`, `requires_confirmation = false`, and the
     `shell_line` points back to another guide section.

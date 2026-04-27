@@ -1607,15 +1607,43 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     assert run.returncode == 0, run.stderr
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    collected_declared = [
+        artifact["declared_path"]
+        for artifact in result["artifacts"]["collected"]
+    ]
+    for expected_svg in [
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg",
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg",
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg",
+    ]:
+        assert expected_svg in collected_declared
+
     preferred = result["preferred_artifacts"]
     assert preferred[0]["artifact_id"] == "clawbio_storyboard_png"
     assert preferred[0]["path"] == "generated/clawbio_storyboard.png"
     assert preferred[0]["is_best_first_artifact"] is True
     assert preferred[0]["derived_from"] == "generated/clawbio_storyboard.svg"
-    assert any(
-        artifact["path"].endswith("vkorc1_rs9923231_promoter_context.png")
-        for artifact in preferred[1:]
-    )
+    assert len(preferred) == 1
+    continue_actions = [
+        action
+        for action in result["suggested_actions"]
+        if action["kind"] == "continue_artifact"
+    ]
+    assert [
+        action["expected_artifacts"][0]
+        for action in continue_actions
+    ] == [
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg",
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg",
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg",
+    ]
+    assert continue_actions[0]["label"] == "Continue: show next figure"
+    assert continue_actions[0]["requires_confirmation"] is False
+    assert continue_actions[0]["request"]["mode"] == "workflow"
+    assert continue_actions[0]["request"]["expected_artifacts"] == [
+        "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg"
+    ]
+    assert "More figures were generated" in result["chat_summary_lines"][-1]
     storyboard_path = output_dir / "generated" / "clawbio_storyboard.svg"
     assert storyboard_path.exists()
     assert (output_dir / "generated" / "clawbio_storyboard.png").exists()
@@ -2841,6 +2869,41 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "services guide --channel telegram",
             180,
         ),
+        "request_services_telegram_guide_readiness.json": (
+            "shell",
+            "services guide --channel telegram --section readiness",
+            180,
+        ),
+        "request_services_telegram_guide_gene_context.json": (
+            "shell",
+            "services guide --channel telegram --section gene-context",
+            180,
+        ),
+        "request_services_telegram_guide_tfbs.json": (
+            "shell",
+            "services guide --channel telegram --section tfbs",
+            180,
+        ),
+        "request_services_telegram_guide_inline_dna.json": (
+            "shell",
+            "services guide --channel telegram --section inline-dna",
+            180,
+        ),
+        "request_services_telegram_guide_cloning.json": (
+            "shell",
+            "services guide --channel telegram --section cloning",
+            180,
+        ),
+        "request_services_telegram_guide_isoforms.json": (
+            "shell",
+            "services guide --channel telegram --section isoforms",
+            180,
+        ),
+        "request_services_telegram_guide_follow_up.json": (
+            "shell",
+            "services guide --channel telegram --section follow-up",
+            180,
+        ),
         "request_helpers_status_puc19.json": (
             "shell",
             'helpers status "Plasmid pUC19 (online)"',
@@ -3698,6 +3761,10 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "resource-status" in tags
 
     trigger_keywords = set(catalog_entry["trigger_keywords"])
+    assert "gentle guide" in trigger_keywords
+    assert "continue guide" in trigger_keywords
+    assert "continue cloning" in trigger_keywords
+    assert "continue isoforms" in trigger_keywords
     assert "patient variant" in trigger_keywords
     assert "differential expression" in trigger_keywords
     assert "differentially expressed gene" in trigger_keywords
@@ -3760,6 +3827,14 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     routes = {route["intent_id"]: route for route in intents["routes"]}
     assert set(routes) == {
         "skill_info",
+        "telegram_guide_overview",
+        "telegram_guide_readiness",
+        "telegram_guide_gene_context",
+        "telegram_guide_tfbs",
+        "telegram_guide_inline_dna",
+        "telegram_guide_cloning",
+        "telegram_guide_isoforms",
+        "telegram_guide_follow_up",
         "capabilities",
         "runtime_version",
         "services_status",
@@ -3775,6 +3850,26 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     }
     expected_inputs = {
         "skill_info": "examples/request_skill_info.json",
+        "telegram_guide_overview": "examples/request_services_telegram_guide.json",
+        "telegram_guide_readiness": (
+            "examples/request_services_telegram_guide_readiness.json"
+        ),
+        "telegram_guide_gene_context": (
+            "examples/request_services_telegram_guide_gene_context.json"
+        ),
+        "telegram_guide_tfbs": "examples/request_services_telegram_guide_tfbs.json",
+        "telegram_guide_inline_dna": (
+            "examples/request_services_telegram_guide_inline_dna.json"
+        ),
+        "telegram_guide_cloning": (
+            "examples/request_services_telegram_guide_cloning.json"
+        ),
+        "telegram_guide_isoforms": (
+            "examples/request_services_telegram_guide_isoforms.json"
+        ),
+        "telegram_guide_follow_up": (
+            "examples/request_services_telegram_guide_follow_up.json"
+        ),
         "capabilities": "examples/request_capabilities.json",
         "runtime_version": "examples/request_runtime_version.json",
         "services_status": "examples/request_services_status.json",
@@ -3835,6 +3930,10 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "demo" in demo_route["trigger_terms"]
 
     assert "version" in routes["runtime_version"]["trigger_terms"]
+    assert "what can gentle do" in routes["telegram_guide_overview"]["trigger_terms"]
+    assert "continue readiness" in routes["telegram_guide_readiness"]["trigger_terms"]
+    assert "continue cloning" in routes["telegram_guide_cloning"]["trigger_terms"]
+    assert "continue isoforms" in routes["telegram_guide_isoforms"]["trigger_terms"]
     assert "local resources" in routes["services_status"]["trigger_terms"]
     assert "installed databases" in routes["resources_status"]["trigger_terms"]
     assert "2d protein gel" in routes["ensembl_gene_protein_2d_gel"][
@@ -3847,7 +3946,11 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "trigger_terms"
     ]
     assert "simple pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
+    assert "continue pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
     assert "gene panel protein gel" in routes["ensembl_gene_panel_protein_gel"][
+        "trigger_terms"
+    ]
+    assert "continue panel gel" in routes["ensembl_gene_panel_protein_gel"][
         "trigger_terms"
     ]
     assert "gene protein 2d gel demo" in routes["demo_ensembl_gene_protein_2d_gel"][

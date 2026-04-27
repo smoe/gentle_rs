@@ -102,11 +102,11 @@ This skill is execution-first.
 
 ClawBio shared chat adapters should consume `INTENTS.json` first. That
 `clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
-installed-database/resource, simple PCR primer-design, parameterized Ensembl
-gene 2D-gel, Ensembl gene-panel 1D protein-gel, bundled example protein-gel,
-bundled example 2D-gel, Ensembl gene 2D-gel example, trypsin-digest,
-capability, skill-info, and explicit-demo wording to concrete
-`examples/*.json` requests.
+installed-database/resource, Telegram guide overview/section navigation,
+simple PCR primer-design, parameterized Ensembl gene 2D-gel, Ensembl
+gene-panel 1D protein-gel, bundled example protein-gel, bundled example
+2D-gel, Ensembl gene 2D-gel example, trypsin-digest, capability, skill-info,
+and explicit-demo wording to concrete `examples/*.json` requests.
 Descriptor-only skill directories are discoverable, but execution still
 requires `gentle-cloning` to be registered in ClawBio's top-level `SKILLS`
 table.
@@ -249,6 +249,12 @@ Guide navigation actions use `kind = guide_section` and
 `requires_confirmation = false`. Long-running prepare/sync/download actions
 remain confirmation-gated and should come from the status/handoff payloads, not
 from prose.
+
+If ClawBio ignores `suggested_actions[]`, the guide must still be usable from
+plain text: relay `summary_lines[]`, including continuation phrases such as
+`Continue readiness`, `Continue cloning`, and `Continue isoforms`. Concrete
+request examples exist for each section, so these phrases can be routed without
+scraping a prior action list.
 
 ## Ensembl / Remote-Data Answer Rule
 
@@ -1124,6 +1130,7 @@ Apply the following methodology:
   - `examples/request_genomes_list_human.json`
   - `examples/request_services_status.json`
   - `examples/request_services_telegram_guide.json`
+  - `examples/request_services_telegram_guide_{readiness,gene_context,tfbs,inline_dna,cloning,isoforms,follow_up}.json`
   - `examples/request_services_handoff.json`
   - `examples/request_genomes_status_grch38.json`
   - `examples/request_resources_status.json`
@@ -1399,6 +1406,9 @@ For status/readiness outputs, `result.json` may additionally include:
   - multi-figure runs now promote `generated/clawbio_storyboard.png` first
     while keeping the SVG storyboard/source figures available as supporting
     provenance artifacts
+  - one-image-per-reply chat surfaces should treat
+    `preferred_artifacts[0]` as the only immediate image and offer any
+    `continue_artifact` suggested actions to page through additional figures
 - `suggested_actions[]` with deterministic follow-up commands and nested
   request objects that ClawBio can offer to execute after confirmation
   - those suggestions now follow GENtle's lifecycle state directly:

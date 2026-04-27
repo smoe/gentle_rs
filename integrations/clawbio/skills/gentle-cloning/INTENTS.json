@@ -15,8 +15,9 @@
       "trigger_terms": [
         "skill info",
         "skill metadata",
-        "what can gentle do",
-        "gentle skill"
+        "gentle skill",
+        "gentle skill info",
+        "gentle schema"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -24,6 +25,153 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_skill_info.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_overview",
+      "description": "Show the Telegram-compatible GENtle guide overview with text fallback navigation.",
+      "trigger_terms": [
+        "gentle guide",
+        "show guide",
+        "show me the gentle guide",
+        "what can gentle do",
+        "help me use gentle",
+        "continue guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_readiness",
+      "description": "Show the GENtle guide readiness section for installed data, references, and resources.",
+      "trigger_terms": [
+        "continue readiness",
+        "readiness guide",
+        "data readiness guide",
+        "gentle readiness guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_readiness.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_gene_context",
+      "description": "Show the GENtle guide gene-context section.",
+      "trigger_terms": [
+        "continue gene context",
+        "gene context guide",
+        "gene guide",
+        "locus guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_gene_context.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_tfbs",
+      "description": "Show the GENtle guide promoter and TFBS section.",
+      "trigger_terms": [
+        "continue tfbs",
+        "continue promoter",
+        "tfbs guide",
+        "promoter guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_tfbs.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_inline_dna",
+      "description": "Show the GENtle guide pasted-DNA inspection section.",
+      "trigger_terms": [
+        "continue pasted dna",
+        "continue inline dna",
+        "pasted dna guide",
+        "inline dna guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_inline_dna.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_cloning",
+      "description": "Show the GENtle guide cloning and vector section.",
+      "trigger_terms": [
+        "continue cloning",
+        "continue vectors",
+        "cloning guide",
+        "vector guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_cloning.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_isoforms",
+      "description": "Show the GENtle guide isoform and protein-gel section.",
+      "trigger_terms": [
+        "continue isoforms",
+        "isoform guide",
+        "protein gel guide",
+        "gel guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_isoforms.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_follow_up",
+      "description": "Show the GENtle guide experimental follow-up section.",
+      "trigger_terms": [
+        "continue follow-up",
+        "continue follow up",
+        "follow-up guide",
+        "experimental follow-up guide",
+        "validation planning guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_follow_up.json"
         }
       ]
     },
@@ -112,6 +260,7 @@
       "description": "Run the canonical offline isoform protein molecular-weight gel demo using the bundled example locus.",
       "trigger_terms": [
         "protein gel demo",
+        "continue protein gel",
         "isoform protein gel demo",
         "molecular weight gel demo"
       ],
@@ -129,6 +278,7 @@
       "description": "Run the canonical offline protein pI-vs-kDa 2D gel demo using the bundled example locus.",
       "trigger_terms": [
         "protein 2d gel demo",
+        "continue 2d gel",
         "isoform protein 2d gel demo",
         "isoelectric point demo",
         "pi vs kda demo"
@@ -148,6 +298,7 @@
       "trigger_terms": [
         "simple pcr",
         "simplest pcr",
+        "continue pcr",
         "pcr primer design",
         "design pcr primers",
         "pcr constraints",
@@ -167,6 +318,7 @@
       "description": "Render the guide-ready PATZ1/TP73/TP53/TP63/SP1/BACH2 Ensembl isoform molecular-weight gel.",
       "trigger_terms": [
         "gene panel protein gel",
+        "continue panel gel",
         "multi gene protein gel",
         "1d protein gel",
         "molecular weight isoform panel",
@@ -274,6 +426,7 @@
       "trigger_terms": [
         "gentle demo",
         "cloning demo",
+        "continue gibson",
         "demo",
         "demonstration",
         "example"

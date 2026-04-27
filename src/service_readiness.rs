@@ -1164,6 +1164,50 @@ fn guide_actions_for_section(
     }
 }
 
+fn telegram_guide_fallback_lines(section: &str) -> Vec<String> {
+    match section {
+        "overview" => vec![
+            "Guide sections: readiness, gene-context, tfbs, inline-dna, cloning, isoforms, follow-up.".to_string(),
+            "Reply \"Continue readiness\" to check installed data/resources.".to_string(),
+            "Reply \"Continue cloning\" for PCR, vector, and protocol-cartoon routes.".to_string(),
+            "Reply \"Continue isoforms\" for protein gels, 2D gels, and digest figures.".to_string(),
+        ],
+        "readiness" => vec![
+            "Reply \"Continue guide\" to return to the GENtle guide menu.".to_string(),
+            "Reply \"Continue cloning\" once readiness is clear and you want PCR/vector actions.".to_string(),
+        ],
+        "gene-context" => vec![
+            "Reply \"Continue TFBS\" to inspect promoter and transcription-factor evidence for this gene.".to_string(),
+            "Reply \"Continue guide\" to return to the GENtle guide menu.".to_string(),
+        ],
+        "tfbs" => vec![
+            "Reply \"Continue TFBS figure\" to render promoter score-track graphics.".to_string(),
+            "Reply \"Continue follow-up\" to move from promoter evidence to validation planning.".to_string(),
+        ],
+        "inline-dna" => vec![
+            "Reply \"Continue pasted DNA\" to run the stateless pasted-sequence inspection route.".to_string(),
+            "Reply \"Continue cloning\" if the pasted fragment should become a PCR or vector task.".to_string(),
+        ],
+        "cloning" => vec![
+            "Reply \"Continue PCR\" to run the simple PCR primer-design route.".to_string(),
+            "Reply \"Continue Gibson\" to render the protocol-cartoon cloning demo.".to_string(),
+            "Reply \"Continue pUC19\" to check helper-vector readiness.".to_string(),
+        ],
+        "isoforms" => vec![
+            "Reply \"Continue protein gel\" to render the curated TP73 molecular-weight gel.".to_string(),
+            "Reply \"Continue 2D gel\" to render a pI-vs-kDa protein gel.".to_string(),
+            "Reply \"Continue panel gel\" for the PATZ1/TP73/TP53/TP63/SP1/BACH2 Ensembl panel.".to_string(),
+        ],
+        "follow-up" => vec![
+            "Reply \"Continue TFBS\" to collect promoter evidence before wet-lab planning.".to_string(),
+            "Reply \"Continue reporter demo\" to run the promoter-reporter planning example.".to_string(),
+        ],
+        _ => vec![
+            "Reply \"Continue guide\" to return to the GENtle guide menu.".to_string(),
+        ],
+    }
+}
+
 fn build_telegram_guide_from_handoff(
     handoff: ServiceHandoffReport,
     channel: &str,
@@ -1184,6 +1228,7 @@ fn build_telegram_guide_from_handoff(
     if section != "overview" {
         summary_lines.push(format!("Opened GENtle guide section: {section}."));
     }
+    summary_lines.extend(telegram_guide_fallback_lines(section));
 
     let mut warnings = handoff.warnings.clone();
     if channel != "telegram" {
@@ -1594,6 +1639,20 @@ mod tests {
             .summary_lines
             .iter()
             .any(|line| line.contains("If you have a gene of interest")));
+        assert!(guide.summary_lines.iter().any(|line| {
+            line == "Guide sections: readiness, gene-context, tfbs, inline-dna, cloning, isoforms, follow-up."
+        }));
+        assert!(guide
+            .summary_lines
+            .iter()
+            .any(|line| line == "Reply \"Continue readiness\" to check installed data/resources."));
+        assert!(guide
+            .summary_lines
+            .iter()
+            .any(|line| line == "Reply \"Continue cloning\" for PCR, vector, and protocol-cartoon routes."));
+        assert!(guide.summary_lines.iter().any(|line| {
+            line == "Reply \"Continue isoforms\" for protein gels, 2D gels, and digest figures."
+        }));
         assert!(guide
             .menu_sections
             .iter()
@@ -1694,6 +1753,10 @@ mod tests {
             .iter()
             .find(|action| action.kind == "simple_pcr_primer_design")
             .expect("simple PCR primer-design action");
+        assert!(guide
+            .summary_lines
+            .iter()
+            .any(|line| line == "Reply \"Continue PCR\" to run the simple PCR primer-design route."));
         assert_eq!(
             action.shell_line,
             "workflow @docs/examples/workflows/simple_pcr_primer_design_offline.json"

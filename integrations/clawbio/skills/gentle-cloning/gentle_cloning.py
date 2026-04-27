@@ -955,7 +955,7 @@ def _rewrite_preferred_artifacts_for_png(
             rewritten.append(dict(artifact))
 
     if rewritten:
-        return rewritten
+        return _single_best_preferred_artifact(rewritten)
 
     synthesized: list[dict[str, Any]] = []
     for idx, artifact in enumerate(rasterized_pngs):
@@ -974,7 +974,34 @@ def _rewrite_preferred_artifacts_for_png(
                 "derived_from": artifact.get("derived_from"),
             }
         )
-    return synthesized or None
+    return _single_best_preferred_artifact(synthesized) or None
+
+
+def _single_best_preferred_artifact(
+    artifacts: list[dict[str, Any]],
+) -> list[dict[str, Any]] | None:
+    valid = [
+        dict(artifact)
+        for artifact in artifacts
+        if isinstance(artifact, dict)
+        and isinstance(artifact.get("path"), str)
+        and artifact["path"].strip()
+    ]
+    if not valid:
+        return None
+    valid.sort(
+        key=lambda artifact: (
+            int(artifact.get("presentation_rank", 10**9))
+            if isinstance(artifact.get("presentation_rank"), int)
+            else 10**9,
+            str(artifact.get("artifact_id", "")),
+        )
+    )
+    best = valid[0]
+    best["presentation_rank"] = 0
+    best["is_best_first_artifact"] = True
+    best.setdefault("recommended_use", "best_first_figure")
+    return [best]
 
 
 def _parse_svg_dimension(value: str | None) -> float | None:
@@ -1688,6 +1715,19 @@ def _runtime_version_chat_summary_lines(
     ]
 
 
+def _append_continue_artifact_notice(
+    lines: list[str] | None,
+    continue_actions: list[dict[str, Any]] | None,
+) -> list[str] | None:
+    if not continue_actions:
+        return lines
+    notice = 'More figures were generated; ask "Continue" or inspect report.md/result.json.'
+    updated = list(lines or [])
+    if notice not in updated:
+        updated.append(notice)
+    return updated
+
+
 def _fallback_chat_summary_lines(
     *,
     request: Request | None,
@@ -1743,6 +1783,63 @@ def _make_shell_request(shell_line: str, timeout_secs: int) -> dict[str, Any]:
         "shell_line": shell_line,
         "timeout_secs": timeout_secs,
     }
+
+
+def _request_rerun_shell_line(request: Request | None) -> str:
+    if request is None:
+        return "(unknown)"
+    if request.mode == "shell" and request.shell_line:
+        return request.shell_line.strip()
+    if request.mode == "workflow":
+        if request.workflow_path:
+            return f"workflow @{request.workflow_path}"
+        return "workflow <inline>"
+    if request.mode == "op":
+        return "op <inline>"
+    if request.mode == "gene-protein-2d-gel":
+        gene = request.gene_symbol or "GENE"
+        species = request.species or "homo_sapiens"
+        source = request.source or "ensembl"
+        return f"gene-protein-2d-gel {gene} --species {species} --source {source}"
+    if request.mode == "raw" and request.raw_args:
+        return shlex.join(request.raw_args)
+    return request.mode
+
+
+def _request_payload_for_artifact_continuation(
+    request: Request | None,
+    expected_artifacts: list[str],
+) -> dict[str, Any]:
+    timeout_secs = request.timeout_secs if request is not None else 180
+    payload: dict[str, Any] = {
+        "schema": REQUEST_SCHEMA,
+        "mode": request.mode if request is not None else "shell",
+        "timeout_secs": timeout_secs,
+        "expected_artifacts": expected_artifacts,
+    }
+    if request is None:
+        payload["shell_line"] = ""
+        return payload
+
+    if request.state_path:
+        payload["state_path"] = request.state_path
+    if request.mode == "shell":
+        payload["shell_line"] = request.shell_line or ""
+    elif request.mode == "workflow":
+        if request.workflow_path:
+            payload["workflow_path"] = request.workflow_path
+        else:
+            payload["workflow"] = request.workflow
+    elif request.mode == "op":
+        payload["operation"] = request.operation
+    elif request.mode == "gene-protein-2d-gel":
+        payload["gene_symbol"] = request.gene_symbol
+        payload["species"] = request.species
+        payload["source"] = request.source
+        payload["ladders"] = request.ladders
+    elif request.mode == "raw":
+        payload["raw_args"] = request.raw_args
+    return {key: value for key, value in payload.items() if value is not None}
 
 
 def _string_list(value: Any) -> list[str]:
@@ -1805,6 +1902,58 @@ def _suggested_action(
     if ui_intent:
         action["ui_intent"] = ui_intent
     return action
+
+
+def _continue_artifact_suggested_actions(
+    request: Request | None,
+    rasterized_pngs: list[dict[str, Any]],
+    preferred_artifacts: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    if len(rasterized_pngs) < 2:
+        return None
+    best_derived_from = {
+        str(artifact.get("derived_from") or "").strip()
+        for artifact in (preferred_artifacts or [])
+        if isinstance(artifact, dict)
+    }
+    remaining = [
+        artifact
+        for artifact in rasterized_pngs
+        if str(artifact.get("derived_from") or "").strip()
+        and str(artifact.get("derived_from") or "").strip() not in best_derived_from
+    ]
+    if not remaining:
+        return None
+
+    shell_line = _request_rerun_shell_line(request)
+    timeout_secs = request.timeout_secs if request is not None else 180
+    actions: list[dict[str, Any]] = []
+    for idx, artifact in enumerate(remaining, start=1):
+        source_svg = str(artifact.get("derived_from") or "").strip()
+        label = "Continue: show next figure" if idx == 1 else f"Continue: show figure {idx + 1}"
+        action = {
+            "action_id": f"continue_show_figure_{idx}",
+            "label": label,
+            "kind": "continue_artifact",
+            "shell_line": shell_line,
+            "timeout_secs": timeout_secs,
+            "request": _request_payload_for_artifact_continuation(
+                request,
+                [source_svg],
+            ),
+            "rationale": (
+                "This run generated more than one displayable figure. Re-run the "
+                "same GENtle request while collecting only this next figure."
+            ),
+            "requires_confirmation": False,
+            "expected_artifacts": [source_svg],
+            "artifact": {
+                "declared_path": source_svg,
+                "png_bundle_path": artifact.get("bundle_path"),
+            },
+        }
+        actions.append(action)
+    return actions or None
 
 
 def _normalize_stdout_suggested_action(action: Any) -> dict[str, Any] | None:
@@ -2190,22 +2339,22 @@ def _merge_suggested_actions(
     if not extra_actions:
         return base_actions
 
-    merged = list(base_actions or [])
-    seen = {
-        (
-            str(action.get("kind") or "").strip(),
-            str(action.get("shell_line") or "").strip(),
+    def merge_key(action: dict[str, Any]) -> tuple[str, str, tuple[str, ...]]:
+        expected = tuple(
+            str(path)
+            for path in action.get("expected_artifacts", [])
+            if isinstance(path, str)
         )
-        for action in merged
-        if isinstance(action, dict)
-    }
+        kind = str(action.get("kind") or "").strip()
+        shell_line = str(action.get("shell_line") or "").strip()
+        return (kind, shell_line, expected if kind == "continue_artifact" else ())
+
+    merged = list(base_actions or [])
+    seen = {merge_key(action) for action in merged if isinstance(action, dict)}
     for action in extra_actions:
         if not isinstance(action, dict):
             continue
-        key = (
-            str(action.get("kind") or "").strip(),
-            str(action.get("shell_line") or "").strip(),
-        )
+        key = merge_key(action)
         if key in seen:
             continue
         seen.add(key)
@@ -2903,6 +3052,15 @@ def main() -> int:
                 preferred_artifacts,
                 rasterized_pngs,
             )
+            continue_artifact_actions = _continue_artifact_suggested_actions(
+                request,
+                rasterized_pngs,
+                preferred_artifacts,
+            )
+            suggested_actions = _merge_suggested_actions(
+                suggested_actions,
+                continue_artifact_actions,
+            )
             suggested_actions = _ensure_default_demo_suggested_action(
                 request,
                 suggested_actions,
@@ -2920,6 +3078,10 @@ def main() -> int:
                     stdout_json=stdout_json,
                     status=status,
                 )
+            chat_summary_lines = _append_continue_artifact_notice(
+                chat_summary_lines,
+                continue_artifact_actions,
+            )
     except subprocess.TimeoutExpired as e:
         request = request if request is not None else _default_demo_request()
         error_message = f"command timed out after {e.timeout} seconds"
