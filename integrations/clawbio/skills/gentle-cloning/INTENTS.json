@@ -144,7 +144,7 @@
     },
     {
       "intent_id": "simple_pcr_primer_design",
-      "description": "Run the canonical offline simple PCR primer-design workflow with explicit core ROI, flank windows, amplicon limits, and exported primer report.",
+      "description": "Run the canonical offline simple PCR primer-design workflow with explicit core ROI, flank windows, amplicon limits, a PCR explanation SVG, and exported primer report.",
       "trigger_terms": [
         "simple pcr",
         "simplest pcr",

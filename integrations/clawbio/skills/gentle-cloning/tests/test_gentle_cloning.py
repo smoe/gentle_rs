@@ -2070,6 +2070,97 @@ def test_wrapper_rasterizes_svg_artifact_via_real_gentle_cli_route(
     assert (output_dir / "generated" / "artifacts" / "demo.protocol.png").exists()
 
 
+def test_simple_pcr_workflow_promotes_protocol_figure_summary(
+    tmp_path: Path,
+) -> None:
+    fake_repo = tmp_path / "GENtle"
+    (fake_repo / "src" / "bin").mkdir(parents=True)
+    (fake_repo / "Cargo.toml").write_text("[package]\nname = 'gentle'\n", encoding="utf-8")
+    (fake_repo / "src" / "bin" / "gentle_cli.rs").write_text(
+        "fn main() {}\n",
+        encoding="utf-8",
+    )
+    workflow_rel = Path("docs/examples/workflows/simple_pcr_primer_design_offline.json")
+    workflow_abs = fake_repo / workflow_rel
+    workflow_abs.parent.mkdir(parents=True)
+    workflow_abs.write_text('{"schema":"gentle.workflow.v1"}\n', encoding="utf-8")
+
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "workflow",
+                "workflow_path": str(workflow_rel),
+                "expected_artifacts": [
+                    "artifacts/simple_pcr_demo_primers.protocol.svg",
+                    "artifacts/simple_pcr_demo_primers.report.json",
+                ],
+                "timeout_secs": 300,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        _fake_cli_with_svg_png(
+            "mkdir -p artifacts\n"
+            "cat > artifacts/simple_pcr_demo_primers.protocol.svg <<'SVG'\n"
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"96\" height=\"48\" viewBox=\"0 0 96 48\"><text x=\"4\" y=\"24\">PCR</text></svg>\n"
+            "SVG\n"
+            "printf '{\"schema\":\"gentle.primer_design_report.v1\"}\\n' > artifacts/simple_pcr_demo_primers.report.json\n"
+            "cat <<'JSON'\n"
+            '{"schema":"gentle.workflow_run.v1","run_id":"example_simple_pcr_primer_design_offline"}\n'
+            "JSON\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    env = dict(os.environ)
+    env["GENTLE_REPO_ROOT"] = str(fake_repo)
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["chat_summary_lines"] == [
+        "Generated a simple PCR explanation figure and primer-design report.",
+        "The figure shows the selected core ROI, primer windows, chosen primers, and final amplicon; the JSON report contains the ranked primer-pair details.",
+        "Best-first preview artifact: generated/artifacts/simple_pcr_demo_primers.protocol.png",
+    ]
+    assert result["preferred_artifacts"][0]["artifact_id"] == (
+        "simple_pcr_demo_primers.protocol_png"
+    )
+    assert result["preferred_artifacts"][0]["path"] == (
+        "generated/artifacts/simple_pcr_demo_primers.protocol.png"
+    )
+    assert result["preferred_artifacts"][0]["derived_from"] == (
+        "artifacts/simple_pcr_demo_primers.protocol.svg"
+    )
+    assert (
+        output_dir / "generated" / "artifacts" / "simple_pcr_demo_primers.protocol.png"
+    ).exists()
+
+
 def test_shipped_graphics_example_emits_png_first_artifacts(tmp_path: Path) -> None:
     repo_root = _skill_script().resolve().parents[4]
     fake_cli = tmp_path / "fake_cli.sh"
@@ -3191,6 +3282,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 == "docs/examples/workflows/simple_pcr_primer_design_offline.json"
             )
             assert payload["expected_artifacts"] == [
+                "artifacts/simple_pcr_demo_primers.protocol.svg",
                 "artifacts/simple_pcr_demo_primers.report.json"
             ]
             assert payload["timeout_secs"] == 300

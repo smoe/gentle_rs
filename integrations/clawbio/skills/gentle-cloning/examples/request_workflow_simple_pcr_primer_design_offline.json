@@ -4,6 +4,7 @@
   "state_path": ".gentle_state.json",
   "workflow_path": "docs/examples/workflows/simple_pcr_primer_design_offline.json",
   "expected_artifacts": [
+    "artifacts/simple_pcr_demo_primers.protocol.svg",
     "artifacts/simple_pcr_demo_primers.report.json"
   ],
   "timeout_secs": 300

@@ -2,7 +2,7 @@
   "schema": "gentle.workflow_example.v1",
   "id": "simple_pcr_primer_design_offline",
   "title": "Simple PCR primer design from one selected core region (offline)",
-  "summary": "Loads one local transcript-rich locus fixture, extracts a compact PCR context around a selected core ROI, constrains primer search to the left/right flanks, designs a small ranked primer-pair set with the deterministic internal backend, and exports the primer-design report JSON.",
+  "summary": "Loads one local transcript-rich locus fixture, extracts a compact PCR context around a selected core ROI, constrains primer search to the left/right flanks, designs a small ranked primer-pair set with the deterministic internal backend, and exports a PCR explanation SVG plus the primer-design report JSON.",
   "test_mode": "always",
   "required_files": [
     "test_files/tp73.ncbi.gb"
@@ -82,6 +82,12 @@
         "ExportPrimerDesignReport": {
           "report_id": "simple_pcr_demo_primers",
           "path": "artifacts/simple_pcr_demo_primers.report.json"
+        }
+      },
+      {
+        "RenderProtocolCartoonSvg": {
+          "protocol": "pcr.assay.pair",
+          "path": "artifacts/simple_pcr_demo_primers.protocol.svg"
         }
       }
     ]

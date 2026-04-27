@@ -1039,11 +1039,14 @@ fn guide_actions_for_section(
                 "simple_pcr_primer_design",
                 "workflow @docs/examples/workflows/simple_pcr_primer_design_offline.json",
                 300,
-                "Load the offline PCR context, constrain primer search to explicit flanks around one core ROI, and export the ranked primer-pair report.",
+                "Load the offline PCR context, constrain primer search to explicit flanks around one core ROI, and export a PCR explanation SVG plus the ranked primer-pair report.",
                 false,
                 None,
                 None,
-                first_expected_artifact("artifacts/simple_pcr_demo_primers.report.json"),
+                vec![
+                    "artifacts/simple_pcr_demo_primers.protocol.svg".to_string(),
+                    "artifacts/simple_pcr_demo_primers.report.json".to_string(),
+                ],
             ));
             actions.push(handoff_action(
                 "Check pUC19 helper status",
@@ -1697,6 +1700,10 @@ mod tests {
         );
         assert_eq!(action.timeout_secs, 300);
         assert!(!action.requires_confirmation);
+        assert!(action
+            .expected_artifacts
+            .iter()
+            .any(|artifact| artifact == "artifacts/simple_pcr_demo_primers.protocol.svg"));
         assert!(action
             .expected_artifacts
             .iter()

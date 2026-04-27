@@ -4676,6 +4676,10 @@ Simple PCR constraint handoff:
   keeps internal search bounded and avoids accidental whole-locus primer scans.
 - Canonical offline example:
   `docs/examples/workflows/simple_pcr_primer_design_offline.json`.
+- The example also exports `artifacts/simple_pcr_demo_primers.protocol.svg`
+  with `RenderProtocolCartoonSvg { protocol: "pcr.assay.pair", ... }`, so chat
+  adapters can show the user how the core ROI, primer windows, primers, and
+  final amplicon relate before exposing the JSON primer report.
 
 `DesignInsertionPrimerPairs` contract (implemented MVP):
 

@@ -13455,6 +13455,13 @@ fn execute_services_telegram_guide_cloning_offers_simple_pcr() {
                         .as_array()
                         .map(|artifacts| artifacts.iter().any(|artifact| {
                             artifact.as_str()
+                                == Some("artifacts/simple_pcr_demo_primers.protocol.svg")
+                        }))
+                        .unwrap_or(false)
+                    && action["expected_artifacts"]
+                        .as_array()
+                        .map(|artifacts| artifacts.iter().any(|artifact| {
+                            artifact.as_str()
                                 == Some("artifacts/simple_pcr_demo_primers.report.json")
                         }))
                         .unwrap_or(false)

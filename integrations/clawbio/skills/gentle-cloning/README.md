@@ -130,7 +130,8 @@ skill cannot know. Run the status routes:
 - `services guide --channel telegram` for a bench-user guide with clickable
   section actions and optional gene personalization
 - `request_workflow_simple_pcr_primer_design_offline.json` for the smallest
-  safe PCR primer-design demo with explicit ROI/window/amplicon constraints
+  safe PCR primer-design demo with explicit ROI/window/amplicon constraints,
+  a PCR explanation SVG, and a ranked primer report
 - `resources status` for integrated JASPAR/REBASE/ATtRACT-style resources
 - `genomes status ...` or `genomes list` for reference-genome catalogs/caches
 - `helpers status ...` or `helpers list` for helper/vector assets
@@ -397,7 +398,8 @@ cargo run --locked --bin gentle_cli -- --version
 - `request_workflow_simple_pcr_primer_design_offline.json` is the canonical
   simple-PCR constraint demo: it loads an offline context, extracts a compact
   PCR template, constrains primer search to explicit flanks around one core
-  ROI, designs a small ranked pair set, and exports the primer-design report
+  ROI, designs a small ranked pair set, and exports a PCR explanation SVG plus
+  the primer-design report
 - `request_workflow_tp73_isoform_protein_gel.json` is the canonical offline
   TP73 protein-gel demo: it loads the bundled TP73 GenBank asset, derives
   curated `NM_` isoform proteins, renders one protein molecular-weight gel

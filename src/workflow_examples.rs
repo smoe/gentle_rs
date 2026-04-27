@@ -1404,6 +1404,11 @@ fn rewrite_example_paths_for_execution(
             ensure_parent_exists(path)?;
             continue;
         }
+        if let Operation::RenderProtocolCartoonSvg { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
         if let Operation::ExportPrimerDesignReport { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
@@ -2553,7 +2558,7 @@ mod tests {
     }
 
     #[test]
-    fn workflow_examples_simple_pcr_primer_design_exports_report() {
+    fn workflow_examples_simple_pcr_primer_design_exports_figure_and_report() {
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
         let loaded = examples
             .iter()
@@ -2565,7 +2570,15 @@ mod tests {
         let report_path = run_dir
             .path()
             .join("artifacts/simple_pcr_demo_primers.report.json");
+        let figure_path = run_dir
+            .path()
+            .join("artifacts/simple_pcr_demo_primers.protocol.svg");
         assert!(report_path.exists());
+        assert!(figure_path.exists());
+        let figure = fs::read_to_string(&figure_path).expect("read simple PCR figure");
+        assert!(figure.contains("data-protocol-id=\"pcr.assay.pair\""));
+        assert!(figure.contains("Primer Constraints"));
+        assert!(figure.contains("Product"));
         let report: serde_json::Value = serde_json::from_str(
             &fs::read_to_string(&report_path).expect("read simple PCR report"),
         )

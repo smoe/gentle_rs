@@ -1516,8 +1516,9 @@ order. Durable architecture constraints and decisions remain in
           `simple_pcr_primer_design_offline` loads an offline locus fixture,
           extracts a compact template around one selected core ROI, constrains
           primer design to explicit left/right flank windows and amplicon
-          limits, runs `DesignPrimerPairs`, and exports the persisted
-          `gentle.primer_design_report.v1` through `ExportPrimerDesignReport`
+          limits, runs `DesignPrimerPairs`, and exports both the
+          `pcr.assay.pair` protocol SVG and the persisted
+          `gentle.primer_design_report.v1`
         - shared TF query resolution is now in place for CLI/ClawBio-facing
           promoter work too:
           aliases such as `OCT4`, built-in groups such as `Yamanaka factors` /

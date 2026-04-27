@@ -611,6 +611,7 @@ Current shared GENtle routes behind this capability:
 
 - `DesignPrimerPairs`
 - `ExportPrimerDesignReport`
+- `RenderProtocolCartoonSvg`
 - `examples/request_workflow_simple_pcr_primer_design_offline.json`
 - `FetchDbSnpRegion`
 - `AnnotatePromoterWindows`
@@ -1315,8 +1316,8 @@ Apply the following methodology:
   - `examples/request_workflow_simple_pcr_primer_design_offline.json`
     - smallest ClawBio-safe PCR route: loads a local fixture, extracts a
       compact context, encodes one core ROI plus left/right primer windows and
-      amplicon limits, runs deterministic primer-pair design, and exports the
-      ranked primer-design report JSON
+      amplicon limits, runs deterministic primer-pair design, and exports a
+      PCR explanation SVG plus the ranked primer-design report JSON
   - shipped BED-export request examples now cover both common follow-on
     surfaces:
     - shell/direct CLI:

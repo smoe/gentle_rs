@@ -2286,7 +2286,8 @@ def _is_default_demo_request(request: Request | None) -> bool:
     )
 
 
-def _default_demo_chat_summary_lines(
+def _artifact_chat_summary_lines(
+    request: Request | None,
     preferred_artifacts: list[dict[str, Any]] | None,
 ) -> list[str] | None:
     if not preferred_artifacts:
@@ -2302,6 +2303,24 @@ def _default_demo_chat_summary_lines(
     best_first_path = str(best_first.get("path") or "").strip()
     if not best_first_path:
         return None
+    workflow_path = str(request.workflow_path or "") if request else ""
+    if "simple_pcr_primer_design_offline" in workflow_path:
+        return [
+            "Generated a simple PCR explanation figure and primer-design report.",
+            (
+                "The figure shows the selected core ROI, primer windows, chosen "
+                "primers, and final amplicon; the JSON report contains the ranked "
+                "primer-pair details."
+            ),
+            f"Best-first preview artifact: {best_first_path}",
+        ]
+    if not _is_default_demo_request(request):
+        caption = str(best_first.get("caption") or "GENtle figure").strip()
+        return [
+            f"Generated GENtle display artifact: {caption}.",
+            "The first preferred artifact is suitable for chat or web display.",
+            f"Best-first preview artifact: {best_first_path}",
+        ]
     return [
         "Generated a deterministic GENtle protocol cartoon for a two-fragment Gibson assembly.",
         (
@@ -2876,7 +2895,10 @@ def main() -> int:
                 suggested_actions,
             )
             if chat_summary_lines is None:
-                chat_summary_lines = _default_demo_chat_summary_lines(preferred_artifacts)
+                chat_summary_lines = _artifact_chat_summary_lines(
+                    request,
+                    preferred_artifacts,
+                )
             if chat_summary_lines is None:
                 chat_summary_lines = _fallback_chat_summary_lines(
                     request=request,
