@@ -1902,6 +1902,18 @@ Sequencing-trace evidence notes:
 - `FetchEnsemblGene { query, species?, entry_id? }`
   - fetches one Ensembl gene entry from Ensembl REST and persists it in
     `gentle.ensembl_gene_entries.v1`.
+- `FetchEnsemblRegion { species, chromosome, start_1based, end_1based, strand?, output_id?, coord_system_version? }`
+  - fetches one arbitrary Ensembl REST genomic region/ROI directly as a
+    first-class DNA sequence without requiring a prepared local reference.
+  - `strand` defaults to `+`; `-` requests the reverse-strand sequence from
+    Ensembl and records `anchor_strand = "-"` in genome-extraction provenance.
+  - the imported sequence gets a top-level `source` feature with organism,
+    chromosome, genomic bounds, strand, REST source URL, and
+    `synthetic_origin=ensembl_region_fetch`.
+  - provenance is recorded under the same
+    `gentle.provenance.genome_extractions[]` surface used by prepared
+    reference extraction, with `sequence_source_type=ensembl_rest_region` and
+    no local catalog/cache requirement.
 - `ImportEnsemblGeneSequence { entry_id, output_id? }`
   - imports one stored Ensembl gene entry as a first-class DNA sequence with a
     top-level imported `gene` feature and Ensembl provenance qualifiers
@@ -2137,6 +2149,10 @@ external coding agent runtime, see:
   - `ensembl-gene list`
   - `ensembl-gene show ENTRY_ID`
   - `ensembl-gene import-sequence ENTRY_ID [--output-id ID]`
+- shared-shell Ensembl region route:
+  - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
+  - equivalent compact form:
+    `ensembl-region fetch SPECIES CHR:START..END[:STRAND] [--output-id ID]`
 - shared feature-expert route now also accepts transcript-first protein
   comparison with optional stored external evidence plus persisted UniProt
   projections as direct targets:

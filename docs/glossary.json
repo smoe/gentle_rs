@@ -1,5 +1,5 @@
 {
-   "command_count": 354,
+   "command_count": 359,
    "commands": [
       {
          "aliases": [
@@ -1190,11 +1190,80 @@
       {
          "aliases": [],
          "engine_operations": [
+            "FetchEnsemblGene"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-gene fetch",
+         "summary": "Fetch one Ensembl gene entry from Ensembl REST into project metadata.",
+         "usage": "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-gene list",
+         "summary": "List stored Ensembl gene entries in project metadata.",
+         "usage": "ensembl-gene list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-gene show",
+         "summary": "Show one stored Ensembl gene entry as structured JSON.",
+         "usage": "ensembl-gene show ENTRY_ID"
+      },
+      {
+         "aliases": [
+            "ensembl-gene import-entry-sequence"
+         ],
+         "engine_operations": [
+            "ImportEnsemblGeneSequence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-gene import-sequence",
+         "summary": "Import one stored Ensembl gene entry as a first-class DNA sequence with transcript/exon/CDS annotation.",
+         "usage": "ensembl-gene import-sequence ENTRY_ID [--output-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FetchEnsemblRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-region fetch",
+         "summary": "Fetch one live Ensembl genomic region/ROI directly as an anchored DNA sequence.",
+         "usage": "ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "FetchEnsemblProtein"
          ],
          "interfaces": [
             "cli-shell",
-            "gui-shell"
+            "gui-shell",
+            "cli-direct"
          ],
          "path": "ensembl-protein fetch",
          "summary": "Fetch one Ensembl protein/transcript-backed protein entry from Ensembl REST.",
@@ -1205,7 +1274,8 @@
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
-            "gui-shell"
+            "gui-shell",
+            "cli-direct"
          ],
          "path": "ensembl-protein list",
          "summary": "List stored Ensembl protein entries in project metadata.",
@@ -1216,7 +1286,8 @@
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
-            "gui-shell"
+            "gui-shell",
+            "cli-direct"
          ],
          "path": "ensembl-protein show",
          "summary": "Show one stored Ensembl protein entry as structured JSON.",
@@ -1231,7 +1302,8 @@
          ],
          "interfaces": [
             "cli-shell",
-            "gui-shell"
+            "gui-shell",
+            "cli-direct"
          ],
          "path": "ensembl-protein import-sequence",
          "summary": "Import one stored Ensembl protein entry as a first-class protein sequence.",

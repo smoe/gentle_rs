@@ -3100,6 +3100,18 @@ pub enum Operation {
         species: Option<String>,
         entry_id: Option<String>,
     },
+    FetchEnsemblRegion {
+        species: String,
+        chromosome: String,
+        start_1based: usize,
+        end_1based: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        strand: Option<char>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_id: Option<SeqId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        coord_system_version: Option<String>,
+    },
     FetchEnsemblProtein {
         query: String,
         entry_id: Option<String>,
@@ -5068,6 +5080,7 @@ impl GentleEngine {
                 "ImportUniprotSwissProt".to_string(),
                 "FetchUniprotSwissProt".to_string(),
                 "FetchEnsemblGene".to_string(),
+                "FetchEnsemblRegion".to_string(),
                 "FetchEnsemblProtein".to_string(),
                 "FetchGenBankAccession".to_string(),
                 "FetchDbSnpRegion".to_string(),

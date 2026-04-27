@@ -2929,6 +2929,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "ensembl-gene import-sequence tp53_ensembl_gene --output-id tp53_ensembl_gene_seq",
             300,
         ),
+        "request_ensembl_region_fetch_tp53_locus.json": (
+            "shell",
+            "ensembl-region fetch homo_sapiens 17:7668402..7687550:-1 --output-id tp53_ensembl_region",
+            300,
+        ),
         "request_dbsnp_fetch_rs9923231.json": (
             "shell",
             'dbsnp fetch rs9923231 "Human GRCh38 Ensembl 116" --flank-bp 3000 --output-id rs9923231_vkorc1 --annotation-scope core',
@@ -3133,6 +3138,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_genbank_fetch_pbr322.json",
             "request_ensembl_gene_fetch_tp53_human.json",
             "request_ensembl_gene_import_sequence_tp53.json",
+            "request_ensembl_region_fetch_tp53_locus.json",
             "request_dbsnp_fetch_rs9923231.json",
             "request_inspect_sequence_context_rs9923231_vkorc1.json",
             "request_export_sequence_context_bundle_rs9923231_vkorc1.json",

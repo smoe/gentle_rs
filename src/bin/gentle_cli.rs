@@ -789,6 +789,9 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "dbsnp",
     "variant",
     "uniprot",
+    "ensembl-gene",
+    "ensembl-region",
+    "ensembl-protein",
     "screenshot-window",
     "inspect-feature-expert",
     "render-feature-expert-svg",
@@ -4944,6 +4947,39 @@ mod tests {
             Some(ShellCommand::UniprotFetch { query, entry_id }) => {
                 assert_eq!(query, "P04637");
                 assert_eq!(entry_id.as_deref(), Some("tp53_human"));
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_ensembl_region_fetch() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "ensembl-region".to_string(),
+            "fetch".to_string(),
+            "homo_sapiens".to_string(),
+            "17:7668402..7687550:-1".to_string(),
+            "--output-id".to_string(),
+            "tp53_roi".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::EnsemblRegionFetch {
+                species,
+                chromosome,
+                start_1based,
+                end_1based,
+                strand,
+                output_id,
+                ..
+            }) => {
+                assert_eq!(species, "homo_sapiens");
+                assert_eq!(chromosome, "17");
+                assert_eq!(start_1based, 7668402);
+                assert_eq!(end_1based, 7687550);
+                assert_eq!(strand, Some('-'));
+                assert_eq!(output_id.as_deref(), Some("tp53_roi"));
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }

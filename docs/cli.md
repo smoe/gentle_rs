@@ -2389,6 +2389,13 @@ Isoform architecture panel workflow:
     - these are useful for one-off live Ensembl gene retrieval without whole
       reference preparation; prepared `genomes extract-gene|region|promoter`
       remains the preferred route for reproducible locus-context work
+  - direct Ensembl region/ROI route:
+    - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
+    - compact coordinates are accepted as
+      `ensembl-region fetch SPECIES CHR:START..END[:STRAND]`
+    - this imports the live REST sequence slice immediately as an anchored DNA
+      sequence with provenance, which lets ClawBio answer "show me this
+      interval" without preparing a whole local reference first
   - direct coding-DNA query for one projected UniProt feature:
     - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
     - returns one structured report per matching transcript feature span, including:

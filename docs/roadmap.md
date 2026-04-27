@@ -1579,9 +1579,17 @@ order. Durable architecture constraints and decisions remain in
         - live Ensembl retrieval smoke coverage now uses an explicit internet
           probe and skips cleanly when offline instead of failing local test
           runs that have no network access
-        - direct one-off remote Ensembl **region/ROI** fetch is still missing,
-          so users who explicitly want locus slices without prepared local
-          references still hit a real capability gap
+        - direct one-off remote Ensembl **region/ROI** fetch is now implemented
+          through shared `FetchEnsemblRegion` /
+          `ensembl-region fetch SPECIES CHR:START..END[:STRAND]`, immediately
+          materializing an anchored DNA sequence with REST provenance so
+          ClawBio can answer "show me this interval" without preparing a whole
+          local reference first
+        - next gap for this lane:
+          optional live Ensembl region annotation overlays
+          (`overlap/region` genes/transcripts/regulatory features) should plug
+          into the same imported slice/provenance surface, while prepared local
+          references remain preferred for repeatable annotation-rich work
       - the linear export idiom is now closer to classical promoter cartoons:
         `mRNA`/`promoter` bars use pointed ends and TSS markers use short
         hooked arrows so strand direction reads without extra explanatory text

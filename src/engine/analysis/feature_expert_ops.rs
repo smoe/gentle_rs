@@ -13,8 +13,10 @@ use super::*;
 use crate::attract_motifs;
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneEntryStore, EnsemblGeneEntrySummary, EnsemblGeneTranscriptSummary,
+    EnsemblRegionSequenceEntry,
     build_entry_from_rest_payloads as build_ensembl_gene_entry_from_rest_payloads,
     normalize_entry_id as normalize_ensembl_gene_entry_id,
+    parse_region_sequence_json as parse_ensembl_region_sequence_json,
     resolve_query as resolve_ensembl_gene_query,
 };
 use crate::ensembl_protein::{
@@ -30,6 +32,7 @@ use gentle_protocol::{
     AttractSplicingEvidenceSettings, AttractSplicingEvidenceSummaryRow,
     AttractSplicingEvidenceView, SplicingIntronSignal,
 };
+use sha1::{Digest, Sha1};
 
 const DEFAULT_DBSNP_REFSNP_ENDPOINT: &str =
     "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/{refsnp_id}";
@@ -3582,6 +3585,16 @@ impl GentleEngine {
     }
 
     fn fetch_ensembl_rest_text(url: &str, label: &str, query: &str) -> Result<String, EngineError> {
+        if let Some(path) = url.strip_prefix("file://") {
+            let path = path.split_once('?').map(|(path, _)| path).unwrap_or(path);
+            return std::fs::read_to_string(path).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not read Ensembl {label} fixture '{}' for '{query}': {e}",
+                    path
+                ),
+            });
+        }
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(45))
             .build()
@@ -3686,6 +3699,244 @@ impl GentleEngine {
             code: ErrorCode::InvalidInput,
             message: format!("Could not assemble Ensembl gene entry for '{query}': {e}"),
         })
+    }
+
+    fn validate_ensembl_region_path_token(label: &str, value: &str) -> Result<String, EngineError> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Ensembl region {label} cannot be empty"),
+            });
+        }
+        if trimmed.chars().any(|ch| {
+            ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | ';' | '&' | '=')
+        })
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Ensembl region {label} '{trimmed}' contains unsupported URL path characters"
+                ),
+            });
+        }
+        Ok(trimmed.to_string())
+    }
+
+    pub(super) fn normalize_ensembl_region_strand(
+        strand: Option<char>,
+    ) -> Result<char, EngineError> {
+        match strand.unwrap_or('+') {
+            '+' | '1' => Ok('+'),
+            '-' => Ok('-'),
+            other => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Ensembl region strand '{other}' is not supported (expected '+' or '-')"
+                ),
+            }),
+        }
+    }
+
+    pub(super) fn fetch_ensembl_region_sequence_from_rest(
+        species: &str,
+        chromosome: &str,
+        start_1based: usize,
+        end_1based: usize,
+        strand: Option<char>,
+        coord_system_version: Option<&str>,
+    ) -> Result<EnsemblRegionSequenceEntry, EngineError> {
+        if start_1based == 0 || end_1based < start_1based {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Ensembl region requires 1-based bounds with end >= start (got {start_1based}..{end_1based})"
+                ),
+            });
+        }
+        let species = Self::validate_ensembl_region_path_token("species", species)?;
+        let chromosome = Self::validate_ensembl_region_path_token("chromosome", chromosome)?;
+        let strand = Self::normalize_ensembl_region_strand(strand)?;
+        let coord_system_version = coord_system_version
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if let Some(version) = coord_system_version.as_deref() {
+            Self::validate_ensembl_region_path_token("coord_system_version", version)?;
+        }
+        let strand_token = if strand == '-' { "-1" } else { "1" };
+        let base_url = Self::ensembl_rest_base_url();
+        let mut sequence_url = format!(
+            "{base_url}/sequence/region/{species}/{chromosome}:{start_1based}..{end_1based}:{strand_token}?content-type=application/json"
+        );
+        if let Some(version) = coord_system_version.as_deref() {
+            sequence_url.push_str(";coord_system_version=");
+            sequence_url.push_str(version);
+        }
+        let query_label = format!("{species}:{chromosome}:{start_1based}..{end_1based}:{strand}");
+        let sequence_json =
+            Self::fetch_ensembl_rest_text(&sequence_url, "region sequence", &query_label)?;
+        let payload =
+            parse_ensembl_region_sequence_json(&sequence_json).map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse Ensembl region sequence for '{query_label}': {e}"
+                ),
+            })?;
+        let sequence = payload.sequence.to_ascii_uppercase();
+        Ok(EnsemblRegionSequenceEntry {
+            schema: "gentle.ensembl_region_sequence.v1".to_string(),
+            species,
+            chromosome,
+            start_1based,
+            end_1based,
+            strand,
+            coord_system_version,
+            sequence_length: sequence.len(),
+            sequence,
+            source: "ensembl_rest_region".to_string(),
+            sequence_source_url: sequence_url,
+            raw_sequence_json: sequence_json,
+            payload_id: payload.id,
+            payload_description: payload.description,
+            molecule: payload.molecule,
+        })
+    }
+
+    pub(super) fn import_ensembl_region_sequence_entry(
+        &mut self,
+        result: &mut OpResult,
+        entry: EnsemblRegionSequenceEntry,
+        output_id: Option<&str>,
+    ) -> Result<SeqId, EngineError> {
+        let default_id = format!(
+            "ensembl_{}_{}_{}_{}",
+            Self::normalize_id_token(&entry.species),
+            Self::normalize_id_token(&entry.chromosome),
+            entry.start_1based,
+            entry.end_1based
+        );
+        let base_seq_id = output_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or(default_id);
+        let seq_id = self.unique_seq_id(&base_seq_id);
+        let mut dna = DNAsequence::from_sequence(&entry.sequence).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not construct DNA sequence for Ensembl region {}:{}-{}: {e}",
+                entry.chromosome, entry.start_1based, entry.end_1based
+            ),
+        })?;
+        dna.set_name(format!(
+            "{} {}:{}-{} ({})",
+            entry.species, entry.chromosome, entry.start_1based, entry.end_1based, entry.strand
+        ));
+        dna.set_molecule_type("dsDNA");
+        if dna.len() > 0 {
+            let dna_len = dna.len() as i64;
+            let mut qualifiers = vec![
+                ("organism".into(), Some(entry.species.clone())),
+                ("chromosome".into(), Some(entry.chromosome.clone())),
+                ("seq_region_name".into(), Some(entry.chromosome.clone())),
+                (
+                    "genomic_start_1based".into(),
+                    Some(entry.start_1based.to_string()),
+                ),
+                (
+                    "genomic_end_1based".into(),
+                    Some(entry.end_1based.to_string()),
+                ),
+                ("strand".into(), Some(entry.strand.to_string())),
+                (
+                    "sequence_length_bp".into(),
+                    Some(entry.sequence_length.to_string()),
+                ),
+                (
+                    "synthetic_origin".into(),
+                    Some("ensembl_region_fetch".to_string()),
+                ),
+                ("source_url".into(), Some(entry.sequence_source_url.clone())),
+                ("label".into(), Some(format!("{} region", entry.species))),
+            ];
+            if let Some(version) = entry.coord_system_version.as_ref() {
+                qualifiers.push(("coord_system_version".into(), Some(version.clone())));
+            }
+            if let Some(payload_id) = entry.payload_id.as_ref() {
+                qualifiers.push(("ensembl_payload_id".into(), Some(payload_id.clone())));
+            }
+            if let Some(description) = entry.payload_description.as_ref() {
+                qualifiers.push(("note".into(), Some(description.clone())));
+            }
+            if let Some(molecule) = entry.molecule.as_ref() {
+                qualifiers.push(("molecule".into(), Some(molecule.clone())));
+            }
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "source".into(),
+                location: gb_io::seq::Location::simple_range(0, dna_len),
+                qualifiers,
+            });
+        }
+        Self::prepare_sequence(&mut dna);
+        self.state.sequences.insert(seq_id.clone(), dna);
+        self.add_lineage_node(
+            &seq_id,
+            SequenceOrigin::ImportedGenomic,
+            Some(&result.op_id),
+        );
+        result.created_seq_ids.push(seq_id.clone());
+        let expected_len = entry.end_1based - entry.start_1based + 1;
+        if entry.sequence_length != expected_len {
+            result.warnings.push(format!(
+                "Ensembl region {}:{}-{} returned {} bp; requested interval length is {} bp",
+                entry.chromosome,
+                entry.start_1based,
+                entry.end_1based,
+                entry.sequence_length,
+                expected_len
+            ));
+        }
+        let sequence_sha1 = format!("{:x}", Sha1::digest(entry.sequence.as_bytes()));
+        self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+            seq_id: seq_id.clone(),
+            recorded_at_unix_ms: Self::now_unix_ms(),
+            operation: "FetchEnsemblRegion".to_string(),
+            genome_id: format!("ensembl:{}", entry.species),
+            catalog_path: "ensembl_rest".to_string(),
+            cache_dir: None,
+            chromosome: Some(entry.chromosome.clone()),
+            start_1based: Some(entry.start_1based),
+            end_1based: Some(entry.end_1based),
+            gene_query: None,
+            occurrence: None,
+            gene_extract_mode: None,
+            transcript_id: None,
+            tss_1based: None,
+            promoter_upstream_bp: None,
+            promoter_downstream_bp: None,
+            gene_id: None,
+            gene_name: None,
+            strand: Some(entry.strand),
+            anchor_strand: Some(entry.strand),
+            anchor_verified: None,
+            sequence_source_type: Some(entry.source.clone()),
+            annotation_source_type: None,
+            sequence_source: Some(entry.sequence_source_url.clone()),
+            annotation_source: None,
+            sequence_sha1: Some(sequence_sha1),
+            annotation_sha1: None,
+        });
+        result.messages.push(format!(
+            "Fetched Ensembl region '{}:{}-{}' (species '{}', strand {}) as '{}'",
+            entry.chromosome,
+            entry.start_1based,
+            entry.end_1based,
+            entry.species,
+            entry.strand,
+            seq_id
+        ));
+        Ok(seq_id)
     }
 
     pub(super) fn fetch_ensembl_protein_entry_from_rest(
