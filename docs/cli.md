@@ -1494,6 +1494,8 @@ cargo run --bin gentle_cli -- workflow '<workflow-json>'
 cargo run --bin gentle_cli -- workflow docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/rna_reads_interpret_cdna_tp73_template.json
+cargo run --bin gentle_cli -- batch plan samples.tsv --template batch_templates/tp73_rna.workflow.json --out-dir runs/tp73 --state-template tp73_ensembl.seed.state.json --state-mode copy-per-row --emit local
+cargo run --bin gentle_cli -- batch run samples.tsv --template batch_templates/tp73_rna.workflow.json --limit 1
 cargo run --bin gentle_cli -- --progress op '<operation-json>'
 cargo run --bin gentle_cli -- --progress-stdout workflow '<workflow-json>'
 cargo run --bin gentle_cli -- export-state state.json
@@ -1654,6 +1656,21 @@ When loading from file path, an initial shebang line (`#!...`) is ignored so
 executable script files can embed JSON payloads directly.
 `workflow` accepts both raw workflow payloads (`{"run_id":"...","ops":[...]}`)
 and wrapped protocol example payloads (`{"workflow":{...}}`).
+
+Batch helpers:
+
+- `batch plan MANIFEST.tsv --template WORKFLOW.json [--out-dir DIR] ...`
+  expands a manifest into one workflow JSON file per row plus a runnable local
+  shell script or Slurm array script. The batch layer only substitutes
+  placeholders such as `${sample_id}`, `${input_path}`, `${row_id}`, and
+  `${out_dir}` into an existing workflow template; all biology still runs
+  through normal engine workflows.
+- Use `--state-template STATE.json --state-mode copy-per-row` for cluster
+  jobs. Each row then receives its own copied project state, avoiding
+  concurrent writes to one mutable `.gentle_state.json`.
+- `batch run MANIFEST.tsv --template WORKFLOW.json [--limit N]` runs the same
+  expansion locally and sequentially against the current state. It is intended
+  for smoke tests before submitting the generated plan to a cluster.
 
 Global CLI options:
 

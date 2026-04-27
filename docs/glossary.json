@@ -1,5 +1,5 @@
 {
-   "command_count": 354,
+   "command_count": 356,
    "commands": [
       {
          "aliases": [
@@ -3668,6 +3668,30 @@
          "path": "workflow",
          "summary": "Apply one engine workflow payload.",
          "usage": "workflow <workflow-json-or-@file>"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "batch plan",
+         "summary": "Expand one manifest into per-row workflow files plus a local or Slurm runner script.",
+         "usage": "batch plan MANIFEST.tsv --template WORKFLOW.json [--out-dir DIR] [--id-column NAME] [--delimiter auto|tsv|csv] [--state-template STATE.json] [--state-mode none|shared|copy-per-row] [--command-prefix CMD] [--emit local|slurm] [--script PATH] [--offset N] [--limit N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "batch run",
+         "summary": "Run one manifest-expanded workflow template locally and sequentially against the current state.",
+         "usage": "batch run MANIFEST.tsv --template WORKFLOW.json [--id-column NAME] [--delimiter auto|tsv|csv] [--offset N] [--limit N]"
       },
       {
          "aliases": [],

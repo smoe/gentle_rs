@@ -652,6 +652,104 @@ fn parse_workflow_payload_keeps_whitespace() {
 }
 
 #[test]
+fn parse_batch_plan_command() {
+    let cmd = parse_shell_line(
+        "batch plan samples.tsv --template template.json --out-dir runs/tp73 --state-template seed.state.json --state-mode copy-per-row --emit slurm --limit 10",
+    )
+    .expect("parse batch plan");
+    match cmd {
+        ShellCommand::BatchPlan {
+            manifest_path,
+            template,
+            out_dir,
+            state_template,
+            state_mode,
+            emit,
+            limit,
+            ..
+        } => {
+            assert_eq!(manifest_path, "samples.tsv");
+            assert_eq!(template, "template.json");
+            assert_eq!(out_dir, "runs/tp73");
+            assert_eq!(state_template.as_deref(), Some("seed.state.json"));
+            assert_eq!(state_mode, BatchStateMode::CopyPerRow);
+            assert_eq!(emit, BatchEmitMode::Slurm);
+            assert_eq!(limit, Some(10));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_batch_plan_writes_per_row_workflows_and_script() {
+    let dir = tempdir().expect("temp dir");
+    let manifest = dir.path().join("samples.tsv");
+    let template = dir.path().join("template.workflow.json");
+    let state_template = dir.path().join("seed.state.json");
+    let out_dir = dir.path().join("runs");
+    fs::write(
+        &manifest,
+        "sample_id\tinput_path\nsample A\treads/a.fa.gz\nsample_B\treads/b.fa.gz\n",
+    )
+    .expect("write manifest");
+    fs::write(&template, r#"{"run_id":"rna_${sample_id}","ops":[]}"#).expect("write template");
+    fs::write(&state_template, "{}").expect("write state template");
+
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let command = ShellCommand::BatchPlan {
+        manifest_path: manifest.to_string_lossy().to_string(),
+        template: template.to_string_lossy().to_string(),
+        out_dir: out_dir.to_string_lossy().to_string(),
+        id_column: Some("sample_id".to_string()),
+        delimiter: BatchManifestDelimiter::Tsv,
+        state_template: Some(state_template.to_string_lossy().to_string()),
+        state_mode: BatchStateMode::CopyPerRow,
+        command_prefix: "gentle_cli".to_string(),
+        emit: BatchEmitMode::Local,
+        script_path: None,
+        offset: 0,
+        limit: Some(1),
+    };
+    let run = execute_shell_command(&mut engine, &command).expect("execute batch plan");
+    assert!(!run.state_changed);
+    assert_eq!(run.output["row_count"].as_u64(), Some(1));
+    let workflow_path = out_dir.join("workflows/sample_A.workflow.json");
+    let state_path = out_dir.join("states/sample_A.state.json");
+    let script_path = out_dir.join("run_batch.sh");
+    assert!(workflow_path.exists());
+    assert!(state_path.exists());
+    assert!(script_path.exists());
+    let workflow_text = fs::read_to_string(&workflow_path).expect("read workflow");
+    assert!(workflow_text.contains("\"run_id\": \"rna_sample A\""));
+    let script_text = fs::read_to_string(&script_path).expect("read script");
+    assert!(script_text.contains("--state"));
+    assert!(script_text.contains("sample_A.workflow.json"));
+}
+
+#[test]
+fn execute_batch_run_expands_workflows_locally() {
+    let dir = tempdir().expect("temp dir");
+    let manifest = dir.path().join("samples.csv");
+    let template = dir.path().join("template.workflow.json");
+    fs::write(&manifest, "sample_id,input_path\ns1,reads/a.fa\n").expect("write manifest");
+    fs::write(&template, r#"{"run_id":"run_${sample_id}","ops":[]}"#).expect("write template");
+
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let command = ShellCommand::BatchRun {
+        manifest_path: manifest.to_string_lossy().to_string(),
+        template: template.to_string_lossy().to_string(),
+        id_column: None,
+        delimiter: BatchManifestDelimiter::Csv,
+        offset: 0,
+        limit: None,
+    };
+    let run = execute_shell_command(&mut engine, &command).expect("execute batch run");
+    assert!(!run.state_changed);
+    assert_eq!(run.output["row_count"].as_u64(), Some(1));
+    assert_eq!(run.output["rows"][0]["run_id"].as_str(), Some("run_s1"));
+}
+
+#[test]
 fn parse_seq_confirm_run_command() {
     let cmd = parse_shell_line(
         "seq-confirm run construct --baseline baseline_ref --reads read_a,read_b --trace-id abi_trace --trace-ids abi_trace_2,abi_trace_3 --junction 8 --junction-flank 4 --mode local --min-identity 0.90 --min-target-coverage 0.75 --no-reverse-complement --report-id construct_check",

@@ -113,7 +113,7 @@ use std::sync::atomic::AtomicUsize;
 #[cfg(test)]
 use std::time::Duration;
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     sync::{
@@ -2273,6 +2273,28 @@ pub enum ShellCommand {
         selection: RnaReadHitSelection,
         max_points: usize,
     },
+    BatchPlan {
+        manifest_path: String,
+        template: String,
+        out_dir: String,
+        id_column: Option<String>,
+        delimiter: BatchManifestDelimiter,
+        state_template: Option<String>,
+        state_mode: BatchStateMode,
+        command_prefix: String,
+        emit: BatchEmitMode,
+        script_path: Option<String>,
+        offset: usize,
+        limit: Option<usize>,
+    },
+    BatchRun {
+        manifest_path: String,
+        template: String,
+        id_column: Option<String>,
+        delimiter: BatchManifestDelimiter,
+        offset: usize,
+        limit: Option<usize>,
+    },
     SetParameter {
         name: String,
         value_json: String,
@@ -2292,6 +2314,87 @@ const SCREENSHOT_DISABLED_MESSAGE: &str = "screenshot-window is disabled by secu
 pub struct ShellRunResult {
     pub state_changed: bool,
     pub output: Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum BatchManifestDelimiter {
+    Auto,
+    Tsv,
+    Csv,
+}
+
+impl BatchManifestDelimiter {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Tsv => "tsv",
+            Self::Csv => "csv",
+        }
+    }
+
+    fn parse(raw: &str) -> Result<Self, String> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "auto" => Ok(Self::Auto),
+            "tsv" | "tab" | "tabs" => Ok(Self::Tsv),
+            "csv" | "comma" => Ok(Self::Csv),
+            other => Err(format!(
+                "Unsupported batch manifest delimiter '{other}' (expected auto|tsv|csv)"
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum BatchStateMode {
+    None,
+    Shared,
+    CopyPerRow,
+}
+
+impl BatchStateMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Shared => "shared",
+            Self::CopyPerRow => "copy-per-row",
+        }
+    }
+
+    fn parse(raw: &str) -> Result<Self, String> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "none" | "no-state" => Ok(Self::None),
+            "shared" => Ok(Self::Shared),
+            "copy-per-row" | "copy_per_row" | "copy" => Ok(Self::CopyPerRow),
+            other => Err(format!(
+                "Unsupported batch state mode '{other}' (expected none|shared|copy-per-row)"
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum BatchEmitMode {
+    Local,
+    Slurm,
+}
+
+impl BatchEmitMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Slurm => "slurm",
+        }
+    }
+
+    fn parse(raw: &str) -> Result<Self, String> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "local" | "shell" | "bash" => Ok(Self::Local),
+            "slurm" | "sbatch" => Ok(Self::Slurm),
+            other => Err(format!(
+                "Unsupported batch emit mode '{other}' (expected local|slurm)"
+            )),
+        }
+    }
 }
 
 /// Adapter policy switches that gate optional shell capabilities at execution
@@ -9339,6 +9442,54 @@ impl ShellCommand {
                 selection.as_str(),
                 max_points
             ),
+            Self::BatchPlan {
+                manifest_path,
+                template,
+                out_dir,
+                id_column,
+                delimiter,
+                state_template,
+                state_mode,
+                command_prefix,
+                emit,
+                script_path,
+                offset,
+                limit,
+            } => format!(
+                "plan manifest-driven batch from '{}' (template='{}', out_dir='{}', id_column={}, delimiter={}, state_template={}, state_mode={}, command_prefix='{}', emit={}, script={}, offset={}, limit={})",
+                manifest_path,
+                template,
+                out_dir,
+                id_column.as_deref().unwrap_or("auto"),
+                delimiter.as_str(),
+                state_template.as_deref().unwrap_or("<none>"),
+                state_mode.as_str(),
+                command_prefix,
+                emit.as_str(),
+                script_path.as_deref().unwrap_or("default"),
+                offset,
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string())
+            ),
+            Self::BatchRun {
+                manifest_path,
+                template,
+                id_column,
+                delimiter,
+                offset,
+                limit,
+            } => format!(
+                "run manifest-driven batch from '{}' (template='{}', id_column={}, delimiter={}, offset={}, limit={})",
+                manifest_path,
+                template,
+                id_column.as_deref().unwrap_or("auto"),
+                delimiter.as_str(),
+                offset,
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string())
+            ),
             Self::SetParameter { name, value_json } => match name.as_str() {
                 "genome_anchor_prepared_fallback_policy"
                 | "genome_anchor_fallback_mode"
@@ -9498,6 +9649,7 @@ impl ShellCommand {
                 | Self::ConstructReasoningSetAnnotationStatus { .. }
                 | Self::RnaReadsInterpret { .. }
                 | Self::RnaReadsAlignReport { .. }
+                | Self::BatchRun { .. }
                 | Self::SetParameter { .. }
                 | Self::AgentsExecutePlan { .. }
                 | Self::Op { .. }
@@ -11041,6 +11193,387 @@ pub fn parse_workflow_json_payload(raw_json: &str) -> Result<Workflow, String> {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct BatchManifestRow {
+    row_index: usize,
+    row_number: usize,
+    row_id: String,
+    fields: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+struct BatchWorkflowExpansion {
+    row: BatchManifestRow,
+    workflow_value: Value,
+    workflow: Workflow,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct BatchPlanRow {
+    row_index: usize,
+    row_number: usize,
+    row_id: String,
+    workflow_path: String,
+    state_path: Option<String>,
+    command: String,
+}
+
+fn split_manifest_record(line: &str, delimiter: char) -> Result<Vec<String>, String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut chars = line.chars().peekable();
+    let mut in_quotes = false;
+    while let Some(ch) = chars.next() {
+        if in_quotes {
+            if ch == '"' {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    current.push('"');
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                current.push(ch);
+            }
+            continue;
+        }
+        if ch == '"' && current.is_empty() {
+            in_quotes = true;
+        } else if ch == delimiter {
+            fields.push(current.trim().to_string());
+            current.clear();
+        } else {
+            current.push(ch);
+        }
+    }
+    if in_quotes {
+        return Err("Unterminated quoted field in batch manifest".to_string());
+    }
+    fields.push(current.trim().to_string());
+    Ok(fields)
+}
+
+fn infer_manifest_delimiter(text: &str, requested: BatchManifestDelimiter) -> char {
+    match requested {
+        BatchManifestDelimiter::Tsv => '\t',
+        BatchManifestDelimiter::Csv => ',',
+        BatchManifestDelimiter::Auto => text
+            .lines()
+            .find(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#'))
+            .map(|line| if line.contains('\t') { '\t' } else { ',' })
+            .unwrap_or('\t'),
+    }
+}
+
+fn sanitize_batch_row_id(raw: &str, fallback: &str) -> String {
+    let mut out = String::new();
+    for ch in raw.trim().chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+            out.push(ch);
+        } else if !out.ends_with('_') {
+            out.push('_');
+        }
+    }
+    let cleaned = out.trim_matches('_');
+    if cleaned.is_empty() {
+        fallback.to_string()
+    } else {
+        cleaned.to_string()
+    }
+}
+
+fn load_batch_manifest(
+    manifest_path: &str,
+    delimiter: BatchManifestDelimiter,
+    id_column: Option<&str>,
+    offset: usize,
+    limit: Option<usize>,
+) -> Result<Vec<BatchManifestRow>, String> {
+    let text = fs::read_to_string(manifest_path)
+        .map_err(|e| format!("Could not read batch manifest '{manifest_path}': {e}"))?;
+    let delimiter_char = infer_manifest_delimiter(&text, delimiter);
+    let mut logical_lines = text
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#'));
+    let header_line = logical_lines
+        .next()
+        .ok_or_else(|| format!("Batch manifest '{manifest_path}' is empty"))?;
+    let headers = split_manifest_record(header_line, delimiter_char)?;
+    if headers.is_empty() || headers.iter().any(|header| header.trim().is_empty()) {
+        return Err("Batch manifest header must contain non-empty column names".to_string());
+    }
+    let mut seen = HashSet::new();
+    for header in &headers {
+        if !seen.insert(header.clone()) {
+            return Err(format!("Batch manifest has duplicate column '{header}'"));
+        }
+    }
+    let id_column = id_column
+        .map(|value| value.to_string())
+        .or_else(|| headers.iter().find(|name| *name == "sample_id").cloned())
+        .or_else(|| headers.iter().find(|name| *name == "id").cloned());
+    if let Some(id_column) = id_column.as_deref() {
+        if !headers.iter().any(|header| header == id_column) {
+            return Err(format!(
+                "Batch id column '{id_column}' is not present in manifest header"
+            ));
+        }
+    }
+
+    let mut rows = Vec::new();
+    for (line_index, line) in logical_lines.enumerate() {
+        if line_index < offset {
+            continue;
+        }
+        if let Some(limit) = limit {
+            if rows.len() >= limit {
+                break;
+            }
+        }
+        let values = split_manifest_record(line, delimiter_char)?;
+        if values.len() != headers.len() {
+            return Err(format!(
+                "Batch manifest row {} has {} fields but header has {}",
+                line_index + 2,
+                values.len(),
+                headers.len()
+            ));
+        }
+        let fields: BTreeMap<String, String> = headers.iter().cloned().zip(values).collect();
+        let row_number = line_index + 1;
+        let fallback = format!("row_{row_number:04}");
+        let raw_id = id_column
+            .as_deref()
+            .and_then(|name| fields.get(name))
+            .map(String::as_str)
+            .unwrap_or(&fallback);
+        let row_id = sanitize_batch_row_id(raw_id, &fallback);
+        rows.push(BatchManifestRow {
+            row_index: line_index,
+            row_number,
+            row_id,
+            fields,
+        });
+    }
+    Ok(rows)
+}
+
+fn collect_template_placeholders(text: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("${") {
+        let after_start = &rest[start + 2..];
+        let Some(end) = after_start.find('}') else {
+            break;
+        };
+        let name = after_start[..end].trim();
+        if !name.is_empty() && !names.iter().any(|existing| existing == name) {
+            names.push(name.to_string());
+        }
+        rest = &after_start[end + 1..];
+    }
+    names
+}
+
+fn replace_template_placeholders(
+    text: &str,
+    bindings: &BTreeMap<String, String>,
+) -> Result<String, String> {
+    let mut rendered = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("${") {
+        rendered.push_str(&rest[..start]);
+        let after_start = &rest[start + 2..];
+        let Some(end) = after_start.find('}') else {
+            return Err(format!("Unclosed batch placeholder in '{text}'"));
+        };
+        let name = after_start[..end].trim();
+        let value = bindings
+            .get(name)
+            .ok_or_else(|| format!("Batch template placeholder '${{{name}}}' has no binding"))?;
+        rendered.push_str(value);
+        rest = &after_start[end + 1..];
+    }
+    rendered.push_str(rest);
+    Ok(rendered)
+}
+
+fn expand_batch_template_value(
+    value: &Value,
+    bindings: &BTreeMap<String, String>,
+) -> Result<Value, String> {
+    match value {
+        Value::String(text) => {
+            let placeholders = collect_template_placeholders(text);
+            if placeholders.len() == 1 && text.trim() == format!("${{{}}}", placeholders[0]) {
+                Ok(Value::String(
+                    bindings
+                        .get(&placeholders[0])
+                        .ok_or_else(|| {
+                            format!(
+                                "Batch template placeholder '${{{}}}' has no binding",
+                                placeholders[0]
+                            )
+                        })?
+                        .clone(),
+                ))
+            } else {
+                Ok(Value::String(replace_template_placeholders(
+                    text, bindings,
+                )?))
+            }
+        }
+        Value::Array(items) => items
+            .iter()
+            .map(|item| expand_batch_template_value(item, bindings))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Value::Array),
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (key, item) in map {
+                out.insert(key.clone(), expand_batch_template_value(item, bindings)?);
+            }
+            Ok(Value::Object(out))
+        }
+        _ => Ok(value.clone()),
+    }
+}
+
+fn batch_bindings_for_row(
+    row: &BatchManifestRow,
+    manifest_path: &str,
+    template_ref: &str,
+    out_dir: &str,
+) -> BTreeMap<String, String> {
+    let mut bindings = row.fields.clone();
+    bindings.insert("row_index".to_string(), row.row_index.to_string());
+    bindings.insert("row_number".to_string(), row.row_number.to_string());
+    bindings.insert("row_id".to_string(), row.row_id.clone());
+    bindings.insert("out_dir".to_string(), out_dir.to_string());
+    bindings.insert("manifest_path".to_string(), manifest_path.to_string());
+    bindings.insert("template".to_string(), template_ref.to_string());
+    bindings
+}
+
+fn expand_batch_workflows(
+    manifest_path: &str,
+    template_ref: &str,
+    out_dir: &str,
+    id_column: Option<&str>,
+    delimiter: BatchManifestDelimiter,
+    offset: usize,
+    limit: Option<usize>,
+) -> Result<Vec<BatchWorkflowExpansion>, String> {
+    let template_text = parse_json_payload(template_ref)?;
+    let template_value: Value = serde_json::from_str(&template_text)
+        .map_err(|e| format!("Invalid batch workflow template JSON: {e}"))?;
+    let rows = load_batch_manifest(manifest_path, delimiter, id_column, offset, limit)?;
+    rows.into_iter()
+        .map(|row| {
+            let bindings = batch_bindings_for_row(&row, manifest_path, template_ref, out_dir);
+            let workflow_value = expand_batch_template_value(&template_value, &bindings)?;
+            let workflow_text = serde_json::to_string(&workflow_value)
+                .map_err(|e| format!("Could not serialize expanded workflow: {e}"))?;
+            let workflow = parse_workflow_json_payload(&workflow_text)?;
+            Ok(BatchWorkflowExpansion {
+                row,
+                workflow_value,
+                workflow,
+            })
+        })
+        .collect()
+}
+
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn batch_workflow_command(
+    command_prefix: &str,
+    state_path: Option<&str>,
+    workflow_path: &str,
+) -> String {
+    let mut command = command_prefix.trim().to_string();
+    if let Some(state_path) = state_path {
+        command.push_str(" --state ");
+        command.push_str(&shell_quote(state_path));
+    }
+    command.push_str(" workflow @");
+    command.push_str(&shell_quote(workflow_path));
+    command
+}
+
+fn write_batch_script(
+    script_path: &Path,
+    emit: BatchEmitMode,
+    plan_rows: &[BatchPlanRow],
+) -> Result<(), String> {
+    let mut script = String::new();
+    script.push_str("#!/usr/bin/env bash\nset -euo pipefail\n\n");
+    match emit {
+        BatchEmitMode::Local => {
+            for row in plan_rows {
+                script.push_str(&format!(
+                    "echo {}\n",
+                    shell_quote(&format!("== {} ==", row.row_id))
+                ));
+                script.push_str(&row.command);
+                script.push('\n');
+            }
+        }
+        BatchEmitMode::Slurm => {
+            let upper = plan_rows.len().max(1);
+            script.push_str("#SBATCH --job-name=gentle-batch\n");
+            script.push_str(&format!("#SBATCH --array=1-{upper}\n\n"));
+            script.push_str("case \"${SLURM_ARRAY_TASK_ID:?}\" in\n");
+            for (idx, row) in plan_rows.iter().enumerate() {
+                script.push_str(&format!("  {}) exec {} ;;\n", idx + 1, row.command));
+            }
+            script.push_str("  *) echo \"Unknown SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID}\" >&2; exit 2 ;;\nesac\n");
+        }
+    }
+    if let Some(parent) = script_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Could not create batch script directory '{}': {e}",
+                parent.display()
+            )
+        })?;
+    }
+    fs::write(script_path, script).map_err(|e| {
+        format!(
+            "Could not write batch script '{}': {e}",
+            script_path.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(script_path)
+            .map_err(|e| {
+                format!(
+                    "Could not stat batch script '{}': {e}",
+                    script_path.display()
+                )
+            })?
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(script_path, permissions).map_err(|e| {
+            format!(
+                "Could not mark batch script '{}' executable: {e}",
+                script_path.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
 fn parse_blast_options_override(raw: &str, label: &str, flag: &str) -> Result<Value, String> {
     let loaded = parse_json_payload(raw)?;
     let parsed: Value = serde_json::from_str(&loaded)
@@ -11055,6 +11588,193 @@ fn parse_blast_options_override(raw: &str, label: &str, flag: &str) -> Result<Va
 
 fn token_error(command: &str) -> String {
     format!("Invalid '{command}' usage. Try: help")
+}
+
+fn parse_batch_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 3 {
+        return Err(
+            "batch requires: plan|run MANIFEST.tsv --template WORKFLOW.json [options]".to_string(),
+        );
+    }
+    let subcommand = tokens[1].trim();
+    let manifest_path = tokens[2].trim().to_string();
+    if manifest_path.is_empty() {
+        return Err("batch MANIFEST path must not be empty".to_string());
+    }
+
+    let mut template: Option<String> = None;
+    let mut out_dir: Option<String> = None;
+    let mut id_column: Option<String> = None;
+    let mut delimiter = BatchManifestDelimiter::Auto;
+    let mut state_template: Option<String> = None;
+    let mut state_mode: Option<BatchStateMode> = None;
+    let mut command_prefix = "gentle_cli".to_string();
+    let mut emit = BatchEmitMode::Local;
+    let mut script_path: Option<String> = None;
+    let mut offset = 0usize;
+    let mut limit: Option<usize> = None;
+
+    let mut i = 3;
+    while i < tokens.len() {
+        match tokens[i].as_str() {
+            "--template" => {
+                if i + 1 >= tokens.len() {
+                    return Err(
+                        "batch --template requires a workflow JSON path or payload".to_string()
+                    );
+                }
+                template = Some(tokens[i + 1].clone());
+                i += 2;
+            }
+            "--out-dir" => {
+                if i + 1 >= tokens.len() {
+                    return Err("batch --out-dir requires PATH".to_string());
+                }
+                out_dir = Some(tokens[i + 1].clone());
+                i += 2;
+            }
+            "--id-column" => {
+                if i + 1 >= tokens.len() {
+                    return Err("batch --id-column requires NAME".to_string());
+                }
+                id_column = Some(tokens[i + 1].clone());
+                i += 2;
+            }
+            "--delimiter" => {
+                if i + 1 >= tokens.len() {
+                    return Err("batch --delimiter requires auto|tsv|csv".to_string());
+                }
+                delimiter = BatchManifestDelimiter::parse(&tokens[i + 1])?;
+                i += 2;
+            }
+            "--state-template" => {
+                if i + 1 >= tokens.len() {
+                    return Err("batch --state-template requires PATH".to_string());
+                }
+                state_template = Some(tokens[i + 1].clone());
+                i += 2;
+            }
+            "--state-mode" => {
+                if i + 1 >= tokens.len() {
+                    return Err("batch --state-mode requires none|shared|copy-per-row".to_string());
+                }
+                state_mode = Some(BatchStateMode::parse(&tokens[i + 1])?);
+                i += 2;
+            }
+            "--command-prefix" => {
+                if i + 1 >= tokens.len() {
+                    return Err("batch --command-prefix requires COMMAND".to_string());
+                }
+                command_prefix = tokens[i + 1].clone();
+                i += 2;
+            }
+            "--emit" => {
+                if i + 1 >= tokens.len() {
+                    return Err("batch --emit requires local|slurm".to_string());
+                }
+                emit = BatchEmitMode::parse(&tokens[i + 1])?;
+                i += 2;
+            }
+            "--script" => {
+                if i + 1 >= tokens.len() {
+                    return Err("batch --script requires PATH".to_string());
+                }
+                script_path = Some(tokens[i + 1].clone());
+                i += 2;
+            }
+            "--offset" => {
+                if i + 1 >= tokens.len() {
+                    return Err("batch --offset requires N".to_string());
+                }
+                offset = tokens[i + 1]
+                    .parse::<usize>()
+                    .map_err(|e| format!("Invalid batch --offset '{}': {e}", tokens[i + 1]))?;
+                i += 2;
+            }
+            "--limit" => {
+                if i + 1 >= tokens.len() {
+                    return Err("batch --limit requires N".to_string());
+                }
+                limit = Some(
+                    tokens[i + 1]
+                        .parse::<usize>()
+                        .map_err(|e| format!("Invalid batch --limit '{}': {e}", tokens[i + 1]))?,
+                );
+                i += 2;
+            }
+            other => {
+                return Err(format!("Unknown batch option '{other}'"));
+            }
+        }
+    }
+
+    let template = template.ok_or_else(|| "batch requires --template WORKFLOW.json".to_string())?;
+    let state_mode = state_mode.unwrap_or(if state_template.is_some() {
+        BatchStateMode::CopyPerRow
+    } else {
+        BatchStateMode::None
+    });
+    if matches!(
+        state_mode,
+        BatchStateMode::CopyPerRow | BatchStateMode::Shared
+    ) && state_template.is_none()
+    {
+        return Err(
+            "batch --state-mode shared|copy-per-row requires --state-template PATH".to_string(),
+        );
+    }
+
+    match subcommand {
+        "plan" => {
+            let out_dir = out_dir.unwrap_or_else(|| {
+                let stem = Path::new(&manifest_path)
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("batch");
+                format!("batch_runs/{stem}")
+            });
+            Ok(ShellCommand::BatchPlan {
+                manifest_path,
+                template,
+                out_dir,
+                id_column,
+                delimiter,
+                state_template,
+                state_mode,
+                command_prefix,
+                emit,
+                script_path,
+                offset,
+                limit,
+            })
+        }
+        "run" => {
+            if out_dir.is_some()
+                || state_template.is_some()
+                || !matches!(state_mode, BatchStateMode::None)
+                || command_prefix != "gentle_cli"
+                || !matches!(emit, BatchEmitMode::Local)
+                || script_path.is_some()
+            {
+                return Err(
+                    "batch run supports --template, --id-column, --delimiter, --offset, and --limit; use batch plan for file/script/state options"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::BatchRun {
+                manifest_path,
+                template,
+                id_column,
+                delimiter,
+                offset,
+                limit,
+            })
+        }
+        other => Err(format!(
+            "Unknown batch subcommand '{other}' (expected plan or run)"
+        )),
+    }
 }
 
 fn parse_cache_cleanup_scope_flag(
@@ -17779,6 +18499,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::Op { payload })
         }
+        "batch" => parse_batch_command(tokens),
         "workflow" => {
             let payload = tokens[1..].join(" ");
             if payload.trim().is_empty() {
@@ -26024,6 +26745,184 @@ fn execute_protein_sequence_command(
 }
 
 #[inline(never)]
+fn execute_batch_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::BatchPlan {
+            manifest_path,
+            template,
+            out_dir,
+            id_column,
+            delimiter,
+            state_template,
+            state_mode,
+            command_prefix,
+            emit,
+            script_path,
+            offset,
+            limit,
+        } => {
+            let out_dir_path = PathBuf::from(out_dir);
+            let workflow_dir = out_dir_path.join("workflows");
+            let state_dir = out_dir_path.join("states");
+            fs::create_dir_all(&workflow_dir).map_err(|e| {
+                format!(
+                    "Could not create batch workflow directory '{}': {e}",
+                    workflow_dir.display()
+                )
+            })?;
+            if matches!(state_mode, BatchStateMode::CopyPerRow) {
+                fs::create_dir_all(&state_dir).map_err(|e| {
+                    format!(
+                        "Could not create batch state directory '{}': {e}",
+                        state_dir.display()
+                    )
+                })?;
+            }
+
+            let expansions = expand_batch_workflows(
+                manifest_path,
+                template,
+                out_dir,
+                id_column.as_deref(),
+                *delimiter,
+                *offset,
+                *limit,
+            )?;
+            let mut plan_rows = Vec::new();
+            for expansion in expansions {
+                let workflow_path = workflow_dir
+                    .join(format!("{}.workflow.json", expansion.row.row_id))
+                    .to_string_lossy()
+                    .to_string();
+                let workflow_text = serde_json::to_string_pretty(&expansion.workflow_value)
+                    .map_err(|e| format!("Could not serialize expanded batch workflow: {e}"))?;
+                fs::write(&workflow_path, workflow_text).map_err(|e| {
+                    format!("Could not write batch workflow '{workflow_path}': {e}")
+                })?;
+
+                let state_path = match state_mode {
+                    BatchStateMode::None => None,
+                    BatchStateMode::Shared => state_template.clone(),
+                    BatchStateMode::CopyPerRow => {
+                        let template_path = state_template.as_ref().ok_or_else(|| {
+                            "batch copy-per-row state mode requires --state-template".to_string()
+                        })?;
+                        let target = state_dir
+                            .join(format!("{}.state.json", expansion.row.row_id))
+                            .to_string_lossy()
+                            .to_string();
+                        fs::copy(template_path, &target).map_err(|e| {
+                            format!(
+                                "Could not copy batch state template '{}' to '{}': {e}",
+                                template_path, target
+                            )
+                        })?;
+                        Some(target)
+                    }
+                };
+                let command = batch_workflow_command(
+                    command_prefix,
+                    state_path.as_deref(),
+                    workflow_path.as_str(),
+                );
+                plan_rows.push(BatchPlanRow {
+                    row_index: expansion.row.row_index,
+                    row_number: expansion.row.row_number,
+                    row_id: expansion.row.row_id,
+                    workflow_path,
+                    state_path,
+                    command,
+                });
+            }
+
+            let default_script = match emit {
+                BatchEmitMode::Local => out_dir_path.join("run_batch.sh"),
+                BatchEmitMode::Slurm => out_dir_path.join("run_batch.slurm.sh"),
+            };
+            let script_path_buf = script_path
+                .as_deref()
+                .map(PathBuf::from)
+                .unwrap_or(default_script);
+            write_batch_script(&script_path_buf, *emit, &plan_rows)?;
+            let plan_path = out_dir_path.join("batch.plan.json");
+            let plan = json!({
+                "schema": "gentle.batch_plan.v1",
+                "manifest_path": manifest_path,
+                "template": template,
+                "out_dir": out_dir,
+                "row_count": plan_rows.len(),
+                "id_column": id_column,
+                "delimiter": delimiter.as_str(),
+                "state_template": state_template,
+                "state_mode": state_mode.as_str(),
+                "emit": emit.as_str(),
+                "script_path": script_path_buf.to_string_lossy(),
+                "plan_path": plan_path.to_string_lossy(),
+                "rows": plan_rows,
+            });
+            fs::write(
+                &plan_path,
+                serde_json::to_string_pretty(&plan)
+                    .map_err(|e| format!("Could not serialize batch plan: {e}"))?,
+            )
+            .map_err(|e| format!("Could not write batch plan '{}': {e}", plan_path.display()))?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: plan,
+            })
+        }
+        ShellCommand::BatchRun {
+            manifest_path,
+            template,
+            id_column,
+            delimiter,
+            offset,
+            limit,
+        } => {
+            let expansions = expand_batch_workflows(
+                manifest_path,
+                template,
+                ".",
+                id_column.as_deref(),
+                *delimiter,
+                *offset,
+                *limit,
+            )?;
+            let mut rows = Vec::new();
+            let mut state_changed = false;
+            for expansion in expansions {
+                let results = engine
+                    .apply_workflow(expansion.workflow.clone())
+                    .map_err(|e| format!("Batch row '{}' failed: {e}", expansion.row.row_id))?;
+                state_changed |= !results.is_empty();
+                rows.push(json!({
+                    "row_index": expansion.row.row_index,
+                    "row_number": expansion.row.row_number,
+                    "row_id": expansion.row.row_id,
+                    "run_id": expansion.workflow.run_id,
+                    "result_count": results.len(),
+                    "results": results,
+                }));
+            }
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({
+                    "schema": "gentle.batch_run.v1",
+                    "manifest_path": manifest_path,
+                    "template": template,
+                    "row_count": rows.len(),
+                    "rows": rows,
+                }),
+            })
+        }
+        _ => unreachable!("non-batch command passed to batch helper"),
+    }
+}
+
+#[inline(never)]
 fn execute_rna_reads_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -27555,6 +28454,12 @@ pub fn execute_shell_command_with_options(
     }
     if matches!(
         command,
+        ShellCommand::BatchPlan { .. } | ShellCommand::BatchRun { .. }
+    ) {
+        return execute_batch_command(engine, command);
+    }
+    if matches!(
+        command,
         ShellCommand::CacheInspect { .. } | ShellCommand::CacheClear { .. }
     ) {
         return execute_cache_command(engine, command);
@@ -28999,6 +29904,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
         | ShellCommand::RnaReadsExportAlignmentDotplotSvg { .. } => {
             execute_rna_reads_command(engine, command)?
+        }
+        ShellCommand::BatchPlan { .. } | ShellCommand::BatchRun { .. } => {
+            execute_batch_command(engine, command)?
         }
         ShellCommand::SetParameter { .. } => execute_configuration_command(engine, command)?,
         ShellCommand::Op { payload } => execute_op_command(engine, payload)?,

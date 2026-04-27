@@ -178,6 +178,15 @@ order. Durable architecture constraints and decisions remain in
     public-API docs on the remaining GUI-facing state records where warranted
 - Shared shell layer in `src/engine_shell.rs` reused by GUI Shell and
   `gentle_cli shell`.
+- Shared shell/CLI batch helpers now provide manifest-driven workflow
+  expansion:
+  - `batch plan` binds TSV/CSV rows into an existing workflow template and
+    writes per-row workflow JSON plus local or Slurm runner scripts
+  - `batch run` executes the same expansion locally and sequentially for smoke
+    testing
+  - the helper stays adapter-generic and biology-neutral, so RNA-read mapping,
+    CUT&RUN, promoter scans, guide design, and future repeated analyses can
+    reuse the same batch contract instead of growing one-off loop commands
 - GUI tutorial-project opening is now backgrounded instead of blocking the main
   event loop:
   - `File -> Open Tutorial Project...` now launches a cancellable background

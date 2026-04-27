@@ -757,6 +757,7 @@ fn usage() {
 }
 
 const SHELL_FORWARDED_COMMANDS: &[&str] = &[
+    "batch",
     "cache",
     "hosts",
     "genomes",
@@ -4475,6 +4476,18 @@ mod tests {
             resources,
             ShellCommand::ResourcesSyncJaspar { .. }
         ));
+
+        let batch = parse_shell_tokens(&[
+            "batch".to_string(),
+            "plan".to_string(),
+            "samples.tsv".to_string(),
+            "--template".to_string(),
+            "template.workflow.json".to_string(),
+            "--out-dir".to_string(),
+            "runs/demo".to_string(),
+        ])
+        .expect("parse batch plan");
+        assert!(matches!(batch, ShellCommand::BatchPlan { .. }));
 
         let summarize = parse_shell_tokens(&[
             "resources".to_string(),
