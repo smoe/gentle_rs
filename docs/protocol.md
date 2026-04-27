@@ -1794,6 +1794,11 @@ Catalog-backed reference/helper discovery notes:
   - `helper_kinds`, `host_systems`
   - `offered_functions`, `constraints`
   - `procurement_channels`, `local_variant_unpublished`
+  - ontology-friendly `normalized_terms[]` with `axis`, normalized `value`,
+    optional human `label`, and derivation `source`
+  - direct `routine_hints[]` with routine `family`, deterministic `rationale`,
+    and `source_terms`, so planning/routine-ranking/MCP/ClawBio consumers do
+    not need to re-derive first-order helper compatibility from prose
   - deterministic `components[]` and `relationships[]`
 - that metadata is intended to stay compatible with the emerging
   reasoning/constraint engine and with later ontology-backed helper/vector

@@ -703,6 +703,12 @@ Included follow-on analysis/planning/graphics requests:
   - follow-on route after the promoter extraction example that ranks the
     requested stemness/Yamanaka factors by similarity to SP1 over the same
     promoter span
+- current presentation gap on that promoter-TFBS track:
+  - ClawBio can already request the component artifacts separately
+    (score tracks, grouped promoter windows, correlation, similarity ranking)
+  - the next intended step is not a GENtle-owned dossier; it is a lighter
+    GENtle artifact-manifest handoff so ClawBio/OpenClaw can assemble the
+    user-facing story itself
 - `examples/request_workflow_tfbs_track_similarity_stateless.json`
   - offline state-optional similarity demo that reuses one tiny synthetic
     inline sequence, exports score-track context plus one anchor-vs-candidate

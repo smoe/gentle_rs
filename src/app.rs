@@ -14230,6 +14230,37 @@ Error: `{err}`"
                 interpretation.procurement_channels.join(", ")
             ));
         }
+        if !interpretation.routine_hints.is_empty() {
+            let families = interpretation
+                .routine_hints
+                .iter()
+                .map(|hint| hint.family.as_str())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            lines.push(format!("routine hints: {}", families.join(", ")));
+        }
+        if !interpretation.normalized_terms.is_empty() {
+            let preview = interpretation
+                .normalized_terms
+                .iter()
+                .take(6)
+                .map(|term| format!("{}={}", term.axis, term.value))
+                .collect::<Vec<_>>();
+            let suffix = if interpretation.normalized_terms.len() > preview.len() {
+                format!(
+                    " (+{} more)",
+                    interpretation.normalized_terms.len() - preview.len()
+                )
+            } else {
+                String::new()
+            };
+            lines.push(format!(
+                "normalized terms: {}{}",
+                preview.join(", "),
+                suffix
+            ));
+        }
         if interpretation.local_variant_unpublished {
             lines.push("local variant: unpublished".to_string());
         }
@@ -47588,6 +47619,17 @@ mod tests {
             ],
             constraints: vec!["reading_frame_must_be_preserved".to_string()],
             procurement_channels: vec!["vendor_catalog".to_string()],
+            normalized_terms: vec![crate::genomes::HelperConstructNormalizedTerm {
+                axis: "component_kind".to_string(),
+                value: "fusion_tag".to_string(),
+                label: Some("fusion tag".to_string()),
+                source: "component:gst_tag".to_string(),
+            }],
+            routine_hints: vec![crate::genomes::HelperConstructRoutineHint {
+                family: "gibson".to_string(),
+                rationale: "Overlap assembly keeps the fusion-tag CDS in frame.".to_string(),
+                source_terms: vec!["component_kind:fusion_tag".to_string()],
+            }],
             local_variant_unpublished: true,
             ..Default::default()
         };
@@ -47600,6 +47642,12 @@ mod tests {
         assert!(lines.contains(&"host system: Escherichia coli".to_string()));
         assert!(lines.contains(&"constraints: reading_frame_must_be_preserved".to_string()));
         assert!(lines.contains(&"procurement channels: vendor_catalog".to_string()));
+        assert!(lines.contains(&"routine hints: gibson".to_string()));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("normalized terms: component_kind=fusion_tag"))
+        );
         assert!(lines.contains(&"local variant: unpublished".to_string()));
     }
 

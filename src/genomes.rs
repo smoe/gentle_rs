@@ -456,6 +456,29 @@ pub struct HelperConstructInterpretationComponent {
     pub attributes: BTreeMap<String, String>,
 }
 
+/// Ontology-friendly normalized helper term derived from raw catalog semantics.
+///
+/// The `axis` is intentionally lightweight and stable enough for GUI/CLI/MCP/
+/// ClawBio consumers to group facts without waiting for a complete external
+/// ontology. `value` is normalized for matching, while `label` preserves the
+/// human-facing source spelling when it differs.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructNormalizedTerm {
+    pub axis: String,
+    pub value: String,
+    pub label: Option<String>,
+    pub source: String,
+}
+
+/// Direct helper-derived routine-planning hint for downstream tools.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructRoutineHint {
+    pub family: String,
+    pub rationale: String,
+    #[serde(default)]
+    pub source_terms: Vec<String>,
+}
+
 /// Engine-owned normalized helper-construct meaning record.
 ///
 /// This sits above raw catalog metadata so GUI/CLI/MCP/ClawBio/planner routes
@@ -480,9 +503,385 @@ pub struct HelperConstructInterpretation {
     pub procurement_channels: Vec<String>,
     pub local_variant_unpublished: bool,
     #[serde(default)]
+    pub normalized_terms: Vec<HelperConstructNormalizedTerm>,
+    #[serde(default)]
+    pub routine_hints: Vec<HelperConstructRoutineHint>,
+    #[serde(default)]
     pub components: Vec<HelperConstructInterpretationComponent>,
     #[serde(default)]
     pub relationships: Vec<HelperConstructRelationship>,
+}
+
+impl HelperConstructInterpretation {
+    /// Return the routine-family preferences and rationale exposed by the
+    /// normalized helper record.
+    pub fn routine_family_preferences(&self) -> (Vec<String>, Vec<String>) {
+        let hints = if self.routine_hints.is_empty() {
+            self.derive_routine_hints()
+        } else {
+            self.routine_hints.clone()
+        };
+        let families = hints
+            .iter()
+            .map(|hint| hint.family.clone())
+            .filter(|value| !value.trim().is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let rationale = hints
+            .iter()
+            .map(|hint| hint.rationale.clone())
+            .filter(|value| !value.trim().is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        (families, rationale)
+    }
+
+    fn derive_normalized_terms(&self) -> Vec<HelperConstructNormalizedTerm> {
+        let mut terms: BTreeMap<(String, String, String), HelperConstructNormalizedTerm> =
+            BTreeMap::new();
+        for value in &self.helper_kinds {
+            Self::push_normalized_term(
+                &mut terms,
+                "helper_kind",
+                value,
+                Some(value),
+                "helper_kind",
+            );
+        }
+        for value in &self.host_systems {
+            Self::push_normalized_term(
+                &mut terms,
+                "host_system",
+                value,
+                Some(value),
+                "host_system",
+            );
+        }
+        for value in &self.offered_functions {
+            Self::push_normalized_term(
+                &mut terms,
+                "offered_function",
+                value,
+                Some(value),
+                "offered_function",
+            );
+        }
+        for value in &self.constraints {
+            Self::push_normalized_term(&mut terms, "constraint", value, Some(value), "constraint");
+        }
+        for value in &self.procurement_channels {
+            Self::push_normalized_term(
+                &mut terms,
+                "procurement_channel",
+                value,
+                Some(value),
+                "procurement",
+            );
+        }
+        if self.local_variant_unpublished {
+            Self::push_normalized_term(
+                &mut terms,
+                "provenance",
+                "local_variant_unpublished",
+                Some("local variant unpublished"),
+                "local_variant_unpublished",
+            );
+        }
+        for component in &self.components {
+            let source = format!("component:{}", component.id);
+            Self::push_normalized_term(
+                &mut terms,
+                "component_kind",
+                &component.kind,
+                Some(&component.kind),
+                &source,
+            );
+            if let Some(label) = component.label.as_deref() {
+                Self::push_normalized_term(
+                    &mut terms,
+                    "component_label",
+                    label,
+                    Some(label),
+                    &source,
+                );
+            }
+            for tag in &component.tags {
+                Self::push_normalized_term(&mut terms, "component_tag", tag, Some(tag), &source);
+            }
+            for (key, value) in &component.attributes {
+                let label = format!("{key}={value}");
+                Self::push_normalized_term(
+                    &mut terms,
+                    "component_attribute",
+                    &label,
+                    Some(&label),
+                    &source,
+                );
+            }
+        }
+        for relationship in &self.relationships {
+            Self::push_normalized_term(
+                &mut terms,
+                "relationship_predicate",
+                &relationship.predicate,
+                Some(&relationship.predicate),
+                "relationship",
+            );
+            let relationship_label = format!(
+                "{} {} {}",
+                relationship.subject, relationship.predicate, relationship.object
+            );
+            Self::push_normalized_term(
+                &mut terms,
+                "relationship",
+                &relationship_label,
+                Some(&relationship_label),
+                "relationship",
+            );
+        }
+        terms.into_values().collect()
+    }
+
+    fn derive_routine_hints(&self) -> Vec<HelperConstructRoutineHint> {
+        let terms = if self.normalized_terms.is_empty() {
+            self.derive_normalized_terms()
+        } else {
+            self.normalized_terms.clone()
+        };
+        let haystack = self.routine_preference_haystack();
+        let term_values = terms
+            .iter()
+            .map(|term| format!("{}:{}", term.axis, term.value))
+            .collect::<BTreeSet<_>>();
+        let has_term = |axis: &str, value: &str| -> bool {
+            term_values.contains(&format!(
+                "{}:{}",
+                axis,
+                Self::normalize_semantic_token(value)
+            ))
+        };
+
+        let has_insert_cloning = has_term("offered_function", "insert_cloning")
+            || has_term("component_kind", "cloning_site")
+            || has_term("component_tag", "insert_cloning");
+        let has_in_frame_fusion_context = has_term("offered_function", "in_frame_fusion_design")
+            || has_term("offered_function", "fusion_tagging")
+            || has_term("offered_function", "protease_cleavage")
+            || has_term("offered_function", "protease_tag_removal")
+            || has_term("component_kind", "fusion_tag")
+            || has_term("component_kind", "protease_site");
+
+        let mut hints = vec![];
+        if Self::haystack_contains_any(
+            &haystack,
+            &["gateway", "clonase", "attl", "attr", "attb", "attp"],
+        ) {
+            hints.push(Self::routine_hint(
+                "gateway",
+                "Helper interpretation mentions Gateway-specific cloning tokens, so Gateway routines stay near the top of routine ranking.",
+                &["gateway"],
+            ));
+        }
+        if Self::haystack_contains_any(
+            &haystack,
+            &["golden gate", "type_iis", "type iis", "type-iis"],
+        ) {
+            hints.push(Self::routine_hint(
+                "golden_gate",
+                "Helper interpretation mentions Type IIS / Golden Gate grammar, so Golden Gate routines are treated as a compatible fit.",
+                &["golden_gate", "type_iis"],
+            ));
+        }
+        if Self::haystack_contains_any(&haystack, &["gibson", "gibson assembly"]) {
+            hints.push(Self::routine_hint(
+                "gibson",
+                "Helper interpretation explicitly mentions Gibson-style overlap assembly.",
+                &["gibson"],
+            ));
+        }
+        if Self::haystack_contains_any(&haystack, &["in-fusion", "infusion"]) {
+            hints.push(Self::routine_hint(
+                "infusion",
+                "Helper interpretation explicitly mentions In-Fusion-style overlap assembly.",
+                &["infusion"],
+            ));
+        }
+        if Self::haystack_contains_any(&haystack, &["nebuilder", "hi-fi assembly", "hifi assembly"])
+        {
+            hints.push(Self::routine_hint(
+                "nebuilder_hifi",
+                "Helper interpretation explicitly mentions NEBuilder HiFi-style overlap assembly.",
+                &["nebuilder_hifi"],
+            ));
+        }
+        if Self::haystack_contains_any(&haystack, &["topo cloning", "topo vector"]) {
+            hints.push(Self::routine_hint(
+                "topo",
+                "Helper interpretation mentions TOPO-style cloning semantics.",
+                &["topo"],
+            ));
+        }
+        if Self::haystack_contains_any(
+            &haystack,
+            &[
+                "ta cloning",
+                "t-overhang",
+                "t overhang",
+                "a-overhang",
+                "a overhang",
+            ],
+        ) {
+            hints.push(Self::routine_hint(
+                "ta_gc",
+                "Helper interpretation mentions TA-style overhang cloning semantics.",
+                &["ta_gc"],
+            ));
+        }
+        if has_insert_cloning
+            || Self::haystack_contains_any(
+                &haystack,
+                &[
+                    "multiple cloning site",
+                    "mcs",
+                    "restriction",
+                    "digest",
+                    "ligation",
+                ],
+            )
+        {
+            hints.push(Self::routine_hint(
+                "restriction",
+                "Helper interpretation exposes a cloning-site / insert-cloning context, so restriction-family subcloning stays explicitly favored.",
+                &["offered_function:insert_cloning", "component_kind:cloning_site"],
+            ));
+        }
+        if has_in_frame_fusion_context {
+            for family in ["gibson", "infusion", "nebuilder_hifi"] {
+                hints.push(Self::routine_hint(
+                    family,
+                    "Helper interpretation exposes in-frame fusion / protease-tag context, so overlap-assembly families are favored for scar-aware CDS insertion planning.",
+                    &[
+                        "offered_function:fusion_tagging",
+                        "offered_function:protease_cleavage",
+                        "component_kind:fusion_tag",
+                        "component_kind:protease_site",
+                    ],
+                ));
+            }
+        }
+        hints.sort_by(|left, right| {
+            (left.family.as_str(), left.rationale.as_str())
+                .cmp(&(right.family.as_str(), right.rationale.as_str()))
+        });
+        hints.dedup();
+        hints
+    }
+
+    fn routine_preference_haystack(&self) -> String {
+        let mut fields = vec![
+            self.helper_id.as_str(),
+            self.description.as_deref().unwrap_or_default(),
+            self.summary.as_deref().unwrap_or_default(),
+        ];
+        for alias in &self.aliases {
+            fields.push(alias.as_str());
+        }
+        for kind in &self.helper_kinds {
+            fields.push(kind.as_str());
+        }
+        for host in &self.host_systems {
+            fields.push(host.as_str());
+        }
+        for function in &self.offered_functions {
+            fields.push(function.as_str());
+        }
+        for term in &self.normalized_terms {
+            fields.push(term.value.as_str());
+            fields.push(term.label.as_deref().unwrap_or_default());
+        }
+        for component in &self.components {
+            fields.push(component.id.as_str());
+            fields.push(component.kind.as_str());
+            fields.push(component.label.as_deref().unwrap_or_default());
+            fields.push(component.description.as_deref().unwrap_or_default());
+            for tag in &component.tags {
+                fields.push(tag.as_str());
+            }
+            for value in component.attributes.values() {
+                fields.push(value.as_str());
+            }
+        }
+        for relationship in &self.relationships {
+            fields.push(relationship.subject.as_str());
+            fields.push(relationship.predicate.as_str());
+            fields.push(relationship.object.as_str());
+            fields.push(relationship.note.as_deref().unwrap_or_default());
+        }
+        fields.join(" ").to_ascii_lowercase()
+    }
+
+    fn push_normalized_term(
+        terms: &mut BTreeMap<(String, String, String), HelperConstructNormalizedTerm>,
+        axis: &str,
+        raw_value: &str,
+        label: Option<&str>,
+        source: &str,
+    ) {
+        let value = Self::normalize_semantic_token(raw_value);
+        if value.is_empty() {
+            return;
+        }
+        let label = label
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let source = source.trim().to_string();
+        let key = (axis.to_string(), value.clone(), source.clone());
+        terms
+            .entry(key)
+            .or_insert_with(|| HelperConstructNormalizedTerm {
+                axis: axis.to_string(),
+                value,
+                label,
+                source,
+            });
+    }
+
+    fn normalize_semantic_token(raw: &str) -> String {
+        let mut out = String::new();
+        let mut last_was_separator = false;
+        for ch in raw.trim().chars() {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch.to_ascii_lowercase());
+                last_was_separator = false;
+            } else if !last_was_separator {
+                out.push('_');
+                last_was_separator = true;
+            }
+        }
+        out.trim_matches('_').to_string()
+    }
+
+    fn haystack_contains_any(haystack: &str, terms: &[&str]) -> bool {
+        let lower = haystack.to_ascii_lowercase();
+        terms
+            .iter()
+            .any(|term| lower.contains(&term.to_ascii_lowercase()))
+    }
+
+    fn routine_hint(
+        family: &str,
+        rationale: &str,
+        source_terms: &[&str],
+    ) -> HelperConstructRoutineHint {
+        HelperConstructRoutineHint {
+            family: family.to_string(),
+            rationale: rationale.to_string(),
+            source_terms: source_terms.iter().map(|value| value.to_string()).collect(),
+        }
+    }
 }
 
 fn default_cache_dir() -> Option<String> {
@@ -1723,7 +2122,7 @@ impl GenomeCatalog {
             })
             .unwrap_or_default();
 
-        Some(HelperConstructInterpretation {
+        let mut interpretation = HelperConstructInterpretation {
             helper_id: genome_id.to_string(),
             description: entry.description.clone(),
             summary: entry.summary.clone(),
@@ -1734,9 +2133,14 @@ impl GenomeCatalog {
             constraints,
             procurement_channels,
             local_variant_unpublished: entry.local_variant_unpublished.unwrap_or(false),
+            normalized_terms: vec![],
+            routine_hints: vec![],
             components,
             relationships,
-        })
+        };
+        interpretation.normalized_terms = interpretation.derive_normalized_terms();
+        interpretation.routine_hints = interpretation.derive_routine_hints();
+        Some(interpretation)
     }
 
     fn entry_has_helper_interpretation(entry: &GenomeCatalogEntry) -> bool {
@@ -12443,6 +12847,25 @@ mod tests {
             interpretation.components[0].attributes.get("position"),
             Some(&"n_terminal".to_string())
         );
+        assert!(interpretation.normalized_terms.iter().any(|term| {
+            term.axis == "component_kind"
+                && term.value == "fusion_tag"
+                && term.source == "component:gst_tag"
+        }));
+        assert!(
+            interpretation
+                .normalized_terms
+                .iter()
+                .any(|term| { term.axis == "host_system" && term.value == "escherichia_coli" })
+        );
+        let routine_hint_families = interpretation
+            .routine_hints
+            .iter()
+            .map(|hint| hint.family.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(routine_hint_families.contains("gibson"));
+        assert!(routine_hint_families.contains("infusion"));
+        assert!(routine_hint_families.contains("nebuilder_hifi"));
     }
 
     #[test]
