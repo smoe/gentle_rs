@@ -1167,6 +1167,10 @@ Sequence-linked construct reasoning graph direction:
     terms and routine-planning hints; downstream tools should consume those
     fields directly rather than re-deriving helper/vector compatibility from
     prose descriptions
+  - normalized helper terms are resolved through a catalog-extensible helper
+    semantics vocabulary (`assets/helper_semantics_vocabulary.json` plus
+    system/user/project overlays) so local construct classes can add aliases,
+    descriptions, and routine hints without changing engine code
   - the emerging reasoning/constraint engine should consume those normalized
     records so catalog-backed helper knowledge, planner suggestions, and future
     ontology terms stay aligned across GUI/CLI/MCP/ClawBio instead of growing

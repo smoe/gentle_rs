@@ -1,0 +1,125 @@
+{
+  "schema": "gentle.helper_semantics_vocabulary.v1",
+  "terms": [
+    {
+      "axis": "helper_kind",
+      "value": "plasmid_vector",
+      "label": "Plasmid vector",
+      "description": "Circular DNA helper construct used as a cloning, expression, reporter, or propagation backbone.",
+      "aliases": ["plasmid", "vector", "cloning_vector"]
+    },
+    {
+      "axis": "host_system",
+      "value": "escherichia_coli",
+      "label": "Escherichia coli",
+      "description": "Bacterial host system commonly used for plasmid propagation and protein expression.",
+      "aliases": ["e_coli", "ecoli", "e. coli"]
+    },
+    {
+      "axis": "component_kind",
+      "value": "cloning_site",
+      "label": "Cloning site",
+      "description": "Sequence interval intended to receive an insert, such as an MCS or defined entry cassette.",
+      "aliases": ["mcs", "multiple_cloning_site", "multi_cloning_site"],
+      "routine_hints": [
+        {
+          "family": "restriction",
+          "rationale": "Vocabulary term component_kind:cloning_site marks an insert-entry context, so restriction-family subcloning should remain visible.",
+          "source_terms": ["component_kind:cloning_site"]
+        }
+      ]
+    },
+    {
+      "axis": "component_kind",
+      "value": "fusion_tag",
+      "label": "Fusion tag",
+      "description": "Coding sequence intended to be fused in frame to a protein product for purification, detection, solubility, or localization.",
+      "aliases": ["affinity_tag", "protein_tag", "tag"],
+      "routine_hints": [
+        {
+          "family": "gibson",
+          "rationale": "Vocabulary term component_kind:fusion_tag favors scar-aware overlap assembly for in-frame CDS insertion.",
+          "source_terms": ["component_kind:fusion_tag"]
+        },
+        {
+          "family": "infusion",
+          "rationale": "Vocabulary term component_kind:fusion_tag favors scar-aware overlap assembly for in-frame CDS insertion.",
+          "source_terms": ["component_kind:fusion_tag"]
+        },
+        {
+          "family": "nebuilder_hifi",
+          "rationale": "Vocabulary term component_kind:fusion_tag favors scar-aware overlap assembly for in-frame CDS insertion.",
+          "source_terms": ["component_kind:fusion_tag"]
+        }
+      ]
+    },
+    {
+      "axis": "component_kind",
+      "value": "protease_site",
+      "label": "Protease cleavage site",
+      "description": "Short peptide sequence recognized by a protease for removing or processing a fused protein segment.",
+      "aliases": ["cleavage_site", "protease_cleavage_site"],
+      "routine_hints": [
+        {
+          "family": "gibson",
+          "rationale": "Vocabulary term component_kind:protease_site marks a frame-sensitive peptide feature that benefits from scar-aware assembly planning.",
+          "source_terms": ["component_kind:protease_site"]
+        },
+        {
+          "family": "infusion",
+          "rationale": "Vocabulary term component_kind:protease_site marks a frame-sensitive peptide feature that benefits from scar-aware assembly planning.",
+          "source_terms": ["component_kind:protease_site"]
+        },
+        {
+          "family": "nebuilder_hifi",
+          "rationale": "Vocabulary term component_kind:protease_site marks a frame-sensitive peptide feature that benefits from scar-aware assembly planning.",
+          "source_terms": ["component_kind:protease_site"]
+        }
+      ]
+    },
+    {
+      "axis": "component_kind",
+      "value": "selectable_marker",
+      "label": "Selectable marker",
+      "description": "Genetic element that allows selection of host cells carrying the helper construct.",
+      "aliases": ["selection_marker", "antibiotic_marker"]
+    },
+    {
+      "axis": "component_attribute",
+      "value": "agent_ampicillin",
+      "label": "Ampicillin selection",
+      "description": "Selection context using ampicillin or beta-lactam resistance."
+    },
+    {
+      "axis": "offered_function",
+      "value": "insert_cloning",
+      "label": "Insert cloning",
+      "description": "Helper affords insertion of a DNA fragment into a designated cloning context.",
+      "routine_hints": [
+        {
+          "family": "restriction",
+          "rationale": "Vocabulary term offered_function:insert_cloning marks a general insert-entry affordance.",
+          "source_terms": ["offered_function:insert_cloning"]
+        }
+      ]
+    },
+    {
+      "axis": "offered_function",
+      "value": "fusion_tagging",
+      "label": "Fusion tagging",
+      "description": "Helper affords in-frame protein tagging of an inserted coding sequence."
+    },
+    {
+      "axis": "offered_function",
+      "value": "protease_cleavage",
+      "label": "Protease cleavage",
+      "description": "Helper includes or supports a peptide cleavage site for tag removal or processing."
+    },
+    {
+      "axis": "offered_function",
+      "value": "blue_white_screening",
+      "label": "Blue/white screening",
+      "description": "Helper supports lacZ alpha disruption or an equivalent colony-screening readout."
+    }
+  ]
+}

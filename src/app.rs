@@ -14245,7 +14245,15 @@ Error: `{err}`"
                 .normalized_terms
                 .iter()
                 .take(6)
-                .map(|term| format!("{}={}", term.axis, term.value))
+                .map(|term| {
+                    let suffix = term
+                        .vocabulary_label
+                        .as_deref()
+                        .filter(|label| *label != term.value)
+                        .map(|label| format!(" ({label})"))
+                        .unwrap_or_default();
+                    format!("{}={}{}", term.axis, term.value, suffix)
+                })
                 .collect::<Vec<_>>();
             let suffix = if interpretation.normalized_terms.len() > preview.len() {
                 format!(
@@ -47624,6 +47632,9 @@ mod tests {
                 value: "fusion_tag".to_string(),
                 label: Some("fusion tag".to_string()),
                 source: "component:gst_tag".to_string(),
+                vocabulary_label: Some("Fusion tag".to_string()),
+                vocabulary_description: Some("Frame-sensitive tag".to_string()),
+                vocabulary_source: Some("built-in vocabulary".to_string()),
             }],
             routine_hints: vec![crate::genomes::HelperConstructRoutineHint {
                 family: "gibson".to_string(),
