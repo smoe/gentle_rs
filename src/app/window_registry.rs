@@ -514,7 +514,56 @@ impl GENtleApp {
         }
     }
 
+    fn window_owns_auxiliary_viewport(
+        window: &Arc<RwLock<Window>>,
+        viewport_id: ViewportId,
+    ) -> bool {
+        window
+            .read()
+            .ok()
+            .map(|guard| {
+                guard
+                    .collect_open_auxiliary_window_entries()
+                    .iter()
+                    .any(|(aux_viewport_id, _, _)| *aux_viewport_id == viewport_id)
+            })
+            .unwrap_or(false)
+    }
+
+    fn request_auxiliary_window_focus(&mut self, viewport_id: ViewportId) -> Option<ViewportId> {
+        let visible_owner = self
+            .windows
+            .iter()
+            .find(|(_, window)| Self::window_owns_auxiliary_viewport(window, viewport_id))
+            .map(|(owner_viewport_id, window)| (*owner_viewport_id, window.clone()));
+        if let Some((owner_viewport_id, window)) = visible_owner {
+            if let Ok(mut guard) = window.write() {
+                guard.request_focus_auxiliary_window(viewport_id);
+            }
+            return Some(owner_viewport_id);
+        }
+
+        let detached_owner = self
+            .detached_auxiliary_window_hosts
+            .values()
+            .find(|window| Self::window_owns_auxiliary_viewport(window, viewport_id))
+            .cloned();
+        if let Some(window) = detached_owner {
+            if let Ok(mut guard) = window.write() {
+                guard.request_focus_auxiliary_window(viewport_id);
+            }
+        }
+        None
+    }
+
     pub(super) fn focus_window_viewport(&mut self, ctx: &egui::Context, viewport_id: ViewportId) {
+        let auxiliary_owner_viewport = self.request_auxiliary_window_focus(viewport_id);
+        if let Some(owner_viewport_id) = auxiliary_owner_viewport {
+            self.queue_focus_viewport(owner_viewport_id);
+            ctx.send_viewport_cmd_to(owner_viewport_id, egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd_to(owner_viewport_id, egui::ViewportCommand::Focus);
+        }
+
         if viewport_id == Self::configuration_viewport_id() {
             self.show_configuration_dialog = true;
         } else if viewport_id == Self::help_viewport_id() {

@@ -6214,37 +6214,36 @@ impl MainAreaDna {
         default_size: Vec2,
         content_min_size: Vec2,
         pending_initial_render: bool,
+        focus_requested: bool,
     ) {
         let mut open = self.show_rna_read_mapping_window;
         Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(ctx, title);
-        egui::Window::new(title)
+        let mut window = egui::Window::new(title)
             .id(Self::rna_read_mapping_embedded_window_id(view))
             .open(&mut open)
             .resizable(true)
-            .default_size(default_size)
-            .show(ctx, |ui| {
-                let backdrop_settings = current_window_backdrop_settings();
-                paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                egui::ScrollArea::both()
-                    .id_salt(format!(
-                        "rna_read_mapping_scroll_embedded_{}_{}",
-                        view.seq_id, view.target_feature_id
-                    ))
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        ui.set_min_size(content_min_size);
-                        self.render_rna_read_mapping_window_body(
-                            ctx,
-                            ui,
-                            view,
-                            pending_initial_render,
-                        );
-                    });
-            });
+            .default_size(default_size);
+        if focus_requested {
+            window = window.order(egui::Order::Foreground);
+        }
+        window.show(ctx, |ui| {
+            let backdrop_settings = current_window_backdrop_settings();
+            paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+            egui::ScrollArea::both()
+                .id_salt(format!(
+                    "rna_read_mapping_scroll_embedded_{}_{}",
+                    view.seq_id, view.target_feature_id
+                ))
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    ui.set_min_size(content_min_size);
+                    self.render_rna_read_mapping_window_body(ctx, ui, view, pending_initial_render);
+                });
+        });
         self.show_rna_read_mapping_window = open;
     }
 
@@ -6631,8 +6630,13 @@ impl MainAreaDna {
                 if viewport_id
                     == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
                 {
+                    let order = if self.rna_read_mapping_window_focus_requested {
+                        egui::Order::Foreground
+                    } else {
+                        egui::Order::Middle
+                    };
                     return Some(egui::LayerId::new(
-                        egui::Order::Middle,
+                        order,
                         Self::rna_read_mapping_embedded_window_id(view),
                     ));
                 }
@@ -6656,6 +6660,20 @@ impl MainAreaDna {
             }
         }
         None
+    }
+
+    pub(crate) fn request_focus_auxiliary_window(&mut self, viewport_id: egui::ViewportId) -> bool {
+        if self.show_rna_read_mapping_window {
+            if let Some(view) = self.rna_read_mapping_window_view.as_ref() {
+                if viewport_id
+                    == Self::rna_read_mapping_viewport_id(&view.seq_id, view.target_feature_id)
+                {
+                    self.rna_read_mapping_window_focus_requested = true;
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub(super) fn render_dotplot_window(&mut self, ctx: &egui::Context) {

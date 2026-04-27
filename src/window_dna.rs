@@ -446,6 +446,10 @@ impl WindowDna {
             .embedded_auxiliary_window_layer_id(viewport_id)
     }
 
+    pub fn request_focus_auxiliary_window(&mut self, viewport_id: egui::ViewportId) -> bool {
+        self.main_area.request_focus_auxiliary_window(viewport_id)
+    }
+
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         self.main_area.render_pcr_designer_specialist(ui, ctx);
     }
@@ -468,6 +472,11 @@ impl WindowDna {
     ) {
         self.main_area
             .seed_rna_read_mapping_window_for_tests(seq_id, feature_id, group_label);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn rna_read_mapping_focus_requested_for_tests(&self) -> bool {
+        self.main_area.rna_read_mapping_focus_requested_for_tests()
     }
 
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {

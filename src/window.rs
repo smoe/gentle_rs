@@ -168,6 +168,12 @@ impl Window {
         }
     }
 
+    pub fn request_focus_auxiliary_window(&mut self, viewport_id: egui::ViewportId) -> bool {
+        match self {
+            Self::Dna(window) => window.request_focus_auxiliary_window(viewport_id),
+        }
+    }
+
     pub fn render_pcr_designer_specialist(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         match self {
             Self::Dna(window) => window.render_pcr_designer_specialist(ui, ctx),
@@ -219,6 +225,13 @@ impl Window {
             Self::Dna(window) => {
                 window.seed_rna_read_mapping_window_for_tests(seq_id, feature_id, group_label)
             }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn rna_read_mapping_focus_requested_for_tests(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.rna_read_mapping_focus_requested_for_tests(),
         }
     }
 }

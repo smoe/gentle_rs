@@ -7515,6 +7515,51 @@ mod tests {
             MainAreaDna::rna_read_mapping_window_default_size(),
             MainAreaDna::rna_read_mapping_window_content_min_size(),
             false,
+            false,
+        );
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn rna_read_mapping_embedded_window_focus_request_uses_foreground_order() {
+        let ctx = egui::Context::default();
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 17,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: "mapping".to_string(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+        let layer_id = egui::LayerId::new(
+            egui::Order::Foreground,
+            MainAreaDna::rna_read_mapping_embedded_window_id(&view),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        area.show_rna_read_mapping_window = true;
+        area.render_rna_read_mapping_embedded_window_shell(
+            &ctx,
+            &MainAreaDna::rna_read_mapping_window_title(&view),
+            &view,
+            MainAreaDna::rna_read_mapping_window_default_size(),
+            MainAreaDna::rna_read_mapping_window_content_min_size(),
+            false,
+            true,
         );
         assert!(ctx.memory(|mem| mem.areas().is_visible(&layer_id)));
         let _ = ctx.end_pass();
@@ -7564,6 +7609,7 @@ mod tests {
             &view,
             MainAreaDna::rna_read_mapping_window_default_size(),
             MainAreaDna::rna_read_mapping_window_content_min_size(),
+            false,
             false,
         );
         assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
@@ -13822,6 +13868,11 @@ impl MainAreaDna {
             junctions: vec![],
             events: vec![],
         }));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn rna_read_mapping_focus_requested_for_tests(&self) -> bool {
+        self.rna_read_mapping_window_focus_requested
     }
 
     pub fn dna(&self) -> &Arc<RwLock<DNAsequence>> {
@@ -25970,8 +26021,17 @@ impl MainAreaDna {
             "focus requested",
             self.rna_read_mapping_window_pending_initial_render,
         );
+        if ctx.embed_viewports() {
+            let embedded_window_id = Self::rna_read_mapping_embedded_window_id(view);
+            ctx.move_to_top(egui::LayerId::new(
+                egui::Order::Foreground,
+                embedded_window_id,
+            ));
+            ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, embedded_window_id));
+        }
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+        ctx.request_repaint();
     }
 
     fn focus_dotplot_workspace_view(&self, ctx: &egui::Context) {
@@ -29215,6 +29275,7 @@ impl MainAreaDna {
                     default_size,
                     content_min_size,
                     pending_initial_render,
+                    self.rna_read_mapping_window_focus_requested,
                 );
                 if self.active_rna_read_task_matches_splicing_view(&view) {
                     ctx.request_repaint_after(repaint_delay);

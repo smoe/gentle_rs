@@ -122,6 +122,10 @@ macOS auxiliary-window stability note:
 - Newly opened sequence windows are queued for foreground focus after their
   viewport is registered, so opening a sequence from a project/lineage view
   should raise that DNA viewer instead of leaving it behind older windows.
+- Hosted auxiliary workspaces opened from a sequence window, including
+  RNA-read Mapping, route `Windows` menu focus through the owning sequence
+  window so the auxiliary workspace is raised above the large DNA viewer
+  instead of remaining hidden behind it.
 
 ## Configuration Window
 

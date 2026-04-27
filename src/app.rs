@@ -32963,8 +32963,7 @@ Error: `{err}`"
                             if Self::reset_hosted_window_areas_if_legacy_title_layer_visible(
                                 ui.ctx(),
                                 window_title.as_str(),
-                            )
-                            {
+                            ) {
                                 // Older hosted sequence windows used the visible title as the
                                 // implicit egui::Window id, which can leave a detached title bar
                                 // behind when reopening under the stable hosted id.
@@ -33059,8 +33058,7 @@ Error: `{err}`"
                             if Self::reset_hosted_window_areas_if_legacy_title_layer_visible(
                                 ctx,
                                 window_title.as_str(),
-                            )
-                            {
+                            ) {
                                 ctx.request_repaint();
                             }
                             let mut open = true;
@@ -50949,10 +50947,7 @@ mod tests {
     fn newly_focused_embedded_sequence_window_renders_above_hosted_project_window() {
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);
-        let screen_rect = egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(1600.0, 1000.0),
-        );
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
         let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
         let mut app = GENtleApp::default();
         let viewport_id =
@@ -51052,6 +51047,45 @@ mod tests {
                 .is_some(),
             true,
             "detached auxiliary hosts should still resolve embedded layer ids for focus routing"
+        );
+    }
+
+    #[test]
+    fn focusing_rna_mapping_from_windows_menu_queues_owner_and_child_focus() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+        let mut window = Window::new_dna(dna, "seq1".to_string(), app.engine.clone());
+        window.seed_rna_read_mapping_window_for_tests("seq1", 17, "TP73");
+        let owner_viewport_id = app.register_window(window);
+        app.pending_focus_viewports.clear();
+        let mapping_viewport_id =
+            egui::ViewportId::from_hash_of(("rna_read_mapping_viewport", "seq1", 17usize));
+
+        app.focus_window_viewport(&ctx, mapping_viewport_id);
+
+        assert!(
+            app.pending_focus_viewports.contains(&owner_viewport_id),
+            "focusing the RNA-read Mapping menu item should also raise its DNA host"
+        );
+        let window = app
+            .windows
+            .get(&owner_viewport_id)
+            .expect("registered sequence owner");
+        assert!(
+            window
+                .read()
+                .expect("window")
+                .rna_read_mapping_focus_requested_for_tests(),
+            "the child workspace should render in foreground order on the next frame"
+        );
+        assert_eq!(
+            app.embedded_window_layer_id_for_viewport(mapping_viewport_id),
+            Some(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("rna_read_mapping_window_embedded_seq1_17"),
+            ))
         );
     }
 
