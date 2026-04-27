@@ -78,7 +78,8 @@ use crate::{
         PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
         PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
         PrimerDesignSideConstraint, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
-        ProtocolCartoonPreviewTelemetry, QpcrDesignReport, RenderSvgMode,
+        ProtocolCartoonPreviewTelemetry, QpcrDesignReport, QpcrTranscriptSpecificityEvidence,
+        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RenderSvgMode,
         RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
         RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
         RestrictionEnzymeDisplayMode, RestrictionSiteScanReport, RnaReadAlignConfig,
@@ -552,6 +553,7 @@ impl Default for RestrictionCloningPcrHandoffUiState {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct QpcrDesignOpsUiState {
+    transcript_targeting: QpcrTranscriptTargetingUiState,
     roi_start_0based: String,
     roi_end_0based: String,
     forward: PrimerSideConstraintUiState,
@@ -570,6 +572,7 @@ struct QpcrDesignOpsUiState {
 impl Default for QpcrDesignOpsUiState {
     fn default() -> Self {
         Self {
+            transcript_targeting: QpcrTranscriptTargetingUiState::default(),
             roi_start_0based: "0".to_string(),
             roi_end_0based: "0".to_string(),
             forward: PrimerSideConstraintUiState::default(),
@@ -583,6 +586,65 @@ impl Default for QpcrDesignOpsUiState {
             max_assays: "200".to_string(),
             report_id: "qpcr_report_gui".to_string(),
             selected_assay_rank_1based: "1".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum QpcrTranscriptIntentUiMode {
+    #[default]
+    Genomic,
+    SharedAcrossTranscripts,
+    SpecificTranscript,
+}
+
+impl QpcrTranscriptIntentUiMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Genomic => "Genomic",
+            Self::SharedAcrossTranscripts => "Shared across transcripts",
+            Self::SpecificTranscript => "Specific transcript",
+        }
+    }
+
+    fn summary_label(self) -> &'static str {
+        match self {
+            Self::Genomic => "genomic / no transcript constraint",
+            Self::SharedAcrossTranscripts => "shared exon or exon-chain across transcripts",
+            Self::SpecificTranscript => "specific transcript",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct QpcrTranscriptTargetingUiState {
+    assay_intent: QpcrTranscriptIntentUiMode,
+    specificity_evidence: QpcrTranscriptSpecificityEvidence,
+    source_seq_id: String,
+    source_feature_id: Option<usize>,
+    group_label: String,
+    transcript_count: usize,
+    strand: String,
+    selected_transcript_feature_id: Option<usize>,
+    selected_transcript_id: String,
+    selected_transcript_label: String,
+}
+
+impl Default for QpcrTranscriptTargetingUiState {
+    fn default() -> Self {
+        Self {
+            assay_intent: QpcrTranscriptIntentUiMode::Genomic,
+            specificity_evidence: QpcrTranscriptSpecificityEvidence::EitherPreferJunction,
+            source_seq_id: String::new(),
+            source_feature_id: None,
+            group_label: String::new(),
+            transcript_count: 0,
+            strand: String::new(),
+            selected_transcript_feature_id: None,
+            selected_transcript_id: String::new(),
+            selected_transcript_label: String::new(),
         }
     }
 }
@@ -1206,11 +1268,11 @@ struct EngineOpsUiState {
 mod tests {
     use super::{
         DnaPresentationMode, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP, MainAreaDna,
-        PcrDesignerMode, PcrPaintRole, PrimaryMapMode, RnaReadConcatemerSubsetMode,
-        RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage, RnaReadTaskOutcome,
-        SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD, SequencingConfirmationOverviewSelection,
-        SequencingConfirmationReviewFocusKind, SplicingIntronSignalKey, SplicingIntronSignalRow,
-        ViewSvgExportProfile,
+        PcrDesignerMode, PcrPaintRole, PrimaryMapMode, QpcrTranscriptIntentUiMode,
+        RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
+        RnaReadTaskOutcome, SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD,
+        SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
+        SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
     };
     use crate::{
         dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
@@ -1225,23 +1287,24 @@ mod tests {
             PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
             PrimerDesignProgress, PrimerDesignSideConstraint, ProjectState,
             PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
-            RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
-            RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
-            RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
-            RnaReadInterpretationProfile, RnaReadInterpretationReport,
-            RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
-            RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
-            RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
-            SequencingConfirmationReadResult, SequencingConfirmationReport,
-            SequencingConfirmationStatus, SequencingConfirmationTargetKind,
-            SequencingConfirmationTargetResult, SequencingConfirmationVariantRow,
-            SequencingPrimerOrientation, SequencingPrimerOverlayReport,
-            SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
-            SequencingPrimerProposalRow, SequencingTraceChannelData, SequencingTraceFormat,
-            SequencingTraceImportReport, SequencingTraceRecord, SplicingScopePreset,
-            TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
-            TfbsTrackSimilarityReport, VariantPromoterContextReport,
-            parse_required_usize_or_formula_text_on_sequence,
+            QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
+            QpcrTranscriptTargetingMode, RestrictionCloningPcrHandoffMode,
+            RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
+            RnaReadAlignmentInspectionRow, RnaReadHitSelection, RnaReadInputFormat,
+            RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
+            RnaReadInterpretationReport, RnaReadInterpretationReportSummary,
+            RnaReadIsoformSupportRow, RnaReadMappingHit, RnaReadOriginMode, RnaReadReportMode,
+            RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, SequenceAlignmentReport,
+            SequenceGenomeAnchorSummary, SequencingConfirmationReadResult,
+            SequencingConfirmationReport, SequencingConfirmationStatus,
+            SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
+            SequencingConfirmationVariantRow, SequencingPrimerOrientation,
+            SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
+            SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
+            SequencingTraceFormat, SequencingTraceImportReport, SequencingTraceRecord,
+            SplicingScopePreset, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
+            TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport,
+            VariantPromoterContextReport, parse_required_usize_or_formula_text_on_sequence,
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
@@ -5517,6 +5580,201 @@ mod tests {
     }
 
     #[test]
+    fn build_design_qpcr_operation_genomic_mode_emits_no_transcript_targeting() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(80)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), None);
+        area.qpcr_design_ui.roi_start_0based = "20".to_string();
+        area.qpcr_design_ui.roi_end_0based = "120".to_string();
+
+        let op = area
+            .build_design_qpcr_operation("tpl")
+            .expect("build genomic qPCR op");
+
+        match op {
+            Operation::DesignQpcrAssays {
+                transcript_targeting,
+                ..
+            } => assert!(transcript_targeting.is_none()),
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_design_qpcr_operation_shared_mode_uses_attached_splicing_context() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(80)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), None);
+        area.qpcr_design_ui.roi_start_0based = "20".to_string();
+        area.qpcr_design_ui.roi_end_0based = "120".to_string();
+        area.qpcr_design_ui.transcript_targeting.assay_intent =
+            QpcrTranscriptIntentUiMode::SharedAcrossTranscripts;
+        area.qpcr_design_ui.transcript_targeting.source_seq_id = "tpl".to_string();
+        area.qpcr_design_ui.transcript_targeting.source_feature_id = Some(17);
+        area.qpcr_design_ui.transcript_targeting.group_label = "TP73-AS3".to_string();
+        area.qpcr_design_ui.transcript_targeting.transcript_count = 3;
+        area.qpcr_design_ui.transcript_targeting.strand = "-".to_string();
+
+        let op = area
+            .build_design_qpcr_operation("tpl")
+            .expect("build shared-transcript qPCR op");
+
+        match op {
+            Operation::DesignQpcrAssays {
+                transcript_targeting,
+                ..
+            } => {
+                let targeting = transcript_targeting.expect("shared transcript targeting");
+                assert_eq!(targeting.source_feature_id, 17);
+                assert_eq!(targeting.mode, QpcrTranscriptTargetingMode::SharedGene);
+                assert!(targeting.transcript_id.is_none());
+                assert!(targeting.specificity_evidence.is_none());
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_design_qpcr_operation_specific_mode_emits_specificity_evidence() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(80)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), None);
+        area.qpcr_design_ui.roi_start_0based = "20".to_string();
+        area.qpcr_design_ui.roi_end_0based = "120".to_string();
+        area.qpcr_design_ui.transcript_targeting.assay_intent =
+            QpcrTranscriptIntentUiMode::SpecificTranscript;
+        area.qpcr_design_ui.transcript_targeting.source_seq_id = "tpl".to_string();
+        area.qpcr_design_ui.transcript_targeting.source_feature_id = Some(17);
+        area.qpcr_design_ui.transcript_targeting.group_label = "TP73-AS3".to_string();
+        area.qpcr_design_ui.transcript_targeting.transcript_count = 3;
+        area.qpcr_design_ui.transcript_targeting.strand = "-".to_string();
+        area.qpcr_design_ui
+            .transcript_targeting
+            .selected_transcript_id = "NR_187362.1".to_string();
+        area.qpcr_design_ui
+            .transcript_targeting
+            .selected_transcript_label = "TP73 antisense RNA 3, transcript variant 1".to_string();
+        area.qpcr_design_ui
+            .transcript_targeting
+            .specificity_evidence = QpcrTranscriptSpecificityEvidence::UniqueExonOrChain;
+
+        let op = area
+            .build_design_qpcr_operation("tpl")
+            .expect("build transcript-specific qPCR op");
+
+        match op {
+            Operation::DesignQpcrAssays {
+                transcript_targeting,
+                ..
+            } => {
+                let targeting = transcript_targeting.expect("specific transcript targeting");
+                assert_eq!(targeting.source_feature_id, 17);
+                assert_eq!(
+                    targeting.mode,
+                    QpcrTranscriptTargetingMode::DistinguishTranscript
+                );
+                assert_eq!(targeting.transcript_id.as_deref(), Some("NR_187362.1"));
+                assert_eq!(
+                    targeting.specificity_evidence,
+                    Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
+                );
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_qpcr_transcript_targeting_requires_attached_splicing_context() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(80)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), None);
+        area.qpcr_design_ui.transcript_targeting.assay_intent =
+            QpcrTranscriptIntentUiMode::SharedAcrossTranscripts;
+
+        let err = area
+            .validate_qpcr_transcript_targeting_ui("tpl")
+            .expect_err("missing splicing context should fail");
+
+        assert!(err.contains("splicing overview"));
+    }
+
+    #[test]
+    fn validate_qpcr_transcript_targeting_requires_selected_transcript() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(80)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), None);
+        area.qpcr_design_ui.transcript_targeting.assay_intent =
+            QpcrTranscriptIntentUiMode::SpecificTranscript;
+        area.qpcr_design_ui.transcript_targeting.source_seq_id = "tpl".to_string();
+        area.qpcr_design_ui.transcript_targeting.source_feature_id = Some(17);
+        area.qpcr_design_ui.transcript_targeting.group_label = "TP73-AS3".to_string();
+        area.qpcr_design_ui.transcript_targeting.transcript_count = 3;
+        area.qpcr_design_ui.transcript_targeting.strand = "-".to_string();
+
+        let err = area
+            .validate_qpcr_transcript_targeting_ui("tpl")
+            .expect_err("missing transcript selection should fail");
+
+        assert!(err.contains("Select a transcript"));
+    }
+
+    #[test]
+    fn qpcr_report_targeting_summary_and_ui_sync_preserve_specificity_details() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("dna");
+        let mut area = MainAreaDna::new(dna, Some("tp73".to_string()), None);
+        let report = crate::engine::QpcrDesignReport {
+            report_id: "qpcr_targeting".to_string(),
+            template: "tp73".to_string(),
+            transcript_targeting: Some(QpcrTranscriptTargeting {
+                source_feature_id: 17,
+                mode: QpcrTranscriptTargetingMode::DistinguishTranscript,
+                transcript_id: Some("NR_187362.1".to_string()),
+                specificity_evidence: Some(QpcrTranscriptSpecificityEvidence::EitherPreferJunction),
+            }),
+            transcript_targeting_result: Some(crate::engine::QpcrTranscriptTargetingResult {
+                source_feature_id: 17,
+                mode: QpcrTranscriptTargetingMode::DistinguishTranscript,
+                group_label: "TP73-AS3".to_string(),
+                strand: "-".to_string(),
+                transcript_count_considered: 3,
+                transcript_id: Some("NR_187362.1".to_string()),
+                transcript_label: Some("TP73 antisense RNA 3, transcript variant 1".to_string()),
+                realized_specificity_evidence: Some(
+                    QpcrTranscriptSpecificityEvidence::JunctionOnly,
+                ),
+                selected_support_transcript_count: 1,
+                selected_support_transcript_fraction: 1.0 / 3.0,
+                used_shared_support_fallback: false,
+                warnings: vec![],
+            }),
+            ..Default::default()
+        };
+
+        let summary =
+            MainAreaDna::qpcr_report_targeting_summary(&report).expect("targeting summary");
+        assert!(summary.contains("requested=specific transcript"));
+        assert!(summary.contains("requested evidence=Either (prefer junction)"));
+        assert!(summary.contains("realized evidence=Junction only"));
+
+        area.sync_qpcr_transcript_targeting_ui_from_report(&report);
+        assert_eq!(
+            area.qpcr_design_ui.transcript_targeting.assay_intent,
+            QpcrTranscriptIntentUiMode::SpecificTranscript
+        );
+        assert_eq!(
+            area.qpcr_design_ui
+                .transcript_targeting
+                .selected_transcript_id,
+            "NR_187362.1"
+        );
+        assert_eq!(
+            area.qpcr_design_ui
+                .transcript_targeting
+                .specificity_evidence,
+            QpcrTranscriptSpecificityEvidence::EitherPreferJunction
+        );
+        assert_eq!(
+            area.qpcr_design_ui.transcript_targeting.group_label,
+            "TP73-AS3"
+        );
+    }
+
+    #[test]
     fn qpcr_preview_geometry_from_assay_tracks_top_assay_lengths() {
         let report = crate::engine::QpcrDesignReport {
             report_id: "qpcr_preview_geometry".to_string(),
@@ -5697,6 +5955,9 @@ mod tests {
                 reverse_spans_junction: false,
                 probe_spans_junction: false,
                 transcript_distinguishing_primer: Some("forward".to_string()),
+                realized_specificity_evidence: Some(
+                    QpcrTranscriptSpecificityEvidence::JunctionOnly,
+                ),
                 satisfies_requested_targeting: true,
             }),
             ..Default::default()
@@ -5716,8 +5977,21 @@ mod tests {
                 .explanation
                 .contains("Supported transcripts: 1 (33% of considered set).")
         );
-        assert!(summary.explanation.contains("Design transcript: NR_187362.1."));
-        assert!(summary.explanation.contains("Distinguishing primer(s): forward."));
+        assert!(
+            summary
+                .explanation
+                .contains("Design transcript: NR_187362.1.")
+        );
+        assert!(
+            summary
+                .explanation
+                .contains("Distinguishing primer(s): forward.")
+        );
+        assert!(
+            summary
+                .explanation
+                .contains("Realized specificity evidence: Junction only.")
+        );
         assert_eq!(summary.covered_junction_labels, vec!["120→241".to_string()]);
     }
 
@@ -20177,6 +20451,202 @@ impl MainAreaDna {
         self.save_engine_ops_state();
     }
 
+    fn qpcr_specificity_evidence_label(
+        evidence: QpcrTranscriptSpecificityEvidence,
+    ) -> &'static str {
+        match evidence {
+            QpcrTranscriptSpecificityEvidence::JunctionOnly => "Junction only",
+            QpcrTranscriptSpecificityEvidence::UniqueExonOrChain => "Unique exon / exon chain only",
+            QpcrTranscriptSpecificityEvidence::EitherPreferJunction => "Either (prefer junction)",
+        }
+    }
+
+    fn qpcr_transcript_context_is_compatible(&self, template: &str) -> bool {
+        let targeting = &self.qpcr_design_ui.transcript_targeting;
+        targeting.source_feature_id.is_some()
+            && !targeting.source_seq_id.trim().is_empty()
+            && targeting.source_seq_id == template
+    }
+
+    fn qpcr_transcript_context_summary(&self, template: &str) -> Option<String> {
+        let targeting = &self.qpcr_design_ui.transcript_targeting;
+        if !self.qpcr_transcript_context_is_compatible(template) {
+            return None;
+        }
+        let mut chunks = vec![
+            format!("group={}", targeting.group_label),
+            format!("transcripts={}", targeting.transcript_count),
+            format!("strand={}", targeting.strand),
+            "scope=target-group strand".to_string(),
+        ];
+        if targeting.assay_intent == QpcrTranscriptIntentUiMode::SpecificTranscript
+            && !targeting.selected_transcript_id.trim().is_empty()
+        {
+            let label = targeting.selected_transcript_label.trim();
+            let transcript = targeting.selected_transcript_id.trim();
+            if !label.is_empty() && !label.eq_ignore_ascii_case(transcript) {
+                chunks.push(format!("selected={} ({})", transcript, label));
+            } else {
+                chunks.push(format!("selected={transcript}"));
+            }
+        }
+        Some(chunks.join(" | "))
+    }
+
+    fn apply_qpcr_transcript_targeting_context_from_view(
+        &mut self,
+        view: &SplicingExpertView,
+        assay_intent: QpcrTranscriptIntentUiMode,
+    ) -> Result<(), String> {
+        let selected_transcript_feature_id = self.splicing_selected_transcript_feature_id(view);
+        let selected_transcript = selected_transcript_feature_id.and_then(|feature_id| {
+            view.transcripts
+                .iter()
+                .find(|row| row.transcript_feature_id == feature_id)
+        });
+        if assay_intent == QpcrTranscriptIntentUiMode::SpecificTranscript
+            && selected_transcript.is_none()
+        {
+            return Err(
+                "Specific-transcript qPCR requires a selected transcript in Splicing Expert"
+                    .to_string(),
+            );
+        }
+        let targeting = &mut self.qpcr_design_ui.transcript_targeting;
+        targeting.assay_intent = assay_intent;
+        targeting.source_seq_id = view.seq_id.clone();
+        targeting.source_feature_id = Some(view.target_feature_id);
+        targeting.group_label = view.group_label.clone();
+        targeting.transcript_count = view.transcript_count.max(view.transcripts.len());
+        targeting.strand = view.strand.clone();
+        targeting.selected_transcript_feature_id = selected_transcript_feature_id;
+        targeting.selected_transcript_id = selected_transcript
+            .map(|row| row.transcript_id.clone())
+            .unwrap_or_default();
+        targeting.selected_transcript_label = selected_transcript
+            .map(|row| row.label.clone())
+            .unwrap_or_default();
+        Ok(())
+    }
+
+    fn seed_qpcr_from_splicing_view(
+        &mut self,
+        view: &SplicingExpertView,
+        assay_intent: QpcrTranscriptIntentUiMode,
+    ) -> Result<(), String> {
+        let (start, end_exclusive) = Self::splicing_group_roi_range_0based(view)
+            .ok_or_else(|| "Could not derive a valid ROI from splicing group bounds".to_string())?;
+        let (start, end_exclusive) = self
+            .normalize_roi_range_0based(start, end_exclusive)
+            .ok_or_else(|| {
+                format!(
+                    "Could not seed qPCR ROI from splicing group '{}': invalid 0-based range {}..{}",
+                    view.group_label, start, end_exclusive
+                )
+            })?;
+        self.set_primer_design_roi_fields_0based(start, end_exclusive);
+        self.pcr_designer_mode = PcrDesignerMode::QpcrAssays;
+        self.apply_qpcr_transcript_targeting_context_from_view(view, assay_intent)?;
+        self.request_open_pcr_design_for_current_sequence();
+        let mode_label = match assay_intent {
+            QpcrTranscriptIntentUiMode::Genomic => "genomic qPCR",
+            QpcrTranscriptIntentUiMode::SharedAcrossTranscripts => "shared-transcript qPCR",
+            QpcrTranscriptIntentUiMode::SpecificTranscript => "transcript-specific qPCR",
+        };
+        self.op_status = format!(
+            "Seeded {mode_label} from splicing group '{}' on {}: {}..{} (0-based, end-exclusive); open PCR Designer for qPCR review",
+            view.group_label, view.seq_id, start, end_exclusive
+        );
+        self.save_engine_ops_state();
+        Ok(())
+    }
+
+    fn focus_or_open_qpcr_splicing_expert(&mut self, ctx: &egui::Context, template: &str) {
+        if let Some(view) = self.relevant_qpcr_splicing_view_for_template(template) {
+            self.open_splicing_expert_window_for_view(&view);
+            self.focus_splicing_expert_window_view(ctx, &view);
+            self.op_status = format!(
+                "Focused Splicing Expert for transcript-aware qPCR on '{}'",
+                template
+            );
+            return;
+        }
+        if let Some(feature_id) = self
+            .get_selected_feature_id()
+            .filter(|feature_id| self.feature_supports_splicing_expert(*feature_id))
+            && let Ok(view) = self.splicing_expert_view_for_feature(feature_id)
+        {
+            self.open_splicing_expert_window_for_view(&view);
+            self.focus_splicing_expert_window_view(ctx, &view);
+            self.op_status = format!(
+                "Opened Splicing Expert from selected feature n-{} for transcript-aware qPCR",
+                feature_id
+            );
+            return;
+        }
+        self.op_status = "Transcript-aware qPCR must be seeded from a splicing overview. Select a transcript-linked feature and open Splicing Expert first.".to_string();
+    }
+
+    fn validate_qpcr_transcript_targeting_ui(&self, template: &str) -> Result<(), String> {
+        let targeting = &self.qpcr_design_ui.transcript_targeting;
+        match targeting.assay_intent {
+            QpcrTranscriptIntentUiMode::Genomic => Ok(()),
+            QpcrTranscriptIntentUiMode::SharedAcrossTranscripts => {
+                if self.qpcr_transcript_context_is_compatible(template) {
+                    Ok(())
+                } else {
+                    Err(
+                        "Transcript-aware qPCR must be seeded from a splicing overview on this sequence."
+                            .to_string(),
+                    )
+                }
+            }
+            QpcrTranscriptIntentUiMode::SpecificTranscript => {
+                if !self.qpcr_transcript_context_is_compatible(template) {
+                    return Err(
+                        "Transcript-aware qPCR must be seeded from a splicing overview on this sequence."
+                            .to_string(),
+                    );
+                }
+                if targeting.selected_transcript_id.trim().is_empty() {
+                    return Err(
+                        "Select a transcript in Splicing Expert before designing transcript-specific qPCR."
+                            .to_string(),
+                    );
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn build_qpcr_transcript_targeting_from_ui(
+        &self,
+        template: &str,
+    ) -> Result<Option<QpcrTranscriptTargeting>, String> {
+        self.validate_qpcr_transcript_targeting_ui(template)?;
+        let targeting = &self.qpcr_design_ui.transcript_targeting;
+        let Some(source_feature_id) = targeting.source_feature_id else {
+            return Ok(None);
+        };
+        match targeting.assay_intent {
+            QpcrTranscriptIntentUiMode::Genomic => Ok(None),
+            QpcrTranscriptIntentUiMode::SharedAcrossTranscripts => {
+                Ok(Some(QpcrTranscriptTargeting {
+                    source_feature_id,
+                    mode: QpcrTranscriptTargetingMode::SharedGene,
+                    transcript_id: None,
+                    specificity_evidence: None,
+                }))
+            }
+            QpcrTranscriptIntentUiMode::SpecificTranscript => Ok(Some(QpcrTranscriptTargeting {
+                source_feature_id,
+                mode: QpcrTranscriptTargetingMode::DistinguishTranscript,
+                transcript_id: Some(targeting.selected_transcript_id.trim().to_string()),
+                specificity_evidence: Some(targeting.specificity_evidence),
+            })),
+        }
+    }
+
     fn selected_feature_ids_for_pcr_roi_actions(&self) -> Vec<usize> {
         let mut feature_ids: Vec<usize> = self.multi_selected_feature_ids.iter().copied().collect();
         if feature_ids.is_empty() {
@@ -25924,8 +26394,34 @@ impl MainAreaDna {
                         .to_string();
                 }
             }
+            let shared_qpcr = ui
+                .button("Design shared-transcript qPCR")
+                .on_hover_text(
+                    "Seed qPCR Designer from this splicing-group ROI and require exon or exon-chain context shared across the group's transcripts",
+                );
+            if shared_qpcr.clicked()
+                && let Err(err) = self.seed_qpcr_from_splicing_view(
+                    view,
+                    QpcrTranscriptIntentUiMode::SharedAcrossTranscripts,
+                )
+            {
+                self.op_status = err;
+            }
+            let specific_qpcr = ui
+                .button("Design transcript-specific qPCR")
+                .on_hover_text(
+                    "Seed qPCR Designer from this splicing-group ROI and reuse the currently selected transcript lane for transcript-specific assay design",
+                );
+            if specific_qpcr.clicked()
+                && let Err(err) = self.seed_qpcr_from_splicing_view(
+                    view,
+                    QpcrTranscriptIntentUiMode::SpecificTranscript,
+                )
+            {
+                self.op_status = err;
+            }
             ui.label(
-                egui::RichText::new("Quick action: seeds the shared ROI and opens PCR Designer; pair-PCR review continues there, while qPCR remains available in Engine Ops.")
+                egui::RichText::new("Quick actions: keep the generic ROI handoff, or open PCR Designer directly in shared-transcript / transcript-specific qPCR mode using the current splicing context.")
                     .size(9.0)
                     .color(egui::Color32::from_rgb(100, 116, 139)),
             );
@@ -38677,7 +39173,7 @@ impl MainAreaDna {
                 "max_probe_tm_delta_c",
             )?,
             max_assays,
-            transcript_targeting: None,
+            transcript_targeting: self.build_qpcr_transcript_targeting_from_ui(template)?,
             report_id: if ui.report_id.trim().is_empty() {
                 None
             } else {
@@ -39179,11 +39675,15 @@ impl MainAreaDna {
             context.support_transcript_fraction * 100.0,
             context.design_transcript_id
         ));
-        if let Some(distinguishing_primer) =
-            context.transcript_distinguishing_primer.as_deref()
-        {
+        if let Some(distinguishing_primer) = context.transcript_distinguishing_primer.as_deref() {
             explanation.push_str(&format!(
                 " Distinguishing primer(s): {distinguishing_primer}."
+            ));
+        }
+        if let Some(realized_specificity_evidence) = context.realized_specificity_evidence {
+            explanation.push_str(&format!(
+                " Realized specificity evidence: {}.",
+                Self::qpcr_specificity_evidence_label(realized_specificity_evidence)
             ));
         }
         Some(QpcrSplicingContextSummary {
@@ -39191,6 +39691,95 @@ impl MainAreaDna {
             explanation,
             covered_junction_labels: context.covered_junction_labels.clone(),
         })
+    }
+
+    fn qpcr_report_targeting_summary(report: &QpcrDesignReport) -> Option<String> {
+        let targeting = report.transcript_targeting.as_ref()?;
+        let mut chunks = vec![format!(
+            "requested={}",
+            match targeting.mode {
+                QpcrTranscriptTargetingMode::SharedGene => "shared across transcripts",
+                QpcrTranscriptTargetingMode::DistinguishTranscript => "specific transcript",
+            }
+        )];
+        if let Some(transcript_id) = targeting
+            .transcript_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            chunks.push(format!("transcript={transcript_id}"));
+        }
+        if let Some(specificity_evidence) = targeting.specificity_evidence {
+            chunks.push(format!(
+                "requested evidence={}",
+                Self::qpcr_specificity_evidence_label(specificity_evidence)
+            ));
+        }
+        if let Some(result) = report.transcript_targeting_result.as_ref() {
+            chunks.push(format!(
+                "support={}/{} ({:.0}%)",
+                result.selected_support_transcript_count,
+                result.transcript_count_considered,
+                result.selected_support_transcript_fraction * 100.0
+            ));
+            if let Some(transcript_label) = result
+                .transcript_label
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                chunks.push(format!("label={transcript_label}"));
+            }
+            if let Some(realized_specificity_evidence) = result.realized_specificity_evidence {
+                chunks.push(format!(
+                    "realized evidence={}",
+                    Self::qpcr_specificity_evidence_label(realized_specificity_evidence)
+                ));
+            }
+            if result.used_shared_support_fallback {
+                chunks.push("used shared-support fallback".to_string());
+            }
+        }
+        Some(chunks.join(" | "))
+    }
+
+    fn sync_qpcr_transcript_targeting_ui_from_report(&mut self, report: &QpcrDesignReport) {
+        let targeting_ui = &mut self.qpcr_design_ui.transcript_targeting;
+        let Some(targeting) = report.transcript_targeting.as_ref() else {
+            *targeting_ui = QpcrTranscriptTargetingUiState::default();
+            return;
+        };
+        targeting_ui.assay_intent = match targeting.mode {
+            QpcrTranscriptTargetingMode::SharedGene => {
+                QpcrTranscriptIntentUiMode::SharedAcrossTranscripts
+            }
+            QpcrTranscriptTargetingMode::DistinguishTranscript => {
+                QpcrTranscriptIntentUiMode::SpecificTranscript
+            }
+        };
+        targeting_ui.specificity_evidence = targeting
+            .specificity_evidence
+            .unwrap_or(QpcrTranscriptSpecificityEvidence::JunctionOnly);
+        targeting_ui.source_seq_id = report.template.clone();
+        targeting_ui.source_feature_id = Some(targeting.source_feature_id);
+        targeting_ui.selected_transcript_feature_id = None;
+        targeting_ui.selected_transcript_id = targeting.transcript_id.clone().unwrap_or_default();
+        targeting_ui.selected_transcript_label = String::new();
+        targeting_ui.group_label.clear();
+        targeting_ui.transcript_count = 0;
+        targeting_ui.strand.clear();
+        if let Some(result) = report.transcript_targeting_result.as_ref() {
+            targeting_ui.group_label = result.group_label.clone();
+            targeting_ui.transcript_count = result.transcript_count_considered;
+            targeting_ui.strand = result.strand.clone();
+            if targeting_ui.selected_transcript_id.trim().is_empty() {
+                targeting_ui.selected_transcript_id =
+                    result.transcript_id.clone().unwrap_or_default();
+            }
+            targeting_ui.selected_transcript_label =
+                result.transcript_label.clone().unwrap_or_default();
+        }
     }
 
     fn qpcr_preview_geometry_from_ui(&self) -> Result<QpcrCartoonPreviewGeometry, String> {
@@ -39800,6 +40389,9 @@ impl MainAreaDna {
                 report.backend.requested,
                 report.backend.used
             ));
+            if let Some(targeting_summary) = Self::qpcr_report_targeting_summary(&report) {
+                ui.small(format!("Transcript targeting: {targeting_summary}"));
+            }
             if report.assays.is_empty() {
                 ui.colored_label(
                     egui::Color32::from_rgb(180, 83, 9),
@@ -40922,8 +41514,12 @@ impl MainAreaDna {
                 )
             })
             .unwrap_or_else(|| "no accepted qPCR assays".to_string());
+        self.sync_qpcr_transcript_targeting_ui_from_report(&report);
+        let targeting_summary = Self::qpcr_report_targeting_summary(&report)
+            .map(|summary| format!(" | {summary}"))
+            .unwrap_or_default();
         self.op_status = format!(
-            "qPCR report '{}' template='{}' roi={}..{} assays={} backend={}->{}; {}",
+            "qPCR report '{}' template='{}' roi={}..{} assays={} backend={}->{}; {}{}",
             report.report_id,
             report.template,
             report.roi_start_0based,
@@ -40931,7 +41527,8 @@ impl MainAreaDna {
             report.assay_count,
             report.backend.requested,
             report.backend.used,
-            selected
+            selected,
+            targeting_summary
         );
     }
 
@@ -42882,6 +43479,169 @@ impl MainAreaDna {
                 ui.small(
                     "qPCR builds on the same template/ROI context as pair-PCR, then adds probe-side filtering and assay ranking. Pair-PCR queue/batch tools remain in the Pair PCR mode for now.",
                 );
+                let current_splicing_view =
+                    self.relevant_qpcr_splicing_view_for_template(&template);
+                let current_context_summary = self.qpcr_transcript_context_summary(&template);
+                let transcript_targeting_error =
+                    self.validate_qpcr_transcript_targeting_ui(&template).err();
+                ui.group(|ui| {
+                    ui.label("Transcript targeting");
+                    let mut intent_changed = false;
+                    ui.horizontal_wrapped(|ui| {
+                        intent_changed |= ui
+                            .radio_value(
+                                &mut self.qpcr_design_ui.transcript_targeting.assay_intent,
+                                QpcrTranscriptIntentUiMode::Genomic,
+                                QpcrTranscriptIntentUiMode::Genomic.label(),
+                            )
+                            .changed();
+                        intent_changed |= ui
+                            .radio_value(
+                                &mut self.qpcr_design_ui.transcript_targeting.assay_intent,
+                                QpcrTranscriptIntentUiMode::SharedAcrossTranscripts,
+                                QpcrTranscriptIntentUiMode::SharedAcrossTranscripts.label(),
+                            )
+                            .changed();
+                        intent_changed |= ui
+                            .radio_value(
+                                &mut self.qpcr_design_ui.transcript_targeting.assay_intent,
+                                QpcrTranscriptIntentUiMode::SpecificTranscript,
+                                QpcrTranscriptIntentUiMode::SpecificTranscript.label(),
+                            )
+                            .changed();
+                    });
+                    if intent_changed {
+                        self.save_engine_ops_state();
+                    }
+                    let assay_intent = self.qpcr_design_ui.transcript_targeting.assay_intent;
+                    ui.small(format!(
+                        "Assay intent: {}.",
+                        assay_intent.summary_label()
+                    ));
+                    match current_context_summary.as_deref() {
+                        Some(summary) => ui.small(format!("Transcript context: {summary}")),
+                        None if assay_intent == QpcrTranscriptIntentUiMode::Genomic => ui.small(
+                            "Transcript context: optional. Genomic qPCR keeps the existing direct PCR Designer flow.",
+                        ),
+                        None => ui.small(
+                            "Transcript context: none attached yet for this sequence. Seed from a splicing overview before running transcript-aware qPCR.",
+                        ),
+                    };
+                    if assay_intent != QpcrTranscriptIntentUiMode::Genomic {
+                        ui.horizontal_wrapped(|ui| {
+                            if let Some(view) = current_splicing_view.as_ref() {
+                                let button_label = if current_context_summary.is_some() {
+                                    "Refresh from current Splicing Expert context"
+                                } else {
+                                    "Use current Splicing Expert context"
+                                };
+                                if ui
+                                    .button(button_label)
+                                    .on_hover_text(
+                                        "Attach the current Splicing Expert group and transcript selection to this qPCR request",
+                                    )
+                                    .clicked()
+                                {
+                                    match self.apply_qpcr_transcript_targeting_context_from_view(
+                                        view,
+                                        assay_intent,
+                                    ) {
+                                        Ok(()) => {
+                                            self.op_status = format!(
+                                                "Attached transcript-aware qPCR context from splicing group '{}'",
+                                                view.group_label
+                                            );
+                                            self.save_engine_ops_state();
+                                        }
+                                        Err(err) => self.op_status = err,
+                                    }
+                                }
+                            }
+                            if ui
+                                .button("Open / Focus Splicing Expert")
+                                .on_hover_text(
+                                    "Open or focus Splicing Expert so transcript-aware qPCR can reuse its group and transcript selection",
+                                )
+                                .clicked()
+                            {
+                                self.focus_or_open_qpcr_splicing_expert(ui.ctx(), &template);
+                            }
+                        });
+                    }
+                    match assay_intent {
+                        QpcrTranscriptIntentUiMode::Genomic => {}
+                        QpcrTranscriptIntentUiMode::SharedAcrossTranscripts => {
+                            ui.small(
+                                "GENtle will prefer exon or exon-chain context shared across the whole group. If no fully shared span exists, it falls back to the largest supported transcript subset and reports that explicitly.",
+                            );
+                        }
+                        QpcrTranscriptIntentUiMode::SpecificTranscript => {
+                            let transcript_label = if self
+                                .qpcr_design_ui
+                                .transcript_targeting
+                                .selected_transcript_id
+                                .trim()
+                                .is_empty()
+                            {
+                                "<select in Splicing Expert>".to_string()
+                            } else {
+                                let transcript_id = self
+                                    .qpcr_design_ui
+                                    .transcript_targeting
+                                    .selected_transcript_id
+                                    .trim()
+                                    .to_string();
+                                let transcript_label = self
+                                    .qpcr_design_ui
+                                    .transcript_targeting
+                                    .selected_transcript_label
+                                    .trim()
+                                    .to_string();
+                                if transcript_label.is_empty()
+                                    || transcript_label.eq_ignore_ascii_case(&transcript_id)
+                                {
+                                    transcript_id
+                                } else {
+                                    format!("{transcript_id} ({transcript_label})")
+                                }
+                            };
+                            ui.small(format!("Selected transcript: {transcript_label}"));
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label("Specificity evidence").on_hover_text(
+                                    "Require a junction-spanning primer, a transcript-unique exon/exon-chain primer, or let GENtle prefer junction evidence when both are possible.",
+                                );
+                                egui::ComboBox::from_id_salt("qpcr_transcript_specificity_evidence")
+                                    .selected_text(Self::qpcr_specificity_evidence_label(
+                                        self.qpcr_design_ui
+                                            .transcript_targeting
+                                            .specificity_evidence,
+                                    ))
+                                    .show_ui(ui, |ui| {
+                                        for evidence in [
+                                            QpcrTranscriptSpecificityEvidence::JunctionOnly,
+                                            QpcrTranscriptSpecificityEvidence::UniqueExonOrChain,
+                                            QpcrTranscriptSpecificityEvidence::EitherPreferJunction,
+                                        ] {
+                                            ui.selectable_value(
+                                                &mut self
+                                                    .qpcr_design_ui
+                                                    .transcript_targeting
+                                                    .specificity_evidence,
+                                                evidence,
+                                                Self::qpcr_specificity_evidence_label(evidence),
+                                            );
+                                        }
+                                    });
+                            });
+                        }
+                    }
+                    if let Some(err) = transcript_targeting_error.as_deref() {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 83, 9),
+                            err,
+                        );
+                    }
+                });
                     ui.horizontal(|ui| {
                         ui.label("ROI start").on_hover_text(
                             "PCR region-of-interest start coordinate (0-based). Supports formulas: `=CDS.start+10` or range form `=CDS.start+10 .. CDS.end-500`.",
@@ -42997,7 +43757,10 @@ impl MainAreaDna {
                     "Design qPCR Assays"
                 };
                 if ui
-                    .add_enabled(!primer_task_running, egui::Button::new(qpcr_button))
+                    .add_enabled(
+                        !primer_task_running && transcript_targeting_error.is_none(),
+                        egui::Button::new(qpcr_button),
+                    )
                     .on_hover_text("Run DesignQpcrAssays with current GUI constraints")
                     .clicked()
                 {

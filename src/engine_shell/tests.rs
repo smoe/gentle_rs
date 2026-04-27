@@ -17,12 +17,13 @@ use crate::engine::{
     BIGWIG_TO_BEDGRAPH_ENV_BIN, ConstructObjective, ConstructRole, Container, ContainerKind,
     CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
     CutRunSeedFilterConfig, EditableStatus, PrimerDesignProgress, PromoterTfbsGeneQuery,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
-    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
-    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
-    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
-    TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
+    QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
+    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode,
+    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
+    RnaReadOriginClass, SequenceScanTarget, TfThresholdOverride,
+    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_gene::{
@@ -4451,15 +4452,17 @@ fn parse_primers_seed_from_feature_and_splicing() {
             seq_id,
             feature_id,
             mode,
-            transcript_id
+            transcript_id,
+            specificity_evidence,
         } if seq_id == "seq_a"
             && feature_id == 17
             && mode == QpcrTranscriptTargetingMode::SharedGene
             && transcript_id.is_none()
+            && specificity_evidence.is_none()
     ));
 
     let qpcr_splicing_distinguish = parse_shell_line(
-        "primers seed-qpcr-from-splicing seq_a 17 --mode distinguish_transcript --transcript-id NR_187362.1",
+        "primers seed-qpcr-from-splicing seq_a 17 --mode distinguish_transcript --transcript-id NR_187362.1 --specificity-evidence unique_exon_or_chain",
     )
     .expect("parse distinguishing seed-qpcr-from-splicing");
     assert!(matches!(
@@ -4468,11 +4471,14 @@ fn parse_primers_seed_from_feature_and_splicing() {
             seq_id,
             feature_id,
             mode,
-            transcript_id
+            transcript_id,
+            specificity_evidence,
         } if seq_id == "seq_a"
             && feature_id == 17
             && mode == QpcrTranscriptTargetingMode::DistinguishTranscript
             && transcript_id.as_deref() == Some("NR_187362.1")
+            && specificity_evidence
+                == Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
     ));
 }
 
@@ -11002,6 +11008,7 @@ fn execute_primers_seed_from_feature_and_splicing() {
             feature_id,
             mode: QpcrTranscriptTargetingMode::SharedGene,
             transcript_id: None,
+            specificity_evidence: None,
         },
     )
     .expect("seed qpcr from splicing");
@@ -11070,6 +11077,7 @@ fn execute_primers_seed_qpcr_from_splicing_round_trips_into_design_qpcr() {
             feature_id: tp73_as3_feature_id,
             mode: QpcrTranscriptTargetingMode::DistinguishTranscript,
             transcript_id: Some("NR_187362.1".to_string()),
+            specificity_evidence: Some(QpcrTranscriptSpecificityEvidence::EitherPreferJunction),
         },
     )
     .expect("seed transcript-aware qPCR request");
@@ -11087,6 +11095,12 @@ fn execute_primers_seed_qpcr_from_splicing_round_trips_into_design_qpcr() {
             .as_str(),
         Some("NR_187362.1")
     );
+    assert_eq!(
+        seeded.output["operation"]["DesignQpcrAssays"]["transcript_targeting"]
+            ["specificity_evidence"]
+            .as_str(),
+        Some("either_prefer_junction")
+    );
 
     let design = execute_shell_command(
         &mut engine,
@@ -11103,9 +11117,18 @@ fn execute_primers_seed_qpcr_from_splicing_round_trips_into_design_qpcr() {
         Some("distinguish_transcript")
     );
     assert_eq!(
+        design.output["report"]["transcript_targeting"]["specificity_evidence"].as_str(),
+        Some("either_prefer_junction")
+    );
+    assert_eq!(
         design.output["report"]["transcript_targeting_result"]["selected_support_transcript_count"]
             .as_u64(),
         Some(1)
+    );
+    assert_eq!(
+        design.output["report"]["transcript_targeting_result"]["realized_specificity_evidence"]
+            .as_str(),
+        Some("junction_only")
     );
     assert!(
         design.output["report"]["assays"]

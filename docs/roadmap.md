@@ -1747,19 +1747,27 @@ order. Durable architecture constraints and decisions remain in
   - transcript-aware qPCR targeting is now engine-owned rather than adapter
     specific:
     - `DesignQpcrAssays.transcript_targeting` can target a shared exon/exon-chain
-      context across one gene/group or require a junction-spanning primer that
-      distinguishes one transcript from competing isoforms
+      context across one gene/group or distinguish one transcript from
+      competing isoforms
+    - transcript-distinguishing qPCR now also supports requested evidence kinds:
+      `junction_only`, `unique_exon_or_chain`, and
+      `either_prefer_junction`
     - persisted qPCR reports now carry report-level targeting outcome summaries
       plus per-assay transcript context so GUI/CLI/ClawBio/JS/Lua all reopen
       the same explanation
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
     including explicit side-sequence constraints and pair constraints (no raw
     JSON required for common interactive use)
-    - the dedicated GUI qPCR form still emits baseline
-      `transcript_targeting = null`; transcript-aware qPCR origination is
-      currently available through shell/CLI/agent payloads plus persisted
-      report reopen flows, and still needs first-class GUI controls for full
-      create-path parity
+    - the dedicated GUI qPCR form and PCR Designer now also expose first-class
+      transcript-aware origination:
+      - `Genomic`
+      - `Shared across transcripts`
+      - `Specific transcript`
+      - transcript-aware launches are now available directly from Splicing
+        Expert via `Design shared-transcript qPCR` and
+        `Design transcript-specific qPCR`
+      - transcript-aware run gating is enforced in the GUI when no compatible
+        splicing context or selected transcript is attached
   - PCR Designer qPCR mode now also exposes direct export of the built-in
     `pcr.assay.qpcr` protocol cartoon so the same probe-bearing strip is easy
     to reuse in handoffs and showcase material
@@ -1774,6 +1782,14 @@ order. Durable architecture constraints and decisions remain in
   - persisted qPCR reports/list rows now also carry a compact best-assay
     summary plus machine-readable probe-placement label so shell/CLI/agent
     inspection can reuse the same explanation surface
+  - remaining deterministic test gap:
+    - TP73-AS2 / TP73-AS3 cover shared-mode success, no-competitor failure,
+      transcript-specific junction-only success, transcript-specific
+      unique-exon/exon-chain success, and `either_prefer_junction` choosing
+      junction when both are available
+    - a dedicated fixture where `either_prefer_junction` must fall back from
+      missing junction evidence to unique exon/exon-chain evidence is still not
+      committed
   - the PCR Designer now also exposes a cloning-aware
     `Restriction-site cloning handoff` block:
     - choose saved pair rank, destination vector, mode, enzymes, and optional

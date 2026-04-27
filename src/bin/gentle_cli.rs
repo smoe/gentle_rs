@@ -37,7 +37,8 @@ use std::{
 
 #[cfg(test)]
 use gentle::engine::{
-    QpcrTranscriptTargetingMode, TranslationSpeedMark, TranslationSpeedProfile,
+    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, TranslationSpeedMark,
+    TranslationSpeedProfile,
 };
 
 const DEFAULT_STATE_PATH: &str = ".gentle_state.json";
@@ -686,7 +687,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] primers seed-from-feature SEQ_ID FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers seed-from-splicing SEQ_ID FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers seed-qpcr-from-feature SEQ_ID FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID]\n  \
+  gentle_cli [--state PATH|--project PATH] primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID] [--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction]\n  \
   gentle_cli [--state PATH|--project PATH] primers list-reports\n  \
   gentle_cli [--state PATH|--project PATH] primers show-report REPORT_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers export-report REPORT_ID OUTPUT.json\n  \
@@ -4736,6 +4737,8 @@ mod tests {
             "distinguish_transcript".to_string(),
             "--transcript-id".to_string(),
             "NR_187362.1".to_string(),
+            "--specificity-evidence".to_string(),
+            "either_prefer_junction".to_string(),
         ])
         .expect("parse primers seed-qpcr-from-splicing distinguish");
         assert!(matches!(
@@ -4743,8 +4746,11 @@ mod tests {
             ShellCommand::PrimersSeedQpcrFromSplicing {
                 mode: QpcrTranscriptTargetingMode::DistinguishTranscript,
                 transcript_id,
+                specificity_evidence,
                 ..
             } if transcript_id.as_deref() == Some("NR_187362.1")
+                && specificity_evidence
+                    == Some(QpcrTranscriptSpecificityEvidence::EitherPreferJunction)
         ));
 
         let primers_export_qpcr = parse_shell_tokens(&[

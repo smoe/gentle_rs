@@ -4239,8 +4239,7 @@ impl GentleEngine {
             let local_exon_segments = exon_chain
                 .iter()
                 .map(|(source_start_0based, source_end_0based_exclusive)| {
-                    let exon_len = source_end_0based_exclusive
-                        .saturating_sub(*source_start_0based);
+                    let exon_len = source_end_0based_exclusive.saturating_sub(*source_start_0based);
                     let segment = TranscriptQpcrLocalExonSegment {
                         source_start_0based: *source_start_0based,
                         source_end_0based_exclusive: *source_end_0based_exclusive,
@@ -4283,18 +4282,16 @@ impl GentleEngine {
             })
             .collect::<Vec<_>>();
         let chain_len = exon_chain.len();
-        segment_refs
-            .windows(chain_len)
-            .find_map(|window| {
-                let refs = window
-                    .iter()
-                    .map(|(start, end, _, _)| (*start, *end))
-                    .collect::<Vec<_>>();
-                if refs != exon_chain {
-                    return None;
-                }
-                Some((window[0].2, window[chain_len - 1].3))
-            })
+        segment_refs.windows(chain_len).find_map(|window| {
+            let refs = window
+                .iter()
+                .map(|(start, end, _, _)| (*start, *end))
+                .collect::<Vec<_>>();
+            if refs != exon_chain {
+                return None;
+            }
+            Some((window[0].2, window[chain_len - 1].3))
+        })
     }
 
     fn map_transcript_local_interval(
@@ -4313,21 +4310,21 @@ impl GentleEngine {
             }
             let (mapped_start, mapped_end) = if is_reverse {
                 (
-                    segment.source_end_0based_exclusive.saturating_sub(
-                        overlap_end.saturating_sub(segment.local_start_0based),
-                    ),
-                    segment.source_end_0based_exclusive.saturating_sub(
-                        overlap_start.saturating_sub(segment.local_start_0based),
-                    ),
+                    segment
+                        .source_end_0based_exclusive
+                        .saturating_sub(overlap_end.saturating_sub(segment.local_start_0based)),
+                    segment
+                        .source_end_0based_exclusive
+                        .saturating_sub(overlap_start.saturating_sub(segment.local_start_0based)),
                 )
             } else {
                 (
-                    segment.source_start_0based.saturating_add(
-                        overlap_start.saturating_sub(segment.local_start_0based),
-                    ),
-                    segment.source_start_0based.saturating_add(
-                        overlap_end.saturating_sub(segment.local_start_0based),
-                    ),
+                    segment
+                        .source_start_0based
+                        .saturating_add(overlap_start.saturating_sub(segment.local_start_0based)),
+                    segment
+                        .source_start_0based
+                        .saturating_add(overlap_end.saturating_sub(segment.local_start_0based)),
                 )
             };
             source_ranges_0based.push(SequenceRange0Based {
@@ -4370,12 +4367,66 @@ impl GentleEngine {
             return false;
         }
         if exon_chain.len() == 1 {
-            return transcript.exon_chain.iter().any(|exon| exon == &exon_chain[0]);
+            return transcript
+                .exon_chain
+                .iter()
+                .any(|exon| exon == &exon_chain[0]);
         }
         transcript
             .exon_chain
             .windows(exon_chain.len())
             .any(|window| window == exon_chain)
+    }
+
+    fn qpcr_exon_chain_support_key(exon_chain: &[(usize, usize)]) -> Option<String> {
+        if exon_chain.is_empty() {
+            return None;
+        }
+        Some(
+            exon_chain
+                .iter()
+                .map(|(start, end)| format!("{start}-{end}"))
+                .collect::<Vec<_>>()
+                .join("|"),
+        )
+    }
+
+    fn qpcr_transcript_chain_is_unique_to_template(
+        design_template: &TranscriptQpcrDesignTemplate,
+        chain_support: &BTreeMap<String, (Vec<(usize, usize)>, Vec<String>)>,
+        exon_chain: &[(usize, usize)],
+    ) -> bool {
+        Self::qpcr_exon_chain_support_key(exon_chain)
+            .and_then(|key| chain_support.get(&key))
+            .is_some_and(|(_, supporters)| {
+                supporters.len() == 1 && supporters[0] == design_template.transcript_id
+            })
+    }
+
+    fn qpcr_requested_specificity_evidence(
+        targeting: &QpcrTranscriptTargeting,
+    ) -> QpcrTranscriptSpecificityEvidence {
+        targeting
+            .specificity_evidence
+            .unwrap_or(QpcrTranscriptSpecificityEvidence::JunctionOnly)
+    }
+
+    fn qpcr_distinguishing_primer_labels(
+        forward: bool,
+        reverse: bool,
+    ) -> (Option<String>, Vec<&'static str>) {
+        let labels = match (forward, reverse) {
+            (true, true) => vec!["forward", "reverse"],
+            (true, false) => vec!["forward"],
+            (false, true) => vec!["reverse"],
+            (false, false) => vec![],
+        };
+        let summary = if labels.is_empty() {
+            None
+        } else {
+            Some(labels.join(","))
+        };
+        (summary, labels)
     }
 
     fn qpcr_probe_placement_label(
@@ -4387,12 +4438,10 @@ impl GentleEngine {
         let roi_len_bp = roi_end_0based_exclusive
             .saturating_sub(roi_start_0based)
             .max(1);
-        let probe_center_0based =
-            probe_start_0based.saturating_add(probe_end_0based_exclusive.saturating_sub(
-                probe_start_0based,
-            ) / 2);
-        let probe_relative = probe_center_0based.saturating_sub(roi_start_0based) as f64
-            / roi_len_bp as f64;
+        let probe_center_0based = probe_start_0based
+            .saturating_add(probe_end_0based_exclusive.saturating_sub(probe_start_0based) / 2);
+        let probe_relative =
+            probe_center_0based.saturating_sub(roi_start_0based) as f64 / roi_len_bp as f64;
         if probe_relative <= 0.33 {
             "left_biased".to_string()
         } else if probe_relative >= 0.67 {
@@ -4457,11 +4506,14 @@ impl GentleEngine {
                 support_total,
                 context.design_transcript_id
             ));
-            if let Some(distinguishing_primer) =
-                context.transcript_distinguishing_primer.as_deref()
+            if let Some(distinguishing_primer) = context.transcript_distinguishing_primer.as_deref()
             {
+                summary.push_str(&format!("; distinguishing_primer={distinguishing_primer}"));
+            }
+            if let Some(realized_specificity_evidence) = context.realized_specificity_evidence {
                 summary.push_str(&format!(
-                    "; distinguishing_primer={distinguishing_primer}"
+                    "; specificity={}",
+                    realized_specificity_evidence.as_str()
                 ));
             }
         }
@@ -4497,10 +4549,7 @@ impl GentleEngine {
         target: &mut QpcrDesignRejectionSummary,
         source: &QpcrDesignRejectionSummary,
     ) {
-        Self::add_primer_design_rejection_summary(
-            &mut target.primer_pair,
-            &source.primer_pair,
-        );
+        Self::add_primer_design_rejection_summary(&mut target.primer_pair, &source.primer_pair);
         target.probe_out_of_window = target
             .probe_out_of_window
             .saturating_add(source.probe_out_of_window);
@@ -4545,16 +4594,11 @@ impl GentleEngine {
         EngineError,
     > {
         let template_bytes = template_seq.as_bytes();
-        let pair_generation_limit =
-            max_assays.saturating_mul(25).clamp(max_assays, 5000);
+        let pair_generation_limit = max_assays.saturating_mul(25).clamp(max_assays, 5000);
         let requested_backend = self.state.parameters.primer_design_backend;
         let primer3_executable = {
             let raw = self.state.parameters.primer3_executable.trim();
-            if raw.is_empty() {
-                "primer3_core"
-            } else {
-                raw
-            }
+            if raw.is_empty() { "primer3_core" } else { raw }
         };
         let mut warnings = vec![];
         let mut backend = PrimerDesignBackendInfo {
@@ -4775,9 +4819,8 @@ impl GentleEngine {
             roi_end_0based_exclusive: roi_end_0based,
             max_output: max_assays,
         };
-        let mut emit_qpcr_progress = |progress: PrimerDesignProgress| {
-            on_progress(OperationProgress::PrimerDesign(progress))
-        };
+        let mut emit_qpcr_progress =
+            |progress: PrimerDesignProgress| on_progress(OperationProgress::PrimerDesign(progress));
         let (assays, rejection_summary) = Self::design_qpcr_assays_from_pairs_core(
             template_bytes,
             roi_start_0based,
@@ -4801,6 +4844,7 @@ impl GentleEngine {
         transcript_count_considered: usize,
         targeting: &QpcrTranscriptTargeting,
         junction_support: &HashMap<((usize, usize), (usize, usize)), Vec<String>>,
+        chain_support: &BTreeMap<String, (Vec<(usize, usize)>, Vec<String>)>,
         forward_mapping: &TranscriptMappedInterval,
         reverse_mapping: &TranscriptMappedInterval,
         probe_mapping: &TranscriptMappedInterval,
@@ -4820,73 +4864,212 @@ impl GentleEngine {
         } else {
             support_transcript_count as f64 / transcript_count_considered as f64
         };
-        let spans_unique_target_junction =
-            |mapping: &TranscriptMappedInterval| -> bool {
-                mapping.exon_chain.windows(2).any(|pair| {
-                    junction_support
-                        .get(&(pair[0], pair[1]))
-                        .is_some_and(|supporters| {
-                            supporters.len() == 1
-                                && supporters[0] == design_template.transcript_id
-                        })
-                })
-            };
-        let forward_unique = spans_unique_target_junction(forward_mapping);
-        let reverse_unique = spans_unique_target_junction(reverse_mapping);
-        let transcript_distinguishing_primer = match (forward_unique, reverse_unique) {
-            (true, true) => Some("forward,reverse".to_string()),
-            (true, false) => Some("forward".to_string()),
-            (false, true) => Some("reverse".to_string()),
-            (false, false) => None,
+        let spans_unique_target_junction = |mapping: &TranscriptMappedInterval| -> bool {
+            mapping.exon_chain.windows(2).any(|pair| {
+                junction_support
+                    .get(&(pair[0], pair[1]))
+                    .is_some_and(|supporters| {
+                        supporters.len() == 1 && supporters[0] == design_template.transcript_id
+                    })
+            })
         };
+        let spans_unique_target_chain = |mapping: &TranscriptMappedInterval| -> bool {
+            Self::qpcr_transcript_chain_is_unique_to_template(
+                design_template,
+                chain_support,
+                &mapping.exon_chain,
+            )
+        };
+        let forward_unique_junction = spans_unique_target_junction(forward_mapping);
+        let reverse_unique_junction = spans_unique_target_junction(reverse_mapping);
+        let forward_unique_chain = spans_unique_target_chain(forward_mapping);
+        let reverse_unique_chain = spans_unique_target_chain(reverse_mapping);
+        let requested_specificity_evidence = Self::qpcr_requested_specificity_evidence(targeting);
+        let realized_specificity_evidence = match requested_specificity_evidence {
+            QpcrTranscriptSpecificityEvidence::JunctionOnly => (forward_unique_junction
+                || reverse_unique_junction)
+                .then_some(QpcrTranscriptSpecificityEvidence::JunctionOnly),
+            QpcrTranscriptSpecificityEvidence::UniqueExonOrChain => (forward_unique_chain
+                || reverse_unique_chain)
+                .then_some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain),
+            QpcrTranscriptSpecificityEvidence::EitherPreferJunction => {
+                if forward_unique_junction || reverse_unique_junction {
+                    Some(QpcrTranscriptSpecificityEvidence::JunctionOnly)
+                } else if forward_unique_chain || reverse_unique_chain {
+                    Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
+                } else {
+                    None
+                }
+            }
+        };
+        let (transcript_distinguishing_primer, qualifying_primer_labels) =
+            match realized_specificity_evidence {
+                Some(QpcrTranscriptSpecificityEvidence::JunctionOnly) => {
+                    Self::qpcr_distinguishing_primer_labels(
+                        forward_unique_junction,
+                        reverse_unique_junction,
+                    )
+                }
+                Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain) => {
+                    Self::qpcr_distinguishing_primer_labels(
+                        forward_unique_chain,
+                        reverse_unique_chain,
+                    )
+                }
+                Some(QpcrTranscriptSpecificityEvidence::EitherPreferJunction) | None => {
+                    (None, vec![])
+                }
+            };
         let satisfies_requested_targeting = match targeting.mode {
             QpcrTranscriptTargetingMode::SharedGene => {
                 support_transcript_count == transcript_count_considered
             }
             QpcrTranscriptTargetingMode::DistinguishTranscript => {
-                transcript_distinguishing_primer.is_some()
+                match requested_specificity_evidence {
+                    QpcrTranscriptSpecificityEvidence::JunctionOnly => {
+                        realized_specificity_evidence
+                            == Some(QpcrTranscriptSpecificityEvidence::JunctionOnly)
+                    }
+                    QpcrTranscriptSpecificityEvidence::UniqueExonOrChain => {
+                        realized_specificity_evidence
+                            == Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
+                    }
+                    QpcrTranscriptSpecificityEvidence::EitherPreferJunction => {
+                        realized_specificity_evidence.is_some()
+                    }
+                }
             }
         };
-        let assay_class_label = if probe_mapping.spans_junction {
-            "junction-crossing probe"
-        } else if !amplicon_mapping.covered_junction_labels.is_empty() {
-            "junction-spanning amplicon"
-        } else if amplicon_mapping.source_ranges_0based.len() > 1 {
-            "multi-exon context"
-        } else if amplicon_mapping.source_ranges_0based.len() == 1 {
-            "single-exon context"
-        } else {
-            "splicing-region context"
+        let distinguishing_side_text = match qualifying_primer_labels.as_slice() {
+            [] => String::new(),
+            [side] => format!("{side} primer"),
+            [left, right] => format!("{left} and {right} primers"),
+            _ => "multiple primers".to_string(),
         };
-        let explanation = if probe_mapping.spans_junction {
-            format!(
-                "{}: probe overlaps a modeled exon junction in splicing group '{}'.",
-                assay_class_label, group_label
-            )
-        } else if !amplicon_mapping.covered_junction_labels.is_empty() {
-            format!(
-                "{}: amplicon covers {} modeled junction(s) in group '{}'.",
-                assay_class_label,
-                amplicon_mapping.covered_junction_labels.len(),
-                group_label
-            )
-        } else if amplicon_mapping.source_ranges_0based.len() > 1 {
-            format!(
-                "{}: amplicon touches {} exon segments in group '{}'.",
-                assay_class_label,
-                amplicon_mapping.source_ranges_0based.len(),
-                group_label
-            )
-        } else if amplicon_mapping.source_ranges_0based.len() == 1 {
-            format!(
-                "{}: amplicon stays inside one exon segment in group '{}'.",
-                assay_class_label, group_label
-            )
-        } else {
-            format!(
-                "{}: assay remains inside the transcript-aware splicing ROI for group '{}'.",
-                assay_class_label, group_label
-            )
+        let unique_chain_is_single_exon = (forward_unique_chain
+            && forward_mapping.exon_chain.len() == 1)
+            || (reverse_unique_chain && reverse_mapping.exon_chain.len() == 1);
+        let (assay_class_label, explanation) = match targeting.mode {
+            QpcrTranscriptTargetingMode::DistinguishTranscript => {
+                match realized_specificity_evidence {
+                    Some(QpcrTranscriptSpecificityEvidence::JunctionOnly) => (
+                        "distinguishing junction primer",
+                        format!(
+                            "distinguishing junction primer: {distinguishing_side_text} spans a transcript-specific exon junction in splicing group '{}'.",
+                            group_label
+                        ),
+                    ),
+                    Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain) => {
+                        let label = if unique_chain_is_single_exon {
+                            "transcript-unique exon primer"
+                        } else {
+                            "transcript-unique exon-chain primer"
+                        };
+                        let detail = if unique_chain_is_single_exon {
+                            "stays inside an exon unique to the selected transcript"
+                        } else {
+                            "stays inside an exon/exon-chain context unique to the selected transcript"
+                        };
+                        (
+                            label,
+                            format!(
+                                "{}: {} {} in splicing group '{}'.",
+                                label, distinguishing_side_text, detail, group_label
+                            ),
+                        )
+                    }
+                    Some(QpcrTranscriptSpecificityEvidence::EitherPreferJunction) | None => {
+                        if probe_mapping.spans_junction {
+                            (
+                                "junction-crossing probe",
+                                format!(
+                                    "junction-crossing probe: probe overlaps a modeled exon junction in splicing group '{}'.",
+                                    group_label
+                                ),
+                            )
+                        } else if !amplicon_mapping.covered_junction_labels.is_empty() {
+                            (
+                                "junction-spanning amplicon",
+                                format!(
+                                    "junction-spanning amplicon: amplicon covers {} modeled junction(s) in group '{}'.",
+                                    amplicon_mapping.covered_junction_labels.len(),
+                                    group_label
+                                ),
+                            )
+                        } else if amplicon_mapping.source_ranges_0based.len() > 1 {
+                            (
+                                "multi-exon context",
+                                format!(
+                                    "multi-exon context: amplicon touches {} exon segments in group '{}'.",
+                                    amplicon_mapping.source_ranges_0based.len(),
+                                    group_label
+                                ),
+                            )
+                        } else if amplicon_mapping.source_ranges_0based.len() == 1 {
+                            (
+                                "single-exon context",
+                                format!(
+                                    "single-exon context: amplicon stays inside one exon segment in group '{}'.",
+                                    group_label
+                                ),
+                            )
+                        } else {
+                            (
+                                "splicing-region context",
+                                format!(
+                                    "splicing-region context: assay remains inside the transcript-aware splicing ROI for group '{}'.",
+                                    group_label
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+            QpcrTranscriptTargetingMode::SharedGene => {
+                if probe_mapping.spans_junction {
+                    (
+                        "junction-crossing probe",
+                        format!(
+                            "junction-crossing probe: probe overlaps a modeled exon junction in splicing group '{}'.",
+                            group_label
+                        ),
+                    )
+                } else if !amplicon_mapping.covered_junction_labels.is_empty() {
+                    (
+                        "junction-spanning amplicon",
+                        format!(
+                            "junction-spanning amplicon: amplicon covers {} modeled junction(s) in group '{}'.",
+                            amplicon_mapping.covered_junction_labels.len(),
+                            group_label
+                        ),
+                    )
+                } else if amplicon_mapping.source_ranges_0based.len() > 1 {
+                    (
+                        "multi-exon context",
+                        format!(
+                            "multi-exon context: amplicon touches {} exon segments in group '{}'.",
+                            amplicon_mapping.source_ranges_0based.len(),
+                            group_label
+                        ),
+                    )
+                } else if amplicon_mapping.source_ranges_0based.len() == 1 {
+                    (
+                        "single-exon context",
+                        format!(
+                            "single-exon context: amplicon stays inside one exon segment in group '{}'.",
+                            group_label
+                        ),
+                    )
+                } else {
+                    (
+                        "splicing-region context",
+                        format!(
+                            "splicing-region context: assay remains inside the transcript-aware splicing ROI for group '{}'.",
+                            group_label
+                        ),
+                    )
+                }
+            }
         };
         QpcrTranscriptAssayContext {
             assay_class_label: assay_class_label.to_string(),
@@ -4907,6 +5090,7 @@ impl GentleEngine {
             reverse_spans_junction: reverse_mapping.spans_junction,
             probe_spans_junction: probe_mapping.spans_junction,
             transcript_distinguishing_primer,
+            realized_specificity_evidence,
             satisfies_requested_targeting,
         }
     }
@@ -4937,12 +5121,11 @@ impl GentleEngine {
         ),
         EngineError,
     > {
-        let splicing =
-            self.build_splicing_expert_view(
-                template,
-                transcript_targeting.source_feature_id,
-                SplicingScopePreset::TargetGroupTargetStrand,
-            )?;
+        let splicing = self.build_splicing_expert_view(
+            template,
+            transcript_targeting.source_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )?;
         let all_templates = Self::build_qpcr_transcript_design_templates(source_dna, &splicing)?;
         if all_templates.is_empty() {
             return Err(EngineError {
@@ -4993,6 +5176,8 @@ impl GentleEngine {
                 vec![selected]
             }
         };
+        let requested_specificity_evidence =
+            Self::qpcr_requested_specificity_evidence(transcript_targeting);
 
         let mut junction_support: HashMap<((usize, usize), (usize, usize)), Vec<String>> =
             HashMap::new();
@@ -5042,33 +5227,34 @@ impl GentleEngine {
         let mut report_backend: Option<PrimerDesignBackendInfo> = None;
         let mut distinguish_nonqualifying_assay_count = 0usize;
         let mut distinguish_junction_spanning_assay_count = 0usize;
-        let shared_support_levels = if transcript_targeting.mode == QpcrTranscriptTargetingMode::SharedGene
-        {
-            let mut levels = chain_support
-                .values()
-                .map(|(chain, supporters)| {
-                    let total_bp = chain
-                        .iter()
-                        .map(|(start, end)| end.saturating_sub(*start))
-                        .sum::<usize>();
-                    (supporters.len(), chain.len(), total_bp, chain.clone())
-                })
-                .collect::<Vec<_>>();
-            levels.sort_by(|left, right| {
-                right
-                    .0
-                    .cmp(&left.0)
-                    .then(left.1.cmp(&right.1))
-                    .then(left.2.cmp(&right.2))
-                    .then(left.3.cmp(&right.3))
-            });
-            levels
-                .into_iter()
-                .map(|(support_count, _, _, chain)| (support_count, chain))
-                .collect::<Vec<_>>()
-        } else {
-            vec![]
-        };
+        let mut distinguish_unique_exon_or_chain_assay_count = 0usize;
+        let shared_support_levels =
+            if transcript_targeting.mode == QpcrTranscriptTargetingMode::SharedGene {
+                let mut levels = chain_support
+                    .values()
+                    .map(|(chain, supporters)| {
+                        let total_bp = chain
+                            .iter()
+                            .map(|(start, end)| end.saturating_sub(*start))
+                            .sum::<usize>();
+                        (supporters.len(), chain.len(), total_bp, chain.clone())
+                    })
+                    .collect::<Vec<_>>();
+                levels.sort_by(|left, right| {
+                    right
+                        .0
+                        .cmp(&left.0)
+                        .then(left.1.cmp(&right.1))
+                        .then(left.2.cmp(&right.2))
+                        .then(left.3.cmp(&right.3))
+                });
+                levels
+                    .into_iter()
+                    .map(|(support_count, _, _, chain)| (support_count, chain))
+                    .collect::<Vec<_>>()
+            } else {
+                vec![]
+            };
         let mut requested_shared_support_level: Option<usize> = None;
 
         for design_template in &design_templates {
@@ -5099,7 +5285,7 @@ impl GentleEngine {
                     windows
                 }
                 QpcrTranscriptTargetingMode::DistinguishTranscript => {
-                    design_template
+                    let unique_junction_windows = design_template
                         .exon_chain
                         .windows(2)
                         .filter_map(|pair| {
@@ -5135,7 +5321,43 @@ impl GentleEngine {
                                 )
                             })
                         })
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<_>>();
+                    let unique_exon_windows = design_template
+                        .local_exon_segments
+                        .iter()
+                        .filter_map(|segment| {
+                            let exon_chain = [(
+                                segment.source_start_0based,
+                                segment.source_end_0based_exclusive,
+                            )];
+                            Self::qpcr_transcript_chain_is_unique_to_template(
+                                design_template,
+                                &chain_support,
+                                &exon_chain,
+                            )
+                            .then_some((
+                                1usize,
+                                segment.local_start_0based,
+                                segment.local_end_0based_exclusive,
+                                segment.local_start_0based,
+                                segment.local_end_0based_exclusive,
+                                None,
+                            ))
+                        })
+                        .collect::<Vec<_>>();
+                    match requested_specificity_evidence {
+                        QpcrTranscriptSpecificityEvidence::JunctionOnly => unique_junction_windows,
+                        QpcrTranscriptSpecificityEvidence::UniqueExonOrChain => {
+                            let mut windows = unique_exon_windows;
+                            windows.extend(unique_junction_windows);
+                            windows
+                        }
+                        QpcrTranscriptSpecificityEvidence::EitherPreferJunction => {
+                            let mut windows = unique_junction_windows;
+                            windows.extend(unique_exon_windows);
+                            windows
+                        }
+                    }
                 }
             };
             if local_roi_windows.is_empty() {
@@ -5146,8 +5368,7 @@ impl GentleEngine {
                 ));
                 continue;
             }
-            let progress_seq_id =
-                format!("{}::{}", template, design_template.transcript_id);
+            let progress_seq_id = format!("{}::{}", template, design_template.transcript_id);
             for (
                 _,
                 local_roi_start_0based,
@@ -5180,6 +5401,25 @@ impl GentleEngine {
                             (junction_local_0based + max_reverse_len).min(template_len),
                         ),
                     ]
+                } else if transcript_targeting.mode
+                    == QpcrTranscriptTargetingMode::DistinguishTranscript
+                {
+                    vec![
+                        (
+                            chain_window_start_0based,
+                            chain_window_end_0based.min(template_len),
+                            chain_window_end_0based
+                                .saturating_sub(max_reverse_len)
+                                .max(chain_window_start_0based),
+                            (chain_window_end_0based + max_amplicon_bp).min(template_len),
+                        ),
+                        (
+                            chain_window_start_0based.saturating_sub(max_amplicon_bp),
+                            (chain_window_start_0based + max_forward_len).min(template_len),
+                            chain_window_start_0based,
+                            chain_window_end_0based.min(template_len),
+                        ),
+                    ]
                 } else {
                     vec![(
                         chain_window_start_0based,
@@ -5193,8 +5433,12 @@ impl GentleEngine {
                     )]
                 };
 
-                for (forward_window_start, forward_window_end, reverse_window_start, reverse_window_end) in
-                    search_configs
+                for (
+                    forward_window_start,
+                    forward_window_end,
+                    reverse_window_start,
+                    reverse_window_end,
+                ) in search_configs
                 {
                     let mut local_forward = forward.clone();
                     local_forward.start_0based = Some(forward_window_start);
@@ -5217,8 +5461,8 @@ impl GentleEngine {
                     let local_probe_sequence_constraints =
                         Self::normalize_primer_side_sequence_constraints(&local_probe)?;
 
-                    let (assays, transcript_rejections, backend, transcript_warnings) =
-                        self.run_qpcr_generation_with_backend(
+                    let (assays, transcript_rejections, backend, transcript_warnings) = self
+                        .run_qpcr_generation_with_backend(
                             &progress_seq_id,
                             &design_template.sequence,
                             local_roi_start_0based,
@@ -5285,6 +5529,7 @@ impl GentleEngine {
                             all_templates.len(),
                             transcript_targeting,
                             &junction_support,
+                            &chain_support,
                             &forward_mapping,
                             &reverse_mapping,
                             &probe_mapping,
@@ -5293,13 +5538,20 @@ impl GentleEngine {
                         );
                         if transcript_targeting.mode
                             == QpcrTranscriptTargetingMode::DistinguishTranscript
-                            && context.transcript_distinguishing_primer.is_none()
+                            && !context.satisfies_requested_targeting
                         {
                             distinguish_nonqualifying_assay_count =
                                 distinguish_nonqualifying_assay_count.saturating_add(1);
-                            if context.forward_spans_junction || context.reverse_spans_junction {
+                            if context.realized_specificity_evidence
+                                == Some(QpcrTranscriptSpecificityEvidence::JunctionOnly)
+                            {
                                 distinguish_junction_spanning_assay_count =
                                     distinguish_junction_spanning_assay_count.saturating_add(1);
+                            } else if context.realized_specificity_evidence
+                                == Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
+                            {
+                                distinguish_unique_exon_or_chain_assay_count =
+                                    distinguish_unique_exon_or_chain_assay_count.saturating_add(1);
                             }
                             continue;
                         }
@@ -5409,22 +5661,54 @@ impl GentleEngine {
                 }
             }
         }
+        if transcript_targeting.mode == QpcrTranscriptTargetingMode::DistinguishTranscript
+            && requested_specificity_evidence
+                == QpcrTranscriptSpecificityEvidence::EitherPreferJunction
+        {
+            let has_junction_specific = assays.iter().any(|assay| {
+                assay.transcript_context.as_ref().is_some_and(|context| {
+                    context.realized_specificity_evidence
+                        == Some(QpcrTranscriptSpecificityEvidence::JunctionOnly)
+                })
+            });
+            if has_junction_specific {
+                assays.retain(|assay| {
+                    assay.transcript_context.as_ref().is_some_and(|context| {
+                        context.realized_specificity_evidence
+                            == Some(QpcrTranscriptSpecificityEvidence::JunctionOnly)
+                    })
+                });
+            }
+        }
 
         Self::sort_and_rank_qpcr_assays(&mut assays, max_assays);
         if transcript_targeting.mode == QpcrTranscriptTargetingMode::DistinguishTranscript
             && assays.is_empty()
         {
+            let specificity_requirement = match requested_specificity_evidence {
+                QpcrTranscriptSpecificityEvidence::JunctionOnly => {
+                    "a primer spanning a junction absent from competing transcripts"
+                }
+                QpcrTranscriptSpecificityEvidence::UniqueExonOrChain => {
+                    "a primer staying inside an exon or exon-chain unique to the requested transcript"
+                }
+                QpcrTranscriptSpecificityEvidence::EitherPreferJunction => {
+                    "a primer either spanning a transcript-specific junction or staying inside an exon/exon-chain unique to the requested transcript"
+                }
+            };
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Transcript-aware qPCR design could not find an assay for transcript '{}' with a primer spanning a junction absent from competing transcripts in '{}' (rejected {} non-qualifying assay candidate(s), {} of which spanned some junction).",
+                    "Transcript-aware qPCR design could not find an assay for transcript '{}' in '{}' with {} (rejected {} non-qualifying assay candidate(s), {} with transcript-specific junction evidence and {} with transcript-unique exon/exon-chain evidence).",
                     transcript_targeting
                         .transcript_id
                         .as_deref()
                         .unwrap_or_default(),
                     splicing.group_label,
+                    specificity_requirement,
                     distinguish_nonqualifying_assay_count,
-                    distinguish_junction_spanning_assay_count
+                    distinguish_junction_spanning_assay_count,
+                    distinguish_unique_exon_or_chain_assay_count
                 ),
             });
         }
@@ -5441,10 +5725,24 @@ impl GentleEngine {
             selected_support_transcript_count as f64 / all_templates.len() as f64
         };
         let report_backend = report_backend.unwrap_or_else(|| PrimerDesignBackendInfo {
-            requested: self.state.parameters.primer_design_backend.as_str().to_string(),
-            used: self.state.parameters.primer_design_backend.as_str().to_string(),
+            requested: self
+                .state
+                .parameters
+                .primer_design_backend
+                .as_str()
+                .to_string(),
+            used: self
+                .state
+                .parameters
+                .primer_design_backend
+                .as_str()
+                .to_string(),
             ..PrimerDesignBackendInfo::default()
         });
+        let realized_specificity_evidence = assays
+            .first()
+            .and_then(|assay| assay.transcript_context.as_ref())
+            .and_then(|context| context.realized_specificity_evidence);
         let targeting_result = QpcrTranscriptTargetingResult {
             source_feature_id: transcript_targeting.source_feature_id,
             mode: transcript_targeting.mode.clone(),
@@ -5452,6 +5750,15 @@ impl GentleEngine {
             strand: splicing.strand,
             transcript_count_considered: all_templates.len(),
             transcript_id: transcript_targeting.transcript_id.clone(),
+            transcript_label: (transcript_targeting.mode
+                == QpcrTranscriptTargetingMode::DistinguishTranscript)
+                .then(|| {
+                    design_templates
+                        .first()
+                        .map(|row| row.transcript_label.clone())
+                })
+                .flatten(),
+            realized_specificity_evidence,
             selected_support_transcript_count,
             selected_support_transcript_fraction,
             used_shared_support_fallback,
@@ -5499,8 +5806,7 @@ impl GentleEngine {
         if dna.is_circular() {
             return Err(EngineError {
                 code: ErrorCode::Unsupported,
-                message: "DesignQpcrAssays currently supports linear templates only"
-                    .to_string(),
+                message: "DesignQpcrAssays currently supports linear templates only".to_string(),
             });
         }
 
@@ -5570,8 +5876,7 @@ impl GentleEngine {
             Self::normalize_primer_side_sequence_constraints(&forward)?;
         let reverse_sequence_constraints =
             Self::normalize_primer_side_sequence_constraints(&reverse)?;
-        let probe_sequence_constraints =
-            Self::normalize_primer_side_sequence_constraints(&probe)?;
+        let probe_sequence_constraints = Self::normalize_primer_side_sequence_constraints(&probe)?;
         let pair_constraints_normalized =
             Self::normalize_primer_pair_constraints(&pair_constraints)?;
 
@@ -5657,59 +5962,54 @@ impl GentleEngine {
             });
         }
 
-        let (
-            assays,
-            rejection_summary,
-            backend,
-            transcript_targeting_result,
-            backend_warnings,
-        ) = if let Some(targeting) = transcript_targeting.clone() {
-            let (assays, rejection_summary, backend, targeting_result, warnings) =
-                self.design_transcript_aware_qpcr_assays(
-                    &dna,
-                    &template,
-                    &forward,
-                    &reverse,
-                    &probe,
-                    &pair_constraints_normalized,
-                    min_amplicon_bp,
-                    max_amplicon_bp,
-                    max_tm_delta_c,
-                    max_probe_tm_delta_c,
-                    max_assays,
-                    &targeting,
-                    on_progress,
-                )?;
-            (
-                assays,
-                rejection_summary,
-                backend,
-                Some(targeting_result),
-                warnings,
-            )
-        } else {
-            let (assays, rejection_summary, backend, warnings) =
-                self.run_qpcr_generation_with_backend(
-                    &template,
-                    &template_seq,
-                    roi_start_0based,
-                    roi_end_0based,
-                    &forward,
-                    &forward_sequence_constraints,
-                    &reverse,
-                    &reverse_sequence_constraints,
-                    &probe,
-                    &probe_sequence_constraints,
-                    &pair_constraints_normalized,
-                    min_amplicon_bp,
-                    max_amplicon_bp,
-                    max_tm_delta_c,
-                    max_probe_tm_delta_c,
-                    max_assays,
-                    on_progress,
-                )?;
-            (assays, rejection_summary, backend, None, warnings)
-        };
+        let (assays, rejection_summary, backend, transcript_targeting_result, backend_warnings) =
+            if let Some(targeting) = transcript_targeting.clone() {
+                let (assays, rejection_summary, backend, targeting_result, warnings) = self
+                    .design_transcript_aware_qpcr_assays(
+                        &dna,
+                        &template,
+                        &forward,
+                        &reverse,
+                        &probe,
+                        &pair_constraints_normalized,
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_tm_delta_c,
+                        max_probe_tm_delta_c,
+                        max_assays,
+                        &targeting,
+                        on_progress,
+                    )?;
+                (
+                    assays,
+                    rejection_summary,
+                    backend,
+                    Some(targeting_result),
+                    warnings,
+                )
+            } else {
+                let (assays, rejection_summary, backend, warnings) = self
+                    .run_qpcr_generation_with_backend(
+                        &template,
+                        &template_seq,
+                        roi_start_0based,
+                        roi_end_0based,
+                        &forward,
+                        &forward_sequence_constraints,
+                        &reverse,
+                        &reverse_sequence_constraints,
+                        &probe,
+                        &probe_sequence_constraints,
+                        &pair_constraints_normalized,
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_tm_delta_c,
+                        max_probe_tm_delta_c,
+                        max_assays,
+                        on_progress,
+                    )?;
+                (assays, rejection_summary, backend, None, warnings)
+            };
         result.warnings.extend(backend_warnings);
 
         let (best_assay_probe_placement, best_assay_summary) =
@@ -5747,7 +6047,12 @@ impl GentleEngine {
             rejection_summary,
             backend,
         };
-        if report.rejection_summary.primer_pair.pair_evaluation_limit_skipped > 0 {
+        if report
+            .rejection_summary
+            .primer_pair
+            .pair_evaluation_limit_skipped
+            > 0
+        {
             result.warnings.push(format!(
                 "Internal primer-pair candidate generation for qPCR reached its evaluation limit and skipped {} candidate combinations; narrow ROI/constraints for a more exhaustive run",
                 report
@@ -5790,15 +6095,11 @@ impl GentleEngine {
                     roi_covered: top_assay.rule_flags.roi_covered,
                     amplicon_size_in_range: top_assay.rule_flags.amplicon_size_in_range,
                     tm_delta_in_range: top_assay.rule_flags.primer_tm_delta_in_range,
-                    forward_secondary_structure_ok: top_assay
-                        .forward
-                        .longest_homopolymer_run_bp
+                    forward_secondary_structure_ok: top_assay.forward.longest_homopolymer_run_bp
                         <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
                         && top_assay.forward.self_complementary_run_bp
                             <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
-                    reverse_secondary_structure_ok: top_assay
-                        .reverse
-                        .longest_homopolymer_run_bp
+                    reverse_secondary_structure_ok: top_assay.reverse.longest_homopolymer_run_bp
                         <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
                         && top_assay.reverse.self_complementary_run_bp
                             <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,

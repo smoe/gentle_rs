@@ -4193,6 +4193,27 @@ impl QpcrTranscriptTargetingMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Which transcript-specific evidence kind a transcript-distinguishing qPCR
+/// assay must satisfy.
+pub enum QpcrTranscriptSpecificityEvidence {
+    #[default]
+    JunctionOnly,
+    UniqueExonOrChain,
+    EitherPreferJunction,
+}
+
+impl QpcrTranscriptSpecificityEvidence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::JunctionOnly => "junction_only",
+            Self::UniqueExonOrChain => "unique_exon_or_chain",
+            Self::EitherPreferJunction => "either_prefer_junction",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Exact source-template interval used by a transcript-aware primer or amplicon.
@@ -4210,6 +4231,8 @@ pub struct QpcrTranscriptTargeting {
     pub mode: QpcrTranscriptTargetingMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity_evidence: Option<QpcrTranscriptSpecificityEvidence>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -4241,6 +4264,8 @@ pub struct QpcrTranscriptAssayContext {
     pub probe_spans_junction: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_distinguishing_primer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub realized_specificity_evidence: Option<QpcrTranscriptSpecificityEvidence>,
     pub satisfies_requested_targeting: bool,
 }
 
@@ -4256,6 +4281,10 @@ pub struct QpcrTranscriptTargetingResult {
     pub transcript_count_considered: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub realized_specificity_evidence: Option<QpcrTranscriptSpecificityEvidence>,
     pub selected_support_transcript_count: usize,
     pub selected_support_transcript_fraction: f64,
     pub used_shared_support_fallback: bool,

@@ -4920,6 +4920,8 @@ Simple PCR constraint handoff:
       - `source_feature_id`
       - `mode = shared_gene | distinguish_transcript`
       - `transcript_id` required for `distinguish_transcript`
+      - optional
+        `specificity_evidence = junction_only | unique_exon_or_chain | either_prefer_junction`
   - `pair_constraints` is supported identically to `DesignPrimerPairs` and
     applies to forward/reverse pair proposal before probe selection.
 - Current baseline behavior:
@@ -4936,9 +4938,18 @@ Simple PCR constraint handoff:
   - `shared_gene` mode prefers assays whose amplicon context is shared across
     all transcripts in the selected gene/group and records an explicit fallback
     summary if only a largest supported subset is assayable.
-  - `distinguish_transcript` mode requires a primer spanning an exon-exon
-    junction unique to the requested transcript and fails explicitly when no
-    such assay can be found.
+  - `distinguish_transcript` mode supports three evidence policies:
+    - `junction_only`
+      - requires at least one primer spanning a transcript-unique exon-exon
+        junction
+    - `unique_exon_or_chain`
+      - allows transcript discrimination through a primer placed on a
+        transcript-unique exon or exon-chain context
+    - `either_prefer_junction`
+      - prefers a junction-spanning distinguishing primer when available
+      - otherwise falls back to a transcript-unique exon/exon-chain assay
+  - transcript-distinguishing modes fail explicitly when the requested evidence
+    type cannot be satisfied.
 - Report schema:
   - `gentle.qpcr_design_report.v1`
   - includes ranked `assays[]` with forward/reverse/probe oligos, amplicon
@@ -4947,8 +4958,11 @@ Simple PCR constraint handoff:
     - report-level `transcript_targeting`
     - report-level `transcript_targeting_result`
       - chosen mode/transcript
+      - requested transcript label when available
       - transcript count considered
       - selected support count/fraction
+      - realized specificity evidence when transcript-distinguishing mode was
+        requested
       - whether shared-mode fallback was used
       - deterministic warnings
     - per-assay `transcript_context`
@@ -4957,6 +4971,7 @@ Simple PCR constraint handoff:
       - mapped source exon ranges for forward/reverse/probe/amplicon
       - covered junction labels
       - whether each oligo spans a junction
+      - realized specificity evidence
       - whether the assay satisfies the requested targeting intent
   - includes `best_assay_probe_placement` and `best_assay_summary` so
     shell/CLI/GUI reopen flows can inspect one compact persisted explanation of
@@ -4978,7 +4993,7 @@ Primer-design shell command family (implemented):
   - `primers seed-from-feature SEQ_ID FEATURE_ID`
   - `primers seed-from-splicing SEQ_ID FEATURE_ID`
   - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`
-  - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID]`
+  - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID] [--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction]`
   - `primers list-reports`
   - `primers show-report REPORT_ID`
   - `primers export-report REPORT_ID OUTPUT.json`
@@ -5020,6 +5035,8 @@ Primer-design shell command family (implemented):
   - `--mode shared_gene|distinguish_transcript`
   - `--transcript-id ID` when distinguishing one transcript from competing
     isoforms in the same gene/group
+  - `--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction`
+    when `--mode distinguish_transcript`
 - those qPCR-only seed helpers now also emit a deterministic `rationale`
   payload so agent callers can explain why the ROI was chosen and reuse
   GENtle's expected default assay limits without reverse-engineering them from
@@ -5070,8 +5087,9 @@ Primer-design shell command family (implemented):
   - `operation` (`{"DesignQpcrAssays": ...}`)
     - splicing-seeded qPCR requests may include
       `transcript_targeting.source_feature_id`,
-      `transcript_targeting.mode`, and optional
-      `transcript_targeting.transcript_id`
+      `transcript_targeting.mode`, optional
+      `transcript_targeting.transcript_id`, and optional
+      `transcript_targeting.specificity_evidence`
   - `protocol_cartoon`
     - `protocol` (`pcr.assay.qpcr`)
     - `summary`

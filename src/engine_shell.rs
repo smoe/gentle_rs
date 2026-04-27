@@ -56,7 +56,8 @@ use crate::{
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
         PrimerDesignSideConstraint, ProjectState, PromoterTfbsGeneQuery,
         PromoterWindowCollapseMode, ProteinExternalOpinionSource, ProteinFeatureFilter,
-        ProteinToDnaHandoffRankingGoal, RackAuthoringTemplate, RackCarrierLabelPreset,
+        ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
+        QpcrTranscriptTargetingMode, RackAuthoringTemplate, RackCarrierLabelPreset,
         RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
         RackProfileKind, RenderSvgMode, RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
         ReverseTranslationReportSummary, RnaReadAlignConfig,
@@ -65,8 +66,7 @@ use crate::{
         RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
-        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RoutinePreferenceContext,
-        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
+        RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
@@ -1898,6 +1898,7 @@ pub enum ShellCommand {
         feature_id: usize,
         mode: QpcrTranscriptTargetingMode,
         transcript_id: Option<String>,
+        specificity_evidence: Option<QpcrTranscriptSpecificityEvidence>,
     },
     TranscriptsDerive {
         seq_id: String,
@@ -8269,8 +8270,9 @@ impl ShellCommand {
                 feature_id,
                 mode,
                 transcript_id,
+                specificity_evidence,
             } => format!(
-                "seed qPCR design ROI payload from splicing group for feature n-{} on '{}' (mode={}, transcript_id='{}')",
+                "seed qPCR design ROI payload from splicing group for feature n-{} on '{}' (mode={}, transcript_id='{}', specificity='{}')",
                 feature_id,
                 seq_id,
                 mode.as_str(),
@@ -8278,6 +8280,9 @@ impl ShellCommand {
                     .as_deref()
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
+                    .unwrap_or("-"),
+                specificity_evidence
+                    .map(QpcrTranscriptSpecificityEvidence::as_str)
                     .unwrap_or("-"),
             ),
             Self::TranscriptsDerive {
@@ -23316,6 +23321,7 @@ fn execute_primers_command(
             feature_id,
             mode,
             transcript_id,
+            specificity_evidence,
         } => {
             let expert = engine
                 .inspect_feature_expert(
@@ -23369,6 +23375,11 @@ fn execute_primers_command(
                 source_feature_id: *feature_id,
                 mode: mode.clone(),
                 transcript_id: normalized_transcript_id.clone(),
+                specificity_evidence: (*mode == QpcrTranscriptTargetingMode::DistinguishTranscript)
+                    .then_some(
+                        specificity_evidence
+                            .unwrap_or(QpcrTranscriptSpecificityEvidence::JunctionOnly),
+                    ),
             });
             let targeting_summary = match mode {
                 QpcrTranscriptTargetingMode::SharedGene => {
@@ -23377,10 +23388,24 @@ fn execute_primers_command(
                         splicing.group_label
                     )
                 }
-                QpcrTranscriptTargetingMode::DistinguishTranscript => format!(
-                    "distinguish_transcript mode will require a primer that spans a junction unique to transcript '{}'.",
-                    normalized_transcript_id.as_deref().unwrap_or_default()
-                ),
+                QpcrTranscriptTargetingMode::DistinguishTranscript => {
+                    let evidence = specificity_evidence
+                        .unwrap_or(QpcrTranscriptSpecificityEvidence::JunctionOnly);
+                    match evidence {
+                        QpcrTranscriptSpecificityEvidence::JunctionOnly => format!(
+                            "distinguish_transcript mode will require a primer that spans a junction unique to transcript '{}'.",
+                            normalized_transcript_id.as_deref().unwrap_or_default()
+                        ),
+                        QpcrTranscriptSpecificityEvidence::UniqueExonOrChain => format!(
+                            "distinguish_transcript mode will require a primer that stays inside an exon or exon-chain unique to transcript '{}'.",
+                            normalized_transcript_id.as_deref().unwrap_or_default()
+                        ),
+                        QpcrTranscriptSpecificityEvidence::EitherPreferJunction => format!(
+                            "distinguish_transcript mode will prefer a primer spanning a junction unique to transcript '{}' and otherwise allow a primer inside a transcript-unique exon or exon-chain.",
+                            normalized_transcript_id.as_deref().unwrap_or_default()
+                        ),
+                    }
+                }
             };
             Ok(qpcr_seed_output(
                 seq_id,
@@ -23392,6 +23417,8 @@ fn execute_primers_command(
                     "unique_exon_count": splicing.unique_exon_count,
                     "targeting_mode": mode.as_str(),
                     "transcript_id": normalized_transcript_id,
+                    "specificity_evidence": specificity_evidence
+                        .map(QpcrTranscriptSpecificityEvidence::as_str),
                 }),
                 roi_start_0based,
                 roi_end_0based_exclusive,

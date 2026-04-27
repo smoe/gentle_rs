@@ -2826,10 +2826,15 @@ fn transcript_aware_qpcr_operation(
     feature_id: usize,
     mode: QpcrTranscriptTargetingMode,
     transcript_id: Option<&str>,
+    specificity_evidence: Option<QpcrTranscriptSpecificityEvidence>,
     report_id: &str,
 ) -> Operation {
     let splicing = engine
-        .build_splicing_expert_view("tp73", feature_id, SplicingScopePreset::TargetGroupTargetStrand)
+        .build_splicing_expert_view(
+            "tp73",
+            feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )
         .expect("splicing view");
     Operation::DesignQpcrAssays {
         template: "tp73".to_string(),
@@ -2875,18 +2880,24 @@ fn transcript_aware_qpcr_operation(
             source_feature_id: feature_id,
             mode,
             transcript_id: transcript_id.map(|value| value.to_string()),
+            specificity_evidence,
         }),
         report_id: Some(report_id.to_string()),
     }
 }
 
-fn assert_tp73_as3_transcript_distinguishing_qpcr(transcript_id: &str, report_id: &str) {
+fn assert_tp73_as3_transcript_distinguishing_qpcr(
+    transcript_id: &str,
+    specificity_evidence: QpcrTranscriptSpecificityEvidence,
+    report_id: &str,
+) {
     let (mut engine, tp73_as3_feature_id, _) = load_tp73_engine_for_transcript_aware_qpcr();
     let op = transcript_aware_qpcr_operation(
         &mut engine,
         tp73_as3_feature_id,
         QpcrTranscriptTargetingMode::DistinguishTranscript,
         Some(transcript_id),
+        Some(specificity_evidence),
         report_id,
     );
     let result = engine
@@ -2905,14 +2916,21 @@ fn assert_tp73_as3_transcript_distinguishing_qpcr(transcript_id: &str, report_id
         .transcript_targeting
         .as_ref()
         .expect("transcript targeting request");
-    assert_eq!(targeting.mode, QpcrTranscriptTargetingMode::DistinguishTranscript);
+    assert_eq!(
+        targeting.mode,
+        QpcrTranscriptTargetingMode::DistinguishTranscript
+    );
     assert_eq!(targeting.transcript_id.as_deref(), Some(transcript_id));
+    assert_eq!(targeting.specificity_evidence, Some(specificity_evidence));
     let targeting_result = report
         .transcript_targeting_result
         .as_ref()
         .expect("transcript targeting result");
     assert_eq!(targeting_result.transcript_count_considered, 3);
-    assert_eq!(targeting_result.transcript_id.as_deref(), Some(transcript_id));
+    assert_eq!(
+        targeting_result.transcript_id.as_deref(),
+        Some(transcript_id)
+    );
     assert_eq!(targeting_result.selected_support_transcript_count, 1);
     assert!(!targeting_result.used_shared_support_fallback);
     assert!(!report.assays.is_empty());
@@ -2921,8 +2939,22 @@ fn assert_tp73_as3_transcript_distinguishing_qpcr(transcript_id: &str, report_id
             context.design_transcript_id == transcript_id
                 && context.support_transcript_count == 1
                 && context.satisfies_requested_targeting
-                && context.transcript_distinguishing_primer.is_some()
-                && (context.forward_spans_junction || context.reverse_spans_junction)
+                && match specificity_evidence {
+                    QpcrTranscriptSpecificityEvidence::JunctionOnly => {
+                        context.transcript_distinguishing_primer.is_some()
+                            && context.realized_specificity_evidence
+                                == Some(QpcrTranscriptSpecificityEvidence::JunctionOnly)
+                            && (context.forward_spans_junction || context.reverse_spans_junction)
+                    }
+                    QpcrTranscriptSpecificityEvidence::UniqueExonOrChain => {
+                        context.realized_specificity_evidence
+                            == Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
+                    }
+                    QpcrTranscriptSpecificityEvidence::EitherPreferJunction => {
+                        context.realized_specificity_evidence
+                            == Some(QpcrTranscriptSpecificityEvidence::JunctionOnly)
+                    }
+                }
         })
     }));
 }
@@ -3009,11 +3041,10 @@ fn test_design_qpcr_assays_transcript_aware_shared_gene_succeeds_for_tp73_as2() 
         tp73_as2_feature_id,
         QpcrTranscriptTargetingMode::SharedGene,
         None,
+        None,
         "tp73_as2_shared_gene_qpcr",
     );
-    engine
-        .apply(op)
-        .expect("shared-gene TP73-AS2 qPCR design");
+    engine.apply(op).expect("shared-gene TP73-AS2 qPCR design");
     let report = engine
         .get_qpcr_design_report("tp73_as2_shared_gene_qpcr")
         .expect("TP73-AS2 qPCR report");
@@ -3033,14 +3064,15 @@ fn test_design_qpcr_assays_transcript_aware_shared_gene_succeeds_for_tp73_as2() 
 }
 
 #[test]
-fn test_design_qpcr_assays_transcript_aware_distinguish_transcript_requires_competitors_for_tp73_as2(
-) {
+fn test_design_qpcr_assays_transcript_aware_distinguish_transcript_requires_competitors_for_tp73_as2()
+ {
     let (mut engine, _, tp73_as2_feature_id) = load_tp73_engine_for_transcript_aware_qpcr();
     let op = transcript_aware_qpcr_operation(
         &mut engine,
         tp73_as2_feature_id,
         QpcrTranscriptTargetingMode::DistinguishTranscript,
         Some("NR_185884.1"),
+        Some(QpcrTranscriptSpecificityEvidence::JunctionOnly),
         "tp73_as2_distinguish_qpcr",
     );
     let err = engine
@@ -3057,11 +3089,10 @@ fn test_design_qpcr_assays_transcript_aware_shared_gene_prefers_fully_shared_spa
         tp73_as3_feature_id,
         QpcrTranscriptTargetingMode::SharedGene,
         None,
+        None,
         "tp73_as3_shared_gene_qpcr",
     );
-    engine
-        .apply(op)
-        .expect("shared-gene TP73-AS3 qPCR design");
+    engine.apply(op).expect("shared-gene TP73-AS3 qPCR design");
     let report = engine
         .get_qpcr_design_report("tp73_as3_shared_gene_qpcr")
         .expect("TP73-AS3 shared-gene qPCR report");
@@ -3089,6 +3120,7 @@ fn test_design_qpcr_assays_transcript_aware_shared_gene_prefers_fully_shared_spa
 fn test_design_qpcr_assays_transcript_aware_distinguishes_tp73_as3_nr_187362_1() {
     assert_tp73_as3_transcript_distinguishing_qpcr(
         "NR_187362.1",
+        QpcrTranscriptSpecificityEvidence::JunctionOnly,
         "tp73_as3_nr_187362_1_qpcr",
     );
 }
@@ -3097,6 +3129,7 @@ fn test_design_qpcr_assays_transcript_aware_distinguishes_tp73_as3_nr_187362_1()
 fn test_design_qpcr_assays_transcript_aware_distinguishes_tp73_as3_nr_187363_1() {
     assert_tp73_as3_transcript_distinguishing_qpcr(
         "NR_187363.1",
+        QpcrTranscriptSpecificityEvidence::JunctionOnly,
         "tp73_as3_nr_187363_1_qpcr",
     );
 }
@@ -3105,7 +3138,26 @@ fn test_design_qpcr_assays_transcript_aware_distinguishes_tp73_as3_nr_187363_1()
 fn test_design_qpcr_assays_transcript_aware_distinguishes_tp73_as3_nr_187364_1() {
     assert_tp73_as3_transcript_distinguishing_qpcr(
         "NR_187364.1",
+        QpcrTranscriptSpecificityEvidence::JunctionOnly,
         "tp73_as3_nr_187364_1_qpcr",
+    );
+}
+
+#[test]
+fn test_design_qpcr_assays_transcript_aware_unique_exon_chain_succeeds_for_tp73_as3() {
+    assert_tp73_as3_transcript_distinguishing_qpcr(
+        "NR_187362.1",
+        QpcrTranscriptSpecificityEvidence::UniqueExonOrChain,
+        "tp73_as3_nr_187362_1_unique_exon_qpcr",
+    );
+}
+
+#[test]
+fn test_design_qpcr_assays_transcript_aware_either_prefers_junction_for_tp73_as3() {
+    assert_tp73_as3_transcript_distinguishing_qpcr(
+        "NR_187362.1",
+        QpcrTranscriptSpecificityEvidence::EitherPreferJunction,
+        "tp73_as3_nr_187362_1_either_qpcr",
     );
 }
 

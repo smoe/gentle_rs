@@ -3082,6 +3082,32 @@ qPCR form:
 - same ROI/amplicon + pair constraints as primer-pair design
 - same ROI formula support as primer-pair design (`=` expressions +
   `Apply ROI formula`)
+- adds a `Transcript targeting` block above ROI/probe controls:
+  - `Genomic`
+    - keeps the existing direct qPCR flow and emits
+      `transcript_targeting = null`
+  - `Shared across transcripts`
+    - requires a splicing-group context from the same sequence
+    - reuses the current Splicing Expert group on
+      `TargetGroupTargetStrand`
+    - warns that GENtle may fall back to the largest supported transcript
+      subset when no fully shared exon/exon-chain span exists
+  - `Specific transcript`
+    - requires a splicing-group context plus the currently selected transcript
+      from Splicing Expert
+    - exposes `Specificity evidence`:
+      - `Junction only`
+      - `Unique exon / exon chain only`
+      - `Either (prefer junction)`
+    - the GUI does not ask the user to choose forward-vs-reverse junction side;
+      GENtle selects that automatically
+  - transcript-aware modes now show:
+    - read-only transcript context summary
+    - `Use current Splicing Expert context` / refresh action when a compatible
+      splicing view is already open
+    - `Open / Focus Splicing Expert`
+    - inline validation when transcript-aware qPCR has not yet been seeded from
+      a compatible splicing overview
 - adds:
   - `Probe side` with the same side-constraint fields
   - `max probe Tm delta`
@@ -3098,6 +3124,11 @@ qPCR form:
   - lineage/report reopen on qPCR reports now lands on the qPCR mode
   - the left-hand paint/selection ROI workflow is shared, while queued
     batch-region helpers remain pair-PCR-only for now
+  - Splicing Expert now also offers direct qPCR launches:
+    - `Design shared-transcript qPCR`
+    - `Design transcript-specific qPCR`
+    - both seed the shared PCR Designer with ROI plus transcript-aware qPCR
+      context instead of only sending a generic ROI
   - qPCR mode now also exposes the built-in protocol-cartoon route directly:
     - `Export qPCR Cartoon SVG...` writes the shared `pcr.assay.qpcr` strip
       without needing a separate shell/CLI round-trip
@@ -3112,6 +3143,10 @@ qPCR form:
       assay preview also annotates qPCR candidates as single-exon,
       junction-spanning, or junction-crossing and explains that context in
       plain language
+    - when transcript-aware targeting was requested, saved reports now also
+      show the requested targeting mode, requested evidence kind, realized
+      evidence kind, and selected transcript/support summary without needing a
+      live splicing window
     - the live qPCR cartoon-geometry summary is still derived from the selected
       saved report when available, or from the current ROI + constraint
       defaults otherwise

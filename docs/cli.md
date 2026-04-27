@@ -1868,7 +1868,7 @@ Shared shell command:
     - `primers seed-from-feature SEQ_ID FEATURE_ID`
     - `primers seed-from-splicing SEQ_ID FEATURE_ID`
     - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`
-    - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID]`
+    - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID] [--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction]`
     - `primers list-reports`
     - `primers show-report REPORT_ID`
       - includes `simple_pcr_pairs` with per-pair left/right distance from the
@@ -2181,6 +2181,8 @@ Shared shell command:
         `--mode shared_gene|distinguish_transcript`
       - `--transcript-id ID` is required when
         `--mode distinguish_transcript`
+      - `--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction`
+        is available when `--mode distinguish_transcript`
       - splicing-seeded qPCR requests now carry engine-owned
         `transcript_targeting` metadata inside the emitted
         `DesignQpcrAssays` operation, so the same transcript-aware intent is

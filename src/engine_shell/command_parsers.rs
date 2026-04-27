@@ -14,9 +14,10 @@
 use super::*;
 use crate::engine::{
     CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
-    CutRunSeedFilterConfig, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
-    TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
-    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+    CutRunSeedFilterConfig, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
+    QpcrTranscriptTargetingMode, TfbsScoreTrackCorrelationMetric,
+    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+    TfbsTrackSimilarityRankingMetric,
 };
 
 pub(super) fn parse_containers_command(tokens: &[String]) -> Result<ShellCommand, String> {
@@ -3087,6 +3088,25 @@ fn parse_qpcr_transcript_targeting_mode(raw: &str) -> Result<QpcrTranscriptTarge
     }
 }
 
+fn parse_qpcr_transcript_specificity_evidence(
+    raw: &str,
+) -> Result<QpcrTranscriptSpecificityEvidence, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "junction_only" | "junction-only" | "junction" => {
+            Ok(QpcrTranscriptSpecificityEvidence::JunctionOnly)
+        }
+        "unique_exon_or_chain" | "unique-exon-or-chain" | "unique_exon" | "unique-chain" => {
+            Ok(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
+        }
+        "either_prefer_junction" | "either-prefer-junction" | "either" => {
+            Ok(QpcrTranscriptSpecificityEvidence::EitherPreferJunction)
+        }
+        other => Err(format!(
+            "Unsupported qPCR transcript specificity evidence '{other}', expected junction_only|unique_exon_or_chain|either_prefer_junction"
+        )),
+    }
+}
+
 fn parse_restriction_cloning_handoff_mode(
     raw: &str,
 ) -> Result<RestrictionCloningPcrHandoffMode, String> {
@@ -3406,7 +3426,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
         "seed-qpcr-from-splicing" => {
             if tokens.len() < 4 {
                 return Err(
-                    "primers seed-qpcr-from-splicing requires SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID]"
+                    "primers seed-qpcr-from-splicing requires SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID] [--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction]"
                         .to_string()
                 );
             }
@@ -3419,6 +3439,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })?;
             let mut mode = QpcrTranscriptTargetingMode::SharedGene;
             let mut transcript_id: Option<String> = None;
+            let mut specificity_evidence: Option<QpcrTranscriptSpecificityEvidence> = None;
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -3430,6 +3451,16 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                             "primers seed-qpcr-from-splicing",
                         )?;
                         mode = parse_qpcr_transcript_targeting_mode(&raw)?;
+                    }
+                    "--specificity-evidence" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--specificity-evidence",
+                            "primers seed-qpcr-from-splicing",
+                        )?;
+                        specificity_evidence =
+                            Some(parse_qpcr_transcript_specificity_evidence(&raw)?);
                     }
                     "--transcript-id" => {
                         transcript_id = Some(parse_option_path(
@@ -3447,7 +3478,11 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 }
             }
             if mode == QpcrTranscriptTargetingMode::DistinguishTranscript
-                && transcript_id.as_deref().unwrap_or_default().trim().is_empty()
+                && transcript_id
+                    .as_deref()
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty()
             {
                 return Err(
                     "primers seed-qpcr-from-splicing --mode distinguish_transcript requires --transcript-id ID"
@@ -3460,11 +3495,18 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                         .to_string(),
                 );
             }
+            if mode == QpcrTranscriptTargetingMode::SharedGene && specificity_evidence.is_some() {
+                return Err(
+                    "primers seed-qpcr-from-splicing --specificity-evidence can only be used with --mode distinguish_transcript"
+                        .to_string(),
+                );
+            }
             Ok(ShellCommand::PrimersSeedQpcrFromSplicing {
                 seq_id,
                 feature_id,
                 mode,
                 transcript_id,
+                specificity_evidence,
             })
         }
         "list-reports" => {
