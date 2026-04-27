@@ -55,6 +55,8 @@ use tempfile::NamedTempFile;
 
 pub const DEFAULT_GENOME_CATALOG_PATH: &str = "assets/genomes.json";
 pub const DEFAULT_HELPER_GENOME_CATALOG_PATH: &str = "assets/helper_genomes.json";
+pub const DEFAULT_HELPER_SEMANTICS_VOCABULARY_PATH: &str =
+    "assets/helper_semantics_vocabulary.json";
 pub const DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN: &str = "gentle://catalog/reference/default";
 pub const DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN: &str = "gentle://catalog/helper/default";
 pub const DEFAULT_GENOME_CACHE_DIR: &str = "data/genomes";
@@ -278,6 +280,85 @@ fn catalog_discovery_candidates(domain: CatalogDomain) -> Vec<CatalogSourceCandi
     candidates
 }
 
+fn helper_semantics_vocabulary_discovery_candidates() -> Vec<CatalogSourceCandidate> {
+    let mut candidates = vec![];
+    let built_in_root = configured_builtin_asset_root();
+    candidates.push(CatalogSourceCandidate {
+        scope: "built-in",
+        path: built_in_root.join(DEFAULT_HELPER_SEMANTICS_VOCABULARY_PATH),
+    });
+    candidates.push(CatalogSourceCandidate {
+        scope: "built-in",
+        path: built_in_root
+            .join("assets")
+            .join("helper_semantics_vocabulary.d"),
+    });
+
+    let system_root = configured_system_config_root();
+    candidates.push(CatalogSourceCandidate {
+        scope: "system",
+        path: system_root
+            .join("catalogs")
+            .join("helper_semantics_vocabulary.json"),
+    });
+    candidates.push(CatalogSourceCandidate {
+        scope: "system",
+        path: system_root
+            .join("catalogs")
+            .join("helper_semantics_vocabulary.d"),
+    });
+
+    if let Some(user_root) = configured_user_config_root() {
+        candidates.push(CatalogSourceCandidate {
+            scope: "user",
+            path: user_root
+                .join("catalogs")
+                .join("helper_semantics_vocabulary.json"),
+        });
+        candidates.push(CatalogSourceCandidate {
+            scope: "user",
+            path: user_root
+                .join("catalogs")
+                .join("helper_semantics_vocabulary.d"),
+        });
+    }
+
+    if let Some(project_root) = configured_project_root() {
+        candidates.push(CatalogSourceCandidate {
+            scope: "project",
+            path: project_root
+                .join(".gentle")
+                .join("catalogs")
+                .join("helper_semantics_vocabulary.json"),
+        });
+        candidates.push(CatalogSourceCandidate {
+            scope: "project",
+            path: project_root
+                .join(".gentle")
+                .join("catalogs")
+                .join("helper_semantics_vocabulary.d"),
+        });
+    }
+
+    candidates
+}
+
+fn discovered_helper_semantics_vocabulary_sources() -> Vec<CatalogSourceCandidate> {
+    let candidates = helper_semantics_vocabulary_discovery_candidates();
+    let mut seen_paths: BTreeSet<String> = BTreeSet::new();
+    let mut existing: Vec<CatalogSourceCandidate> = vec![];
+    for candidate in candidates {
+        let key = candidate.path.to_string_lossy().to_string();
+        if !seen_paths.insert(key) {
+            continue;
+        }
+        if candidate.path.exists() {
+            existing.push(candidate);
+        }
+    }
+    existing
+}
+
 fn discovered_catalog_sources(
     domain: CatalogDomain,
 ) -> Result<Vec<CatalogSourceCandidate>, String> {
@@ -468,6 +549,12 @@ pub struct HelperConstructNormalizedTerm {
     pub value: String,
     pub label: Option<String>,
     pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vocabulary_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vocabulary_description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vocabulary_source: Option<String>,
 }
 
 /// Direct helper-derived routine-planning hint for downstream tools.
@@ -477,6 +564,232 @@ pub struct HelperConstructRoutineHint {
     pub rationale: String,
     #[serde(default)]
     pub source_terms: Vec<String>,
+}
+
+/// One catalog-extensible vocabulary term for helper-construct semantics.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructVocabularyTerm {
+    pub axis: String,
+    pub value: String,
+    pub label: Option<String>,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub routine_hints: Vec<HelperConstructRoutineHint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+/// JSON fragment shape for helper-construct vocabulary overlays.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructVocabularyCatalog {
+    pub schema: Option<String>,
+    #[serde(default)]
+    pub terms: Vec<HelperConstructVocabularyTerm>,
+}
+
+#[derive(Default, Debug, Clone)]
+struct HelperConstructVocabularyIndex {
+    terms: BTreeMap<(String, String), HelperConstructVocabularyTerm>,
+    aliases: BTreeMap<(String, String), String>,
+}
+
+impl HelperConstructVocabularyIndex {
+    fn from_default_discovery() -> Result<Self, String> {
+        let sources = discovered_helper_semantics_vocabulary_sources();
+        if sources.is_empty() {
+            return Ok(Self::default());
+        }
+        Self::from_sources(&sources)
+    }
+
+    fn from_sources(sources: &[CatalogSourceCandidate]) -> Result<Self, String> {
+        let mut index = Self::default();
+        for source in sources {
+            index.merge_source(&source.path, &source.path.display().to_string())?;
+        }
+        index.rebuild_aliases()?;
+        Ok(index)
+    }
+
+    fn merge_source(&mut self, path: &Path, display_path: &str) -> Result<(), String> {
+        let metadata = fs::metadata(path).map_err(|e| {
+            format!("Could not read helper semantics vocabulary '{display_path}': {e}")
+        })?;
+        if metadata.is_dir() {
+            return self.merge_directory(path, display_path);
+        }
+        self.merge_file(path, display_path)
+    }
+
+    fn merge_directory(&mut self, path: &Path, display_path: &str) -> Result<(), String> {
+        let read_dir = fs::read_dir(path).map_err(|e| {
+            format!("Could not read helper semantics vocabulary directory '{display_path}': {e}")
+        })?;
+        let mut json_files: Vec<PathBuf> = vec![];
+        for row in read_dir {
+            let row = row.map_err(|e| {
+                format!(
+                    "Could not iterate helper semantics vocabulary directory '{display_path}': {e}"
+                )
+            })?;
+            let file_type = row.file_type().map_err(|e| {
+                format!(
+                    "Could not inspect helper semantics vocabulary entry '{}' in '{}': {e}",
+                    row.path().display(),
+                    display_path
+                )
+            })?;
+            if !file_type.is_file() {
+                continue;
+            }
+            let file_path = row.path();
+            if file_path
+                .extension()
+                .and_then(|value| value.to_str())
+                .map(|value| value.eq_ignore_ascii_case("json"))
+                .unwrap_or(false)
+            {
+                json_files.push(file_path);
+            }
+        }
+        json_files.sort();
+        for file_path in json_files {
+            self.merge_file(&file_path, &file_path.display().to_string())?;
+        }
+        Ok(())
+    }
+
+    fn merge_file(&mut self, path: &Path, display_path: &str) -> Result<(), String> {
+        let text = fs::read_to_string(path).map_err(|e| {
+            format!("Could not read helper semantics vocabulary '{display_path}': {e}")
+        })?;
+        let parsed: HelperConstructVocabularyCatalog =
+            serde_json::from_str(&text).map_err(|e| {
+                format!("Could not parse helper semantics vocabulary '{display_path}': {e}")
+            })?;
+        for term in parsed.terms {
+            self.merge_term(term, display_path)?;
+        }
+        Ok(())
+    }
+
+    fn merge_term(
+        &mut self,
+        mut term: HelperConstructVocabularyTerm,
+        display_path: &str,
+    ) -> Result<(), String> {
+        let axis = HelperConstructInterpretation::normalize_semantic_token(&term.axis);
+        let value = HelperConstructInterpretation::normalize_semantic_token(&term.value);
+        if axis.is_empty() || value.is_empty() {
+            return Err(format!(
+                "Helper semantics vocabulary '{}' contains a term with empty axis/value",
+                display_path
+            ));
+        }
+        term.axis = axis.clone();
+        term.value = value.clone();
+        term.aliases = Self::dedup_normalized_aliases(term.aliases);
+        term.routine_hints = Self::dedup_routine_hints(term.routine_hints);
+        term.source = Some(display_path.to_string());
+
+        let key = (axis, value);
+        if let Some(existing) = self.terms.get_mut(&key) {
+            if term.label.is_some() {
+                existing.label = term.label;
+            }
+            if term.description.is_some() {
+                existing.description = term.description;
+            }
+            existing.aliases.extend(term.aliases);
+            existing.aliases = Self::dedup_normalized_aliases(existing.aliases.clone());
+            existing.routine_hints.extend(term.routine_hints);
+            existing.routine_hints = Self::dedup_routine_hints(existing.routine_hints.clone());
+            existing.source = Some(display_path.to_string());
+        } else {
+            self.terms.insert(key, term);
+        }
+        Ok(())
+    }
+
+    fn rebuild_aliases(&mut self) -> Result<(), String> {
+        self.aliases.clear();
+        for ((axis, value), term) in &self.terms {
+            for alias in &term.aliases {
+                let alias = HelperConstructInterpretation::normalize_semantic_token(alias);
+                if alias.is_empty() || alias == *value {
+                    continue;
+                }
+                let alias_key = (axis.clone(), alias.clone());
+                if let Some(existing) = self.aliases.get(&alias_key) {
+                    if existing != value {
+                        return Err(format!(
+                            "Helper semantics vocabulary alias '{}:{}' maps to both '{}' and '{}'",
+                            axis, alias, existing, value
+                        ));
+                    }
+                } else {
+                    self.aliases.insert(alias_key, value.clone());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn resolve(&self, axis: &str, raw_value: &str) -> Option<&HelperConstructVocabularyTerm> {
+        let axis = HelperConstructInterpretation::normalize_semantic_token(axis);
+        let raw_value = HelperConstructInterpretation::normalize_semantic_token(raw_value);
+        if axis.is_empty() || raw_value.is_empty() {
+            return None;
+        }
+        let canonical = self
+            .aliases
+            .get(&(axis.clone(), raw_value.clone()))
+            .cloned()
+            .unwrap_or(raw_value);
+        self.terms.get(&(axis, canonical))
+    }
+
+    fn routine_hints_for_term(&self, axis: &str, value: &str) -> Vec<HelperConstructRoutineHint> {
+        self.resolve(axis, value)
+            .map(|term| term.routine_hints.clone())
+            .unwrap_or_default()
+    }
+
+    fn dedup_normalized_aliases(values: Vec<String>) -> Vec<String> {
+        let mut seen = BTreeSet::new();
+        for value in values {
+            let normalized = HelperConstructInterpretation::normalize_semantic_token(&value);
+            if !normalized.is_empty() {
+                seen.insert(normalized);
+            }
+        }
+        seen.into_iter().collect()
+    }
+
+    fn dedup_routine_hints(
+        values: Vec<HelperConstructRoutineHint>,
+    ) -> Vec<HelperConstructRoutineHint> {
+        let mut seen = BTreeSet::new();
+        let mut out = vec![];
+        for hint in values {
+            let key = format!(
+                "{}\u{1f}{}\u{1f}{}",
+                hint.family,
+                hint.rationale,
+                hint.source_terms.join("\u{1e}")
+            );
+            if seen.insert(key) {
+                out.push(hint);
+            }
+        }
+        out.sort_by(|left, right| {
+            (left.family.as_str(), left.rationale.as_str())
+                .cmp(&(right.family.as_str(), right.rationale.as_str()))
+        });
+        out
+    }
 }
 
 /// Engine-owned normalized helper-construct meaning record.
@@ -538,7 +851,10 @@ impl HelperConstructInterpretation {
         (families, rationale)
     }
 
-    fn derive_normalized_terms(&self) -> Vec<HelperConstructNormalizedTerm> {
+    fn derive_normalized_terms_with_vocabulary(
+        &self,
+        vocabulary: Option<&HelperConstructVocabularyIndex>,
+    ) -> Vec<HelperConstructNormalizedTerm> {
         let mut terms: BTreeMap<(String, String, String), HelperConstructNormalizedTerm> =
             BTreeMap::new();
         for value in &self.helper_kinds {
@@ -548,6 +864,7 @@ impl HelperConstructInterpretation {
                 value,
                 Some(value),
                 "helper_kind",
+                vocabulary,
             );
         }
         for value in &self.host_systems {
@@ -557,6 +874,7 @@ impl HelperConstructInterpretation {
                 value,
                 Some(value),
                 "host_system",
+                vocabulary,
             );
         }
         for value in &self.offered_functions {
@@ -566,10 +884,18 @@ impl HelperConstructInterpretation {
                 value,
                 Some(value),
                 "offered_function",
+                vocabulary,
             );
         }
         for value in &self.constraints {
-            Self::push_normalized_term(&mut terms, "constraint", value, Some(value), "constraint");
+            Self::push_normalized_term(
+                &mut terms,
+                "constraint",
+                value,
+                Some(value),
+                "constraint",
+                vocabulary,
+            );
         }
         for value in &self.procurement_channels {
             Self::push_normalized_term(
@@ -578,6 +904,7 @@ impl HelperConstructInterpretation {
                 value,
                 Some(value),
                 "procurement",
+                vocabulary,
             );
         }
         if self.local_variant_unpublished {
@@ -587,6 +914,7 @@ impl HelperConstructInterpretation {
                 "local_variant_unpublished",
                 Some("local variant unpublished"),
                 "local_variant_unpublished",
+                vocabulary,
             );
         }
         for component in &self.components {
@@ -597,6 +925,7 @@ impl HelperConstructInterpretation {
                 &component.kind,
                 Some(&component.kind),
                 &source,
+                vocabulary,
             );
             if let Some(label) = component.label.as_deref() {
                 Self::push_normalized_term(
@@ -605,10 +934,18 @@ impl HelperConstructInterpretation {
                     label,
                     Some(label),
                     &source,
+                    vocabulary,
                 );
             }
             for tag in &component.tags {
-                Self::push_normalized_term(&mut terms, "component_tag", tag, Some(tag), &source);
+                Self::push_normalized_term(
+                    &mut terms,
+                    "component_tag",
+                    tag,
+                    Some(tag),
+                    &source,
+                    vocabulary,
+                );
             }
             for (key, value) in &component.attributes {
                 let label = format!("{key}={value}");
@@ -618,6 +955,7 @@ impl HelperConstructInterpretation {
                     &label,
                     Some(&label),
                     &source,
+                    vocabulary,
                 );
             }
         }
@@ -628,6 +966,7 @@ impl HelperConstructInterpretation {
                 &relationship.predicate,
                 Some(&relationship.predicate),
                 "relationship",
+                vocabulary,
             );
             let relationship_label = format!(
                 "{} {} {}",
@@ -639,14 +978,22 @@ impl HelperConstructInterpretation {
                 &relationship_label,
                 Some(&relationship_label),
                 "relationship",
+                vocabulary,
             );
         }
         terms.into_values().collect()
     }
 
     fn derive_routine_hints(&self) -> Vec<HelperConstructRoutineHint> {
+        self.derive_routine_hints_with_vocabulary(None)
+    }
+
+    fn derive_routine_hints_with_vocabulary(
+        &self,
+        vocabulary: Option<&HelperConstructVocabularyIndex>,
+    ) -> Vec<HelperConstructRoutineHint> {
         let terms = if self.normalized_terms.is_empty() {
-            self.derive_normalized_terms()
+            self.derive_normalized_terms_with_vocabulary(vocabulary)
         } else {
             self.normalized_terms.clone()
         };
@@ -674,6 +1021,16 @@ impl HelperConstructInterpretation {
             || has_term("component_kind", "protease_site");
 
         let mut hints = vec![];
+        if let Some(vocabulary) = vocabulary {
+            for term in &terms {
+                for mut hint in vocabulary.routine_hints_for_term(&term.axis, &term.value) {
+                    if hint.source_terms.is_empty() {
+                        hint.source_terms = vec![format!("{}:{}", term.axis, term.value)];
+                    }
+                    hints.push(hint);
+                }
+            }
+        }
         if Self::haystack_contains_any(
             &haystack,
             &["gateway", "clonase", "attl", "attr", "attb", "attp"],
@@ -828,8 +1185,14 @@ impl HelperConstructInterpretation {
         raw_value: &str,
         label: Option<&str>,
         source: &str,
+        vocabulary: Option<&HelperConstructVocabularyIndex>,
     ) {
-        let value = Self::normalize_semantic_token(raw_value);
+        let raw_normalized = Self::normalize_semantic_token(raw_value);
+        let vocabulary_term =
+            vocabulary.and_then(|index| index.resolve(axis, raw_normalized.as_str()));
+        let value = vocabulary_term
+            .map(|term| term.value.clone())
+            .unwrap_or(raw_normalized);
         if value.is_empty() {
             return;
         }
@@ -846,6 +1209,9 @@ impl HelperConstructInterpretation {
                 value,
                 label,
                 source,
+                vocabulary_label: vocabulary_term.and_then(|term| term.label.clone()),
+                vocabulary_description: vocabulary_term.and_then(|term| term.description.clone()),
+                vocabulary_source: vocabulary_term.and_then(|term| term.source.clone()),
             });
     }
 
@@ -1705,6 +2071,7 @@ pub struct GenomeCatalog {
     catalog_base_dir: PathBuf,
     catalog_path: Option<PathBuf>,
     catalog_origin_label: String,
+    helper_semantics_vocabulary: HelperConstructVocabularyIndex,
 }
 
 impl GenomeCatalog {
@@ -1770,11 +2137,18 @@ impl GenomeCatalog {
         } else {
             None
         };
+        let helper_semantics_vocabulary =
+            if entries.values().any(Self::entry_has_helper_interpretation) {
+                HelperConstructVocabularyIndex::from_default_discovery()?
+            } else {
+                HelperConstructVocabularyIndex::default()
+            };
         Ok(Self {
             entries,
             catalog_base_dir: base_dir.unwrap_or_else(|| PathBuf::from(".")),
             catalog_path,
             catalog_origin_label: origin_label,
+            helper_semantics_vocabulary,
         })
     }
 
@@ -1980,6 +2354,7 @@ impl GenomeCatalog {
             genome_id,
             entry,
             &self.entry_aliases(entry),
+            &self.helper_semantics_vocabulary,
         ))
     }
 
@@ -2053,6 +2428,7 @@ impl GenomeCatalog {
         genome_id: &str,
         entry: &GenomeCatalogEntry,
         aliases: &[String],
+        vocabulary: &HelperConstructVocabularyIndex,
     ) -> Option<HelperConstructInterpretation> {
         if !Self::entry_has_helper_interpretation(entry) {
             return None;
@@ -2138,8 +2514,10 @@ impl GenomeCatalog {
             components,
             relationships,
         };
-        interpretation.normalized_terms = interpretation.derive_normalized_terms();
-        interpretation.routine_hints = interpretation.derive_routine_hints();
+        interpretation.normalized_terms =
+            interpretation.derive_normalized_terms_with_vocabulary(Some(vocabulary));
+        interpretation.routine_hints =
+            interpretation.derive_routine_hints_with_vocabulary(Some(vocabulary));
         Some(interpretation)
     }
 
@@ -12641,6 +13019,7 @@ mod tests {
             catalog_base_dir: PathBuf::from("."),
             catalog_path: None,
             catalog_origin_label: "<inline test catalog>".to_string(),
+            helper_semantics_vocabulary: HelperConstructVocabularyIndex::default(),
         };
         let source = catalog
             .resolve_source(
@@ -12673,6 +13052,7 @@ mod tests {
             catalog_base_dir: PathBuf::from("."),
             catalog_path: None,
             catalog_origin_label: "<inline test catalog>".to_string(),
+            helper_semantics_vocabulary: HelperConstructVocabularyIndex::default(),
         };
 
         assert!(catalog.source_plan("GRCh38.p14", None).is_ok());
@@ -12705,6 +13085,7 @@ mod tests {
             catalog_base_dir: PathBuf::from("."),
             catalog_path: None,
             catalog_origin_label: "<inline test catalog>".to_string(),
+            helper_semantics_vocabulary: HelperConstructVocabularyIndex::default(),
         };
 
         let err = catalog.source_plan("GRCh38.p14", None).unwrap_err();
@@ -12728,6 +13109,7 @@ mod tests {
             catalog_base_dir: PathBuf::from("."),
             catalog_path: None,
             catalog_origin_label: "<inline test catalog>".to_string(),
+            helper_semantics_vocabulary: HelperConstructVocabularyIndex::default(),
         };
 
         assert!(catalog.source_plan("pGEX GST Factor Xa", None).is_ok());
@@ -12802,6 +13184,7 @@ mod tests {
             catalog_base_dir: PathBuf::from("."),
             catalog_path: None,
             catalog_origin_label: "<inline test catalog>".to_string(),
+            helper_semantics_vocabulary: HelperConstructVocabularyIndex::default(),
         };
 
         assert_eq!(catalog.list_entries(Some("pGEX")).len(), 1);
@@ -12866,6 +13249,117 @@ mod tests {
         assert!(routine_hint_families.contains("gibson"));
         assert!(routine_hint_families.contains("infusion"));
         assert!(routine_hint_families.contains("nebuilder_hifi"));
+    }
+
+    #[test]
+    fn test_helper_semantics_vocabulary_project_overlay_enriches_interpretation() {
+        let _env_lock = cache_dir_env_lock().lock().unwrap();
+        let td = tempdir().unwrap();
+        let project_root = td.path().join("project");
+        let vocabulary_dir = project_root
+            .join(".gentle")
+            .join("catalogs")
+            .join("helper_semantics_vocabulary.d");
+        fs::create_dir_all(&vocabulary_dir).unwrap();
+        fs::write(
+            vocabulary_dir.join("solubility.json"),
+            r#"{
+  "schema": "gentle.helper_semantics_vocabulary.v1",
+  "terms": [
+    {
+      "axis": "component_kind",
+      "value": "solubility_tag",
+      "label": "Solubility tag",
+      "description": "Project-local coding tag used to improve soluble expression.",
+      "aliases": ["mbp_tag"],
+      "routine_hints": [
+        {
+          "family": "gibson",
+          "rationale": "Project vocabulary marks solubility_tag as frame-sensitive.",
+          "source_terms": ["component_kind:solubility_tag"]
+        }
+      ]
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let catalog_path = td.path().join("helper_catalog.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "Custom MBP vector": {
+    "description": "Project-local MBP fusion helper",
+    "sequence_remote": "https://example.invalid/mbp.fa.gz",
+    "annotations_remote": "https://example.invalid/mbp.gb.gz",
+    "helper_kind": "plasmid_vector",
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "components": [
+        {
+          "id": "mbp",
+          "kind": "MBP tag",
+          "label": "MBP",
+          "tags": ["solubility"]
+        }
+      ]
+    }
+  }
+}"#,
+        )
+        .unwrap();
+
+        let _asset_root = EnvVarGuard::set(
+            BUILTIN_ASSET_ROOT_ENV,
+            &td.path().join("empty-assets").to_string_lossy(),
+        );
+        let _system_root = EnvVarGuard::set(
+            SYSTEM_CONFIG_ROOT_ENV,
+            &td.path().join("empty-system").to_string_lossy(),
+        );
+        let _xdg_root = EnvVarGuard::set(
+            "XDG_CONFIG_HOME",
+            &td.path().join("empty-xdg").to_string_lossy(),
+        );
+        let _project_root = EnvVarGuard::set(PROJECT_ROOT_ENV, &project_root.to_string_lossy());
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let interpretation = catalog
+            .helper_construct_interpretation("Custom MBP vector")
+            .unwrap()
+            .expect("helper interpretation");
+        let solubility_term = interpretation
+            .normalized_terms
+            .iter()
+            .find(|term| term.axis == "component_kind" && term.value == "solubility_tag")
+            .expect("solubility vocabulary term");
+        assert_eq!(solubility_term.label.as_deref(), Some("MBP tag"));
+        assert_eq!(
+            solubility_term.vocabulary_label.as_deref(),
+            Some("Solubility tag")
+        );
+        assert!(
+            solubility_term
+                .vocabulary_description
+                .as_deref()
+                .unwrap_or_default()
+                .contains("soluble expression")
+        );
+        assert!(
+            solubility_term
+                .vocabulary_source
+                .as_deref()
+                .unwrap_or_default()
+                .contains("solubility.json")
+        );
+        assert!(interpretation.routine_hints.iter().any(|hint| {
+            hint.family == "gibson"
+                && hint
+                    .source_terms
+                    .iter()
+                    .any(|term| term == "component_kind:solubility_tag")
+        }));
     }
 
     #[test]
@@ -14154,6 +14648,7 @@ mod tests {
             catalog_base_dir: root.to_path_buf(),
             catalog_path: None,
             catalog_origin_label: default_catalog_discovery_label(false).to_string(),
+            helper_semantics_vocabulary: HelperConstructVocabularyIndex::default(),
         };
         let fetch = |url: &str| -> Result<String, String> {
             match url {
@@ -14216,6 +14711,7 @@ mod tests {
             catalog_base_dir: root.to_path_buf(),
             catalog_path: None,
             catalog_origin_label: default_catalog_discovery_label(false).to_string(),
+            helper_semantics_vocabulary: HelperConstructVocabularyIndex::default(),
         };
         let fetch = |url: &str| -> Result<String, String> {
             match url {

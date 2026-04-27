@@ -25,11 +25,17 @@ syntax.
   - `docs/examples/plans/gibson_destination_first_single_insert.json`
   - `docs/examples/plans/gibson_destination_first_multi_insert.json`
   - schema: `gentle.gibson_assembly_plan.v1`
+  - `docs/examples/catalogs/helper_semantics_vocabulary_extension.json`
+  - schema: `gentle.helper_semantics_vocabulary.v1`
 - The single-insert Gibson plan shape is now accepted by the shared
   `gibson preview ...` path when referenced sequence ids exist in the active
   project state.
 - Multi-fragment Gibson examples remain design resources and are not yet
   executed by workflow-example tests.
+- Helper semantics vocabulary examples show how a project can add local
+  helper-construct meaning, aliases, and routine hints under
+  `.gentle/catalogs/helper_semantics_vocabulary.d/` without editing GENtle's
+  built-in helper catalog.
 - Folder note:
   - `docs/examples/plans/README.md`
 

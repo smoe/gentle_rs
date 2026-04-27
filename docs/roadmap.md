@@ -3149,6 +3149,11 @@ Current baseline:
   those hints instead of keeping the first-order helper-compatibility mapping
   private to one planner path, and MCP/ClawBio/helper browsers can inspect the
   same normalized helper semantics without reparsing prose
+- the normalized helper-term vocabulary is now catalog-extensible:
+  built-in `assets/helper_semantics_vocabulary.json` supplies initial
+  helper/vector terms, and system/user/project overlays can add aliases,
+  descriptions, and routine hints that helper interpretations resolve into
+  enriched `normalized_terms[]`
 - JS/Lua adapters now also expose structured reference/helper catalog-entry
   helpers so agents/scripts can consume catalog metadata and helper
   `interpretation` records without reparsing shell JSON
@@ -3189,6 +3194,10 @@ Planned work:
    - First richer-normalization slice is now in place: helper interpretation
      records carry `normalized_terms[]` and `routine_hints[]`, and routine
      preference synthesis consumes those hints directly.
+   - Follow-on vocabulary slice is now in place: normalized helper terms are
+     canonicalized/enriched through a helper semantics vocabulary with
+     built-in plus system/user/project overlay discovery; example extension:
+     `docs/examples/catalogs/helper_semantics_vocabulary_extension.json`.
    - planning baseline now also accepts helper-aware `planning objective`
      fields (`helper_profile_id`, `preferred_routine_families`) and uses one
      shared synthesized `routine_preference_context` for:

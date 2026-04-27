@@ -1787,6 +1787,19 @@ Catalog-backed reference/helper discovery notes:
 - helper/reference catalog entries may now carry typed discovery metadata such
   as `summary`, `aliases`, `tags`, `search_terms`, `species`, `helper_kind`,
   `host_system`, `procurement`, and optional structured `semantics`
+- helper semantics vocabulary overlays are discovered separately from helper
+  sequence catalogs so teams can extend normalized meaning without editing
+  GENtle source:
+  - built-in `assets/helper_semantics_vocabulary.json` plus optional
+    `assets/helper_semantics_vocabulary.d/*.json`
+  - system/user/project overlays at
+    `catalogs/helper_semantics_vocabulary.json` and
+    `catalogs/helper_semantics_vocabulary.d/*.json` under the same roots used
+    for catalog discovery
+  - vocabulary fragments use schema
+    `gentle.helper_semantics_vocabulary.v1` and `terms[]` records with
+    `axis`, canonical `value`, optional `label`, optional `description`,
+    `aliases[]`, and optional `routine_hints[]`
 - helper-list/status routes may now also expose an engine-owned normalized
   `interpretation` record derived from those helper fields:
   - `helper_id`
@@ -1795,7 +1808,9 @@ Catalog-backed reference/helper discovery notes:
   - `offered_functions`, `constraints`
   - `procurement_channels`, `local_variant_unpublished`
   - ontology-friendly `normalized_terms[]` with `axis`, normalized `value`,
-    optional human `label`, and derivation `source`
+    optional source-spelling `label`, derivation `source`, and optional
+    vocabulary enrichment fields `vocabulary_label`,
+    `vocabulary_description`, `vocabulary_source`
   - direct `routine_hints[]` with routine `family`, deterministic `rationale`,
     and `source_terms`, so planning/routine-ranking/MCP/ClawBio consumers do
     not need to re-derive first-order helper compatibility from prose
