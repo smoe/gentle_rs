@@ -4368,6 +4368,7 @@ impl GentleEngine {
                     amplicon_length_bp: pair.amplicon_length_bp,
                     primer_tm_delta_c: pair.tm_delta_c,
                     probe_tm_delta_c,
+                    transcript_context: None,
                     rule_flags: QpcrAssayRuleFlags {
                         roi_covered: pair.rule_flags.roi_covered,
                         amplicon_size_in_range: pair.rule_flags.amplicon_size_in_range,

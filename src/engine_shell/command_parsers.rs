@@ -14,7 +14,8 @@
 use super::*;
 use crate::engine::{
     CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
-    CutRunSeedFilterConfig, TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
+    CutRunSeedFilterConfig, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+    TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
     TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
 };
 
@@ -3054,6 +3055,7 @@ pub(super) fn build_seeded_qpcr_operation(
     template: &str,
     roi_start_0based: usize,
     roi_end_0based_exclusive: usize,
+    transcript_targeting: Option<QpcrTranscriptTargeting>,
 ) -> Operation {
     Operation::DesignQpcrAssays {
         template: template.to_string(),
@@ -3068,7 +3070,20 @@ pub(super) fn build_seeded_qpcr_operation(
         max_tm_delta_c: Some(2.0),
         max_probe_tm_delta_c: Some(10.0),
         max_assays: Some(200),
+        transcript_targeting,
         report_id: None,
+    }
+}
+
+fn parse_qpcr_transcript_targeting_mode(raw: &str) -> Result<QpcrTranscriptTargetingMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "shared_gene" | "shared-gene" | "shared" => Ok(QpcrTranscriptTargetingMode::SharedGene),
+        "distinguish_transcript" | "distinguish-transcript" | "distinguish" => {
+            Ok(QpcrTranscriptTargetingMode::DistinguishTranscript)
+        }
+        other => Err(format!(
+            "Unsupported qPCR transcript targeting mode '{other}', expected shared_gene|distinguish_transcript"
+        )),
     }
 }
 
@@ -3389,9 +3404,10 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             Ok(ShellCommand::PrimersSeedQpcrFromFeature { seq_id, feature_id })
         }
         "seed-qpcr-from-splicing" => {
-            if tokens.len() != 4 {
+            if tokens.len() < 4 {
                 return Err(
-                    "primers seed-qpcr-from-splicing requires SEQ_ID FEATURE_ID".to_string()
+                    "primers seed-qpcr-from-splicing requires SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID]"
+                        .to_string()
                 );
             }
             let seq_id = tokens[2].clone();
@@ -3401,7 +3417,55 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                     tokens[3]
                 )
             })?;
-            Ok(ShellCommand::PrimersSeedQpcrFromSplicing { seq_id, feature_id })
+            let mut mode = QpcrTranscriptTargetingMode::SharedGene;
+            let mut transcript_id: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--mode" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--mode",
+                            "primers seed-qpcr-from-splicing",
+                        )?;
+                        mode = parse_qpcr_transcript_targeting_mode(&raw)?;
+                    }
+                    "--transcript-id" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-id",
+                            "primers seed-qpcr-from-splicing",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers seed-qpcr-from-splicing"
+                        ));
+                    }
+                }
+            }
+            if mode == QpcrTranscriptTargetingMode::DistinguishTranscript
+                && transcript_id.as_deref().unwrap_or_default().trim().is_empty()
+            {
+                return Err(
+                    "primers seed-qpcr-from-splicing --mode distinguish_transcript requires --transcript-id ID"
+                        .to_string(),
+                );
+            }
+            if mode == QpcrTranscriptTargetingMode::SharedGene && transcript_id.is_some() {
+                return Err(
+                    "primers seed-qpcr-from-splicing --transcript-id can only be used with --mode distinguish_transcript"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::PrimersSeedQpcrFromSplicing {
+                seq_id,
+                feature_id,
+                mode,
+                transcript_id,
+            })
         }
         "list-reports" => {
             if tokens.len() != 2 {

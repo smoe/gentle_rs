@@ -2681,6 +2681,7 @@ fn test_design_qpcr_assays_internal_reports_pair_evaluation_budget_truncation() 
             max_tm_delta_c: Some(100.0),
             max_probe_tm_delta_c: Some(100.0),
             max_assays: Some(5),
+            transcript_targeting: None,
             report_id: Some("budget_capped_qpcr".to_string()),
         })
         .expect("internal qPCR design should complete");
@@ -2780,6 +2781,152 @@ fn test_design_primer_pairs_internal_emits_progress_snapshots() {
     assert!(final_progress.accepted_pair_count.unwrap_or(0) > 0);
 }
 
+fn load_tp73_engine_for_transcript_aware_qpcr() -> (GentleEngine, usize, usize) {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73".to_string()),
+        })
+        .expect("load tp73 fixture");
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    let dna = engine
+        .state()
+        .sequences
+        .get("tp73")
+        .expect("tp73 sequence present");
+    let tp73_as3_feature_id = dna
+        .features()
+        .iter()
+        .position(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("ncRNA")
+                && feature
+                    .qualifier_values("gene")
+                    .any(|value| value.eq_ignore_ascii_case("TP73-AS3"))
+                && feature
+                    .qualifier_values("transcript_id")
+                    .any(|value| value == "NR_187362.1")
+        })
+        .expect("TP73-AS3 transcript variant 1 feature");
+    let tp73_as2_feature_id = dna
+        .features()
+        .iter()
+        .position(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("ncRNA")
+                && feature
+                    .qualifier_values("gene")
+                    .any(|value| value.eq_ignore_ascii_case("TP73-AS2"))
+        })
+        .expect("TP73-AS2 ncRNA feature");
+    (engine, tp73_as3_feature_id, tp73_as2_feature_id)
+}
+
+fn transcript_aware_qpcr_operation(
+    engine: &mut GentleEngine,
+    feature_id: usize,
+    mode: QpcrTranscriptTargetingMode,
+    transcript_id: Option<&str>,
+    report_id: &str,
+) -> Operation {
+    let splicing = engine
+        .build_splicing_expert_view("tp73", feature_id, SplicingScopePreset::TargetGroupTargetStrand)
+        .expect("splicing view");
+    Operation::DesignQpcrAssays {
+        template: "tp73".to_string(),
+        roi_start_0based: splicing.region_start_1based.saturating_sub(1),
+        roi_end_0based: splicing.region_end_1based,
+        forward: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 24,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 10_000,
+            ..Default::default()
+        },
+        reverse: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 24,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 10_000,
+            ..Default::default()
+        },
+        probe: PrimerDesignSideConstraint {
+            min_length: 18,
+            max_length: 24,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 10_000,
+            ..Default::default()
+        },
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        min_amplicon_bp: 80,
+        max_amplicon_bp: 550,
+        max_tm_delta_c: Some(100.0),
+        max_probe_tm_delta_c: Some(100.0),
+        max_assays: Some(8),
+        transcript_targeting: Some(QpcrTranscriptTargeting {
+            source_feature_id: feature_id,
+            mode,
+            transcript_id: transcript_id.map(|value| value.to_string()),
+        }),
+        report_id: Some(report_id.to_string()),
+    }
+}
+
+fn assert_tp73_as3_transcript_distinguishing_qpcr(transcript_id: &str, report_id: &str) {
+    let (mut engine, tp73_as3_feature_id, _) = load_tp73_engine_for_transcript_aware_qpcr();
+    let op = transcript_aware_qpcr_operation(
+        &mut engine,
+        tp73_as3_feature_id,
+        QpcrTranscriptTargetingMode::DistinguishTranscript,
+        Some(transcript_id),
+        report_id,
+    );
+    let result = engine
+        .apply(op)
+        .expect("distinguishing transcript-aware qPCR design");
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|line| line.contains("qPCR-design report"))
+    );
+    let report = engine
+        .get_qpcr_design_report(report_id)
+        .expect("stored transcript-aware qPCR report");
+    let targeting = report
+        .transcript_targeting
+        .as_ref()
+        .expect("transcript targeting request");
+    assert_eq!(targeting.mode, QpcrTranscriptTargetingMode::DistinguishTranscript);
+    assert_eq!(targeting.transcript_id.as_deref(), Some(transcript_id));
+    let targeting_result = report
+        .transcript_targeting_result
+        .as_ref()
+        .expect("transcript targeting result");
+    assert_eq!(targeting_result.transcript_count_considered, 3);
+    assert_eq!(targeting_result.transcript_id.as_deref(), Some(transcript_id));
+    assert_eq!(targeting_result.selected_support_transcript_count, 1);
+    assert!(!targeting_result.used_shared_support_fallback);
+    assert!(!report.assays.is_empty());
+    assert!(report.assays.iter().all(|assay| {
+        assay.transcript_context.as_ref().is_some_and(|context| {
+            context.design_transcript_id == transcript_id
+                && context.support_transcript_count == 1
+                && context.satisfies_requested_targeting
+                && context.transcript_distinguishing_primer.is_some()
+                && (context.forward_spans_junction || context.reverse_spans_junction)
+        })
+    }));
+}
+
 #[test]
 fn test_design_qpcr_assays_internal_emits_progress_snapshots() {
     let mut state = ProjectState::default();
@@ -2826,6 +2973,7 @@ fn test_design_qpcr_assays_internal_emits_progress_snapshots() {
                 max_tm_delta_c: Some(100.0),
                 max_probe_tm_delta_c: Some(100.0),
                 max_assays: Some(5),
+                transcript_targeting: None,
                 report_id: Some("progress_qpcr".to_string()),
             },
             |progress| {
@@ -2851,6 +2999,114 @@ fn test_design_qpcr_assays_internal_emits_progress_snapshots() {
     assert_eq!(final_progress.stage, "assay_search_complete");
     assert!(final_progress.done);
     assert!(final_progress.accepted_assay_count.unwrap_or(0) > 0);
+}
+
+#[test]
+fn test_design_qpcr_assays_transcript_aware_shared_gene_succeeds_for_tp73_as2() {
+    let (mut engine, _, tp73_as2_feature_id) = load_tp73_engine_for_transcript_aware_qpcr();
+    let op = transcript_aware_qpcr_operation(
+        &mut engine,
+        tp73_as2_feature_id,
+        QpcrTranscriptTargetingMode::SharedGene,
+        None,
+        "tp73_as2_shared_gene_qpcr",
+    );
+    engine
+        .apply(op)
+        .expect("shared-gene TP73-AS2 qPCR design");
+    let report = engine
+        .get_qpcr_design_report("tp73_as2_shared_gene_qpcr")
+        .expect("TP73-AS2 qPCR report");
+    let targeting_result = report
+        .transcript_targeting_result
+        .as_ref()
+        .expect("transcript targeting result");
+    assert_eq!(targeting_result.transcript_count_considered, 1);
+    assert_eq!(targeting_result.selected_support_transcript_count, 1);
+    assert!(!targeting_result.used_shared_support_fallback);
+    assert!(!report.assays.is_empty());
+    assert!(report.assays.iter().all(|assay| {
+        assay.transcript_context.as_ref().is_some_and(|context| {
+            context.support_transcript_count == 1 && context.satisfies_requested_targeting
+        })
+    }));
+}
+
+#[test]
+fn test_design_qpcr_assays_transcript_aware_distinguish_transcript_requires_competitors_for_tp73_as2(
+) {
+    let (mut engine, _, tp73_as2_feature_id) = load_tp73_engine_for_transcript_aware_qpcr();
+    let op = transcript_aware_qpcr_operation(
+        &mut engine,
+        tp73_as2_feature_id,
+        QpcrTranscriptTargetingMode::DistinguishTranscript,
+        Some("NR_185884.1"),
+        "tp73_as2_distinguish_qpcr",
+    );
+    let err = engine
+        .apply(op)
+        .expect_err("single-transcript TP73-AS2 distinguish mode should fail");
+    assert!(err.message.contains("requires competing transcripts"));
+}
+
+#[test]
+fn test_design_qpcr_assays_transcript_aware_shared_gene_prefers_fully_shared_span_for_tp73_as3() {
+    let (mut engine, tp73_as3_feature_id, _) = load_tp73_engine_for_transcript_aware_qpcr();
+    let op = transcript_aware_qpcr_operation(
+        &mut engine,
+        tp73_as3_feature_id,
+        QpcrTranscriptTargetingMode::SharedGene,
+        None,
+        "tp73_as3_shared_gene_qpcr",
+    );
+    engine
+        .apply(op)
+        .expect("shared-gene TP73-AS3 qPCR design");
+    let report = engine
+        .get_qpcr_design_report("tp73_as3_shared_gene_qpcr")
+        .expect("TP73-AS3 shared-gene qPCR report");
+    let targeting_result = report
+        .transcript_targeting_result
+        .as_ref()
+        .expect("transcript targeting result");
+    assert_eq!(targeting_result.transcript_count_considered, 3);
+    assert_eq!(targeting_result.selected_support_transcript_count, 3);
+    assert!(!targeting_result.used_shared_support_fallback);
+    assert!(
+        targeting_result.warnings.is_empty(),
+        "did not expect shared-span fallback warnings: {:?}",
+        targeting_result.warnings
+    );
+    assert!(!report.assays.is_empty());
+    assert!(report.assays.iter().all(|assay| {
+        assay.transcript_context.as_ref().is_some_and(|context| {
+            context.support_transcript_count == 3 && context.satisfies_requested_targeting
+        })
+    }));
+}
+
+#[test]
+fn test_design_qpcr_assays_transcript_aware_distinguishes_tp73_as3_nr_187362_1() {
+    assert_tp73_as3_transcript_distinguishing_qpcr(
+        "NR_187362.1",
+        "tp73_as3_nr_187362_1_qpcr",
+    );
+}
+
+#[test]
+fn test_design_qpcr_assays_transcript_aware_distinguishes_tp73_as3_nr_187363_1() {
+    assert_tp73_as3_transcript_distinguishing_qpcr(
+        "NR_187363.1",
+        "tp73_as3_nr_187363_1_qpcr",
+    );
+}
+
+#[test]
+fn test_design_qpcr_assays_transcript_aware_distinguishes_tp73_as3_nr_187364_1() {
+    assert_tp73_as3_transcript_distinguishing_qpcr(
+        "NR_187364.1",
+        "tp73_as3_nr_187364_1_qpcr",
+    );
 }
 
 #[test]
@@ -2956,6 +3212,7 @@ fn test_design_qpcr_assays_internal_emits_progress_events() {
                 max_tm_delta_c: Some(100.0),
                 max_probe_tm_delta_c: Some(100.0),
                 max_assays: Some(10),
+                transcript_targeting: None,
                 report_id: Some("tp73_qpcr_progress".to_string()),
             },
             |progress| {
@@ -3302,6 +3559,7 @@ fn test_design_qpcr_assays_persists_report() {
             max_tm_delta_c: Some(100.0),
             max_probe_tm_delta_c: Some(100.0),
             max_assays: Some(10),
+            transcript_targeting: None,
             report_id: Some("tp73_qpcr".to_string()),
         })
         .expect("design qpcr assays");
@@ -4056,6 +4314,7 @@ fn test_design_qpcr_assays_enforces_probe_sequence_constraints() {
             max_tm_delta_c: Some(100.0),
             max_probe_tm_delta_c: Some(100.0),
             max_assays: Some(10),
+            transcript_targeting: None,
             report_id: Some("baseline_qpcr_probe_constraints".to_string()),
         })
         .expect("baseline qpcr design");
@@ -4088,6 +4347,7 @@ fn test_design_qpcr_assays_enforces_probe_sequence_constraints() {
             max_tm_delta_c: Some(100.0),
             max_probe_tm_delta_c: Some(100.0),
             max_assays: Some(10),
+            transcript_targeting: None,
             report_id: Some("matching_qpcr_probe_constraints".to_string()),
         })
         .expect("matching qpcr design");
@@ -4117,6 +4377,7 @@ fn test_design_qpcr_assays_enforces_probe_sequence_constraints() {
             max_tm_delta_c: Some(100.0),
             max_probe_tm_delta_c: Some(100.0),
             max_assays: Some(10),
+            transcript_targeting: None,
             report_id: Some("failing_qpcr_probe_constraints".to_string()),
         })
         .expect("failing qpcr design");

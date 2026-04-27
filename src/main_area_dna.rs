@@ -5499,6 +5499,7 @@ mod tests {
                 max_tm_delta_c: Some(50.0),
                 max_probe_tm_delta_c: Some(50.0),
                 max_assays: Some(10),
+                transcript_targeting: None,
                 report_id: Some("qpcr_ui_test".to_string()),
             })
             .expect("design qpcr assays");
@@ -5549,6 +5550,7 @@ mod tests {
                 amplicon_length_bp: 90,
                 primer_tm_delta_c: 0.8,
                 probe_tm_delta_c: 4.3,
+                transcript_context: None,
                 rule_flags: Default::default(),
             }],
             ..Default::default()
@@ -5822,6 +5824,7 @@ mod tests {
                 max_tm_delta_c: Some(50.0),
                 max_probe_tm_delta_c: Some(50.0),
                 max_assays: Some(10),
+                transcript_targeting: None,
                 report_id: Some("qpcr_ui_focus".to_string()),
             })
             .expect("design qpcr assays");
@@ -38626,6 +38629,7 @@ impl MainAreaDna {
                 "max_probe_tm_delta_c",
             )?,
             max_assays,
+            transcript_targeting: None,
             report_id: if ui.report_id.trim().is_empty() {
                 None
             } else {

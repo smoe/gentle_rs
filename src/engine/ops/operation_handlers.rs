@@ -49,6 +49,33 @@ struct GenomeExtractionProvenanceOverrides {
     anchor_verified: Option<bool>,
 }
 
+#[derive(Debug, Clone)]
+struct TranscriptQpcrLocalExonSegment {
+    source_start_0based: usize,
+    source_end_0based_exclusive: usize,
+    local_start_0based: usize,
+    local_end_0based_exclusive: usize,
+}
+
+#[derive(Debug, Clone)]
+struct TranscriptQpcrDesignTemplate {
+    transcript_feature_id: usize,
+    transcript_id: String,
+    transcript_label: String,
+    strand: String,
+    sequence: String,
+    local_exon_segments: Vec<TranscriptQpcrLocalExonSegment>,
+    exon_chain: Vec<(usize, usize)>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TranscriptMappedInterval {
+    source_ranges_0based: Vec<SequenceRange0Based>,
+    exon_chain: Vec<(usize, usize)>,
+    covered_junction_labels: Vec<String>,
+    spans_junction: bool,
+}
+
 impl GentleEngine {
     fn gibson_arrangement_insert_seq_ids(plan: &GibsonAssemblyPlan) -> Vec<String> {
         let fragments_by_id = plan
@@ -4179,6 +4206,1626 @@ impl GentleEngine {
                 message: "Primer design cancelled during progress reporting".to_string(),
             })
         }
+    }
+
+    fn build_qpcr_transcript_design_templates(
+        dna: &DNAsequence,
+        splicing: &SplicingExpertView,
+    ) -> Result<Vec<TranscriptQpcrDesignTemplate>, EngineError> {
+        let mut templates = Vec::with_capacity(splicing.transcripts.len());
+        for lane in &splicing.transcripts {
+            let template = Self::make_transcript_template(dna, lane, 0);
+            let sequence = String::from_utf8(template.sequence).map_err(|e| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not materialize transcript template '{}' as UTF-8 DNA text: {e}",
+                    lane.transcript_id
+                ),
+            })?;
+            let is_reverse = lane.strand.trim() == "-";
+            let exon_chain = if is_reverse {
+                lane.exons
+                    .iter()
+                    .rev()
+                    .map(|exon| (exon.start_1based.saturating_sub(1), exon.end_1based))
+                    .collect::<Vec<_>>()
+            } else {
+                lane.exons
+                    .iter()
+                    .map(|exon| (exon.start_1based.saturating_sub(1), exon.end_1based))
+                    .collect::<Vec<_>>()
+            };
+            let mut local_cursor = 0usize;
+            let local_exon_segments = exon_chain
+                .iter()
+                .map(|(source_start_0based, source_end_0based_exclusive)| {
+                    let exon_len = source_end_0based_exclusive
+                        .saturating_sub(*source_start_0based);
+                    let segment = TranscriptQpcrLocalExonSegment {
+                        source_start_0based: *source_start_0based,
+                        source_end_0based_exclusive: *source_end_0based_exclusive,
+                        local_start_0based: local_cursor,
+                        local_end_0based_exclusive: local_cursor.saturating_add(exon_len),
+                    };
+                    local_cursor = local_cursor.saturating_add(exon_len);
+                    segment
+                })
+                .collect::<Vec<_>>();
+            templates.push(TranscriptQpcrDesignTemplate {
+                transcript_feature_id: lane.transcript_feature_id,
+                transcript_id: lane.transcript_id.clone(),
+                transcript_label: lane.label.clone(),
+                strand: lane.strand.clone(),
+                sequence,
+                local_exon_segments,
+                exon_chain,
+            });
+        }
+        Ok(templates)
+    }
+
+    fn map_exon_chain_to_local_window(
+        segments: &[TranscriptQpcrLocalExonSegment],
+        exon_chain: &[(usize, usize)],
+    ) -> Option<(usize, usize)> {
+        if exon_chain.is_empty() {
+            return None;
+        }
+        let segment_refs = segments
+            .iter()
+            .map(|segment| {
+                (
+                    segment.source_start_0based,
+                    segment.source_end_0based_exclusive,
+                    segment.local_start_0based,
+                    segment.local_end_0based_exclusive,
+                )
+            })
+            .collect::<Vec<_>>();
+        let chain_len = exon_chain.len();
+        segment_refs
+            .windows(chain_len)
+            .find_map(|window| {
+                let refs = window
+                    .iter()
+                    .map(|(start, end, _, _)| (*start, *end))
+                    .collect::<Vec<_>>();
+                if refs != exon_chain {
+                    return None;
+                }
+                Some((window[0].2, window[chain_len - 1].3))
+            })
+    }
+
+    fn map_transcript_local_interval(
+        segments: &[TranscriptQpcrLocalExonSegment],
+        is_reverse: bool,
+        local_start_0based: usize,
+        local_end_0based_exclusive: usize,
+    ) -> TranscriptMappedInterval {
+        let mut source_ranges_0based = vec![];
+        let mut exon_chain = vec![];
+        for segment in segments {
+            let overlap_start = local_start_0based.max(segment.local_start_0based);
+            let overlap_end = local_end_0based_exclusive.min(segment.local_end_0based_exclusive);
+            if overlap_end <= overlap_start {
+                continue;
+            }
+            let (mapped_start, mapped_end) = if is_reverse {
+                (
+                    segment.source_end_0based_exclusive.saturating_sub(
+                        overlap_end.saturating_sub(segment.local_start_0based),
+                    ),
+                    segment.source_end_0based_exclusive.saturating_sub(
+                        overlap_start.saturating_sub(segment.local_start_0based),
+                    ),
+                )
+            } else {
+                (
+                    segment.source_start_0based.saturating_add(
+                        overlap_start.saturating_sub(segment.local_start_0based),
+                    ),
+                    segment.source_start_0based.saturating_add(
+                        overlap_end.saturating_sub(segment.local_start_0based),
+                    ),
+                )
+            };
+            source_ranges_0based.push(SequenceRange0Based {
+                start_0based: mapped_start,
+                end_0based_exclusive: mapped_end,
+            });
+            let exon_ref = (
+                segment.source_start_0based,
+                segment.source_end_0based_exclusive,
+            );
+            if exon_chain.last().copied() != Some(exon_ref) {
+                exon_chain.push(exon_ref);
+            }
+        }
+        let covered_junction_labels = exon_chain
+            .windows(2)
+            .map(|pair| {
+                format!(
+                    "{}..{}→{}..{}",
+                    pair[0].0.saturating_add(1),
+                    pair[0].1,
+                    pair[1].0.saturating_add(1),
+                    pair[1].1
+                )
+            })
+            .collect::<Vec<_>>();
+        TranscriptMappedInterval {
+            source_ranges_0based,
+            spans_junction: exon_chain.len() > 1,
+            exon_chain,
+            covered_junction_labels,
+        }
+    }
+
+    fn transcript_supports_exon_chain(
+        transcript: &TranscriptQpcrDesignTemplate,
+        exon_chain: &[(usize, usize)],
+    ) -> bool {
+        if exon_chain.is_empty() {
+            return false;
+        }
+        if exon_chain.len() == 1 {
+            return transcript.exon_chain.iter().any(|exon| exon == &exon_chain[0]);
+        }
+        transcript
+            .exon_chain
+            .windows(exon_chain.len())
+            .any(|window| window == exon_chain)
+    }
+
+    fn qpcr_probe_placement_label(
+        roi_start_0based: usize,
+        roi_end_0based_exclusive: usize,
+        probe_start_0based: usize,
+        probe_end_0based_exclusive: usize,
+    ) -> String {
+        let roi_len_bp = roi_end_0based_exclusive
+            .saturating_sub(roi_start_0based)
+            .max(1);
+        let probe_center_0based =
+            probe_start_0based.saturating_add(probe_end_0based_exclusive.saturating_sub(
+                probe_start_0based,
+            ) / 2);
+        let probe_relative = probe_center_0based.saturating_sub(roi_start_0based) as f64
+            / roi_len_bp as f64;
+        if probe_relative <= 0.33 {
+            "left_biased".to_string()
+        } else if probe_relative >= 0.67 {
+            "right_biased".to_string()
+        } else {
+            "centered".to_string()
+        }
+    }
+
+    fn best_qpcr_assay_probe_placement_and_summary(
+        assays: &[QpcrAssayRecord],
+        roi_start_0based: usize,
+        roi_end_0based_exclusive: usize,
+        transcript_targeting_result: Option<&QpcrTranscriptTargetingResult>,
+    ) -> (String, String) {
+        let Some(best_assay) = assays.first() else {
+            return (
+                "none".to_string(),
+                "No accepted qPCR assays were retained in this report.".to_string(),
+            );
+        };
+        let probe_placement = best_assay
+            .transcript_context
+            .as_ref()
+            .map(|context| context.probe_placement.as_str())
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| {
+                Self::qpcr_probe_placement_label(
+                    roi_start_0based,
+                    roi_end_0based_exclusive,
+                    best_assay.probe.start_0based,
+                    best_assay.probe.end_0based_exclusive,
+                )
+            });
+        let placement_text = match probe_placement.as_str() {
+            "left_biased" => "left-biased inside the ROI",
+            "right_biased" => "right-biased inside the ROI",
+            _ => "centered inside the ROI",
+        };
+        let mut summary = format!(
+            "assay #{} spans {}..{} ({} bp); probe is {} at {}..{}; ΔTm(primer)={:.1}°C, ΔTm(probe)={:.1}°C; score={:.1}",
+            best_assay.rank,
+            best_assay.amplicon_start_0based,
+            best_assay.amplicon_end_0based_exclusive,
+            best_assay.amplicon_length_bp,
+            placement_text,
+            best_assay.probe.start_0based,
+            best_assay.probe.end_0based_exclusive,
+            best_assay.primer_tm_delta_c,
+            best_assay.probe_tm_delta_c,
+            best_assay.score
+        );
+        if let Some(context) = best_assay.transcript_context.as_ref() {
+            let support_total = transcript_targeting_result
+                .map(|result| result.transcript_count_considered)
+                .unwrap_or(context.support_transcript_count);
+            summary.push_str(&format!(
+                "; transcript_context={}, support={}/{}, transcript={}",
+                context.assay_class_label,
+                context.support_transcript_count,
+                support_total,
+                context.design_transcript_id
+            ));
+            if let Some(distinguishing_primer) =
+                context.transcript_distinguishing_primer.as_deref()
+            {
+                summary.push_str(&format!(
+                    "; distinguishing_primer={distinguishing_primer}"
+                ));
+            }
+        }
+        (probe_placement, summary)
+    }
+
+    fn add_primer_design_rejection_summary(
+        target: &mut PrimerDesignRejectionSummary,
+        source: &PrimerDesignRejectionSummary,
+    ) {
+        target.out_of_window = target.out_of_window.saturating_add(source.out_of_window);
+        target.gc_or_tm_out_of_bounds = target
+            .gc_or_tm_out_of_bounds
+            .saturating_add(source.gc_or_tm_out_of_bounds);
+        target.non_unique_anneal = target
+            .non_unique_anneal
+            .saturating_add(source.non_unique_anneal);
+        target.primer_constraint_failure = target
+            .primer_constraint_failure
+            .saturating_add(source.primer_constraint_failure);
+        target.amplicon_or_roi_failure = target
+            .amplicon_or_roi_failure
+            .saturating_add(source.amplicon_or_roi_failure);
+        target.pair_constraint_failure = target
+            .pair_constraint_failure
+            .saturating_add(source.pair_constraint_failure);
+        target.pair_evaluation_limit_skipped = target
+            .pair_evaluation_limit_skipped
+            .saturating_add(source.pair_evaluation_limit_skipped);
+    }
+
+    fn add_qpcr_design_rejection_summary(
+        target: &mut QpcrDesignRejectionSummary,
+        source: &QpcrDesignRejectionSummary,
+    ) {
+        Self::add_primer_design_rejection_summary(
+            &mut target.primer_pair,
+            &source.primer_pair,
+        );
+        target.probe_out_of_window = target
+            .probe_out_of_window
+            .saturating_add(source.probe_out_of_window);
+        target.probe_gc_or_tm_out_of_bounds = target
+            .probe_gc_or_tm_out_of_bounds
+            .saturating_add(source.probe_gc_or_tm_out_of_bounds);
+        target.probe_non_unique_anneal = target
+            .probe_non_unique_anneal
+            .saturating_add(source.probe_non_unique_anneal);
+        target.probe_or_assay_failure = target
+            .probe_or_assay_failure
+            .saturating_add(source.probe_or_assay_failure);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_qpcr_generation_with_backend(
+        &self,
+        progress_seq_id: &str,
+        template_seq: &str,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        probe: &PrimerDesignSideConstraint,
+        probe_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints_normalized: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_probe_tm_delta_c: f64,
+        max_assays: usize,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<
+        (
+            Vec<QpcrAssayRecord>,
+            QpcrDesignRejectionSummary,
+            PrimerDesignBackendInfo,
+            Vec<String>,
+        ),
+        EngineError,
+    > {
+        let template_bytes = template_seq.as_bytes();
+        let pair_generation_limit =
+            max_assays.saturating_mul(25).clamp(max_assays, 5000);
+        let requested_backend = self.state.parameters.primer_design_backend;
+        let primer3_executable = {
+            let raw = self.state.parameters.primer3_executable.trim();
+            if raw.is_empty() {
+                "primer3_core"
+            } else {
+                raw
+            }
+        };
+        let mut warnings = vec![];
+        let mut backend = PrimerDesignBackendInfo {
+            requested: requested_backend.as_str().to_string(),
+            ..PrimerDesignBackendInfo::default()
+        };
+        let (pair_candidates, pair_rejections) = match requested_backend {
+            PrimerDesignBackend::Internal => {
+                backend.used = PrimerDesignBackend::Internal.as_str().to_string();
+                let progress_context = PrimerDesignProgressContext {
+                    seq_id: progress_seq_id,
+                    design_kind: "qpcr_assays",
+                    backend_requested: requested_backend.as_str(),
+                    backend_used: PrimerDesignBackend::Internal.as_str(),
+                    roi_start_0based,
+                    roi_end_0based_exclusive: roi_end_0based,
+                    max_output: max_assays,
+                };
+                let mut emit_internal = |progress: PrimerDesignProgress| {
+                    on_progress(OperationProgress::PrimerDesign(progress))
+                };
+                Self::design_primer_pairs_internal_core(
+                    template_bytes,
+                    roi_start_0based,
+                    roi_end_0based,
+                    forward,
+                    forward_sequence_constraints,
+                    reverse,
+                    reverse_sequence_constraints,
+                    pair_constraints_normalized,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    pair_generation_limit,
+                    Some(&progress_context),
+                    &mut emit_internal,
+                )?
+            }
+            PrimerDesignBackend::Primer3 => {
+                Self::emit_operation_primer_design_progress(
+                    on_progress,
+                    PrimerDesignProgress {
+                        seq_id: progress_seq_id.to_string(),
+                        design_kind: "qpcr_assays".to_string(),
+                        backend_requested: requested_backend.as_str().to_string(),
+                        backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
+                        stage: "primer3_run".to_string(),
+                        detail: format!(
+                            "Running Primer3 backend with executable '{}'",
+                            primer3_executable
+                        ),
+                        roi_start_0based,
+                        roi_end_0based_exclusive: roi_end_0based,
+                        forward_candidate_count: None,
+                        reverse_candidate_count: None,
+                        probe_candidate_count: None,
+                        pair_candidate_combinations: None,
+                        pair_evaluated: None,
+                        pair_evaluation_limit: None,
+                        pair_evaluation_limited: None,
+                        accepted_pair_count: None,
+                        assay_candidate_combinations: None,
+                        assays_evaluated: None,
+                        accepted_assay_count: None,
+                        max_output: max_assays,
+                        done: false,
+                    },
+                )?;
+                let (pairs, rejection_summary, version, explain, request_boulder_io) =
+                    Self::design_primer_pairs_primer3(
+                        template_seq,
+                        roi_start_0based,
+                        roi_end_0based,
+                        forward,
+                        forward_sequence_constraints,
+                        reverse,
+                        reverse_sequence_constraints,
+                        pair_constraints_normalized,
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_tm_delta_c,
+                        pair_generation_limit,
+                        primer3_executable,
+                    )?;
+                backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
+                backend.primer3_executable = Some(primer3_executable.to_string());
+                backend.primer3_version = version;
+                backend.primer3_explain = explain;
+                backend.primer3_request_boulder_io = Some(request_boulder_io);
+                (pairs, rejection_summary)
+            }
+            PrimerDesignBackend::Auto => {
+                Self::emit_operation_primer_design_progress(
+                    on_progress,
+                    PrimerDesignProgress {
+                        seq_id: progress_seq_id.to_string(),
+                        design_kind: "qpcr_assays".to_string(),
+                        backend_requested: requested_backend.as_str().to_string(),
+                        backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
+                        stage: "primer3_run".to_string(),
+                        detail: format!(
+                            "Auto mode trying Primer3 backend with executable '{}'",
+                            primer3_executable
+                        ),
+                        roi_start_0based,
+                        roi_end_0based_exclusive: roi_end_0based,
+                        forward_candidate_count: None,
+                        reverse_candidate_count: None,
+                        probe_candidate_count: None,
+                        pair_candidate_combinations: None,
+                        pair_evaluated: None,
+                        pair_evaluation_limit: None,
+                        pair_evaluation_limited: None,
+                        accepted_pair_count: None,
+                        assay_candidate_combinations: None,
+                        assays_evaluated: None,
+                        accepted_assay_count: None,
+                        max_output: max_assays,
+                        done: false,
+                    },
+                )?;
+                match Self::design_primer_pairs_primer3(
+                    template_seq,
+                    roi_start_0based,
+                    roi_end_0based,
+                    forward,
+                    forward_sequence_constraints,
+                    reverse,
+                    reverse_sequence_constraints,
+                    pair_constraints_normalized,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    pair_generation_limit,
+                    primer3_executable,
+                ) {
+                    Ok((pairs, rejection_summary, version, explain, request_boulder_io)) => {
+                        backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
+                        backend.primer3_executable = Some(primer3_executable.to_string());
+                        backend.primer3_version = version;
+                        backend.primer3_explain = explain;
+                        backend.primer3_request_boulder_io = Some(request_boulder_io);
+                        (pairs, rejection_summary)
+                    }
+                    Err(err) => {
+                        backend.used = PrimerDesignBackend::Internal.as_str().to_string();
+                        backend.primer3_executable = Some(primer3_executable.to_string());
+                        backend.fallback_reason = Some(err.message.clone());
+                        warnings.push(format!(
+                            "Primer3 backend unavailable in auto mode: {}. Falling back to internal qPCR design backend.",
+                            err.message
+                        ));
+                        Self::emit_operation_primer_design_progress(
+                            on_progress,
+                            PrimerDesignProgress {
+                                seq_id: progress_seq_id.to_string(),
+                                design_kind: "qpcr_assays".to_string(),
+                                backend_requested: requested_backend.as_str().to_string(),
+                                backend_used: PrimerDesignBackend::Internal.as_str().to_string(),
+                                stage: "fallback_to_internal".to_string(),
+                                detail: err.message.clone(),
+                                roi_start_0based,
+                                roi_end_0based_exclusive: roi_end_0based,
+                                forward_candidate_count: None,
+                                reverse_candidate_count: None,
+                                probe_candidate_count: None,
+                                pair_candidate_combinations: None,
+                                pair_evaluated: None,
+                                pair_evaluation_limit: None,
+                                pair_evaluation_limited: None,
+                                accepted_pair_count: None,
+                                assay_candidate_combinations: None,
+                                assays_evaluated: None,
+                                accepted_assay_count: None,
+                                max_output: max_assays,
+                                done: false,
+                            },
+                        )?;
+                        let progress_context = PrimerDesignProgressContext {
+                            seq_id: progress_seq_id,
+                            design_kind: "qpcr_assays",
+                            backend_requested: requested_backend.as_str(),
+                            backend_used: PrimerDesignBackend::Internal.as_str(),
+                            roi_start_0based,
+                            roi_end_0based_exclusive: roi_end_0based,
+                            max_output: max_assays,
+                        };
+                        let mut emit_internal = |progress: PrimerDesignProgress| {
+                            on_progress(OperationProgress::PrimerDesign(progress))
+                        };
+                        Self::design_primer_pairs_internal_core(
+                            template_bytes,
+                            roi_start_0based,
+                            roi_end_0based,
+                            forward,
+                            forward_sequence_constraints,
+                            reverse,
+                            reverse_sequence_constraints,
+                            pair_constraints_normalized,
+                            min_amplicon_bp,
+                            max_amplicon_bp,
+                            max_tm_delta_c,
+                            pair_generation_limit,
+                            Some(&progress_context),
+                            &mut emit_internal,
+                        )?
+                    }
+                }
+            }
+        };
+
+        let qpcr_progress_context = PrimerDesignProgressContext {
+            seq_id: progress_seq_id,
+            design_kind: "qpcr_assays",
+            backend_requested: requested_backend.as_str(),
+            backend_used: backend.used.as_str(),
+            roi_start_0based,
+            roi_end_0based_exclusive: roi_end_0based,
+            max_output: max_assays,
+        };
+        let mut emit_qpcr_progress = |progress: PrimerDesignProgress| {
+            on_progress(OperationProgress::PrimerDesign(progress))
+        };
+        let (assays, rejection_summary) = Self::design_qpcr_assays_from_pairs_core(
+            template_bytes,
+            roi_start_0based,
+            roi_end_0based,
+            probe,
+            probe_sequence_constraints,
+            max_probe_tm_delta_c,
+            max_assays,
+            pair_candidates,
+            pair_rejections,
+            Some(&qpcr_progress_context),
+            &mut emit_qpcr_progress,
+        )?;
+        Ok((assays, rejection_summary, backend, warnings))
+    }
+
+    fn build_qpcr_transcript_assay_context(
+        design_template: &TranscriptQpcrDesignTemplate,
+        all_templates: &[TranscriptQpcrDesignTemplate],
+        group_label: &str,
+        transcript_count_considered: usize,
+        targeting: &QpcrTranscriptTargeting,
+        junction_support: &HashMap<((usize, usize), (usize, usize)), Vec<String>>,
+        forward_mapping: &TranscriptMappedInterval,
+        reverse_mapping: &TranscriptMappedInterval,
+        probe_mapping: &TranscriptMappedInterval,
+        amplicon_mapping: &TranscriptMappedInterval,
+        probe_placement: String,
+    ) -> QpcrTranscriptAssayContext {
+        let supported_transcript_ids = all_templates
+            .iter()
+            .filter(|template| {
+                Self::transcript_supports_exon_chain(template, &amplicon_mapping.exon_chain)
+            })
+            .map(|template| template.transcript_id.clone())
+            .collect::<Vec<_>>();
+        let support_transcript_count = supported_transcript_ids.len();
+        let support_transcript_fraction = if transcript_count_considered == 0 {
+            0.0
+        } else {
+            support_transcript_count as f64 / transcript_count_considered as f64
+        };
+        let spans_unique_target_junction =
+            |mapping: &TranscriptMappedInterval| -> bool {
+                mapping.exon_chain.windows(2).any(|pair| {
+                    junction_support
+                        .get(&(pair[0], pair[1]))
+                        .is_some_and(|supporters| {
+                            supporters.len() == 1
+                                && supporters[0] == design_template.transcript_id
+                        })
+                })
+            };
+        let forward_unique = spans_unique_target_junction(forward_mapping);
+        let reverse_unique = spans_unique_target_junction(reverse_mapping);
+        let transcript_distinguishing_primer = match (forward_unique, reverse_unique) {
+            (true, true) => Some("forward,reverse".to_string()),
+            (true, false) => Some("forward".to_string()),
+            (false, true) => Some("reverse".to_string()),
+            (false, false) => None,
+        };
+        let satisfies_requested_targeting = match targeting.mode {
+            QpcrTranscriptTargetingMode::SharedGene => {
+                support_transcript_count == transcript_count_considered
+            }
+            QpcrTranscriptTargetingMode::DistinguishTranscript => {
+                transcript_distinguishing_primer.is_some()
+            }
+        };
+        let assay_class_label = if probe_mapping.spans_junction {
+            "junction-crossing probe"
+        } else if !amplicon_mapping.covered_junction_labels.is_empty() {
+            "junction-spanning amplicon"
+        } else if amplicon_mapping.source_ranges_0based.len() > 1 {
+            "multi-exon context"
+        } else if amplicon_mapping.source_ranges_0based.len() == 1 {
+            "single-exon context"
+        } else {
+            "splicing-region context"
+        };
+        let explanation = if probe_mapping.spans_junction {
+            format!(
+                "{}: probe overlaps a modeled exon junction in splicing group '{}'.",
+                assay_class_label, group_label
+            )
+        } else if !amplicon_mapping.covered_junction_labels.is_empty() {
+            format!(
+                "{}: amplicon covers {} modeled junction(s) in group '{}'.",
+                assay_class_label,
+                amplicon_mapping.covered_junction_labels.len(),
+                group_label
+            )
+        } else if amplicon_mapping.source_ranges_0based.len() > 1 {
+            format!(
+                "{}: amplicon touches {} exon segments in group '{}'.",
+                assay_class_label,
+                amplicon_mapping.source_ranges_0based.len(),
+                group_label
+            )
+        } else if amplicon_mapping.source_ranges_0based.len() == 1 {
+            format!(
+                "{}: amplicon stays inside one exon segment in group '{}'.",
+                assay_class_label, group_label
+            )
+        } else {
+            format!(
+                "{}: assay remains inside the transcript-aware splicing ROI for group '{}'.",
+                assay_class_label, group_label
+            )
+        };
+        QpcrTranscriptAssayContext {
+            assay_class_label: assay_class_label.to_string(),
+            explanation,
+            probe_placement,
+            design_transcript_feature_id: design_template.transcript_feature_id,
+            design_transcript_id: design_template.transcript_id.clone(),
+            design_transcript_label: design_template.transcript_label.clone(),
+            support_transcript_count,
+            support_transcript_fraction,
+            supported_transcript_ids,
+            forward_source_ranges_0based: forward_mapping.source_ranges_0based.clone(),
+            reverse_source_ranges_0based: reverse_mapping.source_ranges_0based.clone(),
+            probe_source_ranges_0based: probe_mapping.source_ranges_0based.clone(),
+            amplicon_source_ranges_0based: amplicon_mapping.source_ranges_0based.clone(),
+            covered_junction_labels: amplicon_mapping.covered_junction_labels.clone(),
+            forward_spans_junction: forward_mapping.spans_junction,
+            reverse_spans_junction: reverse_mapping.spans_junction,
+            probe_spans_junction: probe_mapping.spans_junction,
+            transcript_distinguishing_primer,
+            satisfies_requested_targeting,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn design_transcript_aware_qpcr_assays(
+        &self,
+        source_dna: &DNAsequence,
+        template: &str,
+        forward: &PrimerDesignSideConstraint,
+        reverse: &PrimerDesignSideConstraint,
+        probe: &PrimerDesignSideConstraint,
+        pair_constraints_normalized: &NormalizedPrimerPairConstraints,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_probe_tm_delta_c: f64,
+        max_assays: usize,
+        transcript_targeting: &QpcrTranscriptTargeting,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<
+        (
+            Vec<QpcrAssayRecord>,
+            QpcrDesignRejectionSummary,
+            PrimerDesignBackendInfo,
+            QpcrTranscriptTargetingResult,
+            Vec<String>,
+        ),
+        EngineError,
+    > {
+        let splicing =
+            self.build_splicing_expert_view(
+                template,
+                transcript_targeting.source_feature_id,
+                SplicingScopePreset::TargetGroupTargetStrand,
+            )?;
+        let all_templates = Self::build_qpcr_transcript_design_templates(source_dna, &splicing)?;
+        if all_templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Transcript-aware qPCR design found no transcript templates for feature n-{} on '{}'",
+                    transcript_targeting.source_feature_id + 1,
+                    template
+                ),
+            });
+        }
+        if transcript_targeting.mode == QpcrTranscriptTargetingMode::DistinguishTranscript
+            && all_templates.len() < 2
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Transcript-aware qPCR distinguish_transcript mode requires competing transcripts; '{}' currently resolves to one transcript",
+                    splicing.group_label
+                ),
+            });
+        }
+        let design_templates = match transcript_targeting.mode {
+            QpcrTranscriptTargetingMode::SharedGene => all_templates.clone(),
+            QpcrTranscriptTargetingMode::DistinguishTranscript => {
+                let requested_transcript_id = transcript_targeting
+                    .transcript_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message:
+                            "Transcript-aware qPCR distinguish_transcript mode requires transcript_id"
+                                .to_string(),
+                    })?;
+                let selected = all_templates
+                    .iter()
+                    .find(|template| template.transcript_id == requested_transcript_id)
+                    .cloned()
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Transcript '{}' was not found in splicing group '{}' on '{}'",
+                            requested_transcript_id, splicing.group_label, template
+                        ),
+                    })?;
+                vec![selected]
+            }
+        };
+
+        let mut junction_support: HashMap<((usize, usize), (usize, usize)), Vec<String>> =
+            HashMap::new();
+        for transcript in &all_templates {
+            for pair in transcript.exon_chain.windows(2) {
+                junction_support
+                    .entry((pair[0], pair[1]))
+                    .or_default()
+                    .push(transcript.transcript_id.clone());
+            }
+        }
+        for supporters in junction_support.values_mut() {
+            supporters.sort();
+            supporters.dedup();
+        }
+
+        let mut chain_support: BTreeMap<String, (Vec<(usize, usize)>, Vec<String>)> =
+            BTreeMap::new();
+        for transcript in &all_templates {
+            let mut seen_in_transcript = HashSet::<String>::new();
+            for start_idx in 0..transcript.exon_chain.len() {
+                for end_idx in start_idx + 1..=transcript.exon_chain.len() {
+                    let chain = transcript.exon_chain[start_idx..end_idx].to_vec();
+                    let key = chain
+                        .iter()
+                        .map(|(start, end)| format!("{start}-{end}"))
+                        .collect::<Vec<_>>()
+                        .join("|");
+                    if !seen_in_transcript.insert(key.clone()) {
+                        continue;
+                    }
+                    let entry = chain_support
+                        .entry(key)
+                        .or_insert_with(|| (chain.clone(), Vec::new()));
+                    entry.1.push(transcript.transcript_id.clone());
+                }
+            }
+        }
+        for (_, supporters) in chain_support.values_mut() {
+            supporters.sort();
+            supporters.dedup();
+        }
+
+        let mut collected_assays = vec![];
+        let mut rejection_summary = QpcrDesignRejectionSummary::default();
+        let mut warnings = vec![];
+        let mut report_backend: Option<PrimerDesignBackendInfo> = None;
+        let mut distinguish_nonqualifying_assay_count = 0usize;
+        let mut distinguish_junction_spanning_assay_count = 0usize;
+        let shared_support_levels = if transcript_targeting.mode == QpcrTranscriptTargetingMode::SharedGene
+        {
+            let mut levels = chain_support
+                .values()
+                .map(|(chain, supporters)| {
+                    let total_bp = chain
+                        .iter()
+                        .map(|(start, end)| end.saturating_sub(*start))
+                        .sum::<usize>();
+                    (supporters.len(), chain.len(), total_bp, chain.clone())
+                })
+                .collect::<Vec<_>>();
+            levels.sort_by(|left, right| {
+                right
+                    .0
+                    .cmp(&left.0)
+                    .then(left.1.cmp(&right.1))
+                    .then(left.2.cmp(&right.2))
+                    .then(left.3.cmp(&right.3))
+            });
+            levels
+                .into_iter()
+                .map(|(support_count, _, _, chain)| (support_count, chain))
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+        let mut requested_shared_support_level: Option<usize> = None;
+
+        for design_template in &design_templates {
+            let is_reverse = design_template.strand.trim() == "-";
+            let local_roi_windows = match transcript_targeting.mode {
+                QpcrTranscriptTargetingMode::SharedGene => {
+                    let mut windows = vec![];
+                    for (support_count, chain) in &shared_support_levels {
+                        if let Some((local_start, local_end)) = Self::map_exon_chain_to_local_window(
+                            &design_template.local_exon_segments,
+                            chain,
+                        ) {
+                            requested_shared_support_level = Some(
+                                requested_shared_support_level
+                                    .map(|value| value.max(*support_count))
+                                    .unwrap_or(*support_count),
+                            );
+                            windows.push((
+                                *support_count,
+                                local_start,
+                                local_end,
+                                local_start,
+                                local_end,
+                                None,
+                            ));
+                        }
+                    }
+                    windows
+                }
+                QpcrTranscriptTargetingMode::DistinguishTranscript => {
+                    design_template
+                        .exon_chain
+                        .windows(2)
+                        .filter_map(|pair| {
+                            let supporters = junction_support.get(&(pair[0], pair[1]))?;
+                            if supporters.len() != 1
+                                || supporters[0] != design_template.transcript_id
+                            {
+                                return None;
+                            }
+                            Self::map_exon_chain_to_local_window(
+                                &design_template.local_exon_segments,
+                                pair,
+                            )
+                            .map(|(chain_start, chain_end)| {
+                                let junction_local_0based = design_template
+                                    .local_exon_segments
+                                    .iter()
+                                    .find(|segment| {
+                                        segment.source_start_0based == pair[0].0
+                                            && segment.source_end_0based_exclusive == pair[0].1
+                                    })
+                                    .map(|segment| segment.local_end_0based_exclusive)
+                                    .unwrap_or(0);
+                                let roi_start = junction_local_0based.saturating_sub(1);
+                                let roi_end = junction_local_0based.saturating_add(1);
+                                (
+                                    1usize,
+                                    roi_start,
+                                    roi_end,
+                                    chain_start,
+                                    chain_end,
+                                    Some(junction_local_0based),
+                                )
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                }
+            };
+            if local_roi_windows.is_empty() {
+                warnings.push(format!(
+                    "Transcript '{}' produced no transcript-aware exon/junction ROI windows for mode '{}'.",
+                    design_template.transcript_id,
+                    transcript_targeting.mode.as_str()
+                ));
+                continue;
+            }
+            let progress_seq_id =
+                format!("{}::{}", template, design_template.transcript_id);
+            for (
+                _,
+                local_roi_start_0based,
+                local_roi_end_0based,
+                chain_window_start_0based,
+                chain_window_end_0based,
+                junction_local_0based,
+            ) in local_roi_windows
+            {
+                if local_roi_end_0based <= local_roi_start_0based {
+                    continue;
+                }
+                let template_len = design_template.sequence.len();
+                let max_forward_len = forward.max_length.max(forward.min_length);
+                let max_reverse_len = reverse.max_length.max(reverse.min_length);
+                let max_probe_len = probe.max_length.max(probe.min_length);
+
+                let search_configs = if let Some(junction_local_0based) = junction_local_0based {
+                    vec![
+                        (
+                            junction_local_0based.saturating_sub(max_forward_len),
+                            (junction_local_0based + max_forward_len).min(template_len),
+                            chain_window_end_0based.saturating_sub(max_reverse_len),
+                            (chain_window_end_0based + max_reverse_len).min(template_len),
+                        ),
+                        (
+                            chain_window_start_0based.saturating_sub(max_forward_len),
+                            (chain_window_start_0based + max_forward_len).min(template_len),
+                            junction_local_0based.saturating_sub(max_reverse_len),
+                            (junction_local_0based + max_reverse_len).min(template_len),
+                        ),
+                    ]
+                } else {
+                    vec![(
+                        chain_window_start_0based,
+                        (chain_window_start_0based + max_forward_len)
+                            .min(chain_window_end_0based)
+                            .min(template_len),
+                        chain_window_end_0based
+                            .saturating_sub(max_reverse_len)
+                            .max(chain_window_start_0based),
+                        chain_window_end_0based.min(template_len),
+                    )]
+                };
+
+                for (forward_window_start, forward_window_end, reverse_window_start, reverse_window_end) in
+                    search_configs
+                {
+                    let mut local_forward = forward.clone();
+                    local_forward.start_0based = Some(forward_window_start);
+                    local_forward.end_0based = Some(forward_window_end);
+
+                    let mut local_reverse = reverse.clone();
+                    local_reverse.start_0based = Some(reverse_window_start);
+                    local_reverse.end_0based = Some(reverse_window_end);
+
+                    let mut local_probe = probe.clone();
+                    local_probe.start_0based =
+                        Some(local_roi_start_0based.saturating_sub(max_probe_len));
+                    local_probe.end_0based =
+                        Some((local_roi_end_0based + max_probe_len).min(template_len));
+
+                    let local_forward_sequence_constraints =
+                        Self::normalize_primer_side_sequence_constraints(&local_forward)?;
+                    let local_reverse_sequence_constraints =
+                        Self::normalize_primer_side_sequence_constraints(&local_reverse)?;
+                    let local_probe_sequence_constraints =
+                        Self::normalize_primer_side_sequence_constraints(&local_probe)?;
+
+                    let (assays, transcript_rejections, backend, transcript_warnings) =
+                        self.run_qpcr_generation_with_backend(
+                            &progress_seq_id,
+                            &design_template.sequence,
+                            local_roi_start_0based,
+                            local_roi_end_0based,
+                            &local_forward,
+                            &local_forward_sequence_constraints,
+                            &local_reverse,
+                            &local_reverse_sequence_constraints,
+                            &local_probe,
+                            &local_probe_sequence_constraints,
+                            pair_constraints_normalized,
+                            min_amplicon_bp,
+                            max_amplicon_bp,
+                            max_tm_delta_c,
+                            max_probe_tm_delta_c,
+                            max_assays,
+                            on_progress,
+                        )?;
+                    Self::add_qpcr_design_rejection_summary(
+                        &mut rejection_summary,
+                        &transcript_rejections,
+                    );
+                    if report_backend.is_none() {
+                        report_backend = Some(backend.clone());
+                    }
+                    warnings.extend(transcript_warnings);
+                    for mut assay in assays {
+                        let local_probe_start = assay.probe.start_0based;
+                        let local_probe_end = assay.probe.end_0based_exclusive;
+                        let forward_mapping = Self::map_transcript_local_interval(
+                            &design_template.local_exon_segments,
+                            is_reverse,
+                            assay.forward.start_0based,
+                            assay.forward.end_0based_exclusive,
+                        );
+                        let reverse_mapping = Self::map_transcript_local_interval(
+                            &design_template.local_exon_segments,
+                            is_reverse,
+                            assay.reverse.start_0based,
+                            assay.reverse.end_0based_exclusive,
+                        );
+                        let probe_mapping = Self::map_transcript_local_interval(
+                            &design_template.local_exon_segments,
+                            is_reverse,
+                            assay.probe.start_0based,
+                            assay.probe.end_0based_exclusive,
+                        );
+                        let amplicon_mapping = Self::map_transcript_local_interval(
+                            &design_template.local_exon_segments,
+                            is_reverse,
+                            assay.amplicon_start_0based,
+                            assay.amplicon_end_0based_exclusive,
+                        );
+                        let probe_placement = Self::qpcr_probe_placement_label(
+                            local_roi_start_0based,
+                            local_roi_end_0based,
+                            local_probe_start,
+                            local_probe_end,
+                        );
+                        let context = Self::build_qpcr_transcript_assay_context(
+                            design_template,
+                            &all_templates,
+                            &splicing.group_label,
+                            all_templates.len(),
+                            transcript_targeting,
+                            &junction_support,
+                            &forward_mapping,
+                            &reverse_mapping,
+                            &probe_mapping,
+                            &amplicon_mapping,
+                            probe_placement,
+                        );
+                        if transcript_targeting.mode
+                            == QpcrTranscriptTargetingMode::DistinguishTranscript
+                            && context.transcript_distinguishing_primer.is_none()
+                        {
+                            distinguish_nonqualifying_assay_count =
+                                distinguish_nonqualifying_assay_count.saturating_add(1);
+                            if context.forward_spans_junction || context.reverse_spans_junction {
+                                distinguish_junction_spanning_assay_count =
+                                    distinguish_junction_spanning_assay_count.saturating_add(1);
+                            }
+                            continue;
+                        }
+                        if let Some(first) = forward_mapping.source_ranges_0based.first() {
+                            assay.forward.start_0based = first.start_0based;
+                        }
+                        if let Some(last) = forward_mapping.source_ranges_0based.last() {
+                            assay.forward.end_0based_exclusive = last.end_0based_exclusive;
+                        }
+                        if let Some(first) = reverse_mapping.source_ranges_0based.first() {
+                            assay.reverse.start_0based = first.start_0based;
+                        }
+                        if let Some(last) = reverse_mapping.source_ranges_0based.last() {
+                            assay.reverse.end_0based_exclusive = last.end_0based_exclusive;
+                        }
+                        if let Some(first) = probe_mapping.source_ranges_0based.first() {
+                            assay.probe.start_0based = first.start_0based;
+                        }
+                        if let Some(last) = probe_mapping.source_ranges_0based.last() {
+                            assay.probe.end_0based_exclusive = last.end_0based_exclusive;
+                        }
+                        if let Some(first) = amplicon_mapping.source_ranges_0based.first() {
+                            assay.amplicon_start_0based = first.start_0based;
+                        }
+                        if let Some(last) = amplicon_mapping.source_ranges_0based.last() {
+                            assay.amplicon_end_0based_exclusive = last.end_0based_exclusive;
+                        }
+                        assay.transcript_context = Some(context);
+                        collected_assays.push(assay);
+                    }
+                }
+            }
+        }
+
+        let mut deduped = BTreeMap::<String, QpcrAssayRecord>::new();
+        for assay in collected_assays {
+            let context = assay
+                .transcript_context
+                .as_ref()
+                .expect("transcript-aware assays always carry transcript context");
+            let join_ranges = |ranges: &[SequenceRange0Based]| {
+                ranges
+                    .iter()
+                    .map(|range| format!("{}-{}", range.start_0based, range.end_0based_exclusive))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            };
+            let key = format!(
+                "{}|{}|{}|{}|{}|{}",
+                assay.forward.sequence,
+                assay.reverse.sequence,
+                assay.probe.sequence,
+                join_ranges(&context.forward_source_ranges_0based),
+                join_ranges(&context.reverse_source_ranges_0based),
+                join_ranges(&context.probe_source_ranges_0based)
+            );
+            let replace = deduped
+                .get(&key)
+                .map(|existing| {
+                    assay.score > existing.score
+                        || (assay.score == existing.score
+                            && context.design_transcript_id.as_str()
+                                < existing
+                                    .transcript_context
+                                    .as_ref()
+                                    .map(|ctx| ctx.design_transcript_id.as_str())
+                                    .unwrap_or("~"))
+                })
+                .unwrap_or(true);
+            if replace {
+                deduped.insert(key, assay);
+            }
+        }
+        let mut assays = deduped.into_values().collect::<Vec<_>>();
+        let mut selected_support_transcript_count = 0usize;
+        let mut used_shared_support_fallback = false;
+        if transcript_targeting.mode == QpcrTranscriptTargetingMode::SharedGene {
+            let max_support = assays
+                .iter()
+                .filter_map(|assay| {
+                    assay
+                        .transcript_context
+                        .as_ref()
+                        .map(|context| context.support_transcript_count)
+                })
+                .max()
+                .unwrap_or(0);
+            if max_support > 0 {
+                assays.retain(|assay| {
+                    assay
+                        .transcript_context
+                        .as_ref()
+                        .is_some_and(|context| context.support_transcript_count == max_support)
+                });
+                selected_support_transcript_count = max_support;
+                used_shared_support_fallback = max_support < all_templates.len();
+                if max_support < requested_shared_support_level.unwrap_or(max_support) {
+                    used_shared_support_fallback = true;
+                }
+                if used_shared_support_fallback {
+                    warnings.push(format!(
+                        "Transcript-aware shared_gene qPCR design found no assay spans shared across all {} transcript(s) in '{}'; falling back to the best-supported span shared by {} transcript(s).",
+                        all_templates.len(),
+                        splicing.group_label,
+                        max_support
+                    ));
+                }
+            }
+        }
+
+        Self::sort_and_rank_qpcr_assays(&mut assays, max_assays);
+        if transcript_targeting.mode == QpcrTranscriptTargetingMode::DistinguishTranscript
+            && assays.is_empty()
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Transcript-aware qPCR design could not find an assay for transcript '{}' with a primer spanning a junction absent from competing transcripts in '{}' (rejected {} non-qualifying assay candidate(s), {} of which spanned some junction).",
+                    transcript_targeting
+                        .transcript_id
+                        .as_deref()
+                        .unwrap_or_default(),
+                    splicing.group_label,
+                    distinguish_nonqualifying_assay_count,
+                    distinguish_junction_spanning_assay_count
+                ),
+            });
+        }
+        if transcript_targeting.mode == QpcrTranscriptTargetingMode::DistinguishTranscript {
+            selected_support_transcript_count = assays
+                .first()
+                .and_then(|assay| assay.transcript_context.as_ref())
+                .map(|context| context.support_transcript_count)
+                .unwrap_or(0);
+        }
+        let selected_support_transcript_fraction = if all_templates.is_empty() {
+            0.0
+        } else {
+            selected_support_transcript_count as f64 / all_templates.len() as f64
+        };
+        let report_backend = report_backend.unwrap_or_else(|| PrimerDesignBackendInfo {
+            requested: self.state.parameters.primer_design_backend.as_str().to_string(),
+            used: self.state.parameters.primer_design_backend.as_str().to_string(),
+            ..PrimerDesignBackendInfo::default()
+        });
+        let targeting_result = QpcrTranscriptTargetingResult {
+            source_feature_id: transcript_targeting.source_feature_id,
+            mode: transcript_targeting.mode.clone(),
+            group_label: splicing.group_label,
+            strand: splicing.strand,
+            transcript_count_considered: all_templates.len(),
+            transcript_id: transcript_targeting.transcript_id.clone(),
+            selected_support_transcript_count,
+            selected_support_transcript_fraction,
+            used_shared_support_fallback,
+            warnings: warnings.clone(),
+        };
+        Ok((
+            assays,
+            rejection_summary,
+            report_backend,
+            targeting_result,
+            warnings,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_design_qpcr_assays(
+        &mut self,
+        result: &mut OpResult,
+        run_id: &str,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+        template: SeqId,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: PrimerDesignSideConstraint,
+        reverse: PrimerDesignSideConstraint,
+        probe: PrimerDesignSideConstraint,
+        pair_constraints: PrimerDesignPairConstraint,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: Option<f64>,
+        max_probe_tm_delta_c: Option<f64>,
+        max_assays: Option<usize>,
+        transcript_targeting: Option<QpcrTranscriptTargeting>,
+        report_id: Option<String>,
+    ) -> Result<(), EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(&template)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{template}' not found"),
+            })?
+            .clone();
+        if dna.is_circular() {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: "DesignQpcrAssays currently supports linear templates only"
+                    .to_string(),
+            });
+        }
+
+        let template_seq = dna.get_forward_string().to_ascii_uppercase();
+        let template_bytes = template_seq.as_bytes();
+        if template_bytes.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "DesignQpcrAssays requires a non-empty template sequence".to_string(),
+            });
+        }
+        if roi_start_0based >= roi_end_0based || roi_end_0based > template_bytes.len() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "DesignQpcrAssays ROI {}..{} is invalid for template length {}",
+                    roi_start_0based,
+                    roi_end_0based,
+                    template_bytes.len()
+                ),
+            });
+        }
+        if min_amplicon_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "DesignQpcrAssays min_amplicon_bp must be >= 1".to_string(),
+            });
+        }
+        if min_amplicon_bp > max_amplicon_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "DesignQpcrAssays min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
+                ),
+            });
+        }
+        let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
+        if max_tm_delta_c < 0.0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "DesignQpcrAssays max_tm_delta_c ({max_tm_delta_c}) must be >= 0.0"
+                ),
+            });
+        }
+        let max_probe_tm_delta_c = max_probe_tm_delta_c.unwrap_or(10.0);
+        if max_probe_tm_delta_c < 0.0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "DesignQpcrAssays max_probe_tm_delta_c ({max_probe_tm_delta_c}) must be >= 0.0"
+                ),
+            });
+        }
+        let max_assays = max_assays.unwrap_or(200);
+        if max_assays == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "DesignQpcrAssays max_assays must be >= 1".to_string(),
+            });
+        }
+
+        Self::validate_primer_design_side_constraints("forward", &forward)?;
+        Self::validate_primer_design_side_constraints("reverse", &reverse)?;
+        Self::validate_primer_design_side_constraints("probe", &probe)?;
+        let forward_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&forward)?;
+        let reverse_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&reverse)?;
+        let probe_sequence_constraints =
+            Self::normalize_primer_side_sequence_constraints(&probe)?;
+        let pair_constraints_normalized =
+            Self::normalize_primer_pair_constraints(&pair_constraints)?;
+
+        for (label, side) in [
+            ("forward", &forward),
+            ("reverse", &reverse),
+            ("probe", &probe),
+        ] {
+            if let Some(location) = side.location_0based {
+                if location >= template_bytes.len() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "{label}.location_0based ({location}) is outside template length {}",
+                            template_bytes.len()
+                        ),
+                    });
+                }
+            }
+            if let Some(start) = side.start_0based {
+                if start >= template_bytes.len() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "{label}.start_0based ({start}) is outside template length {}",
+                            template_bytes.len()
+                        ),
+                    });
+                }
+            }
+            if let Some(end) = side.end_0based {
+                if end == 0 || end > template_bytes.len() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "{label}.end_0based ({end}) must be in 1..={} for this template",
+                            template_bytes.len()
+                        ),
+                    });
+                }
+            }
+        }
+        if let Some(start) = pair_constraints.fixed_amplicon_start_0based {
+            if start >= template_bytes.len() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
+                        template_bytes.len()
+                    ),
+                });
+            }
+        }
+        if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive {
+            if end == 0 || end > template_bytes.len() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
+                        template_bytes.len()
+                    ),
+                });
+            }
+        }
+        if transcript_targeting.is_some()
+            && (forward.location_0based.is_some()
+                || forward.start_0based.is_some()
+                || forward.end_0based.is_some()
+                || reverse.location_0based.is_some()
+                || reverse.start_0based.is_some()
+                || reverse.end_0based.is_some()
+                || probe.location_0based.is_some()
+                || probe.start_0based.is_some()
+                || probe.end_0based.is_some()
+                || pair_constraints.fixed_amplicon_start_0based.is_some()
+                || pair_constraints
+                    .fixed_amplicon_end_0based_exclusive
+                    .is_some())
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Transcript-aware qPCR design currently requires unconstrained primer/probe positions; use the splicing seed helpers and omit explicit location/start/end/fixed amplicon coordinates.".to_string(),
+            });
+        }
+
+        let (
+            assays,
+            rejection_summary,
+            backend,
+            transcript_targeting_result,
+            backend_warnings,
+        ) = if let Some(targeting) = transcript_targeting.clone() {
+            let (assays, rejection_summary, backend, targeting_result, warnings) =
+                self.design_transcript_aware_qpcr_assays(
+                    &dna,
+                    &template,
+                    &forward,
+                    &reverse,
+                    &probe,
+                    &pair_constraints_normalized,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    max_probe_tm_delta_c,
+                    max_assays,
+                    &targeting,
+                    on_progress,
+                )?;
+            (
+                assays,
+                rejection_summary,
+                backend,
+                Some(targeting_result),
+                warnings,
+            )
+        } else {
+            let (assays, rejection_summary, backend, warnings) =
+                self.run_qpcr_generation_with_backend(
+                    &template,
+                    &template_seq,
+                    roi_start_0based,
+                    roi_end_0based,
+                    &forward,
+                    &forward_sequence_constraints,
+                    &reverse,
+                    &reverse_sequence_constraints,
+                    &probe,
+                    &probe_sequence_constraints,
+                    &pair_constraints_normalized,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    max_probe_tm_delta_c,
+                    max_assays,
+                    on_progress,
+                )?;
+            (assays, rejection_summary, backend, None, warnings)
+        };
+        result.warnings.extend(backend_warnings);
+
+        let (best_assay_probe_placement, best_assay_summary) =
+            Self::best_qpcr_assay_probe_placement_and_summary(
+                &assays,
+                roi_start_0based,
+                roi_end_0based,
+                transcript_targeting_result.as_ref(),
+            );
+        let report_id = Self::render_primer_design_report_id(report_id, &template);
+        let report = QpcrDesignReport {
+            schema: QPCR_DESIGN_REPORT_SCHEMA.to_string(),
+            report_id: report_id.clone(),
+            template: template.clone(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: Some(result.op_id.clone()),
+            run_id: Some(run_id.to_string()),
+            roi_start_0based,
+            roi_end_0based,
+            forward,
+            reverse,
+            probe,
+            pair_constraints,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_tm_delta_c,
+            max_probe_tm_delta_c,
+            max_assays,
+            transcript_targeting,
+            transcript_targeting_result,
+            assay_count: assays.len(),
+            best_assay_probe_placement,
+            best_assay_summary,
+            assays,
+            rejection_summary,
+            backend,
+        };
+        if report.rejection_summary.primer_pair.pair_evaluation_limit_skipped > 0 {
+            result.warnings.push(format!(
+                "Internal primer-pair candidate generation for qPCR reached its evaluation limit and skipped {} candidate combinations; narrow ROI/constraints for a more exhaustive run",
+                report
+                    .rejection_summary
+                    .primer_pair
+                    .pair_evaluation_limit_skipped
+            ));
+        }
+        let mut store = self.read_primer_design_store();
+        let replaced = store
+            .qpcr_reports
+            .insert(report.report_id.clone(), report.clone())
+            .is_some();
+        self.write_primer_design_store(store)?;
+        result.messages.push(format!(
+            "{} qPCR-design report '{}' for template '{}' (assays={})",
+            if replaced { "Updated" } else { "Created" },
+            report.report_id,
+            report.template,
+            report.assay_count
+        ));
+        if let Some(top_assay) = report.assays.first() {
+            let dimer_metrics = Self::compute_primer_pair_dimer_metrics(
+                top_assay.forward.sequence.as_bytes(),
+                top_assay.reverse.sequence.as_bytes(),
+            );
+            let pair_like = PrimerDesignPairRecord {
+                rank: top_assay.rank,
+                score: top_assay.score,
+                forward: top_assay.forward.clone(),
+                reverse: top_assay.reverse.clone(),
+                amplicon_start_0based: top_assay.amplicon_start_0based,
+                amplicon_end_0based_exclusive: top_assay.amplicon_end_0based_exclusive,
+                amplicon_length_bp: top_assay.amplicon_length_bp,
+                tm_delta_c: top_assay.primer_tm_delta_c,
+                primer_pair_complementary_run_bp: dimer_metrics.max_complementary_run_bp,
+                primer_pair_3prime_complementary_run_bp: dimer_metrics
+                    .max_3prime_complementary_run_bp,
+                rule_flags: PrimerDesignPairRuleFlags {
+                    roi_covered: top_assay.rule_flags.roi_covered,
+                    amplicon_size_in_range: top_assay.rule_flags.amplicon_size_in_range,
+                    tm_delta_in_range: top_assay.rule_flags.primer_tm_delta_in_range,
+                    forward_secondary_structure_ok: top_assay
+                        .forward
+                        .longest_homopolymer_run_bp
+                        <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+                        && top_assay.forward.self_complementary_run_bp
+                            <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
+                    reverse_secondary_structure_ok: top_assay
+                        .reverse
+                        .longest_homopolymer_run_bp
+                        <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+                        && top_assay.reverse.self_complementary_run_bp
+                            <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
+                    primer_pair_dimer_risk_low: dimer_metrics.max_complementary_run_bp
+                        <= PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
+                        && dimer_metrics.max_3prime_complementary_run_bp
+                            <= PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP,
+                    forward_three_prime_gc_clamp: top_assay.forward.three_prime_gc_clamp,
+                    reverse_three_prime_gc_clamp: top_assay.reverse.three_prime_gc_clamp,
+                },
+            };
+            let advisories = Self::primer_pair_heuristic_advisories(&pair_like);
+            if !advisories.is_empty() {
+                result.warnings.push(format!(
+                    "Top qPCR primer pair in report '{}' has heuristic advisories: {}",
+                    report.report_id,
+                    advisories.join("; ")
+                ));
+            }
+        }
+        if report.assay_count == 0 {
+            result.warnings.push(format!(
+                "No qPCR assays satisfied constraints for report '{}'",
+                report.report_id
+            ));
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -11588,467 +13235,14 @@ impl GentleEngine {
                     max_tm_delta_c,
                     max_probe_tm_delta_c,
                     max_assays,
+                    transcript_targeting,
                     report_id,
                 } => {
-                    let dna = self
-                        .state
-                        .sequences
-                        .get(&template)
-                        .ok_or_else(|| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!("Sequence '{template}' not found"),
-                        })?
-                        .clone();
-                    if dna.is_circular() {
-                        return Err(EngineError {
-                            code: ErrorCode::Unsupported,
-                            message: "DesignQpcrAssays currently supports linear templates only"
-                                .to_string(),
-                        });
-                    }
-
-                    let template_seq = dna.get_forward_string().to_ascii_uppercase();
-                    let template_bytes = template_seq.as_bytes();
-                    if template_bytes.is_empty() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "DesignQpcrAssays requires a non-empty template sequence"
-                                .to_string(),
-                        });
-                    }
-                    if roi_start_0based >= roi_end_0based || roi_end_0based > template_bytes.len() {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "DesignQpcrAssays ROI {}..{} is invalid for template length {}",
-                                roi_start_0based,
-                                roi_end_0based,
-                                template_bytes.len()
-                            ),
-                        });
-                    }
-                    if min_amplicon_bp == 0 {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "DesignQpcrAssays min_amplicon_bp must be >= 1".to_string(),
-                        });
-                    }
-                    if min_amplicon_bp > max_amplicon_bp {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "DesignQpcrAssays min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
-                            ),
-                        });
-                    }
-                    let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
-                    if max_tm_delta_c < 0.0 {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "DesignQpcrAssays max_tm_delta_c ({max_tm_delta_c}) must be >= 0.0"
-                            ),
-                        });
-                    }
-                    let max_probe_tm_delta_c = max_probe_tm_delta_c.unwrap_or(10.0);
-                    if max_probe_tm_delta_c < 0.0 {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "DesignQpcrAssays max_probe_tm_delta_c ({max_probe_tm_delta_c}) must be >= 0.0"
-                            ),
-                        });
-                    }
-                    let max_assays = max_assays.unwrap_or(200);
-                    if max_assays == 0 {
-                        return Err(EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "DesignQpcrAssays max_assays must be >= 1".to_string(),
-                        });
-                    }
-
-                    Self::validate_primer_design_side_constraints("forward", &forward)?;
-                    Self::validate_primer_design_side_constraints("reverse", &reverse)?;
-                    Self::validate_primer_design_side_constraints("probe", &probe)?;
-                    let forward_sequence_constraints =
-                        Self::normalize_primer_side_sequence_constraints(&forward)?;
-                    let reverse_sequence_constraints =
-                        Self::normalize_primer_side_sequence_constraints(&reverse)?;
-                    let probe_sequence_constraints =
-                        Self::normalize_primer_side_sequence_constraints(&probe)?;
-                    let pair_constraints_normalized =
-                        Self::normalize_primer_pair_constraints(&pair_constraints)?;
-                    for (label, side) in [
-                        ("forward", &forward),
-                        ("reverse", &reverse),
-                        ("probe", &probe),
-                    ] {
-                        if let Some(location) = side.location_0based {
-                            if location >= template_bytes.len() {
-                                return Err(EngineError {
-                                    code: ErrorCode::InvalidInput,
-                                    message: format!(
-                                        "{label}.location_0based ({location}) is outside template length {}",
-                                        template_bytes.len()
-                                    ),
-                                });
-                            }
-                        }
-                        if let Some(start) = side.start_0based {
-                            if start >= template_bytes.len() {
-                                return Err(EngineError {
-                                    code: ErrorCode::InvalidInput,
-                                    message: format!(
-                                        "{label}.start_0based ({start}) is outside template length {}",
-                                        template_bytes.len()
-                                    ),
-                                });
-                            }
-                        }
-                        if let Some(end) = side.end_0based {
-                            if end == 0 || end > template_bytes.len() {
-                                return Err(EngineError {
-                                    code: ErrorCode::InvalidInput,
-                                    message: format!(
-                                        "{label}.end_0based ({end}) must be in 1..={} for this template",
-                                        template_bytes.len()
-                                    ),
-                                });
-                            }
-                        }
-                    }
-                    if let Some(start) = pair_constraints.fixed_amplicon_start_0based {
-                        if start >= template_bytes.len() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
-                                    template_bytes.len()
-                                ),
-                            });
-                        }
-                    }
-                    if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive {
-                        if end == 0 || end > template_bytes.len() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!(
-                                    "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
-                                    template_bytes.len()
-                                ),
-                            });
-                        }
-                    }
-
-                    let pair_generation_limit =
-                        max_assays.saturating_mul(25).clamp(max_assays, 5000);
-                    let requested_backend = self.state.parameters.primer_design_backend;
-                    let primer3_executable = {
-                        let raw = self.state.parameters.primer3_executable.trim();
-                        if raw.is_empty() { "primer3_core" } else { raw }
-                    };
-                    let mut backend = PrimerDesignBackendInfo {
-                        requested: requested_backend.as_str().to_string(),
-                        ..PrimerDesignBackendInfo::default()
-                    };
-                    let (pair_candidates, pair_rejections) = match requested_backend {
-                        PrimerDesignBackend::Internal => {
-                            backend.used = PrimerDesignBackend::Internal.as_str().to_string();
-                            let progress_context = PrimerDesignProgressContext {
-                                seq_id: &template,
-                                design_kind: "qpcr_assays",
-                                backend_requested: requested_backend.as_str(),
-                                backend_used: PrimerDesignBackend::Internal.as_str(),
-                                roi_start_0based,
-                                roi_end_0based_exclusive: roi_end_0based,
-                                max_output: max_assays,
-                            };
-                            let mut emit_internal = |progress: PrimerDesignProgress| {
-                                on_progress(OperationProgress::PrimerDesign(progress))
-                            };
-                            Self::design_primer_pairs_internal_core(
-                                template_bytes,
-                                roi_start_0based,
-                                roi_end_0based,
-                                &forward,
-                                &forward_sequence_constraints,
-                                &reverse,
-                                &reverse_sequence_constraints,
-                                &pair_constraints_normalized,
-                                min_amplicon_bp,
-                                max_amplicon_bp,
-                                max_tm_delta_c,
-                                pair_generation_limit,
-                                Some(&progress_context),
-                                &mut emit_internal,
-                            )?
-                        }
-                        PrimerDesignBackend::Primer3 => {
-                            Self::emit_operation_primer_design_progress(
-                                on_progress,
-                                PrimerDesignProgress {
-                                    seq_id: template.clone(),
-                                    design_kind: "qpcr_assays".to_string(),
-                                    backend_requested: requested_backend.as_str().to_string(),
-                                    backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
-                                    stage: "primer3_run".to_string(),
-                                    detail: format!(
-                                        "Running Primer3 backend with executable '{}'",
-                                        primer3_executable
-                                    ),
-                                    roi_start_0based,
-                                    roi_end_0based_exclusive: roi_end_0based,
-                                    forward_candidate_count: None,
-                                    reverse_candidate_count: None,
-                                    probe_candidate_count: None,
-                                    pair_candidate_combinations: None,
-                                    pair_evaluated: None,
-                                    pair_evaluation_limit: None,
-                                    pair_evaluation_limited: None,
-                                    accepted_pair_count: None,
-                                    assay_candidate_combinations: None,
-                                    assays_evaluated: None,
-                                    accepted_assay_count: None,
-                                    max_output: max_assays,
-                                    done: false,
-                                },
-                            )?;
-                            let (pairs, rejection_summary, version, explain, request_boulder_io) =
-                                Self::design_primer_pairs_primer3(
-                                    &template_seq,
-                                    roi_start_0based,
-                                    roi_end_0based,
-                                    &forward,
-                                    &forward_sequence_constraints,
-                                    &reverse,
-                                    &reverse_sequence_constraints,
-                                    &pair_constraints_normalized,
-                                    min_amplicon_bp,
-                                    max_amplicon_bp,
-                                    max_tm_delta_c,
-                                    pair_generation_limit,
-                                    primer3_executable,
-                                )?;
-                            backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
-                            backend.primer3_executable = Some(primer3_executable.to_string());
-                            backend.primer3_version = version;
-                            backend.primer3_explain = explain;
-                            backend.primer3_request_boulder_io = Some(request_boulder_io);
-                            (pairs, rejection_summary)
-                        }
-                        PrimerDesignBackend::Auto => {
-                            Self::emit_operation_primer_design_progress(
-                                on_progress,
-                                PrimerDesignProgress {
-                                    seq_id: template.clone(),
-                                    design_kind: "qpcr_assays".to_string(),
-                                    backend_requested: requested_backend.as_str().to_string(),
-                                    backend_used: PrimerDesignBackend::Primer3.as_str().to_string(),
-                                    stage: "primer3_run".to_string(),
-                                    detail: format!(
-                                        "Auto mode trying Primer3 backend with executable '{}'",
-                                        primer3_executable
-                                    ),
-                                    roi_start_0based,
-                                    roi_end_0based_exclusive: roi_end_0based,
-                                    forward_candidate_count: None,
-                                    reverse_candidate_count: None,
-                                    probe_candidate_count: None,
-                                    pair_candidate_combinations: None,
-                                    pair_evaluated: None,
-                                    pair_evaluation_limit: None,
-                                    pair_evaluation_limited: None,
-                                    accepted_pair_count: None,
-                                    assay_candidate_combinations: None,
-                                    assays_evaluated: None,
-                                    accepted_assay_count: None,
-                                    max_output: max_assays,
-                                    done: false,
-                                },
-                            )?;
-                            match Self::design_primer_pairs_primer3(
-                                &template_seq,
-                                roi_start_0based,
-                                roi_end_0based,
-                                &forward,
-                                &forward_sequence_constraints,
-                                &reverse,
-                                &reverse_sequence_constraints,
-                                &pair_constraints_normalized,
-                                min_amplicon_bp,
-                                max_amplicon_bp,
-                                max_tm_delta_c,
-                                pair_generation_limit,
-                                primer3_executable,
-                            ) {
-                                Ok((
-                                    pairs,
-                                    rejection_summary,
-                                    version,
-                                    explain,
-                                    request_boulder_io,
-                                )) => {
-                                    backend.used =
-                                        PrimerDesignBackend::Primer3.as_str().to_string();
-                                    backend.primer3_executable =
-                                        Some(primer3_executable.to_string());
-                                    backend.primer3_version = version;
-                                    backend.primer3_explain = explain;
-                                    backend.primer3_request_boulder_io = Some(request_boulder_io);
-                                    (pairs, rejection_summary)
-                                }
-                                Err(err) => {
-                                    backend.used =
-                                        PrimerDesignBackend::Internal.as_str().to_string();
-                                    backend.primer3_executable =
-                                        Some(primer3_executable.to_string());
-                                    backend.fallback_reason = Some(err.message.clone());
-                                    result.warnings.push(format!(
-                                    "Primer3 backend unavailable in auto mode: {}. Falling back to internal qPCR design backend.",
-                                    err.message
-                                ));
-                                    Self::emit_operation_primer_design_progress(
-                                        on_progress,
-                                        PrimerDesignProgress {
-                                            seq_id: template.clone(),
-                                            design_kind: "qpcr_assays".to_string(),
-                                            backend_requested: requested_backend
-                                                .as_str()
-                                                .to_string(),
-                                            backend_used: PrimerDesignBackend::Internal
-                                                .as_str()
-                                                .to_string(),
-                                            stage: "fallback_to_internal".to_string(),
-                                            detail: err.message.clone(),
-                                            roi_start_0based,
-                                            roi_end_0based_exclusive: roi_end_0based,
-                                            forward_candidate_count: None,
-                                            reverse_candidate_count: None,
-                                            probe_candidate_count: None,
-                                            pair_candidate_combinations: None,
-                                            pair_evaluated: None,
-                                            pair_evaluation_limit: None,
-                                            pair_evaluation_limited: None,
-                                            accepted_pair_count: None,
-                                            assay_candidate_combinations: None,
-                                            assays_evaluated: None,
-                                            accepted_assay_count: None,
-                                            max_output: max_assays,
-                                            done: false,
-                                        },
-                                    )?;
-                                    let progress_context = PrimerDesignProgressContext {
-                                        seq_id: &template,
-                                        design_kind: "qpcr_assays",
-                                        backend_requested: requested_backend.as_str(),
-                                        backend_used: PrimerDesignBackend::Internal.as_str(),
-                                        roi_start_0based,
-                                        roi_end_0based_exclusive: roi_end_0based,
-                                        max_output: max_assays,
-                                    };
-                                    let mut emit_internal = |progress: PrimerDesignProgress| {
-                                        on_progress(OperationProgress::PrimerDesign(progress))
-                                    };
-                                    Self::design_primer_pairs_internal_core(
-                                        template_bytes,
-                                        roi_start_0based,
-                                        roi_end_0based,
-                                        &forward,
-                                        &forward_sequence_constraints,
-                                        &reverse,
-                                        &reverse_sequence_constraints,
-                                        &pair_constraints_normalized,
-                                        min_amplicon_bp,
-                                        max_amplicon_bp,
-                                        max_tm_delta_c,
-                                        pair_generation_limit,
-                                        Some(&progress_context),
-                                        &mut emit_internal,
-                                    )?
-                                }
-                            }
-                        }
-                    };
-
-                    let qpcr_progress_context = PrimerDesignProgressContext {
-                        seq_id: &template,
-                        design_kind: "qpcr_assays",
-                        backend_requested: requested_backend.as_str(),
-                        backend_used: backend.used.as_str(),
-                        roi_start_0based,
-                        roi_end_0based_exclusive: roi_end_0based,
-                        max_output: max_assays,
-                    };
-                    let mut emit_qpcr_progress = |progress: PrimerDesignProgress| {
-                        on_progress(OperationProgress::PrimerDesign(progress))
-                    };
-                    let (assays, rejection_summary) = Self::design_qpcr_assays_from_pairs_core(
-                        template_bytes,
-                        roi_start_0based,
-                        roi_end_0based,
-                        &probe,
-                        &probe_sequence_constraints,
-                        max_probe_tm_delta_c,
-                        max_assays,
-                        pair_candidates,
-                        pair_rejections,
-                        Some(&qpcr_progress_context),
-                        &mut emit_qpcr_progress,
-                    )?;
-                    let (best_assay_probe_placement, best_assay_summary) = if let Some(best_assay) =
-                        assays.first()
-                    {
-                        let roi_len_bp = roi_end_0based.saturating_sub(roi_start_0based).max(1);
-                        let probe_center_0based = best_assay
-                            .probe
-                            .start_0based
-                            .saturating_add(best_assay.probe.length_bp.saturating_div(2));
-                        let probe_relative = probe_center_0based.saturating_sub(roi_start_0based)
-                            as f64
-                            / roi_len_bp as f64;
-                        let probe_placement = if probe_relative <= 0.33 {
-                            "left_biased"
-                        } else if probe_relative >= 0.67 {
-                            "right_biased"
-                        } else {
-                            "centered"
-                        };
-                        let placement_text = match probe_placement {
-                            "left_biased" => "left-biased inside the ROI",
-                            "right_biased" => "right-biased inside the ROI",
-                            _ => "centered inside the ROI",
-                        };
-                        (
-                            probe_placement.to_string(),
-                            format!(
-                                "assay #{} spans {}..{} ({} bp); probe is {} at {}..{}; ΔTm(primer)={:.1}°C, ΔTm(probe)={:.1}°C; score={:.1}",
-                                best_assay.rank,
-                                best_assay.amplicon_start_0based,
-                                best_assay.amplicon_end_0based_exclusive,
-                                best_assay.amplicon_length_bp,
-                                placement_text,
-                                best_assay.probe.start_0based,
-                                best_assay.probe.end_0based_exclusive,
-                                best_assay.primer_tm_delta_c,
-                                best_assay.probe_tm_delta_c,
-                                best_assay.score
-                            ),
-                        )
-                    } else {
-                        (
-                            "none".to_string(),
-                            "No accepted qPCR assays were retained in this report.".to_string(),
-                        )
-                    };
-
-                    let report_id = Self::render_primer_design_report_id(report_id, &template);
-                    let report = QpcrDesignReport {
-                        schema: QPCR_DESIGN_REPORT_SCHEMA.to_string(),
-                        report_id: report_id.clone(),
-                        template: template.clone(),
-                        generated_at_unix_ms: Self::now_unix_ms(),
-                        op_id: Some(result.op_id.clone()),
-                        run_id: Some(run_id.to_string()),
+                    self.execute_design_qpcr_assays(
+                        &mut result,
+                        run_id,
+                        on_progress,
+                        template,
                         roi_start_0based,
                         roi_end_0based,
                         forward,
@@ -12060,101 +13254,9 @@ impl GentleEngine {
                         max_tm_delta_c,
                         max_probe_tm_delta_c,
                         max_assays,
-                        assay_count: assays.len(),
-                        best_assay_probe_placement,
-                        best_assay_summary,
-                        assays,
-                        rejection_summary,
-                        backend,
-                    };
-                    if report
-                        .rejection_summary
-                        .primer_pair
-                        .pair_evaluation_limit_skipped
-                        > 0
-                    {
-                        result.warnings.push(format!(
-                        "Internal primer-pair candidate generation for qPCR reached its evaluation limit and skipped {} candidate combinations; narrow ROI/constraints for a more exhaustive run",
-                        report
-                            .rejection_summary
-                            .primer_pair
-                            .pair_evaluation_limit_skipped
-                    ));
-                    }
-                    let mut store = self.read_primer_design_store();
-                    let replaced = store
-                        .qpcr_reports
-                        .insert(report.report_id.clone(), report.clone())
-                        .is_some();
-                    self.write_primer_design_store(store)?;
-                    result.messages.push(format!(
-                        "{} qPCR-design report '{}' for template '{}' (assays={})",
-                        if replaced { "Updated" } else { "Created" },
-                        report.report_id,
-                        report.template,
-                        report.assay_count
-                    ));
-                    if let Some(top_assay) = report.assays.first() {
-                        let dimer_metrics = Self::compute_primer_pair_dimer_metrics(
-                            top_assay.forward.sequence.as_bytes(),
-                            top_assay.reverse.sequence.as_bytes(),
-                        );
-                        let pair_like = PrimerDesignPairRecord {
-                            rank: top_assay.rank,
-                            score: top_assay.score,
-                            forward: top_assay.forward.clone(),
-                            reverse: top_assay.reverse.clone(),
-                            amplicon_start_0based: top_assay.amplicon_start_0based,
-                            amplicon_end_0based_exclusive: top_assay.amplicon_end_0based_exclusive,
-                            amplicon_length_bp: top_assay.amplicon_length_bp,
-                            tm_delta_c: top_assay.primer_tm_delta_c,
-                            primer_pair_complementary_run_bp: dimer_metrics
-                                .max_complementary_run_bp,
-                            primer_pair_3prime_complementary_run_bp: dimer_metrics
-                                .max_3prime_complementary_run_bp,
-                            rule_flags: PrimerDesignPairRuleFlags {
-                                roi_covered: top_assay.rule_flags.roi_covered,
-                                amplicon_size_in_range: top_assay.rule_flags.amplicon_size_in_range,
-                                tm_delta_in_range: top_assay.rule_flags.primer_tm_delta_in_range,
-                                forward_secondary_structure_ok: top_assay
-                                    .forward
-                                    .longest_homopolymer_run_bp
-                                    <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
-                                    && top_assay.forward.self_complementary_run_bp
-                                        <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
-                                reverse_secondary_structure_ok: top_assay
-                                    .reverse
-                                    .longest_homopolymer_run_bp
-                                    <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
-                                    && top_assay.reverse.self_complementary_run_bp
-                                        <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
-                                primer_pair_dimer_risk_low: dimer_metrics.max_complementary_run_bp
-                                    <= PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
-                                    && dimer_metrics.max_3prime_complementary_run_bp
-                                        <= PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP,
-                                forward_three_prime_gc_clamp: top_assay
-                                    .forward
-                                    .three_prime_gc_clamp,
-                                reverse_three_prime_gc_clamp: top_assay
-                                    .reverse
-                                    .three_prime_gc_clamp,
-                            },
-                        };
-                        let advisories = Self::primer_pair_heuristic_advisories(&pair_like);
-                        if !advisories.is_empty() {
-                            result.warnings.push(format!(
-                                "Top qPCR primer pair in report '{}' has heuristic advisories: {}",
-                                report.report_id,
-                                advisories.join("; ")
-                            ));
-                        }
-                    }
-                    if report.assay_count == 0 {
-                        result.warnings.push(format!(
-                            "No qPCR assays satisfied constraints for report '{}'",
-                            report.report_id
-                        ));
-                    }
+                        transcript_targeting,
+                        report_id,
+                    )?;
                 }
                 Operation::DeriveTranscriptSequences {
                     seq_id,

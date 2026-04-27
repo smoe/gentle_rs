@@ -1868,7 +1868,7 @@ Shared shell command:
     - `primers seed-from-feature SEQ_ID FEATURE_ID`
     - `primers seed-from-splicing SEQ_ID FEATURE_ID`
     - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`
-    - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID`
+    - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID]`
     - `primers list-reports`
     - `primers show-report REPORT_ID`
       - includes `simple_pcr_pairs` with per-pair left/right distance from the
@@ -2177,9 +2177,20 @@ Shared shell command:
       - returns non-mutating schema `gentle.qpcr_seed_request.v1`
       - includes `template`, source metadata, `roi_start_0based`,
         `roi_end_0based_exclusive`
+      - `primers seed-qpcr-from-splicing` additionally accepts:
+        `--mode shared_gene|distinguish_transcript`
+      - `--transcript-id ID` is required when
+        `--mode distinguish_transcript`
+      - splicing-seeded qPCR requests now carry engine-owned
+        `transcript_targeting` metadata inside the emitted
+        `DesignQpcrAssays` operation, so the same transcript-aware intent is
+        preserved across shell, CLI, GUI, ClawBio, JS, and Lua
       - includes `rationale.summary`, `rationale.why_this_roi`, and
         `rationale.recommended_defaults`
       - includes one ready-to-run `operation` (`DesignQpcrAssays`)
+      - `primers design-qpcr` now accepts either that full
+        `gentle.qpcr_seed_request.v1` payload directly or the nested bare
+        `{"DesignQpcrAssays": ...}` operation
       - includes built-in protocol-cartoon metadata for `pcr.assay.qpcr`, so
         shell/CLI/ClawBio flows can promote the same qPCR strip without hard-
         coding that protocol id elsewhere

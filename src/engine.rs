@@ -3315,6 +3315,8 @@ pub enum Operation {
         max_tm_delta_c: Option<f64>,
         max_probe_tm_delta_c: Option<f64>,
         max_assays: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_targeting: Option<QpcrTranscriptTargeting>,
         report_id: Option<String>,
     },
     DeriveTranscriptSequences {

@@ -4170,6 +4170,99 @@ pub struct QpcrAssayRuleFlags {
     pub probe_tm_delta_in_range: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Transcript-aware qPCR design intent for splicing-driven assays.
+pub enum QpcrTranscriptTargetingMode {
+    SharedGene,
+    DistinguishTranscript,
+}
+
+impl Default for QpcrTranscriptTargetingMode {
+    fn default() -> Self {
+        Self::SharedGene
+    }
+}
+
+impl QpcrTranscriptTargetingMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::SharedGene => "shared_gene",
+            Self::DistinguishTranscript => "distinguish_transcript",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Exact source-template interval used by a transcript-aware primer or amplicon.
+pub struct SequenceRange0Based {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Optional transcript-aware targeting request for one qPCR design operation.
+pub struct QpcrTranscriptTargeting {
+    pub source_feature_id: usize,
+    #[serde(default)]
+    pub mode: QpcrTranscriptTargetingMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Persisted transcript-context summary for one accepted qPCR assay.
+pub struct QpcrTranscriptAssayContext {
+    pub assay_class_label: String,
+    pub explanation: String,
+    pub probe_placement: String,
+    pub design_transcript_feature_id: usize,
+    pub design_transcript_id: String,
+    pub design_transcript_label: String,
+    pub support_transcript_count: usize,
+    pub support_transcript_fraction: f64,
+    #[serde(default)]
+    pub supported_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub forward_source_ranges_0based: Vec<SequenceRange0Based>,
+    #[serde(default)]
+    pub reverse_source_ranges_0based: Vec<SequenceRange0Based>,
+    #[serde(default)]
+    pub probe_source_ranges_0based: Vec<SequenceRange0Based>,
+    #[serde(default)]
+    pub amplicon_source_ranges_0based: Vec<SequenceRange0Based>,
+    #[serde(default)]
+    pub covered_junction_labels: Vec<String>,
+    pub forward_spans_junction: bool,
+    pub reverse_spans_junction: bool,
+    pub probe_spans_junction: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_distinguishing_primer: Option<String>,
+    pub satisfies_requested_targeting: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Report-level transcript-aware outcome summary shared across adapters.
+pub struct QpcrTranscriptTargetingResult {
+    pub source_feature_id: usize,
+    #[serde(default)]
+    pub mode: QpcrTranscriptTargetingMode,
+    pub group_label: String,
+    pub strand: String,
+    pub transcript_count_considered: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    pub selected_support_transcript_count: usize,
+    pub selected_support_transcript_fraction: f64,
+    pub used_shared_support_fallback: bool,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct QpcrAssayRecord {
@@ -4184,6 +4277,8 @@ pub struct QpcrAssayRecord {
     pub primer_tm_delta_c: f64,
     pub probe_tm_delta_c: f64,
     pub rule_flags: QpcrAssayRuleFlags,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_context: Option<QpcrTranscriptAssayContext>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -4219,6 +4314,10 @@ pub struct QpcrDesignReport {
     pub max_tm_delta_c: f64,
     pub max_probe_tm_delta_c: f64,
     pub max_assays: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_targeting: Option<QpcrTranscriptTargeting>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_targeting_result: Option<QpcrTranscriptTargetingResult>,
     pub assay_count: usize,
     #[serde(default)]
     pub best_assay_probe_placement: String,

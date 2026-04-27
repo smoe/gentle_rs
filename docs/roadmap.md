@@ -1729,11 +1729,25 @@ order. Durable architecture constraints and decisions remain in
     - both return `gentle.qpcr_seed_request.v1` plus built-in
       `pcr.assay.qpcr` protocol-cartoon metadata for command-line and
       ClawBio/OpenClaw reuse
+    - `primers seed-qpcr-from-splicing` now also supports transcript-aware
+      targeting with `--mode shared_gene|distinguish_transcript` plus
+      `--transcript-id ID` for transcript-distinguishing assays
+    - `primers design-qpcr` now accepts the full
+      `gentle.qpcr_seed_request.v1` payload directly, not only the nested bare
+      `DesignQpcrAssays` operation
     - the qPCR seed payload now also carries deterministic ROI rationale plus
       recommended default assay limits so agent callers can explain and reuse
       GENtle's expected next-step settings instead of guessing them
     - ClawBio now also carries a TP53 splicing-group shell example that emits
       the qPCR seed payload directly from saved splicing context
+  - transcript-aware qPCR targeting is now engine-owned rather than adapter
+    specific:
+    - `DesignQpcrAssays.transcript_targeting` can target a shared exon/exon-chain
+      context across one gene/group or require a junction-spanning primer that
+      distinguishes one transcript from competing isoforms
+    - persisted qPCR reports now carry report-level targeting outcome summaries
+      plus per-assay transcript context so GUI/CLI/ClawBio/JS/Lua all reopen
+      the same explanation
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
     including explicit side-sequence constraints and pair constraints (no raw
     JSON required for common interactive use)

@@ -65,7 +65,8 @@ use crate::{
         RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
-        RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
+        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RoutinePreferenceContext,
+        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
         SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
@@ -1895,6 +1896,8 @@ pub enum ShellCommand {
     PrimersSeedQpcrFromSplicing {
         seq_id: String,
         feature_id: usize,
+        mode: QpcrTranscriptTargetingMode,
+        transcript_id: Option<String>,
     },
     TranscriptsDerive {
         seq_id: String,
@@ -8261,9 +8264,21 @@ impl ShellCommand {
                 "seed qPCR design ROI payload from feature n-{} on '{}'",
                 feature_id, seq_id
             ),
-            Self::PrimersSeedQpcrFromSplicing { seq_id, feature_id } => format!(
-                "seed qPCR design ROI payload from splicing group for feature n-{} on '{}'",
-                feature_id, seq_id
+            Self::PrimersSeedQpcrFromSplicing {
+                seq_id,
+                feature_id,
+                mode,
+                transcript_id,
+            } => format!(
+                "seed qPCR design ROI payload from splicing group for feature n-{} on '{}' (mode={}, transcript_id='{}')",
+                feature_id,
+                seq_id,
+                mode.as_str(),
+                transcript_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-"),
             ),
             Self::TranscriptsDerive {
                 seq_id,
@@ -23098,15 +23113,53 @@ fn execute_primers_command(
     command: &ShellCommand,
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
+    fn parse_design_qpcr_operation_request(json_text: &str) -> Result<Operation, String> {
+        let value: serde_json::Value = serde_json::from_str(json_text).map_err(|e| {
+            format!(
+                "Invalid primers design-qpcr request JSON: {} (expected Operation payload with DesignQpcrAssays or gentle.qpcr_seed_request.v1)",
+                e
+            )
+        })?;
+        let operation_value = if value
+            .get("schema")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|schema| schema == "gentle.qpcr_seed_request.v1")
+        {
+            value.get("operation").cloned().ok_or_else(|| {
+                "primers design-qpcr seed payload is missing top-level 'operation'".to_string()
+            })?
+        } else {
+            value
+        };
+        let op: Operation = serde_json::from_value(operation_value).map_err(|e| {
+            format!(
+                "Invalid primers design-qpcr request JSON: {} (expected Operation payload with DesignQpcrAssays or gentle.qpcr_seed_request.v1)",
+                e
+            )
+        })?;
+        match op {
+            Operation::DesignQpcrAssays { .. } => Ok(op),
+            _ => Err(
+                "primers design-qpcr expects an Operation payload with DesignQpcrAssays or a gentle.qpcr_seed_request.v1 payload carrying one under 'operation'"
+                    .to_string(),
+            ),
+        }
+    }
+
     fn qpcr_seed_output(
         template: &str,
         source: serde_json::Value,
         roi_start_0based: usize,
         roi_end_0based_exclusive: usize,
         rationale: serde_json::Value,
+        transcript_targeting: Option<QpcrTranscriptTargeting>,
     ) -> ShellRunResult {
-        let operation =
-            build_seeded_qpcr_operation(template, roi_start_0based, roi_end_0based_exclusive);
+        let operation = build_seeded_qpcr_operation(
+            template,
+            roi_start_0based,
+            roi_end_0based_exclusive,
+            transcript_targeting,
+        );
         ShellRunResult {
             state_changed: false,
             output: json!({
@@ -23140,8 +23193,12 @@ fn execute_primers_command(
                 roi_start_0based,
                 roi_end_0based_exclusive,
             );
-            let qpcr =
-                build_seeded_qpcr_operation(seq_id, roi_start_0based, roi_end_0based_exclusive);
+            let qpcr = build_seeded_qpcr_operation(
+                seq_id,
+                roi_start_0based,
+                roi_end_0based_exclusive,
+                None,
+            );
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -23194,8 +23251,12 @@ fn execute_primers_command(
                 roi_start_0based,
                 roi_end_0based_exclusive,
             );
-            let qpcr =
-                build_seeded_qpcr_operation(seq_id, roi_start_0based, roi_end_0based_exclusive);
+            let qpcr = build_seeded_qpcr_operation(
+                seq_id,
+                roi_start_0based,
+                roi_end_0based_exclusive,
+                None,
+            );
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -23247,15 +23308,21 @@ fn execute_primers_command(
                         "max_assays": 200
                     }
                 }),
+                None,
             ))
         }
-        ShellCommand::PrimersSeedQpcrFromSplicing { seq_id, feature_id } => {
+        ShellCommand::PrimersSeedQpcrFromSplicing {
+            seq_id,
+            feature_id,
+            mode,
+            transcript_id,
+        } => {
             let expert = engine
                 .inspect_feature_expert(
                     seq_id,
                     &FeatureExpertTarget::SplicingFeature {
                         feature_id: *feature_id,
-                        scope: SplicingScopePreset::AllOverlappingAnyStrand,
+                        scope: SplicingScopePreset::TargetGroupTargetStrand,
                     },
                 )
                 .map_err(|e| e.to_string())?;
@@ -23278,6 +23345,43 @@ fn execute_primers_command(
             }
             let roi_start_0based = splicing.region_start_1based.saturating_sub(1);
             let roi_end_0based_exclusive = splicing.region_end_1based;
+            let normalized_transcript_id = transcript_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string());
+            if *mode == QpcrTranscriptTargetingMode::DistinguishTranscript
+                && !splicing.transcripts.iter().any(|transcript| {
+                    normalized_transcript_id
+                        .as_deref()
+                        .is_some_and(|requested| transcript.transcript_id == requested)
+                })
+            {
+                return Err(format!(
+                    "Transcript '{}' was not found in splicing group '{}' for feature n-{} on '{}'",
+                    normalized_transcript_id.as_deref().unwrap_or_default(),
+                    splicing.group_label,
+                    feature_id,
+                    seq_id
+                ));
+            }
+            let transcript_targeting = Some(QpcrTranscriptTargeting {
+                source_feature_id: *feature_id,
+                mode: mode.clone(),
+                transcript_id: normalized_transcript_id.clone(),
+            });
+            let targeting_summary = match mode {
+                QpcrTranscriptTargetingMode::SharedGene => {
+                    format!(
+                        "shared_gene mode will prefer exon/exon-chain spans supported across the '{}' transcript group on the annotated strand.",
+                        splicing.group_label
+                    )
+                }
+                QpcrTranscriptTargetingMode::DistinguishTranscript => format!(
+                    "distinguish_transcript mode will require a primer that spans a junction unique to transcript '{}'.",
+                    normalized_transcript_id.as_deref().unwrap_or_default()
+                ),
+            };
             Ok(qpcr_seed_output(
                 seq_id,
                 json!({
@@ -23286,11 +23390,13 @@ fn execute_primers_command(
                     "group_label": splicing.group_label,
                     "transcript_count": splicing.transcript_count,
                     "unique_exon_count": splicing.unique_exon_count,
+                    "targeting_mode": mode.as_str(),
+                    "transcript_id": normalized_transcript_id,
                 }),
                 roi_start_0based,
                 roi_end_0based_exclusive,
                 json!({
-                    "summary": "Splicing-group region reused as qPCR ROI seed so assay design stays anchored to the saved transcript-evidence window.",
+                    "summary": "Splicing-group region reused as a transcript-aware qPCR seed so assay design stays anchored to the saved transcript-evidence window.",
                     "why_this_roi": format!(
                         "Splicing group '{}' for feature n-{} on '{}' contributed ROI {}..{} with transcript_count={} and unique_exon_count={}.",
                         splicing.group_label,
@@ -23301,6 +23407,7 @@ fn execute_primers_command(
                         splicing.transcript_count,
                         splicing.unique_exon_count
                     ),
+                    "targeting_summary": targeting_summary,
                     "recommended_defaults": {
                         "min_amplicon_bp": 120,
                         "max_amplicon_bp": 1200,
@@ -23309,6 +23416,7 @@ fn execute_primers_command(
                         "max_assays": 200
                     }
                 }),
+                transcript_targeting,
             ))
         }
         ShellCommand::PrimersDesign {
@@ -23403,24 +23511,14 @@ fn execute_primers_command(
             primer3_executable,
         } => {
             let json_text = parse_json_payload(request_json)?;
-            let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
-                format!(
-                    "Invalid primers design-qpcr request JSON: {} (expected Operation payload with DesignQpcrAssays)",
-                    e
-                )
-            })?;
+            let op = parse_design_qpcr_operation_request(&json_text)?;
             let (template_id, requested_report_id) = match &op {
                 Operation::DesignQpcrAssays {
                     template,
                     report_id,
                     ..
                 } => (template.clone(), report_id.clone()),
-                _ => {
-                    return Err(
-                        "primers design-qpcr expects an Operation payload with DesignQpcrAssays"
-                            .to_string(),
-                    );
-                }
+                _ => unreachable!("parse_design_qpcr_operation_request enforces op shape"),
             };
             let before = engine
                 .state()

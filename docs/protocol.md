@@ -4916,6 +4916,10 @@ Simple PCR constraint handoff:
     - `probe` (`PrimerDesignSideConstraint`)
     - `max_probe_tm_delta_c` (probe Tm distance to mean primer Tm)
     - `max_assays` (result cap)
+    - optional `transcript_targeting`
+      - `source_feature_id`
+      - `mode = shared_gene | distinguish_transcript`
+      - `transcript_id` required for `distinguish_transcript`
   - `pair_constraints` is supported identically to `DesignPrimerPairs` and
     applies to forward/reverse pair proposal before probe selection.
 - Current baseline behavior:
@@ -4925,10 +4929,35 @@ Simple PCR constraint handoff:
     reuses the same side sequence-constraint fields (`fixed_5prime`,
     `fixed_3prime`, motifs, locked positions).
   - probe Tm gating is enforced via `max_probe_tm_delta_c`.
+  - when `transcript_targeting` is present, qPCR design first derives
+    transcript-local exon/junction ROIs from the selected splicing group on
+    `TargetGroupTargetStrand` and only then reuses the normal qPCR backend
+    logic on those transcript templates.
+  - `shared_gene` mode prefers assays whose amplicon context is shared across
+    all transcripts in the selected gene/group and records an explicit fallback
+    summary if only a largest supported subset is assayable.
+  - `distinguish_transcript` mode requires a primer spanning an exon-exon
+    junction unique to the requested transcript and fails explicitly when no
+    such assay can be found.
 - Report schema:
   - `gentle.qpcr_design_report.v1`
   - includes ranked `assays[]` with forward/reverse/probe oligos, amplicon
     window, and rule flags.
+  - when transcript-aware targeting is active, persisted reports also include:
+    - report-level `transcript_targeting`
+    - report-level `transcript_targeting_result`
+      - chosen mode/transcript
+      - transcript count considered
+      - selected support count/fraction
+      - whether shared-mode fallback was used
+      - deterministic warnings
+    - per-assay `transcript_context`
+      - design transcript id/label
+      - support count/fraction and supported transcript ids
+      - mapped source exon ranges for forward/reverse/probe/amplicon
+      - covered junction labels
+      - whether each oligo spans a junction
+      - whether the assay satisfies the requested targeting intent
   - includes `best_assay_probe_placement` and `best_assay_summary` so
     shell/CLI/GUI reopen flows can inspect one compact persisted explanation of
     the current top retained assay without re-deriving it locally.
@@ -4949,7 +4978,7 @@ Primer-design shell command family (implemented):
   - `primers seed-from-feature SEQ_ID FEATURE_ID`
   - `primers seed-from-splicing SEQ_ID FEATURE_ID`
   - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`
-  - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID`
+  - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID]`
   - `primers list-reports`
   - `primers show-report REPORT_ID`
   - `primers export-report REPORT_ID OUTPUT.json`
@@ -4958,8 +4987,10 @@ Primer-design shell command family (implemented):
   - `primers export-qpcr-report REPORT_ID OUTPUT.json`
 - `primers design` expects an operation payload whose root variant is
   `{"DesignPrimerPairs": {...}}`.
-- `primers design-qpcr` expects an operation payload whose root variant is
-  `{"DesignQpcrAssays": {...}}`.
+- `primers design-qpcr` accepts either:
+  - an operation payload whose root variant is `{"DesignQpcrAssays": {...}}`
+  - a full `gentle.qpcr_seed_request.v1` payload carrying one runnable
+    `operation.DesignQpcrAssays`
 - `primers preflight` returns `gentle.primer3_preflight.v1` with the requested
   backend plus configured-executable token, default-fallback marker, effective
   executable, resolved path, working directory, and reachability/version/error
@@ -4984,6 +5015,11 @@ Primer-design shell command family (implemented):
   qPCR-only non-mutating helper commands that resolve an ROI and emit one
   seeded `DesignQpcrAssays` payload plus the built-in qPCR protocol-cartoon id
   (`pcr.assay.qpcr`) for shell/CLI/ClawBio promotion.
+- `primers seed-qpcr-from-splicing` additionally supports transcript-aware
+  seeding:
+  - `--mode shared_gene|distinguish_transcript`
+  - `--transcript-id ID` when distinguishing one transcript from competing
+    isoforms in the same gene/group
 - those qPCR-only seed helpers now also emit a deterministic `rationale`
   payload so agent callers can explain why the ROI was chosen and reuse
   GENtle's expected default assay limits without reverse-engineering them from
@@ -5032,6 +5068,10 @@ Primer-design shell command family (implemented):
       - `max_probe_tm_delta_c`
       - `max_assays`
   - `operation` (`{"DesignQpcrAssays": ...}`)
+    - splicing-seeded qPCR requests may include
+      `transcript_targeting.source_feature_id`,
+      `transcript_targeting.mode`, and optional
+      `transcript_targeting.transcript_id`
   - `protocol_cartoon`
     - `protocol` (`pcr.assay.qpcr`)
     - `summary`

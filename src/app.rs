@@ -53928,6 +53928,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                     max_tm_delta_c: Some(50.0),
                     max_probe_tm_delta_c: Some(50.0),
                     max_assays: Some(10),
+                    transcript_targeting: None,
                     report_id: Some("tp73_qpcr".to_string()),
                 })
                 .expect("design qpcr assays");

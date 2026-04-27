@@ -4449,8 +4449,30 @@ fn parse_primers_seed_from_feature_and_splicing() {
         qpcr_splicing,
         ShellCommand::PrimersSeedQpcrFromSplicing {
             seq_id,
-            feature_id
-        } if seq_id == "seq_a" && feature_id == 17
+            feature_id,
+            mode,
+            transcript_id
+        } if seq_id == "seq_a"
+            && feature_id == 17
+            && mode == QpcrTranscriptTargetingMode::SharedGene
+            && transcript_id.is_none()
+    ));
+
+    let qpcr_splicing_distinguish = parse_shell_line(
+        "primers seed-qpcr-from-splicing seq_a 17 --mode distinguish_transcript --transcript-id NR_187362.1",
+    )
+    .expect("parse distinguishing seed-qpcr-from-splicing");
+    assert!(matches!(
+        qpcr_splicing_distinguish,
+        ShellCommand::PrimersSeedQpcrFromSplicing {
+            seq_id,
+            feature_id,
+            mode,
+            transcript_id
+        } if seq_id == "seq_a"
+            && feature_id == 17
+            && mode == QpcrTranscriptTargetingMode::DistinguishTranscript
+            && transcript_id.as_deref() == Some("NR_187362.1")
     ));
 }
 
@@ -10776,6 +10798,7 @@ fn execute_primers_design_qpcr_list_show_export() {
         max_tm_delta_c: Some(50.0),
         max_probe_tm_delta_c: Some(50.0),
         max_assays: Some(10),
+        transcript_targeting: None,
         report_id: Some("tp73_qpcr".to_string()),
     })
     .expect("serialize request");
@@ -10977,6 +11000,8 @@ fn execute_primers_seed_from_feature_and_splicing() {
         &ShellCommand::PrimersSeedQpcrFromSplicing {
             seq_id: "seq_a".to_string(),
             feature_id,
+            mode: QpcrTranscriptTargetingMode::SharedGene,
+            transcript_id: None,
         },
     )
     .expect("seed qpcr from splicing");
@@ -11002,6 +11027,90 @@ fn execute_primers_seed_from_feature_and_splicing() {
         seeded_qpcr_splicing.output["rationale"]["why_this_roi"]
             .as_str()
             .is_some_and(|value| value.contains("group"))
+    );
+    assert_eq!(
+        seeded_qpcr_splicing.output["operation"]["DesignQpcrAssays"]["transcript_targeting"]
+            ["mode"]
+            .as_str(),
+        Some("shared_gene")
+    );
+}
+
+#[test]
+fn execute_primers_seed_qpcr_from_splicing_round_trips_into_design_qpcr() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73".to_string()),
+        })
+        .expect("load tp73 fixture");
+    let tp73_as3_feature_id = engine
+        .state()
+        .sequences
+        .get("tp73")
+        .expect("tp73 sequence present")
+        .features()
+        .iter()
+        .position(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("ncRNA")
+                && feature
+                    .qualifier_values("gene")
+                    .any(|value| value.eq_ignore_ascii_case("TP73-AS3"))
+                && feature
+                    .qualifier_values("transcript_id")
+                    .any(|value| value == "NR_187362.1")
+        })
+        .expect("TP73-AS3 transcript variant 1 feature");
+
+    let seeded = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersSeedQpcrFromSplicing {
+            seq_id: "tp73".to_string(),
+            feature_id: tp73_as3_feature_id,
+            mode: QpcrTranscriptTargetingMode::DistinguishTranscript,
+            transcript_id: Some("NR_187362.1".to_string()),
+        },
+    )
+    .expect("seed transcript-aware qPCR request");
+    assert!(!seeded.state_changed);
+    assert_eq!(
+        seeded.output["schema"].as_str(),
+        Some("gentle.qpcr_seed_request.v1")
+    );
+    assert_eq!(
+        seeded.output["operation"]["DesignQpcrAssays"]["transcript_targeting"]["mode"].as_str(),
+        Some("distinguish_transcript")
+    );
+    assert_eq!(
+        seeded.output["operation"]["DesignQpcrAssays"]["transcript_targeting"]["transcript_id"]
+            .as_str(),
+        Some("NR_187362.1")
+    );
+
+    let design = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersDesignQpcr {
+            request_json: serde_json::to_string(&seeded.output).expect("serialize seed request"),
+            backend: Some(PrimerDesignBackend::Internal),
+            primer3_executable: None,
+        },
+    )
+    .expect("round-trip transcript-aware qPCR design");
+    assert!(design.state_changed);
+    assert_eq!(
+        design.output["report"]["transcript_targeting"]["mode"].as_str(),
+        Some("distinguish_transcript")
+    );
+    assert_eq!(
+        design.output["report"]["transcript_targeting_result"]["selected_support_transcript_count"]
+            .as_u64(),
+        Some(1)
+    );
+    assert!(
+        design.output["report"]["assays"]
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty())
     );
 }
 
