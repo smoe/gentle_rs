@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-25
+Last updated: 2026-04-27
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -212,9 +212,13 @@ order. Durable architecture constraints and decisions remain in
   - the inner exhaustive matcher still owns the same implementation path by
     delegating those variants back into the same helpers, so stack-hardening
     did not fork shell behavior or create adapter-only command logic
-  - remaining follow-up families worth peeling out next are the still-dense
-    reference/track and export/import/resource/catalog blocks, which continue
-    to keep large contiguous regions inside the monolithic matcher
+  - the older high-risk follow-up families once called out here
+    (reference/track and export/import/resource/catalog routes) have since
+    been split through dedicated helper dispatch, along with Gibson, protein
+    evidence, feature-expert/panel, protocol-cartoon, feature-query, TFBS, and
+    restriction-scan routes; future shell decomposition should now be driven by
+    fresh stack traces or newly dense command clusters rather than by those
+    retired labels
 - The newly extracted engine/GUI/shell modules now carry navigation-oriented
   top-level `//!` docs that explicitly say "look here for ..." so future
   refactors, cargo-doc output, and AI/code-search triage can reach the right
@@ -3187,6 +3191,16 @@ Current baseline:
   helper/vector terms, and system/user/project overlays can add aliases,
   descriptions, and routine hints that helper interpretations resolve into
   enriched `normalized_terms[]`
+- the next governance gap is explicit validation/audit of those vocabulary
+  overlays:
+  - duplicate canonical `(axis, value)` terms need deterministic
+    replacement/extension semantics instead of accidental last-writer behavior
+  - alias collisions should report which source file contributed each
+    competing meaning
+  - routine hints should validate against known routine-family identifiers or
+    mark unknown families as local extensions
+  - list/doctor output should expose enough source/digest/provenance detail for
+    users and ClawBio/MCP agents to debug why one term resolved the way it did
 - the resolved vocabulary is now inspectable through shared routes:
   `helpers vocabulary list`, direct CLI, JS/Lua wrappers, and the MCP
   `helper_semantics_vocabulary` tool expose canonical terms, aliases,
@@ -3245,6 +3259,11 @@ Planned work:
      `helpers vocabulary list --filter TEXT`, direct CLI, MCP, JS, and Lua all
      expose the resolved effective vocabulary so downstream tools can inspect
      what GENtle knows before relying on helper interpretation output.
+   - Missing next hardening step:
+     add a deterministic vocabulary `doctor` / validation surface that checks
+     overlay ordering, duplicate canonical terms, alias collisions, malformed
+     routine hints, unknown routine families, and source provenance before
+     helper-construct semantics are treated as stable ontology input.
    - planning baseline now also accepts helper-aware `planning objective`
      fields (`helper_profile_id`, `preferred_routine_families`) and uses one
      shared synthesized `routine_preference_context` for:
@@ -5345,7 +5364,8 @@ Post-baseline follow-ups:
 ### Current branch blockers (must clear first)
 
 - None currently blocking on this branch. Latest local run: `cargo test -q`
-  passed (`528 passed, 1 ignored` in main suite; additional suites green).
+  passed (`1916 passed, 1 ignored` in the main library suite; additional Rust
+  suites green).
 
 ### Stability TODO (queued: none; items 4, 5, 6, 7 done)
 
