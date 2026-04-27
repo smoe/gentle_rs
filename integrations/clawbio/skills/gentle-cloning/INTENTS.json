@@ -47,7 +47,7 @@
     },
     {
       "intent_id": "runtime_version",
-      "description": "Check the installed GENtle runtime version through the ClawBio skill bundle.",
+      "description": "Check the installed local ClawBio GENtle rewrite runtime version through the skill bundle.",
       "trigger_terms": [
         "version",
         "runtime version",

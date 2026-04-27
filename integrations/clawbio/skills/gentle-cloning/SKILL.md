@@ -162,9 +162,10 @@ capability-led language:
 - For patient/cohort signals, describe the path explicitly:
   `observation -> mechanistic hypothesis -> GENtle sequence/context analysis -> wet-lab validation plan`.
 - Be explicit that GENtle can:
-  - report the installed GENtle runtime version via request mode `version`
-    (`examples/request_runtime_version.json`, with
-    `examples/request_version_installed.json` kept as a synonym),
+  - report the installed local ClawBio GENtle rewrite runtime version via
+    request mode `version` (`examples/request_runtime_version.json`, with
+    `examples/request_version_installed.json` kept as a synonym); this is
+    distinct from the classical GENtle desktop release line,
   - inspect pasted DNA fragments directly for restriction sites or TFBS hits
     without first creating project-state records when the task is purely
     read-only,
@@ -1046,8 +1047,9 @@ This skill should be usable by an AI agent even without the Python wrapper.
 Apply the following methodology:
 
 1. **Prefer explicit execution modes over free-form advice**:
-   - use `version` to report which installed GENtle runtime binary is behind
-     the copied ClawBio skill;
+   - use `version` to report which installed local ClawBio GENtle rewrite
+     runtime binary is behind the copied ClawBio skill, not the classical
+     GENtle desktop release line;
    - use `capabilities` to discover what the local GENtle build supports;
    - use `state-summary` to inspect existing project state;
    - use `shell` for canonical human-readable GENtle command routes;

@@ -89,9 +89,10 @@ intended framing is:
   BLAST-capable indices, that may also be useful to external bioinformatics
   tools. Its added value is deterministic preparation, cataloging, provenance,
   and reuse in the same workflow.
-- GENtle can report the installed runtime version via
+- GENtle can report the installed local ClawBio rewrite runtime version via
   `examples/request_runtime_version.json` (or the synonym
-  `examples/request_version_installed.json`) and can answer installed
+  `examples/request_version_installed.json`). This is distinct from the
+  classical GENtle desktop release line. GENtle can also answer installed
   database/resource questions by running `services status`, `resources status`,
   `genomes status`, `helpers status`, or the relevant list route.
 
@@ -506,7 +507,7 @@ Mode-specific fields:
   best-effort shared `ui intents` probe so operator-handoff surfaces can reuse
   the current UI-intent catalog when the installed runtime supports it
 - `version`: no extra fields; invokes `gentle_cli --version` and promotes a
-  chat-safe installed-runtime summary
+  chat-safe installed local ClawBio rewrite runtime summary
 - `shell`: `shell_line`
 - `op`: `operation`
 - `workflow`: `workflow` or `workflow_path`

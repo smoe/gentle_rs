@@ -256,6 +256,9 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         "catalog_entry_loaded": True,
         "runtime_version_command": "gentle_cli --version",
         "runtime_version_request_mode": "version",
+        "runtime_lineage": "GENtle Rust rewrite used by ClawBio",
+        "version_scope": "installed_local_clawbio_runtime",
+        "classical_gentle_disambiguation": "This skill reports the locally installed ClawBio GENtle rewrite runtime, not the classical GENtle desktop release line.",
         "ui_intent_support": {
             "catalog_request_mode": "capabilities",
             "catalog_shell_line": "ui intents",
@@ -268,7 +271,8 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
     assert payload["chat_summary_lines"] == [
         "gentle-cloning skill version 0.1.0 (mvp).",
         "Request schema: gentle.clawbio_skill_request.v1; result schema: gentle.clawbio_skill_result.v1.",
-        "Use request mode `version` when you need the installed GENtle runtime version.",
+        "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
+        "This skill reports the locally installed ClawBio GENtle rewrite runtime, not the classical GENtle desktop release line.",
     ]
     assert "# no command executed" in (
         output_dir / "reproducibility" / "commands.sh"
@@ -537,7 +541,8 @@ def test_version_mode_reports_installed_gentle_runtime(tmp_path: Path) -> None:
     assert payload["stdout"] == "GENtle 0.1.0-test\n"
     assert payload["stdout_json"] is None
     assert payload["chat_summary_lines"] == [
-        "Installed GENtle runtime version: GENtle 0.1.0-test"
+        "Installed local GENtle rewrite runtime in this ClawBio environment: GENtle 0.1.0-test",
+        "This skill reports the locally installed ClawBio GENtle rewrite runtime, not the classical GENtle desktop release line.",
     ]
     assert argv_path.read_text(encoding="utf-8").splitlines() == ["--version"]
     assert "Invocation marker: `GENtle ClawBio skill wrapper invoked`" in (
@@ -582,7 +587,8 @@ def test_clawbio_style_input_path_resolves_from_skill_cwd(tmp_path: Path) -> Non
     assert result["status"] == "ok"
     assert result["request"]["mode"] == "version"
     assert result["chat_summary_lines"] == [
-        "Installed GENtle runtime version: GENtle 0.1.0-test"
+        "Installed local GENtle rewrite runtime in this ClawBio environment: GENtle 0.1.0-test",
+        "This skill reports the locally installed ClawBio GENtle rewrite runtime, not the classical GENtle desktop release line.",
     ]
 
 

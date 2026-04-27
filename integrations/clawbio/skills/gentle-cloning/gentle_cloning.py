@@ -50,6 +50,12 @@ DEFAULT_DEMO_SHELL_LINE = (
     "artifacts/gibson.two_fragment.protocol.svg"
 )
 DEFAULT_DEMO_EXPECTED_ARTIFACT = "artifacts/gibson.two_fragment.protocol.svg"
+LOCAL_RUNTIME_LINEAGE = "GENtle Rust rewrite used by ClawBio"
+VERSION_SCOPE = "installed_local_clawbio_runtime"
+CLASSICAL_GENTLE_DISAMBIGUATION = (
+    "This skill reports the locally installed ClawBio GENtle rewrite runtime, "
+    "not the classical GENtle desktop release line."
+)
 
 
 class SkillError(RuntimeError):
@@ -167,6 +173,9 @@ def _skill_info_payload(script_path: Path) -> dict[str, Any]:
         "catalog_entry_loaded": bool(catalog_entry),
         "runtime_version_command": "gentle_cli --version",
         "runtime_version_request_mode": "version",
+        "runtime_lineage": LOCAL_RUNTIME_LINEAGE,
+        "version_scope": VERSION_SCOPE,
+        "classical_gentle_disambiguation": CLASSICAL_GENTLE_DISAMBIGUATION,
         "ui_intent_support": {
             "catalog_request_mode": "capabilities",
             "catalog_shell_line": UI_INTENT_DISCOVERY_SHELL_LINE,
@@ -185,7 +194,8 @@ def _skill_info_chat_summary_lines(info: dict[str, Any]) -> list[str]:
     return [
         f"{name} skill version {version} ({status}).",
         f"Request schema: {info.get('request_schema')}; result schema: {info.get('result_schema')}.",
-        "Use request mode `version` when you need the installed GENtle runtime version.",
+        "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
+        CLASSICAL_GENTLE_DISAMBIGUATION,
     ]
 
 
@@ -1672,7 +1682,10 @@ def _runtime_version_chat_summary_lines(
     version_text = run_result.stdout.strip() or run_result.stderr.strip()
     if not version_text:
         return ["GENtle runtime version command completed, but did not print a version."]
-    return [f"Installed GENtle runtime version: {version_text}"]
+    return [
+        f"Installed local GENtle rewrite runtime in this ClawBio environment: {version_text}",
+        CLASSICAL_GENTLE_DISAMBIGUATION,
+    ]
 
 
 def _fallback_chat_summary_lines(
