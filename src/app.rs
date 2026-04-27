@@ -2900,6 +2900,25 @@ impl GENtleApp {
         }
     }
 
+    fn reset_sequence_window_areas_if_legacy_layers_visible(
+        ctx: &egui::Context,
+        viewport_id: ViewportId,
+        title: &str,
+    ) -> bool {
+        let stale_title_layer = Self::stale_hosted_window_title_layer_id(title);
+        let stale_viewport_layer =
+            egui::LayerId::new(egui::Order::Middle, egui::Id::new(viewport_id));
+        if ctx.memory(|mem| {
+            mem.areas().is_visible(&stale_title_layer)
+                || mem.areas().is_visible(&stale_viewport_layer)
+        }) {
+            ctx.memory_mut(|mem| mem.reset_areas());
+            true
+        } else {
+            false
+        }
+    }
+
     fn reset_help_areas_if_legacy_title_layer_visible(ctx: &egui::Context, title: &str) -> bool {
         Self::reset_hosted_window_areas_if_legacy_title_layer_visible(ctx, title)
     }
@@ -32858,6 +32877,71 @@ Error: `{err}`"
             || self.pending_viewport_focus_timestamps.contains_key(&id);
         let builder = egui::ViewportBuilder::default().with_title(window_title.clone());
         let initial_commands = Self::deferred_window_initial_commands(initial_position);
+        if ctx.embed_viewports() {
+            let update_result = catch_unwind(AssertUnwindSafe(|| {
+                if let Ok(mut w) = window.write() {
+                    if Self::reset_sequence_window_areas_if_legacy_layers_visible(
+                        ctx,
+                        id,
+                        window_title.as_str(),
+                    ) {
+                        ctx.request_repaint();
+                    }
+                    let mut open = true;
+                    let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
+                    let min_size = Vec2::new(820.0, 520.0);
+                    let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+                        Vec2::new(1200.0, 860.0),
+                        constrain_rect,
+                        min_size,
+                    );
+                    let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
+                        initial_position,
+                        constrain_rect,
+                        default_size,
+                    );
+                    let mut hosted_window = egui::Window::new(window_title.clone())
+                        .id(egui::Id::new(("hosted_sequence_window", id)))
+                        .open(&mut open)
+                        .resizable(true)
+                        .default_pos(default_pos)
+                        .default_size(default_size)
+                        .min_size(min_size)
+                        .max_size(constrain_rect.size())
+                        .constrain_to(constrain_rect);
+                    if render_hosted_sequence_in_foreground {
+                        hosted_window = hosted_window.order(egui::Order::Foreground);
+                    }
+                    hosted_window.show(ctx, |ui| {
+                        w.update_embedded(ui);
+                    });
+                    if !open {
+                        w.take_close_requested();
+                        if let Ok(mut to_close) = windows_to_close.write() {
+                            to_close.push(id);
+                        } else {
+                            eprintln!("W GENtleApp: close-queue lock poisoned");
+                        }
+                    }
+                } else {
+                    eprintln!("W GENtleApp: window lock poisoned; skipping update");
+                }
+            }));
+            if update_result.is_err() {
+                eprintln!("E GENtleApp: recovered from panic while updating window");
+            }
+
+            let explicit_close_requested = Self::take_window_close_requested(&window);
+            let shortcut_triggered = Self::consume_command_or_ctrl_shortcut(ctx, Key::W);
+            if explicit_close_requested || shortcut_triggered {
+                if let Ok(mut to_close) = windows_to_close.write() {
+                    to_close.push(id);
+                } else {
+                    eprintln!("W GENtleApp: close-queue lock poisoned");
+                }
+            }
+            return;
+        }
         if Self::use_immediate_sequence_viewports() {
             ctx.show_viewport_immediate(id, builder, move |ui, class| {
                 if !matches!(
@@ -50841,6 +50925,8 @@ mod tests {
             egui::Order::Middle,
             egui::Id::new(("hosted_sequence_window", viewport_id)),
         );
+        let stale_viewport_layer_id =
+            egui::LayerId::new(egui::Order::Middle, egui::Id::new(viewport_id));
         let stale_title_layer_id = GENtleApp::stale_hosted_window_title_layer_id(&title);
 
         ctx.begin_pass(egui::RawInput::default());
@@ -50855,6 +50941,7 @@ mod tests {
         app.show_window(&ctx, viewport_id, window, initial_position);
         assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
         let _ = ctx.end_pass();
     }
 
