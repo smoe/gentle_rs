@@ -1405,8 +1405,14 @@ order. Durable architecture constraints and decisions remain in
           and adding `readiness[]`, `suggested_actions[]`,
           `running_actions[]`, `blocked_actions[]`,
           `preferred_demo_actions[]`, `preferred_artifacts[]`,
-          `environment_hints[]`, and `warnings[]` so ClawBio can offer setup
-          or demo actions without inferring them from prose
+          `status_overview`, `environment_hints[]`, and `warnings[]` so
+          ClawBio can offer setup or demo actions without inferring them from
+          prose
+        - that handoff now includes a compact `status_overview` with lifecycle
+          counts, an overall `ready|setup_needed|setup_running|attention_needed`
+          state, and one recommended next action for chat gateways that need a
+          single best button after presenting the richer machine-readable
+          report
         - that same shared report now also persists/inspects best-effort
           prepare-activity markers for reference/helper installs, so callers
           can distinguish `currently preparing/indexing` from plain
@@ -1477,6 +1483,10 @@ order. Durable architecture constraints and decisions remain in
           PNG when a run produces multiple rasterized figures, while keeping
           every generated artifact in the bundle and adding `continue_artifact`
           suggested actions for one-image-per-reply chat surfaces
+        - the wrapper now also emits `result.json.artifact_summary` with the
+          selected best-first artifact, displayable/collected artifact counts,
+          and continuation-action count, so ClawBio/OpenClaw gateways can
+          render a concise graphics bundle summary without path heuristics
         - the same wrapper now also emits execution-aware
           `result.json.suggested_actions[]` for status/readiness replies, so
           ClawBio can offer deterministic follow-up commands such as
@@ -1517,13 +1527,15 @@ order. Durable architecture constraints and decisions remain in
         - do one clean manual GUI smoke run through the new export path so the
           paired reporter SVGs are click-verified in the intended ClawBio demo
           flow, not only code/controller verified
-        - enrich the sequence-context bundle/manifest layer further so
-          ClawBio can pick one "best first figure" and one compact textual
-          summary without inventing presentation logic from raw files alone
-        - enrich the service-readiness/handoff surface further so it can report
-          richer active-job details (queue/worker identity, stronger stale-job
-          detection) and deeper ATtRACT runtime detail beyond the current
-          fingerprint/count fields when normalized snapshots are present
+        - enrich artifact bundle metadata beyond the current best-first
+          `artifact_summary`, for example by adding per-panel biological
+          interpretation hints that ClawBio can read aloud before sending
+          supporting figures
+        - enrich the service-readiness/handoff surface further beyond the
+          current `status_overview` so it can report richer active-job details
+          (queue/worker identity, stronger stale-job detection) and deeper
+          ATtRACT runtime detail beyond the current fingerprint/count fields
+          when normalized snapshots are present
         - extend the same shared lease/lifecycle model from
           reference/helper prepares into resource sync/setup paths such as
           `resources sync-attract`, so shared runtime snapshot downloads cannot
@@ -2405,6 +2417,10 @@ order. Durable architecture constraints and decisions remain in
         provenance sheet and the matching messenger-facing
         `generated/clawbio_storyboard.png` presentation artifact for
         chat/share-friendly replies
+      - the wrapper now records a machine-readable
+        `gentle.clawbio_artifact_bundle_summary.v1` alongside the normal
+        report, summarizing the best-first image and any one-image-per-reply
+        continuation actions
       - the shipped VKORC1 / rs9923231 luciferase-planning example now uses
         that path so ClawBio has one stronger graphical answer ready for
         "How can you help me with functional analyses of genetic variations?"

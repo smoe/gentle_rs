@@ -13444,6 +13444,12 @@ fn execute_services_handoff_reports_actions_and_writes_json() {
         Some("gentle.service_readiness.v1")
     );
     assert!(
+        out.output["status_overview"]["overall_status"]
+            .as_str()
+            .is_some()
+    );
+    assert!(out.output["status_overview"]["recommended_next_action"].is_object());
+    assert!(
         out.output["readiness"]
             .as_array()
             .map(|rows| rows.iter().any(|row| row["resource_key"].as_str()

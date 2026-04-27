@@ -3024,6 +3024,14 @@ ClawBio/OpenClaw integration scaffold schemas:
       `generated/clawbio_storyboard.png`
     - original SVGs may still remain in the bundle as provenance/supporting
       artifacts, but messenger-facing consumers should prefer the PNG outputs
+  - `artifact_summary` may carry
+    `gentle.clawbio_artifact_bundle_summary.v1` with:
+    - `best_first_artifact`
+    - `preferred_artifact_count`
+    - `displayable_artifact_count`
+    - `collected_artifact_count`
+    - `continuation_action_count`
+    - short `summary_lines[]` suitable for chat/report previews
   - browser/OpenClaw inline image display remains a later ClawBio-side task;
     this phase is limited to PNG-first bundle production inside `gentle_rs`
   - wrapper `agent-plan` / `agent-execute-plan` modes intentionally share the
@@ -3044,6 +3052,9 @@ ClawBio/OpenClaw integration scaffold schemas:
       such as ATtRACT sync before a local ZIP path is known
     - `preferred_demo_actions[]` for low-friction demo commands that can be
       shown by ClawBio without inventing route logic
+    - `status_overview` with lifecycle counts, an overall
+      `ready|setup_needed|setup_running|attention_needed` state, and one
+      recommended next action for compact chat handoff
     - `environment_hints[]` for deployment variables such as
       `GENTLE_CLI_CMD`, `GENTLE_REPO_ROOT`, `GENTLE_REFERENCE_CACHE_DIR`,
       `GENTLE_HELPER_CACHE_DIR`, and `GENTLE_CUTRUN_CACHE_DIR`

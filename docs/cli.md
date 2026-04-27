@@ -271,6 +271,9 @@ Notes:
   - `result.json.preferred_artifacts[]` now points at the PNG bundle paths for
     figures, including `generated/clawbio_storyboard.png` when one run yields
     multiple related graphics
+  - `result.json.artifact_summary` summarizes the best-first artifact,
+    displayable/collected artifact counts, and continuation actions for
+    one-image-per-reply chat gateways
   - the source SVGs may still remain in the bundle as provenance/supporting
     artifacts
   - browser/OpenClaw inline image rendering remains a later ClawBio-side
@@ -2792,7 +2795,12 @@ Resource sync commands:
   - The report embeds the `services status` readiness payload and adds:
     `readiness[]`, `suggested_actions[]`, `running_actions[]`,
     `blocked_actions[]`, `preferred_demo_actions[]`, `preferred_artifacts[]`,
-    `environment_hints[]`, `warnings[]`, and `summary_lines[]`.
+    `status_overview`, `environment_hints[]`, `warnings[]`, and
+    `summary_lines[]`.
+  - `status_overview` gives compact lifecycle counts, an overall
+    `ready|setup_needed|setup_running|attention_needed` state, and one
+    recommended next action for chat gateways that want a single primary
+    button.
   - Suggested actions are deterministic GENtle shell commands for missing or
     retryable shared setup. Running shared prepares become refresh/status
     suggestions, not duplicate prepare commands.

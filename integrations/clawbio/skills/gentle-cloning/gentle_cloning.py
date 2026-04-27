@@ -2493,6 +2493,68 @@ def _artifact_chat_summary_lines(
     ]
 
 
+def _artifact_bundle_summary(
+    collected_artifacts: list[dict[str, Any]],
+    preferred_artifacts: list[dict[str, Any]] | None,
+    suggested_actions: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if not collected_artifacts and not preferred_artifacts:
+        return None
+    preferred = [
+        dict(artifact)
+        for artifact in (preferred_artifacts or [])
+        if isinstance(artifact, dict)
+    ]
+    best_first = next(
+        (
+            artifact
+            for artifact in preferred
+            if artifact.get("is_best_first_artifact") is True
+        ),
+        preferred[0] if preferred else None,
+    )
+    displayable_suffixes = (".png", ".svg")
+    displayable_artifacts = [
+        artifact
+        for artifact in collected_artifacts
+        if any(
+            str(artifact.get(key) or "").lower().endswith(displayable_suffixes)
+            for key in ("bundle_path", "copied_path", "declared_path")
+        )
+    ]
+    continuation_actions = [
+        action
+        for action in (suggested_actions or [])
+        if isinstance(action, dict) and action.get("kind") == "continue_artifact"
+    ]
+    best_first_path = (
+        str(best_first.get("path") or "").strip()
+        if isinstance(best_first, dict)
+        else ""
+    )
+    summary_lines: list[str] = []
+    if best_first_path:
+        summary_lines.append(f"Best-first artifact: {best_first_path}")
+    if displayable_artifacts:
+        summary_lines.append(
+            f"Displayable artifacts in bundle: {len(displayable_artifacts)}"
+        )
+    if continuation_actions:
+        summary_lines.append(
+            "Continuation actions available for "
+            f"{len(continuation_actions)} additional figure(s)."
+        )
+    return {
+        "schema": "gentle.clawbio_artifact_bundle_summary.v1",
+        "best_first_artifact": best_first,
+        "preferred_artifact_count": len(preferred),
+        "displayable_artifact_count": len(displayable_artifacts),
+        "collected_artifact_count": len(collected_artifacts),
+        "continuation_action_count": len(continuation_actions),
+        "summary_lines": summary_lines,
+    }
+
+
 def _ensure_default_demo_suggested_action(
     request: Request | None,
     suggested_actions: list[dict[str, Any]] | None,
@@ -2600,6 +2662,7 @@ def _write_report(
     status: str,
     error_message: str | None,
     failure_summary: dict[str, Any] | None,
+    artifact_summary: dict[str, Any] | None,
     preferred_artifacts: list[dict[str, Any]] | None,
     suggested_actions: list[dict[str, Any]] | None,
     preferred_demo_actions: list[dict[str, Any]] | None,
@@ -2699,6 +2762,18 @@ def _write_report(
                 lines.append(f"  Caption: `{artifact['caption']}`")
             if artifact.get("recommended_use"):
                 lines.append(f"  Recommended use: `{artifact['recommended_use']}`")
+    if artifact_summary:
+        lines.extend(["", "## Artifact Bundle Summary", ""])
+        for summary_line in artifact_summary.get("summary_lines", []):
+            lines.append(f"- {summary_line}")
+        lines.append(
+            "- Displayable artifacts: "
+            f"`{artifact_summary.get('displayable_artifact_count', 0)}`"
+        )
+        lines.append(
+            "- Continuation actions: "
+            f"`{artifact_summary.get('continuation_action_count', 0)}`"
+        )
     if suggested_actions:
         if len(suggested_actions) == 1:
             action = suggested_actions[0]
@@ -2942,6 +3017,7 @@ def main() -> int:
     suggested_actions: list[dict[str, Any]] | None = None
     preferred_demo_actions: list[dict[str, Any]] | None = None
     blocked_actions: list[dict[str, Any]] | None = None
+    artifact_summary: dict[str, Any] | None = None
     ui_intent_catalog: dict[str, Any] | None = None
     ui_intent_catalog_error: str | None = None
     auxiliary_steps: list[dict[str, Any]] = []
@@ -3082,6 +3158,11 @@ def main() -> int:
                 chat_summary_lines,
                 continue_artifact_actions,
             )
+            artifact_summary = _artifact_bundle_summary(
+                collected_artifacts,
+                preferred_artifacts,
+                suggested_actions,
+            )
     except subprocess.TimeoutExpired as e:
         request = request if request is not None else _default_demo_request()
         error_message = f"command timed out after {e.timeout} seconds"
@@ -3125,6 +3206,7 @@ def main() -> int:
         status=status,
         error_message=error_message,
         failure_summary=failure_summary,
+        artifact_summary=artifact_summary,
         preferred_artifacts=preferred_artifacts,
         suggested_actions=suggested_actions,
         preferred_demo_actions=preferred_demo_actions,
@@ -3176,6 +3258,7 @@ def main() -> int:
         "stdout_json": stdout_json,
         "stderr": (run_result.stderr if run_result else ""),
         "chat_summary_lines": chat_summary_lines,
+        "artifact_summary": artifact_summary,
         "preferred_artifacts": preferred_artifacts,
         "suggested_actions": suggested_actions,
         "preferred_demo_actions": preferred_demo_actions,
