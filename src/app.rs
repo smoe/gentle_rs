@@ -32854,8 +32854,8 @@ Error: `{err}`"
             .read()
             .map(|w| w.name())
             .unwrap_or_else(|_| "GENtle".to_string());
-        let reset_embedded_areas_on_first_frame =
-            self.pending_window_open_timestamps.contains_key(&id);
+        let render_hosted_sequence_in_foreground = self.pending_focus_viewports.contains(&id)
+            || self.pending_viewport_focus_timestamps.contains_key(&id);
         let builder = egui::ViewportBuilder::default().with_title(window_title.clone());
         let initial_commands = Self::deferred_window_initial_commands(initial_position);
         if Self::use_immediate_sequence_viewports() {
@@ -32876,16 +32876,15 @@ Error: `{err}`"
                 let update_result = catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut w) = window.write() {
                         if class == egui::ViewportClass::EmbeddedWindow {
-                            if reset_embedded_areas_on_first_frame
-                                || Self::reset_hosted_window_areas_if_legacy_title_layer_visible(
-                                    ui.ctx(),
-                                    window_title.as_str(),
-                                )
+                            if Self::reset_hosted_window_areas_if_legacy_title_layer_visible(
+                                ui.ctx(),
+                                window_title.as_str(),
+                            )
                             {
                                 // Older hosted sequence windows used the visible title as the
                                 // implicit egui::Window id, which can leave a detached title bar
                                 // behind when reopening under the stable hosted id.
-                                ui.ctx().memory_mut(|mem| mem.reset_areas());
+                                ui.ctx().request_repaint();
                             }
                             let mut open = true;
                             let constrain_rect =
@@ -32901,7 +32900,7 @@ Error: `{err}`"
                                 constrain_rect,
                                 default_size,
                             );
-                            egui::Window::new(window_title.clone())
+                            let mut hosted_window = egui::Window::new(window_title.clone())
                                 .id(egui::Id::new(("hosted_sequence_window", id)))
                                 .open(&mut open)
                                 .resizable(true)
@@ -32909,10 +32908,13 @@ Error: `{err}`"
                                 .default_size(default_size)
                                 .min_size(min_size)
                                 .max_size(constrain_rect.size())
-                                .constrain_to(constrain_rect)
-                                .show(ui, |ui| {
-                                    w.update_embedded(ui);
-                                });
+                                .constrain_to(constrain_rect);
+                            if render_hosted_sequence_in_foreground {
+                                hosted_window = hosted_window.order(egui::Order::Foreground);
+                            }
+                            hosted_window.show(ui, |ui| {
+                                w.update_embedded(ui);
+                            });
                             if !open {
                                 w.take_close_requested();
                                 if let Ok(mut to_close) = windows_to_close.write() {
@@ -32970,13 +32972,12 @@ Error: `{err}`"
                 let update_result = catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut w) = window.write() {
                         if class == egui::ViewportClass::EmbeddedWindow {
-                            if reset_embedded_areas_on_first_frame
-                                || Self::reset_hosted_window_areas_if_legacy_title_layer_visible(
-                                    ctx,
-                                    window_title.as_str(),
-                                )
+                            if Self::reset_hosted_window_areas_if_legacy_title_layer_visible(
+                                ctx,
+                                window_title.as_str(),
+                            )
                             {
-                                ctx.memory_mut(|mem| mem.reset_areas());
+                                ctx.request_repaint();
                             }
                             let mut open = true;
                             let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
@@ -32991,7 +32992,7 @@ Error: `{err}`"
                                 constrain_rect,
                                 default_size,
                             );
-                            egui::Window::new(window_title.clone())
+                            let mut hosted_window = egui::Window::new(window_title.clone())
                                 .id(egui::Id::new(("hosted_sequence_window", id)))
                                 .open(&mut open)
                                 .resizable(true)
@@ -32999,10 +33000,13 @@ Error: `{err}`"
                                 .default_size(default_size)
                                 .min_size(min_size)
                                 .max_size(constrain_rect.size())
-                                .constrain_to(constrain_rect)
-                                .show(ctx, |ui| {
-                                    w.update_embedded(ui);
-                                });
+                                .constrain_to(constrain_rect);
+                            if render_hosted_sequence_in_foreground {
+                                hosted_window = hosted_window.order(egui::Order::Foreground);
+                            }
+                            hosted_window.show(ctx, |ui| {
+                                w.update_embedded(ui);
+                            });
                             if !open {
                                 w.take_close_requested();
                                 if let Ok(mut to_close) = windows_to_close.write() {
@@ -50844,11 +50848,86 @@ mod tests {
             ui.label("legacy title shell");
         });
         assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        app.pending_focus_viewports.clear();
+        app.pending_viewport_focus_timestamps.clear();
 
         let initial_position = app.pending_window_initial_positions.remove(&viewport_id);
         app.show_window(&ctx, viewport_id, window, initial_position);
         assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn newly_focused_embedded_sequence_window_renders_above_hosted_project_window() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let screen_rect = egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1000.0),
+        );
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+        let viewport_id =
+            app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
+        let window = app
+            .windows
+            .get(&viewport_id)
+            .cloned()
+            .expect("registered sequence window");
+        let project_window_id = GENtleApp::main_workspace_hosted_window_id();
+        let sequence_layer_id = egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new(("hosted_sequence_window", viewport_id)),
+        );
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        app.render_hosted_main_workspace_window(&ctx, false);
+        let initial_position = app.pending_window_initial_positions.remove(&viewport_id);
+        app.show_window(&ctx, viewport_id, window, initial_position);
+
+        let project_layer_id = ctx
+            .memory(|mem| {
+                mem.areas()
+                    .visible_layer_ids()
+                    .into_iter()
+                    .find(|layer_id| layer_id.id == project_window_id)
+            })
+            .expect("project layer should be visible");
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&project_layer_id)));
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&sequence_layer_id)));
+        let (project_rect, sequence_rect) = ctx.memory(|mem| {
+            (
+                mem.area_rect(project_layer_id.id)
+                    .expect("project area rect"),
+                mem.area_rect(sequence_layer_id.id)
+                    .expect("sequence area rect"),
+            )
+        });
+        let overlap_min = egui::pos2(
+            project_rect.min.x.max(sequence_rect.min.x),
+            project_rect.min.y.max(sequence_rect.min.y),
+        );
+        let overlap_max = egui::pos2(
+            project_rect.max.x.min(sequence_rect.max.x),
+            project_rect.max.y.min(sequence_rect.max.y),
+        );
+        assert!(
+            overlap_min.x < overlap_max.x && overlap_min.y < overlap_max.y,
+            "project_rect={project_rect:?}, sequence_rect={sequence_rect:?}"
+        );
+        let overlap_center = egui::pos2(
+            (overlap_min.x + overlap_max.x) / 2.0,
+            (overlap_min.y + overlap_max.y) / 2.0,
+        );
+        assert_eq!(
+            ctx.layer_id_at(overlap_center),
+            Some(sequence_layer_id),
+            "a newly focused sequence window should cover the project window at overlapping points"
+        );
         let _ = ctx.end_pass();
     }
 
