@@ -1,9 +1,5 @@
 {
-<<<<<<< HEAD
-   "command_count": 356,
-=======
-   "command_count": 359,
->>>>>>> gentle_rs_2_main
+   "command_count": 361,
    "commands": [
       {
          "aliases": [
