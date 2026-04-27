@@ -40,15 +40,16 @@ use crate::{
         EnsemblQuickInstallReport, GenomeBlastReport, GenomeCatalog,
         GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
         GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation,
-        HelperConstructVocabularyTerm, PrepareGenomeActivityStatus, PrepareGenomePlan,
-        PrepareGenomeProgress, PrepareGenomeReport, PreparedCacheCleanupReport,
-        PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
+        HelperConstructVocabularyDoctorReport, HelperConstructVocabularyTerm,
+        PrepareGenomeActivityStatus, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
+        PreparedCacheCleanupReport, PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
         PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
         PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
         clear_prepared_cache_roots, default_helper_semantics_vocabulary_discovery_label,
-        inspect_prepared_cache_roots, is_prepare_cancelled_error,
-        list_helper_construct_vocabulary_terms, validate_genbank_accession,
+        doctor_helper_construct_vocabulary, inspect_prepared_cache_roots,
+        is_prepare_cancelled_error, list_helper_construct_vocabulary_terms,
+        validate_genbank_accession,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -6091,6 +6092,17 @@ impl GentleEngine {
                 vocabulary_label, e
             ),
         })
+    }
+
+    /// Validate helper-construct vocabulary overlays and return provenance-rich diagnostics.
+    pub fn doctor_helper_semantics_vocabulary(
+        vocabulary_path: Option<&str>,
+        known_routine_families: &[String],
+    ) -> Result<HelperConstructVocabularyDoctorReport, EngineError> {
+        Ok(doctor_helper_construct_vocabulary(
+            vocabulary_path,
+            known_routine_families,
+        ))
     }
 
     pub fn describe_helper_genome_sources(

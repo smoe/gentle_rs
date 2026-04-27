@@ -1619,6 +1619,20 @@
          "usage": "helpers vocabulary list [--vocabulary PATH] [--filter TEXT]"
       },
       {
+         "aliases": [
+            "helpers vocabulary validate"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers vocabulary doctor",
+         "summary": "Validate helper semantics vocabulary overlays and report provenance, duplicate terms, alias collisions, missing routine-hint targets, and routine-family diagnostics.",
+         "usage": "helpers vocabulary doctor [--vocabulary PATH] [--routine-catalog PATH]"
+      },
+      {
          "aliases": [],
          "engine_operations": [],
          "interfaces": [

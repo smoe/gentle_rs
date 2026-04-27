@@ -1187,12 +1187,14 @@ Sequence-linked construct reasoning graph direction:
       knowledge
     - stable machine-readable terms that planning, routine ranking, and
       constraint reasoning can consume without re-interpreting prose
-  - therefore resolved vocabulary inspection is part of the architecture, not
-    merely a convenience UI: shared routes such as a future
-    `helpers vocabulary list` command should expose the effective term catalog,
-    aliases, descriptions, sources, and routine hints so users, agents, MCP,
-    and ClawBio can debug what GENtle will treat as known before it interprets
-    helper constructs
+  - therefore resolved vocabulary inspection and validation are part of the
+    architecture, not merely convenience UI: shared routes such as
+    `helpers vocabulary list` and `helpers vocabulary doctor` expose the
+    effective term catalog, aliases, descriptions, sources, routine hints,
+    fragment digests, duplicate canonical terms, alias collisions, and
+    routine-hint/routine-family diagnostics so users, agents, MCP, and ClawBio
+    can debug what GENtle will treat as known before it interprets helper
+    constructs
   - the emerging reasoning/constraint engine should consume those normalized
     records so catalog-backed helper knowledge, planner suggestions, and future
     ontology terms stay aligned across GUI/CLI/MCP/ClawBio instead of growing
