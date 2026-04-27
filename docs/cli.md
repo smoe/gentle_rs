@@ -1580,6 +1580,7 @@ cargo run --bin gentle_cli -- genomes blast "Human GRCh38 Ensembl 116" ACGTACGTA
 cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 116" 1 1000000 1001500 --output-id grch38_chr1_slice --annotation-scope core --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- helpers vocabulary list --filter fusion
+cargo run --bin gentle_cli -- helpers vocabulary doctor --routine-catalog assets/cloning_routines.json
 cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.bed.gz --name H3K27ac --min-score 10 --clear-existing
 cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/signal.bw --name ATAC --min-score 0.2 --clear-existing
 cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample.vcf.gz --name Variants --min-score 20 --clear-existing
@@ -3199,6 +3200,16 @@ Helper convenience commands:
   - Output includes canonical terms, aliases, descriptions, sources, and
     vocabulary-provided routine hints for debugging deterministic helper
     interpretation.
+- `helpers vocabulary doctor [--vocabulary PATH] [--routine-catalog PATH]`
+  - Validates helper semantics vocabulary overlays before treating them as
+    stable local knowledge.
+  - Reports source ordering, parsed-fragment SHA-1 digests, duplicate
+    canonical terms, alias collisions, malformed routine hints, and
+    missing routine-hint `source_terms` targets, plus routine-family hints that
+    are unknown to the selected routine catalog.
+  - Unknown routine families are reported as local-extension warnings, so labs
+    can still prototype private routine vocabulary without confusing it with
+    built-in GENtle support.
 - `helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
   - Same discovery report shape as `genomes ensembl-available`, but exposed under the helper-family command tree for contract symmetry across adapters.
 - `helpers install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]`

@@ -57,6 +57,7 @@ pub const DEFAULT_GENOME_CATALOG_PATH: &str = "assets/genomes.json";
 pub const DEFAULT_HELPER_GENOME_CATALOG_PATH: &str = "assets/helper_genomes.json";
 pub const DEFAULT_HELPER_SEMANTICS_VOCABULARY_PATH: &str =
     "assets/helper_semantics_vocabulary.json";
+pub const HELPER_SEMANTICS_VOCABULARY_SCHEMA: &str = "gentle.helper_semantics_vocabulary.v1";
 pub const DEFAULT_REFERENCE_CATALOG_DISCOVERY_TOKEN: &str = "gentle://catalog/reference/default";
 pub const DEFAULT_HELPER_CATALOG_DISCOVERY_TOKEN: &str = "gentle://catalog/helper/default";
 pub const DEFAULT_GENOME_CACHE_DIR: &str = "data/genomes";
@@ -159,6 +160,20 @@ struct CatalogSourceCandidate {
     path: PathBuf,
 }
 
+fn dedup_catalog_source_candidates(
+    candidates: Vec<CatalogSourceCandidate>,
+) -> Vec<CatalogSourceCandidate> {
+    let mut seen_paths: BTreeSet<String> = BTreeSet::new();
+    let mut out = vec![];
+    for candidate in candidates {
+        let key = candidate.path.to_string_lossy().to_string();
+        if seen_paths.insert(key) {
+            out.push(candidate);
+        }
+    }
+    out
+}
+
 /// Stable human-facing label for default catalog discovery.
 pub fn default_catalog_discovery_label(helper_mode: bool) -> &'static str {
     CatalogDomain::from_helper_mode(helper_mode).discovery_label()
@@ -192,6 +207,44 @@ pub fn list_helper_construct_vocabulary_terms(
         HelperConstructVocabularyIndex::from_default_discovery()?
     };
     Ok(vocabulary.list_terms(filter))
+}
+
+/// Validate the effective helper semantics vocabulary without applying it.
+///
+/// This doctor route is intentionally read-only and provenance-heavy: it
+/// reports source ordering, fragment digests, duplicate canonical terms, alias
+/// collisions, malformed routine hints, and routine-family hints that appear to
+/// be local extensions relative to the supplied routine family set.
+pub fn doctor_helper_construct_vocabulary(
+    vocabulary_path: Option<&str>,
+    known_routine_families: &[String],
+) -> HelperConstructVocabularyDoctorReport {
+    let vocabulary_label = vocabulary_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| default_helper_semantics_vocabulary_discovery_label().to_string());
+    let explicit = vocabulary_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let candidates = if let Some(path) = explicit {
+        vec![CatalogSourceCandidate {
+            scope: "explicit",
+            path: PathBuf::from(path),
+        }]
+    } else {
+        helper_semantics_vocabulary_discovery_candidates()
+    };
+    let candidates = dedup_catalog_source_candidates(candidates);
+    let mut inspector = HelperConstructVocabularyDoctorInspector::new(
+        vocabulary_label,
+        known_routine_families,
+        explicit.is_some(),
+    );
+    for candidate in &candidates {
+        inspector.inspect_source(candidate);
+    }
+    inspector.finish()
 }
 
 fn configured_builtin_asset_root() -> PathBuf {
@@ -369,14 +422,10 @@ fn helper_semantics_vocabulary_discovery_candidates() -> Vec<CatalogSourceCandid
 }
 
 fn discovered_helper_semantics_vocabulary_sources() -> Vec<CatalogSourceCandidate> {
-    let candidates = helper_semantics_vocabulary_discovery_candidates();
-    let mut seen_paths: BTreeSet<String> = BTreeSet::new();
+    let candidates =
+        dedup_catalog_source_candidates(helper_semantics_vocabulary_discovery_candidates());
     let mut existing: Vec<CatalogSourceCandidate> = vec![];
     for candidate in candidates {
-        let key = candidate.path.to_string_lossy().to_string();
-        if !seen_paths.insert(key) {
-            continue;
-        }
         if candidate.path.exists() {
             existing.push(candidate);
         }
@@ -612,6 +661,656 @@ pub struct HelperConstructVocabularyCatalog {
     pub schema: Option<String>,
     #[serde(default)]
     pub terms: Vec<HelperConstructVocabularyTerm>,
+}
+
+/// Read-only validation report for helper-construct vocabulary overlays.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructVocabularyDoctorReport {
+    pub schema: String,
+    pub vocabulary_path: String,
+    pub ok: bool,
+    pub source_count: usize,
+    pub fragment_count: usize,
+    pub term_count: usize,
+    pub error_count: usize,
+    pub warning_count: usize,
+    pub info_count: usize,
+    #[serde(default)]
+    pub known_routine_families: Vec<String>,
+    #[serde(default)]
+    pub sources: Vec<HelperConstructVocabularyDoctorSource>,
+    #[serde(default)]
+    pub fragments: Vec<HelperConstructVocabularyDoctorFragment>,
+    #[serde(default)]
+    pub issues: Vec<HelperConstructVocabularyDoctorIssue>,
+}
+
+/// One configured vocabulary source inspected by the doctor.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructVocabularyDoctorSource {
+    pub scope: String,
+    pub path: String,
+    pub present: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+}
+
+/// One parsed JSON vocabulary fragment plus deterministic digest provenance.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructVocabularyDoctorFragment {
+    pub scope: String,
+    pub path: String,
+    pub digest_sha1: String,
+    pub term_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+}
+
+/// One validation finding from the helper vocabulary doctor.
+#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct HelperConstructVocabularyDoctorIssue {
+    pub severity: String,
+    pub code: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub axis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routine_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub competing_sources: Vec<String>,
+}
+
+#[derive(Default, Debug, Clone)]
+struct HelperConstructVocabularyTermOccurrence {
+    source: String,
+}
+
+#[derive(Default, Debug, Clone)]
+struct HelperConstructVocabularyAliasOccurrence {
+    source: String,
+    value: String,
+}
+
+struct HelperConstructVocabularyDoctorInspector {
+    vocabulary_path: String,
+    explicit_path: bool,
+    known_routine_families: BTreeSet<String>,
+    sources: Vec<HelperConstructVocabularyDoctorSource>,
+    fragments: Vec<HelperConstructVocabularyDoctorFragment>,
+    issues: Vec<HelperConstructVocabularyDoctorIssue>,
+    term_occurrences: BTreeMap<(String, String), Vec<HelperConstructVocabularyTermOccurrence>>,
+    alias_occurrences: BTreeMap<(String, String), Vec<HelperConstructVocabularyAliasOccurrence>>,
+    term_count: usize,
+}
+
+impl HelperConstructVocabularyDoctorInspector {
+    fn new(
+        vocabulary_path: String,
+        known_routine_families: &[String],
+        explicit_path: bool,
+    ) -> Self {
+        let known_routine_families = known_routine_families
+            .iter()
+            .map(|family| HelperConstructInterpretation::normalize_semantic_token(family))
+            .filter(|family| !family.is_empty())
+            .collect::<BTreeSet<_>>();
+        Self {
+            vocabulary_path,
+            explicit_path,
+            known_routine_families,
+            sources: vec![],
+            fragments: vec![],
+            issues: vec![],
+            term_occurrences: BTreeMap::new(),
+            alias_occurrences: BTreeMap::new(),
+            term_count: 0,
+        }
+    }
+
+    fn inspect_source(&mut self, candidate: &CatalogSourceCandidate) {
+        let display_path = candidate.path.display().to_string();
+        let metadata = match fs::metadata(&candidate.path) {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                self.sources.push(HelperConstructVocabularyDoctorSource {
+                    scope: candidate.scope.to_string(),
+                    path: display_path.clone(),
+                    present: false,
+                    kind: None,
+                });
+                if self.explicit_path {
+                    self.push_issue(
+                        "error",
+                        "missing_source",
+                        format!(
+                            "Explicit helper semantics vocabulary source '{}' could not be read: {err}",
+                            display_path
+                        ),
+                        Some(display_path),
+                        None,
+                        None,
+                        None,
+                        None,
+                        vec![],
+                    );
+                }
+                return;
+            }
+        };
+        let kind = if metadata.is_dir() {
+            "directory"
+        } else if metadata.is_file() {
+            "file"
+        } else {
+            "other"
+        };
+        self.sources.push(HelperConstructVocabularyDoctorSource {
+            scope: candidate.scope.to_string(),
+            path: display_path.clone(),
+            present: true,
+            kind: Some(kind.to_string()),
+        });
+        if metadata.is_dir() {
+            self.inspect_directory(candidate.scope, &candidate.path, &display_path);
+        } else if metadata.is_file() {
+            self.inspect_file(candidate.scope, &candidate.path, &display_path);
+        } else {
+            self.push_issue(
+                "error",
+                "unsupported_source_kind",
+                format!(
+                    "Helper semantics vocabulary source '{}' is neither a file nor a directory",
+                    display_path
+                ),
+                Some(display_path),
+                None,
+                None,
+                None,
+                None,
+                vec![],
+            );
+        }
+    }
+
+    fn inspect_directory(&mut self, scope: &str, path: &Path, display_path: &str) {
+        let read_dir = match fs::read_dir(path) {
+            Ok(read_dir) => read_dir,
+            Err(err) => {
+                self.push_issue(
+                    "error",
+                    "unreadable_directory",
+                    format!(
+                        "Helper semantics vocabulary directory '{}' could not be read: {err}",
+                        display_path
+                    ),
+                    Some(display_path.to_string()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    vec![],
+                );
+                return;
+            }
+        };
+        let mut json_files = vec![];
+        for row in read_dir {
+            match row {
+                Ok(row) => {
+                    let path = row.path();
+                    let is_json = path
+                        .extension()
+                        .and_then(|value| value.to_str())
+                        .map(|value| value.eq_ignore_ascii_case("json"))
+                        .unwrap_or(false);
+                    if row.file_type().map(|value| value.is_file()).unwrap_or(false) && is_json {
+                        json_files.push(path);
+                    }
+                }
+                Err(err) => self.push_issue(
+                    "error",
+                    "unreadable_directory_entry",
+                    format!(
+                        "Could not inspect an entry in helper semantics vocabulary directory '{}': {err}",
+                        display_path
+                    ),
+                    Some(display_path.to_string()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    vec![],
+                ),
+            }
+        }
+        json_files.sort();
+        for file_path in json_files {
+            self.inspect_file(scope, &file_path, &file_path.display().to_string());
+        }
+    }
+
+    fn inspect_file(&mut self, scope: &str, path: &Path, display_path: &str) {
+        let text = match fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(err) => {
+                self.push_issue(
+                    "error",
+                    "unreadable_file",
+                    format!(
+                        "Helper semantics vocabulary file '{}' could not be read: {err}",
+                        display_path
+                    ),
+                    Some(display_path.to_string()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    vec![],
+                );
+                return;
+            }
+        };
+        let digest_sha1 = format!("{:x}", Sha1::digest(text.as_bytes()));
+        let parsed: HelperConstructVocabularyCatalog = match serde_json::from_str(&text) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                self.push_issue(
+                    "error",
+                    "parse_error",
+                    format!(
+                        "Helper semantics vocabulary file '{}' could not be parsed: {err}",
+                        display_path
+                    ),
+                    Some(display_path.to_string()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    vec![],
+                );
+                return;
+            }
+        };
+        if parsed
+            .schema
+            .as_deref()
+            .map(str::trim)
+            .filter(|schema| schema.eq_ignore_ascii_case(HELPER_SEMANTICS_VOCABULARY_SCHEMA))
+            .is_none()
+        {
+            self.push_issue(
+                "error",
+                "unsupported_schema",
+                format!(
+                    "Helper semantics vocabulary file '{}' uses unsupported schema '{}' (expected '{}')",
+                    display_path,
+                    parsed.schema.clone().unwrap_or_else(|| "-".to_string()),
+                    HELPER_SEMANTICS_VOCABULARY_SCHEMA
+                ),
+                Some(display_path.to_string()),
+                None,
+                None,
+                None,
+                None,
+                vec![],
+            );
+        }
+        let term_count = parsed.terms.len();
+        self.fragments
+            .push(HelperConstructVocabularyDoctorFragment {
+                scope: scope.to_string(),
+                path: display_path.to_string(),
+                digest_sha1,
+                term_count,
+                schema: parsed.schema.clone(),
+            });
+        for term in parsed.terms {
+            self.inspect_term(term, display_path);
+        }
+    }
+
+    fn inspect_term(&mut self, term: HelperConstructVocabularyTerm, display_path: &str) {
+        self.term_count += 1;
+        let axis = HelperConstructInterpretation::normalize_semantic_token(&term.axis);
+        let value = HelperConstructInterpretation::normalize_semantic_token(&term.value);
+        if axis.is_empty() || value.is_empty() {
+            self.push_issue(
+                "error",
+                "empty_axis_or_value",
+                format!(
+                    "Helper semantics vocabulary file '{}' contains a term with empty axis/value",
+                    display_path
+                ),
+                Some(display_path.to_string()),
+                (!axis.is_empty()).then_some(axis.clone()),
+                (!value.is_empty()).then_some(value.clone()),
+                None,
+                None,
+                vec![],
+            );
+            return;
+        }
+        self.term_occurrences
+            .entry((axis.clone(), value.clone()))
+            .or_default()
+            .push(HelperConstructVocabularyTermOccurrence {
+                source: display_path.to_string(),
+            });
+        let aliases = HelperConstructVocabularyIndex::dedup_normalized_aliases(term.aliases);
+        for alias in aliases {
+            if alias.is_empty() || alias == value {
+                continue;
+            }
+            self.alias_occurrences
+                .entry((axis.clone(), alias))
+                .or_default()
+                .push(HelperConstructVocabularyAliasOccurrence {
+                    source: display_path.to_string(),
+                    value: value.clone(),
+                });
+        }
+        for hint in term.routine_hints {
+            self.inspect_routine_hint(hint, display_path, &axis, &value);
+        }
+    }
+
+    fn inspect_routine_hint(
+        &mut self,
+        hint: HelperConstructRoutineHint,
+        display_path: &str,
+        axis: &str,
+        value: &str,
+    ) {
+        let family = HelperConstructInterpretation::normalize_semantic_token(&hint.family);
+        if family.is_empty() {
+            self.push_issue(
+                "error",
+                "empty_routine_hint_family",
+                format!(
+                    "Helper semantics vocabulary term '{}:{}' in '{}' has a routine hint with empty family",
+                    axis, value, display_path
+                ),
+                Some(display_path.to_string()),
+                Some(axis.to_string()),
+                Some(value.to_string()),
+                None,
+                None,
+                vec![],
+            );
+        } else if !self.known_routine_families.is_empty()
+            && !self.known_routine_families.contains(&family)
+        {
+            self.push_issue(
+                "warning",
+                "unknown_routine_family",
+                format!(
+                    "Routine hint family '{}' on helper vocabulary term '{}:{}' is not in the known routine-family catalog and will be treated as a local extension",
+                    family, axis, value
+                ),
+                Some(display_path.to_string()),
+                Some(axis.to_string()),
+                Some(value.to_string()),
+                None,
+                Some(family.clone()),
+                vec![],
+            );
+        }
+        if hint.rationale.trim().is_empty() {
+            self.push_issue(
+                "warning",
+                "empty_routine_hint_rationale",
+                format!(
+                    "Routine hint family '{}' on helper vocabulary term '{}:{}' in '{}' has empty rationale",
+                    family, axis, value, display_path
+                ),
+                Some(display_path.to_string()),
+                Some(axis.to_string()),
+                Some(value.to_string()),
+                None,
+                (!family.is_empty()).then_some(family.clone()),
+                vec![],
+            );
+        }
+        if hint.source_terms.is_empty() {
+            self.push_issue(
+                "warning",
+                "empty_routine_hint_source_terms",
+                format!(
+                    "Routine hint family '{}' on helper vocabulary term '{}:{}' in '{}' has no source_terms target",
+                    family, axis, value, display_path
+                ),
+                Some(display_path.to_string()),
+                Some(axis.to_string()),
+                Some(value.to_string()),
+                None,
+                (!family.is_empty()).then_some(family.clone()),
+                vec![],
+            );
+        } else if !hint
+            .source_terms
+            .iter()
+            .any(|source_term| routine_hint_source_term_matches(source_term, axis, value))
+        {
+            self.push_issue(
+                "warning",
+                "routine_hint_source_term_mismatch",
+                format!(
+                    "Routine hint family '{}' on helper vocabulary term '{}:{}' in '{}' does not cite that term in source_terms",
+                    family, axis, value, display_path
+                ),
+                Some(display_path.to_string()),
+                Some(axis.to_string()),
+                Some(value.to_string()),
+                None,
+                (!family.is_empty()).then_some(family.clone()),
+                vec![],
+            );
+        }
+    }
+
+    fn finish(mut self) -> HelperConstructVocabularyDoctorReport {
+        if self.fragments.is_empty() {
+            self.push_issue(
+                "warning",
+                "no_vocabulary_fragments",
+                "No helper semantics vocabulary JSON fragments were found".to_string(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                vec![],
+            );
+        }
+        self.add_duplicate_term_issues();
+        self.add_alias_collision_issues();
+        self.issues.sort_by(|left, right| {
+            (
+                issue_severity_rank(&left.severity),
+                left.code.as_str(),
+                left.source.as_deref().unwrap_or(""),
+                left.axis.as_deref().unwrap_or(""),
+                left.alias.as_deref().unwrap_or(""),
+                left.value.as_deref().unwrap_or(""),
+                left.routine_family.as_deref().unwrap_or(""),
+                left.message.as_str(),
+            )
+                .cmp(&(
+                    issue_severity_rank(&right.severity),
+                    right.code.as_str(),
+                    right.source.as_deref().unwrap_or(""),
+                    right.axis.as_deref().unwrap_or(""),
+                    right.alias.as_deref().unwrap_or(""),
+                    right.value.as_deref().unwrap_or(""),
+                    right.routine_family.as_deref().unwrap_or(""),
+                    right.message.as_str(),
+                ))
+        });
+        let error_count = self
+            .issues
+            .iter()
+            .filter(|issue| issue.severity == "error")
+            .count();
+        let warning_count = self
+            .issues
+            .iter()
+            .filter(|issue| issue.severity == "warning")
+            .count();
+        let info_count = self
+            .issues
+            .iter()
+            .filter(|issue| issue.severity == "info")
+            .count();
+        let known_routine_families = self.known_routine_families.into_iter().collect::<Vec<_>>();
+        HelperConstructVocabularyDoctorReport {
+            schema: "gentle.helper_semantics_vocabulary_doctor.v1".to_string(),
+            vocabulary_path: self.vocabulary_path,
+            ok: error_count == 0,
+            source_count: self.sources.len(),
+            fragment_count: self.fragments.len(),
+            term_count: self.term_count,
+            error_count,
+            warning_count,
+            info_count,
+            known_routine_families,
+            sources: self.sources,
+            fragments: self.fragments,
+            issues: self.issues,
+        }
+    }
+
+    fn add_duplicate_term_issues(&mut self) {
+        let duplicates = self
+            .term_occurrences
+            .iter()
+            .filter(|(_, occurrences)| occurrences.len() > 1)
+            .map(|((axis, value), occurrences)| {
+                (
+                    axis.clone(),
+                    value.clone(),
+                    dedup_strings_preserve_order(
+                        occurrences
+                            .iter()
+                            .map(|occurrence| occurrence.source.clone())
+                            .collect::<Vec<_>>(),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (axis, value, sources) in duplicates {
+            self.push_issue(
+                "warning",
+                "duplicate_canonical_term",
+                format!(
+                    "Helper semantics vocabulary term '{}:{}' appears in multiple fragments; list resolution extends aliases/routine hints and lets later sources replace label/description",
+                    axis, value
+                ),
+                sources.last().cloned(),
+                Some(axis),
+                Some(value),
+                None,
+                None,
+                sources,
+            );
+        }
+    }
+
+    fn add_alias_collision_issues(&mut self) {
+        let collisions = self
+            .alias_occurrences
+            .iter()
+            .filter_map(|((axis, alias), occurrences)| {
+                let values = occurrences
+                    .iter()
+                    .map(|occurrence| occurrence.value.clone())
+                    .collect::<BTreeSet<_>>();
+                (values.len() > 1).then(|| {
+                    let sources = occurrences
+                        .iter()
+                        .map(|occurrence| format!("{} -> {}", occurrence.source, occurrence.value))
+                        .collect::<Vec<_>>();
+                    let sources = dedup_strings_preserve_order(sources);
+                    (axis.clone(), alias.clone(), sources)
+                })
+            })
+            .collect::<Vec<_>>();
+        for (axis, alias, sources) in collisions {
+            self.push_issue(
+                "error",
+                "alias_collision",
+                format!(
+                    "Helper semantics vocabulary alias '{}:{}' maps to more than one canonical value",
+                    axis, alias
+                ),
+                sources.last().cloned(),
+                Some(axis),
+                None,
+                Some(alias),
+                None,
+                sources,
+            );
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn push_issue(
+        &mut self,
+        severity: &str,
+        code: &str,
+        message: String,
+        source: Option<String>,
+        axis: Option<String>,
+        value: Option<String>,
+        alias: Option<String>,
+        routine_family: Option<String>,
+        competing_sources: Vec<String>,
+    ) {
+        self.issues.push(HelperConstructVocabularyDoctorIssue {
+            severity: severity.to_string(),
+            code: code.to_string(),
+            message,
+            source,
+            axis,
+            value,
+            alias,
+            routine_family,
+            competing_sources,
+        });
+    }
+}
+
+fn issue_severity_rank(severity: &str) -> usize {
+    match severity {
+        "error" => 0,
+        "warning" => 1,
+        "info" => 2,
+        _ => 3,
+    }
+}
+
+fn dedup_strings_preserve_order(values: Vec<String>) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut out = vec![];
+    for value in values {
+        if seen.insert(value.clone()) {
+            out.push(value);
+        }
+    }
+    out
+}
+
+fn routine_hint_source_term_matches(source_term: &str, axis: &str, value: &str) -> bool {
+    let Some((source_axis, source_value)) = source_term.split_once(':') else {
+        return false;
+    };
+    HelperConstructInterpretation::normalize_semantic_token(source_axis) == axis
+        && HelperConstructInterpretation::normalize_semantic_token(source_value) == value
 }
 
 #[derive(Default, Debug, Clone)]

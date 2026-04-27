@@ -3196,16 +3196,12 @@ Current baseline:
   helper/vector terms, and system/user/project overlays can add aliases,
   descriptions, and routine hints that helper interpretations resolve into
   enriched `normalized_terms[]`
-- the next governance gap is explicit validation/audit of those vocabulary
-  overlays:
-  - duplicate canonical `(axis, value)` terms need deterministic
-    replacement/extension semantics instead of accidental last-writer behavior
-  - alias collisions should report which source file contributed each
-    competing meaning
-  - routine hints should validate against known routine-family identifiers or
-    mark unknown families as local extensions
-  - list/doctor output should expose enough source/digest/provenance detail for
-    users and ClawBio/MCP agents to debug why one term resolved the way it did
+- vocabulary overlay governance now has an explicit shared doctor surface:
+  `helpers vocabulary doctor [--vocabulary PATH] [--routine-catalog PATH]`
+  emits source ordering, parsed fragment SHA-1 digests, duplicate canonical
+  `(axis, value)` warnings, alias collision errors with competing sources,
+  malformed routine-hint diagnostics including missing `source_terms` targets,
+  and unknown routine-family warnings marked as local extensions
 - the resolved vocabulary is now inspectable through shared routes:
   `helpers vocabulary list`, direct CLI, JS/Lua wrappers, and the MCP
   `helper_semantics_vocabulary` tool expose canonical terms, aliases,
@@ -3264,11 +3260,12 @@ Planned work:
      `helpers vocabulary list --filter TEXT`, direct CLI, MCP, JS, and Lua all
      expose the resolved effective vocabulary so downstream tools can inspect
      what GENtle knows before relying on helper interpretation output.
-   - Missing next hardening step:
-     add a deterministic vocabulary `doctor` / validation surface that checks
-     overlay ordering, duplicate canonical terms, alias collisions, malformed
-     routine hints, unknown routine families, and source provenance before
-     helper-construct semantics are treated as stable ontology input.
+   - Vocabulary doctor hardening is now in place:
+     `helpers vocabulary doctor --vocabulary PATH --routine-catalog PATH`
+     checks overlay ordering/provenance, fragment digests, duplicate canonical
+     terms, alias collisions, malformed routine hints, and unknown routine
+     families before helper-construct semantics are treated as stable ontology
+     input.
    - planning baseline now also accepts helper-aware `planning objective`
      fields (`helper_profile_id`, `preferred_routine_families`) and uses one
      shared synthesized `routine_preference_context` for:

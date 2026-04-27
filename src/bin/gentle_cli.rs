@@ -12,9 +12,10 @@ use gentle::{
         RnaReadInterpretProgress, TfbsProgress,
     },
     engine_shell::{
-        ShellCommand, ShellExecutionOptions, ShellProgressCallback,
-        execute_shell_command_with_options, parse_shell_line, parse_shell_tokens,
-        parse_workflow_json_payload, shell_help_text,
+        DEFAULT_CLONING_ROUTINE_CATALOG_PATH, ShellCommand, ShellExecutionOptions,
+        ShellProgressCallback,
+        cloning_routine_families_from_catalog, execute_shell_command_with_options,
+        parse_shell_line, parse_shell_tokens, parse_workflow_json_payload, shell_help_text,
     },
     genomes::{
         GenomeGeneRecord, PrepareGenomeProgress, default_catalog_discovery_label,
@@ -592,6 +593,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
   gentle_cli helpers list [--catalog PATH] [--filter TEXT]\n  \
   gentle_cli helpers vocabulary list [--vocabulary PATH] [--filter TEXT]\n  \
+  gentle_cli helpers vocabulary doctor [--vocabulary PATH] [--routine-catalog PATH]\n  \
   gentle_cli helpers validate-catalog [--catalog PATH]\n  \
   gentle_cli helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
   gentle_cli helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
@@ -1366,7 +1368,8 @@ fn run() -> Result<(), String> {
                 "vocabulary" if helper_mode => {
                     if args.len() <= cmd_idx + 2 {
                         return Err(
-                            "helpers vocabulary requires a subcommand (expected list)".to_string()
+                            "helpers vocabulary requires a subcommand (expected list or doctor)"
+                                .to_string(),
                         );
                     }
                     match args[cmd_idx + 2].as_str() {
@@ -1418,8 +1421,60 @@ fn run() -> Result<(), String> {
                                 "terms": terms,
                             }))
                         }
+                        "doctor" | "validate" => {
+                            let mut vocabulary_path: Option<String> = None;
+                            let mut routine_catalog_path: Option<String> = None;
+                            let mut idx = cmd_idx + 3;
+                            while idx < args.len() {
+                                match args[idx].as_str() {
+                                    "--vocabulary" => {
+                                        if idx + 1 >= args.len() {
+                                            return Err(
+                                                "Missing PATH after --vocabulary for helpers vocabulary doctor"
+                                                    .to_string(),
+                                            );
+                                        }
+                                        vocabulary_path = Some(args[idx + 1].clone());
+                                        idx += 2;
+                                    }
+                                    "--routine-catalog" => {
+                                        if idx + 1 >= args.len() {
+                                            return Err(
+                                                "Missing PATH after --routine-catalog for helpers vocabulary doctor"
+                                                    .to_string(),
+                                            );
+                                        }
+                                        routine_catalog_path = Some(args[idx + 1].clone());
+                                        idx += 2;
+                                    }
+                                    other => {
+                                        return Err(format!(
+                                            "Unknown option '{}' for helpers vocabulary doctor",
+                                            other
+                                        ));
+                                    }
+                                }
+                            }
+                            let known_routine_families = cloning_routine_families_from_catalog(
+                                routine_catalog_path.as_deref(),
+                            )?;
+                            let report = GentleEngine::doctor_helper_semantics_vocabulary(
+                                vocabulary_path.as_deref(),
+                                &known_routine_families,
+                            )
+                            .map_err(|e| e.to_string())?;
+                            print_json(&json!({
+                                "vocabulary_path": vocabulary_path
+                                    .clone()
+                                    .unwrap_or_else(|| default_helper_semantics_vocabulary_discovery_label().to_string()),
+                                "routine_catalog_path": routine_catalog_path
+                                    .clone()
+                                    .unwrap_or_else(|| DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string()),
+                                "report": report,
+                            }))
+                        }
                         other => Err(format!(
-                            "Unknown helpers vocabulary subcommand '{}' (expected list)",
+                            "Unknown helpers vocabulary subcommand '{}' (expected list or doctor)",
                             other
                         )),
                     }

@@ -14681,6 +14681,30 @@ fn parse_helpers_vocabulary_list_with_filter() {
 }
 
 #[test]
+fn parse_helpers_vocabulary_doctor_with_routine_catalog() {
+    let cmd = parse_shell_line(
+        "helpers vocabulary doctor --vocabulary assets/helper_semantics_vocabulary.json --routine-catalog assets/cloning_routines.json",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::HelperVocabularyDoctor {
+            vocabulary_path,
+            routine_catalog_path,
+        } => {
+            assert_eq!(
+                vocabulary_path,
+                Some("assets/helper_semantics_vocabulary.json".to_string())
+            );
+            assert_eq!(
+                routine_catalog_path,
+                Some("assets/cloning_routines.json".to_string())
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_hosts_list_with_filter() {
     let cmd = parse_shell_line("hosts list --catalog assets/host_profiles.json --filter deoR")
         .expect("parse command");
@@ -15711,6 +15735,140 @@ fn execute_helpers_vocabulary_list_reports_resolved_terms() {
         out.output["terms"][0]["routine_hints"][0]["family"].as_str(),
         Some("gibson")
     );
+}
+
+#[test]
+fn execute_helpers_vocabulary_doctor_reports_overlay_conflicts_and_provenance() {
+    let td = tempdir().expect("tempdir");
+    let vocabulary_dir = td.path().join("vocabulary.d");
+    fs::create_dir_all(&vocabulary_dir).expect("create vocabulary dir");
+    fs::write(
+        vocabulary_dir.join("a.json"),
+        r#"{
+  "schema": "gentle.helper_semantics_vocabulary.v1",
+  "terms": [
+    {
+      "axis": "component_kind",
+      "value": "fusion_tag",
+      "aliases": ["tag"],
+      "routine_hints": [
+        {
+          "family": "gibson",
+          "rationale": "Known family.",
+          "source_terms": ["component_kind:fusion_tag"]
+        }
+      ]
+    },
+    {
+      "axis": "offered_function",
+      "value": "local_magic",
+      "routine_hints": [
+        {
+          "family": "local_magic",
+          "rationale": "Local extension."
+        }
+      ]
+    }
+  ]
+}"#,
+    )
+    .expect("write first vocabulary fragment");
+    fs::write(
+        vocabulary_dir.join("b.json"),
+        r#"{
+  "schema": "gentle.helper_semantics_vocabulary.v1",
+  "terms": [
+    {
+      "axis": "component_kind",
+      "value": "fusion_tag",
+      "label": "Replacement label"
+    },
+    {
+      "axis": "component_kind",
+      "value": "protein_tag",
+      "aliases": ["tag"],
+      "routine_hints": [
+        {
+          "family": "",
+          "rationale": "",
+          "source_terms": ["component_kind:protein_tag"]
+        }
+      ]
+    }
+  ]
+}"#,
+    )
+    .expect("write second vocabulary fragment");
+    let routine_catalog = td.path().join("routines.json");
+    fs::write(
+        &routine_catalog,
+        r#"{
+  "schema": "gentle.cloning_routines.v1",
+  "routines": [
+    {
+      "routine_id": "gibson.test",
+      "title": "Gibson Test",
+      "family": "gibson",
+      "status": "implemented",
+      "template_name": "gibson_test"
+    }
+  ]
+}"#,
+    )
+    .expect("write routine catalog");
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::HelperVocabularyDoctor {
+            vocabulary_path: Some(vocabulary_dir.to_string_lossy().to_string()),
+            routine_catalog_path: Some(routine_catalog.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute helpers vocabulary doctor");
+
+    assert!(!out.state_changed);
+    let report = &out.output["report"];
+    assert_eq!(
+        report["schema"].as_str(),
+        Some("gentle.helper_semantics_vocabulary_doctor.v1")
+    );
+    assert_eq!(report["ok"].as_bool(), Some(false));
+    assert_eq!(report["fragment_count"].as_u64(), Some(2));
+    assert_eq!(report["term_count"].as_u64(), Some(4));
+    assert_eq!(report["known_routine_families"][0].as_str(), Some("gibson"));
+    assert!(
+        report["fragments"]
+            .as_array()
+            .expect("fragments")
+            .iter()
+            .all(|row| row["digest_sha1"].as_str().unwrap_or("").len() == 40)
+    );
+    let issues = report["issues"].as_array().expect("issues");
+    assert!(issues.iter().any(|row| {
+        row["code"].as_str() == Some("duplicate_canonical_term")
+            && row["axis"].as_str() == Some("component_kind")
+            && row["value"].as_str() == Some("fusion_tag")
+    }));
+    assert!(issues.iter().any(|row| {
+        row["code"].as_str() == Some("alias_collision")
+            && row["alias"].as_str() == Some("tag")
+            && row["severity"].as_str() == Some("error")
+    }));
+    assert!(issues.iter().any(|row| {
+        row["code"].as_str() == Some("unknown_routine_family")
+            && row["routine_family"].as_str() == Some("local_magic")
+            && row["severity"].as_str() == Some("warning")
+    }));
+    assert!(issues.iter().any(|row| {
+        row["code"].as_str() == Some("empty_routine_hint_source_terms")
+            && row["routine_family"].as_str() == Some("local_magic")
+            && row["severity"].as_str() == Some("warning")
+    }));
+    assert!(issues.iter().any(|row| {
+        row["code"].as_str() == Some("empty_routine_hint_family")
+            && row["severity"].as_str() == Some("error")
+    }));
 }
 
 #[test]

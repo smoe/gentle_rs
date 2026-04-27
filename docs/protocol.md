@@ -1806,6 +1806,13 @@ Catalog-backed reference/helper discovery notes:
   resolved vocabulary terms with deterministic source/provenance fields; MCP,
   JS, and Lua expose the same list through dedicated helpers so agents can
   inspect vocabulary facts before relying on helper interpretation output
+- shared shell/CLI validation command
+  `helpers vocabulary doctor [--vocabulary PATH] [--routine-catalog PATH]`
+  returns `gentle.helper_semantics_vocabulary_doctor.v1` with source ordering,
+  parsed fragment SHA-1 digests, duplicate canonical-term warnings, alias
+  collision errors, malformed routine-hint diagnostics including missing
+  `source_terms` targets, and unknown routine-family warnings marked as local
+  extensions rather than authoritative catalog failures
 - helper-list/status routes may now also expose an engine-owned normalized
   `interpretation` record derived from those helper fields:
   - `helper_id`

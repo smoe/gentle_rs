@@ -137,7 +137,7 @@ const CLONING_ROUTINE_CATALOG_SCHEMA: &str = "gentle.cloning_routines.v1";
 const CLONING_ROUTINE_LIST_SCHEMA: &str = "gentle.cloning_routines_list.v1";
 const CLONING_ROUTINE_EXPLAIN_SCHEMA: &str = "gentle.cloning_routine_explain.v1";
 const CLONING_ROUTINE_COMPARE_SCHEMA: &str = "gentle.cloning_routine_compare.v1";
-const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
+pub const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
 const BLAST_ASYNC_JOB_SCHEMA: &str = "gentle.blast_async_job_status.v1";
 const BLAST_ASYNC_STORE_SCHEMA: &str = "gentle.blast_async_job_store.v1";
 const BLAST_ASYNC_STORE_METADATA_KEY: &str = "blast_async_jobs";
@@ -1302,6 +1302,10 @@ pub enum ShellCommand {
     HelperVocabularyList {
         vocabulary_path: Option<String>,
         filter: Option<String>,
+    },
+    HelperVocabularyDoctor {
+        vocabulary_path: Option<String>,
+        routine_catalog_path: Option<String>,
     },
     ReferenceEnsemblAvailable {
         helper_mode: bool,
@@ -2953,6 +2957,23 @@ fn load_cloning_routine_catalog(path: &str) -> Result<CloningRoutineCatalog, Str
         }
     }
     Ok(catalog)
+}
+
+/// Return the normalized routine-family identifiers from a cloning routine catalog.
+pub fn cloning_routine_families_from_catalog(path: Option<&str>) -> Result<Vec<String>, String> {
+    let path = path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_CLONING_ROUTINE_CATALOG_PATH);
+    let catalog = load_cloning_routine_catalog(path)?;
+    Ok(catalog
+        .routines
+        .iter()
+        .map(|routine| normalize_planning_class_key(&routine.family))
+        .filter(|family| !family.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect())
 }
 
 fn normalize_optional_string(value: &mut Option<String>) {
@@ -6583,6 +6604,21 @@ impl ShellCommand {
                         .filter(|value| !value.is_empty())
                         .map(|value| format!(" (filter='{value}')"))
                         .unwrap_or_default()
+                )
+            }
+            Self::HelperVocabularyDoctor {
+                vocabulary_path,
+                routine_catalog_path,
+            } => {
+                let vocabulary = vocabulary_path.clone().unwrap_or_else(|| {
+                    default_helper_semantics_vocabulary_discovery_label().to_string()
+                });
+                let routine_catalog = routine_catalog_path
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string());
+                format!(
+                    "validate helper semantics vocabulary from '{}' against routine catalog '{}'",
+                    vocabulary, routine_catalog
                 )
             }
             Self::ReferenceEnsemblAvailable {
@@ -11203,7 +11239,10 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
     match tokens[1].as_str() {
         "vocabulary" if helper_mode => {
             if tokens.len() < 3 {
-                return Err("helpers vocabulary requires a subcommand (expected list)".to_string());
+                return Err(
+                    "helpers vocabulary requires a subcommand (expected list or doctor)"
+                        .to_string(),
+                );
             }
             match tokens[2].as_str() {
                 "list" => {
@@ -11240,8 +11279,42 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                         filter,
                     })
                 }
+                "doctor" | "validate" => {
+                    let mut vocabulary_path: Option<String> = None;
+                    let mut routine_catalog_path: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--vocabulary" => {
+                                vocabulary_path = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--vocabulary",
+                                    "helpers vocabulary doctor",
+                                )?)
+                            }
+                            "--routine-catalog" => {
+                                routine_catalog_path = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--routine-catalog",
+                                    "helpers vocabulary doctor",
+                                )?)
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for helpers vocabulary doctor"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::HelperVocabularyDoctor {
+                        vocabulary_path,
+                        routine_catalog_path,
+                    })
+                }
                 other => Err(format!(
-                    "Unknown helpers vocabulary subcommand '{other}' (expected list)"
+                    "Unknown helpers vocabulary subcommand '{other}' (expected list or doctor)"
                 )),
             }
         }
@@ -20918,6 +20991,30 @@ fn execute_reference_and_track_command(
                 }),
             })
         }
+        ShellCommand::HelperVocabularyDoctor {
+            vocabulary_path,
+            routine_catalog_path,
+        } => {
+            let known_routine_families =
+                cloning_routine_families_from_catalog(routine_catalog_path.as_deref())?;
+            let report = GentleEngine::doctor_helper_semantics_vocabulary(
+                vocabulary_path.as_deref(),
+                &known_routine_families,
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "vocabulary_path": vocabulary_path
+                        .clone()
+                        .unwrap_or_else(|| default_helper_semantics_vocabulary_discovery_label().to_string()),
+                    "routine_catalog_path": routine_catalog_path
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string()),
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::ReferenceEnsemblAvailable {
             helper_mode,
             collection,
@@ -27151,6 +27248,7 @@ pub fn execute_shell_command_with_options(
         ShellCommand::HostsList { .. }
             | ShellCommand::ReferenceList { .. }
             | ShellCommand::HelperVocabularyList { .. }
+            | ShellCommand::HelperVocabularyDoctor { .. }
             | ShellCommand::ReferenceEnsemblAvailable { .. }
             | ShellCommand::ReferenceInstallEnsembl { .. }
             | ShellCommand::ReferenceValidateCatalog { .. }
@@ -27928,6 +28026,7 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::HostsList { .. }
         | ShellCommand::ReferenceList { .. }
         | ShellCommand::HelperVocabularyList { .. }
+        | ShellCommand::HelperVocabularyDoctor { .. }
         | ShellCommand::ReferenceEnsemblAvailable { .. }
         | ShellCommand::ReferenceInstallEnsembl { .. }
         | ShellCommand::ReferenceValidateCatalog { .. }
