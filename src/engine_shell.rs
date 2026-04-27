@@ -1910,6 +1910,12 @@ pub enum ShellCommand {
         scope: Option<SplicingScopePreset>,
         output_prefix: Option<String>,
     },
+    TranscriptsResidueGenomicCoordinates {
+        seq_id: String,
+        transcript_id: Option<String>,
+        residue_start_1based: usize,
+        residue_end_1based: usize,
+    },
     PrimersDesignQpcr {
         request_json: String,
         backend: Option<PrimerDesignBackend>,
@@ -8343,6 +8349,21 @@ impl ShellCommand {
                     .as_deref()
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto")
+            ),
+            Self::TranscriptsResidueGenomicCoordinates {
+                seq_id,
+                transcript_id,
+                residue_start_1based,
+                residue_end_1based,
+            } => format!(
+                "map protein residue(s) {}..{} from '{}' back to genomic codon bases (transcript={})",
+                residue_start_1based,
+                residue_end_1based,
+                seq_id,
+                transcript_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all"),
             ),
             Self::UniprotResolveEnsemblLinks {
                 projection_id,
@@ -24226,6 +24247,27 @@ fn execute_sequence_analysis_command(
                 }),
             })
         }
+        ShellCommand::TranscriptsResidueGenomicCoordinates {
+            seq_id,
+            transcript_id,
+            residue_start_1based,
+            residue_end_1based,
+        } => {
+            let report = engine
+                .query_protein_residue_genomic_coordinates(
+                    seq_id,
+                    transcript_id.as_deref(),
+                    *residue_start_1based,
+                    *residue_end_1based,
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize protein residue coordinate report: {e}")
+                })?,
+            })
+        }
         ShellCommand::VariantAnnotatePromoterWindows {
             seq_id,
             gene_label,
@@ -27403,6 +27445,7 @@ pub fn execute_shell_command_with_options(
     if matches!(
         command,
         ShellCommand::TranscriptsDerive { .. }
+            | ShellCommand::TranscriptsResidueGenomicCoordinates { .. }
             | ShellCommand::VariantAnnotatePromoterWindows { .. }
             | ShellCommand::VariantPromoterContext { .. }
             | ShellCommand::VariantReporterFragments { .. }
@@ -27639,6 +27682,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
         | ShellCommand::FeaturesTfbsScan { .. } => execute_feature_scan_command(engine, command)?,
         ShellCommand::TranscriptsDerive { .. }
+        | ShellCommand::TranscriptsResidueGenomicCoordinates { .. }
         | ShellCommand::VariantAnnotatePromoterWindows { .. }
         | ShellCommand::VariantPromoterContext { .. }
         | ShellCommand::VariantReporterFragments { .. }

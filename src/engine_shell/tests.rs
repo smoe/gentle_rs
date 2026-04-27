@@ -17069,6 +17069,44 @@ fn tp53_isoform_test_sequence() -> DNAsequence {
     dna
 }
 
+fn split_codon_transcript_test_sequence() -> DNAsequence {
+    let mut dna = DNAsequence::from_sequence("ATGGCNNNNNCTAA").expect("valid dna");
+    let join = Location::Join(vec![
+        Location::simple_range(0, 5),
+        Location::simple_range(10, 14),
+    ]);
+    dna.features_mut().push(Feature {
+        kind: "source".into(),
+        location: Location::simple_range(0, 14),
+        qualifiers: vec![("organism".into(), Some("Escherichia coli".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: join.clone(),
+        qualifiers: vec![
+            ("gene".into(), Some("toyA".to_string())),
+            ("transcript_id".into(), Some("TX_SPLIT".to_string())),
+            ("label".into(), Some("TX_SPLIT".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    dna.features_mut().push(Feature {
+        kind: "CDS".into(),
+        location: join,
+        qualifiers: vec![
+            ("transcript_id".into(), Some("TX_SPLIT".to_string())),
+            ("product".into(), Some("split codon protein".to_string())),
+            ("transl_table".into(), Some("11".to_string())),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    dna
+}
+
 fn uniprot_projection_test_sequence() -> DNAsequence {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid dna");
     dna.features_mut().push(Feature {
@@ -18403,6 +18441,27 @@ fn parse_transcripts_derive_command() {
 }
 
 #[test]
+fn parse_transcripts_residue_genomic_coordinates_command() {
+    let parsed =
+        parse_shell_line("transcripts residue-genomic-coordinates seq_a 2 4 --transcript TX_SPLIT")
+            .expect("parse residue coordinate query");
+    match parsed {
+        ShellCommand::TranscriptsResidueGenomicCoordinates {
+            seq_id,
+            transcript_id,
+            residue_start_1based,
+            residue_end_1based,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(transcript_id.as_deref(), Some("TX_SPLIT"));
+            assert_eq!(residue_start_1based, 2);
+            assert_eq!(residue_end_1based, 4);
+        }
+        other => panic!("expected TranscriptsResidueGenomicCoordinates, got {other:?}"),
+    }
+}
+
+#[test]
 fn parse_rna_reads_commands() {
     let interpret = parse_shell_line(
             "rna-reads interpret seq_a 7 reads.fa --report-id tp73_reads --scope target_group_any_strand --kmer-len 9 --seed-stride-bp 1 --min-seed-hit-fraction 0.30 --min-weighted-seed-hit-fraction 0.05 --min-unique-matched-kmers 12 --min-chain-consistency-fraction 0.55 --max-median-transcript-gap 4.0 --min-confirmed-transitions 1 --min-transition-support-fraction 0.20 --no-cdna-poly-t-flip --poly-t-prefix-min-bp 20 --align-band-bp 24 --align-min-identity 0.60 --max-secondary-mappings 2",
@@ -19084,6 +19143,40 @@ fn execute_transcripts_derive_creates_sequences() {
         .as_array()
         .expect("transcripts array");
     assert_eq!(rows.len() as u64, transcript_count);
+}
+
+#[test]
+fn execute_transcripts_residue_genomic_coordinates_reports_codon_bases() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), split_codon_transcript_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::TranscriptsResidueGenomicCoordinates {
+            seq_id: "seq_a".to_string(),
+            transcript_id: Some("TX_SPLIT".to_string()),
+            residue_start_1based: 2,
+            residue_end_1based: 2,
+        },
+    )
+    .expect("execute residue coordinate query");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.protein_residue_genomic_coordinates.v1")
+    );
+    assert_eq!(out.output["match_count"].as_u64(), Some(1));
+    assert_eq!(out.output["matches"][0]["codon"].as_str(), Some("GCC"));
+    assert_eq!(
+        out.output["matches"][0]["genomic_bases"][2]["genomic_pos_1based"].as_u64(),
+        Some(11)
+    );
+    assert_eq!(
+        out.output["matches"][0]["spans_exon_junction"].as_bool(),
+        Some(true)
+    );
 }
 
 #[test]

@@ -2206,6 +2206,17 @@ external coding agent runtime, see:
     - the same persisted projection now also appears in GUI lineage as one
       analysis artifact node linked from the source sequence and reopenable
       through the protein expert
+- Protein residue genomic coordinate query semantics:
+  - `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END]`
+    returns one `gentle.protein_residue_genomic_coordinates.v1` report
+  - optional `--transcript ID` narrows the query by transcript id, label, or
+    `n-N` feature id
+  - each match reports the amino-acid residue, coding-orientation codon,
+    per-base 1-based genomic positions, exon ordinals, reverse-strand coding
+    order, and whether the codon crosses an exon junction
+  - the query is transcript-native: it uses the same CDS resolution and
+    translation-table selection as derived transcript/protein products, and it
+    does not require UniProt or Ensembl protein evidence
 - UniProt feature-coding DNA query semantics:
   - resolves one persisted `gentle.uniprot_genome_projection.v1` record
   - matches `FEATURE_QUERY` case-insensitively against mapped UniProt feature

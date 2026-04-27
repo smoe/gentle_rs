@@ -561,6 +561,11 @@ Dotplot/flexibility capability status:
     - additive synthetic local `CDS` + translated-protein qualifiers when the
       admitted transcript has resolvable CDS context and translation-table
       metadata
+  - `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END]`
+    maps transcript-native protein residue(s) back to 1-based genomic codon
+    nucleotide positions; `--transcript ID` narrows the query to a transcript
+    id, label, or `n-N` feature id, and split codons across exon junctions are
+    reported base-by-base in coding order.
 - `gentle_js`: baseline support via `apply_operation` (`ComputeDotplot`,
   `DeriveTranscriptSequences`, `ComputeFlexibilityTrack`,
   `DeriveSplicingReferences`, `AlignSequences`) plus
@@ -1886,6 +1891,7 @@ Shared shell command:
     - `dotplot show DOTPLOT_ID`
     - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor] [--overlay-anchor-exon START..END]`
     - `transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
+    - `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END] [--transcript ID]`
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
     - `flex list [SEQ_ID]`
     - `flex show TRACK_ID`

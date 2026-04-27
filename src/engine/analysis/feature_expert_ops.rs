@@ -4880,6 +4880,302 @@ impl GentleEngine {
         segments
     }
 
+    fn transcript_local_position_to_source_0based(
+        local_pos_0based: usize,
+        exon_segments_forward: &[(usize, usize, usize, usize)],
+        is_reverse: bool,
+        total_len: usize,
+    ) -> Option<(usize, usize)> {
+        let forward_local_pos = if is_reverse {
+            total_len.checked_sub(local_pos_0based.saturating_add(1))?
+        } else {
+            local_pos_0based
+        };
+        let exon_count = exon_segments_forward.len();
+        for (idx, (source_start, source_end, exon_local_start, exon_local_end)) in
+            exon_segments_forward.iter().enumerate()
+        {
+            if forward_local_pos < *exon_local_start || forward_local_pos >= *exon_local_end {
+                continue;
+            }
+            let offset = forward_local_pos.saturating_sub(*exon_local_start);
+            let source_pos = source_start.saturating_add(offset);
+            if source_pos >= *source_end {
+                return None;
+            }
+            let exon_ordinal = if is_reverse {
+                exon_count.saturating_sub(idx)
+            } else {
+                idx.saturating_add(1)
+            };
+            return Some((source_pos, exon_ordinal));
+        }
+        None
+    }
+
+    fn transcript_feature_matches_residue_filter(
+        feature: &gb_io::seq::Feature,
+        feature_idx_0based: usize,
+        transcript_filter: Option<&str>,
+    ) -> bool {
+        let Some(filter) = transcript_filter else {
+            return true;
+        };
+        let normalized_filter = Self::normalize_transcript_probe(filter);
+        if normalized_filter.is_empty() {
+            return true;
+        }
+        let feature_id_1based = feature_idx_0based.saturating_add(1);
+        if normalized_filter == feature_id_1based.to_string()
+            || normalized_filter == format!("N-{feature_id_1based}")
+        {
+            return true;
+        }
+        Self::feature_transcript_match_keys(feature, feature_idx_0based)
+            .iter()
+            .any(|candidate| candidate == &normalized_filter)
+    }
+
+    fn local_coding_positions_from_derivation(
+        derivation: &TranscriptProteinDerivation,
+    ) -> Vec<usize> {
+        let mut positions = vec![];
+        for (start_1based, end_1based) in &derivation.cds_ranges_1based {
+            if *start_1based == 0 || end_1based < start_1based {
+                continue;
+            }
+            positions.extend(start_1based.saturating_sub(1)..*end_1based);
+        }
+        positions
+    }
+
+    pub fn query_protein_residue_genomic_coordinates(
+        &self,
+        seq_id: &str,
+        transcript_filter: Option<&str>,
+        residue_start_1based: usize,
+        residue_end_1based: usize,
+    ) -> Result<ProteinResidueGenomicCoordinateReport, EngineError> {
+        if residue_start_1based == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Protein residue coordinates are 1-based; start must be >= 1.".to_string(),
+            });
+        }
+        if residue_end_1based < residue_start_1based {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Protein residue end {residue_end_1based} is before start {residue_start_1based}."
+                ),
+            });
+        }
+        let seq = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let transcript_filter = transcript_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let source_sequence_upper = seq.get_forward_string().to_ascii_uppercase();
+        let source_sequence_upper_bytes = source_sequence_upper.as_bytes();
+
+        let mut available_transcripts = BTreeSet::new();
+        let mut warnings = vec![];
+        let mut matches = vec![];
+        for (feature_idx, feature) in seq.features().iter().enumerate() {
+            if !Self::is_transcript_feature_for_derivation(feature) {
+                continue;
+            }
+            let transcript_probe = Self::feature_transcript_id(feature, feature_idx);
+            available_transcripts.insert(transcript_probe.clone());
+            if !Self::transcript_feature_matches_residue_filter(
+                feature,
+                feature_idx,
+                transcript_filter.as_deref(),
+            ) {
+                continue;
+            }
+
+            let exon_ranges_0based = Self::feature_location_ranges_0based(feature);
+            let exon_segments_forward =
+                Self::build_transcript_exon_segments_forward(&exon_ranges_0based);
+            let derived_result = Self::derive_transcript_sequence_from_feature(
+                source_sequence_upper_bytes,
+                feature,
+                seq.features(),
+                feature_idx,
+                seq_id,
+            );
+            let (
+                derived_transcript,
+                transcript_id,
+                transcript_label,
+                is_reverse,
+                _exon_count,
+                annotated_derivation,
+            ) = match derived_result {
+                Ok(derived) => derived,
+                Err(err) => {
+                    warnings.push(format!(
+                        "Transcript '{}' could not be derived: {}",
+                        transcript_probe, err.message
+                    ));
+                    continue;
+                }
+            };
+            let Some(derivation) = annotated_derivation else {
+                warnings.push(format!(
+                    "Transcript '{}' has no resolvable CDS/protein derivation.",
+                    transcript_id
+                ));
+                continue;
+            };
+            if derivation.protein_length_aa == 0 {
+                warnings.push(format!(
+                    "Transcript '{}' produced an empty protein derivation.",
+                    transcript_id
+                ));
+                continue;
+            }
+            if residue_start_1based > derivation.protein_length_aa {
+                warnings.push(format!(
+                    "Transcript '{}' protein length is {} aa; requested residue {} is outside it.",
+                    transcript_id, derivation.protein_length_aa, residue_start_1based
+                ));
+                continue;
+            }
+
+            let local_coding_positions = Self::local_coding_positions_from_derivation(&derivation);
+            let derived_sequence = derived_transcript.get_forward_string();
+            let derived_bytes = derived_sequence.as_bytes();
+            let residue_end = residue_end_1based.min(derivation.protein_length_aa);
+            if residue_end < residue_end_1based {
+                warnings.push(format!(
+                    "Transcript '{}' protein length is {} aa; truncated requested end residue {} to {}.",
+                    transcript_id, derivation.protein_length_aa, residue_end_1based, residue_end
+                ));
+            }
+            for residue_index_1based in residue_start_1based..=residue_end {
+                let coding_offset = residue_index_1based.saturating_sub(1).saturating_mul(3);
+                if coding_offset.saturating_add(3) > local_coding_positions.len() {
+                    warnings.push(format!(
+                        "Transcript '{}' residue {} could not be mapped because its codon is outside the resolved CDS span.",
+                        transcript_id, residue_index_1based
+                    ));
+                    continue;
+                }
+                let mut codon = String::new();
+                let mut genomic_bases = vec![];
+                for codon_offset_0based in 0..3 {
+                    let local_pos = local_coding_positions[coding_offset + codon_offset_0based];
+                    let base = derived_bytes
+                        .get(local_pos)
+                        .copied()
+                        .map(char::from)
+                        .unwrap_or('N');
+                    codon.push(base);
+                    if let Some((source_pos_0based, exon_ordinal)) =
+                        Self::transcript_local_position_to_source_0based(
+                            local_pos,
+                            &exon_segments_forward,
+                            is_reverse,
+                            derived_transcript.len(),
+                        )
+                    {
+                        genomic_bases.push(ProteinResidueGenomicCoordinateBase {
+                            codon_offset_0based,
+                            genomic_pos_1based: source_pos_0based.saturating_add(1),
+                            base: base.to_string(),
+                            exon_ordinal: Some(exon_ordinal),
+                        });
+                    }
+                }
+                if genomic_bases.len() != 3 {
+                    warnings.push(format!(
+                        "Transcript '{}' residue {} did not resolve all three codon bases back to the source sequence.",
+                        transcript_id, residue_index_1based
+                    ));
+                    continue;
+                }
+                let genomic_start = genomic_bases
+                    .iter()
+                    .map(|base| base.genomic_pos_1based)
+                    .min()
+                    .unwrap_or_default();
+                let genomic_end = genomic_bases
+                    .iter()
+                    .map(|base| base.genomic_pos_1based)
+                    .max()
+                    .unwrap_or_default();
+                let exon_ordinals = genomic_bases
+                    .iter()
+                    .filter_map(|base| base.exon_ordinal)
+                    .collect::<BTreeSet<_>>();
+                let amino_acid = derivation
+                    .protein_sequence
+                    .chars()
+                    .nth(residue_index_1based.saturating_sub(1))
+                    .unwrap_or('X')
+                    .to_string();
+                matches.push(ProteinResidueGenomicCoordinateMatch {
+                    transcript_id: transcript_id.clone(),
+                    transcript_label: transcript_label.clone(),
+                    transcript_feature_id: Some(feature_idx.saturating_add(1)),
+                    strand: if is_reverse { "-" } else { "+" }.to_string(),
+                    residue_index_1based,
+                    amino_acid,
+                    codon,
+                    genomic_codon_start_1based: genomic_start,
+                    genomic_codon_end_1based: genomic_end,
+                    spans_exon_junction: exon_ordinals.len() > 1,
+                    genomic_bases,
+                    warnings: derivation.warnings.clone(),
+                });
+            }
+        }
+
+        if matches.is_empty() {
+            let transcript_hint = transcript_filter
+                .as_deref()
+                .map(|value| format!(" matching transcript '{value}'"))
+                .unwrap_or_default();
+            let available = available_transcripts
+                .into_iter()
+                .take(8)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let suffix = if available.is_empty() {
+                "No transcript/mRNA features were found.".to_string()
+            } else {
+                format!("Available transcripts include: {available}.")
+            };
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No protein residue genomic coordinates were resolved for sequence '{seq_id}'{} over residues {}..{}. {}",
+                    transcript_hint, residue_start_1based, residue_end_1based, suffix
+                ),
+            });
+        }
+
+        Ok(ProteinResidueGenomicCoordinateReport {
+            schema: PROTEIN_RESIDUE_GENOMIC_COORDINATE_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            transcript_filter,
+            residue_start_1based,
+            residue_end_1based,
+            match_count: matches.len(),
+            matches,
+            warnings,
+        })
+    }
+
     fn build_transcript_introns_from_ranges_1based(
         ranges_1based: &[(usize, usize)],
     ) -> Vec<(usize, usize)> {

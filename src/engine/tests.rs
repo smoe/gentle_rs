@@ -624,6 +624,38 @@ fn reverse_transcript_translation_test_sequence(
     dna
 }
 
+fn split_codon_transcript_translation_test_sequence() -> DNAsequence {
+    let mut dna = DNAsequence::from_sequence("ATGGCNNNNNCTAA").expect("valid DNA");
+    let join = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(0, 5),
+        gb_io::seq::Location::simple_range(10, 14),
+    ]);
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "source".into(),
+        location: gb_io::seq::Location::simple_range(0, 14),
+        qualifiers: vec![("organism".into(), Some("Escherichia coli".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: join.clone(),
+        qualifiers: vec![
+            ("gene".into(), Some("toyA".to_string())),
+            ("transcript_id".into(), Some("TX_SPLIT".to_string())),
+            ("label".into(), Some("TX_SPLIT".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "CDS".into(),
+        location: join,
+        qualifiers: vec![
+            ("transcript_id".into(), Some("TX_SPLIT".to_string())),
+            ("product".into(), Some("split codon protein".to_string())),
+            ("transl_table".into(), Some("11".to_string())),
+        ],
+    });
+    dna
+}
+
 fn splicing_multi_gene_test_sequence() -> DNAsequence {
     let mut bases = vec![b'A'; 120];
     let mut fill_range = |start_0: usize, end_0: usize, pattern: &[u8]| {
@@ -9220,6 +9252,94 @@ fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
         .get(&result.created_seq_ids[0])
         .expect("derived");
     assert_eq!(derived.get_forward_string(), expected);
+}
+
+#[test]
+fn test_query_protein_residue_genomic_coordinates_reports_split_forward_codon() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        split_codon_transcript_translation_test_sequence(),
+    );
+    let engine = GentleEngine::from_state(state);
+    let report = engine
+        .query_protein_residue_genomic_coordinates("s", Some("TX_SPLIT"), 2, 2)
+        .expect("query residue genomic coordinates");
+    assert_eq!(report.schema, PROTEIN_RESIDUE_GENOMIC_COORDINATE_SCHEMA);
+    assert_eq!(report.seq_id, "s");
+    assert_eq!(report.match_count, 1);
+    let hit = &report.matches[0];
+    assert_eq!(hit.transcript_id, "TX_SPLIT");
+    assert_eq!(hit.transcript_feature_id, Some(2));
+    assert_eq!(hit.strand, "+");
+    assert_eq!(hit.residue_index_1based, 2);
+    assert_eq!(hit.amino_acid, "A");
+    assert_eq!(hit.codon, "GCC");
+    assert_eq!(hit.genomic_codon_start_1based, 4);
+    assert_eq!(hit.genomic_codon_end_1based, 11);
+    assert!(hit.spans_exon_junction);
+    assert_eq!(
+        hit.genomic_bases
+            .iter()
+            .map(|base| base.genomic_pos_1based)
+            .collect::<Vec<_>>(),
+        vec![4, 5, 11]
+    );
+    assert_eq!(
+        hit.genomic_bases
+            .iter()
+            .map(|base| (base.base.as_str(), base.exon_ordinal))
+            .collect::<Vec<_>>(),
+        vec![("G", Some(1)), ("C", Some(1)), ("C", Some(2))]
+    );
+}
+
+#[test]
+fn test_query_protein_residue_genomic_coordinates_reports_reverse_coding_order() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        reverse_transcript_translation_test_sequence(
+            vec![("organism".into(), Some("Escherichia coli".to_string()))],
+            vec![
+                ("gene".into(), Some("toyA".to_string())),
+                ("transcript_id".into(), Some("TX_MINUS".to_string())),
+                ("label".into(), Some("TX_MINUS".to_string())),
+            ],
+            vec![
+                ("transcript_id".into(), Some("TX_MINUS".to_string())),
+                ("product".into(), Some("minus strand protein".to_string())),
+                ("transl_table".into(), Some("11".to_string())),
+            ],
+        ),
+    );
+    let engine = GentleEngine::from_state(state);
+    let report = engine
+        .query_protein_residue_genomic_coordinates("s", Some("TX_MINUS"), 1, 1)
+        .expect("query reverse residue genomic coordinates");
+    assert_eq!(report.match_count, 1);
+    let hit = &report.matches[0];
+    assert_eq!(hit.transcript_id, "TX_MINUS");
+    assert_eq!(hit.strand, "-");
+    assert_eq!(hit.amino_acid, "M");
+    assert_eq!(hit.codon, "ATG");
+    assert_eq!(hit.genomic_codon_start_1based, 16);
+    assert_eq!(hit.genomic_codon_end_1based, 18);
+    assert!(!hit.spans_exon_junction);
+    assert_eq!(
+        hit.genomic_bases
+            .iter()
+            .map(|base| base.genomic_pos_1based)
+            .collect::<Vec<_>>(),
+        vec![18, 17, 16]
+    );
+    assert_eq!(
+        hit.genomic_bases
+            .iter()
+            .map(|base| base.base.as_str())
+            .collect::<Vec<_>>(),
+        vec!["A", "T", "G"]
+    );
 }
 
 #[test]

@@ -13,9 +13,9 @@ use gentle::{
     },
     engine_shell::{
         DEFAULT_CLONING_ROUTINE_CATALOG_PATH, ShellCommand, ShellExecutionOptions,
-        ShellProgressCallback,
-        cloning_routine_families_from_catalog, execute_shell_command_with_options,
-        parse_shell_line, parse_shell_tokens, parse_workflow_json_payload, shell_help_text,
+        ShellProgressCallback, cloning_routine_families_from_catalog,
+        execute_shell_command_with_options, parse_shell_line, parse_shell_tokens,
+        parse_workflow_json_payload, shell_help_text,
     },
     genomes::{
         GenomeGeneRecord, PrepareGenomeProgress, default_catalog_discovery_label,
@@ -701,6 +701,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] dotplot list [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] dotplot show DOTPLOT_ID\n  \
   gentle_cli [--state PATH|--project PATH] transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
+  gentle_cli [--state PATH|--project PATH] transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END] [--transcript ID]\n  \
   gentle_cli [--state PATH|--project PATH] flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]\n  \
   gentle_cli [--state PATH|--project PATH] flex list [SEQ_ID]\n  \
   gentle_cli [--state PATH|--project PATH] flex show TRACK_ID\n\n  \

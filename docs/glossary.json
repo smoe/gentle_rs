@@ -1,5 +1,5 @@
 {
-   "command_count": 352,
+   "command_count": 354,
    "commands": [
       {
          "aliases": [
@@ -2568,6 +2568,21 @@
          "path": "transcripts derive",
          "summary": "Derive transcript/cDNA sequences from mRNA or transcript features, optionally constrained by splicing scope.",
          "usage": "transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]"
+      },
+      {
+         "aliases": [
+            "transcripts residue-coordinates",
+            "transcripts protein-residue-coordinates"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "transcripts residue-genomic-coordinates",
+         "summary": "Map transcript-native protein residue(s) back to genomic codon nucleotide coordinates.",
+         "usage": "transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END] [--transcript ID]"
       },
       {
          "aliases": [],

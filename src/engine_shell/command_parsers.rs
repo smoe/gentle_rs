@@ -3805,9 +3805,22 @@ pub(super) fn parse_rna_read_score_density_scale(
     }
 }
 
+fn parse_positive_usize_token(raw: &str, label: &str) -> Result<usize, String> {
+    let parsed = raw
+        .trim()
+        .parse::<usize>()
+        .map_err(|e| format!("Invalid {label} value '{raw}': {e}"))?;
+    if parsed == 0 {
+        return Err(format!("{label} must be >= 1"));
+    }
+    Ok(parsed)
+}
+
 pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
-        return Err("transcripts requires a subcommand: derive".to_string());
+        return Err(
+            "transcripts requires a subcommand: derive or residue-genomic-coordinates".to_string(),
+        );
     }
     match tokens[1].as_str() {
         "derive" => {
@@ -3878,8 +3891,58 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
                 output_prefix,
             })
         }
+        "residue-genomic-coordinates" | "residue-coordinates" | "protein-residue-coordinates" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "transcripts residue-genomic-coordinates requires SEQ_ID RESIDUE_START [RESIDUE_END] [--transcript ID]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(
+                    "transcripts residue-genomic-coordinates SEQ_ID must not be empty".to_string(),
+                );
+            }
+            let residue_start_1based = parse_positive_usize_token(&tokens[3], "RESIDUE_START")?;
+            let mut residue_end_1based = residue_start_1based;
+            let mut transcript_id: Option<String> = None;
+            let mut idx = 4usize;
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                residue_end_1based = parse_positive_usize_token(&tokens[idx], "RESIDUE_END")?;
+                idx += 1;
+            }
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transcript" | "--transcript-id" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript",
+                            "transcripts residue-genomic-coordinates",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for transcripts residue-genomic-coordinates"
+                        ));
+                    }
+                }
+            }
+            if residue_end_1based < residue_start_1based {
+                return Err(format!(
+                    "RESIDUE_END {residue_end_1based} is before RESIDUE_START {residue_start_1based}"
+                ));
+            }
+            Ok(ShellCommand::TranscriptsResidueGenomicCoordinates {
+                seq_id,
+                transcript_id,
+                residue_start_1based,
+                residue_end_1based,
+            })
+        }
         other => Err(format!(
-            "Unknown transcripts subcommand '{}' (expected derive)",
+            "Unknown transcripts subcommand '{}' (expected derive or residue-genomic-coordinates)",
             other
         )),
     }

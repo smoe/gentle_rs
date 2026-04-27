@@ -4769,6 +4769,57 @@ pub struct UniprotFeatureCodingDnaQueryReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One nucleotide of a queried protein-residue codon, reported in coding
+/// transcript order with its corresponding genomic coordinate.
+pub struct ProteinResidueGenomicCoordinateBase {
+    pub codon_offset_0based: usize,
+    pub genomic_pos_1based: usize,
+    pub base: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exon_ordinal: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One transcript-specific genomic coordinate answer for a protein residue.
+pub struct ProteinResidueGenomicCoordinateMatch {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
+    pub strand: String,
+    pub residue_index_1based: usize,
+    pub amino_acid: String,
+    pub codon: String,
+    pub genomic_codon_start_1based: usize,
+    pub genomic_codon_end_1based: usize,
+    pub spans_exon_junction: bool,
+    #[serde(default)]
+    pub genomic_bases: Vec<ProteinResidueGenomicCoordinateBase>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable response for mapping transcript-native protein residues back to
+/// genomic codon nucleotide coordinates.
+pub struct ProteinResidueGenomicCoordinateReport {
+    pub schema: String,
+    pub seq_id: SeqId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_filter: Option<String>,
+    pub residue_start_1based: usize,
+    pub residue_end_1based: usize,
+    pub match_count: usize,
+    #[serde(default)]
+    pub matches: Vec<ProteinResidueGenomicCoordinateMatch>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Portable transcript/CDS-to-protein derivation summary.
 ///
 /// This record is intentionally narrower than a first-class protein sequence

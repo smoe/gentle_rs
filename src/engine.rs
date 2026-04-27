@@ -380,6 +380,8 @@ const UNIPROT_GENOME_PROJECTIONS_METADATA_KEY: &str = "uniprot_genome_projection
 const UNIPROT_GENOME_PROJECTIONS_SCHEMA: &str = "gentle.uniprot_genome_projections.v1";
 const UNIPROT_GENOME_PROJECTION_SCHEMA: &str = "gentle.uniprot_genome_projection.v1";
 const UNIPROT_FEATURE_CODING_DNA_QUERY_SCHEMA: &str = "gentle.uniprot_feature_coding_dna_query.v1";
+const PROTEIN_RESIDUE_GENOMIC_COORDINATE_SCHEMA: &str =
+    "gentle.protein_residue_genomic_coordinates.v1";
 pub const UNIPROT_PROJECTION_AUDIT_REPORTS_METADATA_KEY: &str = "uniprot_projection_audit_reports";
 const UNIPROT_PROJECTION_AUDIT_REPORTS_SCHEMA: &str = "gentle.uniprot_projection_audit_reports.v1";
 pub const UNIPROT_PROJECTION_AUDIT_REPORT_SCHEMA: &str = "gentle.uniprot_projection_audit.v1";
