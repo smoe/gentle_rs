@@ -1291,6 +1291,33 @@ order. Durable architecture constraints and decisions remain in
         - still open on that track:
           explicit pre-rank vs post-rank species-filtering controls and richer
           metadata facets such as TF family/class/tax-group pivots
+        - next ClawBio-facing presentation target on this same promoter track
+          should stay lighter-weight on the GENtle side:
+          - GENtle should keep owning deterministic component artifacts, not a
+            full user-facing promoter dossier narrative
+          - likely additive handoff target:
+            one small artifact-manifest record (for example
+            `gentle.promoter_artifact_manifest.v1`) that lists available
+            promoter-side artifacts plus enough metadata for another tool to
+            order them sensibly
+          - likely component set:
+            - `promoter_context.json`
+            - `alternative_promoters.json`
+            - `tfbs_score_tracks.svg`
+            - `tfbs_correlation.svg`
+            - `tfbs_similarity.json`
+          - intended consumer split:
+            - GENtle: produce stable artifacts and machine-readable metadata
+            - ClawBio/OpenClaw: choose which artifacts matter for the user,
+              what order to present them in, and what short narrative to place
+              around them
+          - TFBS-correlation presentation should still prefer one biologically
+            stable default (`smoothed_spearman`) while keeping raw/other
+            metrics as secondary diagnostics
+          - species filtering should remain explicit in the metadata/story:
+            default `rank all, then filter visible rows`, with a separate
+            `restrict candidate universe before ranking` mode only when the
+            user asks for it deliberately
         - the same shared score-track renderer now labels tracks as
           `TF (JASPAR id)` when possible and can recover one explicit TSS
           marker from promoter-slice provenance even when the extracted span
@@ -3124,6 +3151,11 @@ Current baseline:
 - helper list/status routes now also expose an initial normalized
   `interpretation` record so downstream adapters can start consuming one
   portable helper-meaning layer
+- helper interpretation records now also include ontology-friendly
+  `normalized_terms[]` plus direct `routine_hints[]`; routine ranking consumes
+  those hints instead of keeping the first-order helper-compatibility mapping
+  private to one planner path, and MCP/ClawBio/helper browsers can inspect the
+  same normalized helper semantics without reparsing prose
 - JS/Lua adapters now also expose structured reference/helper catalog-entry
   helpers so agents/scripts can consume catalog metadata and helper
   `interpretation` records without reparsing shell JSON
@@ -3161,6 +3193,9 @@ Planned work:
      helper list/status surfaces, and JS/Lua/MCP/GUI/planner now consume them
      directly; richer function derivation and more proactive planner use are
      still pending.
+   - First richer-normalization slice is now in place: helper interpretation
+     records carry `normalized_terms[]` and `routine_hints[]`, and routine
+     preference synthesis consumes those hints directly.
    - planning baseline now also accepts helper-aware `planning objective`
      fields (`helper_profile_id`, `preferred_routine_families`) and uses one
      shared synthesized `routine_preference_context` for:
@@ -3193,6 +3228,45 @@ Planned work:
    - treat direct remote Ensembl ROI/region fetch that avoids whole-reference
      preparation as a separate missing capability, not as something the skill
      should imply already exists
+   - next presentation step for promoter-centric ClawBio projects should keep
+     the composition boundary explicit:
+     - GENtle should stop at deterministic component artifacts plus, at most,
+       one small artifact manifest that says what was produced
+     - ClawBio/OpenClaw should remain responsible for combining those artifacts
+       into the user-facing upstream-regulation story
+     - likely component set:
+       - `promoter_context.json`
+       - `alternative_promoters.json`
+       - `tfbs_score_tracks.svg`
+       - `tfbs_correlation.svg`
+       - `tfbs_similarity.json`
+     - likely additive manifest shape:
+       ```json
+       {
+         "schema": "gentle.promoter_artifact_manifest.v1",
+         "gene_label": "TP73",
+         "seq_id": "tp73_promoter_slice",
+         "selected_promoter_group": {
+           "label": "TP73 promoter window (6 tx)",
+           "transcript_count": 6
+         },
+         "artifacts": [
+           {"kind": "promoter_context", "path": "promoter_context.json"},
+           {"kind": "alternative_promoters", "path": "alternative_promoters.json"},
+           {"kind": "tfbs_score_tracks", "path": "tfbs_score_tracks.svg"},
+           {"kind": "tfbs_correlation", "path": "tfbs_correlation.svg"},
+           {"kind": "tfbs_similarity", "path": "tfbs_similarity.json"}
+         ],
+         "preferred_interpretation_order": [
+           "promoter_group",
+           "score_traces",
+           "correlation",
+           "similarity"
+         ]
+       }
+       ```
+     - this keeps GENtle adapter-neutral while still giving ClawBio enough
+       stable metadata to choose a first figure and a compact narrative
 5. Plan the terminology move from `helper genomes` to `helper constructs` as
    one atomic protocol/docs/code rename once parallel feature churn is low.
 6. Prepare for ontology-backed helper/vector description:

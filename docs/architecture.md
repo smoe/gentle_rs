@@ -1163,6 +1163,10 @@ Sequence-linked construct reasoning graph direction:
     `interpretation` record; new adapters and future planner routes should
     extend that shared record instead of inventing parallel helper-meaning
     payloads
+  - that shared interpretation record may include normalized ontology-friendly
+    terms and routine-planning hints; downstream tools should consume those
+    fields directly rather than re-deriving helper/vector compatibility from
+    prose descriptions
   - the emerging reasoning/constraint engine should consume those normalized
     records so catalog-backed helper knowledge, planner suggestions, and future
     ontology terms stay aligned across GUI/CLI/MCP/ClawBio instead of growing

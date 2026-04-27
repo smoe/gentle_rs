@@ -15428,6 +15428,22 @@ fn execute_helpers_list_filters_semantic_metadata() {
             "protease_tag_removal"
         ]
     );
+    let interpretation = &out.output["entries"][0]["interpretation"];
+    assert!(
+        interpretation["normalized_terms"]
+            .as_array()
+            .expect("normalized terms")
+            .iter()
+            .any(|row| row["axis"].as_str() == Some("component_kind")
+                && row["value"].as_str() == Some("cloning_site"))
+    );
+    assert!(
+        interpretation["routine_hints"]
+            .as_array()
+            .expect("routine hints")
+            .iter()
+            .any(|row| row["family"].as_str() == Some("restriction"))
+    );
 }
 
 #[test]
@@ -15489,6 +15505,21 @@ fn execute_helpers_status_includes_normalized_interpretation() {
             .filter_map(|value| value.as_str())
             .collect::<Vec<_>>(),
         vec!["ampicillin_selection", "insert_cloning", "selection"]
+    );
+    assert!(
+        out.output["interpretation"]["normalized_terms"]
+            .as_array()
+            .expect("normalized terms")
+            .iter()
+            .any(|row| row["axis"].as_str() == Some("component_attribute")
+                && row["value"].as_str() == Some("agent_ampicillin"))
+    );
+    assert!(
+        out.output["interpretation"]["routine_hints"]
+            .as_array()
+            .expect("routine hints")
+            .iter()
+            .any(|row| row["family"].as_str() == Some("restriction"))
     );
 }
 
