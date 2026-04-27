@@ -1902,6 +1902,18 @@ Sequencing-trace evidence notes:
 - `FetchEnsemblGene { query, species?, entry_id? }`
   - fetches one Ensembl gene entry from Ensembl REST and persists it in
     `gentle.ensembl_gene_entries.v1`.
+- `FetchEnsemblRegion { species, chromosome, start_1based, end_1based, strand?, output_id?, coord_system_version? }`
+  - fetches one arbitrary Ensembl REST genomic region/ROI directly as a
+    first-class DNA sequence without requiring a prepared local reference.
+  - `strand` defaults to `+`; `-` requests the reverse-strand sequence from
+    Ensembl and records `anchor_strand = "-"` in genome-extraction provenance.
+  - the imported sequence gets a top-level `source` feature with organism,
+    chromosome, genomic bounds, strand, REST source URL, and
+    `synthetic_origin=ensembl_region_fetch`.
+  - provenance is recorded under the same
+    `gentle.provenance.genome_extractions[]` surface used by prepared
+    reference extraction, with `sequence_source_type=ensembl_rest_region` and
+    no local catalog/cache requirement.
 - `ImportEnsemblGeneSequence { entry_id, output_id? }`
   - imports one stored Ensembl gene entry as a first-class DNA sequence with a
     top-level imported `gene` feature and Ensembl provenance qualifiers
@@ -2137,6 +2149,10 @@ external coding agent runtime, see:
   - `ensembl-gene list`
   - `ensembl-gene show ENTRY_ID`
   - `ensembl-gene import-sequence ENTRY_ID [--output-id ID]`
+- shared-shell Ensembl region route:
+  - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
+  - equivalent compact form:
+    `ensembl-region fetch SPECIES CHR:START..END[:STRAND] [--output-id ID]`
 - shared feature-expert route now also accepts transcript-first protein
   comparison with optional stored external evidence plus persisted UniProt
   projections as direct targets:
@@ -3008,6 +3024,14 @@ ClawBio/OpenClaw integration scaffold schemas:
       `generated/clawbio_storyboard.png`
     - original SVGs may still remain in the bundle as provenance/supporting
       artifacts, but messenger-facing consumers should prefer the PNG outputs
+  - `artifact_summary` may carry
+    `gentle.clawbio_artifact_bundle_summary.v1` with:
+    - `best_first_artifact`
+    - `preferred_artifact_count`
+    - `displayable_artifact_count`
+    - `collected_artifact_count`
+    - `continuation_action_count`
+    - short `summary_lines[]` suitable for chat/report previews
   - browser/OpenClaw inline image display remains a later ClawBio-side task;
     this phase is limited to PNG-first bundle production inside `gentle_rs`
   - wrapper `agent-plan` / `agent-execute-plan` modes intentionally share the
@@ -3028,6 +3052,9 @@ ClawBio/OpenClaw integration scaffold schemas:
       such as ATtRACT sync before a local ZIP path is known
     - `preferred_demo_actions[]` for low-friction demo commands that can be
       shown by ClawBio without inventing route logic
+    - `status_overview` with lifecycle counts, an overall
+      `ready|setup_needed|setup_running|attention_needed` state, and one
+      recommended next action for compact chat handoff
     - `environment_hints[]` for deployment variables such as
       `GENTLE_CLI_CMD`, `GENTLE_REPO_ROOT`, `GENTLE_REFERENCE_CACHE_DIR`,
       `GENTLE_HELPER_CACHE_DIR`, and `GENTLE_CUTRUN_CACHE_DIR`

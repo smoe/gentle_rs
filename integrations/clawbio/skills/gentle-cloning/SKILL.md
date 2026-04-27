@@ -45,6 +45,8 @@ metadata:
       - sequence context
       - extract gene from ensembl
       - fetch ensembl gene
+      - fetch ensembl region
+      - show ensembl interval
       - promoter sequence
       - prepare genome
       - blast sequence
@@ -290,12 +292,14 @@ Use a status-first answer shape:
    - supported today:
      - one-off live Ensembl gene fetch/import via `ensembl-gene fetch ...`
        and `ensembl-gene import-sequence ...`
+     - one-off live Ensembl region/ROI fetch via
+       `ensembl-region fetch SPECIES CHR:START..END[:STRAND] --output-id ID`
      - extract from a prepared local Ensembl-backed reference, optionally in
        one request by pairing `ensure_reference_prepared` with
        `genomes extract-gene`, `genomes extract-region`, or
        `genomes extract-promoter`
-   - still missing as a first-class GENtle/ClawBio route: one-off live remote
-     Ensembl region/ROI fetch that avoids whole-reference preparation
+   - prefer prepared references for repeatable, annotation-rich locus context,
+     but do not require whole-reference preparation for an explicit interval
 
 ## Preparation Contract
 
@@ -1150,6 +1154,9 @@ Apply the following methodology:
     - one-off live Ensembl REST gene fetch for `TP53` in `homo_sapiens`
   - `examples/request_ensembl_gene_import_sequence_tp53.json`
     - follow-on import route after the live Ensembl gene fetch example
+  - `examples/request_ensembl_region_fetch_tp53_locus.json`
+    - one-off live Ensembl REST region/ROI fetch for an explicit TP53 interval
+      without preparing a whole reference first
   - `examples/request_export_bed_grch38_tp53_gene_models.json`
     - follow-on route after `examples/request_genomes_extract_gene_tp53.json`
     - exports the extracted TP53 gene/mRNA/exon/CDS table to one BED6+4

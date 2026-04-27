@@ -1068,6 +1068,13 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
             "is_best_first_artifact": True,
         }
     ]
+    assert result["artifact_summary"]["schema"] == (
+        "gentle.clawbio_artifact_bundle_summary.v1"
+    )
+    assert result["artifact_summary"]["best_first_artifact"]["path"] == (
+        "artifacts/service_handoff.json"
+    )
+    assert result["artifact_summary"]["preferred_artifact_count"] == 1
     assert result["suggested_actions"] == [
         {
             "action_id": "prepare_human_grch38_ensembl_116",
@@ -1643,6 +1650,20 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     assert continue_actions[0]["request"]["expected_artifacts"] == [
         "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg"
     ]
+    assert result["artifact_summary"]["schema"] == (
+        "gentle.clawbio_artifact_bundle_summary.v1"
+    )
+    assert result["artifact_summary"]["best_first_artifact"]["path"] == (
+        "generated/clawbio_storyboard.png"
+    )
+    assert result["artifact_summary"]["displayable_artifact_count"] == 8
+    assert result["artifact_summary"]["continuation_action_count"] == len(
+        continue_actions
+    )
+    assert (
+        "Continuation actions available for 3 additional figure(s)."
+        in result["artifact_summary"]["summary_lines"]
+    )
     assert "More figures were generated" in result["chat_summary_lines"][-1]
     storyboard_path = output_dir / "generated" / "clawbio_storyboard.svg"
     assert storyboard_path.exists()
@@ -1654,6 +1675,7 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     assert "Alternate allele reporter" in storyboard
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "generated/clawbio_storyboard.png" in report
+    assert "## Artifact Bundle Summary" in report
 
 
 def test_apptainer_launcher_wraps_gentle_cli_with_bind_mount(tmp_path: Path) -> None:
@@ -2929,6 +2951,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "ensembl-gene import-sequence tp53_ensembl_gene --output-id tp53_ensembl_gene_seq",
             300,
         ),
+        "request_ensembl_region_fetch_tp53_locus.json": (
+            "shell",
+            "ensembl-region fetch homo_sapiens 17:7668402..7687550:-1 --output-id tp53_ensembl_region",
+            300,
+        ),
         "request_dbsnp_fetch_rs9923231.json": (
             "shell",
             'dbsnp fetch rs9923231 "Human GRCh38 Ensembl 116" --flank-bp 3000 --output-id rs9923231_vkorc1 --annotation-scope core',
@@ -3133,6 +3160,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_genbank_fetch_pbr322.json",
             "request_ensembl_gene_fetch_tp53_human.json",
             "request_ensembl_gene_import_sequence_tp53.json",
+            "request_ensembl_region_fetch_tp53_locus.json",
             "request_dbsnp_fetch_rs9923231.json",
             "request_inspect_sequence_context_rs9923231_vkorc1.json",
             "request_export_sequence_context_bundle_rs9923231_vkorc1.json",

@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-24
+Last updated: 2026-04-27
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -173,6 +173,13 @@ Information-preserving transfer default (decision):
   site.
 - Gene-level annotation is considered core cloning context and should not be
   omitted by default.
+- One-off remote region retrieval is allowed for fast, explicit locus/ROI
+  questions, but it must materialize the sequence through the same engine
+  state/provenance contract as prepared-reference extraction.
+- Prepared local references remain the preferred path when callers need
+  repeatable, annotation-rich context; remote region fetches should therefore
+  record their REST source and anchor orientation clearly instead of pretending
+  to be local catalog products.
 
 Internal-first execution rule:
 

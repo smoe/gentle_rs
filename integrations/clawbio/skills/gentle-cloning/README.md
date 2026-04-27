@@ -115,10 +115,13 @@ ClawBio/OpenClaw answer pattern is:
   supported routes today are:
   - one-off live Ensembl gene fetch/import through `ensembl-gene fetch ...`
     and `ensembl-gene import-sequence ...`
+  - one-off live Ensembl region/ROI fetch through
+    `ensembl-region fetch SPECIES CHR:START..END[:STRAND] --output-id ID`
   - extraction from a prepared local Ensembl-backed reference, optionally
     preceded by `ensure_reference_prepared`
-- still be explicit that a one-off live remote Ensembl region/ROI fetch is not
-  yet a first-class ClawBio route
+- still prefer prepared references when the request needs repeatable
+  annotation-rich locus context, but do not require whole-reference preparation
+  just to show an explicit interval
 
 This keeps the answer truthful while still surfacing the practical path
 forward.
@@ -617,6 +620,7 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_genbank_fetch_pbr322.json`
 - `examples/request_ensembl_gene_fetch_tp53_human.json`
 - `examples/request_ensembl_gene_import_sequence_tp53.json`
+- `examples/request_ensembl_region_fetch_tp53_locus.json`
 - `examples/request_dbsnp_fetch_rs9923231.json`
 - `examples/request_inspect_sequence_context_rs9923231_vkorc1.json`
   - follow-on route after `examples/request_dbsnp_fetch_rs9923231.json`
@@ -658,6 +662,9 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_ensembl_gene_import_sequence_tp53.json`
   - follow-on import route that materializes the stored live Ensembl gene
     entry as a first-class DNA sequence
+- `examples/request_ensembl_region_fetch_tp53_locus.json`
+  - one-off live Ensembl REST region/ROI fetch for an explicit TP53 interval
+    without preparing a whole reference first
 - `examples/request_export_bed_grch38_tp53_gene_models.json`
   - follow-on route after `examples/request_genomes_extract_gene_tp53.json`
   - exports the extracted TP53 gene/mRNA/exon/CDS table to one BED6+4 artifact

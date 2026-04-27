@@ -5744,6 +5744,109 @@ fn test_fetch_genbank_accession_operation_loads_sequence_and_anchor() {
 }
 
 #[test]
+fn test_fetch_ensembl_region_operation_loads_sequence_and_anchor() {
+    let _guard = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().unwrap();
+    let region_dir = td
+        .path()
+        .join("mock_ensembl")
+        .join("sequence")
+        .join("region")
+        .join("homo_sapiens");
+    fs::create_dir_all(&region_dir).unwrap();
+    fs::write(
+        region_dir.join("17:7668402..7668409:-1"),
+        r#"{
+  "id": "chromosome:GRCh38:17:7668402:7668409:-1",
+  "desc": "chromosome:GRCh38:17:7668402:7668409:-1",
+  "seq": "ACGTACGT",
+  "molecule": "dna"
+}
+"#,
+    )
+    .unwrap();
+    let base_url = format!("file://{}", td.path().join("mock_ensembl").display());
+    let _ensembl_env = EnvVarGuard::set("GENTLE_ENSEMBL_REST_BASE_URL", &base_url);
+
+    let mut engine = GentleEngine::new();
+    let result = engine
+        .apply(Operation::FetchEnsemblRegion {
+            species: "homo_sapiens".to_string(),
+            chromosome: "17".to_string(),
+            start_1based: 7668402,
+            end_1based: 7668409,
+            strand: Some('-'),
+            output_id: Some("tp53_roi".to_string()),
+            coord_system_version: None,
+        })
+        .expect("fetch Ensembl region");
+
+    assert_eq!(result.created_seq_ids, vec!["tp53_roi".to_string()]);
+    let sequence = engine
+        .state()
+        .sequences
+        .get("tp53_roi")
+        .expect("region sequence");
+    assert_eq!(sequence.get_forward_string(), "ACGTACGT");
+    let source = sequence
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("source"))
+        .expect("source feature");
+    assert_eq!(
+        source.qualifier_values("synthetic_origin").next(),
+        Some("ensembl_region_fetch")
+    );
+    assert_eq!(source.qualifier_values("strand").next(), Some("-"));
+    assert!(
+        engine
+            .list_sequences_with_genome_anchor()
+            .iter()
+            .any(|seq_id| seq_id == "tp53_roi")
+    );
+    let provenance = engine
+        .state()
+        .metadata
+        .get(PROVENANCE_METADATA_KEY)
+        .and_then(|v| v.get(GENOME_EXTRACTIONS_METADATA_KEY))
+        .and_then(|v| v.as_array())
+        .and_then(|records| {
+            records.iter().find(|entry| {
+                entry
+                    .get("seq_id")
+                    .and_then(|v| v.as_str())
+                    .map(|id| id == "tp53_roi")
+                    .unwrap_or(false)
+            })
+        })
+        .cloned()
+        .expect("Ensembl region provenance record");
+    assert_eq!(
+        provenance
+            .get("operation")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default(),
+        "FetchEnsemblRegion"
+    );
+    assert_eq!(
+        provenance
+            .get("sequence_source_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default(),
+        "ensembl_rest_region"
+    );
+    assert_eq!(
+        provenance
+            .get("anchor_strand")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default(),
+        "-"
+    );
+}
+
+#[test]
 fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
     let _guard = crate::genomes::genbank_env_lock()
         .lock()

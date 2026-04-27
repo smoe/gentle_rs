@@ -59,6 +59,7 @@ pub struct ServiceHandoffReport {
     pub generated_at_unix_ms: u128,
     pub scope: String,
     pub service_readiness: ServiceReadinessReport,
+    pub status_overview: ServiceHandoffStatusOverview,
     pub readiness: Vec<ServiceHandoffReadinessRow>,
     pub summary_lines: Vec<String>,
     pub suggested_actions: Vec<ServiceHandoffAction>,
@@ -68,6 +69,20 @@ pub struct ServiceHandoffReport {
     pub preferred_artifacts: Vec<ServiceHandoffArtifact>,
     pub environment_hints: Vec<ServiceHandoffEnvironmentHint>,
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ServiceHandoffStatusOverview {
+    pub overall_status: String,
+    pub ready_count: usize,
+    pub running_count: usize,
+    pub missing_count: usize,
+    pub failed_count: usize,
+    pub blocked_action_count: usize,
+    pub suggested_action_count: usize,
+    pub running_action_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_next_action: Option<ServiceHandoffAction>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -631,6 +646,61 @@ fn resource_readiness_rows(resources: &ResourceCatalogReport) -> Vec<ServiceHand
         current_activity: None,
     });
     rows
+}
+
+fn build_handoff_status_overview(
+    readiness: &[ServiceHandoffReadinessRow],
+    suggested_actions: &[ServiceHandoffAction],
+    running_actions: &[ServiceHandoffAction],
+    blocked_actions: &[ServiceHandoffBlockedAction],
+) -> ServiceHandoffStatusOverview {
+    let ready_count = readiness
+        .iter()
+        .filter(|row| row.lifecycle_status == "ready")
+        .count();
+    let running_count = readiness
+        .iter()
+        .filter(|row| row.lifecycle_status == "running")
+        .count();
+    let missing_count = readiness
+        .iter()
+        .filter(|row| matches!(row.lifecycle_status.as_str(), "missing" | "not_prepared"))
+        .count();
+    let failed_count = readiness
+        .iter()
+        .filter(|row| {
+            matches!(
+                row.lifecycle_status.as_str(),
+                "failed" | "cancelled" | "stale"
+            )
+        })
+        .count();
+    let overall_status = if running_count > 0 {
+        "setup_running"
+    } else if failed_count > 0 {
+        "attention_needed"
+    } else if missing_count > 0 || !blocked_actions.is_empty() || !suggested_actions.is_empty() {
+        "setup_needed"
+    } else {
+        "ready"
+    }
+    .to_string();
+    let recommended_next_action = running_actions
+        .first()
+        .or_else(|| suggested_actions.first())
+        .or_else(|| blocked_actions.first().map(|blocked| &blocked.action))
+        .cloned();
+    ServiceHandoffStatusOverview {
+        overall_status,
+        ready_count,
+        running_count,
+        missing_count,
+        failed_count,
+        blocked_action_count: blocked_actions.len(),
+        suggested_action_count: suggested_actions.len(),
+        running_action_count: running_actions.len(),
+        recommended_next_action,
+    }
 }
 
 fn environment_hint(
@@ -1426,6 +1496,12 @@ pub fn service_handoff_report(
             is_best_first_artifact: true,
         });
     }
+    let status_overview = build_handoff_status_overview(
+        &readiness,
+        &suggested_actions,
+        &running_actions,
+        &blocked_actions,
+    );
 
     let mut summary_lines = vec![format!(
         "Built GENtle service handoff for scope '{scope}' with {} readiness rows, {} suggested action(s), {} running action(s), and {} blocked action(s).",
@@ -1434,6 +1510,21 @@ pub fn service_handoff_report(
         running_actions.len(),
         blocked_actions.len()
     )];
+    summary_lines.push(format!(
+        "Readiness overview: status={}, ready={}, running={}, missing={}, failed_or_retryable={}, blocked_actions={}.",
+        status_overview.overall_status,
+        status_overview.ready_count,
+        status_overview.running_count,
+        status_overview.missing_count,
+        status_overview.failed_count,
+        status_overview.blocked_action_count
+    ));
+    if let Some(action) = status_overview.recommended_next_action.as_ref() {
+        summary_lines.push(format!(
+            "Recommended next action: {} (`{}`).",
+            action.label, action.shell_line
+        ));
+    }
     summary_lines.extend(service_readiness.summary_lines.clone());
     if !blocked_actions.is_empty() {
         summary_lines.push(
@@ -1447,6 +1538,7 @@ pub fn service_handoff_report(
         generated_at_unix_ms: now_unix_ms(),
         scope,
         service_readiness,
+        status_overview,
         readiness,
         summary_lines,
         suggested_actions,
@@ -1540,6 +1632,14 @@ mod tests {
     ) -> ServiceHandoffReport {
         let resources = resource_catalog_status();
         let summary_lines = build_summary_lines(std::slice::from_ref(&reference), &[], &resources);
+        let readiness = vec![dependency_readiness_row(&reference)];
+        let blocked_actions = vec![];
+        let status_overview = build_handoff_status_overview(
+            &readiness,
+            &suggested_actions,
+            &running_actions,
+            &blocked_actions,
+        );
         ServiceHandoffReport {
             schema: SERVICE_HANDOFF_SCHEMA.to_string(),
             generated_at_unix_ms: 42,
@@ -1552,11 +1652,12 @@ mod tests {
                 resources,
                 summary_lines,
             },
-            readiness: vec![dependency_readiness_row(&reference)],
+            status_overview,
+            readiness,
             summary_lines: vec!["GENtle handoff ready".to_string()],
             suggested_actions,
             running_actions,
-            blocked_actions: vec![],
+            blocked_actions,
             preferred_demo_actions: build_preferred_demo_actions(false),
             preferred_artifacts: vec![],
             environment_hints: vec![],
@@ -1627,6 +1728,61 @@ mod tests {
         );
         assert_eq!(action.lifecycle_status.as_deref(), Some("missing"));
         assert!(action.requires_confirmation);
+    }
+
+    #[test]
+    fn handoff_status_overview_recommends_missing_target_prepare() {
+        let reference = fake_dependency(false, "missing", None);
+        let readiness = vec![dependency_readiness_row(&reference)];
+        let suggested_actions = vec![reference_prepare_action(&reference, false)];
+        let overview = build_handoff_status_overview(&readiness, &suggested_actions, &[], &[]);
+
+        assert_eq!(overview.overall_status, "setup_needed");
+        assert_eq!(overview.ready_count, 0);
+        assert_eq!(overview.running_count, 0);
+        assert_eq!(overview.missing_count, 1);
+        assert_eq!(overview.failed_count, 0);
+        assert_eq!(overview.suggested_action_count, 1);
+        assert_eq!(
+            overview
+                .recommended_next_action
+                .as_ref()
+                .map(|action| action.kind.as_str()),
+            Some("prepare_reference")
+        );
+    }
+
+    #[test]
+    fn handoff_status_overview_prefers_running_status_refresh() {
+        let reference = fake_dependency(
+            false,
+            "running",
+            Some(fake_activity("running", "download_sequence", 37.0)),
+        );
+        let readiness = vec![dependency_readiness_row(&reference)];
+        let running_actions = vec![handoff_action(
+            "Re-check Human GRCh38 Ensembl 116 status",
+            "refresh_status",
+            "genomes status \"Human GRCh38 Ensembl 116\"",
+            180,
+            "Reference is already being prepared.",
+            false,
+            Some("reference_genome:Human GRCh38 Ensembl 116".to_string()),
+            Some("running".to_string()),
+            vec![],
+        )];
+        let overview = build_handoff_status_overview(&readiness, &[], &running_actions, &[]);
+
+        assert_eq!(overview.overall_status, "setup_running");
+        assert_eq!(overview.running_count, 1);
+        assert_eq!(overview.running_action_count, 1);
+        assert_eq!(
+            overview
+                .recommended_next_action
+                .as_ref()
+                .map(|action| action.kind.as_str()),
+            Some("refresh_status")
+        );
     }
 
     #[test]

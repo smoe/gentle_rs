@@ -146,6 +146,35 @@ pub struct EnsemblGeneSequencePayload {
     pub version: Option<usize>,
 }
 
+/// Parsed payload returned by Ensembl's `/sequence/region/...` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnsemblRegionSequencePayload {
+    pub id: Option<String>,
+    pub sequence: String,
+    pub description: Option<String>,
+    pub molecule: Option<String>,
+}
+
+/// Source-neutral representation of a live Ensembl region retrieval.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnsemblRegionSequenceEntry {
+    pub schema: String,
+    pub species: String,
+    pub chromosome: String,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: char,
+    pub coord_system_version: Option<String>,
+    pub sequence: String,
+    pub sequence_length: usize,
+    pub source: String,
+    pub sequence_source_url: String,
+    pub raw_sequence_json: String,
+    pub payload_id: Option<String>,
+    pub payload_description: Option<String>,
+    pub molecule: Option<String>,
+}
+
 pub fn normalize_entry_id(raw: &str) -> String {
     raw.trim()
         .replace([' ', '\t', '\n', '\r'], "_")
@@ -416,6 +445,37 @@ pub fn parse_gene_sequence_json(text: &str) -> Result<EnsemblGeneSequencePayload
     })
 }
 
+pub fn parse_region_sequence_json(text: &str) -> Result<EnsemblRegionSequencePayload, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(text).map_err(|e| format!("invalid JSON: {e}"))?;
+    let sequence = value
+        .get("seq")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if sequence.is_empty() {
+        return Err("region sequence payload is missing sequence letters".to_string());
+    }
+    Ok(EnsemblRegionSequencePayload {
+        id: value
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        sequence,
+        description: value
+            .get("desc")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string()),
+        molecule: value
+            .get("molecule")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string()),
+    })
+}
+
 pub fn build_entry_from_rest_payloads(
     source_query: &str,
     lookup_source_url: &str,
@@ -555,5 +615,24 @@ mod tests {
         assert_eq!(entry.transcripts[0].transcript_id, "ENST00000269305");
         assert_eq!(entry.sequence_length, 12);
         assert!(entry.aliases.contains(&"tp53".to_string()));
+    }
+
+    #[test]
+    fn parse_region_sequence_payload_accepts_region_json() {
+        let payload = parse_region_sequence_json(
+            r#"{
+              "id":"chromosome:GRCh38:17:7668402:7687550:1",
+              "desc":"chromosome:GRCh38:17:7668402:7687550:1",
+              "seq":"ACGTACGT",
+              "molecule":"dna"
+            }"#,
+        )
+        .expect("parse region sequence payload");
+        assert_eq!(
+            payload.id.as_deref(),
+            Some("chromosome:GRCh38:17:7668402:7687550:1")
+        );
+        assert_eq!(payload.sequence, "ACGTACGT");
+        assert_eq!(payload.molecule.as_deref(), Some("dna"));
     }
 }

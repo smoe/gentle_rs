@@ -13542,6 +13542,12 @@ fn execute_services_handoff_reports_actions_and_writes_json() {
         Some("gentle.service_readiness.v1")
     );
     assert!(
+        out.output["status_overview"]["overall_status"]
+            .as_str()
+            .is_some()
+    );
+    assert!(out.output["status_overview"]["recommended_next_action"].is_object());
+    assert!(
         out.output["readiness"]
             .as_array()
             .map(|rows| rows.iter().any(|row| row["resource_key"].as_str()
@@ -17143,6 +17149,54 @@ fn parse_ensembl_gene_commands() {
         } => {
             assert_eq!(entry_id, "TP53_GENE");
             assert_eq!(output_id.as_deref(), Some("tp53_gene_seq"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_ensembl_region_commands() {
+    let fetch = parse_shell_line(
+        "ensembl-region fetch homo_sapiens 17 7668402 7687550 --strand - --output-id tp53_region --coord-system-version GRCh38",
+    )
+    .expect("parse ensembl-region fetch");
+    match fetch {
+        ShellCommand::EnsemblRegionFetch {
+            species,
+            chromosome,
+            start_1based,
+            end_1based,
+            strand,
+            output_id,
+            coord_system_version,
+        } => {
+            assert_eq!(species, "homo_sapiens");
+            assert_eq!(chromosome, "17");
+            assert_eq!(start_1based, 7668402);
+            assert_eq!(end_1based, 7687550);
+            assert_eq!(strand, Some('-'));
+            assert_eq!(output_id.as_deref(), Some("tp53_region"));
+            assert_eq!(coord_system_version.as_deref(), Some("GRCh38"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let compact = parse_shell_line(
+        "ensembl-region fetch homo_sapiens 17:7668402..7687550:-1 --output-id tp53_region",
+    )
+    .expect("parse compact ensembl-region fetch");
+    match compact {
+        ShellCommand::EnsemblRegionFetch {
+            chromosome,
+            start_1based,
+            end_1based,
+            strand,
+            ..
+        } => {
+            assert_eq!(chromosome, "17");
+            assert_eq!(start_1based, 7668402);
+            assert_eq!(end_1based, 7687550);
+            assert_eq!(strand, Some('-'));
         }
         other => panic!("unexpected command: {other:?}"),
     }

@@ -788,6 +788,15 @@ pub enum ShellCommand {
         species: Option<String>,
         entry_id: Option<String>,
     },
+    EnsemblRegionFetch {
+        species: String,
+        chromosome: String,
+        start_1based: usize,
+        end_1based: usize,
+        strand: Option<char>,
+        output_id: Option<String>,
+        coord_system_version: Option<String>,
+    },
     EnsemblProteinFetch {
         query: String,
         entry_id: Option<String>,
@@ -5605,6 +5614,30 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto")
             ),
+            Self::EnsemblRegionFetch {
+                species,
+                chromosome,
+                start_1based,
+                end_1based,
+                strand,
+                output_id,
+                coord_system_version,
+            } => format!(
+                "fetch Ensembl region '{}:{}-{}' (species={}, strand={}, output_id={}, coord_system_version={})",
+                chromosome,
+                start_1based,
+                end_1based,
+                species,
+                strand.unwrap_or('+'),
+                output_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+                coord_system_version
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("current")
+            ),
             Self::EnsemblProteinFetch { query, entry_id } => format!(
                 "fetch Ensembl protein '{}' (entry_id={})",
                 query,
@@ -9594,6 +9627,7 @@ impl ShellCommand {
                 | Self::TracksTrackedApply { .. }
                 | Self::UniprotFetch { .. }
                 | Self::EnsemblGeneFetch { .. }
+                | Self::EnsemblRegionFetch { .. }
                 | Self::EnsemblProteinFetch { .. }
                 | Self::GenbankFetch { .. }
                 | Self::DbsnpFetch { .. }
@@ -15022,6 +15056,156 @@ fn parse_ensembl_gene_command(tokens: &[String]) -> Result<ShellCommand, String>
     }
 }
 
+fn parse_ensembl_region_bound(raw: &str, label: &str) -> Result<usize, String> {
+    let normalized = raw.trim().replace(',', "");
+    normalized
+        .parse::<usize>()
+        .map_err(|e| format!("Invalid Ensembl region {label} '{raw}': {e}"))
+        .and_then(|value| {
+            if value == 0 {
+                Err(format!("Ensembl region {label} must be 1-based and >= 1"))
+            } else {
+                Ok(value)
+            }
+        })
+}
+
+fn parse_ensembl_region_strand_arg(raw: &str) -> Result<char, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "+" | "1" | "plus" | "forward" | "fwd" => Ok('+'),
+        "-" | "-1" | "minus" | "reverse" | "rev" => Ok('-'),
+        other => Err(format!(
+            "Unsupported Ensembl region strand '{other}' (expected +|-|1|-1)"
+        )),
+    }
+}
+
+fn parse_ensembl_region_locus(raw: &str) -> Result<(String, usize, usize, Option<char>), String> {
+    let trimmed = raw.trim();
+    let parts = trimmed.split(':').collect::<Vec<_>>();
+    if !(parts.len() == 2 || parts.len() == 3) {
+        return Err(
+            "Ensembl region locus must look like CHR:START..END or CHR:START..END:STRAND"
+                .to_string(),
+        );
+    }
+    let chromosome = parts[0].trim().to_string();
+    if chromosome.is_empty() {
+        return Err("Ensembl region locus chromosome must not be empty".to_string());
+    }
+    let coord = parts[1].trim();
+    let (start_raw, end_raw) = coord
+        .split_once("..")
+        .or_else(|| coord.split_once('-'))
+        .ok_or_else(|| {
+            "Ensembl region locus coordinates must use START..END or START-END".to_string()
+        })?;
+    let start_1based = parse_ensembl_region_bound(start_raw, "start")?;
+    let end_1based = parse_ensembl_region_bound(end_raw, "end")?;
+    if end_1based < start_1based {
+        return Err(format!(
+            "Ensembl region end ({end_1based}) must be >= start ({start_1based})"
+        ));
+    }
+    let strand = if parts.len() == 3 {
+        Some(parse_ensembl_region_strand_arg(parts[2])?)
+    } else {
+        None
+    };
+    Ok((chromosome, start_1based, end_1based, strand))
+}
+
+fn parse_ensembl_region_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("ensembl-region requires a subcommand: fetch".to_string());
+    }
+    match tokens[1].as_str() {
+        "fetch" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "ensembl-region fetch requires SPECIES CHR START END or SPECIES CHR:START..END [--strand +|-] [--output-id ID]".to_string(),
+                );
+            }
+            let species = tokens[2].trim().to_string();
+            if species.is_empty() {
+                return Err("ensembl-region fetch SPECIES must not be empty".to_string());
+            }
+            let (chromosome, start_1based, end_1based, mut strand, mut idx) =
+                if tokens[3].contains(':') {
+                    let (chromosome, start_1based, end_1based, strand) =
+                        parse_ensembl_region_locus(&tokens[3])?;
+                    (chromosome, start_1based, end_1based, strand, 4usize)
+                } else {
+                    if tokens.len() < 6 {
+                        return Err(
+                            "ensembl-region fetch SPECIES CHR START END requires both START and END"
+                                .to_string(),
+                        );
+                    }
+                    let chromosome = tokens[3].trim().to_string();
+                    if chromosome.is_empty() {
+                        return Err("ensembl-region fetch CHROMOSOME must not be empty".to_string());
+                    }
+                    let start_1based = parse_ensembl_region_bound(&tokens[4], "start")?;
+                    let end_1based = parse_ensembl_region_bound(&tokens[5], "end")?;
+                    if end_1based < start_1based {
+                        return Err(format!(
+                            "Ensembl region end ({end_1based}) must be >= start ({start_1based})"
+                        ));
+                    }
+                    (chromosome, start_1based, end_1based, None, 6usize)
+                };
+            let mut output_id: Option<String> = None;
+            let mut coord_system_version: Option<String> = None;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--strand" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--strand",
+                            "ensembl-region fetch",
+                        )?;
+                        strand = Some(parse_ensembl_region_strand_arg(&raw)?);
+                    }
+                    "--output-id" => {
+                        output_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-id",
+                            "ensembl-region fetch",
+                        )?);
+                    }
+                    "--coord-system-version" | "--assembly" => {
+                        let flag = tokens[idx].clone();
+                        coord_system_version = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "ensembl-region fetch",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for ensembl-region fetch"));
+                    }
+                }
+            }
+            Ok(ShellCommand::EnsemblRegionFetch {
+                species,
+                chromosome,
+                start_1based,
+                end_1based,
+                strand,
+                output_id,
+                coord_system_version,
+            })
+        }
+        other => Err(format!(
+            "Unknown ensembl-region subcommand '{other}' (expected fetch)"
+        )),
+    }
+}
+
 fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -18471,6 +18655,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "variant" => parse_variant_command(tokens),
         "uniprot" => parse_uniprot_command(tokens),
         "ensembl-gene" | "ensembl_gene" => parse_ensembl_gene_command(tokens),
+        "ensembl-region" | "ensembl_region" => parse_ensembl_region_command(tokens),
         "ensembl-protein" | "ensembl_protein" => parse_ensembl_protein_command(tokens),
         "macros" => parse_macros_command(tokens),
         "candidates" => parse_candidates_command(tokens),
@@ -26180,6 +26365,31 @@ fn execute_protein_sequence_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::EnsemblRegionFetch {
+            species,
+            chromosome,
+            start_1based,
+            end_1based,
+            strand,
+            output_id,
+            coord_system_version,
+        } => {
+            let op_result = engine
+                .apply(Operation::FetchEnsemblRegion {
+                    species: species.clone(),
+                    chromosome: chromosome.clone(),
+                    start_1based: *start_1based,
+                    end_1based: *end_1based,
+                    strand: *strand,
+                    output_id: output_id.clone(),
+                    coord_system_version: coord_system_version.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            })
+        }
         ShellCommand::EnsemblProteinFetch { query, entry_id } => {
             let op_result = engine
                 .apply(Operation::FetchEnsemblProtein {
@@ -28385,6 +28595,7 @@ pub fn execute_shell_command_with_options(
         command,
         ShellCommand::UniprotFetch { .. }
             | ShellCommand::EnsemblGeneFetch { .. }
+            | ShellCommand::EnsemblRegionFetch { .. }
             | ShellCommand::EnsemblProteinFetch { .. }
             | ShellCommand::UniprotImportSwissProt { .. }
             | ShellCommand::UniprotList
@@ -28606,6 +28817,7 @@ fn execute_shell_command_with_options_inner(
         }
         ShellCommand::UniprotFetch { .. }
         | ShellCommand::EnsemblGeneFetch { .. }
+        | ShellCommand::EnsemblRegionFetch { .. }
         | ShellCommand::EnsemblProteinFetch { .. }
         | ShellCommand::UniprotImportSwissProt { .. }
         | ShellCommand::UniprotList

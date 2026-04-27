@@ -12134,6 +12134,29 @@ impl GentleEngine {
                             .unwrap_or_default()
                     ));
                 }
+                Operation::FetchEnsemblRegion {
+                    species,
+                    chromosome,
+                    start_1based,
+                    end_1based,
+                    strand,
+                    output_id,
+                    coord_system_version,
+                } => {
+                    let entry = Self::fetch_ensembl_region_sequence_from_rest(
+                        &species,
+                        &chromosome,
+                        start_1based,
+                        end_1based,
+                        strand,
+                        coord_system_version.as_deref(),
+                    )?;
+                    let _seq_id = self.import_ensembl_region_sequence_entry(
+                        &mut result,
+                        entry,
+                        output_id.as_deref(),
+                    )?;
+                }
                 Operation::FetchGenBankAccession { accession, as_id } => {
                     let accession_trimmed = accession.trim();
                     if accession_trimmed.is_empty() {
