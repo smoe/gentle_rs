@@ -13371,7 +13371,9 @@ fn execute_services_telegram_guide_reports_menu_and_section_actions() {
     assert!(
         out.output["menu_sections"]
             .as_array()
-            .map(|rows| rows.iter().any(|row| row["section_id"].as_str() == Some("tfbs")))
+            .map(|rows| rows
+                .iter()
+                .any(|row| row["section_id"].as_str() == Some("tfbs")))
             .unwrap_or(false)
     );
     assert!(
@@ -14549,6 +14551,27 @@ fn parse_helpers_list_with_filter() {
 }
 
 #[test]
+fn parse_helpers_vocabulary_list_with_filter() {
+    let cmd = parse_shell_line(
+        "helpers vocabulary list --vocabulary assets/helper_semantics_vocabulary.json --filter fusion",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::HelperVocabularyList {
+            vocabulary_path,
+            filter,
+        } => {
+            assert_eq!(
+                vocabulary_path,
+                Some("assets/helper_semantics_vocabulary.json".to_string())
+            );
+            assert_eq!(filter, Some("fusion".to_string()));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_hosts_list_with_filter() {
     let cmd = parse_shell_line("hosts list --catalog assets/host_profiles.json --filter deoR")
         .expect("parse command");
@@ -15520,6 +15543,64 @@ fn execute_helpers_status_includes_normalized_interpretation() {
             .expect("routine hints")
             .iter()
             .any(|row| row["family"].as_str() == Some("restriction"))
+    );
+}
+
+#[test]
+fn execute_helpers_vocabulary_list_reports_resolved_terms() {
+    let td = tempdir().expect("tempdir");
+    let vocabulary = td.path().join("helper_semantics_vocabulary.json");
+    fs::write(
+        &vocabulary,
+        r#"{
+  "schema": "gentle.helper_semantics_vocabulary.v1",
+  "terms": [
+    {
+      "axis": "component_kind",
+      "value": "solubility_tag",
+      "label": "Solubility tag",
+      "description": "Project solubility tag",
+      "aliases": ["mbp_tag"],
+      "routine_hints": [
+        {
+          "family": "gibson",
+          "rationale": "Solubility tags are frame-sensitive.",
+          "source_terms": ["component_kind:solubility_tag"]
+        }
+      ]
+    }
+  ]
+}"#,
+    )
+    .expect("write vocabulary");
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::HelperVocabularyList {
+            vocabulary_path: Some(vocabulary.to_string_lossy().to_string()),
+            filter: Some("mbp".to_string()),
+        },
+    )
+    .expect("execute helpers vocabulary list");
+
+    assert!(!out.state_changed);
+    assert_eq!(out.output["term_count"].as_u64(), Some(1));
+    assert_eq!(
+        out.output["terms"][0]["axis"].as_str(),
+        Some("component_kind")
+    );
+    assert_eq!(
+        out.output["terms"][0]["value"].as_str(),
+        Some("solubility_tag")
+    );
+    assert_eq!(
+        out.output["terms"][0]["aliases"][0].as_str(),
+        Some("mbp_tag")
+    );
+    assert_eq!(
+        out.output["terms"][0]["routine_hints"][0]["family"].as_str(),
+        Some("gibson")
     );
 }
 

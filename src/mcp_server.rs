@@ -14,7 +14,10 @@ use crate::{
         ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
         parse_shell_tokens,
     },
-    genomes::{default_catalog_discovery_label, default_catalog_discovery_token},
+    genomes::{
+        default_catalog_discovery_label, default_catalog_discovery_token,
+        default_helper_semantics_vocabulary_discovery_label,
+    },
     shell_docs::{
         shell_help_json, shell_help_markdown, shell_help_text, shell_topic_help_json,
         shell_topic_help_markdown, shell_topic_help_text,
@@ -419,6 +422,25 @@ fn tool_list() -> Value {
                     "filter": {
                         "type": "string",
                         "description": "Optional metadata filter matching ids, aliases, tags, summaries, procurement fields, and helper semantics."
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "helper_semantics_vocabulary",
+            "title": "Helper Semantics Vocabulary",
+            "description": "Return resolved helper semantics vocabulary terms, aliases, descriptions, sources, and routine hints.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "vocabulary_path": {
+                        "type": "string",
+                        "description": "Optional vocabulary JSON file/directory path. Defaults to built-in/system/user/project discovery."
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "Optional metadata filter matching axis, value, aliases, descriptions, sources, and routine hints."
                     }
                 },
                 "additionalProperties": false
@@ -1102,6 +1124,35 @@ fn catalog_entries_tool_result(arguments: &Value, helper_mode: bool) -> Value {
                 false,
             )
         }
+        Err(err) => tool_result_text(err.to_string(), "text", true),
+    }
+}
+
+fn helper_semantics_vocabulary_tool_result(arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let vocabulary_path = match optional_string_arg(&args, "vocabulary_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let filter = match optional_string_arg(&args, "filter") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    match GentleEngine::list_helper_semantics_vocabulary_terms(
+        vocabulary_path.as_deref(),
+        filter.as_deref(),
+    ) {
+        Ok(terms) => tool_result_json(
+            json!({
+                "vocabulary_path": vocabulary_path
+                    .clone()
+                    .unwrap_or_else(|| default_helper_semantics_vocabulary_discovery_label().to_string()),
+                "filter": filter,
+                "term_count": terms.len(),
+                "terms": terms,
+            }),
+            false,
+        ),
         Err(err) => tool_result_text(err.to_string(), "text", true),
     }
 }
@@ -2071,6 +2122,7 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         }
         "reference_catalog_entries" => catalog_entries_tool_result(&params.arguments, false),
         "helper_catalog_entries" => catalog_entries_tool_result(&params.arguments, true),
+        "helper_semantics_vocabulary" => helper_semantics_vocabulary_tool_result(&params.arguments),
         "host_profile_catalog_entries" => {
             host_profile_catalog_entries_tool_result(&params.arguments)
         }
@@ -3169,6 +3221,51 @@ mod tests {
             "factor xa".to_string(),
         ]);
         assert_eq!(mcp_helper["result"]["structuredContent"], expected_helper);
+
+        let vocabulary_path = td.path().join("helper_semantics_vocabulary.json");
+        fs::write(
+            &vocabulary_path,
+            r#"{
+  "schema": "gentle.helper_semantics_vocabulary.v1",
+  "terms": [
+    {
+      "axis": "component_kind",
+      "value": "solubility_tag",
+      "label": "Solubility tag",
+      "aliases": ["mbp_tag"]
+    }
+  ]
+}"#,
+        )
+        .expect("write vocabulary fixture");
+        let vocabulary_path = vocabulary_path.to_string_lossy().to_string();
+        let mcp_vocabulary = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "helper_semantics_vocabulary",
+            json!({
+                "vocabulary_path": vocabulary_path.clone(),
+                "filter": "mbp"
+            }),
+        );
+        assert_eq!(
+            mcp_vocabulary
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_vocabulary = run_shared_shell_command(vec![
+            "helpers".to_string(),
+            "vocabulary".to_string(),
+            "list".to_string(),
+            "--vocabulary".to_string(),
+            vocabulary_path,
+            "--filter".to_string(),
+            "mbp".to_string(),
+        ]);
+        assert_eq!(
+            mcp_vocabulary["result"]["structuredContent"],
+            expected_vocabulary
+        );
 
         let mcp_host = run_tool(
             DEFAULT_MCP_STATE_PATH,

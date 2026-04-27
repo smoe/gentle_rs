@@ -2872,6 +2872,9 @@ Notes:
     compiler and replayable execution layer
   - MCP and the ClawBio wrapper now expose that typed planner boundary instead
     of depending on chat-only assistant flows
+  - the GUI Agent Assistant now also has a small first-run UX pass:
+    quick-start transport selection, inline setup preflight, and an explicit
+    local-model route for users who want to avoid OpenAI API billing
 
 ## 2. Active known gaps (priority-ordered)
 
@@ -3170,6 +3173,10 @@ Current baseline:
   helper/vector terms, and system/user/project overlays can add aliases,
   descriptions, and routine hints that helper interpretations resolve into
   enriched `normalized_terms[]`
+- the resolved vocabulary is now inspectable through shared routes:
+  `helpers vocabulary list`, direct CLI, JS/Lua wrappers, and the MCP
+  `helper_semantics_vocabulary` tool expose canonical terms, aliases,
+  descriptions, sources, and routine hints for deterministic debugging
 - JS/Lua adapters now also expose structured reference/helper catalog-entry
   helpers so agents/scripts can consume catalog metadata and helper
   `interpretation` records without reparsing shell JSON
@@ -3214,6 +3221,16 @@ Planned work:
      canonicalized/enriched through a helper semantics vocabulary with
      built-in plus system/user/project overlay discovery; example extension:
      `docs/examples/catalogs/helper_semantics_vocabulary_extension.json`.
+   - Architecture decision now made explicit:
+     the helper semantics vocabulary is the deterministic, local,
+     net-independent, debuggable knowledge layer that agent/MCP/ClawBio
+     interfaces consume. Agent prompts may explain and suggest vocabulary
+     additions, but they are not the source of truth for helper/vector
+     semantics.
+   - Read-only vocabulary inspection route is now in place:
+     `helpers vocabulary list --filter TEXT`, direct CLI, MCP, JS, and Lua all
+     expose the resolved effective vocabulary so downstream tools can inspect
+     what GENtle knows before relying on helper interpretation output.
    - planning baseline now also accepts helper-aware `planning objective`
      fields (`helper_profile_id`, `preferred_routine_families`) and uses one
      shared synthesized `routine_preference_context` for:

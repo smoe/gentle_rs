@@ -1171,6 +1171,28 @@ Sequence-linked construct reasoning graph direction:
     semantics vocabulary (`assets/helper_semantics_vocabulary.json` plus
     system/user/project overlays) so local construct classes can add aliases,
     descriptions, and routine hints without changing engine code
+  - architectural decision:
+    the helper semantics vocabulary is a deterministic engine-owned knowledge
+    layer, not an agent-interface substitute or prompt convention. Agent
+    surfaces may consume, explain, rank, and suggest additions to this
+    vocabulary, but they must not be the source of truth for helper/vector
+    meaning.
+  - this separation matters because the vocabulary provides:
+    - deterministic behavior across GUI/CLI/JS/Lua/MCP/ClawBio
+    - local and network-independent operation for air-gapped or reproducible
+      deployments
+    - debuggable, versionable, reviewable JSON facts instead of hidden prompt
+      state
+    - explicit overlay provenance for built-in, system, user, and project
+      knowledge
+    - stable machine-readable terms that planning, routine ranking, and
+      constraint reasoning can consume without re-interpreting prose
+  - therefore resolved vocabulary inspection is part of the architecture, not
+    merely a convenience UI: shared routes such as a future
+    `helpers vocabulary list` command should expose the effective term catalog,
+    aliases, descriptions, sources, and routine hints so users, agents, MCP,
+    and ClawBio can debug what GENtle will treat as known before it interprets
+    helper constructs
   - the emerging reasoning/constraint engine should consume those normalized
     records so catalog-backed helper knowledge, planner suggestions, and future
     ontology terms stay aligned across GUI/CLI/MCP/ClawBio instead of growing

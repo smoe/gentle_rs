@@ -7621,15 +7621,12 @@ impl GentleEngine {
                     }
                     notes.insert(0, format!("Columns: {}", column_labels.join(", ")));
                     let requested_ladders: &[String] = ladders.as_deref().unwrap_or(&[]);
-                    let layout = build_grouped_protein_gel_layout(
-                        &groups,
-                        requested_ladders,
-                        notes,
-                    )
-                    .map_err(|message| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message,
-                    })?;
+                    let layout =
+                        build_grouped_protein_gel_layout(&groups, requested_ladders, notes)
+                            .map_err(|message| EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message,
+                            })?;
                     let svg = export_protein_gel_svg(&layout);
                     std::fs::write(&path, svg).map_err(|e| EngineError {
                         code: ErrorCode::Io,

@@ -169,6 +169,31 @@ pub fn default_catalog_discovery_token(helper_mode: bool) -> &'static str {
     CatalogDomain::from_helper_mode(helper_mode).discovery_token()
 }
 
+/// Stable human-facing label for default helper semantics vocabulary discovery.
+pub fn default_helper_semantics_vocabulary_discovery_label() -> &'static str {
+    "default helper semantics vocabulary discovery"
+}
+
+/// List the resolved helper semantics vocabulary terms.
+///
+/// When `vocabulary_path` is omitted, this uses the deterministic built-in ->
+/// system -> user -> project discovery chain. When supplied, `vocabulary_path`
+/// may point to a single JSON vocabulary file or a directory of JSON fragments.
+pub fn list_helper_construct_vocabulary_terms(
+    vocabulary_path: Option<&str>,
+    filter: Option<&str>,
+) -> Result<Vec<HelperConstructVocabularyTerm>, String> {
+    let vocabulary = if let Some(path) = vocabulary_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        HelperConstructVocabularyIndex::from_explicit_path(path)?
+    } else {
+        HelperConstructVocabularyIndex::from_default_discovery()?
+    };
+    Ok(vocabulary.list_terms(filter))
+}
+
 fn configured_builtin_asset_root() -> PathBuf {
     std::env::var_os(BUILTIN_ASSET_ROOT_ENV)
         .filter(|value| !value.is_empty())
@@ -604,6 +629,13 @@ impl HelperConstructVocabularyIndex {
         Self::from_sources(&sources)
     }
 
+    fn from_explicit_path(path: &str) -> Result<Self, String> {
+        Self::from_sources(&[CatalogSourceCandidate {
+            scope: "explicit",
+            path: PathBuf::from(path),
+        }])
+    }
+
     fn from_sources(sources: &[CatalogSourceCandidate]) -> Result<Self, String> {
         let mut index = Self::default();
         for source in sources {
@@ -755,6 +787,50 @@ impl HelperConstructVocabularyIndex {
         self.resolve(axis, value)
             .map(|term| term.routine_hints.clone())
             .unwrap_or_default()
+    }
+
+    fn list_terms(&self, filter: Option<&str>) -> Vec<HelperConstructVocabularyTerm> {
+        let mut terms = self
+            .terms
+            .values()
+            .filter(|term| Self::term_matches_filter(term, filter))
+            .cloned()
+            .collect::<Vec<_>>();
+        terms.sort_by(|left, right| {
+            (left.axis.as_str(), left.value.as_str())
+                .cmp(&(right.axis.as_str(), right.value.as_str()))
+        });
+        terms
+    }
+
+    fn term_matches_filter(term: &HelperConstructVocabularyTerm, filter: Option<&str>) -> bool {
+        let Some(filter) = filter.map(str::trim).filter(|value| !value.is_empty()) else {
+            return true;
+        };
+        let needle = HelperConstructInterpretation::normalize_semantic_token(filter);
+        if needle.is_empty() {
+            return true;
+        }
+        let mut values = vec![term.axis.clone(), term.value.clone()];
+        if let Some(label) = term.label.as_ref() {
+            values.push(label.clone());
+        }
+        if let Some(description) = term.description.as_ref() {
+            values.push(description.clone());
+        }
+        if let Some(source) = term.source.as_ref() {
+            values.push(source.clone());
+        }
+        values.extend(term.aliases.clone());
+        for hint in &term.routine_hints {
+            values.push(hint.family.clone());
+            values.push(hint.rationale.clone());
+            values.extend(hint.source_terms.clone());
+        }
+        values
+            .into_iter()
+            .map(|value| HelperConstructInterpretation::normalize_semantic_token(&value))
+            .any(|value| value.contains(&needle))
     }
 
     fn dedup_normalized_aliases(values: Vec<String>) -> Vec<String> {

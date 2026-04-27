@@ -106,6 +106,9 @@ impl LuaInterface {
             "  - list_helper_catalog_entries([catalog_path], [filter]): Lists structured helper catalog entries"
         );
         println!(
+            "  - list_helper_semantics_vocabulary([vocabulary_path], [filter]): Lists resolved helper semantics vocabulary terms"
+        );
+        println!(
             "  - list_host_profile_catalog_entries([catalog_path], [filter]): Lists structured host-profile catalog entries"
         );
         println!(
@@ -271,6 +274,19 @@ impl LuaInterface {
             .filter(|v| !v.is_empty());
         let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
         GentleEngine::list_helper_catalog_entries(catalog_path, filter)
+            .map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn list_helper_semantics_vocabulary(
+        vocabulary_path: Option<String>,
+        filter: Option<String>,
+    ) -> LuaResult<Vec<crate::genomes::HelperConstructVocabularyTerm>> {
+        let vocabulary_path = vocabulary_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        let filter = filter.as_deref().map(str::trim).filter(|v| !v.is_empty());
+        GentleEngine::list_helper_semantics_vocabulary_terms(vocabulary_path, filter)
             .map_err(|e| Self::err(&e.to_string()))
     }
 
@@ -776,6 +792,16 @@ impl LuaInterface {
             self.lua.create_function(
                 |lua, (catalog_path, filter): (Option<String>, Option<String>)| {
                     let entries = Self::list_helper_catalog_entries(catalog_path, filter)?;
+                    lua.to_value(&entries)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "list_helper_semantics_vocabulary",
+            self.lua.create_function(
+                |lua, (vocabulary_path, filter): (Option<String>, Option<String>)| {
+                    let entries = Self::list_helper_semantics_vocabulary(vocabulary_path, filter)?;
                     lua.to_value(&entries)
                 },
             )?,
@@ -2056,7 +2082,7 @@ mod tests {
             .expect("register rust functions");
         lua.lua()
             .load(
-                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')\nassert(type(list_construct_reasoning_graphs) == 'function')\nassert(type(show_construct_reasoning_graph) == 'function')\nassert(type(set_construct_reasoning_annotation_status) == 'function')\nassert(type(write_back_construct_reasoning_annotation) == 'function')",
+                "assert(type(list_reference_catalog_entries) == 'function')\nassert(type(list_helper_catalog_entries) == 'function')\nassert(type(list_helper_semantics_vocabulary) == 'function')\nassert(type(list_host_profile_catalog_entries) == 'function')\nassert(type(list_ensembl_installable_genomes) == 'function')\nassert(type(list_construct_reasoning_graphs) == 'function')\nassert(type(show_construct_reasoning_graph) == 'function')\nassert(type(set_construct_reasoning_annotation_status) == 'function')\nassert(type(write_back_construct_reasoning_annotation) == 'function')",
             )
             .exec()
             .expect("catalog entry wrappers should be registered");
@@ -2118,6 +2144,51 @@ mod tests {
                 .offered_functions
                 .contains(&"fusion_tagging".to_string())
         );
+    }
+
+    #[test]
+    fn lua_helper_semantics_vocabulary_wrapper_exposes_terms() {
+        let td = tempdir().expect("tempdir");
+        let vocabulary_path = td.path().join("vocabulary.json");
+        fs::write(
+            &vocabulary_path,
+            r#"{
+  "schema": "gentle.helper_semantics_vocabulary.v1",
+  "terms": [
+    {
+      "axis": "component_kind",
+      "value": "solubility_tag",
+      "label": "Solubility tag",
+      "description": "Project solubility tag",
+      "aliases": ["mbp_tag"]
+    }
+  ]
+}"#,
+        )
+        .expect("write vocabulary");
+
+        let lua = LuaInterface::new();
+        lua.register_rust_functions()
+            .expect("register rust functions");
+        lua.lua()
+            .globals()
+            .set(
+                "vocabulary_path",
+                vocabulary_path.to_string_lossy().to_string(),
+            )
+            .expect("set vocabulary path");
+        lua.lua()
+            .load(
+                r#"
+                    rows = list_helper_semantics_vocabulary(vocabulary_path, "mbp")
+                    assert(#rows == 1)
+                    assert(rows[1].axis == "component_kind")
+                    assert(rows[1].value == "solubility_tag")
+                    assert(rows[1].aliases[1] == "mbp_tag")
+                "#,
+            )
+            .exec()
+            .expect("list helper semantics vocabulary");
     }
 
     #[test]

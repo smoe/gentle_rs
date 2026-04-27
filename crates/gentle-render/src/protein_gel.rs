@@ -7,8 +7,8 @@
 
 use std::sync::LazyLock;
 
-use svg::node::element::{Circle, Line, Rectangle, Text};
 use svg::Document;
+use svg::node::element::{Circle, Line, Rectangle, Text};
 
 const SVG_WIDTH: f32 = 1900.0;
 const SVG_HEIGHT: f32 = 840.0;
@@ -553,10 +553,15 @@ pub fn build_grouped_protein_gel_layout(
     for (group_idx, group) in groups.iter().enumerate() {
         let group_name = group.name.trim().to_string();
         if group_name.is_empty() {
-            return Err(format!("Protein group lane {} has an empty name", group_idx + 1));
+            return Err(format!(
+                "Protein group lane {} has an empty name",
+                group_idx + 1
+            ));
         }
         if group.samples.is_empty() {
-            return Err(format!("Protein group lane '{group_name}' has no protein samples"));
+            return Err(format!(
+                "Protein group lane '{group_name}' has no protein samples"
+            ));
         }
         let mut normalized_samples = vec![];
         for (sample_idx, sample) in group.samples.iter().enumerate() {
@@ -1093,11 +1098,7 @@ fn protein_pi_x(layout: &Protein2dGelLayout, pi: f32, left: f32, right: f32) -> 
 
 fn protein_pi_tick_step(layout: &Protein2dGelLayout) -> f32 {
     let span = (layout.range_max_pi - layout.range_min_pi).abs();
-    if span <= 6.0 {
-        0.5
-    } else {
-        1.0
-    }
+    if span <= 6.0 { 0.5 } else { 1.0 }
 }
 
 fn protein_pi_tick_values(layout: &Protein2dGelLayout) -> Vec<f32> {

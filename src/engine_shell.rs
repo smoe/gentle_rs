@@ -83,7 +83,7 @@ use crate::{
         GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, PreparedCacheCleanupMode,
         PreparedCacheCleanupRequest, configured_helper_genome_cache_dir,
         configured_reference_genome_cache_dir, default_catalog_discovery_label,
-        default_catalog_discovery_token,
+        default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
     },
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
@@ -1296,6 +1296,10 @@ pub enum ShellCommand {
     ReferenceList {
         helper_mode: bool,
         catalog_path: Option<String>,
+        filter: Option<String>,
+    },
+    HelperVocabularyList {
+        vocabulary_path: Option<String>,
         filter: Option<String>,
     },
     ReferenceEnsemblAvailable {
@@ -6560,6 +6564,24 @@ impl ShellCommand {
                         .unwrap_or_default()
                 )
             }
+            Self::HelperVocabularyList {
+                vocabulary_path,
+                filter,
+            } => {
+                let vocabulary = vocabulary_path.clone().unwrap_or_else(|| {
+                    default_helper_semantics_vocabulary_discovery_label().to_string()
+                });
+                format!(
+                    "list helper semantics vocabulary terms from '{}'{}",
+                    vocabulary,
+                    filter
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| format!(" (filter='{value}')"))
+                        .unwrap_or_default()
+                )
+            }
             Self::ReferenceEnsemblAvailable {
                 helper_mode,
                 collection,
@@ -11164,6 +11186,50 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         return Err(format!("{label} requires a subcommand"));
     }
     match tokens[1].as_str() {
+        "vocabulary" if helper_mode => {
+            if tokens.len() < 3 {
+                return Err("helpers vocabulary requires a subcommand (expected list)".to_string());
+            }
+            match tokens[2].as_str() {
+                "list" => {
+                    let mut vocabulary_path: Option<String> = None;
+                    let mut filter: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--vocabulary" => {
+                                vocabulary_path = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--vocabulary",
+                                    "helpers vocabulary list",
+                                )?)
+                            }
+                            "--filter" => {
+                                filter = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--filter",
+                                    "helpers vocabulary list",
+                                )?)
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for helpers vocabulary list"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::HelperVocabularyList {
+                        vocabulary_path,
+                        filter,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown helpers vocabulary subcommand '{other}' (expected list)"
+                )),
+            }
+        }
         "list" => {
             let mut catalog_path: Option<String> = None;
             let mut filter: Option<String> = None;
@@ -17147,9 +17213,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 idx += 2;
                             }
                             other => {
-                                return Err(format!(
-                                    "Unknown option '{other}' for services guide"
-                                ));
+                                return Err(format!("Unknown option '{other}' for services guide"));
                             }
                         }
                     }
@@ -20815,6 +20879,27 @@ fn execute_reference_and_track_command(
                     "genome_count": genomes.len(),
                     "genomes": genomes,
                     "entries": entries,
+                }),
+            })
+        }
+        ShellCommand::HelperVocabularyList {
+            vocabulary_path,
+            filter,
+        } => {
+            let terms = GentleEngine::list_helper_semantics_vocabulary_terms(
+                vocabulary_path.as_deref(),
+                filter.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "vocabulary_path": vocabulary_path
+                        .clone()
+                        .unwrap_or_else(|| default_helper_semantics_vocabulary_discovery_label().to_string()),
+                    "filter": filter,
+                    "term_count": terms.len(),
+                    "terms": terms,
                 }),
             })
         }
@@ -26967,6 +27052,7 @@ pub fn execute_shell_command_with_options(
         command,
         ShellCommand::HostsList { .. }
             | ShellCommand::ReferenceList { .. }
+            | ShellCommand::HelperVocabularyList { .. }
             | ShellCommand::ReferenceEnsemblAvailable { .. }
             | ShellCommand::ReferenceInstallEnsembl { .. }
             | ShellCommand::ReferenceValidateCatalog { .. }
@@ -27743,6 +27829,7 @@ fn execute_shell_command_with_options_inner(
         }
         ShellCommand::HostsList { .. }
         | ShellCommand::ReferenceList { .. }
+        | ShellCommand::HelperVocabularyList { .. }
         | ShellCommand::ReferenceEnsemblAvailable { .. }
         | ShellCommand::ReferenceInstallEnsembl { .. }
         | ShellCommand::ReferenceValidateCatalog { .. }

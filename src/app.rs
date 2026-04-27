@@ -64,6 +64,7 @@ use crate::{
         OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL, agent_system_availability,
         discover_openai_models, invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
+    agent_transport::{AgentSystemPreflight, build_agent_system_preflight},
     dna_sequence::{self, DNAsequence},
     engine::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
@@ -230,6 +231,34 @@ fn normalize_agent_model_name(raw: &str) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+fn preferred_openai_agent_system_id(systems: &[AgentSystemSpec]) -> Option<String> {
+    for preferred_id in ["openai_gpt5_native", "openai_gpt5_stdio"] {
+        if systems.iter().any(|system| system.id == preferred_id) {
+            return Some(preferred_id.to_string());
+        }
+    }
+    systems
+        .iter()
+        .find(|system| matches!(system.transport, AgentSystemTransport::NativeOpenai))
+        .map(|system| system.id.clone())
+}
+
+fn preferred_local_agent_system_id(systems: &[AgentSystemSpec]) -> Option<String> {
+    for preferred_id in [
+        "local_llama_compat",
+        "msty_local_compat_template",
+        "jan_local_compat_template",
+    ] {
+        if systems.iter().any(|system| system.id == preferred_id) {
+            return Some(preferred_id.to_string());
+        }
+    }
+    systems
+        .iter()
+        .find(|system| matches!(system.transport, AgentSystemTransport::NativeOpenaiCompat))
+        .map(|system| system.id.clone())
 }
 
 const AGENT_PROMPT_TEMPLATE_DEFAULT_ID: &str = "structured";
@@ -1122,6 +1151,7 @@ pub struct GENtleApp {
     agent_include_state_summary: bool,
     agent_allow_auto_exec: bool,
     agent_status: String,
+    agent_preflight_output: Option<AgentSystemPreflight>,
     agent_task: Option<AgentAskTask>,
     agent_last_invocation: Option<AgentInvocationOutcome>,
     agent_execution_log: Vec<AgentCommandExecutionRecord>,
@@ -2820,6 +2850,7 @@ impl Default for GENtleApp {
             agent_include_state_summary: true,
             agent_allow_auto_exec: false,
             agent_status: String::new(),
+            agent_preflight_output: None,
             agent_task: None,
             agent_last_invocation: None,
             agent_execution_log: vec![],
@@ -6630,6 +6661,7 @@ Error: `{err}`"
         self.agent_task = None;
         self.agent_model_discovery_task = None;
         self.agent_status.clear();
+        self.agent_preflight_output = None;
         self.agent_last_invocation = None;
         self.agent_execution_log.clear();
         self.agent_discovered_models.clear();
@@ -12654,19 +12686,44 @@ Error: `{err}`"
             .cloned()
     }
 
-    fn selected_agent_system_with_session_overrides(
+    fn clear_agent_preflight_output(&mut self) {
+        self.agent_preflight_output = None;
+    }
+
+    fn clear_agent_model_discovery_snapshot(&mut self) {
+        self.agent_model_discovery_task = None;
+        self.agent_discovered_models.clear();
+        self.agent_discovered_model_pick.clear();
+        self.agent_model_discovery_status.clear();
+        self.agent_model_discovery_source_key.clear();
+    }
+
+    fn select_agent_system_and_reset_setup(&mut self, system_id: &str) {
+        if self.agent_system_id == system_id {
+            return;
+        }
+        self.agent_system_id = system_id.to_string();
+        self.clear_agent_preflight_output();
+        self.clear_agent_model_discovery_snapshot();
+    }
+
+    fn selected_agent_session_env_overrides(
         &self,
         system: &AgentSystemSpec,
-    ) -> AgentSystemSpec {
-        let mut resolved = system.clone();
+    ) -> Result<HashMap<String, String>, String> {
+        let mut overrides = HashMap::new();
+        let openai_api_key = self.agent_openai_api_key.trim();
+        if !openai_api_key.is_empty() {
+            overrides.insert(OPENAI_API_KEY_ENV.to_string(), openai_api_key.to_string());
+        }
         let override_base_url = self.agent_base_url_override.trim();
         if !override_base_url.is_empty()
             && matches!(
-                resolved.transport,
+                system.transport,
                 AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
             )
         {
-            resolved.env.insert(
+            overrides.insert(
                 AGENT_BASE_URL_ENV.to_string(),
                 override_base_url.to_string(),
             );
@@ -12681,103 +12738,87 @@ Error: `{err}`"
             .or(selected_discovered_model);
         if let Some(override_model) = override_model
             && matches!(
-                resolved.transport,
+                system.transport,
                 AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
             )
         {
-            resolved
-                .env
-                .insert(AGENT_MODEL_ENV.to_string(), override_model);
+            overrides.insert(AGENT_MODEL_ENV.to_string(), override_model);
         }
-        let timeout_override = self
-            .agent_timeout_secs
-            .trim()
-            .parse::<u64>()
-            .ok()
-            .filter(|value| *value > 0);
-        if let Some(timeout_override) = timeout_override
+        if let Some(timeout_override) = self.parse_agent_timeout_seconds()?
             && matches!(
-                resolved.transport,
+                system.transport,
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
-            resolved.env.insert(
+            overrides.insert(
                 AGENT_TIMEOUT_SECS_ENV.to_string(),
                 timeout_override.to_string(),
             );
         }
-        let connect_timeout_override = self
-            .agent_connect_timeout_secs
-            .trim()
-            .parse::<u64>()
-            .ok()
-            .filter(|value| *value > 0);
-        if let Some(connect_timeout_override) = connect_timeout_override
+        if let Some(connect_timeout_override) = self.parse_agent_connect_timeout_seconds()?
             && matches!(
-                resolved.transport,
+                system.transport,
                 AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
             )
         {
-            resolved.env.insert(
+            overrides.insert(
                 AGENT_CONNECT_TIMEOUT_SECS_ENV.to_string(),
                 connect_timeout_override.to_string(),
             );
         }
-        let read_timeout_override = self
-            .agent_read_timeout_secs
-            .trim()
-            .parse::<u64>()
-            .ok()
-            .filter(|value| *value > 0);
-        if let Some(read_timeout_override) = read_timeout_override
+        if let Some(read_timeout_override) = self.parse_agent_read_timeout_seconds()?
             && matches!(
-                resolved.transport,
+                system.transport,
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
-            resolved.env.insert(
+            overrides.insert(
                 AGENT_READ_TIMEOUT_SECS_ENV.to_string(),
                 read_timeout_override.to_string(),
             );
         }
-        let max_retries_override = self.agent_max_retries.trim().parse::<usize>().ok();
-        if let Some(max_retries_override) = max_retries_override
+        if let Some(max_retries_override) = self.parse_agent_max_retries()?
             && matches!(
-                resolved.transport,
+                system.transport,
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
-            resolved.env.insert(
+            overrides.insert(
                 AGENT_MAX_RETRIES_ENV.to_string(),
                 max_retries_override.to_string(),
             );
         }
-        let max_response_bytes_override = self
-            .agent_max_response_bytes
-            .trim()
-            .parse::<usize>()
-            .ok()
-            .filter(|value| *value > 0);
-        if let Some(max_response_bytes_override) = max_response_bytes_override
+        if let Some(max_response_bytes_override) = self.parse_agent_max_response_bytes()?
             && matches!(
-                resolved.transport,
+                system.transport,
                 AgentSystemTransport::ExternalJsonStdio
                     | AgentSystemTransport::NativeOpenai
                     | AgentSystemTransport::NativeOpenaiCompat
             )
         {
-            resolved.env.insert(
+            overrides.insert(
                 AGENT_MAX_RESPONSE_BYTES_ENV.to_string(),
                 max_response_bytes_override.to_string(),
             );
         }
-        resolved
+        Ok(overrides)
+    }
+
+    fn selected_agent_system_with_session_overrides(
+        &self,
+        system: &AgentSystemSpec,
+    ) -> Result<AgentSystemSpec, String> {
+        let mut resolved = system.clone();
+        for (key, value) in self.selected_agent_session_env_overrides(system)? {
+            resolved.env.insert(key, value);
+        }
+        Ok(resolved)
     }
 
     fn selected_agent_runtime_base_url(&self, system: &AgentSystemSpec) -> Option<String> {
@@ -12944,20 +12985,57 @@ Error: `{err}`"
         &self,
         system: &AgentSystemSpec,
     ) -> (bool, Option<String>) {
-        let resolved = self.selected_agent_system_with_session_overrides(system);
+        let resolved = match self.selected_agent_system_with_session_overrides(system) {
+            Ok(resolved) => resolved,
+            Err(err) => return (false, Some(err)),
+        };
         let availability = agent_system_availability(&resolved);
-        if availability.available {
-            return (true, availability.reason);
+        (availability.available, availability.reason)
+    }
+
+    fn run_agent_preflight_probe(&mut self) {
+        self.refresh_agent_system_catalog();
+        self.clear_agent_preflight_output();
+        if !self.agent_catalog_error.is_empty() {
+            self.agent_status = format!("Agent catalog error: {}", self.agent_catalog_error);
+            return;
         }
-        if matches!(system.transport, AgentSystemTransport::NativeOpenai)
-            && !self.agent_openai_api_key.trim().is_empty()
-        {
-            return (
-                true,
-                Some("using GUI-supplied OpenAI API key for this session".to_string()),
-            );
+        let Some(selected_system) = self.selected_agent_system() else {
+            self.agent_status = "Select an agent system first".to_string();
+            return;
+        };
+        let env_overrides = match self.selected_agent_session_env_overrides(&selected_system) {
+            Ok(overrides) => overrides,
+            Err(err) => {
+                self.agent_status = err;
+                return;
+            }
+        };
+        match build_agent_system_preflight(
+            Some(self.agent_catalog_path.trim()),
+            selected_system.id.as_str(),
+            if env_overrides.is_empty() {
+                None
+            } else {
+                Some(&env_overrides)
+            },
+        ) {
+            Ok(preflight) => {
+                let availability = if preflight.available {
+                    "available"
+                } else {
+                    "unavailable"
+                };
+                self.agent_status = format!(
+                    "Agent setup preflight: {} ({})",
+                    selected_system.id, availability
+                );
+                self.agent_preflight_output = Some(preflight);
+            }
+            Err(err) => {
+                self.agent_status = format!("Agent setup preflight failed: {err}");
+            }
         }
-        (false, availability.reason)
     }
 
     fn start_agent_assistant_request(&mut self) {
@@ -12992,80 +13070,43 @@ Error: `{err}`"
             self.agent_status = "Agent prompt cannot be empty".to_string();
             return;
         }
-        let timeout_seconds = match self.parse_agent_timeout_seconds() {
-            Ok(value) => value,
+        let env_overrides = match self.selected_agent_session_env_overrides(&selected_system) {
+            Ok(overrides) => overrides,
             Err(err) => {
                 self.agent_status = err;
                 return;
             }
         };
-        let connect_timeout_seconds = match self.parse_agent_connect_timeout_seconds() {
-            Ok(value) => value,
-            Err(err) => {
-                self.agent_status = err;
-                return;
-            }
-        };
-        let read_timeout_seconds = match self.parse_agent_read_timeout_seconds() {
-            Ok(value) => value,
-            Err(err) => {
-                self.agent_status = err;
-                return;
-            }
-        };
-        let max_retries = match self.parse_agent_max_retries() {
-            Ok(value) => value,
-            Err(err) => {
-                self.agent_status = err;
-                return;
-            }
-        };
-        let max_response_bytes = match self.parse_agent_max_response_bytes() {
-            Ok(value) => value,
-            Err(err) => {
-                self.agent_status = err;
-                return;
-            }
-        };
-        let mut model_override = normalize_agent_model_name(self.agent_model_override.trim());
-        let discovered_pick =
-            normalize_agent_model_name(&self.agent_discovered_model_pick).filter(|picked| {
-                self.agent_discovered_models
-                    .iter()
-                    .any(|item| item == picked)
-            });
-        if model_override.is_none() && discovered_pick.is_some() {
-            model_override = discovered_pick.clone();
-        }
+        let timeout_seconds = self.parse_agent_timeout_seconds().ok().flatten();
+        let max_retries = self.parse_agent_max_retries().ok().flatten();
+        let resolved_runtime_model = env_overrides
+            .get(AGENT_MODEL_ENV)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         if matches!(
             selected_system.transport,
             AgentSystemTransport::NativeOpenaiCompat
-        ) && model_override.is_none()
+        ) && resolved_runtime_model.is_none()
         {
-            if discovered_pick.is_some() {
-                model_override = discovered_pick;
-            } else {
-                let catalog_model = normalize_agent_model_name(
-                    selected_system.model.as_deref().unwrap_or_default(),
-                );
-                if let Some(catalog_model) = catalog_model {
-                    if !self.agent_discovered_models.is_empty()
-                        && !self
-                            .agent_discovered_models
-                            .iter()
-                            .any(|value| value == &catalog_model)
-                    {
-                        self.agent_status = format!(
-                            "Catalog model '{catalog_model}' is not available on current endpoint. Select a discovered model or set Model override."
-                        );
-                        return;
-                    }
-                } else {
-                    self.agent_status =
-                        "Model is unspecified. Discover models and select one, or set Model override."
-                            .to_string();
+            let catalog_model =
+                normalize_agent_model_name(selected_system.model.as_deref().unwrap_or_default());
+            if let Some(catalog_model) = catalog_model {
+                if !self.agent_discovered_models.is_empty()
+                    && !self
+                        .agent_discovered_models
+                        .iter()
+                        .any(|value| value == &catalog_model)
+                {
+                    self.agent_status = format!(
+                        "Catalog model '{catalog_model}' is not available on current endpoint. Select a discovered model or set Model override."
+                    );
                     return;
                 }
+            } else {
+                self.agent_status =
+                    "Model is unspecified. Discover models and select one, or set Model override."
+                        .to_string();
+                return;
             }
         }
 
@@ -13075,24 +13116,6 @@ Error: `{err}`"
             None
         };
         let catalog_path = self.agent_catalog_path.trim().to_string();
-        let openai_api_key = self.agent_openai_api_key.trim().to_string();
-        let base_url_override = self.agent_base_url_override.trim().to_string();
-        let model_override = model_override.unwrap_or_default();
-        let timeout_override = timeout_seconds
-            .map(|value| value.to_string())
-            .unwrap_or_default();
-        let connect_timeout_override = connect_timeout_seconds
-            .map(|value| value.to_string())
-            .unwrap_or_default();
-        let read_timeout_override = read_timeout_seconds
-            .map(|value| value.to_string())
-            .unwrap_or_default();
-        let max_retries_override = max_retries
-            .map(|value| value.to_string())
-            .unwrap_or_default();
-        let max_response_bytes_override = max_response_bytes
-            .map(|value| value.to_string())
-            .unwrap_or_default();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
         self.agent_status = if let Some(timeout) = timeout_seconds {
@@ -13117,40 +13140,6 @@ Error: `{err}`"
             receiver: rx,
         });
         std::thread::spawn(move || {
-            let mut env_overrides = HashMap::new();
-            if !openai_api_key.is_empty() {
-                env_overrides.insert(OPENAI_API_KEY_ENV.to_string(), openai_api_key);
-            }
-            if !base_url_override.is_empty() {
-                env_overrides.insert(AGENT_BASE_URL_ENV.to_string(), base_url_override);
-            }
-            if !model_override.is_empty() {
-                env_overrides.insert(AGENT_MODEL_ENV.to_string(), model_override);
-            }
-            if !timeout_override.is_empty() {
-                env_overrides.insert(AGENT_TIMEOUT_SECS_ENV.to_string(), timeout_override);
-            }
-            if !connect_timeout_override.is_empty() {
-                env_overrides.insert(
-                    AGENT_CONNECT_TIMEOUT_SECS_ENV.to_string(),
-                    connect_timeout_override,
-                );
-            }
-            if !read_timeout_override.is_empty() {
-                env_overrides.insert(
-                    AGENT_READ_TIMEOUT_SECS_ENV.to_string(),
-                    read_timeout_override,
-                );
-            }
-            if !max_retries_override.is_empty() {
-                env_overrides.insert(AGENT_MAX_RETRIES_ENV.to_string(), max_retries_override);
-            }
-            if !max_response_bytes_override.is_empty() {
-                env_overrides.insert(
-                    AGENT_MAX_RESPONSE_BYTES_ENV.to_string(),
-                    max_response_bytes_override,
-                );
-            }
             let result = invoke_agent_support_with_env_overrides(
                 Some(catalog_path.as_str()),
                 &system_id,
@@ -28606,6 +28595,8 @@ Error: `{err}`"
                 format!("Catalog error: {}", self.agent_catalog_error),
             );
         }
+        let mut preflight_inputs_changed = false;
+        let mut requested_agent_system_id: Option<String> = None;
         ui.horizontal(|ui| {
             ui.label("system");
             egui::ComboBox::from_id_salt("agent_system_combo")
@@ -28631,11 +28622,72 @@ Error: `{err}`"
                             );
                         }
                         if response.clicked() {
-                            self.agent_system_id = system.id.clone();
+                            requested_agent_system_id = Some(system.id.clone());
                         }
                     }
                 });
         });
+        if let Some(system_id) = requested_agent_system_id {
+            self.select_agent_system_and_reset_setup(&system_id);
+        }
+        if !self.agent_systems.is_empty() {
+            ui.group(|ui| {
+                ui.strong("Quick start");
+                ui.small(
+                    "Choose whether GENtle should talk to the OpenAI API, a local OpenAI-compatible model, or the offline demo.",
+                );
+                ui.horizontal_wrapped(|ui| {
+                    if let Some(openai_system_id) =
+                        preferred_openai_agent_system_id(&self.agent_systems)
+                    {
+                        if ui
+                            .button("Use OpenAI API")
+                            .on_hover_text(
+                                "Select the native OpenAI agent profile and use OPENAI_API_KEY for requests",
+                            )
+                            .clicked()
+                        {
+                            self.select_agent_system_and_reset_setup(&openai_system_id);
+                            self.agent_base_url_override.clear();
+                            self.agent_model_override.clear();
+                            self.agent_discovered_model_pick.clear();
+                            self.agent_status = "Selected OpenAI API quick start. Add OPENAI_API_KEY or paste a session key, then run Test Setup.".to_string();
+                        }
+                    }
+                    if let Some(local_system_id) =
+                        preferred_local_agent_system_id(&self.agent_systems)
+                    {
+                        if ui
+                            .button("Use Local Model (no OpenAI API billing)")
+                            .on_hover_text(
+                                "Select a local OpenAI-compatible endpoint such as Ollama, Jan, or Msty",
+                            )
+                            .clicked()
+                        {
+                            self.select_agent_system_and_reset_setup(&local_system_id);
+                            self.agent_base_url_override.clear();
+                            self.agent_model_override.clear();
+                            self.agent_discovered_model_pick.clear();
+                            self.agent_status = "Selected local-model quick start. Start your local endpoint, discover models, then run Test Setup.".to_string();
+                        }
+                    }
+                    if self.agent_systems.iter().any(|system| system.id == "builtin_echo")
+                        && ui
+                            .button("Use Demo Echo")
+                            .on_hover_text(
+                                "Select the offline demo assistant that never contacts a remote service",
+                            )
+                            .clicked()
+                    {
+                        self.select_agent_system_and_reset_setup("builtin_echo");
+                        self.agent_status = "Selected the built-in demo assistant.".to_string();
+                    }
+                });
+                ui.small(
+                    "OpenAI API mode uses OPENAI_API_KEY and talks to the API directly. If you want a path that avoids OpenAI API billing, prefer a local OpenAI-compatible endpoint.",
+                );
+            });
+        }
         let mut selected_available = false;
         if let Some(system) = self.selected_agent_system() {
             let (available, reason) = self.selected_agent_system_availability(&system);
@@ -28657,10 +28709,8 @@ Error: `{err}`"
                 if let Some(source_key) = self.selected_agent_model_discovery_source_key(&system) {
                     if self.agent_model_discovery_source_key != source_key {
                         self.agent_model_discovery_source_key = source_key;
-                        self.agent_model_discovery_task = None;
-                        self.agent_discovered_models.clear();
-                        self.agent_discovered_model_pick.clear();
-                        self.agent_model_discovery_status.clear();
+                        self.clear_agent_model_discovery_snapshot();
+                        self.clear_agent_preflight_output();
                     }
                     if normalize_agent_model_name(self.agent_model_override.trim()).is_none()
                         && self.agent_model_discovery_task.is_none()
@@ -28703,11 +28753,7 @@ Error: `{err}`"
                     ui.small(format!("model: {catalog_model}"));
                 }
             } else {
-                self.agent_model_discovery_task = None;
-                self.agent_discovered_models.clear();
-                self.agent_discovered_model_pick.clear();
-                self.agent_model_discovery_source_key.clear();
-                self.agent_model_discovery_status.clear();
+                self.clear_agent_model_discovery_snapshot();
             }
             if !available {
                 ui.colored_label(
@@ -28718,79 +28764,94 @@ Error: `{err}`"
                     ),
                 );
             }
+            if system.id == "builtin_echo" {
+                ui.small(
+                    "Built-in Echo is only a demo bridge. Use one of the quick-start buttons above for a real model-backed assistant.",
+                );
+            }
         } else if self.agent_systems.is_empty() {
             ui.small("No systems loaded from this catalog.");
         }
         ui.horizontal(|ui| {
             ui.label("OpenAI API key");
-            ui.add(
+            let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_openai_api_key)
                     .password(true)
                     .hint_text("sk-..."),
             );
+            preflight_inputs_changed |= response.changed();
             if ui
                 .button("Clear Key")
                 .on_hover_text("Clear session-only API key override")
                 .clicked()
             {
                 self.agent_openai_api_key.clear();
+                preflight_inputs_changed = true;
             }
         });
         ui.horizontal(|ui| {
             ui.label("Base URL override");
-            ui.add(
+            let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_base_url_override)
                     .hint_text("http://localhost:11964/v1"),
             );
+            preflight_inputs_changed |= response.changed();
             if ui
                 .button("Clear URL")
                 .on_hover_text("Clear session-only base URL override")
                 .clicked()
             {
                 self.agent_base_url_override.clear();
+                preflight_inputs_changed = true;
             }
         });
         ui.horizontal(|ui| {
             ui.label("Model override");
-            ui.add(
+            let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_model_override).hint_text("unspecified"),
             );
+            preflight_inputs_changed |= response.changed();
             if ui
                 .button("Clear Model")
                 .on_hover_text("Clear session-only model override")
                 .clicked()
             {
                 self.agent_model_override.clear();
+                preflight_inputs_changed = true;
             }
         });
         ui.horizontal(|ui| {
             ui.label("timeout_sec");
-            ui.add(
+            let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_timeout_secs)
                     .desired_width(100.0)
                     .hint_text("default"),
             );
+            preflight_inputs_changed |= response.changed();
             if ui
                 .button("Clear Timeout")
                 .on_hover_text("Use default timeout")
                 .clicked()
             {
                 self.agent_timeout_secs.clear();
+                preflight_inputs_changed = true;
             }
         });
         ui.horizontal(|ui| {
             ui.label("connect_timeout_sec");
-            ui.add(
+            let connect_response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_connect_timeout_secs)
                     .desired_width(90.0)
                     .hint_text("default"),
             );
+            preflight_inputs_changed |= connect_response.changed();
             ui.label("read_timeout_sec");
-            ui.add(
+            let read_response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_read_timeout_secs)
                     .desired_width(90.0)
                     .hint_text("default"),
             );
+            preflight_inputs_changed |= read_response.changed();
             if ui
                 .button("Clear HTTP Timeouts")
                 .on_hover_text("Use default connect/read timeouts")
@@ -28798,21 +28859,24 @@ Error: `{err}`"
             {
                 self.agent_connect_timeout_secs.clear();
                 self.agent_read_timeout_secs.clear();
+                preflight_inputs_changed = true;
             }
         });
         ui.horizontal(|ui| {
             ui.label("max_retries");
-            ui.add(
+            let retries_response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_max_retries)
                     .desired_width(90.0)
                     .hint_text("default"),
             );
+            preflight_inputs_changed |= retries_response.changed();
             ui.label("max_response_bytes");
-            ui.add(
+            let bytes_response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_max_response_bytes)
                     .desired_width(120.0)
                     .hint_text("default"),
             );
+            preflight_inputs_changed |= bytes_response.changed();
             if ui
                 .button("Clear Limits")
                 .on_hover_text("Use default retry/response-size limits")
@@ -28820,14 +28884,32 @@ Error: `{err}`"
             {
                 self.agent_max_retries.clear();
                 self.agent_max_response_bytes.clear();
+                preflight_inputs_changed = true;
             }
         });
         if let Some(system) = self.selected_agent_system() {
-            if matches!(
-                system.transport,
-                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
-            ) {
-                ui.horizontal(|ui| {
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Test Setup")
+                    .on_hover_text(
+                        "Validate the current system, key, endpoint, model, and runtime settings without sending a prompt",
+                    )
+                    .clicked()
+                {
+                    self.run_agent_preflight_probe();
+                }
+                if self.agent_preflight_output.is_some()
+                    && ui
+                        .button("Clear Test")
+                        .on_hover_text("Clear the latest setup-preflight snapshot")
+                        .clicked()
+                {
+                    self.clear_agent_preflight_output();
+                }
+                if matches!(
+                    system.transport,
+                    AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+                ) {
                     if ui
                         .button("Discover Models")
                         .on_hover_text("Query local/server model list from current base URL")
@@ -28842,8 +28924,16 @@ Error: `{err}`"
                             task.started.elapsed().as_secs_f32()
                         ));
                     }
-                });
+                }
+            });
+            if !matches!(
+                system.transport,
+                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+            ) {
+                self.clear_agent_model_discovery_snapshot();
+            } else {
                 if !self.agent_discovered_models.is_empty() {
+                    let previous_pick = self.agent_discovered_model_pick.clone();
                     ui.horizontal(|ui| {
                         ui.label("Discovered model");
                         egui::ComboBox::from_id_salt("agent_discovered_model_combo")
@@ -28862,6 +28952,7 @@ Error: `{err}`"
                                 }
                             });
                     });
+                    preflight_inputs_changed |= previous_pick != self.agent_discovered_model_pick;
                     ui.small(
                         "If Model override is unspecified, the selected discovered model is used.",
                     );
@@ -28870,6 +28961,68 @@ Error: `{err}`"
                     ui.small(self.agent_model_discovery_status.clone());
                 }
             }
+        }
+        if preflight_inputs_changed {
+            self.clear_agent_preflight_output();
+        }
+        if let Some(preflight) = &self.agent_preflight_output {
+            ui.group(|ui| {
+                ui.strong("Setup preflight");
+                let color = if preflight.available {
+                    egui::Color32::from_rgb(60, 140, 80)
+                } else {
+                    egui::Color32::from_rgb(190, 70, 70)
+                };
+                ui.colored_label(
+                    color,
+                    format!(
+                        "{} ({})",
+                        if preflight.available {
+                            "Available"
+                        } else {
+                            "Unavailable"
+                        },
+                        preflight.transport
+                    ),
+                );
+                if let Some(reason) = preflight.availability_reason.as_deref() {
+                    if !reason.trim().is_empty() {
+                        ui.small(format!("detail: {}", reason.trim()));
+                    }
+                }
+                if let Some(base_url) = preflight.base_url.as_deref() {
+                    ui.small(format!("base URL: {base_url}"));
+                }
+                if let Some(model) = preflight.model.as_deref() {
+                    ui.small(format!("model: {model}"));
+                }
+                ui.small(format!(
+                    "runtime: timeout={}s | connect={}s | read={}s | retries={} | max_response_bytes={}",
+                    preflight.timeout_secs,
+                    preflight.connect_timeout_secs,
+                    preflight.read_timeout_secs,
+                    preflight.max_retries,
+                    preflight.max_response_bytes
+                ));
+                if !preflight.endpoint_candidates.is_empty() {
+                    ui.small(format!(
+                        "request endpoints: {}",
+                        preflight.endpoint_candidates.join(" | ")
+                    ));
+                }
+                if !preflight.model_endpoint_candidates.is_empty() {
+                    ui.small(format!(
+                        "model discovery endpoints: {}",
+                        preflight.model_endpoint_candidates.join(" | ")
+                    ));
+                }
+                if !preflight.warnings.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(180, 120, 50),
+                        format!("warnings: {}", preflight.warnings.join(" | ")),
+                    );
+                }
+            });
         }
         ui.small(
             "Session only: if set, this key overrides OPENAI_API_KEY for agent requests started from this GUI window.",
@@ -31517,6 +31670,7 @@ Error: `{err}`"
         self.agent_task = None;
         self.agent_model_discovery_task = None;
         self.agent_status.clear();
+        self.agent_preflight_output = None;
         self.agent_last_invocation = None;
         self.agent_execution_log.clear();
         self.agent_discovered_models.clear();
@@ -44358,9 +44512,11 @@ impl GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::{
-        APP_CONFIGURATION_SCHEMA_VERSION, BACKGROUND_JOB_HISTORY_METADATA_KEY,
-        BACKGROUND_JOB_HISTORY_SCHEMA, BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID,
-        BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
+        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
+        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
+        AGENT_TIMEOUT_SECS_ENV, APP_CONFIGURATION_SCHEMA_VERSION,
+        BACKGROUND_JOB_HISTORY_METADATA_KEY, BACKGROUND_JOB_HISTORY_SCHEMA,
+        BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID, BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID, BackgroundJobEventPhase, BackgroundJobKind,
@@ -44372,7 +44528,7 @@ mod tests {
         GenomeTrackImportTask, GenomeTrackImportTaskMessage, GibsonUiInsertOrientation,
         GibsonUiInsertRow, GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
-        LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
+        LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS, OPENAI_API_KEY_ENV,
         OPERATION_HISTORY_SCROLL_ID, PendingEnsemblCatalogUpdateDialog,
         PendingEnsemblInstallableGenomeDialog, PendingEnsemblQuickInstallDialog,
         PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
@@ -44383,9 +44539,11 @@ mod tests {
         ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState,
         RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
         RoutineAssistantStage, TutorialProjectOpenOutcome, TutorialProjectTask,
-        TutorialProjectTaskMessage, TutorialProjectTaskProgress,
+        TutorialProjectTaskMessage, TutorialProjectTaskProgress, preferred_local_agent_system_id,
+        preferred_openai_agent_system_id,
     };
     use crate::{
+        agent_bridge::{AgentSystemSpec, AgentSystemTransport},
         dna_sequence::DNAsequence,
         engine::{
             Arrangement, ArrangementMode, BlastHitFeatureInput, BlastInvocationProvenance,
@@ -44449,6 +44607,20 @@ mod tests {
                     determinate_hint: step_id != PrepareGenomeStepId::BlastIndex,
                 })
                 .collect(),
+        }
+    }
+
+    fn test_agent_system(id: &str, transport: AgentSystemTransport) -> AgentSystemSpec {
+        AgentSystemSpec {
+            id: id.to_string(),
+            label: id.to_string(),
+            description: None,
+            transport,
+            command: vec![],
+            env: HashMap::new(),
+            base_url: None,
+            model: None,
+            working_dir: None,
         }
     }
 
@@ -44685,6 +44857,92 @@ mod tests {
             ],
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn preferred_agent_quickstart_helpers_pick_expected_templates() {
+        let systems = vec![
+            test_agent_system("builtin_echo", AgentSystemTransport::BuiltinEcho),
+            test_agent_system(
+                "msty_local_compat_template",
+                AgentSystemTransport::NativeOpenaiCompat,
+            ),
+            test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai),
+        ];
+        assert_eq!(
+            preferred_openai_agent_system_id(&systems).as_deref(),
+            Some("openai_gpt5_native")
+        );
+        assert_eq!(
+            preferred_local_agent_system_id(&systems).as_deref(),
+            Some("msty_local_compat_template")
+        );
+    }
+
+    #[test]
+    fn selected_agent_session_env_overrides_validate_and_include_gui_key() {
+        let mut app = GENtleApp::default();
+        let system = test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai);
+        app.agent_openai_api_key = "sk-test".to_string();
+        app.agent_base_url_override = "https://api.openai.com/v1".to_string();
+        app.agent_model_override = "gpt-5".to_string();
+        app.agent_timeout_secs = "120".to_string();
+        app.agent_connect_timeout_secs = "11".to_string();
+        app.agent_read_timeout_secs = "180".to_string();
+        app.agent_max_retries = "3".to_string();
+        app.agent_max_response_bytes = "2048".to_string();
+        let overrides = app
+            .selected_agent_session_env_overrides(&system)
+            .expect("agent overrides");
+        assert_eq!(
+            overrides.get(OPENAI_API_KEY_ENV).map(String::as_str),
+            Some("sk-test")
+        );
+        assert_eq!(
+            overrides.get(AGENT_BASE_URL_ENV).map(String::as_str),
+            Some("https://api.openai.com/v1")
+        );
+        assert_eq!(
+            overrides.get(AGENT_MODEL_ENV).map(String::as_str),
+            Some("gpt-5")
+        );
+        assert_eq!(
+            overrides.get(AGENT_TIMEOUT_SECS_ENV).map(String::as_str),
+            Some("120")
+        );
+        assert_eq!(
+            overrides
+                .get(AGENT_CONNECT_TIMEOUT_SECS_ENV)
+                .map(String::as_str),
+            Some("11")
+        );
+        assert_eq!(
+            overrides
+                .get(AGENT_READ_TIMEOUT_SECS_ENV)
+                .map(String::as_str),
+            Some("180")
+        );
+        assert_eq!(
+            overrides.get(AGENT_MAX_RETRIES_ENV).map(String::as_str),
+            Some("3")
+        );
+        assert_eq!(
+            overrides
+                .get(AGENT_MAX_RESPONSE_BYTES_ENV)
+                .map(String::as_str),
+            Some("2048")
+        );
+    }
+
+    #[test]
+    fn selected_agent_session_env_overrides_reject_invalid_timeout() {
+        let mut app = GENtleApp::default();
+        let system = test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai);
+        app.agent_timeout_secs = "twelve".to_string();
+        let err = app
+            .selected_agent_session_env_overrides(&system)
+            .expect_err("invalid timeout should fail");
+        assert!(err.contains("Invalid timeout_sec"));
     }
 
     struct EnvVarGuard {

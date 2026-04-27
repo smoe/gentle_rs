@@ -627,7 +627,8 @@ impl MainAreaDna {
             .into_iter()
             .next()
             .ok_or_else(|| {
-                "Provide an anchor TF motif, or keep at least one promoter-design TF motif selected".to_string()
+                "Provide an anchor TF motif, or keep at least one promoter-design TF motif selected"
+                    .to_string()
             })
     }
 
@@ -635,15 +636,21 @@ impl MainAreaDna {
         &self,
         anchor_motif: &str,
     ) -> Result<Vec<String>, String> {
-        if self.variant_followup_ui.tfbs_track_similarity_all_candidates {
+        if self
+            .variant_followup_ui
+            .tfbs_track_similarity_all_candidates
+        {
             return Ok(vec!["ALL".to_string()]);
         }
         let mut tokens = Self::promoter_design_parse_motif_tokens(
-            &self.variant_followup_ui.tfbs_track_similarity_candidate_motifs,
+            &self
+                .variant_followup_ui
+                .tfbs_track_similarity_candidate_motifs,
         );
         if tokens.is_empty() {
-            tokens =
-                Self::promoter_design_parse_motif_tokens(&self.variant_followup_ui.score_track_motifs);
+            tokens = Self::promoter_design_parse_motif_tokens(
+                &self.variant_followup_ui.score_track_motifs,
+            );
         }
         let anchor_upper = anchor_motif.trim().to_ascii_uppercase();
         let mut seen = BTreeSet::new();
@@ -703,7 +710,9 @@ impl MainAreaDna {
         let candidate_motifs =
             self.variant_followup_collect_similarity_candidate_tokens(&anchor_motif)?;
         let species_filters = Self::parse_ids(
-            &self.variant_followup_ui.tfbs_track_similarity_species_filters,
+            &self
+                .variant_followup_ui
+                .tfbs_track_similarity_species_filters,
         );
         Ok((
             SequenceScanTarget::SeqId {
@@ -713,7 +722,8 @@ impl MainAreaDna {
             },
             anchor_motif,
             candidate_motifs,
-            self.variant_followup_ui.tfbs_track_similarity_ranking_metric,
+            self.variant_followup_ui
+                .tfbs_track_similarity_ranking_metric,
             score_kind,
             clip_negative,
             species_filters,
@@ -760,8 +770,14 @@ impl MainAreaDna {
     }
 
     fn export_variant_followup_tfbs_track_similarity_json(&mut self) {
-        let Some(report) = self.variant_followup_ui.cached_tfbs_track_similarity.clone() else {
-            self.op_status = "No cached Promoter design TFBS similarity ranking available for JSON export".to_string();
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_tfbs_track_similarity
+            .clone()
+        else {
+            self.op_status =
+                "No cached Promoter design TFBS similarity ranking available for JSON export"
+                    .to_string();
             return;
         };
         let default_name = format!(
@@ -832,7 +848,9 @@ impl MainAreaDna {
         let result = self.apply_operation_with_feedback_and_result(
             Operation::SummarizeAlternativePromoterComparison {
                 input,
-                gene_label: Self::variant_followup_optional_text(&self.variant_followup_ui.gene_label),
+                gene_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.gene_label,
+                ),
                 transcript_id: Self::variant_followup_optional_text(
                     &self.variant_followup_ui.transcript_id,
                 ),
@@ -842,7 +860,8 @@ impl MainAreaDna {
             },
         );
         if let Some(report) = result.and_then(|row| row.alternative_promoter_comparison) {
-            self.variant_followup_ui.cached_alternative_promoter_comparison = Some(report);
+            self.variant_followup_ui
+                .cached_alternative_promoter_comparison = Some(report);
         }
     }
 
@@ -878,7 +897,8 @@ impl MainAreaDna {
             },
         );
         if let Some(report) = result.and_then(|row| row.alternative_promoter_comparison) {
-            self.variant_followup_ui.cached_alternative_promoter_comparison = Some(report);
+            self.variant_followup_ui
+                .cached_alternative_promoter_comparison = Some(report);
         }
     }
 
@@ -2913,7 +2933,11 @@ impl MainAreaDna {
             }
             ui.add_space(6.0);
         }
-        let Some(report) = self.variant_followup_ui.cached_tfbs_track_similarity.as_ref() else {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_tfbs_track_similarity
+            .as_ref()
+        else {
             ui.small(
                 egui::RichText::new(
                     "No Promoter design TFBS similarity ranking cached yet. Run `Show TFBS similarity ranking` to compare one anchor motif against the current promoter span.",
@@ -3523,7 +3547,8 @@ impl MainAreaDna {
             self.variant_followup_ui.cached_candidates = None;
         }
         if summary_params_changed {
-            self.variant_followup_ui.cached_alternative_promoter_comparison = None;
+            self.variant_followup_ui
+                .cached_alternative_promoter_comparison = None;
         }
 
         ui.separator();

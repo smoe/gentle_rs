@@ -4557,8 +4557,8 @@ impl GentleEngine {
         let configured_executable = primer3_executable_override
             .map(str::trim)
             .unwrap_or_else(|| self.state.parameters.primer3_executable.trim());
-        let configured_executable = (!configured_executable.is_empty())
-            .then(|| configured_executable.to_string());
+        let configured_executable =
+            (!configured_executable.is_empty()).then(|| configured_executable.to_string());
         let executable = configured_executable.as_deref().unwrap_or("primer3_core");
         let mut report = Self::probe_primer3_executable_status(executable);
         report.backend = backend.as_str().to_string();

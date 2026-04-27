@@ -495,8 +495,8 @@ Resource update capability status:
 Reference genome capability status:
 
 - `gentle_cli`: supported via shared engine operations (`PrepareGenome`, `ExtractGenomeRegion`, `ExtractGenomeGene`) and shell-level `genomes/helpers blast`
-- `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `list_host_profile_catalog_entries`, `list_ensembl_installable_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
-- `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `list_host_profile_catalog_entries`, `list_ensembl_installable_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
+- `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `list_helper_semantics_vocabulary`, `list_host_profile_catalog_entries`, `list_ensembl_installable_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
+- `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `list_reference_catalog_entries`, `list_helper_catalog_entries`, `list_helper_semantics_vocabulary`, `list_host_profile_catalog_entries`, `list_ensembl_installable_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 
 Construct-reasoning inspection capability status:
 
@@ -1059,13 +1059,17 @@ Exit methods:
     - Lists structured helper-catalog entries, including optional normalized
       `interpretation` records.
     - `filter` is optional and matches the same search surface as `helpers list --filter`.
-16. `list_host_profile_catalog_entries(catalog_path, filter)`
+16. `list_helper_semantics_vocabulary(vocabulary_path, filter)`
+    - Lists resolved helper semantics vocabulary terms, aliases, descriptions, sources, and routine hints.
+    - `vocabulary_path` is optional (`null`/`""` uses default built-in/system/user/project discovery).
+    - `filter` is optional and matches axis, value, aliases, descriptions, sources, and routine hints.
+17. `list_host_profile_catalog_entries(catalog_path, filter)`
     - Lists structured host-profile catalog entries for construct-reasoning host/strain lookup.
     - `filter` is optional and matches ids, aliases, species, strain, genotype tags, phenotype tags, and notes.
-17. `list_ensembl_installable_genomes(collection, filter)`
+18. `list_ensembl_installable_genomes(collection, filter)`
     - Lists Ensembl species directories that currently appear installable because both FASTA and GTF listings are present.
     - `collection` is optional (`all`, `vertebrates`, `metazoa`).
-18. `list_construct_reasoning_graphs(state, seq_id)`
+19. `list_construct_reasoning_graphs(state, seq_id)`
     - Lists stored construct-reasoning graphs plus compact shared-shell summary rows.
     - `seq_id` is optional and limits rows to one active sequence.
 19. `show_construct_reasoning_graph(state, graph_id)`
@@ -1255,6 +1259,10 @@ Minimum MCP JSON-RPC flow:
 
 - optional: `catalog_path`, `filter`
 
+`helper_semantics_vocabulary` arguments:
+
+- optional: `vocabulary_path`, `filter`
+
 `host_profile_catalog_entries` arguments:
 
 - optional: `catalog_path`, `filter`
@@ -1376,9 +1384,11 @@ Exit methods:
 15. `list_helper_catalog_entries([catalog_path], [filter])`
     - Lists structured helper-catalog entries, including optional normalized
       `interpretation` records.
-16. `list_host_profile_catalog_entries([catalog_path], [filter])`
+16. `list_helper_semantics_vocabulary([vocabulary_path], [filter])`
+    - Lists resolved helper semantics vocabulary terms.
+17. `list_host_profile_catalog_entries([catalog_path], [filter])`
     - Lists structured host-profile catalog entries for construct-reasoning host/strain lookup.
-17. `list_ensembl_installable_genomes([collection], [filter])`
+18. `list_ensembl_installable_genomes([collection], [filter])`
     - Lists current Ensembl candidates where both FASTA and GTF species listings exist.
 18. `list_construct_reasoning_graphs(project, [seq_id])`
     - Lists stored construct-reasoning graphs plus compact shared-shell summary rows.
@@ -1569,6 +1579,7 @@ cargo run --bin gentle_cli -- genomes remove-catalog-entry "Human GRCh38 Ensembl
 cargo run --bin gentle_cli -- genomes blast "Human GRCh38 Ensembl 116" ACGTACGTACGT --task blastn-short --max-hits 10 --options-json '{"thresholds":{"min_identity_percent":97.0,"min_query_coverage_percent":80.0}}' --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 116" 1 1000000 1001500 --output-id grch38_chr1_slice --annotation-scope core --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- helpers vocabulary list --filter fusion
 cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.bed.gz --name H3K27ac --min-score 10 --clear-existing
 cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/signal.bw --name ATAC --min-score 0.2 --clear-existing
 cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample.vcf.gz --name Variants --min-score 20 --clear-existing
@@ -3169,6 +3180,14 @@ Helper convenience commands:
   - Helper `entries[]` rows now also include an optional normalized
     `interpretation` record so ClawBio/agents/planners can consume one shared
     helper-meaning layer instead of reparsing raw catalog prose.
+- `helpers vocabulary list [--vocabulary PATH] [--filter TEXT]`
+  - Lists the resolved helper semantics vocabulary terms that normalize helper
+    catalog semantics.
+  - Omitting `--vocabulary` uses the built-in/system/user/project vocabulary
+    discovery chain.
+  - Output includes canonical terms, aliases, descriptions, sources, and
+    vocabulary-provided routine hints for debugging deterministic helper
+    interpretation.
 - `helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
   - Same discovery report shape as `genomes ensembl-available`, but exposed under the helper-family command tree for contract symmetry across adapters.
 - `helpers install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]`

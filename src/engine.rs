@@ -40,13 +40,15 @@ use crate::{
         EnsemblQuickInstallReport, GenomeBlastReport, GenomeCatalog,
         GenomeCatalogEntryRemovalReport, GenomeCatalogListEntry, GenomeGeneRecord,
         GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation,
-        PrepareGenomeActivityStatus, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
-        PreparedCacheCleanupReport, PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
+        HelperConstructVocabularyTerm, PrepareGenomeActivityStatus, PrepareGenomePlan,
+        PrepareGenomeProgress, PrepareGenomeReport, PreparedCacheCleanupReport,
+        PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
         PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
         PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
-        clear_prepared_cache_roots, inspect_prepared_cache_roots, is_prepare_cancelled_error,
-        validate_genbank_accession,
+        clear_prepared_cache_roots, default_helper_semantics_vocabulary_discovery_label,
+        inspect_prepared_cache_roots, is_prepare_cancelled_error,
+        list_helper_construct_vocabulary_terms, validate_genbank_accession,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -484,8 +486,7 @@ const JASPAR_CATALOG_REPORT_SCHEMA: &str = "gentle.jaspar_catalog.v1";
 const JASPAR_REMOTE_METADATA_SNAPSHOT_SCHEMA: &str = "gentle.jaspar_remote_metadata_snapshot.v1";
 const TF_QUERY_RESOLUTION_REPORT_SCHEMA: &str = "gentle.tf_query_resolution.v1";
 const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v1";
-const ALTERNATIVE_PROMOTER_COMPARISON_SCHEMA: &str =
-    "gentle.alternative_promoter_comparison.v1";
+const ALTERNATIVE_PROMOTER_COMPARISON_SCHEMA: &str = "gentle.alternative_promoter_comparison.v1";
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
 const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
@@ -6070,6 +6071,24 @@ impl GentleEngine {
     ) -> Result<Vec<GenomeCatalogListEntry>, EngineError> {
         let (catalog, _) = Self::open_helper_genome_catalog(catalog_path)?;
         Ok(catalog.list_entries(filter))
+    }
+
+    pub fn list_helper_semantics_vocabulary_terms(
+        vocabulary_path: Option<&str>,
+        filter: Option<&str>,
+    ) -> Result<Vec<HelperConstructVocabularyTerm>, EngineError> {
+        let vocabulary_label = vocabulary_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| default_helper_semantics_vocabulary_discovery_label().to_string());
+        list_helper_construct_vocabulary_terms(vocabulary_path, filter).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "Could not list helper semantics vocabulary '{}': {}",
+                vocabulary_label, e
+            ),
+        })
     }
 
     pub fn describe_helper_genome_sources(

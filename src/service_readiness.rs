@@ -923,7 +923,9 @@ fn guide_actions_for_section(
                         gene_slug
                     ),
                     1200,
-                    format!("Extract a default 1000 bp upstream / 200 bp downstream promoter window for {gene}."),
+                    format!(
+                        "Extract a default 1000 bp upstream / 200 bp downstream promoter window for {gene}."
+                    ),
                     true,
                     Some("reference_genome:Human GRCh38 Ensembl 116".to_string()),
                     None,
@@ -957,7 +959,9 @@ fn guide_actions_for_section(
                         "genomes promoter-tfbs-summary \"Human GRCh38 Ensembl 116\" {gene_args} --motif stemness --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 --path {summary_path}",
                     ),
                     1800,
-                    format!("Summarize stemness/Yamanaka and SP1 motif evidence across the {genes_label} promoter window."),
+                    format!(
+                        "Summarize stemness/Yamanaka and SP1 motif evidence across the {genes_label} promoter window."
+                    ),
                     true,
                     Some("reference_genome:Human GRCh38 Ensembl 116".to_string()),
                     None,
@@ -1635,28 +1639,33 @@ mod tests {
         assert_eq!(guide.section, "overview");
         assert_eq!(guide.gene, None);
         assert!(!guide.gene_supplied);
-        assert!(guide
-            .summary_lines
-            .iter()
-            .any(|line| line.contains("If you have a gene of interest")));
+        assert!(
+            guide
+                .summary_lines
+                .iter()
+                .any(|line| line.contains("If you have a gene of interest"))
+        );
         assert!(guide.summary_lines.iter().any(|line| {
             line == "Guide sections: readiness, gene-context, tfbs, inline-dna, cloning, isoforms, follow-up."
         }));
-        assert!(guide
-            .summary_lines
-            .iter()
-            .any(|line| line == "Reply \"Continue readiness\" to check installed data/resources."));
-        assert!(guide
-            .summary_lines
-            .iter()
-            .any(|line| line == "Reply \"Continue cloning\" for PCR, vector, and protocol-cartoon routes."));
+        assert!(
+            guide
+                .summary_lines
+                .iter()
+                .any(|line| line
+                    == "Reply \"Continue readiness\" to check installed data/resources.")
+        );
+        assert!(guide.summary_lines.iter().any(|line| line
+            == "Reply \"Continue cloning\" for PCR, vector, and protocol-cartoon routes."));
         assert!(guide.summary_lines.iter().any(|line| {
             line == "Reply \"Continue isoforms\" for protein gels, 2D gels, and digest figures."
         }));
-        assert!(guide
-            .menu_sections
-            .iter()
-            .any(|section| section.section_id == "tfbs"));
+        assert!(
+            guide
+                .menu_sections
+                .iter()
+                .any(|section| section.section_id == "tfbs")
+        );
         assert!(guide.suggested_actions.iter().any(|action| {
             action.kind == "guide_section"
                 && action.label == "Continue with default genes"
@@ -1732,14 +1741,13 @@ mod tests {
         );
         assert_eq!(action.timeout_secs, 1800);
         assert!(action.requires_confirmation);
-        assert_eq!(
-            action.resource_key.as_deref(),
-            Some("service:ensembl_rest")
+        assert_eq!(action.resource_key.as_deref(), Some("service:ensembl_rest"));
+        assert!(
+            action
+                .expected_artifacts
+                .iter()
+                .any(|artifact| artifact == "exports/gene_panel_isoform_protein_gel.svg")
         );
-        assert!(action
-            .expected_artifacts
-            .iter()
-            .any(|artifact| artifact == "exports/gene_panel_isoform_protein_gel.svg"));
     }
 
     #[test]
@@ -1753,24 +1761,27 @@ mod tests {
             .iter()
             .find(|action| action.kind == "simple_pcr_primer_design")
             .expect("simple PCR primer-design action");
-        assert!(guide
-            .summary_lines
-            .iter()
-            .any(|line| line == "Reply \"Continue PCR\" to run the simple PCR primer-design route."));
+        assert!(guide.summary_lines.iter().any(
+            |line| line == "Reply \"Continue PCR\" to run the simple PCR primer-design route."
+        ));
         assert_eq!(
             action.shell_line,
             "workflow @docs/examples/workflows/simple_pcr_primer_design_offline.json"
         );
         assert_eq!(action.timeout_secs, 300);
         assert!(!action.requires_confirmation);
-        assert!(action
-            .expected_artifacts
-            .iter()
-            .any(|artifact| artifact == "artifacts/simple_pcr_demo_primers.protocol.svg"));
-        assert!(action
-            .expected_artifacts
-            .iter()
-            .any(|artifact| artifact == "artifacts/simple_pcr_demo_primers.report.json"));
+        assert!(
+            action
+                .expected_artifacts
+                .iter()
+                .any(|artifact| artifact == "artifacts/simple_pcr_demo_primers.protocol.svg")
+        );
+        assert!(
+            action
+                .expected_artifacts
+                .iter()
+                .any(|artifact| artifact == "artifacts/simple_pcr_demo_primers.report.json")
+        );
     }
 
     #[test]
@@ -1791,9 +1802,11 @@ mod tests {
             Some("running".to_string()),
             vec![],
         );
-        let handoff = fake_handoff_report(reference, vec![status_refresh_action()], vec![
-            running_action,
-        ]);
+        let handoff = fake_handoff_report(
+            reference,
+            vec![status_refresh_action()],
+            vec![running_action],
+        );
         let guide = build_telegram_guide_from_handoff(
             handoff,
             "telegram",
@@ -1801,13 +1814,17 @@ mod tests {
             Some("TERT".to_string()),
         );
 
-        assert!(guide
-            .suggested_actions
-            .iter()
-            .any(|action| action.kind == "refresh_status"));
-        assert!(!guide
-            .suggested_actions
-            .iter()
-            .any(|action| action.kind == "prepare_reference"));
+        assert!(
+            guide
+                .suggested_actions
+                .iter()
+                .any(|action| action.kind == "refresh_status")
+        );
+        assert!(
+            !guide
+                .suggested_actions
+                .iter()
+                .any(|action| action.kind == "prepare_reference")
+        );
     }
 }

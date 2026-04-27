@@ -652,7 +652,9 @@ impl GentleEngine {
         let mut rows = collapsed_windows
             .into_iter()
             .map(|record| {
-                let transcript_count = record.transcript_count.max(record.transcript_ids.len().max(1));
+                let transcript_count = record
+                    .transcript_count
+                    .max(record.transcript_ids.len().max(1));
                 let base_label = record
                     .gene_label
                     .clone()
@@ -689,7 +691,11 @@ impl GentleEngine {
                 .then_with(|| left.start_0based.cmp(&right.start_0based))
                 .then_with(|| left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
                 .then_with(|| left.strand.cmp(&right.strand))
-                .then_with(|| left.label.to_ascii_lowercase().cmp(&right.label.to_ascii_lowercase()))
+                .then_with(|| {
+                    left.label
+                        .to_ascii_lowercase()
+                        .cmp(&right.label.to_ascii_lowercase())
+                })
         });
         let mut warnings = vec![];
         if transcript_window_count > collapsed_window_count {

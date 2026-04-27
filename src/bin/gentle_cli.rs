@@ -18,7 +18,7 @@ use gentle::{
     },
     genomes::{
         GenomeGeneRecord, PrepareGenomeProgress, default_catalog_discovery_label,
-        default_catalog_discovery_token,
+        default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
     },
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     resource_status::resource_catalog_status,
@@ -589,6 +589,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
   gentle_cli helpers list [--catalog PATH] [--filter TEXT]\n  \
+  gentle_cli helpers vocabulary list [--vocabulary PATH] [--filter TEXT]\n  \
   gentle_cli helpers validate-catalog [--catalog PATH]\n  \
   gentle_cli helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
   gentle_cli helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
@@ -1360,6 +1361,67 @@ fn run() -> Result<(), String> {
                 return Err(format!("{label} requires a subcommand"));
             }
             match args[cmd_idx + 1].as_str() {
+                "vocabulary" if helper_mode => {
+                    if args.len() <= cmd_idx + 2 {
+                        return Err(
+                            "helpers vocabulary requires a subcommand (expected list)".to_string()
+                        );
+                    }
+                    match args[cmd_idx + 2].as_str() {
+                        "list" => {
+                            let mut vocabulary_path: Option<String> = None;
+                            let mut filter: Option<String> = None;
+                            let mut idx = cmd_idx + 3;
+                            while idx < args.len() {
+                                match args[idx].as_str() {
+                                    "--vocabulary" => {
+                                        if idx + 1 >= args.len() {
+                                            return Err(
+                                                "Missing PATH after --vocabulary for helpers vocabulary list"
+                                                    .to_string(),
+                                            );
+                                        }
+                                        vocabulary_path = Some(args[idx + 1].clone());
+                                        idx += 2;
+                                    }
+                                    "--filter" => {
+                                        if idx + 1 >= args.len() {
+                                            return Err(
+                                                "Missing TEXT after --filter for helpers vocabulary list"
+                                                    .to_string(),
+                                            );
+                                        }
+                                        filter = Some(args[idx + 1].clone());
+                                        idx += 2;
+                                    }
+                                    other => {
+                                        return Err(format!(
+                                            "Unknown option '{}' for helpers vocabulary list",
+                                            other
+                                        ));
+                                    }
+                                }
+                            }
+                            let terms = GentleEngine::list_helper_semantics_vocabulary_terms(
+                                vocabulary_path.as_deref(),
+                                filter.as_deref(),
+                            )
+                            .map_err(|e| e.to_string())?;
+                            print_json(&json!({
+                                "vocabulary_path": vocabulary_path
+                                    .clone()
+                                    .unwrap_or_else(|| default_helper_semantics_vocabulary_discovery_label().to_string()),
+                                "filter": filter,
+                                "term_count": terms.len(),
+                                "terms": terms,
+                            }))
+                        }
+                        other => Err(format!(
+                            "Unknown helpers vocabulary subcommand '{}' (expected list)",
+                            other
+                        )),
+                    }
+                }
                 "ensembl-available" => {
                     let mut collection: Option<String> = None;
                     let mut filter: Option<String> = None;

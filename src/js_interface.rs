@@ -467,6 +467,20 @@ fn list_helper_catalog_entries(
 
 #[op2]
 #[serde]
+fn list_helper_semantics_vocabulary(
+    #[string] vocabulary_path: &str,
+    #[string] filter: &str,
+) -> Result<Vec<crate::genomes::HelperConstructVocabularyTerm>, JsAnyhow> {
+    GentleEngine::list_helper_semantics_vocabulary_terms(
+        empty_to_none(vocabulary_path),
+        empty_to_none(filter),
+    )
+    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+    .map_err(Into::into)
+}
+
+#[op2]
+#[serde]
 fn list_host_profile_catalog_entries(
     #[string] catalog_path: &str,
     #[string] filter: &str,
@@ -718,6 +732,7 @@ impl JavaScriptInterface {
         const LIST_REFERENCE_GENOMES: OpDecl = list_reference_genomes();
         const LIST_REFERENCE_CATALOG_ENTRIES: OpDecl = list_reference_catalog_entries();
         const LIST_HELPER_CATALOG_ENTRIES: OpDecl = list_helper_catalog_entries();
+        const LIST_HELPER_SEMANTICS_VOCABULARY: OpDecl = list_helper_semantics_vocabulary();
         const LIST_HOST_PROFILE_CATALOG_ENTRIES: OpDecl = list_host_profile_catalog_entries();
         const LIST_ENSEMBL_INSTALLABLE_GENOMES: OpDecl = list_ensembl_installable_genomes();
         const LIST_CONSTRUCT_REASONING_GRAPHS: OpDecl = list_construct_reasoning_graphs();
@@ -754,6 +769,7 @@ impl JavaScriptInterface {
                 LIST_REFERENCE_GENOMES,
                 LIST_REFERENCE_CATALOG_ENTRIES,
                 LIST_HELPER_CATALOG_ENTRIES,
+                LIST_HELPER_SEMANTICS_VOCABULARY,
                 LIST_HOST_PROFILE_CATALOG_ENTRIES,
                 LIST_ENSEMBL_INSTALLABLE_GENOMES,
                 LIST_CONSTRUCT_REASONING_GRAPHS,
@@ -815,6 +831,9 @@ impl JavaScriptInterface {
                       }
                       function list_helper_catalog_entries(catalog_path, filter) {
                         return Deno.core.ops.list_helper_catalog_entries(catalog_path ?? "", filter ?? "");
+                      }
+                      function list_helper_semantics_vocabulary(vocabulary_path, filter) {
+                        return Deno.core.ops.list_helper_semantics_vocabulary(vocabulary_path ?? "", filter ?? "");
                       }
                       function list_host_profile_catalog_entries(catalog_path, filter) {
                         return Deno.core.ops.list_host_profile_catalog_entries(catalog_path ?? "", filter ?? "");
@@ -1427,6 +1446,9 @@ mod tests {
                 if (typeof list_helper_catalog_entries !== "function") {
                     throw new Error("list_helper_catalog_entries wrapper is missing");
                 }
+                if (typeof list_helper_semantics_vocabulary !== "function") {
+                    throw new Error("list_helper_semantics_vocabulary wrapper is missing");
+                }
                 if (typeof list_host_profile_catalog_entries !== "function") {
                     throw new Error("list_host_profile_catalog_entries wrapper is missing");
                 }
@@ -1500,6 +1522,47 @@ mod tests {
             "#
         ))
         .expect("helper catalog entries via js");
+    }
+
+    #[test]
+    fn js_helper_semantics_vocabulary_wrapper_exposes_terms() {
+        let td = tempdir().expect("tempdir");
+        let vocabulary_path = td.path().join("vocabulary.json");
+        fs::write(
+            &vocabulary_path,
+            r#"{
+  "schema": "gentle.helper_semantics_vocabulary.v1",
+  "terms": [
+    {
+      "axis": "component_kind",
+      "value": "solubility_tag",
+      "label": "Solubility tag",
+      "description": "Project solubility tag",
+      "aliases": ["mbp_tag"]
+    }
+  ]
+}"#,
+        )
+        .expect("write vocabulary");
+
+        let mut js = JavaScriptInterface::default();
+        let vocabulary_js = serde_json::to_string(vocabulary_path.to_string_lossy().as_ref())
+            .expect("serialize vocabulary path");
+        js.run_checked(format!(
+            r#"
+                const rows = list_helper_semantics_vocabulary({vocabulary_js}, "mbp");
+                if (rows.length !== 1) {{
+                    throw new Error(`expected one vocabulary row, got ${{rows.length}}`);
+                }}
+                if (rows[0].axis !== "component_kind" || rows[0].value !== "solubility_tag") {{
+                    throw new Error("wrong vocabulary term");
+                }}
+                if (!rows[0].aliases.includes("mbp_tag")) {{
+                    throw new Error("missing vocabulary alias");
+                }}
+            "#
+        ))
+        .expect("helper semantics vocabulary via js");
     }
 
     #[test]

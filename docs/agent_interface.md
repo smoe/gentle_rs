@@ -102,6 +102,7 @@ Current MCP tool families include:
 - catalog/introspection tools:
   - `reference_catalog_entries`
   - `helper_catalog_entries`
+  - `helper_semantics_vocabulary`
   - `host_profile_catalog_entries`
   - `ensembl_installable_genomes`
   - `construct_reasoning_graphs`

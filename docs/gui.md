@@ -2202,6 +2202,12 @@ Behavior:
 - loads systems from catalog JSON (default `assets/agent_systems.json`)
 - system selection is a dropdown from catalog entries
 - unavailable systems remain selectable and show the reason
+- `Quick start` buttons expose three common first-run routes:
+  - `Use OpenAI API`
+  - `Use Local Model (no OpenAI API billing)`
+  - `Use Demo Echo`
+- the OpenAI quick-start path uses `OPENAI_API_KEY` and talks to the API
+  directly; it does not reuse a ChatGPT/Codex chat session as authentication
 - this window is intentionally the local chat-oriented assistant surface; the
   typed prose compiler/executor (`agents plan` / `agents execute-plan`) is the
   headless CLI/MCP/ClawBio route for machine-facing compile/execute loops
@@ -2233,6 +2239,10 @@ Behavior:
   - empty keeps defaults
 - if model remains `unspecified`, GENtle blocks requests until you pick a
   discovered model or set a concrete override
+- `Test Setup` runs an inline preflight against the currently selected system
+  and session overrides before you send a prompt
+  - shows availability, resolved base URL/model, endpoint candidates, runtime
+    limits, and warnings such as missing `OPENAI_API_KEY`
 - `Discover Models` queries the current endpoint and populates a model dropdown
   for explicit selection
 - prompt templates are available via one-click `Insert` / `Append` buttons
@@ -2253,8 +2263,9 @@ OpenAI setup (explicit):
 1. Open `File -> Agent Assistant...`.
 2. Choose system `OpenAI GPT-5 (native HTTP)` from the dropdown.
 3. Paste your API key into `OpenAI API key` (format `sk-...`).
-4. Enter prompt text and click `Ask Agent`.
-5. If you prefer environment setup instead of GUI key field, launch GENtle with:
+4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
+5. Enter prompt text and click `Ask Agent`.
+6. If you prefer environment setup instead of GUI key field, launch GENtle with:
 
 ```bash
 export OPENAI_API_KEY=sk-...
@@ -2272,10 +2283,11 @@ Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
 4. Optionally set `timeout_sec` for slow local models (for example `600`).
 5. Click `Discover Models` and select one discovered model from the dropdown
    (or set `Model override` directly, for example `deepseek-r1:8b`).
-6. Optionally set persistent defaults in `assets/agent_systems.json`.
-7. If your local service expects no key, keep `OpenAI API key` empty.
-8. Ask agent as usual.
-9. For local root URLs (such as `http://localhost:11964`), GENtle will try both:
+6. Click `Test Setup` to confirm the endpoint/model resolve correctly.
+7. Optionally set persistent defaults in `assets/agent_systems.json`.
+8. If your local service expects no key, keep `OpenAI API key` empty.
+9. Ask agent as usual.
+10. For local root URLs (such as `http://localhost:11964`), GENtle will try both:
    - `/chat/completions`
    - `/v1/chat/completions`
 

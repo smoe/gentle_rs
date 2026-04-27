@@ -3059,11 +3059,20 @@ fn test_primer3_preflight_report_success() {
         .to_string();
     let expected_cwd = env::current_dir().expect("cwd").display().to_string();
     assert_eq!(report.backend, "primer3");
-    assert_eq!(report.configured_executable.as_deref(), Some(fake_primer3.as_str()));
+    assert_eq!(
+        report.configured_executable.as_deref(),
+        Some(fake_primer3.as_str())
+    );
     assert!(!report.used_default_executable);
     assert_eq!(report.executable, fake_primer3);
-    assert_eq!(report.resolved_path.as_deref(), Some(expected_path.as_str()));
-    assert_eq!(report.working_directory.as_deref(), Some(expected_cwd.as_str()));
+    assert_eq!(
+        report.resolved_path.as_deref(),
+        Some(expected_path.as_str())
+    );
+    assert_eq!(
+        report.working_directory.as_deref(),
+        Some(expected_cwd.as_str())
+    );
     assert!(report.reachable);
     assert!(report.version_probe_ok);
     assert_eq!(
@@ -3087,7 +3096,10 @@ fn test_primer3_preflight_report_missing_executable() {
     assert!(!report.used_default_executable);
     assert_eq!(report.executable, "/definitely/missing/primer3_core");
     assert!(report.resolved_path.is_none());
-    assert_eq!(report.working_directory.as_deref(), Some(expected_cwd.as_str()));
+    assert_eq!(
+        report.working_directory.as_deref(),
+        Some(expected_cwd.as_str())
+    );
     assert!(!report.reachable);
     assert!(!report.version_probe_ok);
     assert!(report.error.is_some());

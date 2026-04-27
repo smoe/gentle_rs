@@ -1,5 +1,5 @@
 {
-   "command_count": 351,
+   "command_count": 352,
    "commands": [
       {
          "aliases": [
@@ -1605,6 +1605,18 @@
          "path": "helpers list",
          "summary": "List/search helper catalog entries.",
          "usage": "helpers list [--catalog PATH] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers vocabulary list",
+         "summary": "List/search resolved helper semantics vocabulary terms.",
+         "usage": "helpers vocabulary list [--vocabulary PATH] [--filter TEXT]"
       },
       {
          "aliases": [],

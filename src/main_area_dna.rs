@@ -63,11 +63,10 @@ use crate::{
     },
     dna_sequence::DNAsequence,
     engine::{
-        AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, AnnotationCandidate,
-        AnnotationCandidateSummary, AttractPwmMappingPolicy, AttractRegionClass,
-        AttractSplicingEvidenceHitRow, AttractSplicingEvidenceSettings,
-        AttractSplicingEvidenceView, AlternativePromoterComparisonReport,
-        AlternativePromoterComparisonRow,
+        AlternativePromoterComparisonReport, AlternativePromoterComparisonRow, AnchorBoundary,
+        AnchorDirection, AnchoredRegionAnchor, AnnotationCandidate, AnnotationCandidateSummary,
+        AttractPwmMappingPolicy, AttractRegionClass, AttractSplicingEvidenceHitRow,
+        AttractSplicingEvidenceSettings, AttractSplicingEvidenceView,
         CandidateFeatureStrandRelation, CandidateRecord, CandidateSetOperator,
         ConstructReasoningGraph, ConstructRole, DecisionMethod, DesignDecisionNode, DesignFact,
         DisplaySettings, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
@@ -1226,10 +1225,10 @@ mod tests {
             PairwiseAlignmentMode, PrimerDesignBackend, PrimerDesignPairConstraint,
             PrimerDesignProgress, PrimerDesignSideConstraint, ProjectState,
             PromoterReporterCandidateSet, ProtocolCartoonPreviewTelemetry,
-            RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode,
-            RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow,
-            RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretProgress,
-            RnaReadInterpretationHit, RnaReadInterpretationProfile, RnaReadInterpretationReport,
+            RestrictionCloningPcrHandoffMode, RestrictionEnzymeDisplayMode, RnaReadAlignmentEffect,
+            RnaReadAlignmentInspection, RnaReadAlignmentInspectionRow, RnaReadHitSelection,
+            RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationHit,
+            RnaReadInterpretationProfile, RnaReadInterpretationReport,
             RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow, RnaReadMappingHit,
             RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityVariant,
             RnaReadSeedFilterConfig, SequenceAlignmentReport, SequenceGenomeAnchorSummary,
@@ -8131,11 +8130,18 @@ mod tests {
             TfbsScoreTrackValueKind::LlrBits
         );
         assert!(area.variant_followup_ui.score_track_clip_negative);
-        assert_eq!(area.variant_followup_ui.tfbs_track_similarity_anchor_motif, "");
-        assert!(area.variant_followup_ui.tfbs_track_similarity_all_candidates);
+        assert_eq!(
+            area.variant_followup_ui.tfbs_track_similarity_anchor_motif,
+            ""
+        );
+        assert!(
+            area.variant_followup_ui
+                .tfbs_track_similarity_all_candidates
+        );
         assert_eq!(area.variant_followup_ui.tfbs_track_similarity_limit, "25");
         assert_eq!(
-            area.variant_followup_ui.tfbs_track_similarity_ranking_metric,
+            area.variant_followup_ui
+                .tfbs_track_similarity_ranking_metric,
             TfbsTrackSimilarityRankingMetric::SmoothedSpearman
         );
         assert!(
@@ -8143,7 +8149,11 @@ mod tests {
                 .variant_followup_ui
                 .tfbs_track_similarity_include_remote_metadata
         );
-        assert!(area.variant_followup_ui.cached_tfbs_track_similarity.is_none());
+        assert!(
+            area.variant_followup_ui
+                .cached_tfbs_track_similarity
+                .is_none()
+        );
         assert!(
             area.variant_followup_ui
                 .cached_alternative_promoter_comparison
@@ -8300,7 +8310,11 @@ mod tests {
             "1400"
         );
         assert!(area.variant_followup_ui.cached_score_tracks.is_none());
-        assert!(area.variant_followup_ui.cached_tfbs_track_similarity.is_none());
+        assert!(
+            area.variant_followup_ui
+                .cached_tfbs_track_similarity
+                .is_none()
+        );
         assert!(area.variant_followup_ui.cached_report.is_none());
         assert!(area.variant_followup_ui.cached_candidates.is_none());
         assert!(
@@ -38730,10 +38744,7 @@ impl MainAreaDna {
         let effective_display = report.executable.as_str();
         let resolved_display = report.resolved_path.as_deref().unwrap_or("-");
         let working_directory_display = report.working_directory.as_deref().unwrap_or("-");
-        let target_display = report
-            .resolved_path
-            .as_deref()
-            .unwrap_or(effective_display);
+        let target_display = report.resolved_path.as_deref().unwrap_or(effective_display);
         self.primer3_preflight_status = format!(
             "Primer3 preflight: reachable={} version_probe_ok={} backend={} configured='{}' effective='{}' resolved='{}' cwd='{}' status={} version='{}' detail='{}' probe={} ms",
             report.reachable,

@@ -1801,6 +1801,11 @@ Catalog-backed reference/helper discovery notes:
     `gentle.helper_semantics_vocabulary.v1` and `terms[]` records with
     `axis`, canonical `value`, optional `label`, optional `description`,
     `aliases[]`, and optional `routine_hints[]`
+- shared shell/CLI inspection command
+  `helpers vocabulary list [--vocabulary PATH] [--filter TEXT]` returns the
+  resolved vocabulary terms with deterministic source/provenance fields; MCP,
+  JS, and Lua expose the same list through dedicated helpers so agents can
+  inspect vocabulary facts before relying on helper interpretation output
 - helper-list/status routes may now also expose an engine-owned normalized
   `interpretation` record derived from those helper fields:
   - `helper_id`
@@ -2341,6 +2346,17 @@ MCP query/introspection tool contracts (current):
   - result:
     - `catalog_path`, `filter`, `genome_count`, `genomes[]`, `entries[]`
     - helper `entries[]` may carry normalized `interpretation` records
+
+- `helper_semantics_vocabulary`
+  - arguments:
+    - optional: `vocabulary_path`, `filter`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `helpers vocabulary list [--vocabulary ...] [--filter ...]`
+  - result:
+    - `vocabulary_path`, `filter`, `term_count`, `terms[]`
+    - each term carries `axis`, canonical `value`, optional `label`,
+      optional `description`, `aliases[]`, `routine_hints[]`, and `source`
 
 - `host_profile_catalog_entries`
   - arguments:
