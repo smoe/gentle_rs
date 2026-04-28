@@ -5121,6 +5121,10 @@ Simple PCR constraint handoff:
     complementarity, and primer-side 3' extension-risk warnings. This is a
     portable first-pass QC layer, not a thermodynamic replacement for Primer3 /
     wet-lab assay validation.
+  - `oligo_qc.method_reference` records that the vocabulary follows Primer3's
+    public `SELF_ANY` / `SELF_END` and `COMPL_ANY` / `COMPL_END` distinction,
+    while the implementation remains independent GENtle Rust code with no
+    vendored or translated Primer3 source.
   - per-transcript rows include transcript feature id, transcript id/label,
     strand, cDNA length, status, primer/probe hits, and products.
   - primer/probe hit rows include local cDNA coordinates, binding sequence,

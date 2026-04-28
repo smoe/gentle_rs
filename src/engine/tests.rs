@@ -3096,6 +3096,7 @@ fn test_oligo_qc_flags_forward_probe_3prime_interaction() {
     assert_eq!(report.status, "warning");
     assert_eq!(report.oligo_count, 3);
     assert_eq!(report.interaction_count, 3);
+    assert!(report.method_reference.contains("Primer3-style"));
     let primer_pair = report
         .interactions
         .iter()

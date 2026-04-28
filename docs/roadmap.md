@@ -1825,6 +1825,10 @@ order. Durable architecture constraints and decisions remain in
       reverse-complement run QC for supplied primers/probes, including
       per-oligo self-complementarity, pairwise primer/probe hybridization, and
       primer-side 3' extension-risk warnings for ClawBio/agent triage
+      - the method reference explicitly credits Primer3's public
+        `SELF_ANY`/`SELF_END` and `COMPL_ANY`/`COMPL_END` vocabulary while
+        keeping GENtle's exact-run implementation independent from Primer3
+        source code
     - canonical example coverage now includes
       `cdna_pcr_qpcr_assay_test_offline` plus a ClawBio request/intent route,
       and workflow-example execution rewrites the optional report paths so the

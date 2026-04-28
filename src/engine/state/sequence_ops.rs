@@ -3041,6 +3041,11 @@ impl GentleEngine {
         assay_kind: &str,
         oligos: &[(&str, &str, &str)],
     ) -> OligoQcReport {
+        // Conceptually follows Primer3's public distinction between broad
+        // oligo self/pair complementarity and 3'-end anchored complementarity
+        // (`SELF_ANY`, `SELF_END`, `COMPL_ANY`, `COMPL_END`, plus the `_TH`
+        // thermodynamic variants). This is an independent GENtle exact-run
+        // implementation; no Primer3 source code is vendored or translated.
         let mut oligo_records = Vec::with_capacity(oligos.len());
         let mut report_warnings = vec![];
         for (label, role, sequence) in oligos {
@@ -3216,6 +3221,9 @@ impl GentleEngine {
             schema: OLIGO_QC_REPORT_SCHEMA.to_string(),
             assay_kind: assay_kind.to_string(),
             method: "exact_reverse_complement_run_screen".to_string(),
+            method_reference:
+                "Primer3-style oligo QC vocabulary: SELF_ANY/SELF_END and COMPL_ANY/COMPL_END; independent GENtle exact-run implementation"
+                    .to_string(),
             status,
             summary,
             oligo_count: oligo_records.len(),

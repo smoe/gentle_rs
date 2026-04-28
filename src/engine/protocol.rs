@@ -3421,6 +3421,7 @@ pub struct OligoQcReport {
     pub schema: String,
     pub assay_kind: String,
     pub method: String,
+    pub method_reference: String,
     pub status: String,
     pub summary: String,
     pub oligo_count: usize,
