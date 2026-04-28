@@ -76,6 +76,19 @@ struct TranscriptMappedInterval {
     spans_junction: bool,
 }
 
+#[derive(Debug, Clone)]
+struct TranscriptQpcrPanelCandidate {
+    primer: PrimerDesignPrimerRecord,
+    source_ranges_0based: Vec<SequenceRange0Based>,
+    covered_junction_labels: Vec<String>,
+    spans_junction: bool,
+    realized_specificity_evidence: QpcrTranscriptSpecificityEvidence,
+    exact_target_hit_count: usize,
+    exact_competitor_hit_count: usize,
+    exact_hit_transcript_ids: Vec<String>,
+    score: f64,
+}
+
 impl GentleEngine {
     fn gibson_arrangement_insert_seq_ids(plan: &GibsonAssemblyPlan) -> Vec<String> {
         let fragments_by_id = plan
@@ -6222,6 +6235,636 @@ impl GentleEngine {
         )
     }
 
+    fn transcript_qpcr_panel_source_anchor(
+        &self,
+        seq_id: &str,
+        dna: &DNAsequence,
+    ) -> Option<SequenceGenomeAnchorSummary> {
+        if let Ok(anchor) = self.sequence_genome_anchor_summary(seq_id) {
+            return Some(anchor);
+        }
+        let source_feature = dna
+            .features()
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("source"))?;
+        let start_1based = source_feature
+            .qualifier_values("genomic_start_1based")
+            .find_map(|value| value.trim().parse::<usize>().ok())?;
+        let end_1based = source_feature
+            .qualifier_values("genomic_end_1based")
+            .find_map(|value| value.trim().parse::<usize>().ok())?;
+        if start_1based == 0 || end_1based < start_1based {
+            return None;
+        }
+        let chromosome = source_feature
+            .qualifier_values("chromosome")
+            .chain(source_feature.qualifier_values("seq_region_name"))
+            .chain(dna.accession())
+            .find_map(|value| {
+                let trimmed = value.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_string())
+            })?;
+        let strand = source_feature
+            .qualifier_values("strand")
+            .find_map(|value| value.trim().chars().next())
+            .filter(|value| matches!(value, '+' | '-'));
+        Some(SequenceGenomeAnchorSummary {
+            seq_id: seq_id.to_string(),
+            genome_id: "source_feature".to_string(),
+            chromosome,
+            start_1based,
+            end_1based,
+            strand,
+            anchor_verified: None,
+        })
+    }
+
+    fn transcript_qpcr_panel_source_range_records(
+        ranges: &[SequenceRange0Based],
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+    ) -> Vec<TranscriptQpcrPanelSourceRange> {
+        ranges
+            .iter()
+            .filter_map(|range| {
+                if range.end_0based_exclusive <= range.start_0based {
+                    return None;
+                }
+                let source_start_1based = range.start_0based.saturating_add(1);
+                let source_end_1based_inclusive = range.end_0based_exclusive;
+                let (chromosome, genomic_start_1based, genomic_end_1based) =
+                    if let Some(anchor) = anchor {
+                        if let Some((start, end)) = Self::genomic_interval_from_anchor(
+                            anchor,
+                            range.start_0based,
+                            range.end_0based_exclusive,
+                        ) {
+                            (Some(anchor.chromosome.clone()), Some(start), Some(end))
+                        } else {
+                            (None, None, None)
+                        }
+                    } else {
+                        (None, None, None)
+                    };
+                Some(TranscriptQpcrPanelSourceRange {
+                    source_start_0based: range.start_0based,
+                    source_end_0based_exclusive: range.end_0based_exclusive,
+                    source_start_1based,
+                    source_end_1based_inclusive,
+                    chromosome,
+                    genomic_start_1based,
+                    genomic_end_1based,
+                })
+            })
+            .collect()
+    }
+
+    fn transcript_qpcr_panel_source_range_label(
+        ranges: &[TranscriptQpcrPanelSourceRange],
+    ) -> String {
+        if ranges.is_empty() {
+            return "unmapped".to_string();
+        }
+        ranges
+            .iter()
+            .map(|range| {
+                if let (Some(chromosome), Some(start), Some(end)) = (
+                    range.chromosome.as_deref(),
+                    range.genomic_start_1based,
+                    range.genomic_end_1based,
+                ) {
+                    format!("{chromosome}:{start}-{end}")
+                } else {
+                    format!(
+                        "source:{}-{}",
+                        range.source_start_1based, range.source_end_1based_inclusive
+                    )
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" + ")
+    }
+
+    fn transcript_qpcr_panel_reference_strand(
+        dna: &DNAsequence,
+        primer_sequence: &str,
+        ranges: &[SequenceRange0Based],
+        spans_junction: bool,
+    ) -> String {
+        let mut plus_piece = String::new();
+        let mut minus_piece = String::new();
+        let source = dna.forward_bytes();
+        for range in ranges {
+            if range.end_0based_exclusive <= range.start_0based
+                || range.end_0based_exclusive > source.len()
+            {
+                continue;
+            }
+            let slice =
+                String::from_utf8_lossy(&source[range.start_0based..range.end_0based_exclusive])
+                    .to_ascii_uppercase();
+            plus_piece.push_str(&slice);
+            if let Ok(rc) = Self::reverse_complement_iupac(&slice) {
+                minus_piece.push_str(&rc);
+            }
+        }
+        if plus_piece.is_empty() {
+            return "unknown".to_string();
+        }
+        let primer = primer_sequence.trim().to_ascii_uppercase();
+        let base = if plus_piece == primer {
+            "+"
+        } else if minus_piece == primer {
+            "-"
+        } else {
+            "unknown"
+        };
+        if spans_junction {
+            format!("spliced:{base}")
+        } else {
+            base.to_string()
+        }
+    }
+
+    fn transcript_qpcr_panel_oligo_record(
+        dna: &DNAsequence,
+        anchor: Option<&SequenceGenomeAnchorSummary>,
+        role: &str,
+        primer: PrimerDesignPrimerRecord,
+        binding_coordinate_space: &str,
+        source_ranges_0based: Vec<SequenceRange0Based>,
+        covered_junction_labels: Vec<String>,
+        spans_junction: bool,
+    ) -> TranscriptQpcrPanelOligoRecord {
+        let source_ranges =
+            Self::transcript_qpcr_panel_source_range_records(&source_ranges_0based, anchor);
+        let source_range_label = Self::transcript_qpcr_panel_source_range_label(&source_ranges);
+        let reference_strand = Self::transcript_qpcr_panel_reference_strand(
+            dna,
+            &primer.sequence,
+            &source_ranges_0based,
+            spans_junction,
+        );
+        TranscriptQpcrPanelOligoRecord {
+            role: role.to_string(),
+            primer,
+            binding_coordinate_space: binding_coordinate_space.to_string(),
+            source_ranges,
+            source_range_label,
+            reference_strand,
+            spans_junction,
+            covered_junction_labels,
+        }
+    }
+
+    fn transcript_qpcr_panel_source_ranges_to_local_ranges(
+        template: &TranscriptQpcrDesignTemplate,
+        source_ranges_0based: &[SequenceRange0Based],
+    ) -> Vec<(usize, usize)> {
+        let is_reverse = template.strand.trim() == "-";
+        let mut local_ranges = vec![];
+        for source_range in source_ranges_0based {
+            for segment in &template.local_exon_segments {
+                let overlap_start = source_range.start_0based.max(segment.source_start_0based);
+                let overlap_end = source_range
+                    .end_0based_exclusive
+                    .min(segment.source_end_0based_exclusive);
+                if overlap_end <= overlap_start {
+                    continue;
+                }
+                let (local_start, local_end) = if is_reverse {
+                    (
+                        segment.local_start_0based.saturating_add(
+                            segment
+                                .source_end_0based_exclusive
+                                .saturating_sub(overlap_end),
+                        ),
+                        segment.local_start_0based.saturating_add(
+                            segment
+                                .source_end_0based_exclusive
+                                .saturating_sub(overlap_start),
+                        ),
+                    )
+                } else {
+                    (
+                        segment.local_start_0based.saturating_add(
+                            overlap_start.saturating_sub(segment.source_start_0based),
+                        ),
+                        segment.local_start_0based.saturating_add(
+                            overlap_end.saturating_sub(segment.source_start_0based),
+                        ),
+                    )
+                };
+                if local_end > local_start {
+                    local_ranges.push((local_start, local_end));
+                }
+            }
+        }
+        local_ranges
+            .sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        Self::merge_adjacent_ranges_0based(&local_ranges)
+    }
+
+    fn transcript_qpcr_panel_exact_forward_hits(
+        templates: &[TranscriptQpcrDesignTemplate],
+        target_transcript_id: &str,
+        sequence: &str,
+    ) -> (usize, usize, Vec<String>) {
+        let motif = sequence.as_bytes();
+        let mut target_hits = 0usize;
+        let mut competitor_hits = 0usize;
+        let mut hit_transcript_ids = vec![];
+        for template in templates {
+            let count = Self::find_all_subsequences(template.sequence.as_bytes(), motif).len();
+            if count == 0 {
+                continue;
+            }
+            hit_transcript_ids.push(template.transcript_id.clone());
+            if template.transcript_id == target_transcript_id {
+                target_hits = target_hits.saturating_add(count);
+            } else {
+                competitor_hits = competitor_hits.saturating_add(count);
+            }
+        }
+        hit_transcript_ids.sort();
+        hit_transcript_ids.dedup();
+        (target_hits, competitor_hits, hit_transcript_ids)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn transcript_qpcr_panel_find_characteristic_forward(
+        &self,
+        seq_id: &str,
+        source_feature_id: usize,
+        template: &TranscriptQpcrDesignTemplate,
+        all_templates: &[TranscriptQpcrDesignTemplate],
+        shared_reverse: &PrimerDesignPrimerRecord,
+        shared_probe: &PrimerDesignPrimerRecord,
+        reverse_source_ranges_0based: &[SequenceRange0Based],
+        probe_source_ranges_0based: &[SequenceRange0Based],
+        forward_constraints: &PrimerDesignSideConstraint,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+    ) -> Option<TranscriptQpcrPanelCandidate> {
+        let reverse_local_ranges = Self::transcript_qpcr_panel_source_ranges_to_local_ranges(
+            template,
+            reverse_source_ranges_0based,
+        );
+        let probe_local_ranges = Self::transcript_qpcr_panel_source_ranges_to_local_ranges(
+            template,
+            probe_source_ranges_0based,
+        );
+        let reverse_local = reverse_local_ranges.first().copied();
+        let probe_local = probe_local_ranges.first().copied();
+        let template_len = template.sequence.len();
+        let min_len = forward_constraints.min_length.max(1);
+        let max_len = forward_constraints.max_length.max(min_len);
+        let (scan_start, scan_end) = if let Some((reverse_start, reverse_end)) = reverse_local {
+            (
+                reverse_end.saturating_sub(max_amplicon_bp),
+                reverse_start.saturating_sub(min_len),
+            )
+        } else {
+            (0, template_len.saturating_sub(min_len))
+        };
+        if scan_end < scan_start {
+            return None;
+        }
+
+        let mut candidates = vec![];
+        for start in scan_start..=scan_end.min(template_len.saturating_sub(min_len)) {
+            for len in min_len..=max_len {
+                let end = start.saturating_add(len);
+                if end > template_len {
+                    break;
+                }
+                if let Some((reverse_start, reverse_end)) = reverse_local {
+                    if end > reverse_start {
+                        continue;
+                    }
+                    let amplicon_len = reverse_end.saturating_sub(start);
+                    if amplicon_len < min_amplicon_bp || amplicon_len > max_amplicon_bp {
+                        continue;
+                    }
+                }
+                if let Some((probe_start, probe_end)) = probe_local {
+                    if end > probe_start {
+                        continue;
+                    }
+                    if let Some((reverse_start, _)) = reverse_local {
+                        if probe_end > reverse_start {
+                            continue;
+                        }
+                    }
+                }
+                let sequence = template.sequence[start..end].to_ascii_uppercase();
+                let tm_c = Self::estimate_primer_tm_c(sequence.as_bytes());
+                let gc_fraction = Self::sequence_gc_fraction(sequence.as_bytes()).unwrap_or(0.0);
+                if tm_c < forward_constraints.min_tm_c
+                    || tm_c > forward_constraints.max_tm_c
+                    || gc_fraction < forward_constraints.min_gc_fraction
+                    || gc_fraction > forward_constraints.max_gc_fraction
+                {
+                    continue;
+                }
+                let metrics = Self::compute_primer_heuristic_metrics(sequence.as_bytes());
+                if metrics.longest_homopolymer_run_bp > PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+                    || metrics.self_complementary_run_bp
+                        > PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP
+                {
+                    continue;
+                }
+                let (target_hits, competitor_hits, hit_ids) =
+                    Self::transcript_qpcr_panel_exact_forward_hits(
+                        all_templates,
+                        &template.transcript_id,
+                        &sequence,
+                    );
+                if target_hits != 1 || competitor_hits != 0 {
+                    continue;
+                }
+                let mapping = Self::map_transcript_local_interval(
+                    &template.local_exon_segments,
+                    template.strand.trim() == "-",
+                    start,
+                    end,
+                );
+                let realized_specificity_evidence = if mapping.spans_junction {
+                    QpcrTranscriptSpecificityEvidence::JunctionOnly
+                } else {
+                    QpcrTranscriptSpecificityEvidence::UniqueExonOrChain
+                };
+                let primer = Self::annotate_primer_record_heuristics(
+                    PrimerDesignPrimerRecord {
+                        sequence,
+                        start_0based: start,
+                        end_0based_exclusive: end,
+                        tm_c,
+                        gc_fraction,
+                        anneal_hits: target_hits,
+                        ..PrimerDesignPrimerRecord::default()
+                    },
+                    len,
+                );
+                let score = if mapping.spans_junction { 1_000.0 } else { 0.0 }
+                    - (tm_c - 60.0).abs() * 10.0
+                    - (gc_fraction - 0.5).abs() * 25.0
+                    - metrics.longest_homopolymer_run_bp as f64;
+                candidates.push(TranscriptQpcrPanelCandidate {
+                    primer,
+                    source_ranges_0based: mapping.source_ranges_0based,
+                    covered_junction_labels: mapping.covered_junction_labels,
+                    spans_junction: mapping.spans_junction,
+                    realized_specificity_evidence,
+                    exact_target_hit_count: target_hits,
+                    exact_competitor_hit_count: competitor_hits,
+                    exact_hit_transcript_ids: hit_ids,
+                    score,
+                });
+            }
+        }
+        candidates.sort_by(|left, right| {
+            right
+                .score
+                .total_cmp(&left.score)
+                .then(left.primer.start_0based.cmp(&right.primer.start_0based))
+                .then(left.primer.length_bp.cmp(&right.primer.length_bp))
+                .then(left.primer.sequence.cmp(&right.primer.sequence))
+        });
+
+        candidates.into_iter().find(|candidate| {
+            self.test_cdna_qpcr_assay(
+                seq_id,
+                source_feature_id,
+                &candidate.primer.sequence,
+                &shared_reverse.sequence,
+                &shared_probe.sequence,
+                None,
+                Some(min_amplicon_bp),
+                Some(max_amplicon_bp),
+                Some(0),
+                Some(8),
+            )
+            .ok()
+            .is_some_and(|report| {
+                let mut target_product_count = 0usize;
+                let mut competitor_product_count = 0usize;
+                for row in report.transcript_results {
+                    if row.transcript_id == template.transcript_id {
+                        target_product_count =
+                            target_product_count.saturating_add(row.products.len());
+                    } else {
+                        competitor_product_count =
+                            competitor_product_count.saturating_add(row.products.len());
+                    }
+                }
+                target_product_count == 1 && competitor_product_count == 0
+            })
+        })
+    }
+
+    pub fn build_transcript_qpcr_panel_report(
+        &self,
+        seq_id: &str,
+        source_feature_id: usize,
+        shared_qpcr_report_id: &str,
+    ) -> Result<TranscriptQpcrPanelReport, EngineError> {
+        let source_dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let shared_report = self.get_qpcr_design_report(shared_qpcr_report_id)?;
+        if shared_report.template != seq_id {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "qPCR report '{}' belongs to template '{}' but transcript panel was requested for '{}'",
+                    shared_report.report_id, shared_report.template, seq_id
+                ),
+            });
+        }
+        let shared_assay = shared_report.assays.first().ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "qPCR report '{}' contains no assays to reuse for a transcript panel",
+                shared_report.report_id
+            ),
+        })?;
+        let splicing = self.build_splicing_expert_view(
+            seq_id,
+            source_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )?;
+        let templates = Self::build_qpcr_transcript_design_templates(source_dna, &splicing)?;
+        if templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No transcript-derived cDNA templates were found for feature n-{} on '{}'",
+                    source_feature_id + 1,
+                    seq_id
+                ),
+            });
+        }
+        let anchor = self.transcript_qpcr_panel_source_anchor(seq_id, source_dna);
+        let context = shared_assay.transcript_context.as_ref();
+        let fallback_forward_ranges = vec![SequenceRange0Based {
+            start_0based: shared_assay.forward.start_0based,
+            end_0based_exclusive: shared_assay.forward.end_0based_exclusive,
+        }];
+        let fallback_reverse_ranges = vec![SequenceRange0Based {
+            start_0based: shared_assay.reverse.start_0based,
+            end_0based_exclusive: shared_assay.reverse.end_0based_exclusive,
+        }];
+        let fallback_probe_ranges = vec![SequenceRange0Based {
+            start_0based: shared_assay.probe.start_0based,
+            end_0based_exclusive: shared_assay.probe.end_0based_exclusive,
+        }];
+        let forward_ranges = context
+            .map(|ctx| ctx.forward_source_ranges_0based.clone())
+            .filter(|ranges| !ranges.is_empty())
+            .unwrap_or(fallback_forward_ranges);
+        let reverse_ranges = context
+            .map(|ctx| ctx.reverse_source_ranges_0based.clone())
+            .filter(|ranges| !ranges.is_empty())
+            .unwrap_or(fallback_reverse_ranges);
+        let probe_ranges = context
+            .map(|ctx| ctx.probe_source_ranges_0based.clone())
+            .filter(|ranges| !ranges.is_empty())
+            .unwrap_or(fallback_probe_ranges);
+        let shared_forward = Self::transcript_qpcr_panel_oligo_record(
+            source_dna,
+            anchor.as_ref(),
+            "shared_forward",
+            shared_assay.forward.clone(),
+            "source_reference",
+            forward_ranges.clone(),
+            context
+                .map(|ctx| ctx.covered_junction_labels.clone())
+                .unwrap_or_default(),
+            context.is_some_and(|ctx| ctx.forward_spans_junction),
+        );
+        let shared_reverse = Self::transcript_qpcr_panel_oligo_record(
+            source_dna,
+            anchor.as_ref(),
+            "shared_reverse",
+            shared_assay.reverse.clone(),
+            "source_reference",
+            reverse_ranges.clone(),
+            context
+                .map(|ctx| ctx.covered_junction_labels.clone())
+                .unwrap_or_default(),
+            context.is_some_and(|ctx| ctx.reverse_spans_junction),
+        );
+        let shared_probe = Self::transcript_qpcr_panel_oligo_record(
+            source_dna,
+            anchor.as_ref(),
+            "shared_probe",
+            shared_assay.probe.clone(),
+            "source_reference",
+            probe_ranges.clone(),
+            context
+                .map(|ctx| ctx.covered_junction_labels.clone())
+                .unwrap_or_default(),
+            context.is_some_and(|ctx| ctx.probe_spans_junction),
+        );
+
+        let mut warnings = vec![];
+        if shared_report
+            .transcript_targeting
+            .as_ref()
+            .is_none_or(|targeting| targeting.mode != QpcrTranscriptTargetingMode::SharedGene)
+        {
+            warnings.push(format!(
+                "qPCR report '{}' was not produced in shared_gene transcript-aware mode; panel rows still test cDNA products with its reverse primer and probe.",
+                shared_report.report_id
+            ));
+        }
+
+        let transcript_rows = templates
+            .iter()
+            .map(|template| {
+                let candidate = self.transcript_qpcr_panel_find_characteristic_forward(
+                    seq_id,
+                    source_feature_id,
+                    template,
+                    &templates,
+                    &shared_assay.reverse,
+                    &shared_assay.probe,
+                    &reverse_ranges,
+                    &probe_ranges,
+                    &shared_report.forward,
+                    shared_report.min_amplicon_bp,
+                    shared_report.max_amplicon_bp,
+                );
+                if let Some(candidate) = candidate {
+                    let oligo = Self::transcript_qpcr_panel_oligo_record(
+                        source_dna,
+                        anchor.as_ref(),
+                        "characteristic_forward",
+                        candidate.primer,
+                        "transcript_cdna",
+                        candidate.source_ranges_0based,
+                        candidate.covered_junction_labels,
+                        candidate.spans_junction,
+                    );
+                    TranscriptQpcrPanelTranscriptRow {
+                        transcript_feature_id: template.transcript_feature_id,
+                        transcript_id: template.transcript_id.clone(),
+                        transcript_label: template.transcript_label.clone(),
+                        strand: template.strand.clone(),
+                        cdna_length_bp: template.sequence.len(),
+                        characteristic_status: "found".to_string(),
+                        characteristic_forward: Some(oligo),
+                        realized_specificity_evidence: Some(candidate.realized_specificity_evidence),
+                        exact_target_hit_count: candidate.exact_target_hit_count,
+                        exact_competitor_hit_count: candidate.exact_competitor_hit_count,
+                        exact_hit_transcript_ids: candidate.exact_hit_transcript_ids,
+                        notes: vec![
+                            "Forward primer is transcript-characteristic in exact cDNA matching and forms one cDNA qPCR product with the shared reverse primer/probe.".to_string(),
+                        ],
+                    }
+                } else {
+                    TranscriptQpcrPanelTranscriptRow {
+                        transcript_feature_id: template.transcript_feature_id,
+                        transcript_id: template.transcript_id.clone(),
+                        transcript_label: template.transcript_label.clone(),
+                        strand: template.strand.clone(),
+                        cdna_length_bp: template.sequence.len(),
+                        characteristic_status: "not_found".to_string(),
+                        characteristic_forward: None,
+                        realized_specificity_evidence: None,
+                        exact_target_hit_count: 0,
+                        exact_competitor_hit_count: 0,
+                        exact_hit_transcript_ids: vec![],
+                        notes: vec![
+                            "No single forward primer satisfying exact transcript-specific cDNA matching and shared reverse/probe product validation was found.".to_string(),
+                        ],
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+
+        Ok(TranscriptQpcrPanelReport {
+            schema: TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA.to_string(),
+            source_seq_id: seq_id.to_string(),
+            source_feature_id,
+            group_label: splicing.group_label,
+            strand: splicing.strand,
+            transcript_count: templates.len(),
+            shared_qpcr_report_id: shared_report.report_id,
+            shared_assay_rank: shared_assay.rank,
+            shared_forward,
+            shared_reverse,
+            shared_probe,
+            transcript_rows,
+            warnings,
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn execute_design_qpcr_assays(
         &mut self,
@@ -9478,6 +10121,7 @@ impl GentleEngine {
             reverse_translation_report: None,
             protease_digest_report: None,
             protein_residue_genomic_coordinates: None,
+            transcript_qpcr_panel: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
@@ -14078,15 +14722,23 @@ impl GentleEngine {
                         require_3prime_exact_bases,
                     )?;
                     result.messages.push(report.summary.clone());
-                    if let Some(path) = path.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
                         let file = File::create(path).map_err(|e| EngineError {
                             code: ErrorCode::Io,
-                            message: format!("Could not create cDNA PCR assay-test report '{path}': {e}"),
+                            message: format!(
+                                "Could not create cDNA PCR assay-test report '{path}': {e}"
+                            ),
                         })?;
                         let writer = BufWriter::new(file);
                         serde_json::to_writer_pretty(writer, &report).map_err(|e| EngineError {
                             code: ErrorCode::Io,
-                            message: format!("Could not serialize cDNA PCR assay-test report '{path}': {e}"),
+                            message: format!(
+                                "Could not serialize cDNA PCR assay-test report '{path}': {e}"
+                            ),
                         })?;
                         result
                             .messages
@@ -14119,20 +14771,67 @@ impl GentleEngine {
                         require_3prime_exact_bases,
                     )?;
                     result.messages.push(report.summary.clone());
-                    if let Some(path) = path.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
                         let file = File::create(path).map_err(|e| EngineError {
                             code: ErrorCode::Io,
-                            message: format!("Could not create cDNA qPCR assay-test report '{path}': {e}"),
+                            message: format!(
+                                "Could not create cDNA qPCR assay-test report '{path}': {e}"
+                            ),
                         })?;
                         let writer = BufWriter::new(file);
                         serde_json::to_writer_pretty(writer, &report).map_err(|e| EngineError {
                             code: ErrorCode::Io,
-                            message: format!("Could not serialize cDNA qPCR assay-test report '{path}': {e}"),
+                            message: format!(
+                                "Could not serialize cDNA qPCR assay-test report '{path}': {e}"
+                            ),
                         })?;
                         result
                             .messages
                             .push(format!("Wrote cDNA qPCR assay-test report to '{path}'"));
                     }
+                }
+                Operation::BuildTranscriptQpcrPanel {
+                    seq_id,
+                    source_feature_id,
+                    shared_qpcr_report_id,
+                    path,
+                } => {
+                    let report = self.build_transcript_qpcr_panel_report(
+                        &seq_id,
+                        source_feature_id,
+                        &shared_qpcr_report_id,
+                    )?;
+                    result.messages.push(format!(
+                        "Transcript qPCR panel for '{}' reuses qPCR report '{}' and evaluated {} transcript(s).",
+                        report.group_label, report.shared_qpcr_report_id, report.transcript_count
+                    ));
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create transcript qPCR panel report '{path}': {e}"
+                            ),
+                        })?;
+                        let writer = BufWriter::new(file);
+                        serde_json::to_writer_pretty(writer, &report).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not serialize transcript qPCR panel report '{path}': {e}"
+                            ),
+                        })?;
+                        result
+                            .messages
+                            .push(format!("Wrote transcript qPCR panel report to '{path}'"));
+                    }
+                    result.transcript_qpcr_panel = Some(report);
                 }
                 Operation::DeriveTranscriptSequences {
                     seq_id,

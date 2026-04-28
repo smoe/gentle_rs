@@ -3397,6 +3397,47 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 path: options.path,
             })
         }
+        "transcript-qpcr-panel" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "primers transcript-qpcr-panel requires SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid feature id '{}' for primers transcript-qpcr-panel: {e}",
+                    tokens[3]
+                )
+            })?;
+            let shared_qpcr_report_id = tokens[4].clone();
+            let mut path: Option<String> = None;
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" => {
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "primers transcript-qpcr-panel",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for primers transcript-qpcr-panel"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersTranscriptQpcrPanel {
+                seq_id,
+                feature_id,
+                shared_qpcr_report_id,
+                path,
+            })
+        }
         "prepare-restriction-cloning" => {
             if tokens.len() != 3 {
                 return Err(
@@ -3742,7 +3783,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, test-cdna-pcr, test-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }

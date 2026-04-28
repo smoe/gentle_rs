@@ -38,6 +38,7 @@ SUPPORTED_REQUEST_MODES = (
     "op",
     "workflow",
     "protein-residue-genomic-coordinates",
+    "transcript-qpcr-panel",
     "gene-protein-2d-gel",
     "agent-plan",
     "agent-execute-plan",
@@ -96,7 +97,10 @@ class Request:
     source: str | None = None
     ladders: list[str] | None = None
     seq_id: str | None = None
+    source_feature_id: int | None = None
     transcript_id: str | None = None
+    shared_qpcr_report_id: str | None = None
+    output_path: str | None = None
     residue_start_1based: int | None = None
     residue_end_1based: int | None = None
 
@@ -431,6 +435,33 @@ def _normalise_protein_residue_genomic_coordinate_request(request: Request) -> N
     request.residue_end_1based = residue_end
 
 
+def _normalise_transcript_qpcr_panel_request(request: Request) -> None:
+    if not isinstance(request.seq_id, str) or not request.seq_id.strip():
+        raise SkillError("mode=transcript-qpcr-panel requires non-empty string field 'seq_id'")
+    request.seq_id = request.seq_id.strip()
+    try:
+        source_feature_id = int(request.source_feature_id)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as e:
+        raise SkillError(
+            "mode=transcript-qpcr-panel requires integer field 'source_feature_id'"
+        ) from e
+    if source_feature_id < 0:
+        raise SkillError("source_feature_id must be a zero-based feature index >= 0")
+    request.source_feature_id = source_feature_id
+    if (
+        not isinstance(request.shared_qpcr_report_id, str)
+        or not request.shared_qpcr_report_id.strip()
+    ):
+        raise SkillError(
+            "mode=transcript-qpcr-panel requires non-empty string field 'shared_qpcr_report_id'"
+        )
+    request.shared_qpcr_report_id = request.shared_qpcr_report_id.strip()
+    if request.output_path is not None:
+        if not isinstance(request.output_path, str) or not request.output_path.strip():
+            raise SkillError("output_path must be a non-empty string when present")
+        request.output_path = request.output_path.strip()
+
+
 def _coerce_request(payload: dict[str, Any]) -> Request:
     schema = payload.get("schema")
     if schema != REQUEST_SCHEMA:
@@ -475,7 +506,10 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         source=payload.get("source"),
         ladders=payload.get("ladders"),
         seq_id=payload.get("seq_id"),
+        source_feature_id=payload.get("source_feature_id"),
         transcript_id=payload.get("transcript_id"),
+        shared_qpcr_report_id=payload.get("shared_qpcr_report_id"),
+        output_path=payload.get("output_path"),
         residue_start_1based=payload.get("residue_start_1based"),
         residue_end_1based=payload.get("residue_end_1based"),
     )
@@ -500,6 +534,8 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
             raise SkillError("mode=workflow requires 'workflow' or 'workflow_path'")
     elif request.mode == "protein-residue-genomic-coordinates":
         _normalise_protein_residue_genomic_coordinate_request(request)
+    elif request.mode == "transcript-qpcr-panel":
+        _normalise_transcript_qpcr_panel_request(request)
     elif request.mode == "gene-protein-2d-gel":
         _normalise_gene_protein_2d_gel_request(request)
     elif request.mode == "agent-plan":
@@ -1391,6 +1427,17 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
             args.extend(["workflow", _json_arg(request.workflow)])
     elif request.mode == "protein-residue-genomic-coordinates":
         args.extend(["op", _json_arg(_protein_residue_genomic_coordinate_operation(request))])
+    elif request.mode == "transcript-qpcr-panel":
+        tokens = [
+            "primers",
+            "transcript-qpcr-panel",
+            request.seq_id or "SEQ_ID",
+            str(request.source_feature_id if request.source_feature_id is not None else 0),
+            request.shared_qpcr_report_id or "QPCR_REPORT_ID",
+        ]
+        if request.output_path:
+            tokens.extend(["--path", request.output_path])
+        args.extend(["shell", shlex.join(tokens)])
     elif request.mode == "gene-protein-2d-gel":
         args.extend(["workflow", _json_arg(_gene_protein_2d_gel_workflow(request))])
     elif request.mode == "agent-plan":
@@ -1929,6 +1976,17 @@ def _request_rerun_shell_line(request: Request | None) -> str:
             tokens.append(str(end))
         if request.transcript_id:
             tokens.extend(["--transcript", request.transcript_id])
+        return shlex.join(tokens)
+    if request.mode == "transcript-qpcr-panel":
+        tokens = [
+            "primers",
+            "transcript-qpcr-panel",
+            request.seq_id or "SEQ_ID",
+            str(request.source_feature_id if request.source_feature_id is not None else 0),
+            request.shared_qpcr_report_id or "QPCR_REPORT_ID",
+        ]
+        if request.output_path:
+            tokens.extend(["--path", request.output_path])
         return shlex.join(tokens)
     if request.mode == "gene-protein-2d-gel":
         gene = request.gene_symbol or "GENE"

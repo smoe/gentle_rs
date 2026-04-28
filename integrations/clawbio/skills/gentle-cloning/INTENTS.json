@@ -393,6 +393,52 @@
       ]
     },
     {
+      "intent_id": "transcript_qpcr_panel",
+      "description": "Build a transcript qPCR panel table from a stored shared-gene qPCR report, reusing the shared reverse primer/probe and proposing per-transcript characteristic forward primers when possible.",
+      "trigger_terms": [
+        "transcript qpcr panel",
+        "isoform qpcr panel",
+        "characteristic qpcr primers",
+        "transcript-specific qpcr primers",
+        "shared reverse probe qpcr",
+        "qpcr primer table",
+        "forward primers per transcript"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "transcript-qpcr-panel",
+            "seq_id": "{seq_id}",
+            "source_feature_id": "{source_feature_id}",
+            "shared_qpcr_report_id": "{shared_qpcr_report_id}",
+            "output_path": "{output_path}"
+          },
+          "slots": {
+            "seq_id": {
+              "required": true,
+              "description": "GENtle source sequence id containing the transcript annotations"
+            },
+            "source_feature_id": {
+              "required": true,
+              "description": "Zero-based source transcript/gene feature index for the splicing group"
+            },
+            "shared_qpcr_report_id": {
+              "required": true,
+              "description": "Stored shared-gene qPCR report id to reuse for shared primer/probe components"
+            },
+            "output_path": {
+              "required": false,
+              "description": "Optional JSON report output path"
+            }
+          }
+        }
+      ]
+    },
+    {
       "intent_id": "cdna_pcr_qpcr_assay_test",
       "description": "Run the canonical offline cDNA PCR/qPCR assay-test workflow that checks supplied primers and a probe against transcript-derived cDNA templates.",
       "trigger_terms": [

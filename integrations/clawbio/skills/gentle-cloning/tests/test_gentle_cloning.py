@@ -244,6 +244,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "op",
             "workflow",
             "protein-residue-genomic-coordinates",
+            "transcript-qpcr-panel",
             "gene-protein-2d-gel",
             "agent-plan",
             "agent-execute-plan",
@@ -3924,6 +3925,7 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "installed-runtime and resource-readiness checks" in description
     assert "simple PCR primer-design reports" in description
     assert "cDNA PCR/qPCR assay-test reports" in description
+    assert "transcript qPCR panel tables" in description
     assert "reusable local reference assets" in description
     assert "protease-digest figures" in description
     assert "skill-intent descriptor" in description
@@ -3990,6 +3992,8 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "trypsin digest" in trigger_keywords
     assert "trypsin digest gel" in trigger_keywords
     assert "pi vs kda" in trigger_keywords
+    assert "transcript qpcr panel" in trigger_keywords
+    assert "characteristic qpcr primers" in trigger_keywords
 
 
 def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -> None:
@@ -4022,6 +4026,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "services_status",
         "resources_status",
         "protein_residue_genomic_coordinates",
+        "transcript_qpcr_panel",
         "ensembl_gene_protein_2d_gel",
         "demo_isoform_protein_gel",
         "demo_isoform_protein_2d_gel",
@@ -4059,6 +4064,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "services_status": "examples/request_services_status.json",
         "resources_status": "examples/request_resources_status.json",
         "protein_residue_genomic_coordinates": None,
+        "transcript_qpcr_panel": None,
         "telegram_guide_isoforms_gene": None,
         "ensembl_gene_protein_2d_gel": None,
         "demo_isoform_protein_gel": "examples/request_workflow_isoform_protein_gel_demo.json",
@@ -4116,6 +4122,20 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
                 )
                 assert step["slots"]["seq_id"]["required"] is True
                 assert step["slots"]["residue_start_1based"]["required"] is True
+            elif intent_id == "transcript_qpcr_panel":
+                assert step["input_template"]["mode"] == "transcript-qpcr-panel"
+                assert step["input_template"]["seq_id"] == "{seq_id}"
+                assert (
+                    step["input_template"]["source_feature_id"]
+                    == "{source_feature_id}"
+                )
+                assert (
+                    step["input_template"]["shared_qpcr_report_id"]
+                    == "{shared_qpcr_report_id}"
+                )
+                assert step["slots"]["seq_id"]["required"] is True
+                assert step["slots"]["source_feature_id"]["required"] is True
+                assert step["slots"]["shared_qpcr_report_id"]["required"] is True
             else:
                 assert intent_id == "telegram_guide_isoforms_gene"
                 assert step["input_template"]["mode"] == "shell"

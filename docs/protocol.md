@@ -1659,6 +1659,7 @@ Current draft operations:
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path? }` (implemented baseline; transcript-derived cDNA assay test)
 - `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path? }` (implemented baseline; transcript-derived cDNA assay test with internal probe)
+- `BuildTranscriptQpcrPanel { seq_id, source_feature_id, shared_qpcr_report_id, path? }` (implemented baseline; shared qPCR components plus transcript-characteristic forward-primer table)
 - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
 - `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }` (implemented baseline; emits derived DNA window + mRNA isoforms + exon-reference sequence)
@@ -5126,6 +5127,7 @@ Primer-design shell command family (implemented):
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
+  - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
   - `primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]`
@@ -5152,6 +5154,18 @@ Primer-design shell command family (implemented):
 - `primers test-cdna-pcr` and `primers test-cdna-qpcr` are non-mutating assay
   checks over transcript-derived cDNA templates and return
   `gentle.cdna_assay_test_report.v1`; `--path` persists that same report.
+- `primers transcript-qpcr-panel` is a non-mutating table/report helper for
+  transcript-targeted qPCR panels. It consumes a stored shared-gene qPCR report,
+  reuses that assay's shared reverse primer and probe, and emits
+  `gentle.transcript_qpcr_panel.v1` with shared oligo records plus one
+  transcript row per admitted cDNA template. Rows prefer a transcript-specific
+  exon-junction forward primer when possible, allow a single-exon/exon-chain
+  characteristic forward primer when that is the valid/efficient evidence, and
+  emit deterministic `not_found` rows when no single forward primer can
+  distinguish the transcript while retaining the shared reverse/probe product.
+  All source positions are machine-readable as local 0-based/exclusive ranges
+  plus 1-based/inclusive display ranges; genomic 1-based/inclusive ranges and
+  reference strand labels are included when a genome anchor is available.
 - `primers preflight` returns `gentle.primer3_preflight.v1` with the requested
   backend plus configured-executable token, default-fallback marker, effective
   executable, resolved path, working directory, and reachability/version/error

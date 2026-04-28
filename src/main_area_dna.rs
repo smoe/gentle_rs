@@ -1819,6 +1819,7 @@ mod tests {
             reverse_translation_report: None,
             protease_digest_report: None,
             protein_residue_genomic_coordinates: None,
+            transcript_qpcr_panel: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_trace_import_report: Some(SequencingTraceImportReport {
@@ -4799,6 +4800,7 @@ mod tests {
                 reverse_translation_report: None,
                 protease_digest_report: None,
                 protein_residue_genomic_coordinates: None,
+                transcript_qpcr_panel: None,
                 construct_reasoning_graph: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,

@@ -15,15 +15,18 @@
 use std::collections::HashMap;
 
 pub use gentle_protocol::{
-    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
-    AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback,
-    AttractPwmMappingPolicy, AttractRegionClass, AttractSpeciesMatchMode,
-    AttractSplicingEvidenceHitRow, AttractSplicingEvidencePolicySummary,
+    ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
+    ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
+    AdapterRestrictionCapturePlan, AnnotationCandidate, AnnotationCandidateSummary,
+    AnnotationCandidateWriteback, AttractPwmMappingPolicy, AttractRegionClass,
+    AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow, AttractSplicingEvidencePolicySummary,
     AttractSplicingEvidenceSettings, AttractSplicingEvidenceSummaryRow,
-    AttractSplicingEvidenceView, Capabilities, ConstructCandidate, ConstructObjective,
-    ConstructReasoningGraph, ConstructReasoningStore, ConstructRole, CutRunAlignConfig,
-    CutRunCatalogEntry, CutRunCatalogListEntry, CutRunCoverageKind, CutRunDatasetListReport,
-    CutRunDatasetProjectionReport, CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
+    AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA,
+    CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA, Capabilities,
+    ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
+    ConstructRole, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
+    CutRunCoverageKind, CutRunDatasetListReport, CutRunDatasetProjectionReport,
+    CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
     CutRunMotifAbsentOccupancyInterpretation, CutRunMotifAbsentSupportWindow,
     CutRunMotifContextHit, CutRunMotifContextScope, CutRunMotifContextSummaryRow,
     CutRunPreparedAssetManifest, CutRunPreparedAssetStatus, CutRunPreparedManifest,
@@ -32,17 +35,19 @@ pub use gentle_protocol::{
     CutRunReadUnitStatus, CutRunRegulatoryEvidenceSourceKind, CutRunRegulatoryEvidenceSourceRef,
     CutRunRegulatorySupportReport, CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow,
     CutRunSeedFilterConfig, CutRunSupportCluster, CutRunSupportStrength, CutRunSupportWindowRecord,
-    DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, DotplotBoxplotBin,
-    DotplotMatchPoint, DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
+    DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod,
+    DesignDecisionNode, DesignEvidence, DesignFact, DotplotBoxplotBin, DotplotMatchPoint,
+    DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
     DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec, DotplotOverlayResolvedAnchorSeries,
     DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotReferenceAnnotationInterval,
     DotplotReferenceAnnotationTrack, DotplotView, DotplotViewSummary, EditableStatus, EngineError,
     ErrorCode, EvidenceClass, EvidenceScope, FeatureBedCoordinateMode, FlexibilityModel,
-    GenomeTrackImportProgress, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
-    HostProfileRecord, HostRouteStep, PairwiseAlignmentMode, ProteinResidueGenomicCoordinateBase,
-    ProteinResidueGenomicCoordinateMatch, ProteinResidueGenomicCoordinateReport,
-    ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal,
-    ProteinToDnaHandoffStrategy, RnaReadAlignConfig, RnaReadAlignmentBackend,
+    GenomeTrackImportProgress, HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile,
+    HostLifecycleRole, HostProfileCatalog, HostProfileRecord, HostRouteStep, PairwiseAlignmentMode,
+    ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
+    ProteinResidueGenomicCoordinateReport, ProteinToDnaHandoffCandidate,
+    ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
+    RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, RnaReadAlignConfig, RnaReadAlignmentBackend,
     RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect,
     RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
     RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
@@ -74,11 +79,7 @@ pub use gentle_protocol::{
     TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
     UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
-    UniprotFeatureCodingDnaSegment, ANNOTATION_CANDIDATE_SCHEMA,
-    ANNOTATION_CANDIDATE_SUMMARY_SCHEMA, ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA,
-    CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
-    CONSTRUCT_REASONING_STORE_SCHEMA, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA,
-    DESIGN_FACT_SCHEMA, HOST_PROFILE_CATALOG_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA,
+    UniprotFeatureCodingDnaSegment,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -86,8 +87,8 @@ use std::collections::BTreeMap;
 use crate::enzymes::default_preferred_restriction_enzyme_names;
 
 use super::{
-    OpId, Operation, PrepareGenomeProgress, ProtocolCartoonTemplateBindings, RunId, SeqId,
-    TfThresholdOverride, CLONING_MACRO_TEMPLATE_SCHEMA,
+    CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PrepareGenomeProgress,
+    ProtocolCartoonTemplateBindings, RunId, SeqId, TfThresholdOverride,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -2872,6 +2873,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protein_residue_genomic_coordinates: Option<ProteinResidueGenomicCoordinateReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_qpcr_panel: Option<TranscriptQpcrPanelReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub construct_reasoning_graph: Option<ConstructReasoningGraph>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_confirmation_report: Option<SequencingConfirmationReport>,
@@ -4307,6 +4310,94 @@ pub struct CdnaAssayTestReport {
     pub summary: String,
     #[serde(default)]
     pub transcript_results: Vec<CdnaAssayTranscriptResult>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One source-reference interval that supports a qPCR panel oligo.
+///
+/// `source_*` coordinates are local to the GENtle source sequence. The start is
+/// 0-based and the end is exclusive; the paired 1-based fields are inclusive
+/// display coordinates for the same interval. `genomic_*` coordinates are
+/// 1-based inclusive absolute reference coordinates when a genome anchor is
+/// available.
+pub struct TranscriptQpcrPanelSourceRange {
+    pub source_start_0based: usize,
+    pub source_end_0based_exclusive: usize,
+    pub source_start_1based: usize,
+    pub source_end_1based_inclusive: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chromosome: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_end_1based: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Primer/probe row used by transcript qPCR panel summaries.
+///
+/// `primer.start_0based` and `primer.end_0based_exclusive` use the
+/// `binding_coordinate_space` named here: either the source reference sequence
+/// or the selected transcript cDNA template. Source/genomic coordinates are
+/// repeated in `source_ranges` for adapter-neutral rendering.
+pub struct TranscriptQpcrPanelOligoRecord {
+    pub role: String,
+    pub primer: PrimerDesignPrimerRecord,
+    pub binding_coordinate_space: String,
+    pub source_ranges: Vec<TranscriptQpcrPanelSourceRange>,
+    pub source_range_label: String,
+    pub reference_strand: String,
+    pub spans_junction: bool,
+    #[serde(default)]
+    pub covered_junction_labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Per-transcript characteristic-primer row for a transcript qPCR panel.
+pub struct TranscriptQpcrPanelTranscriptRow {
+    /// Zero-based feature index into the source sequence feature table.
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub cdna_length_bp: usize,
+    pub characteristic_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub characteristic_forward: Option<TranscriptQpcrPanelOligoRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub realized_specificity_evidence: Option<QpcrTranscriptSpecificityEvidence>,
+    pub exact_target_hit_count: usize,
+    pub exact_competitor_hit_count: usize,
+    #[serde(default)]
+    pub exact_hit_transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Shared report for a qPCR panel table: common assay components plus
+/// transcript-characteristic forward primers.
+pub struct TranscriptQpcrPanelReport {
+    pub schema: String,
+    pub source_seq_id: String,
+    /// Zero-based feature index into the source sequence feature table.
+    pub source_feature_id: usize,
+    pub group_label: String,
+    pub strand: String,
+    pub transcript_count: usize,
+    pub shared_qpcr_report_id: String,
+    pub shared_assay_rank: usize,
+    pub shared_forward: TranscriptQpcrPanelOligoRecord,
+    pub shared_reverse: TranscriptQpcrPanelOligoRecord,
+    pub shared_probe: TranscriptQpcrPanelOligoRecord,
+    #[serde(default)]
+    pub transcript_rows: Vec<TranscriptQpcrPanelTranscriptRow>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }

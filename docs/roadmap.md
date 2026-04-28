@@ -1824,6 +1824,23 @@ order. Durable architecture constraints and decisions remain in
       `cdna_pcr_qpcr_assay_test_offline` plus a ClawBio request/intent route,
       and workflow-example execution rewrites the optional report paths so the
       same example is safe in per-run output directories
+  - transcript qPCR panel summarization is now a shared engine/shell surface:
+    - `BuildTranscriptQpcrPanel` and `primers transcript-qpcr-panel` consume a
+      stored shared-gene qPCR report and emit
+      `gentle.transcript_qpcr_panel.v1`
+    - the report keeps the shared forward/reverse/probe records and adds one
+      transcript row with a characteristic forward-primer attempt, exact cDNA
+      hit accounting, local source coordinates, optional genomic coordinates,
+      and reference-strand evidence
+    - exon-junction characteristic primers are preferred when possible, but
+      single-exon/exon-chain characteristic primers are explicitly allowed for
+      simple/short transcript structures where a boundary primer is not needed
+      or not uniquely informative
+    - transcripts without a single distinguishing forward primer while reusing
+      the shared reverse/probe now receive deterministic `not_found` rows
+      instead of disappearing from the panel
+    - ClawBio now has a dedicated `transcript-qpcr-panel` request mode and
+      descriptor intent so chat routing can discover this panel/table surface
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
     including explicit side-sequence constraints and pair constraints (no raw
     JSON required for common interactive use)

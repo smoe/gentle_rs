@@ -7,7 +7,9 @@ description: >-
   sequence-grounded mechanistic follow-up, assay-planning artifacts,
   stateless sequence inspection, reusable local reference-preparation
   workflows, transcript-native protein-residue-to-genomic-codon mapping,
-  transcript-derived cDNA PCR/qPCR assay testing,
+  transcript-derived cDNA PCR/qPCR assay testing, transcript qPCR panel
+  tables with shared reverse/probe components and characteristic forward
+  primers,
   and transcript-native protein-gel / protein 2D-gel / protease digest
   figures for bundled example loci, parameterized Ensembl genes, and Ensembl
   gene panels.
@@ -38,6 +40,10 @@ metadata:
       - design pcr primers
       - pcr constraints
       - qpcr design
+      - transcript qpcr panel
+      - isoform qpcr panel
+      - characteristic qpcr primers
+      - transcript-specific qpcr primers
       - cdna pcr
       - cdna qpcr
       - test cdna pcr
@@ -232,6 +238,8 @@ Preferred broad answer wording:
 > sequence-grounded mechanistic follow-up. I can recover the relevant locus,
 > inspect annotations, isoforms, splicing, TFBS/JASPAR and restriction-site
 > context, map transcript-derived protein residues back to genomic codon bases,
+> build transcript qPCR panel tables with shared reverse/probe components and
+> per-transcript characteristic forward primers when possible,
 > analyze pasted DNA fragments directly when a fast stateless check is enough,
 > prepare reusable Ensembl/BLAST reference assets, and export reproducible
 > graphics or tables that support wet-lab validation planning.

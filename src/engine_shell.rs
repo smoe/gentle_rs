@@ -19,9 +19,9 @@
 
 use crate::{
     agent_bridge::{
-        invoke_agent_support_with_env_overrides, AgentExecutionIntent, AGENT_BASE_URL_ENV,
-        AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV,
-        AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
+        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
+        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
+        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, invoke_agent_support_with_env_overrides,
     },
     agent_execution::execute_agent_plan_candidate,
     agent_planner::{load_agent_plan_from_argument, plan_from_shell_options},
@@ -32,68 +32,69 @@ use crate::{
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        AttractPwmMappingPolicy, AttractSplicingEvidenceSettings, CandidateFeatureBoundaryMode,
-        CandidateFeatureGeometryMode, CandidateFeatureStrandRelation, CandidateMacroTemplateParam,
-        CandidateObjectiveDirection, CandidateObjectiveSpec, CandidateTieBreakPolicy,
-        CandidateWeightedObjectiveTerm, CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat,
-        CutRunReadLayout, CutRunSeedFilterConfig, DotplotMode, DotplotOverlayAnchorExonRef,
+        AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
+        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY,
+        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
+        CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, CutRunAlignConfig,
+        CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
+        DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
+        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
+        DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
+        DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
         FeatureBedCoordinateMode, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
-        GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
-        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
-        GuideOligoPlateFormat, GuidePracticalFilterConfig, InlineSequenceTopology,
-        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
-        OperationProgress, PairwiseAlignmentMode, PlanningEstimate, PlanningObjective,
-        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
-        PrimerDesignPairConstraint, PrimerDesignReport, PrimerDesignSideConstraint, ProjectState,
-        PromoterTfbsGeneQuery, PromoterWindowCollapseMode, ProteinExternalOpinionSource,
-        ProteinFeatureFilter, ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence,
-        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RackAuthoringTemplate,
-        RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
-        RackPhysicalTemplateKind, RackProfileKind, RenderSvgMode, RestrictionCloningPcrHandoffMode,
-        ReverseTranslationReport, ReverseTranslationReportSummary, RnaReadAlignConfig,
+        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
+        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
+        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
+        InlineSequenceTopology, LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
+        Operation, OperationProgress, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
+        PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
+        PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
+        PrimerDesignSideConstraint, ProjectState, PromoterTfbsGeneQuery,
+        PromoterWindowCollapseMode, ProteinExternalOpinionSource, ProteinFeatureFilter,
+        ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
+        QpcrTranscriptTargetingMode, RackAuthoringTemplate, RackCarrierLabelPreset,
+        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+        RackProfileKind, RenderSvgMode, RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
+        ReverseTranslationReportSummary, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
         RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretationProfile, RnaReadOriginMode, RnaReadReportMode,
         RnaReadScoreDensityScale, RnaReadScoreDensityVariant, RnaReadSeedFilterConfig,
-        RoutinePreferenceContext, SequenceAnchor, SequenceFeatureQualifierFilter,
-        SequenceFeatureQuery, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
-        SequenceFeatureStrandFilter, SequenceScanTarget, SequencingConfirmationTargetKind,
-        SequencingConfirmationTargetSpec, SplicingScopePreset, TfThresholdOverride,
-        TfbsRegionSummaryRequest, TfbsScoreTrackCorrelationMetric,
+        RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
+        SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
+        SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
+        SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
+        TfThresholdOverride, TfbsRegionSummaryRequest, TfbsScoreTrackCorrelationMetric,
         TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
         TfbsTrackSimilarityRankingMetric, TranslationSpeedMark, TranslationSpeedProfile,
-        UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice, Workflow, WorkflowMacroTemplate,
+        UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
-        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY,
-        DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
-        DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
-        DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
-        DOTPLOT_ANALYSIS_METADATA_KEY, GUIDE_DESIGN_METADATA_KEY, PLANNING_ESTIMATE_SCHEMA,
-        PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA,
-        PLANNING_SYNC_STATUS_SCHEMA, PRIMER_DESIGN_REPORTS_METADATA_KEY,
-        SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
     feature_location::collect_location_ranges_usize,
     genomes::{
-        configured_helper_genome_cache_dir, configured_reference_genome_cache_dir,
-        default_catalog_discovery_label, default_catalog_discovery_token,
-        default_helper_semantics_vocabulary_discovery_label, GenomeBlastReport, GenomeCatalog,
-        GenomeGeneRecord, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
+        GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, PreparedCacheCleanupMode,
+        PreparedCacheCleanupRequest, configured_helper_genome_cache_dir,
+        configured_reference_genome_cache_dir, default_catalog_discovery_label,
+        default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
     },
-    gibson_planning::{GibsonAssemblyPlan, GIBSON_ASSEMBLY_PREVIEW_SCHEMA},
-    protocol_cartoon::{protocol_cartoon_catalog_rows, ProtocolCartoonKind},
+    gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
+    protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     resource_status, resource_sync, service_readiness,
     shell_docs::{
-        shell_help_json as render_shell_help_json,
+        HelpOutputFormat, shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
         shell_help_text as render_shell_help_text,
         shell_topic_help_json as render_shell_topic_help_json,
         shell_topic_help_markdown as render_shell_topic_help_markdown,
-        shell_topic_help_text as render_shell_topic_help_text, HelpOutputFormat,
+        shell_topic_help_text as render_shell_topic_help_text,
     },
     tf_motifs,
 };
@@ -102,8 +103,8 @@ use objc2_app_kit::NSApplication;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::process::Command;
 #[cfg(test)]
@@ -115,8 +116,9 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
+        Arc, LazyLock, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc, Arc, LazyLock, Mutex,
+        mpsc,
     },
     thread,
     time::{SystemTime, UNIX_EPOCH},
@@ -1951,6 +1953,12 @@ pub enum ShellCommand {
         max_amplicon_bp: Option<usize>,
         max_mismatches: Option<usize>,
         require_3prime_exact_bases: Option<usize>,
+        path: Option<String>,
+    },
+    PrimersTranscriptQpcrPanel {
+        seq_id: String,
+        feature_id: usize,
+        shared_qpcr_report_id: String,
         path: Option<String>,
     },
     PrimersPrepareRestrictionCloning {
@@ -8704,6 +8712,21 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
                     .unwrap_or("all"),
+            ),
+            Self::PrimersTranscriptQpcrPanel {
+                seq_id,
+                feature_id,
+                shared_qpcr_report_id,
+                path,
+            } => format!(
+                "build transcript qPCR panel on '{}' feature n-{} from shared qPCR report '{}' (path={})",
+                seq_id,
+                feature_id + 1,
+                shared_qpcr_report_id,
+                path.as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("none"),
             ),
             Self::PrimersPrepareRestrictionCloning { request_json } => format!(
                 "prepare restriction-site cloning handoff from JSON request payload (len={})",
@@ -24795,6 +24818,35 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersTranscriptQpcrPanel {
+            seq_id,
+            feature_id,
+            shared_qpcr_report_id,
+            path,
+        } => {
+            let report = engine
+                .build_transcript_qpcr_panel_report(seq_id, *feature_id, shared_qpcr_report_id)
+                .map_err(|e| e.to_string())?;
+            if let Some(path) = path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let json_text = serde_json::to_string_pretty(&report).map_err(|e| {
+                    format!("Could not serialize transcript qPCR panel report: {e}")
+                })?;
+                fs::write(path, json_text).map_err(|e| {
+                    format!("Could not write transcript qPCR panel report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::PrimersPrepareRestrictionCloning { request_json } => {
             let json_text = parse_json_payload(request_json)?;
             let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
@@ -28684,6 +28736,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::PrimersDesignQpcr { .. }
             | ShellCommand::PrimersTestCdnaPcr { .. }
             | ShellCommand::PrimersTestCdnaQpcr { .. }
+            | ShellCommand::PrimersTranscriptQpcrPanel { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
             | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
             | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
@@ -30249,6 +30302,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersDesignQpcr { .. }
         | ShellCommand::PrimersTestCdnaPcr { .. }
         | ShellCommand::PrimersTestCdnaQpcr { .. }
+        | ShellCommand::PrimersTranscriptQpcrPanel { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }
         | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
         | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
