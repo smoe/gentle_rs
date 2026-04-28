@@ -1,0 +1,7 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "qpcr-report-show",
+  "state_path": ".gentle_state.json",
+  "report_id": "clawbio_tp53_taqman_demo",
+  "timeout_secs": 180
+}

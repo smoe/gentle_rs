@@ -1,0 +1,44 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "primer-design",
+  "state_path": ".gentle_state.json",
+  "backend": "auto",
+  "request_json": {
+    "DesignPrimerPairs": {
+      "template": "tp53_panel_source",
+      "roi_start_0based": 240,
+      "roi_end_0based": 360,
+      "forward": {
+        "min_length": 18,
+        "max_length": 24,
+        "start_0based": 180,
+        "end_0based": 260,
+        "min_tm_c": 55.0,
+        "max_tm_c": 68.0,
+        "min_gc_fraction": 0.35,
+        "max_gc_fraction": 0.7,
+        "max_anneal_hits": 1
+      },
+      "reverse": {
+        "min_length": 18,
+        "max_length": 24,
+        "start_0based": 340,
+        "end_0based": 430,
+        "min_tm_c": 55.0,
+        "max_tm_c": 68.0,
+        "min_gc_fraction": 0.35,
+        "max_gc_fraction": 0.7,
+        "max_anneal_hits": 1
+      },
+      "pair_constraints": {
+        "require_roi_flanking": true
+      },
+      "min_amplicon_bp": 80,
+      "max_amplicon_bp": 260,
+      "max_tm_delta_c": 3.0,
+      "max_pairs": 25,
+      "report_id": "clawbio_tp53_pcr_demo"
+    }
+  },
+  "timeout_secs": 300
+}

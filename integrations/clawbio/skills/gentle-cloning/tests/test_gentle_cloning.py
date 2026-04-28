@@ -243,8 +243,30 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "shell",
             "op",
             "workflow",
+            "primer-preflight",
+            "primer-seed-from-feature",
+            "primer-seed-from-splicing",
+            "primer-design",
+            "primer-report-list",
+            "primer-report-show",
+            "primer-report-export",
+            "qpcr-seed-from-feature",
+            "qpcr-seed-from-splicing",
+            "qpcr-design",
+            "qpcr-report-list",
+            "qpcr-report-show",
+            "qpcr-report-export",
+            "cdna-pcr-test",
+            "cdna-qpcr-test",
             "protein-residue-genomic-coordinates",
             "transcript-qpcr-panel",
+            "restriction-cloning-pcr-handoff",
+            "restriction-cloning-pcr-handoff-seed",
+            "restriction-cloning-vector-suggestions",
+            "restriction-cloning-handoff-list",
+            "restriction-cloning-handoff-show",
+            "restriction-cloning-handoff-export",
+            "pcr-protocol-cartoon",
             "gene-protein-2d-gel",
             "agent-plan",
             "agent-execute-plan",
@@ -905,6 +927,105 @@ def test_result_payload_promotes_protein_residue_genomic_coordinate_summary(
     assert "Mapped residue(s) 5..5 on 'tp73.ncbi' across 1 transcript match(es)." in report
     assert "The codon spans an exon junction." in report
     assert "QueryProteinResidueGenomicCoordinates" in report
+
+
+def test_qpcr_seed_mode_builds_shared_primer_shell_command(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "qpcr-seed-from-splicing",
+                "state_path": ".gentle_state.json",
+                "seq_id": "tp53_panel_source",
+                "source_feature_id": 2,
+                "qpcr_mode": "distinguish_transcript",
+                "transcript_id": "ENST00000269305.9",
+                "specificity_evidence": "junction_only",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text("#!/usr/bin/env bash\necho '{}'\n", encoding="utf-8")
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["command"] == [
+        str(fake_cli),
+        "--state",
+        ".gentle_state.json",
+        "shell",
+        "primers seed-qpcr-from-splicing tp53_panel_source 2 --mode distinguish_transcript --transcript-id ENST00000269305.9 --specificity-evidence junction_only",
+    ]
+
+
+def test_pcr_protocol_cartoon_mode_builds_render_shell_command(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "pcr-protocol-cartoon",
+                "protocol_id": "pcr.assay.qpcr",
+                "output_path": "artifacts/qpcr.assay.protocol.svg",
+                "timeout_secs": 180,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text("#!/usr/bin/env bash\necho '{}'\n", encoding="utf-8")
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["command"] == [
+        str(fake_cli),
+        "shell",
+        "protocol-cartoon render-svg pcr.assay.qpcr artifacts/qpcr.assay.protocol.svg",
+    ]
 
 
 def test_services_status_promotes_prepare_and_sync_suggested_actions(
@@ -3157,10 +3278,90 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             300,
         ),
+        "request_primers_preflight_auto.json": (
+            "primer-preflight",
+            None,
+            180,
+        ),
+        "request_seed_primers_tp53_feature.json": (
+            "primer-seed-from-feature",
+            None,
+            180,
+        ),
+        "request_seed_primers_tp53_splicing.json": (
+            "primer-seed-from-splicing",
+            None,
+            180,
+        ),
+        "request_seed_qpcr_tp53_feature.json": (
+            "qpcr-seed-from-feature",
+            None,
+            180,
+        ),
+        "request_seed_qpcr_tp53_splicing.json": (
+            "qpcr-seed-from-splicing",
+            None,
+            180,
+        ),
+        "request_seed_qpcr_tp53_splicing_specific_junction.json": (
+            "qpcr-seed-from-splicing",
+            None,
+            180,
+        ),
+        "request_design_pcr_primers_tp53_operation.json": (
+            "primer-design",
+            None,
+            300,
+        ),
+        "request_design_qpcr_taqman_tp53_operation.json": (
+            "qpcr-design",
+            None,
+            300,
+        ),
         "request_workflow_cdna_pcr_qpcr_assay_test_offline.json": (
             "workflow",
             None,
             300,
+        ),
+        "request_cdna_pcr_test_demo_direct.json": (
+            "cdna-pcr-test",
+            None,
+            180,
+        ),
+        "request_cdna_qpcr_taqman_test_demo_direct.json": (
+            "cdna-qpcr-test",
+            None,
+            180,
+        ),
+        "request_primer_reports_list.json": (
+            "primer-report-list",
+            None,
+            180,
+        ),
+        "request_primer_report_show_demo.json": (
+            "primer-report-show",
+            None,
+            180,
+        ),
+        "request_primer_report_export_demo.json": (
+            "primer-report-export",
+            None,
+            180,
+        ),
+        "request_qpcr_reports_list.json": (
+            "qpcr-report-list",
+            None,
+            180,
+        ),
+        "request_qpcr_report_show_demo.json": (
+            "qpcr-report-show",
+            None,
+            180,
+        ),
+        "request_qpcr_report_export_demo.json": (
+            "qpcr-report-export",
+            None,
+            180,
         ),
         "request_workflow_gene_panel_isoform_protein_gel_ensembl.json": (
             "workflow",
@@ -3233,8 +3434,23 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             180,
         ),
         "request_protocol_cartoon_qpcr_svg.json": (
-            "shell",
-            "protocol-cartoon render-svg pcr.assay.qpcr artifacts/qpcr.assay.protocol.svg",
+            "pcr-protocol-cartoon",
+            None,
+            180,
+        ),
+        "request_protocol_cartoon_pcr_pair_svg.json": (
+            "pcr-protocol-cartoon",
+            None,
+            180,
+        ),
+        "request_protocol_cartoon_pcr_tailed_svg.json": (
+            "pcr-protocol-cartoon",
+            None,
+            180,
+        ),
+        "request_protocol_cartoon_pcr_oe_substitution_svg.json": (
+            "pcr-protocol-cartoon",
+            None,
             180,
         ),
     }
@@ -3269,6 +3485,21 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_inspect_feature_expert_tp53_isoform.json",
             "request_inspect_feature_expert_tp53_splicing.json",
             "request_export_bed_grch38_tp53_gene_models.json",
+            "request_seed_primers_tp53_feature.json",
+            "request_seed_primers_tp53_splicing.json",
+            "request_seed_qpcr_tp53_feature.json",
+            "request_seed_qpcr_tp53_splicing.json",
+            "request_seed_qpcr_tp53_splicing_specific_junction.json",
+            "request_design_pcr_primers_tp53_operation.json",
+            "request_design_qpcr_taqman_tp53_operation.json",
+            "request_cdna_pcr_test_demo_direct.json",
+            "request_cdna_qpcr_taqman_test_demo_direct.json",
+            "request_primer_reports_list.json",
+            "request_primer_report_show_demo.json",
+            "request_primer_report_export_demo.json",
+            "request_qpcr_reports_list.json",
+            "request_qpcr_report_show_demo.json",
+            "request_qpcr_report_export_demo.json",
             "request_render_svg_pgex_fasta_circular.json",
             "request_scan_tfbs_hits_grch38_tert_promoter_stemness_sp1.json",
             "request_render_svg_grch38_tert_promoter_stemness_sp1.json",
@@ -3479,6 +3710,34 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 "artifacts/simple_pcr_demo_primers.report.json"
             ]
             assert payload["timeout_secs"] == 300
+        if name == "request_primers_preflight_auto.json":
+            assert payload["backend"] == "auto"
+        if name in {
+            "request_seed_primers_tp53_feature.json",
+            "request_seed_primers_tp53_splicing.json",
+            "request_seed_qpcr_tp53_feature.json",
+            "request_seed_qpcr_tp53_splicing.json",
+            "request_seed_qpcr_tp53_splicing_specific_junction.json",
+        }:
+            assert payload["seq_id"] == "tp53_panel_source"
+            assert payload["source_feature_id"] == 2
+        if name == "request_seed_qpcr_tp53_splicing.json":
+            assert payload["qpcr_mode"] == "shared_gene"
+        if name == "request_seed_qpcr_tp53_splicing_specific_junction.json":
+            assert payload["qpcr_mode"] == "distinguish_transcript"
+            assert payload["transcript_id"] == "ENST00000269305.9"
+            assert payload["specificity_evidence"] == "junction_only"
+        if name == "request_design_pcr_primers_tp53_operation.json":
+            assert payload["backend"] == "auto"
+            assert payload["request_json"]["DesignPrimerPairs"]["template"] == (
+                "tp53_panel_source"
+            )
+        if name == "request_design_qpcr_taqman_tp53_operation.json":
+            assert payload["backend"] == "auto"
+            assert payload["request_json"]["DesignQpcrAssays"]["template"] == (
+                "tp53_panel_source"
+            )
+            assert "probe" in payload["request_json"]["DesignQpcrAssays"]
         if name == "request_workflow_cdna_pcr_qpcr_assay_test_offline.json":
             assert payload["state_path"] == ".gentle_state.json"
             assert (
@@ -3490,6 +3749,45 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 "artifacts/cdna_assay_demo.qpcr_report.json",
             ]
             assert payload["timeout_secs"] == 300
+        if name == "request_cdna_pcr_test_demo_direct.json":
+            assert payload["seq_id"] == "cdna_assay_demo"
+            assert payload["source_feature_id"] == 2
+            assert payload["transcript_id"] == "TX1"
+            assert payload["expected_artifacts"] == [
+                "artifacts/cdna_assay_demo.direct_pcr_report.json"
+            ]
+        if name == "request_cdna_qpcr_taqman_test_demo_direct.json":
+            assert payload["seq_id"] == "cdna_assay_demo"
+            assert payload["source_feature_id"] == 2
+            assert payload["transcript_id"] == "TX1"
+            assert payload["probe"] == "GGGCCC"
+            assert payload["expected_artifacts"] == [
+                "artifacts/cdna_assay_demo.direct_taqman_report.json"
+            ]
+        if name in {
+            "request_primer_report_show_demo.json",
+            "request_primer_report_export_demo.json",
+        }:
+            assert payload["report_id"] == "clawbio_tp53_pcr_demo"
+        if name == "request_primer_report_export_demo.json":
+            assert payload["output_path"] == (
+                "artifacts/clawbio_tp53_pcr_demo.primer_report.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "artifacts/clawbio_tp53_pcr_demo.primer_report.json"
+            ]
+        if name in {
+            "request_qpcr_report_show_demo.json",
+            "request_qpcr_report_export_demo.json",
+        }:
+            assert payload["report_id"] == "clawbio_tp53_taqman_demo"
+        if name == "request_qpcr_report_export_demo.json":
+            assert payload["output_path"] == (
+                "artifacts/clawbio_tp53_taqman_demo.qpcr_report.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "artifacts/clawbio_tp53_taqman_demo.qpcr_report.json"
+            ]
         if name == "request_workflow_gene_panel_isoform_protein_gel_ensembl.json":
             assert payload["state_path"] == ".gentle_state.json"
             assert (
@@ -3561,8 +3859,24 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 "artifacts/grch38_tert_tp73_promoters.stemness_sp1.svg"
             ]
         if name == "request_protocol_cartoon_qpcr_svg.json":
+            assert payload["protocol_id"] == "pcr.assay.qpcr"
             assert payload["expected_artifacts"] == [
                 "artifacts/qpcr.assay.protocol.svg"
+            ]
+        if name == "request_protocol_cartoon_pcr_pair_svg.json":
+            assert payload["protocol_id"] == "pcr.assay.pair"
+            assert payload["expected_artifacts"] == [
+                "artifacts/pcr.assay.pair.protocol.svg"
+            ]
+        if name == "request_protocol_cartoon_pcr_tailed_svg.json":
+            assert payload["protocol_id"] == "pcr.assay.pair.with_tail"
+            assert payload["expected_artifacts"] == [
+                "artifacts/pcr.assay.pair.with_tail.protocol.svg"
+            ]
+        if name == "request_protocol_cartoon_pcr_oe_substitution_svg.json":
+            assert payload["protocol_id"] == "pcr.oe.substitution"
+            assert payload["expected_artifacts"] == [
+                "artifacts/pcr.oe.substitution.protocol.svg"
             ]
 
     tfbs_payload = json.loads(
@@ -3923,8 +4237,11 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "direct DNA fragment requests" in description
     assert "mechanistic follow-up" in description
     assert "installed-runtime and resource-readiness checks" in description
-    assert "simple PCR primer-design reports" in description
-    assert "cDNA PCR/qPCR assay-test reports" in description
+    assert "full shared PCR/qPCR command family for ClawBio" in description
+    assert "Primer3 preflight" in description
+    assert "probe-based qPCR/TaqMan design" in description
+    assert "report listing/inspection/export" in description
+    assert "restriction-cloning PCR handoffs" in description
     assert "transcript qPCR panel tables" in description
     assert "reusable local reference assets" in description
     assert "protease-digest figures" in description
@@ -3970,11 +4287,33 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "readiness" in trigger_keywords
     assert "local resources" in trigger_keywords
     assert "simple pcr" in trigger_keywords
+    assert "primer preflight" in trigger_keywords
+    assert "primer3 preflight" in trigger_keywords
+    assert "seed pcr from feature" in trigger_keywords
+    assert "seed pcr from splicing" in trigger_keywords
     assert "design pcr primers" in trigger_keywords
+    assert "design primers from json" in trigger_keywords
     assert "pcr constraints" in trigger_keywords
+    assert "seed qpcr from feature" in trigger_keywords
+    assert "seed qpcr from splicing" in trigger_keywords
+    assert "seed taqman from feature" in trigger_keywords
+    assert "seed taqman from splicing" in trigger_keywords
+    assert "design taqman assay" in trigger_keywords
+    assert "exon junction taqman" in trigger_keywords
     assert "test cdna pcr" in trigger_keywords
     assert "test cdna qpcr" in trigger_keywords
+    assert "direct taqman test" in trigger_keywords
     assert "qpcr assay test" in trigger_keywords
+    assert "taqman assay test" in trigger_keywords
+    assert "qpcr reports" in trigger_keywords
+    assert "taqman reports" in trigger_keywords
+    assert "show primer report" in trigger_keywords
+    assert "export primer report" in trigger_keywords
+    assert "show taqman report" in trigger_keywords
+    assert "export taqman report" in trigger_keywords
+    assert "pcr protocol cartoon" in trigger_keywords
+    assert "taqman protocol cartoon" in trigger_keywords
+    assert "restriction cloning pcr handoff" in trigger_keywords
     assert "database status" in trigger_keywords
     assert "installed databases" in trigger_keywords
     assert "resources status" in trigger_keywords
@@ -4031,7 +4370,23 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "demo_isoform_protein_gel",
         "demo_isoform_protein_2d_gel",
         "simple_pcr_primer_design",
+        "primer_preflight",
+        "primer_seed_from_feature",
+        "primer_seed_from_splicing",
+        "qpcr_taqman_seed_from_feature",
+        "qpcr_taqman_seed_from_splicing",
+        "pcr_primer_design_operation",
+        "qpcr_taqman_design_operation",
         "cdna_pcr_qpcr_assay_test",
+        "cdna_pcr_direct_test",
+        "cdna_qpcr_taqman_direct_test",
+        "primer_report_list",
+        "primer_report_show",
+        "primer_report_export",
+        "qpcr_report_list",
+        "qpcr_report_show",
+        "qpcr_report_export",
+        "pcr_protocol_cartoon",
         "ensembl_gene_panel_protein_gel",
         "demo_ensembl_gene_protein_2d_gel",
         "demo_trypsin_digest_gel",
@@ -4074,9 +4429,31 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "simple_pcr_primer_design": (
             "examples/request_workflow_simple_pcr_primer_design_offline.json"
         ),
+        "primer_preflight": "examples/request_primers_preflight_auto.json",
+        "primer_seed_from_feature": None,
+        "primer_seed_from_splicing": None,
+        "qpcr_taqman_seed_from_feature": None,
+        "qpcr_taqman_seed_from_splicing": None,
+        "pcr_primer_design_operation": (
+            "examples/request_design_pcr_primers_tp53_operation.json"
+        ),
+        "qpcr_taqman_design_operation": (
+            "examples/request_design_qpcr_taqman_tp53_operation.json"
+        ),
         "cdna_pcr_qpcr_assay_test": (
             "examples/request_workflow_cdna_pcr_qpcr_assay_test_offline.json"
         ),
+        "cdna_pcr_direct_test": "examples/request_cdna_pcr_test_demo_direct.json",
+        "cdna_qpcr_taqman_direct_test": (
+            "examples/request_cdna_qpcr_taqman_test_demo_direct.json"
+        ),
+        "primer_report_list": "examples/request_primer_reports_list.json",
+        "primer_report_show": "examples/request_primer_report_show_demo.json",
+        "primer_report_export": "examples/request_primer_report_export_demo.json",
+        "qpcr_report_list": "examples/request_qpcr_reports_list.json",
+        "qpcr_report_show": "examples/request_qpcr_report_show_demo.json",
+        "qpcr_report_export": "examples/request_qpcr_report_export_demo.json",
+        "pcr_protocol_cartoon": None,
         "ensembl_gene_panel_protein_gel": (
             "examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json"
         ),
@@ -4136,6 +4513,58 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
                 assert step["slots"]["seq_id"]["required"] is True
                 assert step["slots"]["source_feature_id"]["required"] is True
                 assert step["slots"]["shared_qpcr_report_id"]["required"] is True
+            elif intent_id == "primer_seed_from_feature":
+                assert step["input_template"]["mode"] == "primer-seed-from-feature"
+                assert step["input_template"]["seq_id"] == "{seq_id}"
+                assert (
+                    step["input_template"]["source_feature_id"]
+                    == "{source_feature_id}"
+                )
+                assert step["slots"]["seq_id"]["required"] is True
+                assert step["slots"]["source_feature_id"]["required"] is True
+            elif intent_id == "primer_seed_from_splicing":
+                assert step["input_template"]["mode"] == "primer-seed-from-splicing"
+                assert step["input_template"]["seq_id"] == "{seq_id}"
+                assert (
+                    step["input_template"]["source_feature_id"]
+                    == "{source_feature_id}"
+                )
+                assert step["slots"]["seq_id"]["required"] is True
+                assert step["slots"]["source_feature_id"]["required"] is True
+            elif intent_id == "qpcr_taqman_seed_from_feature":
+                assert step["input_template"]["mode"] == "qpcr-seed-from-feature"
+                assert step["input_template"]["seq_id"] == "{seq_id}"
+                assert (
+                    step["input_template"]["source_feature_id"]
+                    == "{source_feature_id}"
+                )
+                assert step["slots"]["seq_id"]["required"] is True
+                assert step["slots"]["source_feature_id"]["required"] is True
+            elif intent_id == "qpcr_taqman_seed_from_splicing":
+                assert step["input_template"]["mode"] == "qpcr-seed-from-splicing"
+                assert step["input_template"]["seq_id"] == "{seq_id}"
+                assert (
+                    step["input_template"]["source_feature_id"]
+                    == "{source_feature_id}"
+                )
+                assert step["input_template"]["qpcr_mode"] == "{qpcr_mode}"
+                assert step["input_template"]["transcript_id"] == "{transcript_id}"
+                assert (
+                    step["input_template"]["specificity_evidence"]
+                    == "{specificity_evidence}"
+                )
+                assert step["slots"]["seq_id"]["required"] is True
+                assert step["slots"]["source_feature_id"]["required"] is True
+                assert step["slots"]["qpcr_mode"]["required"] is False
+                assert step["slots"]["transcript_id"]["required"] is False
+                assert step["slots"]["specificity_evidence"]["required"] is False
+            elif intent_id == "pcr_protocol_cartoon":
+                assert step["input_template"]["mode"] == "pcr-protocol-cartoon"
+                assert step["input_template"]["protocol_id"] == "{protocol_id}"
+                assert step["input_template"]["output_path"] == "{output_path}"
+                assert step["input_template"]["expected_artifacts"] == ["{output_path}"]
+                assert step["slots"]["protocol_id"]["required"] is True
+                assert step["slots"]["output_path"]["required"] is True
             else:
                 assert intent_id == "telegram_guide_isoforms_gene"
                 assert step["input_template"]["mode"] == "shell"
@@ -4189,8 +4618,42 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     ]
     assert "simple pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
     assert "continue pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
+    assert "primer preflight" in routes["primer_preflight"]["trigger_terms"]
+    assert "seed pcr from feature" in routes["primer_seed_from_feature"][
+        "trigger_terms"
+    ]
+    assert "seed pcr from splicing" in routes["primer_seed_from_splicing"][
+        "trigger_terms"
+    ]
+    assert "seed taqman from feature" in routes["qpcr_taqman_seed_from_feature"][
+        "trigger_terms"
+    ]
+    assert "exon junction taqman seed" in routes["qpcr_taqman_seed_from_splicing"][
+        "trigger_terms"
+    ]
+    assert "execute designprimerpairs" in routes["pcr_primer_design_operation"][
+        "trigger_terms"
+    ]
+    assert "design taqman assay" in routes["qpcr_taqman_design_operation"][
+        "trigger_terms"
+    ]
     assert "test cdna pcr" in routes["cdna_pcr_qpcr_assay_test"]["trigger_terms"]
     assert "test cdna qpcr" in routes["cdna_pcr_qpcr_assay_test"]["trigger_terms"]
+    assert "direct cdna pcr test" in routes["cdna_pcr_direct_test"]["trigger_terms"]
+    assert "direct taqman test" in routes["cdna_qpcr_taqman_direct_test"][
+        "trigger_terms"
+    ]
+    assert "list pcr primer reports" in routes["primer_report_list"]["trigger_terms"]
+    assert "show pcr primer report" in routes["primer_report_show"]["trigger_terms"]
+    assert "export pcr primer report" in routes["primer_report_export"][
+        "trigger_terms"
+    ]
+    assert "taqman reports" in routes["qpcr_report_list"]["trigger_terms"]
+    assert "show taqman report" in routes["qpcr_report_show"]["trigger_terms"]
+    assert "export taqman report" in routes["qpcr_report_export"]["trigger_terms"]
+    assert "taqman protocol cartoon" in routes["pcr_protocol_cartoon"][
+        "trigger_terms"
+    ]
     assert "gene panel protein gel" in routes["ensembl_gene_panel_protein_gel"][
         "trigger_terms"
     ]

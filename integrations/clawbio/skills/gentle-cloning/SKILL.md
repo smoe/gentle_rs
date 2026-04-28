@@ -7,7 +7,10 @@ description: >-
   sequence-grounded mechanistic follow-up, assay-planning artifacts,
   stateless sequence inspection, reusable local reference-preparation
   workflows, transcript-native protein-residue-to-genomic-codon mapping,
-  transcript-derived cDNA PCR/qPCR assay testing, transcript qPCR panel
+  ClawBio-accessible PCR/qPCR/TaqMan automation (Primer3 preflight, seed
+  helpers, PCR primer design, probe-based qPCR/TaqMan design, transcript-
+  derived cDNA PCR/qPCR assay testing, report inspection/export, PCR protocol
+  cartoons, and restriction-cloning PCR handoffs), transcript qPCR panel
   tables with shared reverse/probe components and characteristic forward
   primers,
   and transcript-native protein-gel / protein 2D-gel / protease digest
@@ -37,18 +40,36 @@ metadata:
       - primer design
       - pcr design
       - simple pcr
+      - primer preflight
+      - primer3 preflight
+      - seed pcr from feature
+      - seed pcr from splicing
       - design pcr primers
+      - design primers from json
       - pcr constraints
       - qpcr design
+      - taqman design
+      - design taqman assay
+      - seed qpcr from feature
+      - seed qpcr from splicing
+      - seed taqman from feature
+      - seed taqman from splicing
       - transcript qpcr panel
       - isoform qpcr panel
       - characteristic qpcr primers
       - transcript-specific qpcr primers
+      - exon junction taqman
       - cdna pcr
       - cdna qpcr
+      - rt-pcr
       - test cdna pcr
       - test cdna qpcr
+      - direct taqman test
       - qpcr assay test
+      - taqman assay test
+      - pcr protocol cartoon
+      - taqman protocol cartoon
+      - restriction cloning pcr handoff
       - analyze dna sequence
       - restriction sites
       - tfbs score tracks
@@ -124,11 +145,12 @@ This skill is execution-first.
 ClawBio shared chat adapters should consume `INTENTS.json` first. That
 `clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
 installed-database/resource, residue-to-genome codon mapping, Telegram guide
-overview/section navigation, simple PCR primer-design, parameterized Ensembl
-gene 2D-gel, Ensembl gene-panel 1D protein-gel, bundled example protein-gel,
-bundled example 2D-gel, cDNA PCR/qPCR assay testing, Ensembl gene 2D-gel example, trypsin-digest,
-capability, skill-info, and explicit-demo wording to concrete
-`examples/*.json` requests.
+overview/section navigation, PCR/qPCR/TaqMan seed/design/test/report/cartoon
+requests, transcript qPCR panel requests, parameterized Ensembl gene 2D-gel,
+Ensembl gene-panel 1D protein-gel, bundled example protein-gel, bundled
+example 2D-gel, Ensembl gene 2D-gel example, trypsin-digest, capability,
+skill-info, and explicit-demo wording to concrete `examples/*.json` requests
+or typed ClawBio request templates.
 Descriptor-only skill directories are discoverable, but execution still
 requires `gentle-cloning` to be registered in ClawBio's top-level `SKILLS`
 table.
@@ -191,7 +213,9 @@ capability-led language:
   - inspect pasted DNA fragments directly for restriction sites or TFBS hits
     without first creating project-state records when the task is purely
     read-only,
-  - test supplied PCR and qPCR oligos against transcript-derived cDNA
+  - seed, design, inspect, and export PCR primer and qPCR/TaqMan assay work
+    through typed ClawBio modes over the shared `primers ...` command family,
+  - test supplied PCR and qPCR/TaqMan oligos against transcript-derived cDNA
     templates and export per-transcript product/hit reports with exon-junction
     provenance,
   - extract loci/genes/regions from prepared references,
@@ -238,6 +262,8 @@ Preferred broad answer wording:
 > sequence-grounded mechanistic follow-up. I can recover the relevant locus,
 > inspect annotations, isoforms, splicing, TFBS/JASPAR and restriction-site
 > context, map transcript-derived protein residues back to genomic codon bases,
+> seed/design PCR primers and probe-based qPCR/TaqMan assays, test supplied
+> cDNA PCR/qPCR oligos against transcript templates,
 > build transcript qPCR panel tables with shared reverse/probe components and
 > per-transcript characteristic forward primers when possible,
 > analyze pasted DNA fragments directly when a fast stateless check is enough,
@@ -437,7 +463,7 @@ Preferred handling:
 ## Capability Split Inside This One Skill
 
 `gentle-cloning` is still one runtime alias in ClawBio/OpenClaw, but it should
-be treated as a bundle of eight explicit sub-capabilities rather than one vague
+be treated as a bundle of nine explicit sub-capabilities rather than one vague
 "do anything with GENtle" wrapper.
 
 ### 1. Runtime and Resource Readiness
@@ -576,7 +602,48 @@ Expected outputs:
 - restriction-cleavage SVGs
 - BED rows for deterministic REBASE-derived cut sites
 
-### 5. Splicing Expert
+### 5. PCR / qPCR / TaqMan Automation
+
+Use this when the user wants PCR primer design, qPCR/TaqMan assay design,
+transcript-derived cDNA assay testing, report inspection/export, or a
+protocol-cartoon graphic for the PCR family.
+
+Current shared GENtle routes behind this capability:
+
+- request modes `primer-preflight`, `primer-seed-from-feature`,
+  `primer-seed-from-splicing`, `primer-design`, `primer-report-list`,
+  `primer-report-show`, and `primer-report-export`
+- request modes `qpcr-seed-from-feature`, `qpcr-seed-from-splicing`,
+  `qpcr-design`, `qpcr-report-list`, `qpcr-report-show`, and
+  `qpcr-report-export`
+- request modes `cdna-pcr-test`, `cdna-qpcr-test`,
+  `transcript-qpcr-panel`, and `pcr-protocol-cartoon`
+- request modes `restriction-cloning-pcr-handoff`,
+  `restriction-cloning-pcr-handoff-seed`,
+  `restriction-cloning-vector-suggestions`,
+  `restriction-cloning-handoff-list`, `restriction-cloning-handoff-show`, and
+  `restriction-cloning-handoff-export`
+- the same underlying shell commands:
+  `primers preflight`, `primers seed-from-feature`,
+  `primers seed-from-splicing`, `primers design`,
+  `primers seed-qpcr-from-feature`, `primers seed-qpcr-from-splicing`,
+  `primers design-qpcr`, `primers test-cdna-pcr`,
+  `primers test-cdna-qpcr`, `primers transcript-qpcr-panel`, persisted
+  primer/qPCR report helpers, and restriction-cloning PCR handoff helpers
+
+Expected outputs:
+
+- Primer3/internal-backend readiness reports
+- non-mutating seed payloads that ClawBio can inspect before running design
+- persisted PCR primer reports and qPCR/TaqMan assay reports
+- cDNA PCR/qPCR assay-test reports with transcript-template and junction
+  provenance
+- transcript qPCR panel tables with shared reverse/probe plus characteristic
+  forward-primer rows when possible
+- PCR-family SVG/PNG protocol cartoons, including `pcr.assay.pair`,
+  `pcr.assay.pair.with_tail`, `pcr.oe.substitution`, and `pcr.assay.qpcr`
+
+### 6. Splicing Expert
 
 Use this when the user wants transcript/exon/splice interpretation in the same
 shape as the GUI `Splicing Expert`.
@@ -595,7 +662,7 @@ Expected outputs:
 - splicing-expert SVG with junction support, transition matrices, and phase
   cues
 
-### 6. Isoform Architecture
+### 7. Isoform Architecture
 
 Use this when the user wants transcript-family or isoform-panel review rather
 than one splice group.
@@ -613,7 +680,7 @@ Expected outputs:
 - isoform-panel text
 - isoform-architecture SVG
 
-### 7. Protein Isoform Gel and 2D-Gel Rendering
+### 8. Protein Isoform Gel and 2D-Gel Rendering
 
 Use this when the user wants a transcript-native protein figure, including
 the canonical offline isoform protein gel demo, 2D pI-vs-kDa spot-map demo, or
@@ -639,7 +706,7 @@ Expected outputs:
 - one SVG provenance figure
 - one promoted PNG-first ClawBio artifact for messenger/web display
 
-### 8. Experimental Follow-up
+### 9. Experimental Follow-up
 
 Use this when ClawBio starts from a patient/cohort variant, pharmacogenomic
 alert, differentially expressed gene, splice-variant observation, or explicit
@@ -688,12 +755,14 @@ Expected outputs:
    stable `gentle_cli` invocations instead of ad hoc natural-language-only
    reasoning.
 2. **Split one broad wrapper into explicit analysis surfaces**: treat the skill
-   as six named capability lanes:
+   as named capability lanes:
    - genomic context
    - TFBS analysis
    - restriction analysis
+   - PCR/qPCR/TaqMan automation
    - splicing expert
    - isoform architecture
+   - protein isoform gels and 2D gels
    - experimental follow-up
 3. **Observation-to-assay translation**: turn prioritized cohort or
    patient-data observations, differential-expression hits, splice-variant
@@ -925,8 +994,56 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json \
   --output /tmp/gentle_clawbio_tp53_splicing_text
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_primers_preflight_auto.json \
+  --output /tmp/gentle_clawbio_primer_preflight
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_seed_primers_tp53_feature.json \
+  --output /tmp/gentle_clawbio_tp53_primer_feature_seed
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_seed_primers_tp53_splicing.json \
+  --output /tmp/gentle_clawbio_tp53_primer_splicing_seed
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_feature.json \
+  --output /tmp/gentle_clawbio_tp53_qpcr_feature_seed
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing.json \
   --output /tmp/gentle_clawbio_tp53_qpcr_seed
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing_specific_junction.json \
+  --output /tmp/gentle_clawbio_tp53_qpcr_specific_seed
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_design_pcr_primers_tp53_operation.json \
+  --output /tmp/gentle_clawbio_tp53_pcr_design
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_design_qpcr_taqman_tp53_operation.json \
+  --output /tmp/gentle_clawbio_tp53_taqman_design
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_cdna_pcr_test_demo_direct.json \
+  --output /tmp/gentle_clawbio_cdna_pcr_direct_test
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_cdna_qpcr_taqman_test_demo_direct.json \
+  --output /tmp/gentle_clawbio_cdna_taqman_direct_test
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_primer_reports_list.json \
+  --output /tmp/gentle_clawbio_primer_reports
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_primer_report_show_demo.json \
+  --output /tmp/gentle_clawbio_primer_report_show
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_primer_report_export_demo.json \
+  --output /tmp/gentle_clawbio_primer_report_export
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_qpcr_reports_list.json \
+  --output /tmp/gentle_clawbio_qpcr_reports
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_qpcr_report_show_demo.json \
+  --output /tmp/gentle_clawbio_qpcr_report_show
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_qpcr_report_export_demo.json \
+  --output /tmp/gentle_clawbio_qpcr_report_export
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_protocol_cartoon_pcr_pair_svg.json \
+  --output /tmp/gentle_clawbio_pcr_cartoon
 python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_protocol_cartoon_qpcr_svg.json \
   --output /tmp/gentle_clawbio_qpcr_graphics
@@ -955,10 +1072,29 @@ Notes:
   it derives TP73 transcript variant 1 protein, applies the shared Trypsin
   catalog rule, renders retained peptide masses as a protein-gel SVG, and lets
   the wrapper promote the SVG into a PNG-first messenger artifact
-- `request_seed_qpcr_tp53_splicing.json` is a matching follow-on shell route
-  after the TP53 splicing example state is present; it emits the non-mutating
+- `request_seed_qpcr_tp53_splicing.json` is a matching follow-on typed route
+  after the TP53 splicing example state is present; it uses typed request mode
+  `qpcr-seed-from-splicing` and emits the non-mutating
   `gentle.qpcr_seed_request.v1` payload from splicing group `2`, including
-  deterministic ROI rationale plus recommended qPCR default limits
+  deterministic ROI rationale plus recommended qPCR/TaqMan default limits
+- `request_seed_primers_tp53_feature.json`,
+  `request_seed_primers_tp53_splicing.json`, and
+  `request_seed_qpcr_tp53_feature.json` expose the matching seed helpers
+  through typed ClawBio modes rather than raw shell strings
+- `request_seed_qpcr_tp53_splicing_specific_junction.json` shows the
+  transcript-specific qPCR/TaqMan seed path with an explicit exon-junction
+  evidence requirement
+- `request_design_pcr_primers_tp53_operation.json` and
+  `request_design_qpcr_taqman_tp53_operation.json` show direct design payload
+  execution through `primer-design` and `qpcr-design`
+- `request_cdna_pcr_test_demo_direct.json` and
+  `request_cdna_qpcr_taqman_test_demo_direct.json` expose direct cDNA assay
+  tests without replaying the larger bundled workflow
+- `request_primer_reports_list.json`, `request_primer_report_show_demo.json`,
+  `request_primer_report_export_demo.json`, `request_qpcr_reports_list.json`,
+  `request_qpcr_report_show_demo.json`, and
+  `request_qpcr_report_export_demo.json` expose saved PCR/qPCR report
+  discovery, inspection, and export from ClawBio
 - `request_export_bed_rs9923231_vkorc1_context_features.json` is the matching
   coordinate export after `request_dbsnp_fetch_rs9923231.json`; it writes the
   fetched locus' gene/mRNA/variation rows with genomic coordinates into one BED
@@ -1372,6 +1508,11 @@ Apply the following methodology:
       wrapper output bundle under `generated/...`
   - `examples/request_protocol_cartoon_qpcr_svg.json`
     - matching protocol-cartoon graphics/export route for a qPCR assay layout
+  - `examples/request_protocol_cartoon_pcr_pair_svg.json`,
+    `examples/request_protocol_cartoon_pcr_tailed_svg.json`, and
+    `examples/request_protocol_cartoon_pcr_oe_substitution_svg.json`
+    - matching graphics/export routes for the PCR pair, tailed PCR, and
+      overlap-extension PCR strips
   - `examples/request_workflow_simple_pcr_primer_design_offline.json`
     - smallest ClawBio-safe PCR route: loads a local fixture, extracts a
       compact context, encodes one core ROI plus left/right primer windows and

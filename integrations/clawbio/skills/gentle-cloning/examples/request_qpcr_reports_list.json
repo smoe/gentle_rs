@@ -1,0 +1,6 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "qpcr-report-list",
+  "state_path": ".gentle_state.json",
+  "timeout_secs": 180
+}

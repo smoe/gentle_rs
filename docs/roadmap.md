@@ -1794,8 +1794,12 @@ order. Durable architecture constraints and decisions remain in
       80-200 bp amplicons, 18-24 bp primers at 63-73 C with pair delta <= 3 C,
       and 20-30 bp probes at 71-80 C; assay ranking also prefers probes about
       7.5 C above the primer mean when available
-    - ClawBio now also carries a TP53 splicing-group shell example that emits
-      the qPCR seed payload directly from saved splicing context
+    - ClawBio now also exposes typed request modes/examples over the same
+      shared PCR/qPCR/TaqMan surface: Primer3/backend preflight, PCR and qPCR
+      feature/splicing seed helpers, `DesignPrimerPairs`/`DesignQpcrAssays`
+      payload execution, direct cDNA PCR/qPCR assay tests, report
+      list/show/export helpers, restriction-cloning PCR handoffs, and
+      PCR-family protocol cartoons
   - transcript-aware qPCR targeting is now engine-owned rather than adapter
     specific:
     - `DesignQpcrAssays.transcript_targeting` can target a shared exon/exon-chain

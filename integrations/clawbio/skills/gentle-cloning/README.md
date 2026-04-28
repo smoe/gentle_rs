@@ -32,9 +32,9 @@ surface is now nine explicit sub-capabilities:
 - genomic context
 - TFBS analysis
 - restriction analysis
+- PCR/qPCR/TaqMan automation
 - splicing expert
 - isoform architecture
-- cDNA PCR/qPCR assay testing
 - protein isoform gel / 2D-gel rendering
 - experimental follow-up
 
@@ -53,9 +53,11 @@ free text.
 
 The immediate chat-adapter routing layer is `INTENTS.json`. It maps broad user
 wording for runtime version, service readiness, installed databases/resources,
-residue-to-genome codon mapping, Telegram guide overview/sections, TP73
-protein gel, TP73 2D gel, cDNA PCR/qPCR assay testing, trypsin-digest gel, capabilities, skill info, and
-explicit demo requests to stable `examples/*.json` payloads. Descriptor-only skill directories are
+residue-to-genome codon mapping, Telegram guide overview/sections,
+PCR/qPCR/TaqMan seed/design/test/report/cartoon requests, transcript qPCR
+panels, TP73 protein gel, TP73 2D gel, trypsin-digest gel, capabilities, skill
+info, and explicit demo requests to stable `examples/*.json` payloads or
+typed request templates. Descriptor-only skill directories are
 discoverable by the current ClawBio planner, but execution still requires
 registering `gentle-cloning` in ClawBio's top-level `SKILLS` table.
 
@@ -85,9 +87,13 @@ intended framing is:
 - GENtle does not prove causality by itself.
 - GENtle can also inspect pasted DNA fragments directly for restriction sites
   or TFBS hits without first creating project state when the task is read-only.
-- GENtle can test supplied PCR and qPCR oligos against transcript-derived cDNA
-  templates, returning per-transcript product/hit reports with exon-junction
-  provenance instead of treating cDNA assays as genomic-only PCR.
+- GENtle can seed, design, inspect, and export PCR primer and probe-based
+  qPCR/TaqMan assay work through typed ClawBio modes over the shared
+  `primers ...` command family.
+- GENtle can test supplied PCR and qPCR/TaqMan oligos against
+  transcript-derived cDNA templates, returning per-transcript product/hit
+  reports with exon-junction provenance instead of treating cDNA assays as
+  genomic-only PCR.
 - GENtle's TFBS surface now also includes continuous score-track views and
   JASPAR motif-presentation reports, not only thresholded annotation hits.
 - GENtle can bootstrap reusable local Ensembl/reference assets, including
@@ -141,9 +147,20 @@ skill cannot know. Run the status routes:
 - `request_workflow_simple_pcr_primer_design_offline.json` for the smallest
   safe PCR primer-design demo with explicit ROI/window/amplicon constraints,
   a PCR explanation SVG, and a ranked primer report
+- `request_primers_preflight_auto.json`, `request_seed_primers_tp53_feature.json`,
+  `request_seed_primers_tp53_splicing.json`,
+  `request_seed_qpcr_tp53_feature.json`, and
+  `request_seed_qpcr_tp53_splicing.json` for typed ClawBio access to the
+  shared PCR/qPCR seed and backend-readiness routes
+- `request_design_pcr_primers_tp53_operation.json` and
+  `request_design_qpcr_taqman_tp53_operation.json` for direct
+  `DesignPrimerPairs` and probe-based `DesignQpcrAssays` execution
 - `request_workflow_cdna_pcr_qpcr_assay_test_offline.json` for the smallest
   transcript-derived cDNA PCR/qPCR assay-test demo with exported PCR and qPCR
   product reports
+- `request_cdna_pcr_test_demo_direct.json` and
+  `request_cdna_qpcr_taqman_test_demo_direct.json` for direct cDNA assay
+  checks without replaying the larger workflow
 - `resources status` for integrated JASPAR/REBASE/ATtRACT-style resources
 - `genomes status ...` or `genomes list` for reference-genome catalogs/caches
 - `helpers status ...` or `helpers list` for helper/vector assets
@@ -324,8 +341,25 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_feature_expert_tp53_isoform_svg.json --output /tmp/gentle_tp53_isoform_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_splicing_expert_svg.json --output /tmp/gentle_tp53_splicing_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json --output /tmp/gentle_tp53_splicing_text
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primers_preflight_auto.json --output /tmp/gentle_primer_preflight
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_primers_tp53_feature.json --output /tmp/gentle_tp53_primer_feature_seed
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_primers_tp53_splicing.json --output /tmp/gentle_tp53_primer_splicing_seed
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_feature.json --output /tmp/gentle_tp53_qpcr_feature_seed
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing.json --output /tmp/gentle_tp53_qpcr_seed
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing_specific_junction.json --output /tmp/gentle_tp53_qpcr_specific_seed
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_design_pcr_primers_tp53_operation.json --output /tmp/gentle_tp53_pcr_design
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_design_qpcr_taqman_tp53_operation.json --output /tmp/gentle_tp53_taqman_design
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_cdna_pcr_test_demo_direct.json --output /tmp/gentle_cdna_pcr_direct
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_cdna_qpcr_taqman_test_demo_direct.json --output /tmp/gentle_cdna_taqman_direct
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_reports_list.json --output /tmp/gentle_primer_reports
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_report_show_demo.json --output /tmp/gentle_primer_report_show
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_report_export_demo.json --output /tmp/gentle_primer_report_export
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_qpcr_reports_list.json --output /tmp/gentle_qpcr_reports
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_qpcr_report_show_demo.json --output /tmp/gentle_qpcr_report_show
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_qpcr_report_export_demo.json --output /tmp/gentle_qpcr_report_export
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json --output /tmp/gentle_p53_family_anchor
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_pcr_pair_svg.json --output /tmp/gentle_pcr_graphics
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_qpcr_svg.json --output /tmp/gentle_qpcr_graphics
 ```
 

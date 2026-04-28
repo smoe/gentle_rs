@@ -37,13 +37,58 @@ SUPPORTED_REQUEST_MODES = (
     "shell",
     "op",
     "workflow",
+    "primer-preflight",
+    "primer-seed-from-feature",
+    "primer-seed-from-splicing",
+    "primer-design",
+    "primer-report-list",
+    "primer-report-show",
+    "primer-report-export",
+    "qpcr-seed-from-feature",
+    "qpcr-seed-from-splicing",
+    "qpcr-design",
+    "qpcr-report-list",
+    "qpcr-report-show",
+    "qpcr-report-export",
+    "cdna-pcr-test",
+    "cdna-qpcr-test",
     "protein-residue-genomic-coordinates",
     "transcript-qpcr-panel",
+    "restriction-cloning-pcr-handoff",
+    "restriction-cloning-pcr-handoff-seed",
+    "restriction-cloning-vector-suggestions",
+    "restriction-cloning-handoff-list",
+    "restriction-cloning-handoff-show",
+    "restriction-cloning-handoff-export",
+    "pcr-protocol-cartoon",
     "gene-protein-2d-gel",
     "agent-plan",
     "agent-execute-plan",
     "raw",
 )
+PRIMER_SHELL_REQUEST_MODES = {
+    "primer-preflight",
+    "primer-seed-from-feature",
+    "primer-seed-from-splicing",
+    "primer-design",
+    "primer-report-list",
+    "primer-report-show",
+    "primer-report-export",
+    "qpcr-seed-from-feature",
+    "qpcr-seed-from-splicing",
+    "qpcr-design",
+    "qpcr-report-list",
+    "qpcr-report-show",
+    "qpcr-report-export",
+    "cdna-pcr-test",
+    "cdna-qpcr-test",
+    "restriction-cloning-pcr-handoff",
+    "restriction-cloning-pcr-handoff-seed",
+    "restriction-cloning-vector-suggestions",
+    "restriction-cloning-handoff-list",
+    "restriction-cloning-handoff-show",
+    "restriction-cloning-handoff-export",
+}
 SVG_DIMENSION_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)")
 CLAWBIO_GRAPHICS_SCALE = 2.0
 CLAWBIO_SVG_PNG_TIMEOUT_SECS = 300
@@ -72,6 +117,7 @@ class Request:
     raw_args: list[str] | None = None
     shell_line: str | None = None
     operation: Any = None
+    request_json: Any = None
     workflow: Any = None
     workflow_path: str | None = None
     system_id: str | None = None
@@ -99,6 +145,26 @@ class Request:
     seq_id: str | None = None
     source_feature_id: int | None = None
     transcript_id: str | None = None
+    qpcr_mode: str | None = None
+    specificity_evidence: str | None = None
+    backend: str | None = None
+    primer3_executable: str | None = None
+    report_id: str | None = None
+    forward_primer: str | None = None
+    reverse_primer: str | None = None
+    probe: str | None = None
+    min_amplicon_bp: int | None = None
+    max_amplicon_bp: int | None = None
+    max_mismatches: int | None = None
+    require_3prime_exact_bases: int | None = None
+    vector_seq_id: str | None = None
+    pair_rank: int | None = None
+    handoff_mode: str | None = None
+    forward_enzyme: str | None = None
+    reverse_enzyme: str | None = None
+    forward_leader_5prime: str | None = None
+    reverse_leader_5prime: str | None = None
+    protocol_id: str | None = None
     shared_qpcr_report_id: str | None = None
     output_path: str | None = None
     residue_start_1based: int | None = None
@@ -435,6 +501,178 @@ def _normalise_protein_residue_genomic_coordinate_request(request: Request) -> N
     request.residue_end_1based = residue_end
 
 
+def _normalise_optional_str(value: Any, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise SkillError(f"{field_name} must be a non-empty string when present")
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    return trimmed
+
+
+def _require_str(value: Any, field_name: str, mode: str) -> str:
+    normalized = _normalise_optional_str(value, field_name)
+    if normalized is None:
+        raise SkillError(f"mode={mode} requires non-empty string field '{field_name}'")
+    return normalized
+
+
+def _coerce_optional_int(value: Any, field_name: str, *, minimum: int = 0) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError) as e:
+        raise SkillError(f"{field_name} must be an integer when present") from e
+    if coerced < minimum:
+        raise SkillError(f"{field_name} must be >= {minimum}")
+    return coerced
+
+
+def _normalise_primer_backend_options(request: Request) -> None:
+    request.backend = _normalise_optional_str(request.backend, "backend")
+    if request.backend is not None and request.backend not in {"auto", "internal", "primer3"}:
+        raise SkillError("backend must be one of auto|internal|primer3 when present")
+    request.primer3_executable = _normalise_optional_str(
+        request.primer3_executable, "primer3_executable"
+    )
+
+
+def _normalise_seq_feature_request(request: Request) -> None:
+    request.seq_id = _require_str(request.seq_id, "seq_id", request.mode)
+    source_feature_id = _coerce_optional_int(
+        request.source_feature_id, "source_feature_id", minimum=0
+    )
+    if source_feature_id is None:
+        raise SkillError(
+            f"mode={request.mode} requires integer field 'source_feature_id'"
+        )
+    request.source_feature_id = source_feature_id
+
+
+def _normalise_primer_design_request(request: Request) -> None:
+    if request.request_json is None and request.operation is None:
+        raise SkillError(
+            f"mode={request.mode} requires 'request_json' or 'operation'"
+        )
+    _normalise_primer_backend_options(request)
+
+
+def _normalise_primer_report_request(request: Request) -> None:
+    if request.mode.endswith("-show") or request.mode.endswith("-export"):
+        request.report_id = _require_str(request.report_id, "report_id", request.mode)
+    if request.mode.endswith("-export"):
+        request.output_path = _require_str(request.output_path, "output_path", request.mode)
+
+
+def _normalise_qpcr_seed_request(request: Request) -> None:
+    _normalise_seq_feature_request(request)
+    request.transcript_id = _normalise_optional_str(request.transcript_id, "transcript_id")
+    request.qpcr_mode = _normalise_optional_str(request.qpcr_mode, "qpcr_mode")
+    if request.qpcr_mode is not None and request.qpcr_mode not in {
+        "shared_gene",
+        "distinguish_transcript",
+    }:
+        raise SkillError("qpcr_mode must be shared_gene or distinguish_transcript")
+    if request.qpcr_mode == "distinguish_transcript" and request.transcript_id is None:
+        raise SkillError(
+            "mode=qpcr-seed-from-splicing with qpcr_mode=distinguish_transcript requires transcript_id"
+        )
+    request.specificity_evidence = _normalise_optional_str(
+        request.specificity_evidence, "specificity_evidence"
+    )
+    if request.specificity_evidence is not None and request.specificity_evidence not in {
+        "junction_only",
+        "unique_exon_or_chain",
+        "either_prefer_junction",
+    }:
+        raise SkillError(
+            "specificity_evidence must be junction_only|unique_exon_or_chain|either_prefer_junction"
+        )
+    if request.specificity_evidence is not None and request.qpcr_mode != "distinguish_transcript":
+        raise SkillError(
+            "specificity_evidence is only valid with qpcr_mode=distinguish_transcript"
+        )
+
+
+def _normalise_cdna_assay_test_request(request: Request) -> None:
+    _normalise_seq_feature_request(request)
+    request.forward_primer = _require_str(request.forward_primer, "forward_primer", request.mode)
+    request.reverse_primer = _require_str(request.reverse_primer, "reverse_primer", request.mode)
+    if request.mode == "cdna-qpcr-test":
+        request.probe = _require_str(request.probe, "probe", request.mode)
+    request.transcript_id = _normalise_optional_str(request.transcript_id, "transcript_id")
+    request.output_path = _normalise_optional_str(request.output_path, "output_path")
+    request.min_amplicon_bp = _coerce_optional_int(
+        request.min_amplicon_bp, "min_amplicon_bp", minimum=1
+    )
+    request.max_amplicon_bp = _coerce_optional_int(
+        request.max_amplicon_bp, "max_amplicon_bp", minimum=1
+    )
+    if (
+        request.min_amplicon_bp is not None
+        and request.max_amplicon_bp is not None
+        and request.max_amplicon_bp < request.min_amplicon_bp
+    ):
+        raise SkillError("max_amplicon_bp must be >= min_amplicon_bp")
+    request.max_mismatches = _coerce_optional_int(
+        request.max_mismatches, "max_mismatches", minimum=0
+    )
+    request.require_3prime_exact_bases = _coerce_optional_int(
+        request.require_3prime_exact_bases,
+        "require_3prime_exact_bases",
+        minimum=0,
+    )
+
+
+def _normalise_restriction_cloning_request(request: Request) -> None:
+    if request.mode == "restriction-cloning-pcr-handoff":
+        if request.request_json is None and request.operation is None:
+            raise SkillError(
+                "mode=restriction-cloning-pcr-handoff requires 'request_json' or 'operation'"
+            )
+        return
+    if request.mode == "restriction-cloning-pcr-handoff-seed":
+        request.report_id = _require_str(request.report_id, "report_id", request.mode)
+        request.vector_seq_id = _require_str(request.vector_seq_id, "vector_seq_id", request.mode)
+        request.pair_rank = _coerce_optional_int(request.pair_rank, "pair_rank", minimum=1)
+        request.handoff_mode = _normalise_optional_str(request.handoff_mode, "handoff_mode")
+        if request.handoff_mode is not None and request.handoff_mode not in {
+            "single_site",
+            "directed_pair",
+        }:
+            raise SkillError("handoff_mode must be single_site or directed_pair")
+        for field_name in (
+            "forward_enzyme",
+            "reverse_enzyme",
+            "forward_leader_5prime",
+            "reverse_leader_5prime",
+        ):
+            setattr(request, field_name, _normalise_optional_str(getattr(request, field_name), field_name))
+        return
+    if request.mode == "restriction-cloning-vector-suggestions":
+        request.seq_id = _require_str(request.seq_id, "seq_id", request.mode)
+        return
+    if request.mode in {
+        "restriction-cloning-handoff-show",
+        "restriction-cloning-handoff-export",
+    }:
+        request.report_id = _require_str(request.report_id, "report_id", request.mode)
+    if request.mode == "restriction-cloning-handoff-export":
+        request.output_path = _require_str(request.output_path, "output_path", request.mode)
+
+
+def _normalise_pcr_protocol_cartoon_request(request: Request) -> None:
+    request.protocol_id = _require_str(request.protocol_id, "protocol_id", request.mode)
+    request.output_path = _require_str(request.output_path, "output_path", request.mode)
+    if request.expected_artifacts is None:
+        request.expected_artifacts = [request.output_path]
+
+
 def _normalise_transcript_qpcr_panel_request(request: Request) -> None:
     if not isinstance(request.seq_id, str) or not request.seq_id.strip():
         raise SkillError("mode=transcript-qpcr-panel requires non-empty string field 'seq_id'")
@@ -481,6 +719,7 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         raw_args=payload.get("raw_args"),
         shell_line=payload.get("shell_line"),
         operation=payload.get("operation"),
+        request_json=payload.get("request_json"),
         workflow=payload.get("workflow"),
         workflow_path=payload.get("workflow_path"),
         system_id=payload.get("system_id"),
@@ -508,6 +747,26 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         seq_id=payload.get("seq_id"),
         source_feature_id=payload.get("source_feature_id"),
         transcript_id=payload.get("transcript_id"),
+        qpcr_mode=payload.get("qpcr_mode"),
+        specificity_evidence=payload.get("specificity_evidence"),
+        backend=payload.get("backend"),
+        primer3_executable=payload.get("primer3_executable"),
+        report_id=payload.get("report_id"),
+        forward_primer=payload.get("forward_primer"),
+        reverse_primer=payload.get("reverse_primer"),
+        probe=payload.get("probe"),
+        min_amplicon_bp=payload.get("min_amplicon_bp"),
+        max_amplicon_bp=payload.get("max_amplicon_bp"),
+        max_mismatches=payload.get("max_mismatches"),
+        require_3prime_exact_bases=payload.get("require_3prime_exact_bases"),
+        vector_seq_id=payload.get("vector_seq_id"),
+        pair_rank=payload.get("pair_rank"),
+        handoff_mode=payload.get("handoff_mode"),
+        forward_enzyme=payload.get("forward_enzyme"),
+        reverse_enzyme=payload.get("reverse_enzyme"),
+        forward_leader_5prime=payload.get("forward_leader_5prime"),
+        reverse_leader_5prime=payload.get("reverse_leader_5prime"),
+        protocol_id=payload.get("protocol_id"),
         shared_qpcr_report_id=payload.get("shared_qpcr_report_id"),
         output_path=payload.get("output_path"),
         residue_start_1based=payload.get("residue_start_1based"),
@@ -518,6 +777,10 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
             raise SkillError("expected_artifacts must be a string array when present")
         if not all(isinstance(v, str) and v.strip() for v in request.expected_artifacts):
             raise SkillError("expected_artifacts must contain non-empty strings")
+    if request.mode not in SUPPORTED_REQUEST_MODES:
+        raise SkillError(
+            "unsupported mode. Use one of: " + ", ".join(SUPPORTED_REQUEST_MODES)
+        )
     if request.mode == "raw":
         if not isinstance(request.raw_args, list) or not request.raw_args:
             raise SkillError("mode=raw requires non-empty string array 'raw_args'")
@@ -532,10 +795,37 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
     elif request.mode == "workflow":
         if request.workflow is None and not request.workflow_path:
             raise SkillError("mode=workflow requires 'workflow' or 'workflow_path'")
+    elif request.mode in {"primer-design", "qpcr-design"}:
+        _normalise_primer_design_request(request)
+    elif request.mode in {
+        "primer-seed-from-feature",
+        "primer-seed-from-splicing",
+        "qpcr-seed-from-feature",
+    }:
+        _normalise_seq_feature_request(request)
+    elif request.mode == "qpcr-seed-from-splicing":
+        _normalise_qpcr_seed_request(request)
+    elif request.mode in {
+        "primer-report-list",
+        "primer-report-show",
+        "primer-report-export",
+        "qpcr-report-list",
+        "qpcr-report-show",
+        "qpcr-report-export",
+    }:
+        _normalise_primer_report_request(request)
+    elif request.mode == "primer-preflight":
+        _normalise_primer_backend_options(request)
+    elif request.mode in {"cdna-pcr-test", "cdna-qpcr-test"}:
+        _normalise_cdna_assay_test_request(request)
     elif request.mode == "protein-residue-genomic-coordinates":
         _normalise_protein_residue_genomic_coordinate_request(request)
     elif request.mode == "transcript-qpcr-panel":
         _normalise_transcript_qpcr_panel_request(request)
+    elif request.mode.startswith("restriction-cloning-"):
+        _normalise_restriction_cloning_request(request)
+    elif request.mode == "pcr-protocol-cartoon":
+        _normalise_pcr_protocol_cartoon_request(request)
     elif request.mode == "gene-protein-2d-gel":
         _normalise_gene_protein_2d_gel_request(request)
     elif request.mode == "agent-plan":
@@ -550,10 +840,6 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
             raise SkillError(
                 "mode=agent-execute-plan requires non-empty string field 'candidate_id'"
             )
-    elif request.mode not in SUPPORTED_REQUEST_MODES:
-        raise SkillError(
-            "unsupported mode. Use one of: " + ", ".join(SUPPORTED_REQUEST_MODES)
-        )
     for field_name in (
         "catalog_path",
         "base_url",
@@ -701,6 +987,152 @@ def _protein_residue_genomic_coordinate_operation(request: Request) -> dict[str,
     if request.transcript_id:
         payload["transcript_id"] = request.transcript_id
     return {"QueryProteinResidueGenomicCoordinates": payload}
+
+
+def _request_json_arg(request: Request) -> str:
+    if request.request_json is not None:
+        return _json_arg(request.request_json)
+    if request.operation is not None:
+        return _json_arg(request.operation)
+    raise SkillError(f"mode={request.mode} requires 'request_json' or 'operation'")
+
+
+def _primer_backend_tokens(request: Request) -> list[str]:
+    tokens: list[str] = []
+    if request.backend:
+        tokens.extend(["--backend", request.backend])
+    if request.primer3_executable:
+        tokens.extend(["--primer3-exec", request.primer3_executable])
+    return tokens
+
+
+def _append_optional_int(tokens: list[str], flag: str, value: int | None) -> None:
+    if value is not None:
+        tokens.extend([flag, str(value)])
+
+
+def _build_primer_mode_shell_line(request: Request) -> str:
+    mode = request.mode
+    tokens: list[str]
+    if mode == "primer-preflight":
+        tokens = ["primers", "preflight", *_primer_backend_tokens(request)]
+    elif mode == "primer-seed-from-feature":
+        tokens = ["primers", "seed-from-feature", request.seq_id or "SEQ_ID", str(request.source_feature_id)]
+    elif mode == "primer-seed-from-splicing":
+        tokens = ["primers", "seed-from-splicing", request.seq_id or "SEQ_ID", str(request.source_feature_id)]
+    elif mode == "primer-design":
+        tokens = ["primers", "design", _request_json_arg(request), *_primer_backend_tokens(request)]
+    elif mode == "primer-report-list":
+        tokens = ["primers", "list-reports"]
+    elif mode == "primer-report-show":
+        tokens = ["primers", "show-report", request.report_id or "REPORT_ID"]
+    elif mode == "primer-report-export":
+        tokens = [
+            "primers",
+            "export-report",
+            request.report_id or "REPORT_ID",
+            request.output_path or "primer_report.json",
+        ]
+    elif mode == "qpcr-seed-from-feature":
+        tokens = ["primers", "seed-qpcr-from-feature", request.seq_id or "SEQ_ID", str(request.source_feature_id)]
+    elif mode == "qpcr-seed-from-splicing":
+        tokens = ["primers", "seed-qpcr-from-splicing", request.seq_id or "SEQ_ID", str(request.source_feature_id)]
+        if request.qpcr_mode:
+            tokens.extend(["--mode", request.qpcr_mode])
+        if request.transcript_id:
+            tokens.extend(["--transcript-id", request.transcript_id])
+        if request.specificity_evidence:
+            tokens.extend(["--specificity-evidence", request.specificity_evidence])
+    elif mode == "qpcr-design":
+        tokens = ["primers", "design-qpcr", _request_json_arg(request), *_primer_backend_tokens(request)]
+    elif mode == "qpcr-report-list":
+        tokens = ["primers", "list-qpcr-reports"]
+    elif mode == "qpcr-report-show":
+        tokens = ["primers", "show-qpcr-report", request.report_id or "QPCR_REPORT_ID"]
+    elif mode == "qpcr-report-export":
+        tokens = [
+            "primers",
+            "export-qpcr-report",
+            request.report_id or "QPCR_REPORT_ID",
+            request.output_path or "qpcr_report.json",
+        ]
+    elif mode in {"cdna-pcr-test", "cdna-qpcr-test"}:
+        subcommand = "test-cdna-qpcr" if mode == "cdna-qpcr-test" else "test-cdna-pcr"
+        tokens = [
+            "primers",
+            subcommand,
+            request.seq_id or "SEQ_ID",
+            str(request.source_feature_id),
+            "--forward",
+            request.forward_primer or "FORWARD",
+            "--reverse",
+            request.reverse_primer or "REVERSE",
+        ]
+        if mode == "cdna-qpcr-test":
+            tokens.extend(["--probe", request.probe or "PROBE"])
+        if request.transcript_id:
+            tokens.extend(["--transcript-id", request.transcript_id])
+        _append_optional_int(tokens, "--min-amplicon-bp", request.min_amplicon_bp)
+        _append_optional_int(tokens, "--max-amplicon-bp", request.max_amplicon_bp)
+        _append_optional_int(tokens, "--max-mismatches", request.max_mismatches)
+        _append_optional_int(
+            tokens,
+            "--require-3prime-exact-bases",
+            request.require_3prime_exact_bases,
+        )
+        if request.output_path:
+            tokens.extend(["--path", request.output_path])
+    elif mode == "restriction-cloning-pcr-handoff":
+        tokens = ["primers", "prepare-restriction-cloning", _request_json_arg(request)]
+    elif mode == "restriction-cloning-pcr-handoff-seed":
+        tokens = [
+            "primers",
+            "seed-restriction-cloning-handoff",
+            request.report_id or "PRIMER_REPORT_ID",
+            request.vector_seq_id or "VECTOR_SEQ_ID",
+        ]
+        if request.pair_rank is not None:
+            tokens.extend(["--pair-rank", str(request.pair_rank)])
+        if request.handoff_mode:
+            tokens.extend(["--mode", request.handoff_mode])
+        if request.forward_enzyme:
+            tokens.extend(["--forward-enzyme", request.forward_enzyme])
+        if request.reverse_enzyme:
+            tokens.extend(["--reverse-enzyme", request.reverse_enzyme])
+        if request.forward_leader_5prime:
+            tokens.extend(["--forward-leader", request.forward_leader_5prime])
+        if request.reverse_leader_5prime:
+            tokens.extend(["--reverse-leader", request.reverse_leader_5prime])
+    elif mode == "restriction-cloning-vector-suggestions":
+        tokens = ["primers", "restriction-cloning-vector-suggestions", request.seq_id or "SEQ_ID"]
+    elif mode == "restriction-cloning-handoff-list":
+        tokens = ["primers", "list-restriction-cloning-handoffs"]
+    elif mode == "restriction-cloning-handoff-show":
+        tokens = [
+            "primers",
+            "show-restriction-cloning-handoff",
+            request.report_id or "HANDOFF_REPORT_ID",
+        ]
+    elif mode == "restriction-cloning-handoff-export":
+        tokens = [
+            "primers",
+            "export-restriction-cloning-handoff",
+            request.report_id or "HANDOFF_REPORT_ID",
+            request.output_path or "restriction_cloning_handoff.json",
+        ]
+    else:
+        raise SkillError(f"Unsupported primer/PCR mode '{mode}'")
+    return shlex.join(tokens)
+
+
+def _build_pcr_protocol_cartoon_shell_line(request: Request) -> str:
+    tokens = [
+        "protocol-cartoon",
+        "render-svg",
+        request.protocol_id or "pcr.assay.qpcr",
+        request.output_path or "artifacts/pcr.protocol.svg",
+    ]
+    return shlex.join(tokens)
 
 
 def _preview_text(text: str, *, max_lines: int = 6, max_chars: int = 600) -> str | None:
@@ -1425,6 +1857,8 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
             args.extend(["workflow", f"@{resolved_workflow_path}"])
         else:
             args.extend(["workflow", _json_arg(request.workflow)])
+    elif request.mode in PRIMER_SHELL_REQUEST_MODES:
+        args.extend(["shell", _build_primer_mode_shell_line(request)])
     elif request.mode == "protein-residue-genomic-coordinates":
         args.extend(["op", _json_arg(_protein_residue_genomic_coordinate_operation(request))])
     elif request.mode == "transcript-qpcr-panel":
@@ -1438,6 +1872,8 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
         if request.output_path:
             tokens.extend(["--path", request.output_path])
         args.extend(["shell", shlex.join(tokens)])
+    elif request.mode == "pcr-protocol-cartoon":
+        args.extend(["shell", _build_pcr_protocol_cartoon_shell_line(request)])
     elif request.mode == "gene-protein-2d-gel":
         args.extend(["workflow", _json_arg(_gene_protein_2d_gel_workflow(request))])
     elif request.mode == "agent-plan":
@@ -1792,6 +2228,69 @@ def _summary_lines_from_protein_residue_genomic_coordinates(
     return lines
 
 
+def _summary_lines_from_primer_qpcr_payload(candidate: Any) -> list[str] | None:
+    if not isinstance(candidate, dict):
+        return None
+    schema = str(candidate.get("schema") or "").strip()
+    if schema == "gentle.primer_seed_request.v1":
+        template = str(candidate.get("template") or "template").strip()
+        roi_start = candidate.get("roi_start_0based")
+        roi_end = candidate.get("roi_end_0based_exclusive")
+        return [
+            f"Prepared a PCR/qPCR primer seed for '{template}' over ROI {roi_start}..{roi_end}.",
+            "The payload includes ready-to-run DesignPrimerPairs and DesignQpcrAssays operations.",
+        ]
+    if schema == "gentle.qpcr_seed_request.v1":
+        template = str(candidate.get("template") or "template").strip()
+        roi_start = candidate.get("roi_start_0based")
+        roi_end = candidate.get("roi_end_0based_exclusive")
+        rationale = candidate.get("rationale")
+        summary = ""
+        if isinstance(rationale, dict):
+            summary = str(rationale.get("summary") or "").strip()
+        lines = [
+            f"Prepared a probe-based qPCR/TaqMan seed for '{template}' over ROI {roi_start}..{roi_end}.",
+        ]
+        if summary:
+            lines.append(summary)
+        lines.append("The payload carries one ready-to-run DesignQpcrAssays operation and the pcr.assay.qpcr cartoon id.")
+        return lines
+    if schema == "gentle.primer_design_report.v1":
+        report_id = str(candidate.get("report_id") or "primer report").strip()
+        pair_count = len(candidate.get("pairs", [])) if isinstance(candidate.get("pairs"), list) else 0
+        return [f"Primer-design report '{report_id}' contains {pair_count} ranked PCR primer pair(s)."]
+    if schema == "gentle.qpcr_design_report.v1":
+        report_id = str(candidate.get("report_id") or "qPCR report").strip()
+        assay_count = len(candidate.get("assays", [])) if isinstance(candidate.get("assays"), list) else 0
+        lines = [
+            f"qPCR/TaqMan design report '{report_id}' contains {assay_count} ranked probe-bearing assay(s)."
+        ]
+        best_summary = str(candidate.get("best_assay_summary") or "").strip()
+        if best_summary:
+            lines.append(best_summary)
+        return lines
+    if schema == "gentle.cdna_assay_test_report.v1":
+        assay_kind = str(candidate.get("assay_kind") or "cDNA assay").strip()
+        status = str(candidate.get("overall_status") or candidate.get("status") or "unknown").strip()
+        transcript_count = candidate.get("transcript_count")
+        product_count = candidate.get("product_count")
+        line = f"{assay_kind} test finished with status '{status}'"
+        if transcript_count is not None:
+            line += f" across {transcript_count} transcript template(s)"
+        if product_count is not None:
+            line += f" and {product_count} detected product(s)"
+        line += "."
+        return [line]
+    if schema == "gentle.transcript_qpcr_panel.v1":
+        transcript_count = candidate.get("transcript_count")
+        group_label = str(candidate.get("group_label") or "splicing group").strip()
+        return [
+            f"Built a transcript qPCR panel for {group_label} across {transcript_count} transcript row(s).",
+            "Rows reuse shared qPCR components when possible and report characteristic forward-primer evidence explicitly.",
+        ]
+    return None
+
+
 def _extract_sequence_context_bundle(stdout_json: Any) -> dict[str, Any] | None:
     if not isinstance(stdout_json, dict):
         return None
@@ -1863,6 +2362,23 @@ def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
     protein_residue_lines = _summary_lines_from_protein_residue_genomic_coordinates(stdout_json)
     if protein_residue_lines:
         return protein_residue_lines
+    primer_lines = _summary_lines_from_primer_qpcr_payload(stdout_json)
+    if primer_lines:
+        return primer_lines
+    if isinstance(stdout_json.get("output"), dict):
+        primer_lines = _summary_lines_from_primer_qpcr_payload(stdout_json["output"])
+        if primer_lines:
+            return primer_lines
+    for key in (
+        "primer_design_report",
+        "qpcr_design_report",
+        "cdna_assay_test_report",
+        "transcript_qpcr_panel",
+    ):
+        nested = stdout_json.get(key)
+        primer_lines = _summary_lines_from_primer_qpcr_payload(nested)
+        if primer_lines:
+            return primer_lines
     raw_lines = stdout_json.get("summary_lines")
     if isinstance(raw_lines, list):
         lines = [line.strip() for line in raw_lines if isinstance(line, str) and line.strip()]
@@ -1967,6 +2483,8 @@ def _request_rerun_shell_line(request: Request | None) -> str:
         return "workflow <inline>"
     if request.mode == "op":
         return "op <inline>"
+    if request.mode in PRIMER_SHELL_REQUEST_MODES:
+        return _build_primer_mode_shell_line(request)
     if request.mode == "protein-residue-genomic-coordinates":
         seq_id = request.seq_id or "SEQ_ID"
         start = request.residue_start_1based or 1
@@ -1988,6 +2506,8 @@ def _request_rerun_shell_line(request: Request | None) -> str:
         if request.output_path:
             tokens.extend(["--path", request.output_path])
         return shlex.join(tokens)
+    if request.mode == "pcr-protocol-cartoon":
+        return _build_pcr_protocol_cartoon_shell_line(request)
     if request.mode == "gene-protein-2d-gel":
         gene = request.gene_symbol or "GENE"
         species = request.species or "homo_sapiens"
@@ -2024,11 +2544,45 @@ def _request_payload_for_artifact_continuation(
             payload["workflow"] = request.workflow
     elif request.mode == "op":
         payload["operation"] = request.operation
+    elif request.mode in PRIMER_SHELL_REQUEST_MODES:
+        for key in (
+            "request_json",
+            "operation",
+            "seq_id",
+            "source_feature_id",
+            "transcript_id",
+            "qpcr_mode",
+            "specificity_evidence",
+            "backend",
+            "primer3_executable",
+            "report_id",
+            "forward_primer",
+            "reverse_primer",
+            "probe",
+            "min_amplicon_bp",
+            "max_amplicon_bp",
+            "max_mismatches",
+            "require_3prime_exact_bases",
+            "vector_seq_id",
+            "pair_rank",
+            "handoff_mode",
+            "forward_enzyme",
+            "reverse_enzyme",
+            "forward_leader_5prime",
+            "reverse_leader_5prime",
+            "output_path",
+        ):
+            value = getattr(request, key)
+            if value is not None:
+                payload[key] = value
     elif request.mode == "protein-residue-genomic-coordinates":
         payload["seq_id"] = request.seq_id
         payload["transcript_id"] = request.transcript_id
         payload["residue_start_1based"] = request.residue_start_1based
         payload["residue_end_1based"] = request.residue_end_1based
+    elif request.mode == "pcr-protocol-cartoon":
+        payload["protocol_id"] = request.protocol_id
+        payload["output_path"] = request.output_path
     elif request.mode == "gene-protein-2d-gel":
         payload["gene_symbol"] = request.gene_symbol
         payload["species"] = request.species

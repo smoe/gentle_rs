@@ -221,7 +221,19 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_render_feature_expert_tp53_isoform_svg.json --output /tmp/gentle_tp53_isoform_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp53_splicing_expert_svg.json --output /tmp/gentle_tp53_splicing_expert
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_inspect_feature_expert_tp53_splicing.json --output /tmp/gentle_tp53_splicing_text
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primers_preflight_auto.json --output /tmp/gentle_primers_preflight
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_primers_tp53_splicing.json --output /tmp/gentle_tp53_primer_seed
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_feature.json --output /tmp/gentle_tp53_qpcr_feature_seed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing.json --output /tmp/gentle_tp53_qpcr_seed
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing_specific_junction.json --output /tmp/gentle_tp53_qpcr_specific_seed
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_design_qpcr_taqman_tp53_operation.json --output /tmp/gentle_tp53_taqman_design
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_cdna_qpcr_taqman_test_demo_direct.json --output /tmp/gentle_cdna_taqman_test
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_reports_list.json --output /tmp/gentle_primer_reports
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_report_show_demo.json --output /tmp/gentle_primer_report_show
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_report_export_demo.json --output /tmp/gentle_primer_report_export
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_qpcr_reports_list.json --output /tmp/gentle_qpcr_reports
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_qpcr_report_show_demo.json --output /tmp/gentle_qpcr_report_show
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_qpcr_report_export_demo.json --output /tmp/gentle_qpcr_report_export
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json --output /tmp/gentle_p53_family_anchor
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_tp73_variant1_trypsin_digest_gel.json --output /tmp/gentle_tp73_trypsin_digest_gel
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_protocol_cartoon_gibson_svg.json --output /tmp/gentle_gibson_graphics
@@ -246,9 +258,22 @@ Notes:
   `request_inspect_feature_expert_pgex_fasta_tfbs.json`, and
   `request_render_feature_expert_pgex_fasta_tfbs_svg.json` are follow-on TFBS
   routes after `request_render_svg_pgex_fasta_linear_tfbs.json`
-- `request_seed_qpcr_tp53_splicing.json` is a follow-on shell route on the
-  TP53 splicing example state; it emits the non-mutating
-  `gentle.qpcr_seed_request.v1` payload for the saved splicing group
+- `request_primers_preflight_auto.json`,
+  `request_seed_primers_tp53_splicing.json`,
+  `request_seed_qpcr_tp53_feature.json`,
+  `request_seed_qpcr_tp53_splicing.json`,
+  `request_seed_qpcr_tp53_splicing_specific_junction.json`,
+  `request_design_qpcr_taqman_tp53_operation.json`, and
+  `request_cdna_qpcr_taqman_test_demo_direct.json` are typed ClawBio routes
+  over the shared `primers ...` shell family; they cover backend readiness,
+  PCR/qPCR seeding, transcript-aware TaqMan seeding, direct qPCR design, and
+  direct cDNA qPCR assay testing without requiring callers to hand-write shell
+  strings
+- `request_primer_reports_list.json`, `request_primer_report_show_demo.json`,
+  `request_primer_report_export_demo.json`, `request_qpcr_reports_list.json`,
+  `request_qpcr_report_show_demo.json`, and
+  `request_qpcr_report_export_demo.json` cover the matching saved-report
+  lifecycle from ClawBio
 - `request_inspect_feature_expert_pgex_fasta_restriction_ecori.json` and
   `request_render_feature_expert_pgex_fasta_restriction_ecori_svg.json` are
   follow-on restriction expert routes after `request_workflow_file.json`
@@ -530,6 +555,11 @@ Guide-design capability status:
 Primer-design report capability status:
 
 - `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, `BuildTranscriptQpcrPanel`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), a non-mutating restriction-cloning handoff request seeder (`primers seed-restriction-cloning-handoff`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers for primer, qPCR, and restriction-cloning handoff reports. `--progress` now also streams `progress primers ...` lines for shared-shell primer/qPCR design commands, not only raw `op` / `workflow` JSON execution.
+- `gentle-cloning` ClawBio skill: exposes typed request modes over the same
+  shared PCR/qPCR/TaqMan surface, including Primer3/backend preflight, PCR and
+  qPCR seed helpers, `DesignPrimerPairs`/`DesignQpcrAssays` payload execution,
+  cDNA PCR/qPCR assay tests, primer/qPCR report list/show/export, restriction-
+  cloning PCR handoffs, vector suggestions, and PCR-family protocol cartoons.
 - `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `BuildTranscriptQpcrPanel`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 - `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`, `BuildTranscriptQpcrPanel`, `PrepareRestrictionCloningPcrHandoff`) plus shared-shell execution for report listing/show/export
 

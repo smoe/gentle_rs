@@ -393,6 +393,221 @@
       ]
     },
     {
+      "intent_id": "primer_preflight",
+      "description": "Check GENtle primer-design backend readiness, including the internal engine and optional Primer3/TaqMan-compatible design backend availability.",
+      "trigger_terms": [
+        "primer preflight",
+        "primer3 preflight",
+        "pcr backend status",
+        "qpcr backend status",
+        "taqman backend status",
+        "can gentle design primers"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_primers_preflight_auto.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_seed_from_feature",
+      "description": "Emit a non-mutating PCR/qPCR seed payload from one annotated feature so ClawBio can review or run the shared DesignPrimerPairs and DesignQpcrAssays operations.",
+      "trigger_terms": [
+        "seed primers from feature",
+        "seed pcr from feature",
+        "pcr seed from feature",
+        "primer seed feature",
+        "feature to pcr seed"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "primer-seed-from-feature",
+            "state_path": ".gentle_state.json",
+            "seq_id": "{seq_id}",
+            "source_feature_id": "{source_feature_id}"
+          },
+          "slots": {
+            "seq_id": {
+              "required": true,
+              "description": "GENtle source sequence id containing the selected feature"
+            },
+            "source_feature_id": {
+              "required": true,
+              "description": "Zero-based GENtle feature index to seed from"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_seed_from_splicing",
+      "description": "Emit a non-mutating PCR/qPCR seed payload from a splicing group, including shared pair-PCR and qPCR operation payloads.",
+      "trigger_terms": [
+        "seed primers from splicing",
+        "seed pcr from splicing",
+        "splicing to pcr seed",
+        "transcript pcr seed",
+        "primer seed splicing"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "primer-seed-from-splicing",
+            "state_path": ".gentle_state.json",
+            "seq_id": "{seq_id}",
+            "source_feature_id": "{source_feature_id}"
+          },
+          "slots": {
+            "seq_id": {
+              "required": true,
+              "description": "GENtle source sequence id containing transcript annotations"
+            },
+            "source_feature_id": {
+              "required": true,
+              "description": "Zero-based feature index selecting the splicing group"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_taqman_seed_from_feature",
+      "description": "Emit a probe-based qPCR/TaqMan seed payload from one annotated feature with GENtle's qPCR default constraints and protocol-cartoon metadata.",
+      "trigger_terms": [
+        "seed qpcr from feature",
+        "seed taqman from feature",
+        "feature to qpcr seed",
+        "feature to taqman assay",
+        "qpcr seed feature"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "qpcr-seed-from-feature",
+            "state_path": ".gentle_state.json",
+            "seq_id": "{seq_id}",
+            "source_feature_id": "{source_feature_id}"
+          },
+          "slots": {
+            "seq_id": {
+              "required": true,
+              "description": "GENtle source sequence id containing the selected feature"
+            },
+            "source_feature_id": {
+              "required": true,
+              "description": "Zero-based feature index to seed a probe-based qPCR assay from"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_taqman_seed_from_splicing",
+      "description": "Emit a transcript-aware probe-based qPCR/TaqMan seed payload from one splicing group, supporting shared-gene or transcript-distinguishing intent.",
+      "trigger_terms": [
+        "seed qpcr from splicing",
+        "seed taqman from splicing",
+        "shared transcript qpcr seed",
+        "transcript-aware qpcr seed",
+        "junction qpcr seed",
+        "exon junction taqman seed"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "qpcr-seed-from-splicing",
+            "state_path": ".gentle_state.json",
+            "seq_id": "{seq_id}",
+            "source_feature_id": "{source_feature_id}",
+            "qpcr_mode": "{qpcr_mode}",
+            "transcript_id": "{transcript_id}",
+            "specificity_evidence": "{specificity_evidence}"
+          },
+          "slots": {
+            "seq_id": {
+              "required": true,
+              "description": "GENtle source sequence id containing transcript annotations"
+            },
+            "source_feature_id": {
+              "required": true,
+              "description": "Zero-based feature index selecting the splicing group"
+            },
+            "qpcr_mode": {
+              "required": false,
+              "description": "shared_gene or distinguish_transcript; shared_gene is the usual default"
+            },
+            "transcript_id": {
+              "required": false,
+              "description": "Required when qpcr_mode is distinguish_transcript"
+            },
+            "specificity_evidence": {
+              "required": false,
+              "description": "junction_only, unique_exon_or_chain, or either_prefer_junction"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "pcr_primer_design_operation",
+      "description": "Run a supplied DesignPrimerPairs operation payload through GENtle's shared PCR primer-design command, optionally using Primer3.",
+      "trigger_terms": [
+        "run pcr primer design payload",
+        "design primers from json",
+        "design pcr primers from payload",
+        "execute designprimerpairs",
+        "primer design operation"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_design_pcr_primers_tp53_operation.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_taqman_design_operation",
+      "description": "Run a supplied DesignQpcrAssays or qPCR seed payload through GENtle's shared probe-based qPCR/TaqMan design command.",
+      "trigger_terms": [
+        "run qpcr design payload",
+        "run taqman design payload",
+        "design qpcr from json",
+        "design taqman assay",
+        "execute designqpcrassays",
+        "probe based qpcr design"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_design_qpcr_taqman_tp53_operation.json"
+        }
+      ]
+    },
+    {
       "intent_id": "transcript_qpcr_panel",
       "description": "Build a transcript qPCR panel table from a stored shared-gene qPCR report, reusing the shared reverse primer/probe and proposing per-transcript characteristic forward primers when possible.",
       "trigger_terms": [
@@ -457,6 +672,192 @@
           "kind": "skill_run",
           "skill": "gentle-cloning",
           "input": "examples/request_workflow_cdna_pcr_qpcr_assay_test_offline.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "cdna_pcr_direct_test",
+      "description": "Test a supplied forward/reverse PCR primer pair directly against transcript-derived cDNA templates from one splicing group.",
+      "trigger_terms": [
+        "direct cdna pcr test",
+        "test these cdna pcr primers",
+        "check cdna pcr primers",
+        "validate rt-pcr primers",
+        "rt pcr primer test"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_cdna_pcr_test_demo_direct.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "cdna_qpcr_taqman_direct_test",
+      "description": "Test supplied qPCR/TaqMan forward, reverse, and probe oligos directly against transcript-derived cDNA templates from one splicing group.",
+      "trigger_terms": [
+        "direct cdna qpcr test",
+        "direct taqman test",
+        "test these taqman primers",
+        "test these qpcr primers and probe",
+        "validate cdna taqman assay",
+        "check taqman probe"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_cdna_qpcr_taqman_test_demo_direct.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_report_list",
+      "description": "List stored PCR primer-design reports from the active GENtle state.",
+      "trigger_terms": [
+        "list primer reports",
+        "list pcr primer reports",
+        "show available primer reports",
+        "primer reports"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_primer_reports_list.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_report_show",
+      "description": "Show one stored PCR primer-design report from the active GENtle state.",
+      "trigger_terms": [
+        "show primer report",
+        "show pcr primer report",
+        "inspect primer report",
+        "primer report details"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_primer_report_show_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_report_export",
+      "description": "Export one stored PCR primer-design report to a bundle artifact.",
+      "trigger_terms": [
+        "export primer report",
+        "export pcr primer report",
+        "save primer report",
+        "primer report json"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_primer_report_export_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_report_list",
+      "description": "List stored qPCR/TaqMan design reports from the active GENtle state.",
+      "trigger_terms": [
+        "list qpcr reports",
+        "list taqman reports",
+        "show available qpcr reports",
+        "qpcr reports",
+        "taqman reports"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_qpcr_reports_list.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_report_show",
+      "description": "Show one stored qPCR/TaqMan design report from the active GENtle state.",
+      "trigger_terms": [
+        "show qpcr report",
+        "show taqman report",
+        "inspect qpcr report",
+        "taqman report details"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_qpcr_report_show_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_report_export",
+      "description": "Export one stored qPCR/TaqMan design report to a bundle artifact.",
+      "trigger_terms": [
+        "export qpcr report",
+        "export taqman report",
+        "save qpcr report",
+        "taqman report json"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_qpcr_report_export_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "pcr_protocol_cartoon",
+      "description": "Render one PCR-family protocol cartoon, including pair-PCR, tailed PCR, overlap-extension PCR, or probe-based qPCR/TaqMan strips.",
+      "trigger_terms": [
+        "pcr protocol cartoon",
+        "render pcr cartoon",
+        "qpcr protocol cartoon",
+        "taqman protocol cartoon",
+        "show taqman graphic",
+        "probe qpcr graphic"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "pcr-protocol-cartoon",
+            "protocol_id": "{protocol_id}",
+            "output_path": "{output_path}",
+            "expected_artifacts": [
+              "{output_path}"
+            ]
+          },
+          "slots": {
+            "protocol_id": {
+              "required": true,
+              "description": "PCR protocol id, for example pcr.assay.pair, pcr.assay.pair.with_tail, pcr.oe.substitution, or pcr.assay.qpcr"
+            },
+            "output_path": {
+              "required": true,
+              "description": "SVG path to render and bundle"
+            }
+          }
         }
       ]
     },
