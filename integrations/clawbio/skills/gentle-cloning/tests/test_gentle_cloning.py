@@ -4043,8 +4043,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
                 assert step["input_template"]["mode"] == "gene-protein-2d-gel"
                 assert step["input_template"]["gene_symbol"] == "{gene_symbol}"
                 assert step["slots"]["gene_symbol"]["required"] is True
-            else:
-                assert intent_id == "protein_residue_genomic_coordinates"
+            elif intent_id == "protein_residue_genomic_coordinates":
                 assert (
                     step["input_template"]["mode"]
                     == "protein-residue-genomic-coordinates"
@@ -4056,6 +4055,13 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
                 )
                 assert step["slots"]["seq_id"]["required"] is True
                 assert step["slots"]["residue_start_1based"]["required"] is True
+            else:
+                assert intent_id == "telegram_guide_isoforms_gene"
+                assert step["input_template"]["mode"] == "shell"
+                assert step["input_template"]["shell_line"] == (
+                    "services guide --channel telegram --section isoforms --gene {gene_symbol}"
+                )
+                assert step["slots"]["gene_symbol"]["required"] is True
         else:
             assert route["plan"] == [
                 {
