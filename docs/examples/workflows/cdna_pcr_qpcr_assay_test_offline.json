@@ -1,0 +1,56 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "cdna_pcr_qpcr_assay_test_offline",
+  "title": "cDNA PCR/qPCR assay test from transcript-derived templates (offline)",
+  "summary": "Loads a tiny synthetic two-exon GenBank locus, derives the transcript cDNA template from its mRNA annotation, tests a supplied PCR primer pair, and tests the same qPCR primers with an internal junction-spanning probe. This is the ClawBio-safe smoke path for supplied cDNA PCR/qPCR assays.",
+  "test_mode": "always",
+  "required_files": [
+    "docs/examples/assets/cdna_assay_demo.gb"
+  ],
+  "tags": [
+    "cdna",
+    "pcr",
+    "qpcr",
+    "assay-test",
+    "offline",
+    "clawbio"
+  ],
+  "workflow": {
+    "run_id": "example_cdna_pcr_qpcr_assay_test_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "docs/examples/assets/cdna_assay_demo.gb",
+          "as_id": "cdna_assay_demo"
+        }
+      },
+      {
+        "TestCdnaPcr": {
+          "seq_id": "cdna_assay_demo",
+          "source_feature_id": 2,
+          "forward_primer": "AAACCC",
+          "reverse_primer": "CCCAAA",
+          "transcript_id": "TX1",
+          "min_amplicon_bp": 10,
+          "max_amplicon_bp": 50,
+          "require_3prime_exact_bases": 4,
+          "path": "artifacts/cdna_assay_demo.pcr_report.json"
+        }
+      },
+      {
+        "TestCdnaQpcr": {
+          "seq_id": "cdna_assay_demo",
+          "source_feature_id": 2,
+          "forward_primer": "AAACCC",
+          "reverse_primer": "CCCAAA",
+          "probe": "GGGCCC",
+          "transcript_id": "TX1",
+          "min_amplicon_bp": 10,
+          "max_amplicon_bp": 50,
+          "require_3prime_exact_bases": 4,
+          "path": "artifacts/cdna_assay_demo.qpcr_report.json"
+        }
+      }
+    ]
+  }
+}

@@ -39,6 +39,18 @@ syntax.
 - Folder note:
   - `docs/examples/plans/README.md`
 
+## Example assets
+
+- `docs/examples/assets/cdna_assay_demo.gb`
+  - synthetic/hand-authored 32 bp two-exon GenBank locus for deterministic
+    cDNA PCR/qPCR assay-test examples
+  - deterministic recreation: use the committed file content directly; it is
+    not derived from an upstream biological accession
+  - used by:
+    `docs/examples/workflows/cdna_pcr_qpcr_assay_test_offline.json` and the
+    ClawBio request
+    `integrations/clawbio/skills/gentle-cloning/examples/request_workflow_cdna_pcr_qpcr_assay_test_offline.json`
+
 ## Generate adapter snippets
 
 Generate Markdown snippets for CLI/shell/JS/Lua:

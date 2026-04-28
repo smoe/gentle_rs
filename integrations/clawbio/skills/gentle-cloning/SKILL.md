@@ -7,13 +7,14 @@ description: >-
   sequence-grounded mechanistic follow-up, assay-planning artifacts,
   stateless sequence inspection, reusable local reference-preparation
   workflows, transcript-native protein-residue-to-genomic-codon mapping,
+  transcript-derived cDNA PCR/qPCR assay testing,
   and transcript-native protein-gel / protein 2D-gel / protease digest
   figures for bundled example loci, parameterized Ensembl genes, and Ensembl
   gene panels.
 version: 0.1.0
 author: GENtle project
 license: MIT
-    tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest]
+    tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, cdna, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest]
 metadata:
   openclaw:
     requires:
@@ -37,6 +38,11 @@ metadata:
       - design pcr primers
       - pcr constraints
       - qpcr design
+      - cdna pcr
+      - cdna qpcr
+      - test cdna pcr
+      - test cdna qpcr
+      - qpcr assay test
       - analyze dna sequence
       - restriction sites
       - tfbs score tracks
@@ -114,7 +120,7 @@ ClawBio shared chat adapters should consume `INTENTS.json` first. That
 installed-database/resource, residue-to-genome codon mapping, Telegram guide
 overview/section navigation, simple PCR primer-design, parameterized Ensembl
 gene 2D-gel, Ensembl gene-panel 1D protein-gel, bundled example protein-gel,
-bundled example 2D-gel, Ensembl gene 2D-gel example, trypsin-digest,
+bundled example 2D-gel, cDNA PCR/qPCR assay testing, Ensembl gene 2D-gel example, trypsin-digest,
 capability, skill-info, and explicit-demo wording to concrete
 `examples/*.json` requests.
 Descriptor-only skill directories are discoverable, but execution still
@@ -179,6 +185,9 @@ capability-led language:
   - inspect pasted DNA fragments directly for restriction sites or TFBS hits
     without first creating project-state records when the task is purely
     read-only,
+  - test supplied PCR and qPCR oligos against transcript-derived cDNA
+    templates and export per-transcript product/hit reports with exon-junction
+    provenance,
   - extract loci/genes/regions from prepared references,
   - inspect annotations, isoforms, splicing structure, TFBS/JASPAR hits, and
     restriction-enzyme features,

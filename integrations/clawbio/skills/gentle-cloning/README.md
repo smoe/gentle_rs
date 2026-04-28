@@ -26,7 +26,7 @@ could be used.
 ## Logical capability split
 
 The runtime alias is still `gentle-cloning`, but the intended ClawBio-facing
-surface is now eight explicit sub-capabilities:
+surface is now nine explicit sub-capabilities:
 
 - runtime and resource readiness
 - genomic context
@@ -34,6 +34,7 @@ surface is now eight explicit sub-capabilities:
 - restriction analysis
 - splicing expert
 - isoform architecture
+- cDNA PCR/qPCR assay testing
 - protein isoform gel / 2D-gel rendering
 - experimental follow-up
 
@@ -53,7 +54,7 @@ free text.
 The immediate chat-adapter routing layer is `INTENTS.json`. It maps broad user
 wording for runtime version, service readiness, installed databases/resources,
 residue-to-genome codon mapping, Telegram guide overview/sections, TP73
-protein gel, TP73 2D gel, trypsin-digest gel, capabilities, skill info, and
+protein gel, TP73 2D gel, cDNA PCR/qPCR assay testing, trypsin-digest gel, capabilities, skill info, and
 explicit demo requests to stable `examples/*.json` payloads. Descriptor-only skill directories are
 discoverable by the current ClawBio planner, but execution still requires
 registering `gentle-cloning` in ClawBio's top-level `SKILLS` table.
@@ -84,6 +85,9 @@ intended framing is:
 - GENtle does not prove causality by itself.
 - GENtle can also inspect pasted DNA fragments directly for restriction sites
   or TFBS hits without first creating project state when the task is read-only.
+- GENtle can test supplied PCR and qPCR oligos against transcript-derived cDNA
+  templates, returning per-transcript product/hit reports with exon-junction
+  provenance instead of treating cDNA assays as genomic-only PCR.
 - GENtle's TFBS surface now also includes continuous score-track views and
   JASPAR motif-presentation reports, not only thresholded annotation hits.
 - GENtle can bootstrap reusable local Ensembl/reference assets, including
@@ -137,6 +141,9 @@ skill cannot know. Run the status routes:
 - `request_workflow_simple_pcr_primer_design_offline.json` for the smallest
   safe PCR primer-design demo with explicit ROI/window/amplicon constraints,
   a PCR explanation SVG, and a ranked primer report
+- `request_workflow_cdna_pcr_qpcr_assay_test_offline.json` for the smallest
+  transcript-derived cDNA PCR/qPCR assay-test demo with exported PCR and qPCR
+  product reports
 - `resources status` for integrated JASPAR/REBASE/ATtRACT-style resources
 - `genomes status ...` or `genomes list` for reference-genome catalogs/caches
 - `helpers status ...` or `helpers list` for helper/vector assets

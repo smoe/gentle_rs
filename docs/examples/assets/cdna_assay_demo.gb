@@ -1,0 +1,21 @@
+LOCUS       CDNA_ASSAY_DEMO          32 bp    DNA     linear   SYN 28-APR-2026
+DEFINITION  Synthetic two-exon locus for deterministic cDNA PCR/qPCR assay tests.
+ACCESSION   CDNAASSAYDEMO
+VERSION     CDNAASSAYDEMO.1
+KEYWORDS    .
+SOURCE      synthetic DNA construct
+  ORGANISM  synthetic DNA construct
+            other sequences; artificial sequences.
+FEATURES             Location/Qualifiers
+     source          1..32
+                     /organism="synthetic DNA construct"
+                     /mol_type="genomic DNA"
+     gene            1..32
+                     /gene="TEST1"
+     mRNA            join(1..12,21..32)
+                     /gene="TEST1"
+                     /transcript_id="TX1"
+                     /product="synthetic cDNA assay transcript"
+ORIGIN
+        1 atgaaacccg ggtttttttt cccaaatttg gg
+//

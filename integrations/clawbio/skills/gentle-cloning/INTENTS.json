@@ -393,6 +393,28 @@
       ]
     },
     {
+      "intent_id": "cdna_pcr_qpcr_assay_test",
+      "description": "Run the canonical offline cDNA PCR/qPCR assay-test workflow that checks supplied primers and a probe against transcript-derived cDNA templates.",
+      "trigger_terms": [
+        "test cdna pcr",
+        "test cdna qpcr",
+        "cdna pcr test",
+        "cdna qpcr test",
+        "test qpcr assay",
+        "qpcr assay test",
+        "cDNA PCR qPCR",
+        "transcript cdna assay"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_cdna_pcr_qpcr_assay_test_offline.json"
+        }
+      ]
+    },
+    {
       "intent_id": "ensembl_gene_panel_protein_gel",
       "description": "Render the guide-ready PATZ1/TP73/TP53/TP63/SP1/BACH2 Ensembl isoform molecular-weight gel.",
       "trigger_terms": [

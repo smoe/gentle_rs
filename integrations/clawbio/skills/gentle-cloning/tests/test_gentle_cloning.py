@@ -3156,6 +3156,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             300,
         ),
+        "request_workflow_cdna_pcr_qpcr_assay_test_offline.json": (
+            "workflow",
+            None,
+            300,
+        ),
         "request_workflow_gene_panel_isoform_protein_gel_ensembl.json": (
             "workflow",
             None,
@@ -3471,6 +3476,17 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["expected_artifacts"] == [
                 "artifacts/simple_pcr_demo_primers.protocol.svg",
                 "artifacts/simple_pcr_demo_primers.report.json"
+            ]
+            assert payload["timeout_secs"] == 300
+        if name == "request_workflow_cdna_pcr_qpcr_assay_test_offline.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "docs/examples/workflows/cdna_pcr_qpcr_assay_test_offline.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "artifacts/cdna_assay_demo.pcr_report.json",
+                "artifacts/cdna_assay_demo.qpcr_report.json",
             ]
             assert payload["timeout_secs"] == 300
         if name == "request_workflow_gene_panel_isoform_protein_gel_ensembl.json":
@@ -3824,6 +3840,43 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
         "exports/tp53_tp53_201.splicing.expert.svg"
     )
 
+    cdna_workflow_definition = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            .parent.parent
+            / "docs"
+            / "examples"
+            / "workflows"
+            / "cdna_pcr_qpcr_assay_test_offline.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert cdna_workflow_definition["id"] == "cdna_pcr_qpcr_assay_test_offline"
+    assert cdna_workflow_definition["required_files"] == [
+        "docs/examples/assets/cdna_assay_demo.gb"
+    ]
+    cdna_ops = cdna_workflow_definition["workflow"]["ops"]
+    assert cdna_ops[0]["LoadFile"] == {
+        "path": "docs/examples/assets/cdna_assay_demo.gb",
+        "as_id": "cdna_assay_demo",
+    }
+    assert cdna_ops[1]["TestCdnaPcr"]["seq_id"] == "cdna_assay_demo"
+    assert cdna_ops[1]["TestCdnaPcr"]["source_feature_id"] == 2
+    assert cdna_ops[1]["TestCdnaPcr"]["forward_primer"] == "AAACCC"
+    assert cdna_ops[1]["TestCdnaPcr"]["reverse_primer"] == "CCCAAA"
+    assert cdna_ops[1]["TestCdnaPcr"]["transcript_id"] == "TX1"
+    assert cdna_ops[1]["TestCdnaPcr"]["path"] == (
+        "artifacts/cdna_assay_demo.pcr_report.json"
+    )
+    assert cdna_ops[2]["TestCdnaQpcr"]["seq_id"] == "cdna_assay_demo"
+    assert cdna_ops[2]["TestCdnaQpcr"]["source_feature_id"] == 2
+    assert cdna_ops[2]["TestCdnaQpcr"]["forward_primer"] == "AAACCC"
+    assert cdna_ops[2]["TestCdnaQpcr"]["reverse_primer"] == "CCCAAA"
+    assert cdna_ops[2]["TestCdnaQpcr"]["probe"] == "GGGCCC"
+    assert cdna_ops[2]["TestCdnaQpcr"]["transcript_id"] == "TX1"
+    assert cdna_ops[2]["TestCdnaQpcr"]["path"] == (
+        "artifacts/cdna_assay_demo.qpcr_report.json"
+    )
+
     bed_workflow_payload = json.loads(
         (examples_dir / "request_export_bed_pgex_fasta_tfbs_restriction.json").read_text(
             encoding="utf-8"
@@ -3870,6 +3923,7 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "mechanistic follow-up" in description
     assert "installed-runtime and resource-readiness checks" in description
     assert "simple PCR primer-design reports" in description
+    assert "cDNA PCR/qPCR assay-test reports" in description
     assert "reusable local reference assets" in description
     assert "protease-digest figures" in description
     assert "skill-intent descriptor" in description
@@ -3916,6 +3970,9 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "simple pcr" in trigger_keywords
     assert "design pcr primers" in trigger_keywords
     assert "pcr constraints" in trigger_keywords
+    assert "test cdna pcr" in trigger_keywords
+    assert "test cdna qpcr" in trigger_keywords
+    assert "qpcr assay test" in trigger_keywords
     assert "database status" in trigger_keywords
     assert "installed databases" in trigger_keywords
     assert "resources status" in trigger_keywords
@@ -3969,6 +4026,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "demo_isoform_protein_gel",
         "demo_isoform_protein_2d_gel",
         "simple_pcr_primer_design",
+        "cdna_pcr_qpcr_assay_test",
         "ensembl_gene_panel_protein_gel",
         "demo_ensembl_gene_protein_2d_gel",
         "demo_trypsin_digest_gel",
@@ -4009,6 +4067,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         ),
         "simple_pcr_primer_design": (
             "examples/request_workflow_simple_pcr_primer_design_offline.json"
+        ),
+        "cdna_pcr_qpcr_assay_test": (
+            "examples/request_workflow_cdna_pcr_qpcr_assay_test_offline.json"
         ),
         "ensembl_gene_panel_protein_gel": (
             "examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json"
@@ -4108,6 +4169,8 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     ]
     assert "simple pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
     assert "continue pcr" in routes["simple_pcr_primer_design"]["trigger_terms"]
+    assert "test cdna pcr" in routes["cdna_pcr_qpcr_assay_test"]["trigger_terms"]
+    assert "test cdna qpcr" in routes["cdna_pcr_qpcr_assay_test"]["trigger_terms"]
     assert "gene panel protein gel" in routes["ensembl_gene_panel_protein_gel"][
         "trigger_terms"
     ]

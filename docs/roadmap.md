@@ -1593,6 +1593,12 @@ order. Durable architecture constraints and decisions remain in
           limits, runs `DesignPrimerPairs`, and exports both the
           `pcr.assay.pair` protocol SVG and the persisted
           `gentle.primer_design_report.v1`
+        - the first ClawBio-safe cDNA assay-test path is now workflow-owned:
+          `cdna_pcr_qpcr_assay_test_offline` loads a tiny synthetic two-exon
+          GenBank locus, derives transcript-native cDNA templates, runs
+          `TestCdnaPcr` and `TestCdnaQpcr` on supplied oligos, and exports
+          deterministic PCR/qPCR assay-test reports without requiring any
+          external genome/protein evidence
         - shared TF query resolution is now in place for CLI/ClawBio-facing
           promoter work too:
           aliases such as `OCT4`, built-in groups such as `Yamanaka factors` /
@@ -1814,6 +1820,10 @@ order. Durable architecture constraints and decisions remain in
       mapped source ranges, junction labels, and junction-spanning flags so
       downstream tools can explain whether a PCR/qPCR assay detects one
       isoform, many isoforms, or no compatible cDNA product
+    - canonical example coverage now includes
+      `cdna_pcr_qpcr_assay_test_offline` plus a ClawBio request/intent route,
+      and workflow-example execution rewrites the optional report paths so the
+      same example is safe in per-run output directories
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
     including explicit side-sequence constraints and pair constraints (no raw
     JSON required for common interactive use)
