@@ -475,6 +475,22 @@ impl WindowDna {
     }
 
     #[cfg(test)]
+    pub(crate) fn seed_splicing_expert_window_for_tests(
+        &mut self,
+        seq_id: &str,
+        feature_id: usize,
+        group_label: &str,
+    ) {
+        self.main_area
+            .seed_splicing_expert_window_for_tests(seq_id, feature_id, group_label);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn splicing_expert_focus_requested_for_tests(&self) -> bool {
+        self.main_area.splicing_expert_focus_requested_for_tests()
+    }
+
+    #[cfg(test)]
     pub(crate) fn rna_read_mapping_focus_requested_for_tests(&self) -> bool {
         self.main_area.rna_read_mapping_focus_requested_for_tests()
     }

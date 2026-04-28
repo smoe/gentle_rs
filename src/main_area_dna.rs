@@ -6661,6 +6661,30 @@ mod tests {
     }
 
     #[test]
+    fn feature_tree_model_keeps_gene_rows_splicing_action_capable() {
+        let mut dna = DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAA").expect("sequence");
+        dna.features_mut().push(make_feature(
+            "gene",
+            vec![("gene", "TP73"), ("label", "TP73")],
+        ));
+        let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), None);
+        area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
+
+        let key = area.current_feature_tree_cache_key(None);
+        let model = area.build_feature_tree_model(&key);
+        let gene_group = model
+            .groups
+            .iter()
+            .find(|group| group.kind.eq_ignore_ascii_case("gene"))
+            .expect("gene group");
+
+        assert_eq!(gene_group.ungrouped_entry_indices, vec![0]);
+        let entry = &gene_group.entries[gene_group.ungrouped_entry_indices[0]];
+        assert!(entry.disable_grouping);
+        assert!(entry.supports_splicing_expert);
+    }
+
+    #[test]
     fn derive_regulatory_feature_grouping_groups_enhancers_by_marker_and_strips_prefix() {
         let feature = make_feature(
             "regulatory",
@@ -13145,6 +13169,7 @@ pub struct MainAreaDna {
     show_dotplot_window: bool,
     show_splicing_expert_window: bool,
     splicing_expert_window_pending_initial_render: bool,
+    splicing_expert_window_focus_requested: bool,
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<Arc<SplicingExpertView>>,
     splicing_expert_selected_transcript_feature_id: Option<usize>,
@@ -13790,6 +13815,7 @@ impl MainAreaDna {
             show_dotplot_window: false,
             show_splicing_expert_window: false,
             splicing_expert_window_pending_initial_render: false,
+            splicing_expert_window_focus_requested: false,
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
             splicing_expert_selected_transcript_feature_id: None,
@@ -13896,6 +13922,43 @@ impl MainAreaDna {
             junctions: vec![],
             events: vec![],
         }));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn seed_splicing_expert_window_for_tests(
+        &mut self,
+        seq_id: &str,
+        feature_id: usize,
+        group_label: &str,
+    ) {
+        self.show_splicing_expert_window = true;
+        self.splicing_expert_window_pending_initial_render = false;
+        self.splicing_expert_window_focus_requested = false;
+        self.splicing_expert_window_feature_id = Some(feature_id);
+        self.splicing_expert_window_view = Some(Arc::new(SplicingExpertView {
+            seq_id: seq_id.to_string(),
+            target_feature_id: feature_id,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
+            group_label: group_label.to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: self.dna.read().map(|dna| dna.len().max(1)).unwrap_or(1),
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: "test".to_string(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            intron_signals: vec![],
+            junctions: vec![],
+            events: vec![],
+        }));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn splicing_expert_focus_requested_for_tests(&self) -> bool {
+        self.splicing_expert_window_focus_requested
     }
 
     #[cfg(test)]
@@ -26253,6 +26316,7 @@ impl MainAreaDna {
             return;
         };
         let pending_initial_render = self.splicing_expert_window_pending_initial_render;
+        let focus_requested = self.splicing_expert_window_focus_requested;
         self.log_splicing_expert_status(&view, "render begin", pending_initial_render);
         let title = Self::splicing_expert_window_title(&view);
         let viewport_id = Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id);
@@ -26265,44 +26329,15 @@ impl MainAreaDna {
             .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::EmbeddedWindow {
-                Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(
+                self.render_splicing_expert_embedded_window_shell(
                     ctx,
                     title.as_str(),
+                    &view,
+                    default_size,
+                    content_min_size,
+                    pending_initial_render,
+                    focus_requested,
                 );
-                let mut open = self.show_splicing_expert_window;
-                egui::Window::new(title.clone())
-                    .id(egui::Id::new(format!(
-                        "splicing_expert_window_embedded_{}_{}",
-                        view.seq_id, view.target_feature_id
-                    )))
-                    .open(&mut open)
-                    .resizable(true)
-                    .default_size(default_size)
-                    .show(ctx, |ui| {
-                        let backdrop_settings = current_window_backdrop_settings();
-                        paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                        egui::ScrollArea::both()
-                            .id_salt(format!(
-                                "splicing_expert_scroll_embedded_{}_{}",
-                                view.seq_id, view.target_feature_id
-                            ))
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                    ui,
-                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                                );
-                                ui.set_min_size(content_min_size);
-                                self.render_splicing_expert_window_body(
-                                    ctx,
-                                    ui,
-                                    &view,
-                                    "splicing_window_embedded",
-                                    pending_initial_render,
-                                );
-                            });
-                    });
-                self.show_splicing_expert_window = open;
                 return;
             }
 
@@ -26335,6 +26370,10 @@ impl MainAreaDna {
                 self.show_splicing_expert_window = false;
             }
         });
+        if self.splicing_expert_window_focus_requested {
+            self.focus_splicing_expert_window_view(ctx, &view);
+            self.splicing_expert_window_focus_requested = false;
+        }
     }
 
     fn render_splicing_expert_window_body(
@@ -51334,6 +51373,15 @@ impl MainAreaDna {
                             ui.horizontal(|ui| {
                                 let button = egui::Button::new(button_text).selected(selected);
                                 let mut response = ui.add(button);
+                                let tail_width = ui.available_width().max(0.0);
+                                if tail_width > 1.0 {
+                                    let tail_height =
+                                        response.rect.height().max(ui.spacing().interact_size.y);
+                                    response = response.union(ui.allocate_response(
+                                        egui::vec2(tail_width, tail_height),
+                                        egui::Sense::click(),
+                                    ));
+                                }
                                 let mut hover_lines: Vec<String> = Vec::new();
                                 let feature_label_with_range = if entry.range_label.is_empty() {
                                     entry.feature_label_full.clone()

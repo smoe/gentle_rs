@@ -97,12 +97,13 @@ macOS auxiliary-window stability note:
   those stale area states both in the hosted help viewport and in the main/root
   workspace so stray detached help title bars self-heal on reopen.
 - Hosted DNA sequence windows and hosted auxiliary workspaces such as
-  RNA-read Mapping now also clear older legacy title-derived embedded layers,
-  so reopening those windows no longer leaves detached non-functional title
-  bars behind.
+  Splicing Expert and RNA-read Mapping now also clear older legacy
+  title-derived embedded layers, so reopening those windows no longer leaves
+  detached non-functional title bars behind.
 - The root hosted workspace also checks open auxiliary workspace titles and
   clears stale title-derived layers there, covering cases where RNA-read
-  Mapping is opened or re-owned from inside a DNA sequence viewer.
+  Mapping or Splicing Expert is opened or re-owned from inside a DNA sequence
+  viewer.
 - The hosted RNA-read Mapping shell now renders its workspace intro only once,
   and short saved-report preview tables expand a little further before opening
   an inner vertical scrollbar so wheel scrolling is less likely to get trapped
@@ -123,9 +124,9 @@ macOS auxiliary-window stability note:
   viewport is registered, so opening a sequence from a project/lineage view
   should raise that DNA viewer instead of leaving it behind older windows.
 - Hosted auxiliary workspaces opened from a sequence window, including
-  RNA-read Mapping, route `Windows` menu focus through the owning sequence
-  window so the auxiliary workspace is raised above the large DNA viewer
-  instead of remaining hidden behind it.
+  Splicing Expert and RNA-read Mapping, route `Windows` menu focus through the
+  owning sequence window so the auxiliary workspace is raised above the large
+  DNA viewer instead of remaining hidden behind it.
 
 ## Configuration Window
 
@@ -464,7 +465,8 @@ Feature tree grouping:
   text panel.
 - When multi-selection is active, the feature-tree header shows a
   `Multi-select active (N)` chip and a one-click `Clear multi-select` action.
-- Right-clicking a feature row opens per-feature actions:
+- Right-clicking a feature row opens per-feature actions; the whole visible
+  row, not only the text label, accepts the context menu gesture:
   - `Focus feature (current zoom)`
   - `Fit feature in view` (linear map mode)
   - `Use as promoter anchor (Engine Ops)` for `mRNA`/`transcript` rows

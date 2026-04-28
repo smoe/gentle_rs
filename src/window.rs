@@ -229,6 +229,27 @@ impl Window {
     }
 
     #[cfg(test)]
+    pub(crate) fn seed_splicing_expert_window_for_tests(
+        &mut self,
+        seq_id: &str,
+        feature_id: usize,
+        group_label: &str,
+    ) {
+        match self {
+            Self::Dna(window) => {
+                window.seed_splicing_expert_window_for_tests(seq_id, feature_id, group_label)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn splicing_expert_focus_requested_for_tests(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.splicing_expert_focus_requested_for_tests(),
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn rna_read_mapping_focus_requested_for_tests(&self) -> bool {
         match self {
             Self::Dna(window) => window.rna_read_mapping_focus_requested_for_tests(),

@@ -6159,6 +6159,13 @@ impl MainAreaDna {
         format!("Splicing Expert - {} ({})", view.group_label, view.seq_id)
     }
 
+    pub(super) fn splicing_expert_embedded_window_id(view: &SplicingExpertView) -> egui::Id {
+        egui::Id::new(format!(
+            "splicing_expert_window_embedded_{}_{}",
+            view.seq_id, view.target_feature_id
+        ))
+    }
+
     pub(super) fn rna_read_mapping_viewport_id(
         seq_id: &str,
         feature_id: usize,
@@ -6197,6 +6204,53 @@ impl MainAreaDna {
         } else {
             false
         }
+    }
+
+    pub(super) fn render_splicing_expert_embedded_window_shell(
+        &mut self,
+        ctx: &egui::Context,
+        title: &str,
+        view: &SplicingExpertView,
+        default_size: Vec2,
+        content_min_size: Vec2,
+        pending_initial_render: bool,
+        focus_requested: bool,
+    ) {
+        let mut open = self.show_splicing_expert_window;
+        Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(ctx, title);
+        let mut window = egui::Window::new(title)
+            .id(Self::splicing_expert_embedded_window_id(view))
+            .open(&mut open)
+            .resizable(true)
+            .default_size(default_size);
+        if focus_requested {
+            window = window.order(egui::Order::Foreground);
+        }
+        window.show(ctx, |ui| {
+            let backdrop_settings = current_window_backdrop_settings();
+            paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+            egui::ScrollArea::both()
+                .id_salt(format!(
+                    "splicing_expert_scroll_embedded_{}_{}",
+                    view.seq_id, view.target_feature_id
+                ))
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    ui.set_min_size(content_min_size);
+                    self.render_splicing_expert_window_body(
+                        ctx,
+                        ui,
+                        view,
+                        "splicing_window_embedded",
+                        pending_initial_render,
+                    );
+                });
+        });
+        self.show_splicing_expert_window = open;
     }
 
     pub(super) fn rna_read_mapping_embedded_window_id(view: &SplicingExpertView) -> egui::Id {
@@ -6615,12 +6669,14 @@ impl MainAreaDna {
                 if viewport_id
                     == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
                 {
+                    let order = if self.splicing_expert_window_focus_requested {
+                        egui::Order::Foreground
+                    } else {
+                        egui::Order::Middle
+                    };
                     return Some(egui::LayerId::new(
-                        egui::Order::Middle,
-                        egui::Id::new(format!(
-                            "splicing_expert_window_embedded_{}_{}",
-                            view.seq_id, view.target_feature_id
-                        )),
+                        order,
+                        Self::splicing_expert_embedded_window_id(view),
                     ));
                 }
             }
@@ -6663,6 +6719,16 @@ impl MainAreaDna {
     }
 
     pub(crate) fn request_focus_auxiliary_window(&mut self, viewport_id: egui::ViewportId) -> bool {
+        if self.show_splicing_expert_window {
+            if let Some(view) = self.splicing_expert_window_view.as_ref() {
+                if viewport_id
+                    == Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id)
+                {
+                    self.splicing_expert_window_focus_requested = true;
+                    return true;
+                }
+            }
+        }
         if self.show_rna_read_mapping_window {
             if let Some(view) = self.rna_read_mapping_window_view.as_ref() {
                 if viewport_id

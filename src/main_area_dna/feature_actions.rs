@@ -54,6 +54,7 @@ impl MainAreaDna {
         self.splicing_expert_window_feature_id = Some(view.target_feature_id);
         self.splicing_expert_window_view = Some(Arc::new(view.clone()));
         self.splicing_expert_window_pending_initial_render = true;
+        self.splicing_expert_window_focus_requested = true;
         self.show_splicing_expert_window = true;
         self.log_splicing_expert_status(view, "window state stored", true);
     }
@@ -69,8 +70,18 @@ impl MainAreaDna {
             "focus requested",
             self.splicing_expert_window_pending_initial_render,
         );
+        self.splicing_expert_window_focus_requested = true;
+        if ctx.embed_viewports() {
+            let embedded_window_id = Self::splicing_expert_embedded_window_id(view);
+            ctx.move_to_top(egui::LayerId::new(
+                egui::Order::Foreground,
+                embedded_window_id,
+            ));
+            ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, embedded_window_id));
+        }
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+        ctx.request_repaint();
     }
 
     pub(super) fn open_splicing_expert_for_feature(

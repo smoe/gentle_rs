@@ -51318,6 +51318,45 @@ mod tests {
     }
 
     #[test]
+    fn focusing_splicing_expert_from_windows_menu_queues_owner_and_child_focus() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+        let mut window = Window::new_dna(dna, "seq1".to_string(), app.engine.clone());
+        window.seed_splicing_expert_window_for_tests("seq1", 17, "TP73");
+        let owner_viewport_id = app.register_window(window);
+        app.pending_focus_viewports.clear();
+        let splicing_viewport_id =
+            egui::ViewportId::from_hash_of(("splicing_expert_viewport", "seq1", 17usize));
+
+        app.focus_window_viewport(&ctx, splicing_viewport_id);
+
+        assert!(
+            app.pending_focus_viewports.contains(&owner_viewport_id),
+            "focusing the Splicing Expert menu item should also raise its DNA host"
+        );
+        let window = app
+            .windows
+            .get(&owner_viewport_id)
+            .expect("registered sequence owner");
+        assert!(
+            window
+                .read()
+                .expect("window")
+                .splicing_expert_focus_requested_for_tests(),
+            "the Splicing Expert workspace should render in foreground order on the next frame"
+        );
+        assert_eq!(
+            app.embedded_window_layer_id_for_viewport(splicing_viewport_id),
+            Some(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("splicing_expert_window_embedded_seq1_17"),
+            ))
+        );
+    }
+
+    #[test]
     fn detached_rna_mapping_host_is_removed_when_visible_window_owns_same_workspace() {
         let ctx = egui::Context::default();
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
@@ -51351,7 +51390,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_auxiliary_workspace_title_area_in_root_context_is_reset_when_detected() {
+    fn stale_rna_mapping_title_area_in_root_context_is_reset_when_detected() {
         let ctx = egui::Context::default();
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
         let mut app = GENtleApp::default();
@@ -51366,6 +51405,30 @@ mod tests {
         ctx.begin_pass(egui::RawInput::default());
         egui::Window::new(title).show(&ctx, |ui| {
             ui.label("legacy root-hosted RNA-read Mapping title shell");
+        });
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+
+        assert!(app.reset_root_auxiliary_areas_if_legacy_title_layers_visible(&ctx));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn stale_splicing_expert_title_area_in_root_context_is_reset_when_detected() {
+        let ctx = egui::Context::default();
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+
+        let mut visible = Window::new_dna(dna, "seq1".to_string(), app.engine.clone());
+        visible.seed_splicing_expert_window_for_tests("seq1", 17, "TP73");
+        app.register_window(visible);
+
+        let title = "Splicing Expert - TP73 (seq1)";
+        let stale_title_layer_id = GENtleApp::stale_hosted_window_title_layer_id(title);
+
+        ctx.begin_pass(egui::RawInput::default());
+        egui::Window::new(title).show(&ctx, |ui| {
+            ui.label("legacy root-hosted Splicing Expert title shell");
         });
         assert!(ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
 
