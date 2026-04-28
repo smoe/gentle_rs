@@ -1817,9 +1817,14 @@ order. Durable architecture constraints and decisions remain in
       cDNA templates derived from the selected splicing group rather than a
       genomic-only interval
     - shared-shell/direct-CLI routes
-      `primers test-cdna-pcr` and `primers test-cdna-qpcr` expose the same
-      non-mutating `gentle.cdna_assay_test_report.v1` payload for GUI,
-      ClawBio/OpenClaw, JS/Lua, and agent callers
+      `primers test-cdna-pcr`, `primers test-cdna-qpcr`, and
+      `primers test-cdna-qpcr-fasta` expose the same non-mutating
+      `gentle.cdna_assay_test_report.v1` payload for GUI, ClawBio/OpenClaw,
+      JS/Lua, and agent callers
+    - `TestCdnaQpcrFasta` streams one or more transcript FASTA/FASTA.gz files
+      directly, including complete Ensembl cDNA plus ncRNA catalogs, while
+      reusing the same IUPAC-aware primer/probe/product scanner as
+      transcript-derived cDNA testing
     - reports carry transcript/product status, local cDNA hit coordinates,
       mapped source ranges, junction labels, and junction-spanning flags so
       downstream tools can explain whether a PCR/qPCR assay detects one
@@ -1833,6 +1838,9 @@ order. Durable architecture constraints and decisions remain in
         `SELF_ANY`/`SELF_END` and `COMPL_ANY`/`COMPL_END` vocabulary while
         keeping GENtle's exact-run implementation independent from Primer3
         source code
+    - external FASTA screens count all scanned records but keep returned JSON
+      compact by reporting detected transcript rows only unless a specific
+      `transcript_id` is requested
     - canonical example coverage now includes
       `cdna_pcr_qpcr_assay_test_offline` plus a ClawBio request/intent route,
       and workflow-example execution rewrites the optional report paths so the
@@ -5673,6 +5681,13 @@ Post-baseline follow-ups:
     `similarity_operational_risk_context` facts/decisions so PCR/slippage,
     mapping ambiguity, inversion risk, and cloning-instability review can stay
     inspectable without flooding the sequence window with raw similarity hits.
+  - Done (2026-04-28, rmsk repeat display prep): the shared display layer now
+    recognizes RepeatMasker/UCSC `rmsk`-style repeat annotations through
+    `repName` / `repClass` / `repFamily` and `rmsk_*` / `repeat_*` / `rpt_*`
+    aliases, assigns deterministic subtype colors for classes such as SINE,
+    LINE, LTR, DNA transposon, simple repeat, low complexity, satellite, and
+    RNA repeat, and reuses those labels/colors in GUI maps, feature-tree
+    grouping/filtering, and SVG export.
   - Done (2026-04-18, internal predictor split): the same generated
     similarity/repeat evidence now also feeds explicit
     `pcr_operational_risk_context`, `nanopore_operational_risk_context`,

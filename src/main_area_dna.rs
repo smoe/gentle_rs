@@ -6870,6 +6870,34 @@ mod tests {
     }
 
     #[test]
+    fn feature_tree_subgroup_label_groups_rmsk_repeats_by_class_and_family() {
+        let feature = make_feature(
+            "repeat_region",
+            vec![
+                ("repName", "L1PA2"),
+                ("repClass", "LINE"),
+                ("repFamily", "L1"),
+            ],
+        );
+
+        assert_eq!(
+            MainAreaDna::feature_tree_subgroup_label(
+                &feature,
+                "L1PA2 (LINE / L1)",
+                super::FeatureTreeGroupingMode::Always,
+            ),
+            Some("LINE / L1".to_string())
+        );
+        assert!(MainAreaDna::feature_tree_matches_filter(
+            &feature,
+            "repeat_class:line repfamily:l1",
+            "repeat_region",
+            "L1PA2 (LINE / L1)",
+            "1..10"
+        ));
+    }
+
+    #[test]
     fn seed_anchored_promoter_from_forward_mrna_feature_uses_start_and_upstream() {
         let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
         dna.features_mut().push(Feature {
@@ -50111,14 +50139,17 @@ impl MainAreaDna {
         if matches!(grouping_mode, FeatureTreeGroupingMode::Off) {
             return None;
         }
-        if RenderDna::is_track_feature(feature) {
-            return RenderDna::track_group_label(feature);
-        }
         if RenderDna::is_tfbs_feature(feature) {
             return RenderDna::tfbs_group_label(feature);
         }
         if RenderDna::is_restriction_site_feature(feature) {
             return RenderDna::restriction_site_group_label(feature);
+        }
+        if RenderDna::is_repeat_feature(feature) {
+            return RenderDna::repeat_group_label(feature);
+        }
+        if RenderDna::is_track_feature(feature) {
+            return RenderDna::track_group_label(feature);
         }
         if feature.kind.to_string().eq_ignore_ascii_case("GENE") {
             return None;
@@ -50510,6 +50541,18 @@ impl MainAreaDna {
                 "transcript_id",
                 "transcript_variant",
                 "variant",
+                "repName",
+                "repClass",
+                "repFamily",
+                "rmsk_name",
+                "rmsk_class",
+                "rmsk_family",
+                "repeat_name",
+                "repeat_class",
+                "repeat_family",
+                "rpt_type",
+                "rpt_family",
+                "mobile_element_type",
             ] {
                 for value in feature.qualifier_values(key) {
                     let trimmed = value.trim();
@@ -50574,6 +50617,31 @@ impl MainAreaDna {
         if !range_label.trim().is_empty() {
             range_terms.push(range_label.trim().to_ascii_lowercase());
         }
+        let mut repeat_terms = Vec::new();
+        if let Some(label) = RenderDna::repeat_group_label(feature) {
+            repeat_terms.push(label.to_ascii_lowercase());
+        }
+        for key in [
+            "repName",
+            "repClass",
+            "repFamily",
+            "rmsk_name",
+            "rmsk_class",
+            "rmsk_family",
+            "repeat_name",
+            "repeat_class",
+            "repeat_family",
+            "rpt_type",
+            "rpt_family",
+            "mobile_element_type",
+        ] {
+            for value in feature.qualifier_values(key) {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    repeat_terms.push(trimmed.to_ascii_lowercase());
+                }
+            }
+        }
 
         terms.iter().all(|(scope, needle)| {
             let search_space: &Vec<String> = match scope.as_deref() {
@@ -50584,6 +50652,7 @@ impl MainAreaDna {
                 Some("kind") => &kind_terms,
                 Some("label") => &label_terms,
                 Some("range") => &range_terms,
+                Some("repeat") | Some("repeat_class") | Some("rmsk") => &repeat_terms,
                 _ => &all_terms,
             };
             search_space.iter().any(|value| value.contains(needle))
@@ -50611,7 +50680,7 @@ impl MainAreaDna {
     }
 
     fn feature_tree_filter_help_text() -> &'static str {
-        "Free text matches kind/label/range and qualifiers. Scoped terms: kind:mrna label:tp73 range:6128..16430 track:chip path:peaks.bed note:enhancer"
+        "Free text matches kind/label/range and qualifiers. Scoped terms: kind:mrna label:tp73 range:6128..16430 track:chip path:peaks.bed note:enhancer repeat_class:line"
     }
 
     fn splicing_expert_window_help_text() -> &'static str {
@@ -50876,7 +50945,9 @@ impl MainAreaDna {
                         None => true,
                     };
                     let kind_upper = feature.kind.to_string().to_ascii_uppercase();
-                    let kind_label = if RenderDna::is_track_feature(feature) {
+                    let kind_label = if RenderDna::is_repeat_feature(feature) {
+                        feature.kind.to_string()
+                    } else if RenderDna::is_track_feature(feature) {
                         "tracks".to_string()
                     } else {
                         feature.kind.to_string()

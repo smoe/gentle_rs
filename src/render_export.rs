@@ -6,6 +6,7 @@ use crate::{
     engine::DisplaySettings,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
+    repeat_features::{is_repeat_feature, repeat_feature_display},
     restriction_enzyme::RestrictionEnzymeKey,
 };
 use gb_io::seq::Feature;
@@ -201,6 +202,9 @@ fn feature_prefers_functional_host_anchor(feature: &Feature) -> bool {
 
 fn feature_name(feature: &Feature) -> (String, bool) {
     let kind = feature.kind.to_string().to_ascii_uppercase();
+    if let Some(repeat) = repeat_feature_display(feature) {
+        return (repeat.display_label(), false);
+    }
     if is_regulatory_feature(feature) {
         if let Some(reg_class) = feature_qualifier_text(feature, "regulatory_class") {
             let reg_class = reg_class.to_ascii_lowercase();
@@ -309,6 +313,9 @@ fn feature_legend_line(feature: &Feature, visible_label: &str) -> Option<String>
         return None;
     }
     let kind = feature.kind.to_string().to_ascii_uppercase();
+    if let Some(repeat) = repeat_feature_display(feature) {
+        return Some(format!("{}: {}", visible_label, repeat.group_label()));
+    }
     if is_regulatory_feature(feature) {
         let note = feature_qualifier_text(feature, "note").unwrap_or_default();
         let note_lower = note.to_ascii_lowercase();
@@ -481,6 +488,9 @@ fn feature_color(feature: &Feature) -> &'static str {
             _ => "#5a5a5a",
         };
     }
+    if let Some(repeat) = repeat_feature_display(feature) {
+        return repeat.class.color_hex();
+    }
     if is_regulatory_feature(feature) {
         let regulatory_class = feature_qualifier_text(feature, "regulatory_class")
             .unwrap_or_default()
@@ -588,6 +598,9 @@ fn has_regulatory_hint(feature: &Feature) -> bool {
 }
 
 fn is_regulatory_feature(feature: &Feature) -> bool {
+    if is_repeat_feature(feature) {
+        return false;
+    }
     let kind = feature.kind.to_string().to_ascii_uppercase();
     is_tfbs_feature(feature)
         || kind.contains("REGULATORY")
@@ -760,6 +773,9 @@ fn feature_max_view_span_bp(feature: &Feature, regulatory_max_view_span_bp: usiz
     let kind = feature.kind.to_string().to_ascii_uppercase();
     if kind == "SOURCE" {
         return 0;
+    }
+    if is_repeat_feature(feature) {
+        return 250_000;
     }
     if is_regulatory_feature(feature) {
         return regulatory_max_view_span_bp;
@@ -3408,6 +3424,24 @@ mod tests {
         let svg = export_linear_svg(&dna, &display);
         assert!(svg.contains("SP1"));
         assert!(!svg.contains("TFBS MA0079.5"));
+    }
+
+    #[test]
+    fn linear_svg_export_colors_and_labels_rmsk_repeat_subtypes() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(120)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "repeat_region".into(),
+            location: Location::simple_range(80, 180),
+            qualifiers: vec![
+                ("repName".into(), Some("L1PA2".to_string())),
+                ("repClass".into(), Some("LINE".to_string())),
+                ("repFamily".into(), Some("L1".to_string())),
+            ],
+        });
+
+        let svg = export_linear_svg(&dna, &DisplaySettings::default());
+        assert!(svg.contains("L1PA2 (LINE / L1)"));
+        assert!(svg.contains("#2563eb"));
     }
 
     #[test]

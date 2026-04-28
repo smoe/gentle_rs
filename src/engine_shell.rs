@@ -1990,6 +1990,18 @@ pub enum ShellCommand {
         shared_qpcr_report_id: String,
         path: Option<String>,
     },
+    PrimersTestCdnaQpcrFasta {
+        cdna_fasta_paths: Vec<String>,
+        forward_primer: String,
+        reverse_primer: String,
+        probe: String,
+        transcript_id: Option<String>,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+        path: Option<String>,
+    },
     PrimersPrepareRestrictionCloning {
         request_json: String,
     },
@@ -8849,6 +8861,25 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .unwrap_or("none"),
+            ),
+            Self::PrimersTestCdnaQpcrFasta {
+                cdna_fasta_paths,
+                forward_primer,
+                reverse_primer,
+                probe,
+                transcript_id,
+                ..
+            } => format!(
+                "screen cDNA qPCR assay across {} FASTA file(s) (forward_len={}, reverse_len={}, probe_len={}, transcript={})",
+                cdna_fasta_paths.len(),
+                forward_primer.len(),
+                reverse_primer.len(),
+                probe.len(),
+                transcript_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("all"),
             ),
             Self::PrimersPrepareRestrictionCloning { request_json } => format!(
                 "prepare restriction-site cloning handoff from JSON request payload (len={})",
@@ -24969,6 +25000,51 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersTestCdnaQpcrFasta {
+            cdna_fasta_paths,
+            forward_primer,
+            reverse_primer,
+            probe,
+            transcript_id,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+            path,
+        } => {
+            let report = engine
+                .test_cdna_qpcr_fasta_assay(
+                    cdna_fasta_paths,
+                    forward_primer,
+                    reverse_primer,
+                    probe,
+                    transcript_id.as_deref(),
+                    *min_amplicon_bp,
+                    *max_amplicon_bp,
+                    *max_mismatches,
+                    *require_3prime_exact_bases,
+                )
+                .map_err(|e| e.to_string())?;
+            if let Some(path) = path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let json_text = serde_json::to_string_pretty(&report).map_err(|e| {
+                    format!("Could not serialize cDNA qPCR FASTA assay-test report: {e}")
+                })?;
+                fs::write(path, json_text).map_err(|e| {
+                    format!("Could not write cDNA qPCR FASTA assay-test report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::PrimersPrepareRestrictionCloning { request_json } => {
             let json_text = parse_json_payload(request_json)?;
             let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
@@ -28958,6 +29034,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::PrimersTestCdnaPcr { .. }
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
+            | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
             | ShellCommand::PrimersPrepareRestrictionCloning { .. }
             | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
             | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }
@@ -30532,6 +30609,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersTestCdnaPcr { .. }
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }
+        | ShellCommand::PrimersTestCdnaQpcrFasta { .. }
         | ShellCommand::PrimersPrepareRestrictionCloning { .. }
         | ShellCommand::PrimersSeedRestrictionCloningHandoff { .. }
         | ShellCommand::PrimersRestrictionCloningVectorSuggestions { .. }

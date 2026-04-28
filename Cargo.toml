@@ -112,6 +112,7 @@ rfd = "*"
 reqwest = { version = "*", features = ["blocking", "json"] }
 tempfile = "*"
 flate2 = "1.0"
+memchr = "2"
 regex = "^1"
 pulldown-cmark = "0.12.2"
 sha1 = "0.10"

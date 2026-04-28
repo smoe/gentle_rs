@@ -494,6 +494,7 @@ Feature tree grouping:
     - `track:chip`
     - `path:peaks.bed` or `file:peaks.bed`
     - `note:enhancer`
+    - `repeat_class:LINE` for RepeatMasker/UCSC `rmsk`-style repeat features
   - preset terms below the filter box are on/off toggle buttons
 - Selecting a restriction-site marker keeps the inline restriction expert view
   and now shows the active enzyme's raw catalog metadata
@@ -2059,6 +2060,11 @@ Controls:
    - Regulatory labels prefer interpretable named context (`standard_name` or
      `gene` plus regulatory class, for example `tac promoter` or
      `bla promoter`) when the annotation provides it.
+   - RepeatMasker/UCSC `rmsk`-style `repeat_region` / `mobile_element`
+     annotations with `repName` / `repClass` / `repFamily` (or
+     `rmsk_*` / `repeat_*` / `rpt_*` aliases) use repeat-class labels,
+     feature-tree grouping, and subtype colors instead of a single generic
+     repeat style.
    - When imported sequence metadata provides a clearer title than the raw
      locus-like name, circular export prefers a bench-facing display title
      derived from `definition` plus accession/version when available.

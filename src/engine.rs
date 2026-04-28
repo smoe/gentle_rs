@@ -3448,13 +3448,32 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    TestCdnaQpcrFasta {
+        #[serde(default)]
+        cdna_fasta_paths: Vec<String>,
+        forward_primer: String,
+        reverse_primer: String,
+        probe: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_amplicon_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_amplicon_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_mismatches: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        require_3prime_exact_bases: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     DeriveTranscriptSequences {
         seq_id: SeqId,
         #[serde(default)]
         feature_ids: Vec<usize>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         scope: Option<SplicingScopePreset>,
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         output_prefix: Option<String>,
     },
     DeriveProteinSequences {
@@ -5226,6 +5245,7 @@ impl GentleEngine {
                 "DesignQpcrAssays".to_string(),
                 "TestCdnaPcr".to_string(),
                 "TestCdnaQpcr".to_string(),
+                "TestCdnaQpcrFasta".to_string(),
                 "DeriveTranscriptSequences".to_string(),
                 "DeriveProteinSequences".to_string(),
                 "ReverseTranslateProteinSequence".to_string(),
@@ -7404,6 +7424,7 @@ impl GentleEngine {
                 | Operation::TestCdnaPcr { .. }
                 | Operation::TestCdnaQpcr { .. }
                 | Operation::BuildTranscriptQpcrPanel { .. }
+                | Operation::TestCdnaQpcrFasta { .. }
         )
     }
 

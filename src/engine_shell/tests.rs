@@ -11466,6 +11466,81 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
     );
 }
 
+fn write_shell_gzip_fasta_records(path: &Path, records: &[(&str, &str)]) {
+    let file = std::fs::File::create(path).expect("create shell gzip FASTA");
+    let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+    use std::io::Write as _;
+    for (header, sequence) in records {
+        writeln!(encoder, ">{header}").expect("write shell FASTA header");
+        writeln!(encoder, "{sequence}").expect("write shell FASTA sequence");
+    }
+    encoder.finish().expect("finish shell gzip FASTA");
+}
+
+#[test]
+fn execute_primers_test_cdna_qpcr_fasta_reports_ensembl_products() {
+    let td = tempdir().expect("tempdir");
+    let cdna_path = td.path().join("Homo_sapiens.GRCh38.cdna.all.fa.gz");
+    let ncrna_path = td.path().join("Homo_sapiens.GRCh38.ncrna.fa.gz");
+    let amplicon = "GCACTTTGATCCGGTTTTCCAGTTCTTGCACAAGCAAGTTTGTGTCAGCCACGCCCTGGGGAGGATCCACTGGATCACCGCCGTCACTGCCTGTTCCCGGCGGCCTCTCCGGCTTCCCTAAAGAGAGCAG";
+    write_shell_gzip_fasta_records(
+        &cdna_path,
+        &[(
+            "ENST00000637775.1 cdna chromosome:GRCh38:1:3738434:3746742:-1 gene:ENSG00000227372.13 gene_symbol:GFOD3P",
+            &format!("TT{amplicon}AA"),
+        )],
+    );
+    write_shell_gzip_fasta_records(
+        &ncrna_path,
+        &[
+            (
+                "ENST00000648526.1 ncrna chromosome:GRCh38:1:3735511:3745905:-1 gene:ENSG00000293478.2 gene_symbol:GFOD3P",
+                &format!("CC{amplicon}GG"),
+            ),
+            (
+                "ENST00000000000.1 ncrna chromosome:GRCh38:1:1:90:1 gene:ENSG00000000000.1 gene_symbol:DECOY",
+                "ACGTACGTACGTACGTACGTACGTACGT",
+            ),
+        ],
+    );
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersTestCdnaQpcrFasta {
+            cdna_fasta_paths: vec![
+                cdna_path.to_string_lossy().to_string(),
+                ncrna_path.to_string_lossy().to_string(),
+            ],
+            forward_primer: "GCACTTTGATCCGGTTTTCCAG".to_string(),
+            reverse_primer: "CTGCTCTCTTTAGGGAAGCCG".to_string(),
+            probe: "CCACGCCCTGGGGAGGATCCA".to_string(),
+            transcript_id: None,
+            min_amplicon_bp: Some(80),
+            max_amplicon_bp: Some(200),
+            max_mismatches: None,
+            require_3prime_exact_bases: Some(8),
+            path: None,
+        },
+    )
+    .expect("cDNA qPCR FASTA shell report");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["report"]["template_source_kind"].as_str(),
+        Some("external_fasta")
+    );
+    assert_eq!(run.output["report"]["transcript_count"].as_u64(), Some(3));
+    assert_eq!(
+        run.output["report"]["detected_transcript_count"].as_u64(),
+        Some(2)
+    );
+    assert_eq!(run.output["report"]["product_count"].as_u64(), Some(2));
+    assert_eq!(
+        run.output["report"]["transcript_results"][0]["products"][0]["amplicon_length_bp"].as_u64(),
+        Some(130)
+    );
+}
+
 #[test]
 fn execute_primers_design_with_options_emits_primer_progress() {
     let mut state = ProjectState::default();

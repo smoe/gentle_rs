@@ -3531,7 +3531,7 @@ fn parse_cdna_assay_test_options(
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, test-cdna-pcr, test-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
                 .to_string(),
         );
     }
@@ -3716,6 +3716,47 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 feature_id,
                 shared_qpcr_report_id,
                 path,
+            })
+        }
+        "test-cdna-qpcr-fasta" | "screen-cdna-qpcr" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "primers test-cdna-qpcr-fasta requires CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+                        .to_string(),
+                );
+            }
+            let mut idx = 2usize;
+            let mut cdna_fasta_paths = Vec::<String>::new();
+            while idx < tokens.len() && !tokens[idx].starts_with("--") {
+                let path = tokens[idx].trim();
+                if !path.is_empty() {
+                    cdna_fasta_paths.push(path.to_string());
+                }
+                idx += 1;
+            }
+            if cdna_fasta_paths.is_empty() {
+                return Err(
+                    "primers test-cdna-qpcr-fasta requires at least one CDNA_FASTA path before options"
+                        .to_string(),
+                );
+            }
+            let options = parse_cdna_assay_test_options(
+                tokens,
+                &mut idx,
+                "primers test-cdna-qpcr-fasta",
+                true,
+            )?;
+            Ok(ShellCommand::PrimersTestCdnaQpcrFasta {
+                cdna_fasta_paths,
+                forward_primer: options.forward_primer.unwrap_or_default(),
+                reverse_primer: options.reverse_primer.unwrap_or_default(),
+                probe: options.probe.unwrap_or_default(),
+                transcript_id: options.transcript_id,
+                min_amplicon_bp: options.min_amplicon_bp,
+                max_amplicon_bp: options.max_amplicon_bp,
+                max_mismatches: options.max_mismatches,
+                require_3prime_exact_bases: options.require_3prime_exact_bases,
+                path: options.path,
             })
         }
         "prepare-restriction-cloning" => {
@@ -4063,7 +4104,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }

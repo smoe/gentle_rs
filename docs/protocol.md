@@ -1543,6 +1543,11 @@ Current draft operations:
     direction arrowhead
   - circular exports also use a slightly larger ring and larger label fonts so
     figure-oriented construct maps stay readable when embedded in docs
+  - `repeat_region` / `mobile_element` features carrying RepeatMasker/UCSC
+    `rmsk`-style qualifiers (`repName`, `repClass`, `repFamily`, or
+    `rmsk_*` / `repeat_*` / `rpt_*` aliases) use shared repeat subtype labels
+    and colors across GUI maps, feature-tree grouping/filtering, and SVG
+    export
 - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain?, overlay_x_axis_mode? }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
@@ -1660,6 +1665,7 @@ Current draft operations:
 - `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path? }` (implemented baseline; transcript-derived cDNA assay test)
 - `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path? }` (implemented baseline; transcript-derived cDNA assay test with internal probe)
 - `BuildTranscriptQpcrPanel { seq_id, source_feature_id, shared_qpcr_report_id, path? }` (implemented baseline; shared qPCR components plus transcript-characteristic forward-primer table)
+- `TestCdnaQpcrFasta { cdna_fasta_paths[], forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path? }` (implemented baseline; cDNA/ncRNA FASTA/FASTA.gz screen with internal probe)
 - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
 - `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }` (implemented baseline; emits derived DNA window + mRNA isoforms + exon-reference sequence)
@@ -5070,7 +5076,7 @@ Simple PCR constraint handoff:
     the current top retained assay without re-deriving it locally.
   - includes qPCR rejection summary with pair-level and probe-level counters.
 
-`TestCdnaPcr` / `TestCdnaQpcr` contract (implemented baseline):
+`TestCdnaPcr` / `TestCdnaQpcr` / `TestCdnaQpcrFasta` contract (implemented baseline):
 
 - Purpose:
   - test already-chosen PCR/qPCR oligos against transcript-derived cDNA
@@ -5078,14 +5084,22 @@ Simple PCR constraint handoff:
   - use the same transcript-native cDNA derivation path as transcript-aware
     qPCR design, so assay testing is independent of external protein or
     transcript evidence services.
+  - optionally screen supplied cDNA/ncRNA FASTA or FASTA.gz transcript catalogs
+    with the same primer/probe/product rules, for example complete Ensembl
+    `cdna.all.fa.gz` plus `ncrna.fa.gz` files.
 - Operation payload shape:
   - `seq_id`
   - `source_feature_id`
     - existing zero-based GENtle feature id used to resolve the transcript/gene
       splicing group
+    - used only by `TestCdnaPcr` and `TestCdnaQpcr`
+  - `cdna_fasta_paths[]`
+    - one or more transcript FASTA/FASTA.gz files for `TestCdnaQpcrFasta`
+    - records are streamed directly from disk and may include large Ensembl
+      cDNA/ncRNA catalogs
   - `forward_primer`
   - `reverse_primer`
-  - `probe` for `TestCdnaQpcr` only
+  - `probe` for `TestCdnaQpcr` and `TestCdnaQpcrFasta`
   - optional `transcript_id`
     - limits testing to one derived transcript template when supplied
   - optional `min_amplicon_bp` / `max_amplicon_bp`
@@ -5106,6 +5120,11 @@ Simple PCR constraint handoff:
     tolerance and deterministic 3' exactness gating for primers.
   - UTR/noncoding transcript bases are not guessed from genomic context; only
     derived cDNA templates from the selected transcript features are tested.
+  - FASTA screens preserve Ensembl-style record ids from the first header token,
+    accept `.gz` input, and can take multiple files in one run.
+  - FASTA screens count every scanned record in `transcript_count` but, unless
+    `transcript_id` is supplied, report only detected transcript rows to avoid
+    huge reports for complete transcript catalogs.
 - Report schema:
   - `gentle.cdna_assay_test_report.v1`
   - report-level fields include assay kind, source sequence/feature, group
@@ -5125,8 +5144,13 @@ Simple PCR constraint handoff:
     public `SELF_ANY` / `SELF_END` and `COMPL_ANY` / `COMPL_END` distinction,
     while the implementation remains independent GENtle Rust code with no
     vendored or translated Primer3 source.
+  - report-level fields include assay kind, template source kind, source
+    paths, source sequence/feature, group label, strand, requested transcript
+    id, primers/probe, mismatch/size settings, transcript/product counts,
+    overall status, and warnings.
   - per-transcript rows include transcript feature id, transcript id/label,
-    strand, cDNA length, status, primer/probe hits, and products.
+    optional source path, strand, cDNA length, status, primer/probe hits, and
+    products.
   - primer/probe hit rows include local cDNA coordinates, binding sequence,
     binding orientation, mismatch count, mapped source ranges, covered junction
     labels, and whether the hit spans a junction.
@@ -5142,6 +5166,7 @@ Primer-design shell command family (implemented):
   - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
   - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
+  - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
   - `primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]`

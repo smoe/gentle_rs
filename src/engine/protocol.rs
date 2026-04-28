@@ -4579,6 +4579,8 @@ pub struct CdnaAssayTranscriptResult {
     pub transcript_feature_id: usize,
     pub transcript_id: String,
     pub transcript_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
     pub strand: String,
     pub cdna_length_bp: usize,
     pub status: String,
@@ -4615,6 +4617,10 @@ pub struct CdnaAssayConstructLengthSummary {
 pub struct CdnaAssayTestReport {
     pub schema: String,
     pub assay_kind: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub template_source_kind: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_paths: Vec<String>,
     pub source_seq_id: String,
     pub source_feature_id: usize,
     pub group_label: String,

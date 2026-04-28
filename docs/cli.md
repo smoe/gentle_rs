@@ -1936,6 +1936,7 @@ Shared shell command:
     - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
     - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
+    - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
       - returns `gentle.primer3_preflight.v1` with configured/effective
         executable, resolved path, working directory, and
@@ -2276,15 +2277,22 @@ Shared shell command:
         shell/CLI/ClawBio flows can promote the same qPCR strip without hard-
         coding that protocol id elsewhere
     - cDNA PCR/qPCR assay test notes
-      (`primers test-cdna-pcr` / `primers test-cdna-qpcr`):
+      (`primers test-cdna-pcr` / `primers test-cdna-qpcr` /
+      `primers test-cdna-qpcr-fasta`):
       - returns non-mutating schema `gentle.cdna_assay_test_report.v1`
       - derives transcript cDNA templates from the selected splicing group
         using the zero-based `FEATURE_ID`
+      - `primers test-cdna-qpcr-fasta` instead streams one or more transcript
+        FASTA/FASTA.gz files directly, so callers can screen complete Ensembl
+        cDNA and ncRNA catalogs without importing them into project state
       - `--transcript-id ID` narrows the test to one transcript product
       - `--max-mismatches` defaults to exact/IUPAC-compatible matching
       - `--require-3prime-exact-bases` gates primer hits only
       - qPCR probes may bind either cDNA orientation but must fall inside the
         primer-bounded amplicon interior
+      - FASTA screens count every scanned record but omit non-detected
+        transcript rows from the returned report unless `--transcript-id` is
+        supplied
       - `--path OUTPUT.json` writes the same structured report returned on
         stdout
     - Transcript qPCR panel notes

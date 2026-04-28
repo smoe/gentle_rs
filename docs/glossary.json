@@ -2398,6 +2398,22 @@
          "usage": "primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
       },
       {
+         "aliases": [
+            "primers screen-cdna-qpcr"
+         ],
+         "engine_operations": [
+            "TestCdnaQpcrFasta"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers test-cdna-qpcr-fasta",
+         "summary": "Screen supplied qPCR primers and probe across one or more external cDNA/ncRNA FASTA or FASTA.gz transcript catalogs.",
+         "usage": "primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "PrepareRestrictionCloningPcrHandoff"

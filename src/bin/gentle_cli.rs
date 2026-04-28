@@ -685,6 +685,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
   gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
   gentle_cli [--state PATH|--project PATH] primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]\n  \
+  gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
   gentle_cli [--state PATH|--project PATH] primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE\n  \
   gentle_cli [--state PATH|--project PATH] primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]\n  \
   gentle_cli [--state PATH|--project PATH] primers restriction-cloning-vector-suggestions SEQ_ID\n  \
@@ -4778,6 +4779,27 @@ mod tests {
         assert!(matches!(
             primers_test_cdna_qpcr,
             ShellCommand::PrimersTestCdnaQpcr { .. }
+        ));
+
+        let primers_test_cdna_qpcr_fasta = parse_shell_tokens(&[
+            "primers".to_string(),
+            "test-cdna-qpcr-fasta".to_string(),
+            "cdna.fa.gz".to_string(),
+            "ncrna.fa.gz".to_string(),
+            "--forward".to_string(),
+            "AAACCC".to_string(),
+            "--reverse".to_string(),
+            "CCCAAA".to_string(),
+            "--probe".to_string(),
+            "GGGCCC".to_string(),
+        ])
+        .expect("parse primers test-cdna-qpcr-fasta");
+        assert!(matches!(
+            primers_test_cdna_qpcr_fasta,
+            ShellCommand::PrimersTestCdnaQpcrFasta {
+                cdna_fasta_paths,
+                ..
+            } if cdna_fasta_paths.len() == 2
         ));
 
         let primers_preflight = parse_shell_tokens(&[

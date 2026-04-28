@@ -5,6 +5,7 @@ use crate::{
     dna_sequence::DNAsequence,
     render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
+    repeat_features::{is_repeat_feature, repeat_feature_display},
     restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Vec2, Widget};
@@ -323,6 +324,10 @@ impl RenderDna {
         if Self::is_mcs_feature(feature) {
             return Color32::from_rgb(0, 136, 156);
         }
+        if let Some(repeat) = repeat_feature_display(feature) {
+            let (r, g, b) = repeat.class.color_rgb();
+            return Color32::from_rgb(r, g, b);
+        }
         if Self::is_regulatory_feature(feature) {
             if let Some(reg_class) = Self::regulatory_class(feature) {
                 if reg_class.contains("silencer") || reg_class.contains("repressor") {
@@ -466,6 +471,9 @@ impl RenderDna {
     }
 
     pub fn is_regulatory_feature(feature: &Feature) -> bool {
+        if Self::is_repeat_feature(feature) {
+            return false;
+        }
         let kind = feature.kind.to_string().to_ascii_uppercase();
         Self::is_tfbs_feature(feature)
             || kind.contains("REGULATORY")
@@ -621,6 +629,14 @@ impl RenderDna {
                 Some(fallback)
             }
         })
+    }
+
+    pub fn is_repeat_feature(feature: &Feature) -> bool {
+        is_repeat_feature(feature)
+    }
+
+    pub fn repeat_group_label(feature: &Feature) -> Option<String> {
+        repeat_feature_display(feature).map(|repeat| repeat.group_label())
     }
 
     pub fn track_group_label(feature: &Feature) -> Option<String> {
@@ -808,6 +824,9 @@ impl RenderDna {
 
     pub fn feature_name(feature: &Feature) -> String {
         let kind = feature.kind.to_string().to_ascii_uppercase();
+        if let Some(repeat) = repeat_feature_display(feature) {
+            return repeat.display_label();
+        }
         if Self::is_regulatory_feature(feature) {
             if let Some(reg_class) = Self::feature_qualifier_text(feature, "regulatory_class") {
                 let note = Self::feature_qualifier_text(feature, "note");
@@ -901,7 +920,30 @@ impl RenderDna {
     pub fn feature_detail_lines(feature: &Feature) -> Vec<String> {
         let mut lines = Vec::new();
         let kind = feature.kind.to_string().to_ascii_uppercase();
-        let keys = if Self::is_regulatory_feature(feature) {
+        let keys = if Self::is_repeat_feature(feature) {
+            vec![
+                "repName",
+                "repClass",
+                "repFamily",
+                "rmsk_name",
+                "rmsk_class",
+                "rmsk_family",
+                "repeat_name",
+                "repeat_class",
+                "repeat_family",
+                "rpt_type",
+                "rpt_family",
+                "mobile_element_type",
+                "label",
+                "name",
+                "note",
+                "score",
+                "milliDiv",
+                "milliDel",
+                "milliIns",
+                "db_xref",
+            ]
+        } else if Self::is_regulatory_feature(feature) {
             vec![
                 "regulatory_class",
                 "standard_name",
@@ -963,6 +1005,9 @@ impl RenderDna {
     ) -> usize {
         if Self::is_source_feature(feature) {
             return 0;
+        }
+        if Self::is_repeat_feature(feature) {
+            return 250_000;
         }
         if Self::is_regulatory_feature(feature) {
             return regulatory_max_view_span_bp;
@@ -1152,5 +1197,27 @@ mod tests {
             ],
         );
         assert_eq!(RenderDna::feature_name(&feature), "SP1");
+    }
+
+    #[test]
+    fn repeatmasker_feature_name_group_and_color_reflect_repeat_class() {
+        let feature = make_feature(
+            "repeat_region",
+            &[
+                ("repName", "AluY"),
+                ("repClass", "SINE"),
+                ("repFamily", "Alu"),
+            ],
+        );
+
+        assert_eq!(RenderDna::feature_name(&feature), "AluY (SINE / Alu)");
+        assert_eq!(
+            RenderDna::repeat_group_label(&feature).as_deref(),
+            Some("SINE / Alu")
+        );
+        assert_eq!(
+            RenderDna::feature_color(&feature),
+            Color32::from_rgb(14, 116, 144)
+        );
     }
 }

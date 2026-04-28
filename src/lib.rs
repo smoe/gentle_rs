@@ -102,6 +102,8 @@ pub mod render_multi_gene_promoter_tfbs;
 pub mod render_sequence;
 /// Shared TF motif score-track SVG renderer.
 pub mod render_tfbs_score_tracks;
+/// RepeatMasker/UCSC-style repeat-feature display classification helpers.
+pub mod repeat_features;
 /// Runtime status helpers for built-in and overrideable external resources.
 pub mod resource_status;
 /// Resource synchronization (REBASE/JASPAR/ATtRACT) parsing and snapshot writing.
