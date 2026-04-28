@@ -283,6 +283,30 @@ impl Default for PrimerSideConstraintUiState {
     }
 }
 
+impl PrimerSideConstraintUiState {
+    fn qpcr_primer_default() -> Self {
+        Self {
+            min_length: "18".to_string(),
+            max_length: "24".to_string(),
+            min_tm_c: "55.0".to_string(),
+            max_tm_c: "65.0".to_string(),
+            max_gc_fraction: "0.75".to_string(),
+            ..Self::default()
+        }
+    }
+
+    fn qpcr_probe_default() -> Self {
+        Self {
+            min_length: "20".to_string(),
+            max_length: "30".to_string(),
+            min_tm_c: "63.0".to_string(),
+            max_tm_c: "72.0".to_string(),
+            max_gc_fraction: "0.80".to_string(),
+            ..Self::default()
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct PrimerPairConstraintUiState {
@@ -575,13 +599,13 @@ impl Default for QpcrDesignOpsUiState {
             transcript_targeting: QpcrTranscriptTargetingUiState::default(),
             roi_start_0based: "0".to_string(),
             roi_end_0based: "0".to_string(),
-            forward: PrimerSideConstraintUiState::default(),
-            reverse: PrimerSideConstraintUiState::default(),
-            probe: PrimerSideConstraintUiState::default(),
+            forward: PrimerSideConstraintUiState::qpcr_primer_default(),
+            reverse: PrimerSideConstraintUiState::qpcr_primer_default(),
+            probe: PrimerSideConstraintUiState::qpcr_probe_default(),
             pair_constraints: PrimerPairConstraintUiState::default(),
-            min_amplicon_bp: "120".to_string(),
-            max_amplicon_bp: "1200".to_string(),
-            max_tm_delta_c: "2.0".to_string(),
+            min_amplicon_bp: "80".to_string(),
+            max_amplicon_bp: "200".to_string(),
+            max_tm_delta_c: "3.0".to_string(),
             max_probe_tm_delta_c: "10.0".to_string(),
             max_assays: "200".to_string(),
             report_id: "qpcr_report_gui".to_string(),

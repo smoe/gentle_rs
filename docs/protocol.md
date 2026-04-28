@@ -4984,7 +4984,9 @@ Simple PCR constraint handoff:
   - probe selection is deterministic, constrained to amplicon interior, and
     reuses the same side sequence-constraint fields (`fixed_5prime`,
     `fixed_3prime`, motifs, locked positions).
-  - probe Tm gating is enforced via `max_probe_tm_delta_c`.
+  - probe Tm gating is enforced via `max_probe_tm_delta_c`; ranking now
+    prefers probe-based qPCR layouts where the probe Tm is about 7.5 C above
+    the forward/reverse primer mean when such candidates are available.
   - when `transcript_targeting` is present, qPCR design first derives
     transcript-local exon/junction ROIs from the selected splicing group on
     `TargetGroupTargetStrand` and only then reuses the normal qPCR backend
@@ -5084,6 +5086,12 @@ Primer-design shell command family (implemented):
   qPCR-only non-mutating helper commands that resolve an ROI and emit one
   seeded `DesignQpcrAssays` payload plus the built-in qPCR protocol-cartoon id
   (`pcr.assay.qpcr`) for shell/CLI/ClawBio promotion.
+- qPCR-only seed helpers default to probe-based/TaqMan-like constraints:
+  - primer length 18-24 bp
+  - primer Tm 55-65 C with pair delta <= 3 C
+  - probe length 20-30 bp
+  - probe Tm 63-72 C, intended to land roughly 5-10 C above the primer mean
+  - amplicon range 80-200 bp
 - `primers seed-qpcr-from-splicing` additionally supports transcript-aware
   seeding:
   - `--mode shared_gene|distinguish_transcript`
@@ -5137,6 +5145,9 @@ Primer-design shell command family (implemented):
       - `max_amplicon_bp`
       - `max_tm_delta_c`
       - `max_probe_tm_delta_c`
+      - `primer_tm_c`
+      - `probe_tm_c`
+      - `probe_tm_offset_target_c`
       - `max_assays`
   - `operation` (`{"DesignQpcrAssays": ...}`)
     - splicing-seeded qPCR requests may include

@@ -471,6 +471,7 @@ const PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP: usize = 6;
 const PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP: usize = 3;
 const PRIMER_INTERNAL_MAX_PAIR_EVALUATIONS: usize = 1_000_000;
+const QPCR_PREFERRED_PROBE_TM_OFFSET_C: f64 = 7.5;
 const FEATURE_QUERY_RESULT_SCHEMA: &str = "gentle.sequence_feature_query_result.v1";
 const FEATURE_BED_EXPORT_REPORT_SCHEMA: &str = "gentle.sequence_feature_bed_export.v1";
 const RESTRICTION_SITE_SCAN_REPORT_SCHEMA: &str = "gentle.restriction_site_scan.v1";

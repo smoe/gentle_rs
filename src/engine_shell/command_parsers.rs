@@ -3062,17 +3062,43 @@ pub(super) fn build_seeded_qpcr_operation(
         template: template.to_string(),
         roi_start_0based,
         roi_end_0based: roi_end_0based_exclusive,
-        forward: PrimerDesignSideConstraint::default(),
-        reverse: PrimerDesignSideConstraint::default(),
-        probe: PrimerDesignSideConstraint::default(),
-        min_amplicon_bp: 120,
-        max_amplicon_bp: 1200,
+        forward: seeded_qpcr_primer_constraint(),
+        reverse: seeded_qpcr_primer_constraint(),
+        probe: seeded_qpcr_probe_constraint(),
+        min_amplicon_bp: 80,
+        max_amplicon_bp: 200,
         pair_constraints: PrimerDesignPairConstraint::default(),
-        max_tm_delta_c: Some(2.0),
+        max_tm_delta_c: Some(3.0),
         max_probe_tm_delta_c: Some(10.0),
         max_assays: Some(200),
         transcript_targeting,
         report_id: None,
+    }
+}
+
+fn seeded_qpcr_primer_constraint() -> PrimerDesignSideConstraint {
+    PrimerDesignSideConstraint {
+        min_length: 18,
+        max_length: 24,
+        min_tm_c: 55.0,
+        max_tm_c: 65.0,
+        min_gc_fraction: 0.35,
+        max_gc_fraction: 0.75,
+        max_anneal_hits: 1,
+        ..PrimerDesignSideConstraint::default()
+    }
+}
+
+fn seeded_qpcr_probe_constraint() -> PrimerDesignSideConstraint {
+    PrimerDesignSideConstraint {
+        min_length: 20,
+        max_length: 30,
+        min_tm_c: 63.0,
+        max_tm_c: 72.0,
+        min_gc_fraction: 0.35,
+        max_gc_fraction: 0.80,
+        max_anneal_hits: 1,
+        ..PrimerDesignSideConstraint::default()
     }
 }
 

@@ -1784,6 +1784,10 @@ order. Durable architecture constraints and decisions remain in
     - the qPCR seed payload now also carries deterministic ROI rationale plus
       recommended default assay limits so agent callers can explain and reuse
       GENtle's expected next-step settings instead of guessing them
+    - qPCR-only seed defaults are now probe-based/TaqMan-like by default:
+      80-200 bp amplicons, 18-24 bp primers at 55-65 C with pair delta <= 3 C,
+      and 20-30 bp probes at 63-72 C; assay ranking also prefers probes about
+      7.5 C above the primer mean when available
     - ClawBio now also carries a TP53 splicing-group shell example that emits
       the qPCR seed payload directly from saved splicing context
   - transcript-aware qPCR targeting is now engine-owned rather than adapter

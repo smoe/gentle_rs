@@ -4315,8 +4315,9 @@ impl GentleEngine {
                     }
                     continue;
                 }
-                let probe_tm_delta_c =
-                    (probe_candidate.tm_c - ((pair.forward.tm_c + pair.reverse.tm_c) / 2.0)).abs();
+                let primer_mean_tm_c = (pair.forward.tm_c + pair.reverse.tm_c) / 2.0;
+                let probe_tm_offset_c = probe_candidate.tm_c - primer_mean_tm_c;
+                let probe_tm_delta_c = probe_tm_offset_c.abs();
                 let probe_tm_ok = probe_tm_delta_c <= max_probe_tm_delta_c;
                 if !probe_tm_ok {
                     rejection.probe_or_assay_failure =
@@ -4345,7 +4346,10 @@ impl GentleEngine {
                 }
                 let probe_mid = (probe_start + probe_end) / 2;
                 let probe_mid_penalty = probe_mid.abs_diff(amplicon_mid) as f64;
-                let score = pair.score - (probe_tm_delta_c * 10.0) - (probe_mid_penalty * 0.05);
+                let probe_offset_penalty_c =
+                    (probe_tm_offset_c - QPCR_PREFERRED_PROBE_TM_OFFSET_C).abs();
+                let score =
+                    pair.score - (probe_offset_penalty_c * 10.0) - (probe_mid_penalty * 0.05);
                 let probe_record = Self::annotate_primer_record_heuristics(
                     PrimerDesignPrimerRecord {
                         sequence: probe_candidate.sequence.clone(),

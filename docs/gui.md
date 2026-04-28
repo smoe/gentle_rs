@@ -3086,6 +3086,9 @@ qPCR form:
 - same ROI/amplicon + pair constraints as primer-pair design
 - same ROI formula support as primer-pair design (`=` expressions +
   `Apply ROI formula`)
+- default qPCR constraints are probe-based/TaqMan-like: 80-200 bp amplicons,
+  18-24 bp primers at 55-65 C with pair delta <= 3 C, and a 20-30 bp probe at
+  63-72 C
 - adds a `Transcript targeting` block above ROI/probe controls:
   - `Genomic`
     - keeps the existing direct qPCR flow and emits

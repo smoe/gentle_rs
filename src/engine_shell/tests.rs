@@ -11098,6 +11098,23 @@ fn execute_primers_seed_from_feature_and_splicing() {
         seeded_qpcr_feature.output["rationale"]["recommended_defaults"]["max_assays"].as_u64(),
         Some(200)
     );
+    assert_eq!(
+        seeded_qpcr_feature.output["rationale"]["recommended_defaults"]["min_amplicon_bp"].as_u64(),
+        Some(80)
+    );
+    assert_eq!(
+        seeded_qpcr_feature.output["rationale"]["recommended_defaults"]["max_amplicon_bp"].as_u64(),
+        Some(200)
+    );
+    assert_eq!(
+        seeded_qpcr_feature.output["operation"]["DesignQpcrAssays"]["forward"]["min_length"]
+            .as_u64(),
+        Some(18)
+    );
+    assert_eq!(
+        seeded_qpcr_feature.output["operation"]["DesignQpcrAssays"]["probe"]["min_tm_c"].as_f64(),
+        Some(63.0)
+    );
 
     let seeded_qpcr_splicing = execute_shell_command(
         &mut engine,
@@ -11138,6 +11155,75 @@ fn execute_primers_seed_from_feature_and_splicing() {
             ["mode"]
             .as_str(),
         Some("shared_gene")
+    );
+}
+
+#[test]
+fn execute_primers_seeded_tp73_as2_cdna_qpcr_uses_probe_based_defaults() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73".to_string()),
+        })
+        .expect("load tp73 fixture");
+    let tp73_as2_feature_id = engine
+        .state()
+        .sequences
+        .get("tp73")
+        .expect("tp73 sequence present")
+        .features()
+        .iter()
+        .position(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("ncRNA")
+                && feature
+                    .qualifier_values("gene")
+                    .any(|value| value.eq_ignore_ascii_case("TP73-AS2"))
+        })
+        .expect("TP73-AS2 ncRNA feature");
+
+    let seeded = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersSeedQpcrFromSplicing {
+            seq_id: "tp73".to_string(),
+            feature_id: tp73_as2_feature_id,
+            mode: QpcrTranscriptTargetingMode::SharedGene,
+            transcript_id: None,
+            specificity_evidence: None,
+        },
+    )
+    .expect("seed TP73-AS2 cDNA qPCR request");
+    let design = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersDesignQpcr {
+            request_json: serde_json::to_string(&seeded.output).expect("serialize seed request"),
+            backend: Some(PrimerDesignBackend::Internal),
+            primer3_executable: None,
+        },
+    )
+    .expect("design TP73-AS2 cDNA qPCR from seeded defaults");
+    assert!(
+        design.output["report"]["assay_count"]
+            .as_u64()
+            .is_some_and(|count| count > 0),
+        "seeded probe-based defaults should retain TP73-AS2 cDNA assays"
+    );
+    let best = &design.output["report"]["assays"][0];
+    assert_eq!(
+        best["transcript_context"]["design_transcript_id"].as_str(),
+        Some("NR_185884.1")
+    );
+    assert_eq!(
+        best["transcript_context"]["support_transcript_count"].as_u64(),
+        Some(1)
+    );
+    let primer_mean_tm = (best["forward"]["tm_c"].as_f64().unwrap()
+        + best["reverse"]["tm_c"].as_f64().unwrap())
+        / 2.0;
+    let probe_offset = best["probe"]["tm_c"].as_f64().unwrap() - primer_mean_tm;
+    assert!(
+        (5.0..=10.0).contains(&probe_offset),
+        "probe offset should be TaqMan-like, got {probe_offset:.2}C"
     );
 }
 

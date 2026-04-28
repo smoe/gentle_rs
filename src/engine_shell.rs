@@ -24330,10 +24330,13 @@ fn execute_primers_command(
                         feature_id, seq_id, roi_start_0based, roi_end_0based_exclusive
                     ),
                     "recommended_defaults": {
-                        "min_amplicon_bp": 120,
-                        "max_amplicon_bp": 1200,
-                        "max_tm_delta_c": 2.0,
+                        "min_amplicon_bp": 80,
+                        "max_amplicon_bp": 200,
+                        "max_tm_delta_c": 3.0,
                         "max_probe_tm_delta_c": 10.0,
+                        "primer_tm_c": "55..65",
+                        "probe_tm_c": "63..72",
+                        "probe_tm_offset_target_c": 7.5,
                         "max_assays": 200
                     }
                 }),
@@ -24460,10 +24463,13 @@ fn execute_primers_command(
                     ),
                     "targeting_summary": targeting_summary,
                     "recommended_defaults": {
-                        "min_amplicon_bp": 120,
-                        "max_amplicon_bp": 1200,
-                        "max_tm_delta_c": 2.0,
+                        "min_amplicon_bp": 80,
+                        "max_amplicon_bp": 200,
+                        "max_tm_delta_c": 3.0,
                         "max_probe_tm_delta_c": 10.0,
+                        "primer_tm_c": "55..65",
+                        "probe_tm_c": "63..72",
+                        "probe_tm_offset_target_c": 7.5,
                         "max_assays": 200
                     }
                 }),
