@@ -10,6 +10,38 @@
   ],
   "routes": [
     {
+      "intent_id": "telegram_guide_isoforms_gene",
+      "description": "Show the GENtle isoform and protein-gel guide section for a requested gene symbol.",
+      "trigger_terms": [
+        "isoform guide for",
+        "isoforms guide for",
+        "gentle isoform guide for",
+        "gentle isoforms guide for",
+        "show me the gentle isoform guide",
+        "show me the gentle isoforms guide",
+        "show me the gentle isoform guide for",
+        "show me the gentle isoforms guide for"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "gene_symbol": {
+              "required": true
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "shell",
+            "shell_line": "services guide --channel telegram --section isoforms --gene {gene_symbol}",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
       "intent_id": "skill_info",
       "description": "Report GENtle ClawBio skill metadata without requiring a GENtle runtime.",
       "trigger_terms": [
@@ -144,6 +176,9 @@
       "trigger_terms": [
         "continue isoforms",
         "isoform guide",
+        "isoforms guide",
+        "gentle isoform guide",
+        "gentle isoforms guide",
         "protein gel guide",
         "gel guide"
       ],

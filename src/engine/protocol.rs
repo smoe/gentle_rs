@@ -4226,6 +4226,92 @@ pub struct SequenceRange0Based {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One primer/probe binding site detected on a transcript-derived cDNA
+/// template.
+pub struct CdnaAssayPrimerHit {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub binding_sequence: String,
+    pub oligo_binding_strand: String,
+    pub mismatch_count: usize,
+    #[serde(default)]
+    pub source_ranges_0based: Vec<SequenceRange0Based>,
+    #[serde(default)]
+    pub covered_junction_labels: Vec<String>,
+    pub spans_junction: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One PCR/qPCR amplicon detected on a transcript-derived cDNA template.
+pub struct CdnaAssayProduct {
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub amplicon_length_bp: usize,
+    pub forward_hit_index: usize,
+    pub reverse_hit_index: usize,
+    #[serde(default)]
+    pub probe_hit_indices: Vec<usize>,
+    #[serde(default)]
+    pub source_ranges_0based: Vec<SequenceRange0Based>,
+    #[serde(default)]
+    pub covered_junction_labels: Vec<String>,
+    pub spans_junction: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Per-transcript result row for a cDNA PCR/qPCR assay test.
+pub struct CdnaAssayTranscriptResult {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub cdna_length_bp: usize,
+    pub status: String,
+    #[serde(default)]
+    pub forward_hits: Vec<CdnaAssayPrimerHit>,
+    #[serde(default)]
+    pub reverse_hits: Vec<CdnaAssayPrimerHit>,
+    #[serde(default)]
+    pub probe_hits: Vec<CdnaAssayPrimerHit>,
+    #[serde(default)]
+    pub products: Vec<CdnaAssayProduct>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic cDNA PCR/qPCR assay-test report shared by shell/CLI/agents.
+pub struct CdnaAssayTestReport {
+    pub schema: String,
+    pub assay_kind: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    pub group_label: String,
+    pub strand: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_transcript_id: Option<String>,
+    pub forward_primer: String,
+    pub reverse_primer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe: Option<String>,
+    pub max_mismatches: usize,
+    pub require_3prime_exact_bases: usize,
+    pub min_amplicon_bp: usize,
+    pub max_amplicon_bp: usize,
+    pub transcript_count: usize,
+    pub detected_transcript_count: usize,
+    pub product_count: usize,
+    pub overall_status: String,
+    pub summary: String,
+    #[serde(default)]
+    pub transcript_results: Vec<CdnaAssayTranscriptResult>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Optional transcript-aware targeting request for one qPCR design operation.
 pub struct QpcrTranscriptTargeting {
     pub source_feature_id: usize,

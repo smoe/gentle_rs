@@ -8,6 +8,7 @@ use regex::Regex;
 use resvg::{self, tiny_skia, usvg};
 use serde::Serialize;
 use std::{
+    env,
     path::{Path, PathBuf},
     sync::LazyLock,
 };
@@ -18,6 +19,19 @@ static DOTPLOT_METADATA_RE: LazyLock<Regex> = LazyLock::new(|| {
     )
     .expect("dotplot metadata regex should compile")
 });
+static SVG_TEXT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)<text\b").expect("SVG text regex should compile"));
+
+/// Optional path-list environment variable for explicit SVG rasterization font files.
+pub const SVG_FONT_FILE_ENV: &str = "GENTLE_SVG_FONT_FILE";
+/// Optional path-list environment variable for explicit SVG rasterization font directories.
+pub const SVG_FONT_DIR_ENV: &str = "GENTLE_SVG_FONT_DIR";
+/// Optional family name used for SVG generic `monospace` text.
+pub const SVG_MONOSPACE_FAMILY_ENV: &str = "GENTLE_SVG_MONOSPACE_FAMILY";
+/// Optional family name used for SVG generic `sans-serif` text.
+pub const SVG_SANS_SERIF_FAMILY_ENV: &str = "GENTLE_SVG_SANS_SERIF_FAMILY";
+/// Optional family name used for SVG generic `serif` text.
+pub const SVG_SERIF_FAMILY_ENV: &str = "GENTLE_SVG_SERIF_FAMILY";
 
 /// Default fixed raster scale for messenger/chat-facing ClawBio figures.
 pub const DEFAULT_CLAWBIO_PNG_SCALE: f32 = 2.0;
@@ -55,6 +69,8 @@ pub struct SvgPngRenderSummary {
     pub width: u32,
     /// Written PNG height in pixels.
     pub height: u32,
+    /// Number of font faces visible to `usvg`/`resvg` for text rendering.
+    pub font_face_count: usize,
 }
 
 /// Removes known dotplot metadata footer/header text while preserving axis
@@ -67,6 +83,116 @@ fn canonical_parent(path: &Path) -> Option<PathBuf> {
     std::fs::canonicalize(path)
         .ok()
         .and_then(|resolved| resolved.parent().map(|parent| parent.to_path_buf()))
+}
+
+fn configured_font_paths(var_name: &str) -> Vec<PathBuf> {
+    env::var_os(var_name)
+        .map(|raw| env::split_paths(&raw).collect())
+        .unwrap_or_default()
+}
+
+fn load_configured_fonts(fontdb: &mut usvg::fontdb::Database) -> Result<(), String> {
+    for path in configured_font_paths(SVG_FONT_FILE_ENV) {
+        fontdb.load_font_file(&path).map_err(|e| {
+            format!(
+                "Could not load SVG rasterization font file from {SVG_FONT_FILE_ENV} '{}': {e}",
+                path.display()
+            )
+        })?;
+    }
+    for path in configured_font_paths(SVG_FONT_DIR_ENV) {
+        fontdb.load_fonts_dir(&path);
+    }
+    Ok(())
+}
+
+fn fontdb_has_family(fontdb: &usvg::fontdb::Database, family: &str) -> bool {
+    fontdb.faces().any(|face| {
+        face.families
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case(family))
+    })
+}
+
+fn first_font_family(fontdb: &usvg::fontdb::Database) -> Option<String> {
+    fontdb
+        .faces()
+        .flat_map(|face| face.families.iter().map(|(name, _)| name.trim()))
+        .find(|name| !name.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn choose_font_family(
+    fontdb: &usvg::fontdb::Database,
+    env_name: &str,
+    candidates: &[&str],
+) -> Option<String> {
+    if let Ok(value) = env::var(env_name) {
+        let requested = value.trim();
+        if !requested.is_empty() && fontdb_has_family(fontdb, requested) {
+            return Some(requested.to_string());
+        }
+    }
+    candidates
+        .iter()
+        .find(|family| fontdb_has_family(fontdb, family))
+        .map(|family| (*family).to_string())
+        .or_else(|| first_font_family(fontdb))
+}
+
+fn configure_generic_font_families(fontdb: &mut usvg::fontdb::Database) {
+    if let Some(family) = choose_font_family(
+        fontdb,
+        SVG_MONOSPACE_FAMILY_ENV,
+        &[
+            "DejaVu Sans Mono",
+            "Liberation Mono",
+            "Noto Sans Mono",
+            "Courier New",
+            "Menlo",
+            "Monaco",
+            "Consolas",
+        ],
+    ) {
+        fontdb.set_monospace_family(family);
+    }
+    if let Some(family) = choose_font_family(
+        fontdb,
+        SVG_SANS_SERIF_FAMILY_ENV,
+        &[
+            "DejaVu Sans",
+            "Liberation Sans",
+            "Noto Sans",
+            "Arial",
+            "Helvetica",
+        ],
+    ) {
+        fontdb.set_sans_serif_family(family);
+    }
+    if let Some(family) = choose_font_family(
+        fontdb,
+        SVG_SERIF_FAMILY_ENV,
+        &[
+            "DejaVu Serif",
+            "Liberation Serif",
+            "Noto Serif",
+            "Times New Roman",
+            "Times",
+        ],
+    ) {
+        fontdb.set_serif_family(family);
+    }
+}
+
+fn ensure_svg_text_fonts_available(svg_text: &str, font_face_count: usize) -> Result<(), String> {
+    if font_face_count == 0 && SVG_TEXT_RE.is_match(svg_text) {
+        return Err(format!(
+            "SVG contains text, but no font faces were available to usvg/resvg. \
+Install a system font package (for example fonts-dejavu-core or fonts-liberation), \
+or set {SVG_FONT_FILE_ENV} / {SVG_FONT_DIR_ENV} to a readable TTF/OTF font or font directory."
+        ));
+    }
+    Ok(())
 }
 
 /// Rasterizes one SVG file into one PNG file with deterministic `resvg`
@@ -99,7 +225,14 @@ pub fn render_svg_file_to_png(
         resources_dir: canonical_parent(input_path),
         ..usvg::Options::default()
     };
-    opt.fontdb_mut().load_system_fonts();
+    {
+        let fontdb = opt.fontdb_mut();
+        fontdb.load_system_fonts();
+        load_configured_fonts(fontdb)?;
+        configure_generic_font_families(fontdb);
+    }
+    let font_face_count = opt.fontdb.len();
+    ensure_svg_text_fonts_available(&svg_text, font_face_count)?;
 
     let tree = usvg::Tree::from_str(&svg_text, &opt)
         .map_err(|e| format!("Could not parse SVG '{}': {e}", input_path.display()))?;
@@ -134,12 +267,16 @@ pub fn render_svg_file_to_png(
         drop_dotplot_metadata: options.drop_dotplot_metadata,
         width: pixmap_size.width(),
         height: pixmap_size.height(),
+        font_face_count,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{SvgPngRenderOptions, render_svg_file_to_png, strip_dotplot_metadata_text};
+    use super::{
+        SvgPngRenderOptions, ensure_svg_text_fonts_available, render_svg_file_to_png,
+        strip_dotplot_metadata_text,
+    };
     use image::GenericImageView;
 
     #[test]
@@ -196,5 +333,21 @@ mod tests {
 
         let image = image::open(&output).expect("open png");
         assert_eq!(image.dimensions(), (80, 40));
+    }
+
+    #[test]
+    fn svg_text_requires_available_font_faces() {
+        let err = ensure_svg_text_fonts_available(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"><text>Hello</text></svg>",
+            0,
+        )
+        .expect_err("SVG text without fonts should fail early");
+        assert!(err.contains("no font faces"));
+        assert!(err.contains(super::SVG_FONT_FILE_ENV));
+        assert!(ensure_svg_text_fonts_available(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"10\" height=\"10\"/></svg>",
+            0,
+        )
+        .is_ok());
     }
 }

@@ -2980,6 +2980,11 @@ ClawBio/OpenClaw integration scaffold schemas:
     - declared `.svg` paths remain the internal render/provenance source, but
       the wrapper now also rasterizes them into messenger-ready PNG artifacts
       in the output bundle at fixed deterministic scale `2.0`
+    - text-bearing SVG rasterization requires at least one font face visible
+      to `resvg`; `svg-png` reports `font_face_count` and fails early if an
+      SVG contains text but no fonts are available. Headless deployments can
+      install system fonts or set `GENTLE_SVG_FONT_FILE` /
+      `GENTLE_SVG_FONT_DIR`.
   - mode-specific:
     - `skill-info`: reports ClawBio skill/catalog metadata without invoking
       `gentle_cli`

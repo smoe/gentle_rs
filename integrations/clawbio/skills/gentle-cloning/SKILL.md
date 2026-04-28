@@ -233,11 +233,20 @@ GENtle guide", or "Help me use GENtle in Telegram", run:
 
 - `services guide --channel telegram`
 
+For section-specific guide prompts, run the matching guide route directly.
+This is especially important for prompts such as "Show me the GENtle isoform
+guide for BACH2" or "Show me the GENtle isoforms guide for BACH2": do **not**
+answer with generic skill metadata or version text. Run:
+
+- `services guide --channel telegram --section isoforms --gene BACH2`
+
 This route is for bench-user orientation, not operator setup. It returns
 `gentle.telegram_guide.v1` with short `summary_lines[]`, compact
-`menu_sections[]`, lifecycle-aware readiness notes, and `suggested_actions[]`
-that behave like section links. The first answer should invite optional gene
-personalization:
+`menu_sections[]`, lifecycle-aware readiness notes, and `suggested_actions[]`.
+ClawBio should treat `suggested_actions[]` as the primary executable/navigation
+contract: present them as numbered buttons/options, retain them in chat state,
+and execute the selected action after confirmation when required. The first
+answer should invite optional gene personalization:
 
 > If you have a gene of interest, tell me its symbol. Otherwise I will use
 > defaults for each section.
@@ -246,17 +255,20 @@ When the user supplies a gene symbol, pass it through as `--gene SYMBOL`, for
 example:
 
 - `services guide --channel telegram --section tfbs --gene TERT`
+- `services guide --channel telegram --section isoforms --gene BACH2`
 
 Guide navigation actions use `kind = guide_section` and
 `requires_confirmation = false`. Long-running prepare/sync/download actions
 remain confirmation-gated and should come from the status/handoff payloads, not
 from prose.
 
-If ClawBio ignores `suggested_actions[]`, the guide must still be usable from
-plain text: relay `summary_lines[]`, including continuation phrases such as
-`Continue readiness`, `Continue cloning`, and `Continue isoforms`. Concrete
-request examples exist for each section, so these phrases can be routed without
-scraping a prior action list.
+For compatibility during rollout, `summary_lines[]` still include plain-text
+continuation phrases such as `Continue readiness`, `Continue cloning`,
+`Continue isoforms`, `Continue 2D gel`, and `Continue panel gel`. Treat those
+as a fallback only. If a short follow-up such as "Please show me" arrives,
+ClawBio should resolve it against the retained `suggested_actions[]`; if no
+pending action is retained, ask the user to choose one listed action instead
+of inventing missing input data.
 
 ## Ensembl / Remote-Data Answer Rule
 
@@ -1135,6 +1147,7 @@ Apply the following methodology:
   - `examples/request_services_status.json`
   - `examples/request_services_telegram_guide.json`
   - `examples/request_services_telegram_guide_{readiness,gene_context,tfbs,inline_dna,cloning,isoforms,follow_up}.json`
+  - `examples/request_services_telegram_guide_isoforms_bach2.json`
   - `examples/request_services_handoff.json`
   - `examples/request_genomes_status_grch38.json`
   - `examples/request_resources_status.json`
@@ -1410,6 +1423,12 @@ For status/readiness outputs, `result.json` may additionally include:
   - graphics now use a PNG-first outward contract for messenger consumers
   - declared SVG engine outputs are rasterized into deterministic PNG bundle
     artifacts at fixed scale `2.0`
+  - text-bearing SVGs require usable fonts during rasterization. If the PNG
+    shows bands/shapes but no labels, install a host/container font package
+    such as `fonts-dejavu-core` or `fonts-liberation`, or set
+    `GENTLE_SVG_FONT_FILE` / `GENTLE_SVG_FONT_DIR` to readable TTF/OTF assets.
+    GENtle now fails early for text-bearing SVGs with zero visible font faces
+    instead of silently producing label-free PNGs.
   - multi-figure runs now promote `generated/clawbio_storyboard.png` first
     while keeping the SVG storyboard/source figures available as supporting
     provenance artifacts

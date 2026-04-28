@@ -3123,10 +3123,115 @@ fn parse_restriction_cloning_handoff_mode(
     }
 }
 
+#[derive(Debug, Default)]
+struct ParsedCdnaAssayTestOptions {
+    forward_primer: Option<String>,
+    reverse_primer: Option<String>,
+    probe: Option<String>,
+    transcript_id: Option<String>,
+    min_amplicon_bp: Option<usize>,
+    max_amplicon_bp: Option<usize>,
+    max_mismatches: Option<usize>,
+    require_3prime_exact_bases: Option<usize>,
+    path: Option<String>,
+}
+
+fn parse_usize_option_value(raw: &str, flag: &str) -> Result<usize, String> {
+    raw.parse::<usize>()
+        .map_err(|e| format!("Invalid {flag} value '{raw}': {e}"))
+}
+
+fn parse_cdna_assay_test_options(
+    tokens: &[String],
+    idx: &mut usize,
+    context: &str,
+    require_probe: bool,
+) -> Result<ParsedCdnaAssayTestOptions, String> {
+    let mut options = ParsedCdnaAssayTestOptions::default();
+    while *idx < tokens.len() {
+        match tokens[*idx].as_str() {
+            "--forward" | "--forward-primer" => {
+                let flag = tokens[*idx].clone();
+                options.forward_primer = Some(parse_option_path(tokens, idx, &flag, context)?);
+            }
+            "--reverse" | "--reverse-primer" => {
+                let flag = tokens[*idx].clone();
+                options.reverse_primer = Some(parse_option_path(tokens, idx, &flag, context)?);
+            }
+            "--probe" => {
+                options.probe = Some(parse_option_path(tokens, idx, "--probe", context)?);
+            }
+            "--transcript-id" => {
+                options.transcript_id =
+                    Some(parse_option_path(tokens, idx, "--transcript-id", context)?);
+            }
+            "--min-amplicon-bp" => {
+                let raw = parse_option_path(tokens, idx, "--min-amplicon-bp", context)?;
+                options.min_amplicon_bp = Some(parse_usize_option_value(
+                    &raw,
+                    "--min-amplicon-bp",
+                )?);
+            }
+            "--max-amplicon-bp" => {
+                let raw = parse_option_path(tokens, idx, "--max-amplicon-bp", context)?;
+                options.max_amplicon_bp = Some(parse_usize_option_value(
+                    &raw,
+                    "--max-amplicon-bp",
+                )?);
+            }
+            "--max-mismatches" => {
+                let raw = parse_option_path(tokens, idx, "--max-mismatches", context)?;
+                options.max_mismatches =
+                    Some(parse_usize_option_value(&raw, "--max-mismatches")?);
+            }
+            "--require-3prime-exact-bases" | "--require-3-prime-exact-bases" => {
+                let flag = tokens[*idx].clone();
+                let raw = parse_option_path(tokens, idx, &flag, context)?;
+                options.require_3prime_exact_bases =
+                    Some(parse_usize_option_value(&raw, &flag)?);
+            }
+            "--path" | "--output" => {
+                let flag = tokens[*idx].clone();
+                options.path = Some(parse_option_path(tokens, idx, &flag, context)?);
+            }
+            other => return Err(format!("Unknown option '{other}' for {context}")),
+        }
+    }
+    if options
+        .forward_primer
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        return Err(format!("{context} requires --forward SEQ"));
+    }
+    if options
+        .reverse_primer
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        return Err(format!("{context} requires --reverse SEQ"));
+    }
+    if require_probe
+        && options
+            .probe
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .is_empty()
+    {
+        return Err(format!("{context} requires --probe SEQ"));
+    }
+    Ok(options)
+}
+
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, test-cdna-pcr, test-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
                 .to_string(),
         );
     }
@@ -3209,6 +3314,67 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 request_json,
                 backend,
                 primer3_executable,
+            })
+        }
+        "test-cdna-pcr" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers test-cdna-pcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid feature id '{}' for primers test-cdna-pcr: {e}",
+                    tokens[3]
+                )
+            })?;
+            let mut idx = 4usize;
+            let options =
+                parse_cdna_assay_test_options(tokens, &mut idx, "primers test-cdna-pcr", false)?;
+            Ok(ShellCommand::PrimersTestCdnaPcr {
+                seq_id,
+                feature_id,
+                forward_primer: options.forward_primer.unwrap_or_default(),
+                reverse_primer: options.reverse_primer.unwrap_or_default(),
+                transcript_id: options.transcript_id,
+                min_amplicon_bp: options.min_amplicon_bp,
+                max_amplicon_bp: options.max_amplicon_bp,
+                max_mismatches: options.max_mismatches,
+                require_3prime_exact_bases: options.require_3prime_exact_bases,
+                path: options.path,
+            })
+        }
+        "test-cdna-qpcr" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "primers test-cdna-qpcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid feature id '{}' for primers test-cdna-qpcr: {e}",
+                    tokens[3]
+                )
+            })?;
+            let mut idx = 4usize;
+            let options =
+                parse_cdna_assay_test_options(tokens, &mut idx, "primers test-cdna-qpcr", true)?;
+            Ok(ShellCommand::PrimersTestCdnaQpcr {
+                seq_id,
+                feature_id,
+                forward_primer: options.forward_primer.unwrap_or_default(),
+                reverse_primer: options.reverse_primer.unwrap_or_default(),
+                probe: options.probe.unwrap_or_default(),
+                transcript_id: options.transcript_id,
+                min_amplicon_bp: options.min_amplicon_bp,
+                max_amplicon_bp: options.max_amplicon_bp,
+                max_mismatches: options.max_mismatches,
+                require_3prime_exact_bases: options.require_3prime_exact_bases,
+                path: options.path,
             })
         }
         "prepare-restriction-cloning" => {
@@ -3556,7 +3722,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, test-cdna-pcr, test-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }

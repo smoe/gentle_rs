@@ -1192,6 +1192,8 @@ impl GentleEngine {
             | Operation::DesignQpcrAssays {
                 template: input, ..
             }
+            | Operation::TestCdnaPcr { seq_id: input, .. }
+            | Operation::TestCdnaQpcr { seq_id: input, .. }
             | Operation::ExtractRegion { input, .. }
             | Operation::ExtractAnchoredRegion { input, .. }
             | Operation::SelectCandidate { input, .. }

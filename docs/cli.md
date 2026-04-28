@@ -2463,6 +2463,14 @@ Rendering export commands:
     ClawBio/OpenClaw PNG-first graphics bundling path.
   - Intended for headless post-processing of existing SVG exports; it does not
     add new biology/render semantics by itself.
+  - The JSON summary includes `font_face_count`.
+  - SVGs containing `<text>` now fail early when no usable font faces are
+    available, instead of silently producing label-free PNGs. Minimal
+    containers should install a font package such as `fonts-dejavu-core` or
+    `fonts-liberation`, or set `GENTLE_SVG_FONT_FILE` /
+    `GENTLE_SVG_FONT_DIR` to readable TTF/OTF assets. Optional
+    `GENTLE_SVG_MONOSPACE_FAMILY`, `GENTLE_SVG_SANS_SERIF_FAMILY`, and
+    `GENTLE_SVG_SERIF_FAMILY` override generic family selection.
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
   - Calls engine operation `RenderSequenceSvg`.
   - Linear exports honor the current stored linear viewport when one is set,

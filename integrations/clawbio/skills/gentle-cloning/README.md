@@ -155,11 +155,18 @@ act like navigation links with `kind = guide_section` and
 confirmation-gated through the normal status and handoff routes. If the user
 names a gene, preserve it with `--gene SYMBOL`; otherwise GENtle uses defaults
 such as TERT/TP73 for promoter-TFBS and TP73/TP53 for isoform demos.
+For example, "Show me the GENtle isoform guide for BACH2" should run
+`services guide --channel telegram --section isoforms --gene BACH2`, not the
+generic `skill-info` or version route.
 
-The guide is also useful when a chat adapter ignores `suggested_actions[]`:
-`summary_lines[]` now includes a compact text menu and deterministic phrases
-such as `Continue readiness`, `Continue cloning`, and `Continue isoforms`.
-Matching request examples exist for each guide section.
+The preferred ClawBio integration is to present and retain `suggested_actions[]`
+as the executable/navigation surface. `summary_lines[]` still includes compact
+text-menu phrases such as `Continue readiness`, `Continue cloning`, `Continue
+isoforms`, `Continue 2D gel`, and `Continue panel gel`, but those phrases are a
+rollout fallback rather than the primary contract. A later reply such as
+"Please show me" should resolve against the retained `suggested_actions[]`;
+without a retained action, ask the user to choose one listed action rather than
+reporting that GENtle needs unspecified extra input.
 
 ### Preparation for likely user questions
 
@@ -380,6 +387,12 @@ cargo run --locked --bin gentle_cli -- --version
     declared SVG engine outputs are rasterized into deterministic PNG bundle
     artifacts, while the original SVGs remain available as provenance/supporting
     files when useful
+  - text-bearing SVGs need usable fonts during rasterization. If the PNG shows
+    bands/shapes but no labels, install a host/container font package such as
+    `fonts-dejavu-core` or `fonts-liberation`, or set `GENTLE_SVG_FONT_FILE` /
+    `GENTLE_SVG_FONT_DIR` to readable TTF/OTF assets. GENtle now fails early
+    for text-bearing SVGs with zero visible font faces instead of silently
+    producing label-free PNGs.
   - when a run produces multiple displayable figures, the wrapper promotes only
     one PNG in `result.json.preferred_artifacts[]` and emits
     `continue_artifact` suggested actions for the remaining figures so
@@ -608,6 +621,7 @@ Included first-run bootstrap requests:
 - `examples/request_services_status.json`
 - `examples/request_services_telegram_guide.json`
 - `examples/request_services_telegram_guide_{readiness,gene_context,tfbs,inline_dna,cloning,isoforms,follow_up}.json`
+- `examples/request_services_telegram_guide_isoforms_bach2.json`
 - `examples/request_services_handoff.json`
 - `examples/request_genomes_status_grch38.json`
 - `examples/request_resources_status.json`
