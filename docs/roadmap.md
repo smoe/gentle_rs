@@ -768,6 +768,18 @@ order. Durable architecture constraints and decisions remain in
     splice-aware candidate hits, while mapped `pwm.txt` blocks now upgrade
     those rows to PWM-backed `llr_bits` ranking instead of remaining
     provenance-only
+- UCSC RepeatMasker `rmsk` resource prep baseline now exists too:
+  - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT] --assembly DB`
+    normalizes the 17-column UCSC table into
+    `gentle.ucsc_rmsk_resource.v1`
+  - `resources suggest-ucsc-rmsk-index` emits the matching
+    `gentle.ucsc_rmsk_descriptor.v1` source/field/index recommendation
+    payload without requiring the large table download
+  - `resources status` now reports the default hg38 runtime snapshot path,
+    UCSC download/schema URLs, validation state, and recommended indexes
+  - near-term implementation target: replace direct JSON scans with a
+    per-assembly `(genoName, bin, genoStart, genoEnd)` interval sidecar plus
+    class/family and repeat-name dictionaries for display filtering
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
 - Shared engine/shell TFBS region summary path now reports grouped factor

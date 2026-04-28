@@ -805,6 +805,55 @@ Portable schema:
 
 - `gentle.jaspar_remote_metadata_snapshot.v1`
 
+## UCSC rmsk resource contract
+
+GENtle now treats the UCSC RepeatMasker `rmsk` table as a portable external
+resource rather than a GUI-only track import convention.
+
+Current shared-shell routes:
+
+```bash
+gentle_cli shell 'resources sync-ucsc-rmsk https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/rmsk.txt.gz data/resources/ucsc.rmsk.hg38.json --assembly hg38'
+gentle_cli shell 'resources suggest-ucsc-rmsk-index --assembly hg38 --output rmsk.indexing.json'
+```
+
+Portable schemas:
+
+- `gentle.ucsc_rmsk_resource.v1`
+- `gentle.ucsc_rmsk_descriptor.v1`
+
+Behavior notes:
+
+- the normalized snapshot preserves the UCSC 17-column `rmsk` table:
+  `bin`, `swScore`, `milliDiv`, `milliDel`, `milliIns`, `genoName`,
+  `genoStart`, `genoEnd`, `genoLeft`, `strand`, `repName`, `repClass`,
+  `repFamily`, `repStart`, `repEnd`, `repLeft`, `id`
+- genomic coordinates remain UCSC 0-based half-open in the resource; callers
+  convert to GENtle feature coordinates only when materializing display
+  features
+- snapshots include source URLs, field specs, and index recommendations so
+  future GUI/CLI/projectors can inspect the resource without hard-coding UCSC
+  table details
+- `resources status` reports the default hg38 runtime snapshot path
+  `data/resources/ucsc.rmsk.hg38.json`, validation state, row count when
+  available, and the same index recommendations
+- `--limit N` creates a deliberately truncated snapshot for fixtures/smoke
+  checks and marks `truncated=true`
+
+Indexing guidance:
+
+- primary: build a per-assembly interval index keyed by
+  `(genoName, bin, genoStart, genoEnd)` so genome-region/gene extraction can
+  project only overlapping repeats
+- secondary: keep class/family partitions keyed by normalized
+  `(repClass, repFamily, repName)` for display filtering, feature-tree
+  grouping, and legends
+- optional expert lookup: add a `repName -> row offsets` dictionary for queries
+  such as `AluY` or `L1PA2`
+- optional display-quality sidecar: store `swScore`, `milliDiv`, `milliDel`,
+  and `milliIns` columnar by row offset so divergence/quality shading can be
+  added without changing the interval index
+
 ## JASPAR expert contract
 
 GENtle also exposes a portable single-entry JASPAR expert contract for the

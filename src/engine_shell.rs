@@ -97,7 +97,7 @@ use crate::{
         shell_topic_help_markdown as render_shell_topic_help_markdown,
         shell_topic_help_text as render_shell_topic_help_text,
     },
-    tf_motifs,
+    tf_motifs, ucsc_rmsk,
 };
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
@@ -1118,6 +1118,16 @@ pub enum ShellCommand {
     },
     ResourcesSyncJaspar {
         input: String,
+        output: Option<String>,
+    },
+    ResourcesSyncUcscRmsk {
+        input: String,
+        output: Option<String>,
+        assembly_database: Option<String>,
+        max_records: Option<usize>,
+    },
+    ResourcesSuggestUcscRmskIndex {
+        assembly_database: Option<String>,
         output: Option<String>,
     },
     ResourcesSyncJasparRemoteMetadata {
@@ -6278,6 +6288,35 @@ impl ShellCommand {
                     .unwrap_or_else(|| resource_sync::DEFAULT_JASPAR_RESOURCE_PATH.to_string());
                 format!("sync JASPAR from '{input}' to '{output}'")
             }
+            Self::ResourcesSyncUcscRmsk {
+                input,
+                output,
+                assembly_database,
+                max_records,
+            } => {
+                let assembly = assembly_database
+                    .as_deref()
+                    .unwrap_or(ucsc_rmsk::DEFAULT_UCSC_RMSK_ASSEMBLY);
+                let output = output
+                    .clone()
+                    .unwrap_or_else(|| ucsc_rmsk::default_ucsc_rmsk_resource_path(assembly));
+                format!(
+                    "sync UCSC rmsk table for assembly '{assembly}' from '{input}' to '{output}'{}",
+                    max_records
+                        .map(|limit| format!(" (limit={limit})"))
+                        .unwrap_or_default()
+                )
+            }
+            Self::ResourcesSuggestUcscRmskIndex {
+                assembly_database,
+                output,
+            } => format!(
+                "describe UCSC rmsk indexing recommendations for assembly '{}' (output='{}')",
+                assembly_database
+                    .as_deref()
+                    .unwrap_or(ucsc_rmsk::DEFAULT_UCSC_RMSK_ASSEMBLY),
+                output.as_deref().unwrap_or("-"),
+            ),
             Self::ResourcesSyncJasparRemoteMetadata {
                 motifs,
                 filter,
@@ -17915,7 +17954,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
-                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, inspect-jaspar, sync-attract, or status".to_string(),
+                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, inspect-jaspar, sync-attract, or status".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -17982,6 +18021,114 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         idx += 1;
                     }
                     Ok(ShellCommand::ResourcesSyncJaspar { input, output })
+                }
+                "sync-ucsc-rmsk" => {
+                    if tokens.len() < 3 {
+                        return Err("resources sync-ucsc-rmsk requires INPUT.rmsk.txt_or_txt.gz"
+                            .to_string());
+                    }
+                    let input = tokens[2].clone();
+                    let mut output: Option<String> = None;
+                    let mut assembly_database: Option<String> = None;
+                    let mut max_records: Option<usize> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--assembly" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing DB after --assembly for resources sync-ucsc-rmsk"
+                                            .to_string(),
+                                    );
+                                }
+                                assembly_database = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources sync-ucsc-rmsk"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--limit" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing N after --limit for resources sync-ucsc-rmsk"
+                                            .to_string(),
+                                    );
+                                }
+                                max_records = Some(tokens[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --limit '{}' for resources sync-ucsc-rmsk: {e}",
+                                        tokens[idx + 1]
+                                    )
+                                })?);
+                                idx += 2;
+                            }
+                            value if value.starts_with("--") => {
+                                return Err(format!(
+                                    "Unknown option '{value}' for resources sync-ucsc-rmsk"
+                                ));
+                            }
+                            value => {
+                                if output.is_some() {
+                                    return Err(format!(
+                                        "Unexpected extra positional argument '{value}' for resources sync-ucsc-rmsk"
+                                    ));
+                                }
+                                output = Some(value.to_string());
+                                idx += 1;
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesSyncUcscRmsk {
+                        input,
+                        output,
+                        assembly_database,
+                        max_records,
+                    })
+                }
+                "suggest-ucsc-rmsk-index" | "describe-ucsc-rmsk" => {
+                    let mut assembly_database: Option<String> = None;
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--assembly" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing DB after --assembly for resources suggest-ucsc-rmsk-index"
+                                            .to_string(),
+                                    );
+                                }
+                                assembly_database = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources suggest-ucsc-rmsk-index"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources suggest-ucsc-rmsk-index"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesSuggestUcscRmskIndex {
+                        assembly_database,
+                        output,
+                    })
                 }
                 "sync-jaspar-remote-metadata" => {
                     let mut motifs: Vec<String> = vec![];
@@ -18402,7 +18549,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     Ok(ShellCommand::ResourcesStatus)
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, resolve-tf-query, inspect-jaspar or sync-attract)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-ucsc-rmsk, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, resolve-tf-query, inspect-jaspar or sync-attract)"
                 )),
             }
         }
@@ -21559,6 +21706,48 @@ fn execute_export_import_and_resource_command(
                     "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
                     "report": report,
                 }),
+            })
+        }
+        ShellCommand::ResourcesSyncUcscRmsk {
+            input,
+            output,
+            assembly_database,
+            max_records,
+        } => {
+            let report = resource_sync::sync_ucsc_rmsk(
+                input,
+                output.as_deref(),
+                assembly_database.as_deref(),
+                *max_records,
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!("Synced {} {} rows to '{}'", report.item_count, report.resource, report.output),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesSuggestUcscRmskIndex {
+            assembly_database,
+            output,
+        } => {
+            let assembly = assembly_database
+                .as_deref()
+                .unwrap_or(ucsc_rmsk::DEFAULT_UCSC_RMSK_ASSEMBLY);
+            let descriptor = ucsc_rmsk::ucsc_rmsk_descriptor(assembly);
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&descriptor)
+                    .map_err(|e| format!("Could not serialize UCSC rmsk descriptor: {e}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write UCSC rmsk descriptor: {e}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(descriptor)
+                    .map_err(|e| format!("Could not serialize UCSC rmsk descriptor: {e}"))?,
             })
         }
         ShellCommand::ResourcesSyncJasparRemoteMetadata {
@@ -28903,6 +29092,8 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ServicesGuide { .. }
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
+            | ShellCommand::ResourcesSyncUcscRmsk { .. }
+            | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
             | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
             | ShellCommand::ResourcesBenchmarkJaspar { .. }
             | ShellCommand::ResourcesListJaspar { .. }
@@ -29523,6 +29714,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ServicesGuide { .. }
         | ShellCommand::ResourcesSyncRebase { .. }
         | ShellCommand::ResourcesSyncJaspar { .. }
+        | ShellCommand::ResourcesSyncUcscRmsk { .. }
+        | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
         | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
         | ShellCommand::ResourcesBenchmarkJaspar { .. }
         | ShellCommand::ResourcesListJaspar { .. }

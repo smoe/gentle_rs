@@ -13,6 +13,10 @@ use crate::{
     enzymes::load_restriction_enzymes_from_json_text,
     resource_sync::DEFAULT_JASPAR_REMOTE_METADATA_PATH,
     tf_motifs::list_motif_summaries,
+    ucsc_rmsk::{
+        DEFAULT_UCSC_RMSK_ASSEMBLY, DEFAULT_UCSC_RMSK_RESOURCE_PATH, UCSC_RMSK_RESOURCE_SCHEMA,
+        UcscRmskIndexRecommendation, ucsc_rmsk_descriptor, ucsc_rmsk_index_recommendations,
+    },
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -38,6 +42,7 @@ pub struct ResourceCatalogReport {
     pub rebase: ResourceSnapshotStatus,
     pub jaspar: ResourceSnapshotStatus,
     pub attract: AttractResourceStatus,
+    pub ucsc_rmsk: UcscRmskResourceStatus,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,6 +99,26 @@ pub struct AttractResourceStatus {
     pub active_pwm_row_count: usize,
     pub active_consensus_only_row_count: usize,
     pub active_fingerprint: Option<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UcscRmskResourceStatus {
+    pub resource_id: String,
+    pub display_name: String,
+    pub support_status: String,
+    pub assembly_database: String,
+    pub table: String,
+    pub homepage: String,
+    pub download_url: String,
+    pub schema_url: String,
+    pub runtime_path: String,
+    pub runtime_exists: bool,
+    pub runtime_valid: bool,
+    pub runtime_item_count: Option<usize>,
+    pub runtime_error: Option<String>,
+    pub active_source: String,
+    pub index_recommendations: Vec<UcscRmskIndexRecommendation>,
     pub notes: Vec<String>,
 }
 
@@ -367,6 +392,80 @@ fn attract_status() -> AttractResourceStatus {
     }
 }
 
+fn count_ucsc_rmsk_snapshot_items(text: &str) -> Result<usize, String> {
+    let parsed: Value =
+        serde_json::from_str(text).map_err(|e| format!("Could not parse UCSC rmsk JSON: {e}"))?;
+    let schema = parsed
+        .get("schema")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    if schema != UCSC_RMSK_RESOURCE_SCHEMA {
+        return Err(format!("Unexpected UCSC rmsk schema '{schema}'"));
+    }
+    if let Some(count) = parsed.get("row_count").and_then(|v| v.as_u64()) {
+        return Ok(count as usize);
+    }
+    Ok(parsed
+        .get("records")
+        .and_then(|v| v.as_array())
+        .map(|rows| rows.len())
+        .unwrap_or(0))
+}
+
+fn ucsc_rmsk_status() -> UcscRmskResourceStatus {
+    let descriptor = ucsc_rmsk_descriptor(DEFAULT_UCSC_RMSK_ASSEMBLY);
+    let runtime_exists = std::path::Path::new(DEFAULT_UCSC_RMSK_RESOURCE_PATH).exists();
+    let (runtime_valid, runtime_item_count, runtime_error) = if runtime_exists {
+        match fs::read_to_string(DEFAULT_UCSC_RMSK_RESOURCE_PATH)
+            .map_err(|e| format!("Could not read UCSC rmsk runtime snapshot: {e}"))
+            .and_then(|text| count_ucsc_rmsk_snapshot_items(&text))
+        {
+            Ok(count) if count > 0 => (true, Some(count), None),
+            Ok(count) => (
+                false,
+                Some(count),
+                Some("UCSC rmsk runtime snapshot is empty".to_string()),
+            ),
+            Err(error) => (false, None, Some(error)),
+        }
+    } else {
+        (false, None, None)
+    };
+    let active_source = if runtime_valid {
+        "runtime".to_string()
+    } else {
+        "known_external_only".to_string()
+    };
+    let support_status = if runtime_valid {
+        "runtime_snapshot".to_string()
+    } else {
+        "known_external_only".to_string()
+    };
+    UcscRmskResourceStatus {
+        resource_id: "ucsc_rmsk".to_string(),
+        display_name: "UCSC RepeatMasker rmsk".to_string(),
+        support_status,
+        assembly_database: DEFAULT_UCSC_RMSK_ASSEMBLY.to_string(),
+        table: "rmsk".to_string(),
+        homepage: descriptor.track_url,
+        download_url: descriptor.download_url,
+        schema_url: descriptor.schema_url,
+        runtime_path: DEFAULT_UCSC_RMSK_RESOURCE_PATH.to_string(),
+        runtime_exists,
+        runtime_valid,
+        runtime_item_count,
+        runtime_error,
+        active_source,
+        index_recommendations: ucsc_rmsk_index_recommendations(),
+        notes: vec![
+            "UCSC rmsk rows are assembly-specific 0-based half-open RepeatMasker intervals.".to_string(),
+            "Use `resources sync-ucsc-rmsk INPUT.txt_or_txt.gz [OUTPUT.json] --assembly hg38` to create a local normalized snapshot.".to_string(),
+            "Large assemblies should prefer sidecar interval indexes over scanning the JSON snapshot for every extracted region.".to_string(),
+        ],
+    }
+}
+
 pub fn resource_catalog_status() -> ResourceCatalogReport {
     ResourceCatalogReport {
         schema: RESOURCE_STATUS_SCHEMA.to_string(),
@@ -374,5 +473,6 @@ pub fn resource_catalog_status() -> ResourceCatalogReport {
         rebase: rebase_status(),
         jaspar: jaspar_status(),
         attract: attract_status(),
+        ucsc_rmsk: ucsc_rmsk_status(),
     }
 }

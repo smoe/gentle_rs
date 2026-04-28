@@ -13066,6 +13066,46 @@ fn parse_resources_sync_jaspar_with_output() {
 }
 
 #[test]
+fn parse_resources_sync_ucsc_rmsk_with_options() {
+    let cmd = parse_shell_line(
+        "resources sync-ucsc-rmsk rmsk.txt.gz --assembly hg38 --limit 10 --output out.rmsk.json",
+    )
+    .expect("parse resources sync-ucsc-rmsk");
+    match cmd {
+        ShellCommand::ResourcesSyncUcscRmsk {
+            input,
+            output,
+            assembly_database,
+            max_records,
+        } => {
+            assert_eq!(input, "rmsk.txt.gz".to_string());
+            assert_eq!(output.as_deref(), Some("out.rmsk.json"));
+            assert_eq!(assembly_database.as_deref(), Some("hg38"));
+            assert_eq!(max_records, Some(10));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_resources_suggest_ucsc_rmsk_index_with_options() {
+    let cmd = parse_shell_line(
+        "resources suggest-ucsc-rmsk-index --assembly mm39 --output rmsk.index.json",
+    )
+    .expect("parse resources suggest-ucsc-rmsk-index");
+    match cmd {
+        ShellCommand::ResourcesSuggestUcscRmskIndex {
+            assembly_database,
+            output,
+        } => {
+            assert_eq!(assembly_database.as_deref(), Some("mm39"));
+            assert_eq!(output.as_deref(), Some("rmsk.index.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_resources_summarize_jaspar_with_options() {
     let cmd = parse_shell_line(
         "resources summarize-jaspar --motif SP1 --motifs REST,PATZ1 --random-length 512 --seed 99 --output jaspar.json",
@@ -13347,6 +13387,74 @@ fn execute_resources_sync_jaspar_with_local_fixture() {
         snapshot.get("motif_count").and_then(|v| v.as_u64()),
         Some(2)
     );
+}
+
+#[test]
+fn execute_resources_sync_ucsc_rmsk_with_local_fixture() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("rmsk.sync.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesSyncUcscRmsk {
+            input: resource_fixture_path("ucsc.rmsk.hg38.edge.txt"),
+            output: Some(output_path.to_string_lossy().to_string()),
+            assembly_database: Some("hg38".to_string()),
+            max_records: None,
+        },
+    )
+    .expect("execute resources sync-ucsc-rmsk");
+
+    assert!(!out.state_changed);
+    assert_eq!(out.output["report"]["resource"].as_str(), Some("ucsc-rmsk"));
+    assert_eq!(out.output["report"]["item_count"].as_u64(), Some(4));
+
+    let written = fs::read_to_string(&output_path).expect("read synced rmsk output");
+    let snapshot = serde_json::from_str::<serde_json::Value>(&written).expect("parse JSON");
+    assert_eq!(
+        snapshot.get("schema").and_then(|v| v.as_str()),
+        Some(crate::ucsc_rmsk::UCSC_RMSK_RESOURCE_SCHEMA)
+    );
+    assert_eq!(snapshot.get("row_count").and_then(|v| v.as_u64()), Some(4));
+    assert_eq!(
+        snapshot["records"][0]
+            .get("repClass")
+            .and_then(|v| v.as_str()),
+        Some("Simple_repeat")
+    );
+}
+
+#[test]
+fn execute_resources_suggest_ucsc_rmsk_index_writes_descriptor() {
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("rmsk.index.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesSuggestUcscRmskIndex {
+            assembly_database: Some("hg38".to_string()),
+            output: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute resources suggest-ucsc-rmsk-index");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some(crate::ucsc_rmsk::UCSC_RMSK_DESCRIPTOR_SCHEMA)
+    );
+    assert!(
+        out.output["index_recommendations"]
+            .as_array()
+            .is_some_and(|rows| rows
+                .iter()
+                .any(|row| row["index_id"] == "interval_by_chrom_bin"))
+    );
+    let written = fs::read_to_string(&output_path).expect("read descriptor");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse descriptor");
+    assert_eq!(json["assembly_database"], "hg38");
 }
 
 #[test]

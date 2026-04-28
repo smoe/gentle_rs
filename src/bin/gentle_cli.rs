@@ -745,6 +745,8 @@ fn usage() {
   gentle_cli resources status\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
+  gentle_cli resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]\n  \
+  gentle_cli resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]\n\n  \
   gentle_cli resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]\n\n  \
   gentle_cli resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]\n\n  \
   gentle_cli shell 'resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]'\n\n  \

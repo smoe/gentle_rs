@@ -17,6 +17,7 @@ checks.
 - `resources/`
   - `jaspar.edge.pfm`
   - `rebase.edge.withrefm`
+  - `ucsc.rmsk.hg38.edge.txt`
 - `primer3/`
   - `pairs.location_5_60.kv`
 - `mapping/`
@@ -78,6 +79,24 @@ checks.
   - `src/engine_shell.rs` shared-shell execution tests for
     `resources sync-rebase`.
   - Runtime paths `resources sync-rebase` / GUI import dialog.
+
+### `resources/ucsc.rmsk.hg38.edge.txt`
+
+- Origin: small hand-curated excerpt from the UCSC hg38 `rmsk` Table Browser
+  schema/sample rows for "RepeatMasker - Repeating Elements by
+  RepeatMasker".
+- Deterministic recreation:
+  - open the UCSC schema URL:
+    `https://genome.ucsc.edu/cgi-bin/hgTables?db=hg38&hgta_doSchema=describe+table+schema&hgta_group=rep&hgta_table=rmsk&hgta_track=rmsk`
+  - copy the header and first four sample rows shown for hg38 `rmsk`
+  - keep tabular whitespace normalized to single spaces
+- Primary usage:
+  - `src/ucsc_rmsk.rs` parser/resource-snapshot tests.
+  - `src/engine_shell.rs` shared-shell execution tests for
+    `resources sync-ucsc-rmsk`.
+- Runtime/parser role:
+  - exercises the 17-column UCSC RepeatMasker `.out` table contract without
+    committing the full hg38 `rmsk.txt.gz` download.
 
 ### `primer3/pairs.location_5_60.kv`
 

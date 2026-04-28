@@ -1,5 +1,5 @@
-//! Resource synchronization (REBASE/JASPAR/ATtRACT) parsing and snapshot
-//! writing.
+//! Resource synchronization (REBASE/JASPAR/ATtRACT/UCSC rmsk) parsing and
+//! snapshot writing.
 
 use crate::attract_motifs::{
     ATTRACT_MOTIF_SNAPSHOT_SCHEMA, AttractMotifRecord, AttractMotifSnapshot, AttractPfmRows,
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashMap},
     fs,
+    io::{BufRead, BufReader},
     path::Path,
     process::Command,
 };
@@ -459,6 +460,42 @@ fn read_binary_input(path_or_url: &str) -> Result<Vec<u8>, String> {
             .map_err(|e| format!("Could not read URL response '{path_or_url}': {e}"))
     } else {
         fs::read(path_or_url).map_err(|e| format!("Could not read file '{path_or_url}': {e}"))
+    }
+}
+
+fn looks_like_gzip_path(path_or_url: &str) -> bool {
+    let lower = path_or_url.to_ascii_lowercase();
+    lower.ends_with(".gz") || lower.contains(".gz?")
+}
+
+fn open_text_input_reader(path_or_url: &str) -> Result<Box<dyn BufRead>, String> {
+    if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
+        let response = std::panic::catch_unwind(|| reqwest::blocking::get(path_or_url))
+            .map_err(|_| {
+                format!("Could not fetch URL '{path_or_url}': networking backend panicked")
+            })?
+            .map_err(|e| format!("Could not fetch URL '{path_or_url}': {e}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "Could not fetch URL '{path_or_url}': HTTP {}",
+                response.status()
+            ));
+        }
+        if looks_like_gzip_path(path_or_url) {
+            let decoder = flate2::read::MultiGzDecoder::new(response);
+            Ok(Box::new(BufReader::new(decoder)))
+        } else {
+            Ok(Box::new(BufReader::new(response)))
+        }
+    } else {
+        let file = fs::File::open(path_or_url)
+            .map_err(|e| format!("Could not read file '{path_or_url}': {e}"))?;
+        if looks_like_gzip_path(path_or_url) {
+            let decoder = flate2::read::MultiGzDecoder::new(file);
+            Ok(Box::new(BufReader::new(decoder)))
+        } else {
+            Ok(Box::new(BufReader::new(file)))
+        }
     }
 }
 
@@ -1086,6 +1123,40 @@ pub fn sync_attract(input: &str, output: Option<&str>) -> Result<SyncReport, Str
     })
 }
 
+pub fn sync_ucsc_rmsk(
+    input: &str,
+    output: Option<&str>,
+    assembly_database: Option<&str>,
+    max_records: Option<usize>,
+) -> Result<SyncReport, String> {
+    let assembly_database = assembly_database
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(crate::ucsc_rmsk::DEFAULT_UCSC_RMSK_ASSEMBLY);
+    let output = output
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ucsc_rmsk::default_ucsc_rmsk_resource_path(assembly_database));
+    let reader = open_text_input_reader(input)?;
+    let summary = crate::ucsc_rmsk::write_ucsc_rmsk_resource_snapshot(
+        reader,
+        input,
+        assembly_database,
+        &output,
+        max_records,
+        now_unix_ms(),
+    )?;
+    Ok(SyncReport {
+        source: input.to_string(),
+        output,
+        item_count: summary.row_count,
+        resource: if summary.truncated {
+            "ucsc-rmsk-truncated".to_string()
+        } else {
+            "ucsc-rmsk".to_string()
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1157,6 +1228,38 @@ mod tests {
         assert_eq!(motifs[0].consensus_iupac, "ACGT");
         assert_eq!(motifs[1].id, "MA0002.1");
         assert_eq!(motifs[1].consensus_iupac, "AACC");
+    }
+
+    #[test]
+    fn syncs_ucsc_rmsk_edge_fixture_to_resource_snapshot() {
+        let td = tempdir().expect("tempdir");
+        let output = td.path().join("rmsk.json");
+        let report = sync_ucsc_rmsk(
+            "test_files/fixtures/resources/ucsc.rmsk.hg38.edge.txt",
+            Some(output.to_string_lossy().as_ref()),
+            Some("hg38"),
+            None,
+        )
+        .expect("sync rmsk");
+        assert_eq!(report.resource, "ucsc-rmsk");
+        assert_eq!(report.item_count, 4);
+        let json: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(output).expect("read rmsk json"))
+                .expect("parse rmsk json");
+        assert_eq!(
+            json.get("schema").and_then(|value| value.as_str()),
+            Some(crate::ucsc_rmsk::UCSC_RMSK_RESOURCE_SCHEMA)
+        );
+        assert_eq!(
+            json.get("row_count").and_then(|value| value.as_u64()),
+            Some(4)
+        );
+        assert_eq!(
+            json["records"][2]
+                .get("repClass")
+                .and_then(|value| value.as_str()),
+            Some("LINE")
+        );
     }
 
     #[test]

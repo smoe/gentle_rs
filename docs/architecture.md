@@ -1138,6 +1138,10 @@ Sequence-linked construct reasoning graph direction:
     findings should enter the same engine-owned `annotation_candidates` /
     `annotation_candidate_summaries` pathway rather than inventing a second
     adapter-local overlay or raw glyph track for similarity analysis.
+  - UCSC `rmsk`/RepeatMasker table resources should stay assembly-specific and
+    interval-indexed in shared resource code; adapters should materialize only
+    overlapping rows into GENtle features and preserve original `repName`,
+    `repClass`, and `repFamily` qualifiers for display/filtering.
   - frontends must not fake non-sequence host facts as anonymous sequence spans
     just to make them visible.
 - Evidence classes must remain explicit rather than collapsed into one opaque

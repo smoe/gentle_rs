@@ -516,7 +516,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -1603,6 +1603,8 @@ cargo run --bin gentle_cli -- services handoff --scope clawbio --output artifact
 cargo run --bin gentle_cli -- resources status
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
+cargo run --bin gentle_cli -- resources sync-ucsc-rmsk rmsk.txt.gz data/resources/ucsc.rmsk.hg38.json --assembly hg38
+cargo run --bin gentle_cli -- resources suggest-ucsc-rmsk-index --assembly hg38 --output rmsk.indexing.json
 cargo run --bin gentle_cli -- resources sync-jaspar-remote-metadata --filter TP --limit 50 data/resources/jaspar.remote_metadata.json
 cargo run --bin gentle_cli -- resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output jaspar.summary.json
 cargo run --bin gentle_cli -- shell 'resources resolve-tf-query "Yamanaka factors" OCT4 "KLF family" --output tf_queries.json'
@@ -1792,6 +1794,8 @@ Shared shell command:
     - `import-pool INPUT.pool.gentle.json [PREFIX]`
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
+    - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
+    - `resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]`
     - `resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]`
     - `resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]`
@@ -2972,6 +2976,10 @@ Resource sync commands:
     - `active_fingerprint`
   - Includes the current ATtRACT homepage plus published ZIP download URL:
     `https://attract.cnic.es/attract/static/ATtRACT.zip`.
+  - UCSC `rmsk` status reports the default hg38 download/schema URLs, the
+    default normalized snapshot path `data/resources/ucsc.rmsk.hg38.json`,
+    whether that snapshot exists and validates, and the embedded index
+    recommendations used by `resources suggest-ucsc-rmsk-index`.
 - `resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]`
   - Parses REBASE/Bairoch-style records (`withrefm`) into GENtle restriction-enzyme JSON.
   - `INPUT` may be a local file path or an `https://...` URL.
@@ -3013,6 +3021,26 @@ Resource sync commands:
   - Default output: `data/resources/jaspar.motifs.json`.
   - `ExtractAnchoredRegion` can resolve TF motifs by ID/name from this local registry.
   - GENtle ships with built-in motifs in `assets/jaspar.motifs.json` (currently generated from JASPAR 2026 CORE non-redundant); this command provides local updates/extensions.
+- `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
+  - Normalizes the UCSC RepeatMasker `rmsk` table into
+    `gentle.ucsc_rmsk_resource.v1`.
+  - `INPUT` may be a local path or an `https://...` URL and may be gzip
+    compressed.
+  - Default assembly: `hg38`.
+  - Default output for hg38: `data/resources/ucsc.rmsk.hg38.json`.
+  - The snapshot preserves UCSC 0-based half-open coordinates and the canonical
+    17-column row fields (`genoName`, `genoStart`, `genoEnd`, `repName`,
+    `repClass`, `repFamily`, etc.).
+  - `--limit N` is intended for fixtures/smoke checks; a limited output is
+    marked `truncated=true` and should not be used as a full assembly resource.
+- `resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]`
+  - Emits the source URLs, column schema, and indexing recommendations without
+    downloading the full table.
+  - Current recommendations prioritize:
+    - `interval_by_chrom_bin` for extraction-window overlap queries
+    - `class_family_partition` for SINE/LINE/LTR/DNA/simple-repeat grouping
+    - `repeat_name_lookup` for repeat-name expert searches
+    - `quality_metric_columns` for future divergence/score shading
 - `resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]`
   - Presents local JASPAR entries through one deterministic score-oriented report.
   - For each selected entry, GENtle derives:

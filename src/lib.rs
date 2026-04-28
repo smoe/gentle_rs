@@ -135,6 +135,8 @@ pub mod test_support;
 pub mod tf_motifs;
 /// Process-local tool-path override registry.
 pub mod tool_overrides;
+/// UCSC RepeatMasker (`rmsk`) table resource contracts and indexing guidance.
+pub mod ucsc_rmsk;
 /// UniProt/SWISS-PROT parsing contracts and projection payload models.
 pub mod uniprot;
 /// Generic GUI window abstraction.

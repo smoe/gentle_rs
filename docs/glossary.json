@@ -1335,6 +1335,32 @@
       },
       {
          "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources sync-ucsc-rmsk",
+         "summary": "Normalize a UCSC RepeatMasker rmsk table into a GENtle resource snapshot with repeat display/index metadata.",
+         "usage": "resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]"
+      },
+      {
+         "aliases": [
+            "resources describe-ucsc-rmsk"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources suggest-ucsc-rmsk-index",
+         "summary": "Describe UCSC rmsk source URLs, columns, and recommended GENtle indexes without downloading the full table.",
+         "usage": "resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "SyncJasparRemoteMetadata"
          ],

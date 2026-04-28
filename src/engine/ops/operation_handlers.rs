@@ -7221,6 +7221,29 @@ impl GentleEngine {
             }
         }
 
+        let assay_kind = "qpcr".to_string();
+        let construct_lengths = Self::cdna_assay_construct_length_summary(
+            &request.forward_primer,
+            &request.reverse_primer,
+            request.probe.as_deref(),
+            &transcript_results,
+        );
+        let mut oligo_qc_inputs = vec![
+            (
+                "forward_primer",
+                "forward_primer",
+                request.forward_primer.as_str(),
+            ),
+            (
+                "reverse_primer",
+                "reverse_primer",
+                request.reverse_primer.as_str(),
+            ),
+        ];
+        if let Some(probe) = request.probe.as_deref() {
+            oligo_qc_inputs.push(("probe", "probe", probe));
+        }
+        let oligo_qc = Self::build_oligo_qc_report(&assay_kind, &oligo_qc_inputs);
         let overall_status = if total_product_count == 0 {
             "not_detected"
         } else if total_product_count == 1 {
@@ -7235,10 +7258,15 @@ impl GentleEngine {
             format!("external cDNA FASTA set ({} files)", source_paths.len())
         };
         let summary = format!(
-            "cDNA qPCR assay detected {} product(s) across {}/{} transcript FASTA record(s) in {}.",
-            total_product_count, detected_transcript_count, transcript_count, group_label
+            "cDNA qPCR assay detected {} product(s) across {}/{} transcript FASTA record(s) in {}. Construct lengths: {} Oligo QC: {}.",
+            total_product_count,
+            detected_transcript_count,
+            transcript_count,
+            group_label,
+            construct_lengths.summary,
+            oligo_qc.status
         );
-        let mut warnings = vec![];
+        let mut warnings = oligo_qc.warnings.clone();
         if requested_transcript_id.is_none() {
             warnings.push(
                 "External FASTA screens report detected transcript rows only; non-detected records are counted in transcript_count."
@@ -7248,7 +7276,7 @@ impl GentleEngine {
 
         Ok(CdnaAssayTestReport {
             schema: CDNA_ASSAY_TEST_REPORT_SCHEMA.to_string(),
-            assay_kind: "qpcr".to_string(),
+            assay_kind,
             template_source_kind: "external_fasta".to_string(),
             source_paths,
             source_seq_id: "external_cdna_fasta".to_string(),
@@ -7259,6 +7287,8 @@ impl GentleEngine {
             forward_primer: request.forward_primer,
             reverse_primer: request.reverse_primer,
             probe: request.probe,
+            construct_lengths,
+            oligo_qc,
             max_mismatches: request.max_mismatches,
             require_3prime_exact_bases: request.require_3prime_exact_bases,
             min_amplicon_bp: request.min_amplicon_bp,
