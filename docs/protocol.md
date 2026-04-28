@@ -2338,12 +2338,14 @@ MCP query/introspection tool contracts (current):
 - `agent_preflight`
   - arguments:
     - required: `system_id`
-    - optional: `catalog_path`, `base_url`, `model`, `timeout_secs`,
+    - optional: `catalog_path`, `live`, `base_url`, `model`, `timeout_secs`,
       `connect_timeout_secs`, `read_timeout_secs`, `max_retries`,
       `max_response_bytes`
   - behavior:
     - returns the same structured payload shape as shared shell
       `agents preflight ...`
+    - `live=true` routes through shared shell as `agents preflight --live`
+      and includes the optional `live_probe` object
 
 - `agent_models`
   - arguments:
@@ -2763,8 +2765,30 @@ Adapter-equivalence guarantee for UI-intent tools:
   - Lists configured agent systems from catalog JSON.
   - Default catalog: `assets/agent_systems.json`.
 
-- `agents preflight SYSTEM_ID [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
+- `agents preflight SYSTEM_ID [--live] [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
   - Returns read-only transport/runtime metadata as `gentle.agent_preflight.v1`.
+  - Default behavior is config-only for CLI/MCP compatibility.
+  - `--live` adds a non-generating model-discovery probe for
+    `native_openai` and `native_openai_compat`.
+  - `live_probe` fields:
+    - `enabled`
+    - `attempted_endpoints`
+    - `selected_endpoint`
+    - `reachable`
+    - `auth_ok`
+    - `model_list_ok`
+    - `selected_model_seen`
+    - `status_class`:
+      `ok | missing_key | auth_failed | quota_or_billing | model_missing | endpoint_unreachable | unsupported_transport | provider_error`
+    - `message`
+    - `provider_error_code`
+  - Endpoint policy:
+    - OpenAI: `GET /models` with bearer auth
+    - OpenAI-compatible: `/models`, then `/v1/models` fallback when the base
+      URL is not already `/v1`
+    - no chat/completion/responses request is made
+    - quota/billing is reported only when that provider error appears during
+      the model-list probe
 
 - `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
   - Returns discovered model ids as `gentle.agent_models.v1`.

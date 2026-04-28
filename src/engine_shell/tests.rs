@@ -12176,6 +12176,57 @@ fn execute_tracks_tracked_add_and_list() {
 }
 
 #[test]
+fn parse_agents_preflight_live_command() {
+    let cmd = parse_shell_line(
+        "agents preflight builtin_echo --live --catalog catalog.json --base-url http://localhost:11964 --model llama3 --timeout-secs 30",
+    )
+    .expect("parse agents preflight");
+    match cmd {
+        ShellCommand::AgentsPreflight {
+            system_id,
+            catalog_path,
+            live,
+            base_url_override,
+            model_override,
+            timeout_seconds,
+            ..
+        } => {
+            assert_eq!(system_id, "builtin_echo");
+            assert_eq!(catalog_path.as_deref(), Some("catalog.json"));
+            assert!(live);
+            assert_eq!(base_url_override.as_deref(), Some("http://localhost:11964"));
+            assert_eq!(model_override.as_deref(), Some("llama3"));
+            assert_eq!(timeout_seconds, Some(30));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_agents_preflight_invalid_options_remain_deterministic() {
+    let timeout_err = parse_shell_line("agents preflight builtin_echo --timeout-secs slow")
+        .expect_err("invalid timeout should fail");
+    assert!(
+        timeout_err.contains("Invalid --timeout-secs value 'slow'"),
+        "unexpected error: {timeout_err}"
+    );
+
+    let base_url_err = parse_shell_line("agents preflight builtin_echo --base-url")
+        .expect_err("missing base URL should fail");
+    assert!(
+        base_url_err.contains("Missing value after --base-url for agents preflight"),
+        "unexpected error: {base_url_err}"
+    );
+
+    let model_err = parse_shell_line("agents preflight builtin_echo --model")
+        .expect_err("missing model should fail");
+    assert!(
+        model_err.contains("Missing value after --model for agents preflight"),
+        "unexpected error: {model_err}"
+    );
+}
+
+#[test]
 fn parse_agents_ask_command() {
     let cmd = parse_shell_line(
             "agents ask builtin_echo --prompt 'auto: state-summary' --catalog catalog.json --base-url http://localhost:11964 --model deepseek-r1:8b --timeout-secs 600 --connect-timeout-secs 20 --read-timeout-secs 900 --max-retries 4 --max-response-bytes 2097152 --allow-auto-exec --execute-index 2 --no-state-summary",
@@ -12246,6 +12297,64 @@ fn parse_agents_plan_command() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn execute_agents_preflight_is_config_only_by_default() {
+    let tmp = tempdir().expect("tempdir");
+    let catalog_path = tmp.path().join("agents.json");
+    fs::write(
+        &catalog_path,
+        r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {"id":"builtin_echo","label":"Builtin Echo","transport":"builtin_echo"}
+  ]
+}"#,
+    )
+    .expect("write catalog");
+    let cmd = parse_shell_line(&format!(
+        "agents preflight builtin_echo --catalog {}",
+        catalog_path.display()
+    ))
+    .expect("parse agents preflight");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(&mut engine, &cmd).expect("execute agents preflight");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.agent_preflight.v1")
+    );
+    assert!(out.output.get("live_probe").is_none());
+}
+
+#[test]
+fn execute_agents_preflight_live_includes_live_probe() {
+    let tmp = tempdir().expect("tempdir");
+    let catalog_path = tmp.path().join("agents.json");
+    fs::write(
+        &catalog_path,
+        r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {"id":"builtin_echo","label":"Builtin Echo","transport":"builtin_echo"}
+  ]
+}"#,
+    )
+    .expect("write catalog");
+    let cmd = parse_shell_line(&format!(
+        "agents preflight builtin_echo --live --catalog {}",
+        catalog_path.display()
+    ))
+    .expect("parse agents preflight live");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(&mut engine, &cmd).expect("execute agents preflight live");
+    assert!(!out.state_changed);
+    assert_eq!(out.output["live_probe"]["enabled"].as_bool(), Some(true));
+    assert_eq!(
+        out.output["live_probe"]["status_class"].as_str(),
+        Some("unsupported_transport")
+    );
 }
 
 #[test]

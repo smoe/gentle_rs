@@ -64,7 +64,9 @@ use crate::{
         OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL, agent_system_availability,
         discover_openai_models, invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
-    agent_transport::{AgentSystemPreflight, build_agent_system_preflight},
+    agent_transport::{
+        AgentLiveProbeStatusClass, AgentSystemPreflight, build_agent_system_preflight_with_live,
+    },
     dna_sequence::{self, DNAsequence},
     engine::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
@@ -121,6 +123,7 @@ use crate::{
     lineage_export::{
         LineageSvgEdge, LineageSvgNode, LineageSvgNodeKind, export_projected_lineage_svg,
     },
+    mcp_server::DEFAULT_MCP_STATE_PATH,
     protocol_cartoon::{
         ProtocolCartoonKind, protocol_cartoon_template_for_kind, render_protocol_cartoon_spec_svg,
         resolve_protocol_cartoon_template_with_bindings,
@@ -12709,6 +12712,10 @@ Error: `{err}`"
         self.agent_preflight_output = None;
     }
 
+    fn invalidate_agent_preflight_after_setup_input_change(&mut self) {
+        self.clear_agent_preflight_output();
+    }
+
     fn clear_agent_model_discovery_snapshot(&mut self) {
         self.agent_model_discovery_task = None;
         self.agent_discovered_models.clear();
@@ -12887,6 +12894,117 @@ Error: `{err}`"
         ))
     }
 
+    fn agent_test_setup_uses_live_probe(system: &AgentSystemSpec) -> bool {
+        matches!(
+            system.transport,
+            AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+        )
+    }
+
+    fn shell_quote_command_arg(raw: &str) -> String {
+        if raw
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-'))
+        {
+            return raw.to_string();
+        }
+        format!("'{}'", raw.replace('\'', "'\\''"))
+    }
+
+    fn external_agent_mcp_state_path(&self) -> String {
+        self.current_project_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+            .unwrap_or(DEFAULT_MCP_STATE_PATH)
+            .to_string()
+    }
+
+    fn external_agent_mcp_command_snippet_for_state_path(state_path: &str) -> String {
+        format!(
+            "gentle_mcp --state {}",
+            Self::shell_quote_command_arg(state_path)
+        )
+    }
+
+    fn external_agent_mcp_command_snippet(&self) -> String {
+        Self::external_agent_mcp_command_snippet_for_state_path(
+            &self.external_agent_mcp_state_path(),
+        )
+    }
+
+    fn agent_preflight_next_actions(preflight: &AgentSystemPreflight) -> Vec<String> {
+        if let Some(live) = &preflight.live_probe {
+            let model_is_unspecified = preflight
+                .model
+                .as_deref()
+                .map(str::trim)
+                .map(|model| {
+                    model.is_empty() || model.eq_ignore_ascii_case(OPENAI_COMPAT_UNSPECIFIED_MODEL)
+                })
+                .unwrap_or(true);
+            return match live.status_class {
+                AgentLiveProbeStatusClass::Ok => vec![],
+                AgentLiveProbeStatusClass::MissingKey => vec![format!(
+                    "Paste a session key or set {OPENAI_API_KEY_ENV}; ChatGPT/Codex subscriptions are not OpenAI API keys."
+                )],
+                AgentLiveProbeStatusClass::AuthFailed => {
+                    vec!["Check the API key/token for this endpoint, then run Test Setup again."
+                        .to_string()]
+                }
+                AgentLiveProbeStatusClass::QuotaOrBilling => vec![
+                    "Check provider billing/quota; this setup probe did not intentionally generate tokens."
+                        .to_string(),
+                ],
+                AgentLiveProbeStatusClass::ModelMissing => {
+                    if model_is_unspecified {
+                        vec![
+                            "Pick a discovered model or set Model override before asking the assistant."
+                                .to_string(),
+                        ]
+                    } else {
+                        vec![
+                            "Choose a model returned by this endpoint, or correct Base URL if the model list came from the wrong server."
+                                .to_string(),
+                        ]
+                    }
+                }
+                AgentLiveProbeStatusClass::EndpointUnreachable => vec![
+                    "Start the local server or correct Base URL override, then run Test Setup again."
+                        .to_string(),
+                ],
+                AgentLiveProbeStatusClass::UnsupportedTransport => vec![
+                    "Use this setup check as config-only validation for this non-HTTP transport."
+                        .to_string(),
+                ],
+                AgentLiveProbeStatusClass::ProviderError => vec![
+                    "Inspect the provider response; model discovery must return JSON with model ids."
+                        .to_string(),
+                ],
+            };
+        }
+
+        let mut actions = Vec::new();
+        if preflight
+            .warnings
+            .iter()
+            .any(|warning| warning.contains(OPENAI_API_KEY_ENV))
+        {
+            actions.push(format!(
+                "Paste a session key or set {OPENAI_API_KEY_ENV}; ChatGPT/Codex subscriptions are not OpenAI API keys."
+            ));
+        }
+        if preflight
+            .availability_reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("model is unspecified")
+        {
+            actions.push("Pick a discovered model or set Model override.".to_string());
+        }
+        actions
+    }
+
     fn parse_agent_timeout_seconds(&self) -> Result<Option<u64>, String> {
         let raw = self.agent_timeout_secs.trim();
         if raw.is_empty() {
@@ -13030,7 +13148,8 @@ Error: `{err}`"
                 return;
             }
         };
-        match build_agent_system_preflight(
+        let live_probe = Self::agent_test_setup_uses_live_probe(&selected_system);
+        match build_agent_system_preflight_with_live(
             Some(self.agent_catalog_path.trim()),
             selected_system.id.as_str(),
             if env_overrides.is_empty() {
@@ -13038,6 +13157,7 @@ Error: `{err}`"
             } else {
                 Some(&env_overrides)
             },
+            live_probe,
         ) {
             Ok(preflight) => {
                 let availability = if preflight.available {
@@ -13045,9 +13165,14 @@ Error: `{err}`"
                 } else {
                     "unavailable"
                 };
+                let live_status = preflight
+                    .live_probe
+                    .as_ref()
+                    .map(|probe| format!(", live={}", probe.status_class.as_str()))
+                    .unwrap_or_default();
                 self.agent_status = format!(
-                    "Agent setup preflight: {} ({})",
-                    selected_system.id, availability
+                    "Agent setup preflight: {} ({}{})",
+                    selected_system.id, availability, live_status
                 );
                 self.agent_preflight_output = Some(preflight);
             }
@@ -28707,6 +28832,26 @@ Error: `{err}`"
                     "OpenAI API mode uses OPENAI_API_KEY and talks to the API directly. If you want a path that avoids OpenAI API billing, prefer a local OpenAI-compatible endpoint.",
                 );
             });
+            ui.group(|ui| {
+                ui.strong("External Agent / MCP");
+                ui.small(
+                    "Use this route when your external agent already supports MCP and has its own account/runtime.",
+                );
+                ui.small(
+                    "ChatGPT/Codex subscriptions are not OpenAI API keys; MCP exposes GENtle tools over stdio instead of making GENtle call the OpenAI API.",
+                );
+                let state_path = self.external_agent_mcp_state_path();
+                ui.small(format!(
+                    "state path: {}{}",
+                    state_path,
+                    if self.current_project_path.is_some() {
+                        " (active saved project)"
+                    } else {
+                        " (default gentle_mcp state path)"
+                    }
+                ));
+                ui.monospace(self.external_agent_mcp_command_snippet());
+            });
         }
         let mut selected_available = false;
         if let Some(system) = self.selected_agent_system() {
@@ -28983,7 +29128,7 @@ Error: `{err}`"
             }
         }
         if preflight_inputs_changed {
-            self.clear_agent_preflight_output();
+            self.invalidate_agent_preflight_after_setup_input_change();
         }
         if let Some(preflight) = &self.agent_preflight_output {
             ui.group(|ui| {
@@ -29041,6 +29186,52 @@ Error: `{err}`"
                         egui::Color32::from_rgb(180, 120, 50),
                         format!("warnings: {}", preflight.warnings.join(" | ")),
                     );
+                }
+                if let Some(live) = &preflight.live_probe {
+                    ui.separator();
+                    ui.strong("Live probe");
+                    let color = match live.status_class {
+                        AgentLiveProbeStatusClass::Ok => egui::Color32::from_rgb(60, 140, 80),
+                        AgentLiveProbeStatusClass::MissingKey
+                        | AgentLiveProbeStatusClass::AuthFailed
+                        | AgentLiveProbeStatusClass::QuotaOrBilling
+                        | AgentLiveProbeStatusClass::ModelMissing
+                        | AgentLiveProbeStatusClass::EndpointUnreachable => {
+                            egui::Color32::from_rgb(190, 70, 70)
+                        }
+                        AgentLiveProbeStatusClass::UnsupportedTransport
+                        | AgentLiveProbeStatusClass::ProviderError => {
+                            egui::Color32::from_rgb(180, 120, 50)
+                        }
+                    };
+                    ui.colored_label(color, live.status_class.as_str());
+                    if !live.message.trim().is_empty() {
+                        ui.small(format!("detail: {}", live.message.trim()));
+                    }
+                    ui.small(format!(
+                        "reachable={} | auth_ok={} | model_list_ok={} | selected_model_seen={}",
+                        live.reachable, live.auth_ok, live.model_list_ok, live.selected_model_seen
+                    ));
+                    if !live.attempted_endpoints.is_empty() {
+                        ui.small(format!(
+                            "attempted endpoints: {}",
+                            live.attempted_endpoints.join(" | ")
+                        ));
+                    }
+                    if let Some(endpoint) = live.selected_endpoint.as_deref() {
+                        ui.small(format!("selected endpoint: {endpoint}"));
+                    }
+                    if let Some(code) = live.provider_error_code.as_deref() {
+                        ui.small(format!("provider error code: {code}"));
+                    }
+                }
+                let next_actions = Self::agent_preflight_next_actions(preflight);
+                if !next_actions.is_empty() {
+                    ui.separator();
+                    ui.strong("Next action");
+                    for action in next_actions {
+                        ui.small(action);
+                    }
                 }
             });
         }
@@ -45030,6 +45221,41 @@ mod tests {
             .selected_agent_session_env_overrides(&system)
             .expect_err("invalid timeout should fail");
         assert!(err.contains("Invalid timeout_sec"));
+    }
+
+    #[test]
+    fn agent_test_setup_uses_live_for_native_transports_only() {
+        let native = test_agent_system("openai_gpt5_native", AgentSystemTransport::NativeOpenai);
+        let compat = test_agent_system(
+            "msty_local_compat_template",
+            AgentSystemTransport::NativeOpenaiCompat,
+        );
+        let echo = test_agent_system("builtin_echo", AgentSystemTransport::BuiltinEcho);
+        assert!(GENtleApp::agent_test_setup_uses_live_probe(&native));
+        assert!(GENtleApp::agent_test_setup_uses_live_probe(&compat));
+        assert!(!GENtleApp::agent_test_setup_uses_live_probe(&echo));
+    }
+
+    #[test]
+    fn agent_setup_input_change_invalidates_stale_preflight() {
+        let mut app = GENtleApp::default();
+        app.agent_preflight_output = Some(crate::agent_transport::AgentSystemPreflight::default());
+        app.invalidate_agent_preflight_after_setup_input_change();
+        assert!(app.agent_preflight_output.is_none());
+    }
+
+    #[test]
+    fn external_agent_mcp_snippet_includes_binary_and_state_path() {
+        let mut app = GENtleApp::default();
+        assert_eq!(app.external_agent_mcp_state_path(), ".gentle_state.json");
+        let default_snippet = app.external_agent_mcp_command_snippet();
+        assert!(default_snippet.contains("gentle_mcp"));
+        assert!(default_snippet.contains(".gentle_state.json"));
+
+        app.current_project_path = Some("/tmp/GENtle Project/demo.gentle.json".to_string());
+        let saved_snippet = app.external_agent_mcp_command_snippet();
+        assert!(saved_snippet.contains("gentle_mcp"));
+        assert!(saved_snippet.contains("'/tmp/GENtle Project/demo.gentle.json'"));
     }
 
     struct EnvVarGuard {

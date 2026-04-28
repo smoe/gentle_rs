@@ -2210,6 +2210,11 @@ Behavior:
   - `Use OpenAI API`
   - `Use Local Model (no OpenAI API billing)`
   - `Use Demo Echo`
+- `External Agent / MCP` shows the `gentle_mcp` command for users whose
+  external agent already supports MCP and already has its own account/runtime
+  subscription
+  - the command includes the active saved project path when available
+  - otherwise it shows the default MCP state path, `.gentle_state.json`
 - the OpenAI quick-start path uses `OPENAI_API_KEY` and talks to the API
   directly; it does not reuse a ChatGPT/Codex chat session as authentication
 - this window is intentionally the local chat-oriented assistant surface; the
@@ -2247,6 +2252,14 @@ Behavior:
   and session overrides before you send a prompt
   - shows availability, resolved base URL/model, endpoint candidates, runtime
     limits, and warnings such as missing `OPENAI_API_KEY`
+  - for `native_openai` and `native_openai_compat`, it also runs a live
+    non-generating model-list probe (`GET /models`, with `/v1/models` fallback
+    for OpenAI-compatible roots)
+  - the live probe reports `status_class`, attempted/selected endpoints,
+    reachability, authentication, model-list parsing, and whether the selected
+    model was present
+  - common next actions are shown for missing key, authentication failure,
+    endpoint unreachable, unspecified model, and selected model not found
 - `Discover Models` queries the current endpoint and populates a model dropdown
   for explicit selection
 - prompt templates are available via one-click `Insert` / `Append` buttons
@@ -2268,6 +2281,8 @@ OpenAI setup (explicit):
 2. Choose system `OpenAI GPT-5 (native HTTP)` from the dropdown.
 3. Paste your API key into `OpenAI API key` (format `sk-...`).
 4. Click `Test Setup` to confirm the key/base URL/model resolve correctly.
+   This checks model discovery only; it does not intentionally send a
+   token-generating request.
 5. Enter prompt text and click `Ask Agent`.
 6. If you prefer environment setup instead of GUI key field, launch GENtle with:
 
@@ -2275,6 +2290,25 @@ OpenAI setup (explicit):
 export OPENAI_API_KEY=sk-...
 cargo run --bin gentle
 ```
+
+External MCP handoff:
+
+1. Use this path when your outside assistant already supports MCP.
+2. Save the current GENtle project if the external assistant should inspect the
+   same state.
+3. Copy the `External Agent / MCP` command from Agent Assistant, for example:
+
+```bash
+gentle_mcp --state .gentle_state.json
+gentle_mcp --state path/to/project.gentle.json
+```
+
+Notes:
+
+- ChatGPT/Codex subscriptions are not OpenAI API keys.
+- MCP lets the external agent call GENtle tools over stdio; GENtle is not
+  making OpenAI API calls for that route.
+- Unsaved GUI-only edits are not visible to MCP until saved to the state path.
 
 Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
 

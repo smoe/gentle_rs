@@ -86,7 +86,7 @@ fn agent_err(code: AgentBridgeErrorCode, message: impl Into<String>) -> String {
     )
 }
 
-fn redact_sensitive_text(raw: &str) -> String {
+pub(crate) fn redact_sensitive_text(raw: &str) -> String {
     let mut out = raw.to_string();
     for (pattern, replacement) in [
         (
@@ -562,7 +562,7 @@ fn openai_model_list_endpoint_candidates(base_url: &str) -> Result<Vec<String>, 
     Ok(endpoints)
 }
 
-fn extract_models_from_openai_models_payload(value: &Value) -> Vec<String> {
+pub(crate) fn extract_models_from_openai_models_payload(value: &Value) -> Vec<String> {
     let mut out: Vec<String> = vec![];
     let mut seen: HashSet<String> = HashSet::new();
     let mut push = |raw: &str| {
@@ -1633,7 +1633,7 @@ fn extract_openai_chat_completions_text(response_json: &Value) -> Option<String>
     }
 }
 
-fn extract_openai_error_code(body: &str) -> Option<String> {
+pub(crate) fn extract_openai_error_code(body: &str) -> Option<String> {
     let value = serde_json::from_str::<Value>(body).ok()?;
     let error = value.get("error")?;
     error

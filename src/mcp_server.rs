@@ -231,6 +231,10 @@ fn tool_list() -> Value {
                 "properties": {
                     "system_id": { "type": "string" },
                     "catalog_path": { "type": "string" },
+                    "live": {
+                        "type": "boolean",
+                        "description": "When true, include a live non-generating model-list probe for native HTTP transports."
+                    },
                     "base_url": { "type": "string" },
                     "model": { "type": "string" },
                     "timeout_secs": { "type": "integer", "minimum": 1 },
@@ -1426,6 +1430,10 @@ fn agent_preflight_tool_result(default_state_path: &str, arguments: &Value) -> V
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
     };
+    let live = match optional_bool_arg(&args, "live") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
     let base_url = match optional_string_arg(&args, "base_url") {
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
@@ -1455,6 +1463,9 @@ fn agent_preflight_tool_result(default_state_path: &str, arguments: &Value) -> V
         Err(err) => return tool_result_text(err, "text", true),
     };
     let mut tokens = vec!["agents".to_string(), "preflight".to_string(), system_id];
+    if live {
+        tokens.push("--live".to_string());
+    }
     append_string_flag(&mut tokens, "--catalog", catalog_path);
     append_string_flag(&mut tokens, "--base-url", base_url);
     append_string_flag(&mut tokens, "--model", model);
@@ -2645,6 +2656,81 @@ mod tests {
             .and_then(Value::as_u64)
             .unwrap_or(999);
         assert_eq!(sequence_count, 0);
+    }
+
+    #[test]
+    fn mcp_agent_preflight_default_matches_config_only_shared_shell() {
+        let temp = tempdir().expect("tempdir");
+        let catalog_path = temp.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {"id":"builtin_echo","label":"Builtin Echo","transport":"builtin_echo"}
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let expected = run_shared_shell_command(vec![
+            "agents".to_string(),
+            "preflight".to_string(),
+            "builtin_echo".to_string(),
+            "--catalog".to_string(),
+            catalog_path.display().to_string(),
+        ]);
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "agent_preflight",
+            json!({
+                "system_id": "builtin_echo",
+                "catalog_path": catalog_path.display().to_string()
+            }),
+        );
+        assert_eq!(response["result"]["structuredContent"], expected);
+        assert!(
+            response["result"]["structuredContent"]
+                .get("live_probe")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn mcp_agent_preflight_live_matches_shared_shell_live() {
+        let temp = tempdir().expect("tempdir");
+        let catalog_path = temp.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {"id":"builtin_echo","label":"Builtin Echo","transport":"builtin_echo"}
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let expected = run_shared_shell_command(vec![
+            "agents".to_string(),
+            "preflight".to_string(),
+            "builtin_echo".to_string(),
+            "--live".to_string(),
+            "--catalog".to_string(),
+            catalog_path.display().to_string(),
+        ]);
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "agent_preflight",
+            json!({
+                "system_id": "builtin_echo",
+                "catalog_path": catalog_path.display().to_string(),
+                "live": true
+            }),
+        );
+        assert_eq!(response["result"]["structuredContent"], expected);
+        assert_eq!(
+            response["result"]["structuredContent"]["live_probe"]["status_class"].as_str(),
+            Some("unsupported_transport")
+        );
     }
 
     #[test]

@@ -2981,8 +2981,11 @@ Notes:
   - MCP and the ClawBio wrapper now expose that typed planner boundary instead
     of depending on chat-only assistant flows
   - the GUI Agent Assistant now also has a small first-run UX pass:
-    quick-start transport selection, inline setup preflight, and an explicit
-    local-model route for users who want to avoid OpenAI API billing
+    quick-start transport selection, inline setup preflight, live
+    non-generating model-list setup probes for native HTTP transports, an
+    explicit local-model route for users who want to avoid OpenAI API billing,
+    and a compact external-agent/MCP handoff route for users whose outside
+    agent already has its own subscription/runtime
 
 ## 2. Active known gaps (priority-ordered)
 
@@ -6025,6 +6028,26 @@ Purpose:
 
 Current parking-lot ideas:
 
+- Optional OS credential-store persistence for Agent Assistant API keys:
+  - current position:
+    - API keys remain session-only in the first-run Agent Assistant slice
+    - do not persist secrets in GENtle settings or project state
+  - if revisited later, scope should be explicit opt-in support for:
+    - macOS Keychain
+    - Windows Credential Manager
+    - Linux Secret Service
+  - the GUI should keep clear copy that ChatGPT/Codex subscriptions are not
+    OpenAI API keys and that external MCP handoff is the preferred path when a
+    separate agent subscription already exists
+- Optional tiny generation probe for quota verification:
+  - current position:
+    - live setup preflight intentionally uses model discovery only and avoids
+      chat/completion/responses requests
+    - quota/billing is reported only if the provider returns that error during
+      model discovery
+  - if users explicitly want end-to-end quota verification later, consider a
+    tiny opt-in generation probe with clear API-cost disclosure and no default
+    enablement
 - Supplemental restriction-enzyme usage annotations on top of REBASE:
   - current position:
     - keep REBASE as the authoritative baseline for recognition sites,

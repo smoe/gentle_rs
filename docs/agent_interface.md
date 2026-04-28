@@ -1,6 +1,6 @@
 # GENtle Agent Interface
 
-Last updated: 2026-04-24
+Last updated: 2026-04-28
 
 This guide explains how agents can control GENtle and how the available
 interfaces differ.
@@ -139,7 +139,8 @@ Agent Assistant runs configured external/internal AI systems and can return:
 
 Entry points:
 
-- CLI/shared shell: `agents list`, `agents ask`, `agents preflight`, `agents discover-models`
+- CLI/shared shell: `agents list`, `agents ask`, `agents preflight`,
+  `agents preflight --live`, `agents discover-models`
 - GUI: `Tools -> Agent Assistant...`
 
 What it is good for:
@@ -163,6 +164,12 @@ Key properties:
 - current limitation: long-running suggested commands execute synchronously;
   dedicated async job-handle/progress/cancel flow for agent-driven BLAST (and
   future primer-pair multi-BLAST selection) is planned
+- ChatGPT/Codex subscriptions do not authenticate the OpenAI API. Native OpenAI
+  API mode needs `OPENAI_API_KEY`; external MCP agents should connect through
+  `gentle_mcp` instead of making GENtle spend OpenAI API usage.
+- `agents preflight` remains config-only by default. `--live` adds the optional
+  `gentle.agent_preflight.v1.live_probe` model-list probe without sending a
+  generation request.
 
 ## CLI vs planner vs MCP vs Agent Assistant
 
@@ -220,6 +227,10 @@ In short:
 2. Discover tools with `tools/list`.
 3. Call tools deterministically (`ui_*`, `state_summary`, `op`, `workflow`).
 4. Require explicit `confirm=true` for mutating calls.
+
+Use this when the external agent already has its own MCP-capable runtime or
+subscription. Point `gentle_mcp --state PATH` at the saved GENtle state file the
+agent should inspect; without `--state`, the default is `.gentle_state.json`.
 
 ### Pattern D: interactive assistant then execute
 

@@ -1149,6 +1149,10 @@ Current tools:
 - `op` (apply one operation; requires `confirm=true`)
 - `workflow` (apply one workflow; requires `confirm=true`)
 - `help`
+- `agent_systems` (shared `agents list` contract)
+- `agent_preflight` (shared `agents preflight` contract; optional
+  `live=true` maps to `--live`)
+- `agent_models` (shared `agents discover-models` contract)
 - `reference_catalog_entries` (structured reference catalog rows via the shared `genomes list` contract)
 - `helper_catalog_entries` (structured helper catalog rows with normalized helper `interpretation` when available)
 - `host_profile_catalog_entries` (structured host-profile catalog rows via the shared `hosts list` contract)
@@ -1188,6 +1192,15 @@ Run:
 cargo run --bin gentle_mcp
 cargo run --bin gentle_mcp -- --state path/to/project.gentle.json
 ```
+
+External-agent handoff:
+
+- Use `gentle_mcp` when an outside agent already supports MCP and already has
+  its own subscription/runtime.
+- A ChatGPT/Codex subscription is not an OpenAI API key for GENtle's native
+  OpenAI API transport.
+- The MCP route exposes local GENtle tools over stdio and does not make GENtle
+  spend OpenAI API usage by itself.
 
 Minimum MCP JSON-RPC flow:
 
@@ -3035,11 +3048,23 @@ Conceptual/tutorial companion:
   - Default catalog path: `assets/agent_systems.json`.
   - Includes availability status (`available`, `availability_reason`) so callers
     can skip systems that are not currently runnable.
-- `agents preflight SYSTEM_ID [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
+- `agents preflight SYSTEM_ID [--live] [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
   - Returns read-only transport/runtime metadata for one configured system.
   - This is the preferred CLI parity route for external orchestrators that want
     availability, endpoint, and runtime-limit diagnostics without starting a
     chat/planning request.
+  - By default this is config-only and does not contact the provider.
+  - `--live` adds `live_probe` to `gentle.agent_preflight.v1` for
+    `native_openai` and `native_openai_compat`.
+  - The live probe only uses model-discovery endpoints (`GET /models`, with
+    `/v1/models` fallback for OpenAI-compatible roots). It does not make a
+    chat/completion/responses request and does not intentionally generate
+    tokens.
+  - `live_probe.status_class` is one of:
+    `ok`, `missing_key`, `auth_failed`, `quota_or_billing`, `model_missing`,
+    `endpoint_unreachable`, `unsupported_transport`, `provider_error`.
+  - Quota/billing is reported only when the provider returns that error during
+    the model-list probe.
 - `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
   - Discovers model ids for one `native_openai` or `native_openai_compat`
     system using its effective endpoint configuration.

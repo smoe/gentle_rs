@@ -26,8 +26,7 @@ use crate::{
     agent_execution::execute_agent_plan_candidate,
     agent_planner::{load_agent_plan_from_argument, plan_from_shell_options},
     agent_transport::{
-        agent_system_availability, build_agent_system_preflight, discover_models_for_agent_system,
-        load_agent_system_catalog,
+        agent_system_availability, discover_models_for_agent_system, load_agent_system_catalog,
     },
     attract_motifs,
     dna_ladder::LadderMolecule,
@@ -1222,6 +1221,7 @@ pub enum ShellCommand {
     AgentsPreflight {
         system_id: String,
         catalog_path: Option<String>,
+        live: bool,
         base_url_override: Option<String>,
         model_override: Option<String>,
         timeout_seconds: Option<u64>,
@@ -6494,6 +6494,7 @@ impl ShellCommand {
             Self::AgentsPreflight {
                 system_id,
                 catalog_path,
+                live,
                 base_url_override,
                 model_override,
                 timeout_seconds,
@@ -6523,7 +6524,7 @@ impl ShellCommand {
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string());
                 format!(
-                    "preflight agent '{system_id}' (catalog='{catalog}', base_url_override={base_url}, model_override={model}, timeout_secs={timeout}, connect_timeout_secs={connect_timeout}, read_timeout_secs={read_timeout}, max_retries={retries}, max_response_bytes={max_bytes})"
+                    "preflight agent '{system_id}' (catalog='{catalog}', live={live}, base_url_override={base_url}, model_override={model}, timeout_secs={timeout}, connect_timeout_secs={connect_timeout}, read_timeout_secs={read_timeout}, max_retries={retries}, max_response_bytes={max_bytes})"
                 )
             }
             Self::AgentsDiscoverModels {
@@ -15300,7 +15301,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "preflight" => {
             if tokens.len() < 3 {
                 return Err(
-                    "agents preflight requires SYSTEM_ID [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]"
+                    "agents preflight requires SYSTEM_ID [--live] [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]"
                         .to_string(),
                 );
             }
@@ -15316,9 +15317,14 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut read_timeout_seconds: Option<u64> = None;
             let mut max_retries: Option<usize> = None;
             let mut max_response_bytes: Option<usize> = None;
+            let mut live = false;
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
+                    "--live" => {
+                        live = true;
+                        idx += 1;
+                    }
                     "--catalog" => {
                         catalog_path = Some(parse_option_path(
                             tokens,
@@ -15411,6 +15417,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::AgentsPreflight {
                 system_id,
                 catalog_path,
+                live,
                 base_url_override,
                 model_override,
                 timeout_seconds,
@@ -19741,6 +19748,7 @@ fn execute_agent_meta_command(
         ShellCommand::AgentsPreflight {
             system_id,
             catalog_path,
+            live,
             base_url_override,
             model_override,
             timeout_seconds,
@@ -19793,7 +19801,7 @@ fn execute_agent_meta_command(
                     max_response_bytes.to_string(),
                 );
             }
-            let preflight = build_agent_system_preflight(
+            let preflight = crate::agent_transport::build_agent_system_preflight_with_live(
                 catalog_path.as_deref(),
                 system_id,
                 if env_overrides.is_empty() {
@@ -19801,6 +19809,7 @@ fn execute_agent_meta_command(
                 } else {
                     Some(&env_overrides)
                 },
+                *live,
             )?;
             Ok(ShellRunResult {
                 state_changed: false,
