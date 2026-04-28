@@ -5200,6 +5200,9 @@ impl GentleEngine {
         positions
     }
 
+    /// Maps one inclusive one-based protein residue range back to genomic codon
+    /// bases. Returned `transcript_feature_id` values stay zero-based so GUI,
+    /// CLI, and reopen paths can reuse them directly with `features.get(id)`.
     pub fn query_protein_residue_genomic_coordinates(
         &self,
         seq_id: &str,

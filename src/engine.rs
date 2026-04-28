@@ -3156,10 +3156,15 @@ pub enum Operation {
         transcript_id: Option<String>,
     },
     QueryProteinResidueGenomicCoordinates {
+        /// Sequence id of the annotated genomic/source sequence to inspect.
         seq_id: SeqId,
+        /// Optional transcript selector by transcript id/label, or shell-side
+        /// `n-N` feature token where `N` is one-based for human input.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         transcript_id: Option<String>,
+        /// One-based inclusive residue-range start in the derived protein.
         residue_start_1based: usize,
+        /// One-based inclusive residue-range end in the derived protein.
         residue_end_1based: usize,
     },
     AuditUniprotProjectionConsistency {

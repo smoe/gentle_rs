@@ -4772,9 +4772,12 @@ pub struct UniprotFeatureCodingDnaQueryReport {
 /// One nucleotide of a queried protein-residue codon, reported in coding
 /// transcript order with its corresponding genomic coordinate.
 pub struct ProteinResidueGenomicCoordinateBase {
+    /// Zero-based codon position within the residue: `0`, `1`, or `2`.
     pub codon_offset_0based: usize,
+    /// One-based genomic coordinate on the source sequence.
     pub genomic_pos_1based: usize,
     pub base: String,
+    /// One-based exon ordinal in transcript order.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exon_ordinal: Option<usize>,
 }
@@ -4785,13 +4788,17 @@ pub struct ProteinResidueGenomicCoordinateBase {
 pub struct ProteinResidueGenomicCoordinateMatch {
     pub transcript_id: String,
     pub transcript_label: String,
+    /// Zero-based source feature index for the matched transcript/mRNA feature.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_feature_id: Option<usize>,
     pub strand: String,
+    /// One-based residue index within the derived protein sequence.
     pub residue_index_1based: usize,
     pub amino_acid: String,
     pub codon: String,
+    /// Minimum one-based genomic coordinate across the three codon bases.
     pub genomic_codon_start_1based: usize,
+    /// Maximum one-based genomic coordinate across the three codon bases.
     pub genomic_codon_end_1based: usize,
     pub spans_exon_junction: bool,
     #[serde(default)]
@@ -4809,7 +4816,9 @@ pub struct ProteinResidueGenomicCoordinateReport {
     pub seq_id: SeqId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_filter: Option<String>,
+    /// One-based inclusive residue-range start requested by the caller.
     pub residue_start_1based: usize,
+    /// One-based inclusive residue-range end requested by the caller.
     pub residue_end_1based: usize,
     pub match_count: usize,
     #[serde(default)]
