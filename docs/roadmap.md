@@ -1820,6 +1820,15 @@ order. Durable architecture constraints and decisions remain in
       mapped source ranges, junction labels, and junction-spanning flags so
       downstream tools can explain whether a PCR/qPCR assay detects one
       isoform, many isoforms, or no compatible cDNA product
+    - assay-test reports now also carry a report-level construct-length
+      summary plus `gentle.oligo_qc_report.v1`: deterministic exact
+      reverse-complement run QC for supplied primers/probes, including
+      per-oligo self-complementarity, pairwise primer/probe hybridization, and
+      primer-side 3' extension-risk warnings for ClawBio/agent triage
+      - the method reference explicitly credits Primer3's public
+        `SELF_ANY`/`SELF_END` and `COMPL_ANY`/`COMPL_END` vocabulary while
+        keeping GENtle's exact-run implementation independent from Primer3
+        source code
     - canonical example coverage now includes
       `cdna_pcr_qpcr_assay_test_offline` plus a ClawBio request/intent route,
       and workflow-example execution rewrites the optional report paths so the

@@ -3,6 +3,32 @@
 The GENtle project thanks external tool authors and communities whose work helps
 shape our roadmap and user experience priorities.
 
+## Primer3 Method Reference
+
+GENtle's primer-design backend can call the external Primer3 executable, and
+GENtle's internal oligo-QC report vocabulary follows Primer3's public
+distinction between broad oligo self/pair complementarity and 3'-end anchored
+complementarity (`SELF_ANY`, `SELF_END`, `COMPL_ANY`, `COMPL_END`, plus the
+thermodynamic `_TH` variants).
+
+Primary references:
+
+- Untergasser A, Cutcutache I, Koressaar T, Ye J, Faircloth BC, Remm M, Rozen
+  SG. 2012. *Primer3--new capabilities and interfaces*. *Nucleic Acids
+  Research* 40(15):e115.
+- Koressaar T, Remm M. 2007. *Enhancements and modifications of primer design
+  program Primer3*. *Bioinformatics* 23(10):1289-1291.
+- Primer3 manual and source repository:
+  - <https://primer3.org/manual.html>
+  - <https://github.com/primer3-org/primer3>
+
+Current status in GENtle:
+
+- Primer3 source code is not vendored or translated into GENtle.
+- The cDNA PCR/qPCR oligo-QC exact-run screen is an independent Rust
+  implementation that credits Primer3's public method vocabulary and keeps
+  future thermodynamic Primer3-backed checks as an optional extension.
+
 ## PCRtools Stimulus
 
 We thank **Ruslan Kalendar** for useful stimulus in PCR-related feature planning,

@@ -3063,6 +3063,16 @@ fn test_cdna_qpcr_assay_requires_probe_inside_cdna_product() {
         .expect("cDNA qPCR assay report");
     assert_eq!(report.assay_kind, "qpcr");
     assert_eq!(report.overall_status, "single_product");
+    assert_eq!(report.construct_lengths.forward_primer_length_bp, 6);
+    assert_eq!(report.construct_lengths.reverse_primer_length_bp, 6);
+    assert_eq!(report.construct_lengths.probe_length_bp, Some(6));
+    assert_eq!(
+        report.construct_lengths.detected_amplicon_lengths_bp,
+        vec![21]
+    );
+    assert!(report.summary.contains("Construct lengths:"));
+    assert_eq!(report.oligo_qc.schema, "gentle.oligo_qc_report.v1");
+    assert_eq!(report.oligo_qc.oligo_count, 3);
     let transcript = report
         .transcript_results
         .first()
@@ -3071,6 +3081,48 @@ fn test_cdna_qpcr_assay_requires_probe_inside_cdna_product() {
     assert!(transcript.probe_hits[0].spans_junction);
     let product = transcript.products.first().expect("one qPCR product");
     assert_eq!(product.probe_hit_indices, vec![0]);
+}
+
+#[test]
+fn test_oligo_qc_flags_forward_probe_3prime_interaction() {
+    let report = GentleEngine::build_oligo_qc_report(
+        "qpcr",
+        &[
+            ("forward_primer", "forward_primer", "GCACTTTGATCCGGTTTTCCAG"),
+            ("reverse_primer", "reverse_primer", "CTGCTCTCTTTAGGGAAGCCG"),
+            ("probe", "probe", "CCACGCCCTGGGGAGGATCCA"),
+        ],
+    );
+    assert_eq!(report.status, "warning");
+    assert_eq!(report.oligo_count, 3);
+    assert_eq!(report.interaction_count, 3);
+    assert!(report.method_reference.contains("Primer3-style"));
+    let primer_pair = report
+        .interactions
+        .iter()
+        .find(|interaction| {
+            interaction.left_label == "forward_primer"
+                && interaction.right_label == "reverse_primer"
+        })
+        .expect("forward/reverse interaction");
+    assert_eq!(primer_pair.max_3prime_complementary_run_bp, 3);
+    assert_eq!(primer_pair.status, "pass");
+    let forward_probe = report
+        .interactions
+        .iter()
+        .find(|interaction| {
+            interaction.left_label == "forward_primer" && interaction.right_label == "probe"
+        })
+        .expect("forward/probe interaction");
+    assert_eq!(forward_probe.left_3prime_complementary_run_bp, 4);
+    assert_eq!(forward_probe.status, "warning");
+    assert!(forward_probe.primer_3prime_extension_risk);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("forward_primer 3' end has 4 bp"))
+    );
 }
 
 #[test]
@@ -3102,6 +3154,8 @@ fn test_cdna_qpcr_operation_writes_report_json() {
     let report_text = fs::read_to_string(&path).expect("report file");
     assert!(report_text.contains("gentle.cdna_assay_test_report.v1"));
     assert!(report_text.contains("\"overall_status\": \"single_product\""));
+    assert!(report_text.contains("\"construct_lengths\""));
+    assert!(report_text.contains("\"oligo_qc\""));
 }
 
 fn transcript_qpcr_panel_test_engine() -> GentleEngine {

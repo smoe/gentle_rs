@@ -5867,6 +5867,61 @@ impl GentleEngine {
         hits
     }
 
+    fn cdna_assay_construct_length_summary(
+        forward_primer: &str,
+        reverse_primer: &str,
+        probe: Option<&str>,
+        transcript_results: &[CdnaAssayTranscriptResult],
+    ) -> CdnaAssayConstructLengthSummary {
+        let mut detected_amplicon_lengths_bp = transcript_results
+            .iter()
+            .flat_map(|row| {
+                row.products
+                    .iter()
+                    .map(|product| product.amplicon_length_bp)
+            })
+            .collect::<Vec<_>>();
+        detected_amplicon_lengths_bp.sort_unstable();
+        detected_amplicon_lengths_bp.dedup();
+        let min_detected_amplicon_length_bp = detected_amplicon_lengths_bp.first().copied();
+        let max_detected_amplicon_length_bp = detected_amplicon_lengths_bp.last().copied();
+        let oligo_summary = if let Some(probe) = probe {
+            format!(
+                "forward primer {} bp, reverse primer {} bp, probe {} bp",
+                forward_primer.len(),
+                reverse_primer.len(),
+                probe.len()
+            )
+        } else {
+            format!(
+                "forward primer {} bp, reverse primer {} bp",
+                forward_primer.len(),
+                reverse_primer.len()
+            )
+        };
+        let amplicon_summary = if detected_amplicon_lengths_bp.is_empty() {
+            "no detected amplicon construct".to_string()
+        } else if detected_amplicon_lengths_bp.len() == 1 {
+            format!("detected amplicon {} bp", detected_amplicon_lengths_bp[0])
+        } else {
+            format!(
+                "detected amplicons {}..{} bp ({} distinct lengths)",
+                min_detected_amplicon_length_bp.unwrap_or_default(),
+                max_detected_amplicon_length_bp.unwrap_or_default(),
+                detected_amplicon_lengths_bp.len()
+            )
+        };
+        CdnaAssayConstructLengthSummary {
+            forward_primer_length_bp: forward_primer.len(),
+            reverse_primer_length_bp: reverse_primer.len(),
+            probe_length_bp: probe.map(str::len),
+            detected_amplicon_lengths_bp,
+            min_detected_amplicon_length_bp,
+            max_detected_amplicon_length_bp,
+            summary: format!("{oligo_summary}; {amplicon_summary}."),
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn test_cdna_assay(
         &self,
@@ -6127,6 +6182,20 @@ impl GentleEngine {
         }
 
         let assay_kind = if probe.is_some() { "qpcr" } else { "pcr" }.to_string();
+        let construct_lengths = Self::cdna_assay_construct_length_summary(
+            &forward_primer,
+            &reverse_primer,
+            probe.as_deref(),
+            &transcript_results,
+        );
+        let mut oligo_qc_inputs = vec![
+            ("forward_primer", "forward_primer", forward_primer.as_str()),
+            ("reverse_primer", "reverse_primer", reverse_primer.as_str()),
+        ];
+        if let Some(probe) = probe.as_deref() {
+            oligo_qc_inputs.push(("probe", "probe", probe));
+        }
+        let oligo_qc = Self::build_oligo_qc_report(&assay_kind, &oligo_qc_inputs);
         let overall_status = if total_product_count == 0 {
             "not_detected"
         } else if total_product_count == 1 {
@@ -6135,7 +6204,7 @@ impl GentleEngine {
             "multiple_products"
         }
         .to_string();
-        let summary = if probe.is_some() {
+        let base_summary = if probe.is_some() {
             format!(
                 "cDNA qPCR assay detected {} product(s) across {}/{} transcript template(s) in '{}'.",
                 total_product_count,
@@ -6152,6 +6221,11 @@ impl GentleEngine {
                 splicing.group_label
             )
         };
+        let summary = format!(
+            "{} Construct lengths: {} Oligo QC: {}.",
+            base_summary, construct_lengths.summary, oligo_qc.status
+        );
+        let warnings = oligo_qc.warnings.clone();
         Ok(CdnaAssayTestReport {
             schema: CDNA_ASSAY_TEST_REPORT_SCHEMA.to_string(),
             assay_kind,
@@ -6166,6 +6240,8 @@ impl GentleEngine {
             forward_primer,
             reverse_primer,
             probe,
+            construct_lengths,
+            oligo_qc,
             max_mismatches,
             require_3prime_exact_bases,
             min_amplicon_bp,
@@ -6176,7 +6252,7 @@ impl GentleEngine {
             overall_status,
             summary,
             transcript_results,
-            warnings: vec![],
+            warnings,
         })
     }
 

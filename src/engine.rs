@@ -311,6 +311,7 @@ const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
+const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
     "gentle.restriction_cloning_pcr_handoff.v1";
