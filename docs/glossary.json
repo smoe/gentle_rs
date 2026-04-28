@@ -1,5 +1,5 @@
 {
-   "command_count": 361,
+   "command_count": 363,
    "commands": [
       {
          "aliases": [
@@ -2368,6 +2368,34 @@
          "path": "primers design-qpcr",
          "summary": "Generate and persist a ranked qPCR assay report from a DesignQpcrAssays operation payload.",
          "usage": "primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "TestCdnaPcr"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers test-cdna-pcr",
+         "summary": "Test supplied PCR primers against transcript-derived cDNA templates for one splicing group.",
+         "usage": "primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "TestCdnaQpcr"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers test-cdna-qpcr",
+         "summary": "Test supplied qPCR primers and probe against transcript-derived cDNA templates for one splicing group.",
+         "usage": "primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
       },
       {
          "aliases": [],

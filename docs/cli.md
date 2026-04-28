@@ -1887,6 +1887,8 @@ Shared shell command:
     - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+    - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
+    - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
       - returns `gentle.primer3_preflight.v1` with configured/effective
         executable, resolved path, working directory, and
@@ -2226,6 +2228,18 @@ Shared shell command:
       - includes built-in protocol-cartoon metadata for `pcr.assay.qpcr`, so
         shell/CLI/ClawBio flows can promote the same qPCR strip without hard-
         coding that protocol id elsewhere
+    - cDNA PCR/qPCR assay test notes
+      (`primers test-cdna-pcr` / `primers test-cdna-qpcr`):
+      - returns non-mutating schema `gentle.cdna_assay_test_report.v1`
+      - derives transcript cDNA templates from the selected splicing group
+        using the zero-based `FEATURE_ID`
+      - `--transcript-id ID` narrows the test to one transcript product
+      - `--max-mismatches` defaults to exact/IUPAC-compatible matching
+      - `--require-3prime-exact-bases` gates primer hits only
+      - qPCR probes may bind either cDNA orientation but must fall inside the
+        primer-bounded amplicon interior
+      - `--path OUTPUT.json` writes the same structured report returned on
+        stdout
     - Restriction-cloning handoff notes (`primers prepare-restriction-cloning`):
       - expects an `Operation` payload whose root variant is
         `PrepareRestrictionCloningPcrHandoff`

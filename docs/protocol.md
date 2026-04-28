@@ -1653,6 +1653,8 @@ Current draft operations:
 - `ExportPrimerDesignReport { report_id, path }`
 - `PcrOverlapExtensionMutagenesis { ... }` (implemented baseline; insertion/deletion/replacement overlap-extension flow)
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
+- `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path? }` (implemented baseline; transcript-derived cDNA assay test)
+- `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path? }` (implemented baseline; transcript-derived cDNA assay test with internal probe)
 - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
 - `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }` (implemented baseline; emits derived DNA window + mRNA isoforms + exon-reference sequence)
@@ -5039,11 +5041,63 @@ Simple PCR constraint handoff:
     the current top retained assay without re-deriving it locally.
   - includes qPCR rejection summary with pair-level and probe-level counters.
 
+`TestCdnaPcr` / `TestCdnaQpcr` contract (implemented baseline):
+
+- Purpose:
+  - test already-chosen PCR/qPCR oligos against transcript-derived cDNA
+    templates for one annotated splicing group.
+  - use the same transcript-native cDNA derivation path as transcript-aware
+    qPCR design, so assay testing is independent of external protein or
+    transcript evidence services.
+- Operation payload shape:
+  - `seq_id`
+  - `source_feature_id`
+    - existing zero-based GENtle feature id used to resolve the transcript/gene
+      splicing group
+  - `forward_primer`
+  - `reverse_primer`
+  - `probe` for `TestCdnaQpcr` only
+  - optional `transcript_id`
+    - limits testing to one derived transcript template when supplied
+  - optional `min_amplicon_bp` / `max_amplicon_bp`
+  - optional `max_mismatches`
+    - defaults to `0`
+  - optional `require_3prime_exact_bases`
+    - enforced for forward/reverse primer hits
+  - optional `path`
+    - writes the same report JSON returned in the operation result
+- Current baseline behavior:
+  - templates are derived from the selected splicing group on
+    `TargetGroupTargetStrand`.
+  - forward primer hits are searched on the transcript-derived cDNA strand.
+  - reverse primer hits are searched as reverse-complement binding sites.
+  - qPCR probes are accepted on either cDNA orientation, but must fall inside
+    the primer-bounded amplicon interior.
+  - matching is IUPAC-aware and exact by default, with optional mismatch
+    tolerance and deterministic 3' exactness gating for primers.
+  - UTR/noncoding transcript bases are not guessed from genomic context; only
+    derived cDNA templates from the selected transcript features are tested.
+- Report schema:
+  - `gentle.cdna_assay_test_report.v1`
+  - report-level fields include assay kind, source sequence/feature, group
+    label, strand, requested transcript id, primers/probe, mismatch/size
+    settings, transcript/product counts, overall status, and warnings.
+  - per-transcript rows include transcript feature id, transcript id/label,
+    strand, cDNA length, status, primer/probe hits, and products.
+  - primer/probe hit rows include local cDNA coordinates, binding sequence,
+    binding orientation, mismatch count, mapped source ranges, covered junction
+    labels, and whether the hit spans a junction.
+  - product rows include local cDNA amplicon coordinates/length, hit indices,
+    optional probe hit indices, mapped source ranges, covered junction labels,
+    and whether the product spans a junction.
+
 Primer-design shell command family (implemented):
 
 - Shared-shell family:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
+  - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
   - `primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]`
@@ -5067,6 +5121,9 @@ Primer-design shell command family (implemented):
   - an operation payload whose root variant is `{"DesignQpcrAssays": {...}}`
   - a full `gentle.qpcr_seed_request.v1` payload carrying one runnable
     `operation.DesignQpcrAssays`
+- `primers test-cdna-pcr` and `primers test-cdna-qpcr` are non-mutating assay
+  checks over transcript-derived cDNA templates and return
+  `gentle.cdna_assay_test_report.v1`; `--path` persists that same report.
 - `primers preflight` returns `gentle.primer3_preflight.v1` with the requested
   backend plus configured-executable token, default-fallback marker, effective
   executable, resolved path, working directory, and reachability/version/error

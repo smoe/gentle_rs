@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -1360,9 +1360,15 @@ inspection/export paths:
   - `DesignPrimerPairs { template, roi_start_0based, roi_end_0based, forward, reverse, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_pairs?, report_id? }`
   - `PcrOverlapExtensionMutagenesis { template, edit_start_0based, edit_end_0based_exclusive, insert_sequence?, constraints?, output_prefix? }`
   - `DesignQpcrAssays { template, roi_start_0based, roi_end_0based, forward, reverse, probe, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays?, report_id? }`
+  - `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path? }`
+  - `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path? }`
   - `forward`/`reverse` side constraints now include optional sequence-level filters:
     `fixed_5prime`, `fixed_3prime`, `required_motifs[]`, `forbidden_motifs[]`,
     and `locked_positions[]` (offset/base locks, IUPAC-aware).
+  - cDNA PCR/qPCR assay testing derives transcript templates through the same
+    engine-owned splicing/qPCR transcript-template path used by transcript-aware
+    qPCR design; adapters may choose how to present reports, but must not
+    construct competing cDNA products or transcript hit geometry locally.
   - `DesignPrimerPairs` materializes graph-visible outputs:
     - one derived sequence per forward/reverse primer in each accepted pair
     - one container per primer pair (forward + reverse members)
@@ -1379,6 +1385,8 @@ inspection/export paths:
 - Shared-shell commands:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [...]`
+  - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [...]`
   - `primers seed-from-feature SEQ_ID FEATURE_ID`
   - `primers seed-from-splicing SEQ_ID FEATURE_ID`
   - `primers list-reports`

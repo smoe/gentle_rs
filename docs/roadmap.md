@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -1801,6 +1801,19 @@ order. Durable architecture constraints and decisions remain in
     - persisted qPCR reports now carry report-level targeting outcome summaries
       plus per-assay transcript context so GUI/CLI/ClawBio/JS/Lua all reopen
       the same explanation
+  - cDNA assay testing is now available as an engine-owned, transcript-derived
+    inspection path:
+    - `TestCdnaPcr` and `TestCdnaQpcr` test supplied primers/probes against
+      cDNA templates derived from the selected splicing group rather than a
+      genomic-only interval
+    - shared-shell/direct-CLI routes
+      `primers test-cdna-pcr` and `primers test-cdna-qpcr` expose the same
+      non-mutating `gentle.cdna_assay_test_report.v1` payload for GUI,
+      ClawBio/OpenClaw, JS/Lua, and agent callers
+    - reports carry transcript/product status, local cDNA hit coordinates,
+      mapped source ranges, junction labels, and junction-spanning flags so
+      downstream tools can explain whether a PCR/qPCR assay detects one
+      isoform, many isoforms, or no compatible cDNA product
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
     including explicit side-sequence constraints and pair constraints (no raw
     JSON required for common interactive use)
