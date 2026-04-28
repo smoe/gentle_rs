@@ -6,9 +6,10 @@ description: >-
   patient-data observations or direct DNA fragment requests into
   sequence-grounded mechanistic follow-up, assay-planning artifacts,
   stateless sequence inspection, reusable local reference-preparation
-  workflows, and transcript-native protein-gel / protein 2D-gel / protease
-  digest figures for bundled example loci, parameterized Ensembl genes, and
-  Ensembl gene panels.
+  workflows, transcript-native protein-residue-to-genomic-codon mapping,
+  and transcript-native protein-gel / protein 2D-gel / protease digest
+  figures for bundled example loci, parameterized Ensembl genes, and Ensembl
+  gene panels.
 version: 0.1.0
 author: GENtle project
 license: MIT
@@ -42,6 +43,12 @@ metadata:
       - motif score tracks
       - tfbs scan
       - jaspar motif
+      - protein residue
+      - map residue
+      - protein to genome
+      - residue to genome
+      - genomic codon
+      - codon coordinates
       - sequence context
       - extract gene from ensembl
       - fetch ensembl gene
@@ -104,11 +111,12 @@ This skill is execution-first.
 
 ClawBio shared chat adapters should consume `INTENTS.json` first. That
 `clawbio.skill_intents.v1` descriptor maps runtime-version, service-readiness,
-installed-database/resource, Telegram guide overview/section navigation,
-simple PCR primer-design, parameterized Ensembl gene 2D-gel, Ensembl
-gene-panel 1D protein-gel, bundled example protein-gel, bundled example
-2D-gel, Ensembl gene 2D-gel example, trypsin-digest, capability, skill-info,
-and explicit-demo wording to concrete `examples/*.json` requests.
+installed-database/resource, residue-to-genome codon mapping, Telegram guide
+overview/section navigation, simple PCR primer-design, parameterized Ensembl
+gene 2D-gel, Ensembl gene-panel 1D protein-gel, bundled example protein-gel,
+bundled example 2D-gel, Ensembl gene 2D-gel example, trypsin-digest,
+capability, skill-info, and explicit-demo wording to concrete
+`examples/*.json` requests.
 Descriptor-only skill directories are discoverable, but execution still
 requires `gentle-cloning` to be registered in ClawBio's top-level `SKILLS`
 table.
@@ -214,9 +222,10 @@ Preferred broad answer wording:
 > GENtle helps me move from a cohort or patient-data observation to a
 > sequence-grounded mechanistic follow-up. I can recover the relevant locus,
 > inspect annotations, isoforms, splicing, TFBS/JASPAR and restriction-site
-> context, analyze pasted DNA fragments directly when a fast stateless check is
-> enough, prepare reusable Ensembl/BLAST reference assets, and export
-> reproducible graphics or tables that support wet-lab validation planning.
+> context, map transcript-derived protein residues back to genomic codon bases,
+> analyze pasted DNA fragments directly when a fast stateless check is enough,
+> prepare reusable Ensembl/BLAST reference assets, and export reproducible
+> graphics or tables that support wet-lab validation planning.
 
 Always keep the boundary explicit:
 
@@ -1201,6 +1210,10 @@ Apply the following methodology:
   - `examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json`
     - stateless direct-DNA example: scans one pasted fragment for SP1/TP73
       hits without creating TFBS features or a project-state record first
+  - `examples/request_protein_residue_genomic_coordinates_tp73.json`
+    - transcript-native protein-to-genome example: maps one requested residue
+      on a loaded TP73 locus back to codon-oriented genomic bases, optionally
+      narrowed to one transcript id
   - `examples/request_workflow_inline_sequence_inspection_stateless.json`
     - workflow-backed stateless direct-DNA example: reuses one inline sequence
       to emit restriction-site JSON, TFBS-hit JSON, TFBS score-track JSON, and

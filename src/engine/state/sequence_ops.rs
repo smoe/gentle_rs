@@ -1057,6 +1057,7 @@ impl GentleEngine {
             | Operation::ImportGenomeVcfTrack { seq_id, .. }
             | Operation::ImportIsoformPanel { seq_id, .. }
             | Operation::ProjectUniprotToGenome { seq_id, .. }
+            | Operation::QueryProteinResidueGenomicCoordinates { seq_id, .. }
             | Operation::ImportBlastHitsTrack { seq_id, .. }
             | Operation::GenerateCandidateSet { seq_id, .. }
             | Operation::GenerateCandidateSetBetweenAnchors { seq_id, .. }

@@ -3155,6 +3155,13 @@ pub enum Operation {
         projection_id: Option<String>,
         transcript_id: Option<String>,
     },
+    QueryProteinResidueGenomicCoordinates {
+        seq_id: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        residue_start_1based: usize,
+        residue_end_1based: usize,
+    },
     AuditUniprotProjectionConsistency {
         projection_id: String,
         #[serde(default)]
@@ -5089,6 +5096,7 @@ impl GentleEngine {
                 "ImportEnsemblGeneSequence".to_string(),
                 "ImportEnsemblProteinSequence".to_string(),
                 "ProjectUniprotToGenome".to_string(),
+                "QueryProteinResidueGenomicCoordinates".to_string(),
                 "AuditUniprotProjectionConsistency".to_string(),
                 "AuditUniprotProjectionParity".to_string(),
                 "ImportBlastHitsTrack".to_string(),
@@ -7252,6 +7260,7 @@ impl GentleEngine {
                 | Operation::ShowRnaReadReport { .. }
                 | Operation::SummarizeRnaReadGeneSupport { .. }
                 | Operation::InspectRnaReadGeneSupport { .. }
+                | Operation::QueryProteinResidueGenomicCoordinates { .. }
                 | Operation::FindRestrictionSites { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }

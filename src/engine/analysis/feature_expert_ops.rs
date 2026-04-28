@@ -3709,9 +3709,9 @@ impl GentleEngine {
                 message: format!("Ensembl region {label} cannot be empty"),
             });
         }
-        if trimmed.chars().any(|ch| {
-            ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | ';' | '&' | '=')
-        })
+        if trimmed
+            .chars()
+            .any(|ch| ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | ';' | '&' | '='))
         {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -5377,7 +5377,7 @@ impl GentleEngine {
                 matches.push(ProteinResidueGenomicCoordinateMatch {
                     transcript_id: transcript_id.clone(),
                     transcript_label: transcript_label.clone(),
-                    transcript_feature_id: Some(feature_idx.saturating_add(1)),
+                    transcript_feature_id: Some(feature_idx),
                     strand: if is_reverse { "-" } else { "+" }.to_string(),
                     residue_index_1based,
                     amino_acid,

@@ -844,6 +844,19 @@ order. Durable architecture constraints and decisions remain in
     - `Derive group transcripts`
     - `Derive all mRNA`
     - `Derive + Dotplot` (selected transcript; strand-aware pair mode)
+- Protein residue genomic coordinate mapping is now parity-wired through shared
+  engine and adapter surfaces:
+  - engine operation:
+    `QueryProteinResidueGenomicCoordinates { seq_id, transcript_id?, residue_start_1based, residue_end_1based }`
+  - shared-shell/CLI shorthand:
+    `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END] [--transcript ID]`
+  - workflows and generic `op` execution can now invoke the same query without
+    depending on shell-only routing
+  - ClawBio now exposes the same capability through request mode
+    `protein-residue-genomic-coordinates` and a matching intent route for
+    residue/codon/genome phrasing
+  - remaining parity gap: there is still no dedicated GUI affordance for this
+    query beyond generic report inspection surfaces
 - New sequence-analysis operation baseline:
   - `DeriveSplicingReferences` derives a sequence-window DNA slice, transcript-
     oriented mRNA isoforms, and an exon-consecutive artificial reference in one

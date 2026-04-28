@@ -256,6 +256,50 @@
       ]
     },
     {
+      "intent_id": "protein_residue_genomic_coordinates",
+      "description": "Map one protein residue back to transcript-native genomic codon bases on a loaded locus.",
+      "trigger_terms": [
+        "protein residue coordinates",
+        "map residue to genome",
+        "protein to genome",
+        "residue to genome",
+        "genomic codon",
+        "codon coordinates",
+        "codon bases"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "seq_id": {
+              "required": true
+            },
+            "residue_start_1based": {
+              "required": true
+            },
+            "residue_end_1based": {
+              "required": false
+            },
+            "transcript_id": {
+              "required": false
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "protein-residue-genomic-coordinates",
+            "state_path": ".gentle_state.json",
+            "seq_id": "{seq_id}",
+            "transcript_id": "{transcript_id}",
+            "residue_start_1based": "{residue_start_1based}",
+            "residue_end_1based": "{residue_end_1based}",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
       "intent_id": "demo_isoform_protein_gel",
       "description": "Run the canonical offline isoform protein molecular-weight gel demo using the bundled example locus.",
       "trigger_terms": [

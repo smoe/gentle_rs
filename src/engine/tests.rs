@@ -9373,7 +9373,7 @@ fn test_query_protein_residue_genomic_coordinates_reports_split_forward_codon() 
     assert_eq!(report.match_count, 1);
     let hit = &report.matches[0];
     assert_eq!(hit.transcript_id, "TX_SPLIT");
-    assert_eq!(hit.transcript_feature_id, Some(2));
+    assert_eq!(hit.transcript_feature_id, Some(1));
     assert_eq!(hit.strand, "+");
     assert_eq!(hit.residue_index_1based, 2);
     assert_eq!(hit.amino_acid, "A");
@@ -9395,6 +9395,32 @@ fn test_query_protein_residue_genomic_coordinates_reports_split_forward_codon() 
             .collect::<Vec<_>>(),
         vec![("G", Some(1)), ("C", Some(1)), ("C", Some(2))]
     );
+}
+
+#[test]
+fn test_query_protein_residue_genomic_coordinates_operation_sets_shared_result_field() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "s".to_string(),
+        split_codon_transcript_translation_test_sequence(),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let result = engine
+        .apply(Operation::QueryProteinResidueGenomicCoordinates {
+            seq_id: "s".to_string(),
+            transcript_id: Some("TX_SPLIT".to_string()),
+            residue_start_1based: 2,
+            residue_end_1based: 2,
+        })
+        .expect("query residue genomic coordinates via operation");
+    assert!(result.created_seq_ids.is_empty());
+    assert!(result.changed_seq_ids.is_empty());
+    let report = result
+        .protein_residue_genomic_coordinates
+        .expect("operation residue genomic coordinate report");
+    assert_eq!(report.schema, PROTEIN_RESIDUE_GENOMIC_COORDINATE_SCHEMA);
+    assert_eq!(report.match_count, 1);
+    assert_eq!(report.matches[0].transcript_feature_id, Some(1));
 }
 
 #[test]

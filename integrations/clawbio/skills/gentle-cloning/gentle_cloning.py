@@ -37,6 +37,7 @@ SUPPORTED_REQUEST_MODES = (
     "shell",
     "op",
     "workflow",
+    "protein-residue-genomic-coordinates",
     "gene-protein-2d-gel",
     "agent-plan",
     "agent-execute-plan",
@@ -94,6 +95,10 @@ class Request:
     species: str | None = None
     source: str | None = None
     ladders: list[str] | None = None
+    seq_id: str | None = None
+    transcript_id: str | None = None
+    residue_start_1based: int | None = None
+    residue_end_1based: int | None = None
 
 
 @dataclasses.dataclass
@@ -383,6 +388,49 @@ def _normalise_gene_protein_2d_gel_request(request: Request) -> None:
         )
 
 
+def _normalise_protein_residue_genomic_coordinate_request(request: Request) -> None:
+    if not isinstance(request.seq_id, str) or not request.seq_id.strip():
+        raise SkillError(
+            "mode=protein-residue-genomic-coordinates requires non-empty string field 'seq_id'"
+        )
+    request.seq_id = request.seq_id.strip()
+
+    if request.transcript_id is not None:
+        if not isinstance(request.transcript_id, str):
+            raise SkillError("transcript_id must be a non-empty string when present")
+        request.transcript_id = request.transcript_id.strip() or None
+
+    def _coerce_optional_positive_int(value: Any, field_name: str) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        try:
+            coerced = int(value)
+        except (TypeError, ValueError) as e:
+            raise SkillError(f"{field_name} must be an integer when present") from e
+        if coerced <= 0:
+            raise SkillError(f"{field_name} must be >= 1")
+        return coerced
+
+    residue_start = _coerce_optional_positive_int(
+        request.residue_start_1based, "residue_start_1based"
+    )
+    if residue_start is None:
+        raise SkillError(
+            "mode=protein-residue-genomic-coordinates requires integer field 'residue_start_1based'"
+        )
+    residue_end = _coerce_optional_positive_int(
+        request.residue_end_1based, "residue_end_1based"
+    )
+    if residue_end is None:
+        residue_end = residue_start
+    if residue_end < residue_start:
+        raise SkillError("residue_end_1based must be >= residue_start_1based")
+    request.residue_start_1based = residue_start
+    request.residue_end_1based = residue_end
+
+
 def _coerce_request(payload: dict[str, Any]) -> Request:
     schema = payload.get("schema")
     if schema != REQUEST_SCHEMA:
@@ -426,6 +474,10 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         species=payload.get("species"),
         source=payload.get("source"),
         ladders=payload.get("ladders"),
+        seq_id=payload.get("seq_id"),
+        transcript_id=payload.get("transcript_id"),
+        residue_start_1based=payload.get("residue_start_1based"),
+        residue_end_1based=payload.get("residue_end_1based"),
     )
     if request.expected_artifacts is not None:
         if not isinstance(request.expected_artifacts, list):
@@ -446,6 +498,8 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
     elif request.mode == "workflow":
         if request.workflow is None and not request.workflow_path:
             raise SkillError("mode=workflow requires 'workflow' or 'workflow_path'")
+    elif request.mode == "protein-residue-genomic-coordinates":
+        _normalise_protein_residue_genomic_coordinate_request(request)
     elif request.mode == "gene-protein-2d-gel":
         _normalise_gene_protein_2d_gel_request(request)
     elif request.mode == "agent-plan":
@@ -600,6 +654,17 @@ def _gene_protein_2d_gel_workflow(request: Request) -> dict[str, Any]:
             },
         ],
     }
+
+
+def _protein_residue_genomic_coordinate_operation(request: Request) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "seq_id": request.seq_id,
+        "residue_start_1based": request.residue_start_1based,
+        "residue_end_1based": request.residue_end_1based,
+    }
+    if request.transcript_id:
+        payload["transcript_id"] = request.transcript_id
+    return {"QueryProteinResidueGenomicCoordinates": payload}
 
 
 def _preview_text(text: str, *, max_lines: int = 6, max_chars: int = 600) -> str | None:
@@ -1324,6 +1389,8 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
             args.extend(["workflow", f"@{resolved_workflow_path}"])
         else:
             args.extend(["workflow", _json_arg(request.workflow)])
+    elif request.mode == "protein-residue-genomic-coordinates":
+        args.extend(["op", _json_arg(_protein_residue_genomic_coordinate_operation(request))])
     elif request.mode == "gene-protein-2d-gel":
         args.extend(["workflow", _json_arg(_gene_protein_2d_gel_workflow(request))])
     elif request.mode == "agent-plan":
@@ -1624,6 +1691,60 @@ def _summary_lines_from_sequence_context_view(candidate: Any) -> list[str] | Non
     return lines or None
 
 
+def _summary_lines_from_protein_residue_genomic_coordinates(
+    candidate: Any,
+) -> list[str] | None:
+    if not isinstance(candidate, dict):
+        return None
+    report = candidate
+    if candidate.get("schema") != "gentle.protein_residue_genomic_coordinates.v1":
+        nested = candidate.get("protein_residue_genomic_coordinates")
+        if not isinstance(nested, dict):
+            return None
+        if nested.get("schema") != "gentle.protein_residue_genomic_coordinates.v1":
+            return None
+        report = nested
+    seq_id = str(report.get("seq_id") or "").strip()
+    match_count = int(report.get("match_count") or 0)
+    residue_start = int(report.get("residue_start_1based") or 0)
+    residue_end = int(report.get("residue_end_1based") or residue_start)
+    transcript_ids = {
+        str(match.get("transcript_id") or "").strip()
+        for match in report.get("matches", [])
+        if isinstance(match, dict) and str(match.get("transcript_id") or "").strip()
+    }
+    lines = [
+        f"Mapped residue(s) {residue_start}..{residue_end} on '{seq_id}' across {match_count} transcript match(es)."
+    ]
+    if transcript_ids:
+        lines.append(
+            f"Transcript matches: {len(transcript_ids)} ({', '.join(sorted(transcript_ids)[:3])})."
+        )
+    matches = report.get("matches")
+    if isinstance(matches, list) and matches:
+        first = matches[0]
+        if isinstance(first, dict):
+            transcript_id = str(first.get("transcript_id") or "").strip() or "transcript"
+            residue_index = int(first.get("residue_index_1based") or 0)
+            amino_acid = str(first.get("amino_acid") or "X").strip() or "X"
+            codon = str(first.get("codon") or "").strip()
+            genomic_bases = [
+                str(base.get("genomic_pos_1based"))
+                for base in first.get("genomic_bases", [])
+                if isinstance(base, dict) and base.get("genomic_pos_1based") is not None
+            ]
+            detail = (
+                f"First match: {transcript_id} residue {residue_index} ({amino_acid}; codon {codon})"
+            )
+            if genomic_bases:
+                detail += f" maps to genomic bases {', '.join(genomic_bases)}"
+            detail += "."
+            lines.append(detail)
+            if bool(first.get("spans_exon_junction")):
+                lines.append("The codon spans an exon junction.")
+    return lines
+
+
 def _extract_sequence_context_bundle(stdout_json: Any) -> dict[str, Any] | None:
     if not isinstance(stdout_json, dict):
         return None
@@ -1692,6 +1813,9 @@ def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
         lines = _summary_lines_from_sequence_context_view(candidate)
         if lines:
             return lines
+    protein_residue_lines = _summary_lines_from_protein_residue_genomic_coordinates(stdout_json)
+    if protein_residue_lines:
+        return protein_residue_lines
     raw_lines = stdout_json.get("summary_lines")
     if isinstance(raw_lines, list):
         lines = [line.strip() for line in raw_lines if isinstance(line, str) and line.strip()]
@@ -1796,6 +1920,16 @@ def _request_rerun_shell_line(request: Request | None) -> str:
         return "workflow <inline>"
     if request.mode == "op":
         return "op <inline>"
+    if request.mode == "protein-residue-genomic-coordinates":
+        seq_id = request.seq_id or "SEQ_ID"
+        start = request.residue_start_1based or 1
+        end = request.residue_end_1based or start
+        tokens = ["transcripts", "residue-genomic-coordinates", seq_id, str(start)]
+        if end != start:
+            tokens.append(str(end))
+        if request.transcript_id:
+            tokens.extend(["--transcript", request.transcript_id])
+        return shlex.join(tokens)
     if request.mode == "gene-protein-2d-gel":
         gene = request.gene_symbol or "GENE"
         species = request.species or "homo_sapiens"
@@ -1832,6 +1966,11 @@ def _request_payload_for_artifact_continuation(
             payload["workflow"] = request.workflow
     elif request.mode == "op":
         payload["operation"] = request.operation
+    elif request.mode == "protein-residue-genomic-coordinates":
+        payload["seq_id"] = request.seq_id
+        payload["transcript_id"] = request.transcript_id
+        payload["residue_start_1based"] = request.residue_start_1based
+        payload["residue_end_1based"] = request.residue_end_1based
     elif request.mode == "gene-protein-2d-gel":
         payload["gene_symbol"] = request.gene_symbol
         payload["species"] = request.species

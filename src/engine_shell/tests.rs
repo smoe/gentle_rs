@@ -19322,6 +19322,10 @@ fn execute_transcripts_residue_genomic_coordinates_reports_codon_bases() {
     assert_eq!(out.output["match_count"].as_u64(), Some(1));
     assert_eq!(out.output["matches"][0]["codon"].as_str(), Some("GCC"));
     assert_eq!(
+        out.output["matches"][0]["transcript_feature_id"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
         out.output["matches"][0]["genomic_bases"][2]["genomic_pos_1based"].as_u64(),
         Some(11)
     );

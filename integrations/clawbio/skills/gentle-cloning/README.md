@@ -7,7 +7,8 @@ observations, including patient/cohort-derived leads, or from direct DNA
 fragment requests, to sequence-grounded mechanistic follow-up and wet-lab
 planning. It also makes clear that prepared Ensembl/reference assets and
 BLAST-capable indices are reusable local infrastructure, not GENtle-only
-byproducts.
+byproducts, and that transcript-derived protein residues can be mapped back to
+their genomic codon bases when a coding effect needs an exact exon/codon readout.
 
 ## Execution-first expectation
 
@@ -51,9 +52,9 @@ free text.
 
 The immediate chat-adapter routing layer is `INTENTS.json`. It maps broad user
 wording for runtime version, service readiness, installed databases/resources,
-Telegram guide overview/sections, TP73 protein gel, TP73 2D gel,
-trypsin-digest gel, capabilities, skill info, and explicit demo requests to
-stable `examples/*.json` payloads. Descriptor-only skill directories are
+residue-to-genome codon mapping, Telegram guide overview/sections, TP73
+protein gel, TP73 2D gel, trypsin-digest gel, capabilities, skill info, and
+explicit demo requests to stable `examples/*.json` payloads. Descriptor-only skill directories are
 discoverable by the current ClawBio planner, but execution still requires
 registering `gentle-cloning` in ClawBio's top-level `SKILLS` table.
 
@@ -679,6 +680,10 @@ Included follow-on analysis/planning/graphics requests:
 - `examples/request_scan_tfbs_hits_inline_sequence_sp1_tp73.json`
   - stateless direct-DNA example that scans one pasted fragment for SP1/TP73
     hits without creating TFBS features or a project-state record first
+- `examples/request_protein_residue_genomic_coordinates_tp73.json`
+  - transcript-native protein-to-genome query example that maps one TP73
+    residue back to its genomic codon bases on a loaded locus, optionally
+    narrowed to one transcript id
 - `examples/request_workflow_tp73_tfbs_score_tracks_summary.json`
   - workflow-backed TFBS presentation example that writes the shared TP73
     promoter score-track JSON summary

@@ -243,6 +243,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "shell",
             "op",
             "workflow",
+            "protein-residue-genomic-coordinates",
             "gene-protein-2d-gel",
             "agent-plan",
             "agent-execute-plan",
@@ -829,6 +830,80 @@ def test_result_payload_promotes_bundle_nested_sequence_context_chat_summary(
     assert "artifacts/context.svg" in report
     assert "- VKORC1 context around rs9923231" in report
     assert "- Visible classes: gene, mrna, variation" in report
+
+
+def test_result_payload_promotes_protein_residue_genomic_coordinate_summary(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "protein-residue-genomic-coordinates",
+                "state_path": ".gentle_state.json",
+                "seq_id": "tp73.ncbi",
+                "transcript_id": "NM_005427.4",
+                "residue_start_1based": 5,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"op_id":"op-demo","messages":["mapped"],'
+        '"protein_residue_genomic_coordinates":{"schema":"gentle.protein_residue_genomic_coordinates.v1",'
+        '"seq_id":"tp73.ncbi","residue_start_1based":5,"residue_end_1based":5,"match_count":1,'
+        '"matches":[{"transcript_id":"NM_005427.4","residue_index_1based":5,"amino_acid":"G","codon":"GGC",'
+        '"genomic_bases":[{"genomic_pos_1based":123},{"genomic_pos_1based":124},{"genomic_pos_1based":130}],'
+        '"spans_exon_junction":true}]}}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["command"] == [
+        str(fake_cli),
+        "--state",
+        ".gentle_state.json",
+        "op",
+        '{"QueryProteinResidueGenomicCoordinates":{"seq_id":"tp73.ncbi","residue_start_1based":5,"residue_end_1based":5,"transcript_id":"NM_005427.4"}}',
+    ]
+    assert result["chat_summary_lines"] == [
+        "Mapped residue(s) 5..5 on 'tp73.ncbi' across 1 transcript match(es).",
+        "Transcript matches: 1 (NM_005427.4).",
+        "First match: NM_005427.4 residue 5 (G; codon GGC) maps to genomic bases 123, 124, 130.",
+        "The codon spans an exon junction.",
+    ]
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "## Chat Summary" in report
+    assert "Mapped residue(s) 5..5 on 'tp73.ncbi' across 1 transcript match(es)." in report
+    assert "The codon spans an exon junction." in report
+    assert "QueryProteinResidueGenomicCoordinates" in report
 
 
 def test_services_status_promotes_prepare_and_sync_suggested_actions(
@@ -2981,6 +3056,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             None,
             300,
         ),
+        "request_protein_residue_genomic_coordinates_tp73.json": (
+            "protein-residue-genomic-coordinates",
+            None,
+            180,
+        ),
         "request_export_bed_rs9923231_vkorc1_context_features.json": (
             "shell",
             "features export-bed rs9923231_vkorc1 artifacts/rs9923231_vkorc1.context.features.bed --coordinate-mode genomic --kind gene --kind mRNA --kind variation --sort start --include-source --include-qualifiers",
@@ -3164,6 +3244,7 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "request_dbsnp_fetch_rs9923231.json",
             "request_inspect_sequence_context_rs9923231_vkorc1.json",
             "request_export_sequence_context_bundle_rs9923231_vkorc1.json",
+            "request_protein_residue_genomic_coordinates_tp73.json",
             "request_render_svg_rs9923231_vkorc1_linear.json",
             "request_export_bed_rs9923231_vkorc1_context_features.json",
             "request_genomes_extract_gene_tp53.json",
@@ -3200,6 +3281,10 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["expected_artifacts"] == [
                 "artifacts/service_handoff.json"
             ]
+        if name == "request_protein_residue_genomic_coordinates_tp73.json":
+            assert payload["seq_id"] == "tp73.ncbi"
+            assert payload["transcript_id"] == "NM_005427.4"
+            assert payload["residue_start_1based"] == 5
         if name == "request_render_svg_pgex_fasta_circular.json":
             assert payload["expected_artifacts"] == [
                 "artifacts/pgex_fasta.circular.svg"
@@ -3807,6 +3892,12 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "prepare ensembl" in trigger_keywords
     assert "reference blast" in trigger_keywords
     assert "restriction sites" in trigger_keywords
+    assert "protein residue" in trigger_keywords
+    assert "map residue" in trigger_keywords
+    assert "protein to genome" in trigger_keywords
+    assert "residue to genome" in trigger_keywords
+    assert "genomic codon" in trigger_keywords
+    assert "codon coordinates" in trigger_keywords
     assert "extract gene from ensembl" in trigger_keywords
     assert "tfbs score tracks" in trigger_keywords
     assert "jaspar motif" in trigger_keywords
@@ -3867,6 +3958,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "runtime_version",
         "services_status",
         "resources_status",
+        "protein_residue_genomic_coordinates",
         "ensembl_gene_protein_2d_gel",
         "demo_isoform_protein_gel",
         "demo_isoform_protein_2d_gel",
@@ -3902,6 +3994,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "runtime_version": "examples/request_runtime_version.json",
         "services_status": "examples/request_services_status.json",
         "resources_status": "examples/request_resources_status.json",
+        "protein_residue_genomic_coordinates": None,
         "ensembl_gene_protein_2d_gel": None,
         "demo_isoform_protein_gel": "examples/request_workflow_isoform_protein_gel_demo.json",
         "demo_isoform_protein_2d_gel": (
@@ -3933,9 +4026,23 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
             step = route["plan"][0]
             assert step["kind"] == "skill_run"
             assert step["skill"] == "gentle-cloning"
-            assert step["input_template"]["mode"] == "gene-protein-2d-gel"
-            assert step["input_template"]["gene_symbol"] == "{gene_symbol}"
-            assert step["slots"]["gene_symbol"]["required"] is True
+            if intent_id == "ensembl_gene_protein_2d_gel":
+                assert step["input_template"]["mode"] == "gene-protein-2d-gel"
+                assert step["input_template"]["gene_symbol"] == "{gene_symbol}"
+                assert step["slots"]["gene_symbol"]["required"] is True
+            else:
+                assert intent_id == "protein_residue_genomic_coordinates"
+                assert (
+                    step["input_template"]["mode"]
+                    == "protein-residue-genomic-coordinates"
+                )
+                assert step["input_template"]["seq_id"] == "{seq_id}"
+                assert (
+                    step["input_template"]["residue_start_1based"]
+                    == "{residue_start_1based}"
+                )
+                assert step["slots"]["seq_id"]["required"] is True
+                assert step["slots"]["residue_start_1based"]["required"] is True
         else:
             assert route["plan"] == [
                 {
@@ -3964,6 +4071,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "continue isoforms" in routes["telegram_guide_isoforms"]["trigger_terms"]
     assert "local resources" in routes["services_status"]["trigger_terms"]
     assert "installed databases" in routes["resources_status"]["trigger_terms"]
+    assert "genomic codon" in routes["protein_residue_genomic_coordinates"][
+        "trigger_terms"
+    ]
     assert "2d protein gel" in routes["ensembl_gene_protein_2d_gel"][
         "trigger_terms"
     ]

@@ -25159,14 +25159,20 @@ fn execute_sequence_analysis_command(
             residue_start_1based,
             residue_end_1based,
         } => {
-            let report = engine
-                .query_protein_residue_genomic_coordinates(
-                    seq_id,
-                    transcript_id.as_deref(),
-                    *residue_start_1based,
-                    *residue_end_1based,
-                )
+            let op_result = engine
+                .apply(Operation::QueryProteinResidueGenomicCoordinates {
+                    seq_id: seq_id.clone(),
+                    transcript_id: transcript_id.clone(),
+                    residue_start_1based: *residue_start_1based,
+                    residue_end_1based: *residue_end_1based,
+                })
                 .map_err(|e| e.to_string())?;
+            let report = op_result
+                .protein_residue_genomic_coordinates
+                .ok_or_else(|| {
+                    "Protein residue genomic coordinate operation did not return a report"
+                        .to_string()
+                })?;
             Ok(ShellRunResult {
                 state_changed: false,
                 output: serde_json::to_value(report).map_err(|e| {

@@ -2223,13 +2223,22 @@ external coding agent runtime, see:
       analysis artifact node linked from the source sequence and reopenable
       through the protein expert
 - Protein residue genomic coordinate query semantics:
-  - `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END]`
-    returns one `gentle.protein_residue_genomic_coordinates.v1` report
+  - shared engine operation:
+    `QueryProteinResidueGenomicCoordinates { seq_id, transcript_id?, residue_start_1based, residue_end_1based }`
+  - shared-shell/CLI shorthand:
+    `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END]`
+  - both routes resolve to one
+    `gentle.protein_residue_genomic_coordinates.v1` report
   - optional `--transcript ID` narrows the query by transcript id, label, or
     `n-N` feature id
+  - when executed as an engine operation, the report is exposed in
+    `OpResult.protein_residue_genomic_coordinates`
   - each match reports the amino-acid residue, coding-orientation codon,
     per-base 1-based genomic positions, exon ordinals, reverse-strand coding
     order, and whether the codon crosses an exon junction
+  - `transcript_feature_id` follows the same zero-based source-feature indexing
+    used by adjacent transcript/projection reports so GUI/CLI reopen paths can
+    reuse it directly
   - the query is transcript-native: it uses the same CDS resolution and
     translation-table selection as derived transcript/protein products, and it
     does not require UniProt or Ensembl protein evidence

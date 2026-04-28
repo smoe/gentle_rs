@@ -9028,6 +9028,7 @@ impl GentleEngine {
             protein_derivation_report: None,
             reverse_translation_report: None,
             protease_digest_report: None,
+            protein_residue_genomic_coordinates: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
@@ -12288,6 +12289,28 @@ impl GentleEngine {
                         "Projected UniProt entry '{}' onto '{}' as '{}' (transcripts={})",
                         entry_id, seq_id, projection_id, transcript_count
                     ));
+                }
+                Operation::QueryProteinResidueGenomicCoordinates {
+                    seq_id,
+                    transcript_id,
+                    residue_start_1based,
+                    residue_end_1based,
+                } => {
+                    let report = self.query_protein_residue_genomic_coordinates(
+                        &seq_id,
+                        transcript_id.as_deref(),
+                        residue_start_1based,
+                        residue_end_1based,
+                    )?;
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Mapped protein residue(s) {}..{} on '{}' back to genomic codon coordinates (matches={})",
+                        report.residue_start_1based,
+                        report.residue_end_1based,
+                        report.seq_id,
+                        report.match_count
+                    ));
+                    result.protein_residue_genomic_coordinates = Some(report);
                 }
                 Operation::AuditUniprotProjectionConsistency {
                     projection_id,
