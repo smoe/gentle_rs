@@ -5773,6 +5773,455 @@ impl GentleEngine {
         ))
     }
 
+    fn cdna_assay_iupac_mismatch_count(window: &[u8], pattern: &[u8]) -> Option<usize> {
+        if window.len() != pattern.len() {
+            return None;
+        }
+        let mut mismatches = 0usize;
+        for (template_base, pattern_base) in window.iter().zip(pattern.iter()) {
+            let template_code = IupacCode::from_letter(*template_base);
+            let pattern_code = IupacCode::from_letter(*pattern_base);
+            if template_code.is_empty() || pattern_code.is_empty() {
+                return None;
+            }
+            if template_code.subset(pattern_code).is_empty() {
+                mismatches = mismatches.saturating_add(1);
+            }
+        }
+        Some(mismatches)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn cdna_assay_find_primer_hits(
+        transcript: &TranscriptQpcrDesignTemplate,
+        binding_pattern: &str,
+        oligo_binding_strand: &str,
+        max_mismatches: usize,
+        require_3prime_exact_bases: usize,
+        three_prime_is_window_end: bool,
+    ) -> Vec<CdnaAssayPrimerHit> {
+        let template = transcript.sequence.as_bytes();
+        let pattern = binding_pattern.as_bytes();
+        if pattern.is_empty() || template.len() < pattern.len() {
+            return vec![];
+        }
+        let mut hits = vec![];
+        for start in 0..=(template.len() - pattern.len()) {
+            let end = start + pattern.len();
+            let window = &template[start..end];
+            let Some(mismatch_count) = Self::cdna_assay_iupac_mismatch_count(window, pattern)
+            else {
+                continue;
+            };
+            if mismatch_count > max_mismatches {
+                continue;
+            }
+            if require_3prime_exact_bases > 0 {
+                if require_3prime_exact_bases > pattern.len() {
+                    continue;
+                }
+                let exact_ok = if three_prime_is_window_end {
+                    let from = pattern.len() - require_3prime_exact_bases;
+                    Self::cdna_assay_iupac_mismatch_count(&window[from..], &pattern[from..])
+                        == Some(0)
+                } else {
+                    Self::cdna_assay_iupac_mismatch_count(
+                        &window[..require_3prime_exact_bases],
+                        &pattern[..require_3prime_exact_bases],
+                    ) == Some(0)
+                };
+                if !exact_ok {
+                    continue;
+                }
+            }
+            let mapping = Self::map_transcript_local_interval(
+                &transcript.local_exon_segments,
+                transcript.strand.trim() == "-",
+                start,
+                end,
+            );
+            hits.push(CdnaAssayPrimerHit {
+                start_0based: start,
+                end_0based_exclusive: end,
+                binding_sequence: String::from_utf8_lossy(window).to_string(),
+                oligo_binding_strand: oligo_binding_strand.to_string(),
+                mismatch_count,
+                source_ranges_0based: mapping.source_ranges_0based,
+                covered_junction_labels: mapping.covered_junction_labels,
+                spans_junction: mapping.spans_junction,
+            });
+        }
+        hits
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn test_cdna_assay(
+        &self,
+        seq_id: &str,
+        source_feature_id: usize,
+        forward_primer: &str,
+        reverse_primer: &str,
+        probe: Option<&str>,
+        transcript_id: Option<&str>,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+    ) -> Result<CdnaAssayTestReport, EngineError> {
+        let source_dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        if source_feature_id >= source_dna.features().len() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Feature id '{}' was not found in sequence '{}'",
+                    source_feature_id, seq_id
+                ),
+            });
+        }
+        let forward_primer = Self::normalize_iupac_text(forward_primer)?;
+        let reverse_primer = Self::normalize_iupac_text(reverse_primer)?;
+        if forward_primer.is_empty() || reverse_primer.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "cDNA PCR assay testing requires non-empty forward and reverse primers"
+                    .to_string(),
+            });
+        }
+        let probe = match probe {
+            Some(raw_probe) => {
+                let normalized = Self::normalize_iupac_text(raw_probe)?;
+                if normalized.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "cDNA qPCR assay testing requires a non-empty probe".to_string(),
+                    });
+                }
+                Some(normalized)
+            }
+            None => None,
+        };
+        let min_amplicon_bp = min_amplicon_bp.unwrap_or(1);
+        let max_amplicon_bp = max_amplicon_bp.unwrap_or(usize::MAX / 2);
+        if min_amplicon_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "cDNA assay min_amplicon_bp must be >= 1".to_string(),
+            });
+        }
+        if min_amplicon_bp > max_amplicon_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "cDNA assay min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
+                ),
+            });
+        }
+        let max_mismatches = max_mismatches.unwrap_or(0);
+        let require_3prime_exact_bases = require_3prime_exact_bases.unwrap_or(0);
+
+        let splicing = self.build_splicing_expert_view(
+            seq_id,
+            source_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )?;
+        let mut templates = Self::build_qpcr_transcript_design_templates(source_dna, &splicing)?;
+        if let Some(requested) = transcript_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            templates.retain(|template| template.transcript_id == requested);
+            if templates.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Transcript '{}' was not found in splicing group '{}' on '{}'",
+                        requested, splicing.group_label, seq_id
+                    ),
+                });
+            }
+        }
+        if templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No transcript-derived cDNA templates were found for feature n-{} on '{}'",
+                    source_feature_id + 1,
+                    seq_id
+                ),
+            });
+        }
+
+        let reverse_binding = Self::reverse_complement_iupac(&reverse_primer)?;
+        let probe_reverse_binding = probe
+            .as_deref()
+            .map(Self::reverse_complement_iupac)
+            .transpose()?;
+        let mut transcript_results = vec![];
+        let mut detected_transcript_count = 0usize;
+        let mut total_product_count = 0usize;
+        for template in &templates {
+            let forward_hits = Self::cdna_assay_find_primer_hits(
+                template,
+                &forward_primer,
+                "forward",
+                max_mismatches,
+                require_3prime_exact_bases,
+                true,
+            );
+            let reverse_hits = Self::cdna_assay_find_primer_hits(
+                template,
+                &reverse_binding,
+                "reverse",
+                max_mismatches,
+                require_3prime_exact_bases,
+                false,
+            );
+            let mut probe_hits = if let Some(probe) = probe.as_deref() {
+                Self::cdna_assay_find_primer_hits(
+                    template,
+                    probe,
+                    "forward",
+                    max_mismatches,
+                    0,
+                    true,
+                )
+            } else {
+                vec![]
+            };
+            if let Some(probe_reverse_binding) = probe_reverse_binding.as_deref() {
+                if probe_reverse_binding != probe.as_deref().unwrap_or_default() {
+                    probe_hits.extend(Self::cdna_assay_find_primer_hits(
+                        template,
+                        probe_reverse_binding,
+                        "reverse_complement",
+                        max_mismatches,
+                        0,
+                        false,
+                    ));
+                }
+            }
+            probe_hits.sort_by(|left, right| {
+                left.start_0based
+                    .cmp(&right.start_0based)
+                    .then(left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                    .then(left.oligo_binding_strand.cmp(&right.oligo_binding_strand))
+            });
+            probe_hits.dedup_by(|left, right| {
+                left.start_0based == right.start_0based
+                    && left.end_0based_exclusive == right.end_0based_exclusive
+                    && left.oligo_binding_strand == right.oligo_binding_strand
+            });
+
+            let mut products = vec![];
+            for (forward_idx, forward_hit) in forward_hits.iter().enumerate() {
+                for (reverse_idx, reverse_hit) in reverse_hits.iter().enumerate() {
+                    if reverse_hit.start_0based < forward_hit.end_0based_exclusive {
+                        continue;
+                    }
+                    let amplicon_start = forward_hit.start_0based;
+                    let amplicon_end = reverse_hit.end_0based_exclusive;
+                    let amplicon_length = amplicon_end.saturating_sub(amplicon_start);
+                    if amplicon_length < min_amplicon_bp || amplicon_length > max_amplicon_bp {
+                        continue;
+                    }
+                    let probe_hit_indices = probe_hits
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(probe_idx, probe_hit)| {
+                            (probe_hit.start_0based >= forward_hit.end_0based_exclusive
+                                && probe_hit.end_0based_exclusive <= reverse_hit.start_0based)
+                                .then_some(probe_idx)
+                        })
+                        .collect::<Vec<_>>();
+                    if probe.is_some() && probe_hit_indices.is_empty() {
+                        continue;
+                    }
+                    let mapping = Self::map_transcript_local_interval(
+                        &template.local_exon_segments,
+                        template.strand.trim() == "-",
+                        amplicon_start,
+                        amplicon_end,
+                    );
+                    products.push(CdnaAssayProduct {
+                        amplicon_start_0based: amplicon_start,
+                        amplicon_end_0based_exclusive: amplicon_end,
+                        amplicon_length_bp: amplicon_length,
+                        forward_hit_index: forward_idx,
+                        reverse_hit_index: reverse_idx,
+                        probe_hit_indices,
+                        source_ranges_0based: mapping.source_ranges_0based,
+                        covered_junction_labels: mapping.covered_junction_labels,
+                        spans_junction: mapping.spans_junction,
+                    });
+                }
+            }
+            products.sort_by(|left, right| {
+                left.amplicon_start_0based
+                    .cmp(&right.amplicon_start_0based)
+                    .then(
+                        left.amplicon_end_0based_exclusive
+                            .cmp(&right.amplicon_end_0based_exclusive),
+                    )
+                    .then(left.forward_hit_index.cmp(&right.forward_hit_index))
+                    .then(left.reverse_hit_index.cmp(&right.reverse_hit_index))
+            });
+            products.dedup_by(|left, right| {
+                left.amplicon_start_0based == right.amplicon_start_0based
+                    && left.amplicon_end_0based_exclusive == right.amplicon_end_0based_exclusive
+                    && left.probe_hit_indices == right.probe_hit_indices
+            });
+            let status = if products.is_empty() {
+                if forward_hits.is_empty() {
+                    "no_forward_primer_hit"
+                } else if reverse_hits.is_empty() {
+                    "no_reverse_primer_hit"
+                } else if probe.is_some() && probe_hits.is_empty() {
+                    "no_probe_hit"
+                } else if probe.is_some() {
+                    "no_probe_supported_product"
+                } else {
+                    "no_product_in_size_range"
+                }
+            } else if products.len() == 1 {
+                "single_product"
+            } else {
+                "multiple_products"
+            }
+            .to_string();
+            if !products.is_empty() {
+                detected_transcript_count = detected_transcript_count.saturating_add(1);
+                total_product_count = total_product_count.saturating_add(products.len());
+            }
+            transcript_results.push(CdnaAssayTranscriptResult {
+                transcript_feature_id: template.transcript_feature_id,
+                transcript_id: template.transcript_id.clone(),
+                transcript_label: template.transcript_label.clone(),
+                strand: template.strand.clone(),
+                cdna_length_bp: template.sequence.len(),
+                status,
+                forward_hits,
+                reverse_hits,
+                probe_hits,
+                products,
+            });
+        }
+
+        let assay_kind = if probe.is_some() { "qpcr" } else { "pcr" }.to_string();
+        let overall_status = if total_product_count == 0 {
+            "not_detected"
+        } else if total_product_count == 1 {
+            "single_product"
+        } else {
+            "multiple_products"
+        }
+        .to_string();
+        let summary = if probe.is_some() {
+            format!(
+                "cDNA qPCR assay detected {} product(s) across {}/{} transcript template(s) in '{}'.",
+                total_product_count,
+                detected_transcript_count,
+                templates.len(),
+                splicing.group_label
+            )
+        } else {
+            format!(
+                "cDNA PCR assay detected {} product(s) across {}/{} transcript template(s) in '{}'.",
+                total_product_count,
+                detected_transcript_count,
+                templates.len(),
+                splicing.group_label
+            )
+        };
+        Ok(CdnaAssayTestReport {
+            schema: CDNA_ASSAY_TEST_REPORT_SCHEMA.to_string(),
+            assay_kind,
+            source_seq_id: seq_id.to_string(),
+            source_feature_id,
+            group_label: splicing.group_label,
+            strand: splicing.strand,
+            requested_transcript_id: transcript_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string),
+            forward_primer,
+            reverse_primer,
+            probe,
+            max_mismatches,
+            require_3prime_exact_bases,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            transcript_count: templates.len(),
+            detected_transcript_count,
+            product_count: total_product_count,
+            overall_status,
+            summary,
+            transcript_results,
+            warnings: vec![],
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn test_cdna_pcr_assay(
+        &self,
+        seq_id: &str,
+        source_feature_id: usize,
+        forward_primer: &str,
+        reverse_primer: &str,
+        transcript_id: Option<&str>,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+    ) -> Result<CdnaAssayTestReport, EngineError> {
+        self.test_cdna_assay(
+            seq_id,
+            source_feature_id,
+            forward_primer,
+            reverse_primer,
+            None,
+            transcript_id,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn test_cdna_qpcr_assay(
+        &self,
+        seq_id: &str,
+        source_feature_id: usize,
+        forward_primer: &str,
+        reverse_primer: &str,
+        probe: &str,
+        transcript_id: Option<&str>,
+        min_amplicon_bp: Option<usize>,
+        max_amplicon_bp: Option<usize>,
+        max_mismatches: Option<usize>,
+        require_3prime_exact_bases: Option<usize>,
+    ) -> Result<CdnaAssayTestReport, EngineError> {
+        self.test_cdna_assay(
+            seq_id,
+            source_feature_id,
+            forward_primer,
+            reverse_primer,
+            Some(probe),
+            transcript_id,
+            min_amplicon_bp,
+            max_amplicon_bp,
+            max_mismatches,
+            require_3prime_exact_bases,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn execute_design_qpcr_assays(
         &mut self,
@@ -13604,6 +14053,86 @@ impl GentleEngine {
                         transcript_targeting,
                         report_id,
                     )?;
+                }
+                Operation::TestCdnaPcr {
+                    seq_id,
+                    source_feature_id,
+                    forward_primer,
+                    reverse_primer,
+                    transcript_id,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_mismatches,
+                    require_3prime_exact_bases,
+                    path,
+                } => {
+                    let report = self.test_cdna_pcr_assay(
+                        &seq_id,
+                        source_feature_id,
+                        &forward_primer,
+                        &reverse_primer,
+                        transcript_id.as_deref(),
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_mismatches,
+                        require_3prime_exact_bases,
+                    )?;
+                    result.messages.push(report.summary.clone());
+                    if let Some(path) = path.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                        let file = File::create(path).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!("Could not create cDNA PCR assay-test report '{path}': {e}"),
+                        })?;
+                        let writer = BufWriter::new(file);
+                        serde_json::to_writer_pretty(writer, &report).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!("Could not serialize cDNA PCR assay-test report '{path}': {e}"),
+                        })?;
+                        result
+                            .messages
+                            .push(format!("Wrote cDNA PCR assay-test report to '{path}'"));
+                    }
+                }
+                Operation::TestCdnaQpcr {
+                    seq_id,
+                    source_feature_id,
+                    forward_primer,
+                    reverse_primer,
+                    probe,
+                    transcript_id,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_mismatches,
+                    require_3prime_exact_bases,
+                    path,
+                } => {
+                    let report = self.test_cdna_qpcr_assay(
+                        &seq_id,
+                        source_feature_id,
+                        &forward_primer,
+                        &reverse_primer,
+                        &probe,
+                        transcript_id.as_deref(),
+                        min_amplicon_bp,
+                        max_amplicon_bp,
+                        max_mismatches,
+                        require_3prime_exact_bases,
+                    )?;
+                    result.messages.push(report.summary.clone());
+                    if let Some(path) = path.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                        let file = File::create(path).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!("Could not create cDNA qPCR assay-test report '{path}': {e}"),
+                        })?;
+                        let writer = BufWriter::new(file);
+                        serde_json::to_writer_pretty(writer, &report).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!("Could not serialize cDNA qPCR assay-test report '{path}': {e}"),
+                        })?;
+                        result
+                            .messages
+                            .push(format!("Wrote cDNA qPCR assay-test report to '{path}'"));
+                    }
                 }
                 Operation::DeriveTranscriptSequences {
                     seq_id,

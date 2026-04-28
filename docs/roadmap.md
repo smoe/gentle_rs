@@ -2438,6 +2438,12 @@ order. Durable architecture constraints and decisions remain in
         artifacts at fixed scale `2.0`, and figure-oriented
         `result.json.preferred_artifacts[]` now points at PNG outputs instead
         of the source SVG paths
+      - the shared `svg-png` raster path now checks font availability for
+        text-bearing SVGs:
+        headless deployments can provide fonts via system packages or
+        `GENTLE_SVG_FONT_FILE` / `GENTLE_SVG_FONT_DIR`, and GENtle fails early
+        instead of silently producing label-free PNGs when no font faces are
+        visible to `resvg`
       - when one run now yields multiple collected SVGs, the wrapper can also
         synthesize one best-first `generated/clawbio_storyboard.svg`
         provenance sheet and the matching messenger-facing

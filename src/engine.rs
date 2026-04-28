@@ -310,6 +310,7 @@ pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
+const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
     "gentle.restriction_cloning_pcr_handoff.v1";
 pub const PROTEIN_DERIVATION_REPORTS_METADATA_KEY: &str = "protein_derivation_reports";
@@ -3347,6 +3348,43 @@ pub enum Operation {
         transcript_targeting: Option<QpcrTranscriptTargeting>,
         report_id: Option<String>,
     },
+    TestCdnaPcr {
+        seq_id: SeqId,
+        source_feature_id: usize,
+        forward_primer: String,
+        reverse_primer: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_amplicon_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_amplicon_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_mismatches: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        require_3prime_exact_bases: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    TestCdnaQpcr {
+        seq_id: SeqId,
+        source_feature_id: usize,
+        forward_primer: String,
+        reverse_primer: String,
+        probe: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_amplicon_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_amplicon_bp: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_mismatches: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        require_3prime_exact_bases: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     DeriveTranscriptSequences {
         seq_id: SeqId,
         #[serde(default)]
@@ -5123,6 +5161,8 @@ impl GentleEngine {
                 "PrepareRestrictionCloningPcrHandoff".to_string(),
                 "PcrOverlapExtensionMutagenesis".to_string(),
                 "DesignQpcrAssays".to_string(),
+                "TestCdnaPcr".to_string(),
+                "TestCdnaQpcr".to_string(),
                 "DeriveTranscriptSequences".to_string(),
                 "DeriveProteinSequences".to_string(),
                 "ReverseTranslateProteinSequence".to_string(),
@@ -7298,6 +7338,8 @@ impl GentleEngine {
                 | Operation::ExportSequencingConfirmationSupportTsv { .. }
                 | Operation::SuggestSequencingPrimers { .. }
                 | Operation::AlignSequences { .. }
+                | Operation::TestCdnaPcr { .. }
+                | Operation::TestCdnaQpcr { .. }
         )
     }
 

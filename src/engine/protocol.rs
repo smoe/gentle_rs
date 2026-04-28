@@ -15,18 +15,15 @@
 use std::collections::HashMap;
 
 pub use gentle_protocol::{
-    ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
-    ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
-    AdapterRestrictionCapturePlan, AnnotationCandidate, AnnotationCandidateSummary,
-    AnnotationCandidateWriteback, AttractPwmMappingPolicy, AttractRegionClass,
-    AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow, AttractSplicingEvidencePolicySummary,
+    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
+    AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback,
+    AttractPwmMappingPolicy, AttractRegionClass, AttractSpeciesMatchMode,
+    AttractSplicingEvidenceHitRow, AttractSplicingEvidencePolicySummary,
     AttractSplicingEvidenceSettings, AttractSplicingEvidenceSummaryRow,
-    AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA,
-    CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA, Capabilities,
-    ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
-    ConstructRole, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
-    CutRunCoverageKind, CutRunDatasetListReport, CutRunDatasetProjectionReport,
-    CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
+    AttractSplicingEvidenceView, Capabilities, ConstructCandidate, ConstructObjective,
+    ConstructReasoningGraph, ConstructReasoningStore, ConstructRole, CutRunAlignConfig,
+    CutRunCatalogEntry, CutRunCatalogListEntry, CutRunCoverageKind, CutRunDatasetListReport,
+    CutRunDatasetProjectionReport, CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
     CutRunMotifAbsentOccupancyInterpretation, CutRunMotifAbsentSupportWindow,
     CutRunMotifContextHit, CutRunMotifContextScope, CutRunMotifContextSummaryRow,
     CutRunPreparedAssetManifest, CutRunPreparedAssetStatus, CutRunPreparedManifest,
@@ -35,19 +32,17 @@ pub use gentle_protocol::{
     CutRunReadUnitStatus, CutRunRegulatoryEvidenceSourceKind, CutRunRegulatoryEvidenceSourceRef,
     CutRunRegulatorySupportReport, CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow,
     CutRunSeedFilterConfig, CutRunSupportCluster, CutRunSupportStrength, CutRunSupportWindowRecord,
-    DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod,
-    DesignDecisionNode, DesignEvidence, DesignFact, DotplotBoxplotBin, DotplotMatchPoint,
-    DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
+    DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, DotplotBoxplotBin,
+    DotplotMatchPoint, DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
     DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec, DotplotOverlayResolvedAnchorSeries,
     DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotReferenceAnnotationInterval,
     DotplotReferenceAnnotationTrack, DotplotView, DotplotViewSummary, EditableStatus, EngineError,
     ErrorCode, EvidenceClass, EvidenceScope, FeatureBedCoordinateMode, FlexibilityModel,
-    GenomeTrackImportProgress, HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile,
-    HostLifecycleRole, HostProfileCatalog, HostProfileRecord, HostRouteStep, PairwiseAlignmentMode,
-    ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
-    ProteinResidueGenomicCoordinateReport, ProteinToDnaHandoffCandidate,
-    ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
-    RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, RnaReadAlignConfig, RnaReadAlignmentBackend,
+    GenomeTrackImportProgress, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
+    HostProfileRecord, HostRouteStep, PairwiseAlignmentMode, ProteinResidueGenomicCoordinateBase,
+    ProteinResidueGenomicCoordinateMatch, ProteinResidueGenomicCoordinateReport,
+    ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal,
+    ProteinToDnaHandoffStrategy, RnaReadAlignConfig, RnaReadAlignmentBackend,
     RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect,
     RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
     RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
@@ -79,7 +74,11 @@ pub use gentle_protocol::{
     TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
     UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
-    UniprotFeatureCodingDnaSegment,
+    UniprotFeatureCodingDnaSegment, ANNOTATION_CANDIDATE_SCHEMA,
+    ANNOTATION_CANDIDATE_SUMMARY_SCHEMA, ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA,
+    CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
+    CONSTRUCT_REASONING_STORE_SCHEMA, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA,
+    DESIGN_FACT_SCHEMA, HOST_PROFILE_CATALOG_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -87,8 +86,8 @@ use std::collections::BTreeMap;
 use crate::enzymes::default_preferred_restriction_enzyme_names;
 
 use super::{
-    CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PrepareGenomeProgress,
-    ProtocolCartoonTemplateBindings, RunId, SeqId, TfThresholdOverride,
+    OpId, Operation, PrepareGenomeProgress, ProtocolCartoonTemplateBindings, RunId, SeqId,
+    TfThresholdOverride, CLONING_MACRO_TEMPLATE_SCHEMA,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -4224,6 +4223,92 @@ impl QpcrTranscriptSpecificityEvidence {
 pub struct SequenceRange0Based {
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One primer/probe binding site detected on a transcript-derived cDNA
+/// template.
+pub struct CdnaAssayPrimerHit {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub binding_sequence: String,
+    pub oligo_binding_strand: String,
+    pub mismatch_count: usize,
+    #[serde(default)]
+    pub source_ranges_0based: Vec<SequenceRange0Based>,
+    #[serde(default)]
+    pub covered_junction_labels: Vec<String>,
+    pub spans_junction: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One PCR/qPCR amplicon detected on a transcript-derived cDNA template.
+pub struct CdnaAssayProduct {
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub amplicon_length_bp: usize,
+    pub forward_hit_index: usize,
+    pub reverse_hit_index: usize,
+    #[serde(default)]
+    pub probe_hit_indices: Vec<usize>,
+    #[serde(default)]
+    pub source_ranges_0based: Vec<SequenceRange0Based>,
+    #[serde(default)]
+    pub covered_junction_labels: Vec<String>,
+    pub spans_junction: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Per-transcript result row for a cDNA PCR/qPCR assay test.
+pub struct CdnaAssayTranscriptResult {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub cdna_length_bp: usize,
+    pub status: String,
+    #[serde(default)]
+    pub forward_hits: Vec<CdnaAssayPrimerHit>,
+    #[serde(default)]
+    pub reverse_hits: Vec<CdnaAssayPrimerHit>,
+    #[serde(default)]
+    pub probe_hits: Vec<CdnaAssayPrimerHit>,
+    #[serde(default)]
+    pub products: Vec<CdnaAssayProduct>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic cDNA PCR/qPCR assay-test report shared by shell/CLI/agents.
+pub struct CdnaAssayTestReport {
+    pub schema: String,
+    pub assay_kind: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    pub group_label: String,
+    pub strand: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_transcript_id: Option<String>,
+    pub forward_primer: String,
+    pub reverse_primer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe: Option<String>,
+    pub max_mismatches: usize,
+    pub require_3prime_exact_bases: usize,
+    pub min_amplicon_bp: usize,
+    pub max_amplicon_bp: usize,
+    pub transcript_count: usize,
+    pub detected_transcript_count: usize,
+    pub product_count: usize,
+    pub overall_status: String,
+    pub summary: String,
+    #[serde(default)]
+    pub transcript_results: Vec<CdnaAssayTranscriptResult>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

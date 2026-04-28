@@ -2996,6 +2996,11 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             "services guide --channel telegram --section isoforms",
             180,
         ),
+        "request_services_telegram_guide_isoforms_bach2.json": (
+            "shell",
+            "services guide --channel telegram --section isoforms --gene BACH2",
+            180,
+        ),
         "request_services_telegram_guide_follow_up.json": (
             "shell",
             "services guide --channel telegram --section follow-up",
@@ -3945,6 +3950,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
 
     routes = {route["intent_id"]: route for route in intents["routes"]}
     assert set(routes) == {
+        "telegram_guide_isoforms_gene",
         "skill_info",
         "telegram_guide_overview",
         "telegram_guide_readiness",
@@ -3995,6 +4001,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "services_status": "examples/request_services_status.json",
         "resources_status": "examples/request_resources_status.json",
         "protein_residue_genomic_coordinates": None,
+        "telegram_guide_isoforms_gene": None,
         "ensembl_gene_protein_2d_gel": None,
         "demo_isoform_protein_gel": "examples/request_workflow_isoform_protein_gel_demo.json",
         "demo_isoform_protein_2d_gel": (
@@ -4026,7 +4033,13 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
             step = route["plan"][0]
             assert step["kind"] == "skill_run"
             assert step["skill"] == "gentle-cloning"
-            if intent_id == "ensembl_gene_protein_2d_gel":
+            if intent_id == "telegram_guide_isoforms_gene":
+                assert step["input_template"]["mode"] == "shell"
+                assert step["input_template"]["shell_line"] == (
+                    "services guide --channel telegram --section isoforms --gene {gene_symbol}"
+                )
+                assert step["slots"]["gene_symbol"]["required"] is True
+            elif intent_id == "ensembl_gene_protein_2d_gel":
                 assert step["input_template"]["mode"] == "gene-protein-2d-gel"
                 assert step["input_template"]["gene_symbol"] == "{gene_symbol}"
                 assert step["slots"]["gene_symbol"]["required"] is True
@@ -4069,6 +4082,10 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "continue readiness" in routes["telegram_guide_readiness"]["trigger_terms"]
     assert "continue cloning" in routes["telegram_guide_cloning"]["trigger_terms"]
     assert "continue isoforms" in routes["telegram_guide_isoforms"]["trigger_terms"]
+    assert "isoforms guide" in routes["telegram_guide_isoforms"]["trigger_terms"]
+    assert "gentle isoforms guide for" in routes["telegram_guide_isoforms_gene"][
+        "trigger_terms"
+    ]
     assert "local resources" in routes["services_status"]["trigger_terms"]
     assert "installed databases" in routes["resources_status"]["trigger_terms"]
     assert "genomic codon" in routes["protein_residue_genomic_coordinates"][

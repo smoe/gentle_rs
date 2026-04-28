@@ -280,6 +280,7 @@ fn run_svg_png_mode(
         "drop_dotplot_metadata": summary.drop_dotplot_metadata,
         "width": summary.width,
         "height": summary.height,
+        "font_face_count": summary.font_face_count,
     });
     let pretty = serde_json::to_string_pretty(&summary)
         .map_err(|e| format!("Could not serialize svg-png summary: {e}"))?;

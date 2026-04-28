@@ -3347,6 +3347,7 @@ fn run() -> Result<(), String> {
                 "drop_dotplot_metadata": summary.drop_dotplot_metadata,
                 "width": summary.width,
                 "height": summary.height,
+                "font_face_count": summary.font_face_count,
             }))
         }
         "render-svg" => {
