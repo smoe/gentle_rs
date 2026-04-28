@@ -3008,6 +3008,224 @@ impl GentleEngine {
         }
     }
 
+    pub(super) fn compute_primer_self_3prime_complementary_run(sequence: &[u8]) -> usize {
+        if sequence.is_empty() {
+            return 0;
+        }
+        let rc = Self::reverse_complement_bytes(sequence);
+        Self::longest_suffix_match_in_target(sequence, &rc)
+    }
+
+    fn oligo_qc_is_primer_role(role: &str) -> bool {
+        matches!(role, "forward_primer" | "reverse_primer" | "primer")
+    }
+
+    fn oligo_qc_status_rank(status: &str) -> usize {
+        match status {
+            "fail" => 3,
+            "warning" => 2,
+            "pass" => 1,
+            _ => 0,
+        }
+    }
+
+    fn oligo_qc_join_warnings(warnings: &[String], pass_summary: String) -> String {
+        if warnings.is_empty() {
+            pass_summary
+        } else {
+            warnings.join(" ")
+        }
+    }
+
+    pub(super) fn build_oligo_qc_report(
+        assay_kind: &str,
+        oligos: &[(&str, &str, &str)],
+    ) -> OligoQcReport {
+        let mut oligo_records = Vec::with_capacity(oligos.len());
+        let mut report_warnings = vec![];
+        for (label, role, sequence) in oligos {
+            let sequence_bytes = sequence.as_bytes();
+            let metrics = Self::compute_primer_heuristic_metrics(sequence_bytes);
+            let self_3prime_complementary_run_bp =
+                Self::compute_primer_self_3prime_complementary_run(sequence_bytes);
+            let mut warnings = vec![];
+            if metrics.longest_homopolymer_run_bp > PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP {
+                warnings.push(format!(
+                    "{label} has a {} bp homopolymer run (recommended <= {} bp).",
+                    metrics.longest_homopolymer_run_bp, PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+                ));
+            }
+            if metrics.self_complementary_run_bp > PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP
+            {
+                warnings.push(format!(
+                    "{label} has a {} bp self-complementary reverse-complement run (recommended <= {} bp).",
+                    metrics.self_complementary_run_bp,
+                    PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP
+                ));
+            }
+            if self_3prime_complementary_run_bp > PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP {
+                warnings.push(format!(
+                    "{label} has a {} bp 3'-anchored self-complementary run (recommended <= {} bp).",
+                    self_3prime_complementary_run_bp,
+                    PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP
+                ));
+            }
+            let status = if warnings.is_empty() {
+                "pass"
+            } else {
+                "warning"
+            }
+            .to_string();
+            let pass_summary = format!(
+                "{label} is {} bp; self-complementarity max={} bp, 3'-self max={} bp.",
+                sequence.len(),
+                metrics.self_complementary_run_bp,
+                self_3prime_complementary_run_bp
+            );
+            let summary = Self::oligo_qc_join_warnings(&warnings, pass_summary);
+            report_warnings.extend(warnings.iter().cloned());
+            oligo_records.push(OligoQcOligoRecord {
+                label: (*label).to_string(),
+                role: (*role).to_string(),
+                sequence: (*sequence).to_string(),
+                length_bp: sequence.len(),
+                gc_fraction: Self::sequence_gc_fraction(sequence_bytes).unwrap_or(0.0),
+                three_prime_base: char::from(metrics.three_prime_base).to_string(),
+                three_prime_gc_clamp: metrics.three_prime_gc_clamp,
+                longest_homopolymer_run_bp: metrics.longest_homopolymer_run_bp,
+                self_complementary_run_bp: metrics.self_complementary_run_bp,
+                self_3prime_complementary_run_bp,
+                status,
+                summary,
+                warnings,
+            });
+        }
+
+        let mut interaction_records = vec![];
+        for left_idx in 0..oligos.len() {
+            for right_idx in left_idx + 1..oligos.len() {
+                let (left_label, left_role, left_sequence) = oligos[left_idx];
+                let (right_label, right_role, right_sequence) = oligos[right_idx];
+                let left_sequence_bytes = left_sequence.as_bytes();
+                let right_sequence_bytes = right_sequence.as_bytes();
+                let dimer_metrics = Self::compute_primer_pair_dimer_metrics(
+                    left_sequence_bytes,
+                    right_sequence_bytes,
+                );
+                let right_rc = Self::reverse_complement_bytes(right_sequence_bytes);
+                let left_rc = Self::reverse_complement_bytes(left_sequence_bytes);
+                let left_3prime_complementary_run_bp =
+                    Self::longest_suffix_match_in_target(left_sequence_bytes, &right_rc);
+                let right_3prime_complementary_run_bp =
+                    Self::longest_suffix_match_in_target(right_sequence_bytes, &left_rc);
+                let left_is_primer = Self::oligo_qc_is_primer_role(left_role);
+                let right_is_primer = Self::oligo_qc_is_primer_role(right_role);
+                let primer_3prime_extension_risk = (left_is_primer
+                    && left_3prime_complementary_run_bp
+                        > PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP)
+                    || (right_is_primer
+                        && right_3prime_complementary_run_bp
+                            > PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP);
+                let mut warnings = vec![];
+                if dimer_metrics.max_complementary_run_bp > PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
+                {
+                    warnings.push(format!(
+                        "{left_label}/{right_label} have a {} bp reverse-complement interaction run (recommended <= {} bp).",
+                        dimer_metrics.max_complementary_run_bp,
+                        PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
+                    ));
+                }
+                if left_is_primer
+                    && left_3prime_complementary_run_bp
+                        > PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP
+                {
+                    warnings.push(format!(
+                        "{left_label} 3' end has {} bp complementarity to {right_label} (recommended <= {} bp).",
+                        left_3prime_complementary_run_bp,
+                        PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP
+                    ));
+                }
+                if right_is_primer
+                    && right_3prime_complementary_run_bp
+                        > PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP
+                {
+                    warnings.push(format!(
+                        "{right_label} 3' end has {} bp complementarity to {left_label} (recommended <= {} bp).",
+                        right_3prime_complementary_run_bp,
+                        PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP
+                    ));
+                }
+                let status = if left_is_primer && right_is_primer && primer_3prime_extension_risk {
+                    "fail"
+                } else if warnings.is_empty() {
+                    "pass"
+                } else {
+                    "warning"
+                }
+                .to_string();
+                let pass_summary = format!(
+                    "{left_label}/{right_label} max interaction={} bp, max 3' primer-side interaction={} bp.",
+                    dimer_metrics.max_complementary_run_bp,
+                    dimer_metrics.max_3prime_complementary_run_bp
+                );
+                let summary = Self::oligo_qc_join_warnings(&warnings, pass_summary);
+                report_warnings.extend(warnings.iter().cloned());
+                interaction_records.push(OligoQcInteractionRecord {
+                    left_label: left_label.to_string(),
+                    right_label: right_label.to_string(),
+                    left_role: left_role.to_string(),
+                    right_role: right_role.to_string(),
+                    max_complementary_run_bp: dimer_metrics.max_complementary_run_bp,
+                    left_3prime_complementary_run_bp,
+                    right_3prime_complementary_run_bp,
+                    max_3prime_complementary_run_bp: dimer_metrics.max_3prime_complementary_run_bp,
+                    primer_3prime_extension_risk,
+                    status,
+                    summary,
+                    warnings,
+                });
+            }
+        }
+
+        let status = oligo_records
+            .iter()
+            .map(|record| record.status.as_str())
+            .chain(
+                interaction_records
+                    .iter()
+                    .map(|record| record.status.as_str()),
+            )
+            .max_by_key(|status| Self::oligo_qc_status_rank(status))
+            .unwrap_or("pass")
+            .to_string();
+        let summary = if report_warnings.is_empty() {
+            format!(
+                "Oligo QC passed exact reverse-complement run screening for {} oligo(s) and {} interaction(s).",
+                oligo_records.len(),
+                interaction_records.len()
+            )
+        } else {
+            format!(
+                "Oligo QC found {} warning/failure signal(s) across {} oligo(s) and {} interaction(s).",
+                report_warnings.len(),
+                oligo_records.len(),
+                interaction_records.len()
+            )
+        };
+        OligoQcReport {
+            schema: OLIGO_QC_REPORT_SCHEMA.to_string(),
+            assay_kind: assay_kind.to_string(),
+            method: "exact_reverse_complement_run_screen".to_string(),
+            status,
+            summary,
+            oligo_count: oligo_records.len(),
+            interaction_count: interaction_records.len(),
+            oligos: oligo_records,
+            interactions: interaction_records,
+            warnings: report_warnings,
+        }
+    }
+
     pub(super) fn preferred_primer_length_penalty(length_bp: usize) -> f64 {
         if length_bp < PRIMER_PREFERRED_MIN_LENGTH_BP {
             let delta = (PRIMER_PREFERRED_MIN_LENGTH_BP - length_bp) as f64;

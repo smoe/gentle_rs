@@ -3375,6 +3375,64 @@ pub struct PrimerDesignPairRecord {
     pub rule_flags: PrimerDesignPairRuleFlags,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic exact-run QC for one assay oligo.
+pub struct OligoQcOligoRecord {
+    pub label: String,
+    pub role: String,
+    pub sequence: String,
+    pub length_bp: usize,
+    pub gc_fraction: f64,
+    pub three_prime_base: String,
+    pub three_prime_gc_clamp: bool,
+    pub longest_homopolymer_run_bp: usize,
+    pub self_complementary_run_bp: usize,
+    pub self_3prime_complementary_run_bp: usize,
+    pub status: String,
+    pub summary: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Deterministic exact-run QC for a pair of assay oligos.
+pub struct OligoQcInteractionRecord {
+    pub left_label: String,
+    pub right_label: String,
+    pub left_role: String,
+    pub right_role: String,
+    pub max_complementary_run_bp: usize,
+    pub left_3prime_complementary_run_bp: usize,
+    pub right_3prime_complementary_run_bp: usize,
+    pub max_3prime_complementary_run_bp: usize,
+    pub primer_3prime_extension_risk: bool,
+    pub status: String,
+    pub summary: String,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Shared oligo-interaction QC report for supplied PCR/qPCR assay oligos.
+pub struct OligoQcReport {
+    pub schema: String,
+    pub assay_kind: String,
+    pub method: String,
+    pub status: String,
+    pub summary: String,
+    pub oligo_count: usize,
+    pub interaction_count: usize,
+    #[serde(default)]
+    pub oligos: Vec<OligoQcOligoRecord>,
+    #[serde(default)]
+    pub interactions: Vec<OligoQcInteractionRecord>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 /// Distance/overlap summary for one primer pair relative to the required core
@@ -4285,6 +4343,23 @@ pub struct CdnaAssayTranscriptResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Report-level construct/oligo length summary for a tested cDNA assay.
+pub struct CdnaAssayConstructLengthSummary {
+    pub forward_primer_length_bp: usize,
+    pub reverse_primer_length_bp: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_length_bp: Option<usize>,
+    #[serde(default)]
+    pub detected_amplicon_lengths_bp: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_detected_amplicon_length_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_detected_amplicon_length_bp: Option<usize>,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Deterministic cDNA PCR/qPCR assay-test report shared by shell/CLI/agents.
 pub struct CdnaAssayTestReport {
     pub schema: String,
@@ -4299,6 +4374,10 @@ pub struct CdnaAssayTestReport {
     pub reverse_primer: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub probe: Option<String>,
+    #[serde(default)]
+    pub construct_lengths: CdnaAssayConstructLengthSummary,
+    #[serde(default)]
+    pub oligo_qc: OligoQcReport,
     pub max_mismatches: usize,
     pub require_3prime_exact_bases: usize,
     pub min_amplicon_bp: usize,

@@ -5109,8 +5109,18 @@ Simple PCR constraint handoff:
 - Report schema:
   - `gentle.cdna_assay_test_report.v1`
   - report-level fields include assay kind, source sequence/feature, group
-    label, strand, requested transcript id, primers/probe, mismatch/size
-    settings, transcript/product counts, overall status, and warnings.
+    label, strand, requested transcript id, primers/probe, construct-length
+    summary, oligo QC, mismatch/size settings, transcript/product counts,
+    overall status, and warnings.
+  - `construct_lengths` records forward/reverse/probe oligo lengths plus the
+    distinct detected amplicon construct lengths, including min/max when any
+    product is found.
+  - `oligo_qc` uses schema `gentle.oligo_qc_report.v1` and performs a
+    deterministic exact reverse-complement run screen over supplied oligos:
+    per-oligo self-complementary and 3'-self runs, pairwise oligo
+    complementarity, and primer-side 3' extension-risk warnings. This is a
+    portable first-pass QC layer, not a thermodynamic replacement for Primer3 /
+    wet-lab assay validation.
   - per-transcript rows include transcript feature id, transcript id/label,
     strand, cDNA length, status, primer/probe hits, and products.
   - primer/probe hit rows include local cDNA coordinates, binding sequence,
