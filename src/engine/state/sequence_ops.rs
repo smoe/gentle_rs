@@ -1080,6 +1080,14 @@ impl GentleEngine {
                 }
                 SequenceScanTarget::InlineSequence { .. } => {}
             },
+            Operation::QueryRepeatAnnotations { genome_id, .. }
+            | Operation::BuildRepeatEnvironmentCohort { genome_id, .. }
+            | Operation::SummarizeWindowCohortTfbs {
+                cohort: RepeatEnvironmentCohortReport { genome_id, .. },
+                ..
+            } => {
+                Self::push_unique_token(&mut summary.sequence_ids, genome_id);
+            }
             Operation::ComputeDotplotOverlay {
                 owner_seq_id,
                 reference_seq_id,
@@ -1285,6 +1293,15 @@ impl GentleEngine {
         }
         | Operation::ScanTfbsHits {
             path: Some(path), ..
+        }
+        | Operation::QueryRepeatAnnotations {
+            path: Some(path), ..
+        }
+        | Operation::BuildRepeatEnvironmentCohort {
+            path: Some(path), ..
+        }
+        | Operation::SummarizeWindowCohortTfbs {
+            path: Some(path), ..
         } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
@@ -1347,6 +1364,15 @@ impl GentleEngine {
                 path: Some(path), ..
             } => push(path),
             Operation::ScanTfbsHits {
+                path: Some(path), ..
+            } => push(path),
+            Operation::QueryRepeatAnnotations {
+                path: Some(path), ..
+            } => push(path),
+            Operation::BuildRepeatEnvironmentCohort {
+                path: Some(path), ..
+            } => push(path),
+            Operation::SummarizeWindowCohortTfbs {
                 path: Some(path), ..
             } => push(path),
             Operation::SummarizeJasparEntries {

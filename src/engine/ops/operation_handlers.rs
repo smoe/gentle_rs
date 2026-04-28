@@ -9658,6 +9658,124 @@ impl GentleEngine {
                 }
                 result.restriction_site_scan = Some(report);
             }
+            Operation::QueryRepeatAnnotations {
+                genome_id,
+                rmsk_path,
+                filter,
+                limit,
+                path,
+            } => {
+                let mut report =
+                    self.query_repeat_annotations(&genome_id, &rmsk_path, &filter, limit)?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "repeat annotation query report")?;
+                    result.messages.push(format!(
+                        "Wrote repeat annotation query report for '{}' to '{}'",
+                        report.genome_id, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                if report.malformed_line_count > 0 {
+                    result.warnings.push(format!(
+                        "RepeatMasker parser skipped {} malformed line(s)",
+                        report.malformed_line_count
+                    ));
+                }
+                result.messages.push(format!(
+                    "Repeat annotation query for '{}' matched {} of {} parsed rmsk row(s), returned {}",
+                    report.genome_id,
+                    report.matched_row_count,
+                    report.parsed_row_count,
+                    report.returned_row_count
+                ));
+                result.repeat_annotation_query = Some(report);
+            }
+            Operation::BuildRepeatEnvironmentCohort {
+                genome_id,
+                rmsk_path,
+                filter,
+                upstream_bp,
+                downstream_bp,
+                geometry_mode,
+                limit,
+                catalog_path,
+                cache_dir,
+                path,
+            } => {
+                let mut report = self.build_repeat_environment_cohort(
+                    &genome_id,
+                    &rmsk_path,
+                    &filter,
+                    upstream_bp,
+                    downstream_bp,
+                    geometry_mode,
+                    limit,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "repeat environment cohort report")?;
+                    result.messages.push(format!(
+                        "Wrote repeat environment cohort report for '{}' to '{}'",
+                        report.genome_id, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                result.messages.push(format!(
+                    "Repeat environment cohort for '{}' returned {} row(s) with geometry={} and flanks {} / {} bp",
+                    report.genome_id,
+                    report.returned_row_count,
+                    report.selected_geometry.as_str(),
+                    report.upstream_bp,
+                    report.downstream_bp
+                ));
+                result.repeat_environment_cohort = Some(report);
+            }
+            Operation::SummarizeWindowCohortTfbs {
+                cohort,
+                motifs,
+                score_kind,
+                clip_negative,
+                catalog_path,
+                cache_dir,
+                path,
+            } => {
+                let mut report = self.summarize_window_cohort_tfbs(
+                    &cohort,
+                    &motifs,
+                    score_kind,
+                    clip_negative,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "window cohort TFBS report")?;
+                    result.messages.push(format!(
+                        "Wrote window-cohort TFBS report for '{}' to '{}'",
+                        report.genome_id, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                result.messages.push(format!(
+                    "Window-cohort TFBS summary for '{}' scored {} window(s) and {} per-window motif row(s)",
+                    report.genome_id,
+                    report.returned_window_count,
+                    report.summary_rows.len()
+                ));
+                result.window_cohort_tfbs = Some(report);
+            }
             Operation::SummarizeTfbsRegion {
                 seq_id,
                 focus_start_0based,
@@ -10218,6 +10336,9 @@ impl GentleEngine {
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
             multi_gene_promoter_tfbs: None,
+            repeat_annotation_query: None,
+            repeat_environment_cohort: None,
+            window_cohort_tfbs: None,
             tfbs_hit_scan: None,
             restriction_site_scan: None,
             jaspar_remote_metadata_snapshot: None,
@@ -10238,6 +10359,9 @@ impl GentleEngine {
         if matches!(
             &op,
             Operation::FindRestrictionSites { .. }
+                | Operation::QueryRepeatAnnotations { .. }
+                | Operation::BuildRepeatEnvironmentCohort { .. }
+                | Operation::SummarizeWindowCohortTfbs { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
                 | Operation::SummarizeMultiGenePromoterTfbs { .. }
@@ -10277,6 +10401,11 @@ impl GentleEngine {
             self.apply_arrangement_rack_and_ladder_operation(op, &mut result)?;
         } else {
             match op {
+                Operation::QueryRepeatAnnotations { .. }
+                | Operation::BuildRepeatEnvironmentCohort { .. }
+                | Operation::SummarizeWindowCohortTfbs { .. } => {
+                    unreachable!("repeat cohort feature-scan operations are handled above")
+                }
                 Operation::LoadFile { path, as_id } => {
                     let mut dna = GENtleApp::load_from_file(&path).map_err(|e| EngineError {
                         code: ErrorCode::InvalidInput,

@@ -20,10 +20,10 @@ use crate::engine::{
     ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
     QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
     RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode,
-    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
-    RnaReadOriginClass, SequenceScanTarget, TfThresholdOverride,
-    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RepeatEnvironmentGeometryMode,
+    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
+    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
+    TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_gene::{
@@ -4934,6 +4934,62 @@ fn parse_features_restriction_scan_for_stored_and_inline_targets() {
             }
             other => panic!("unexpected target: {other:?}"),
         },
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_features_repeat_query_and_cohort_commands() {
+    let query = parse_shell_line(
+        "features repeat-query Human_GRCh38 --rmsk data/rmsk.txt.gz --rep-class LINE --rep-family L1 --alias LINE/L1 --chromosome chr1 --range 100..500 --limit 25 --path /tmp/line_repeats.json",
+    )
+    .expect("parse repeat-query");
+    match query {
+        ShellCommand::FeaturesRepeatQuery {
+            genome_id,
+            rmsk_path,
+            filter,
+            limit,
+            path,
+        } => {
+            assert_eq!(genome_id, "Human_GRCh38");
+            assert_eq!(rmsk_path, "data/rmsk.txt.gz");
+            assert_eq!(filter.rep_classes, vec!["LINE".to_string()]);
+            assert_eq!(filter.rep_families, vec!["L1".to_string()]);
+            assert_eq!(filter.normalized_aliases, vec!["LINE/L1".to_string()]);
+            assert_eq!(filter.chromosome.as_deref(), Some("chr1"));
+            assert_eq!(filter.span_start_0based, Some(100));
+            assert_eq!(filter.span_end_0based_exclusive, Some(500));
+            assert_eq!(limit, Some(25));
+            assert_eq!(path.as_deref(), Some("/tmp/line_repeats.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let cohort = parse_shell_line(
+        "features repeat-cohort Human_GRCh38 --rmsk data/rmsk.txt.gz --rep-class LINE --geometry pol2_promoter_upstream --upstream-bp 1500 --downstream-bp 250 --catalog assets/genomes.json --cache data/genomes --path /tmp/line_cohort.json",
+    )
+    .expect("parse repeat-cohort");
+    match cohort {
+        ShellCommand::FeaturesRepeatCohort {
+            geometry_mode,
+            upstream_bp,
+            downstream_bp,
+            catalog_path,
+            cache_dir,
+            path,
+            ..
+        } => {
+            assert_eq!(
+                geometry_mode,
+                RepeatEnvironmentGeometryMode::Pol2PromoterUpstream
+            );
+            assert_eq!(upstream_bp, 1500);
+            assert_eq!(downstream_bp, 250);
+            assert_eq!(catalog_path.as_deref(), Some("assets/genomes.json"));
+            assert_eq!(cache_dir.as_deref(), Some("data/genomes"));
+            assert_eq!(path.as_deref(), Some("/tmp/line_cohort.json"));
+        }
         other => panic!("unexpected command: {other:?}"),
     }
 }

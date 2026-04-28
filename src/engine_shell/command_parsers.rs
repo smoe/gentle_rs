@@ -15,7 +15,7 @@ use super::*;
 use crate::engine::{
     CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
     CutRunSeedFilterConfig, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
-    QpcrTranscriptTargetingMode, TfbsScoreTrackCorrelationMetric,
+    QpcrTranscriptTargetingMode, RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
     TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric,
 };
@@ -1749,14 +1749,294 @@ fn build_sequence_scan_target_from_feature_state(
     }
 }
 
+fn parse_required_value(tokens: &[String], idx: &mut usize, flag: &str) -> Result<String, String> {
+    if *idx >= tokens.len() {
+        return Err(format!("{flag} requires a value"));
+    }
+    let value = tokens[*idx].clone();
+    *idx += 1;
+    Ok(value)
+}
+
+fn parse_repeat_environment_geometry_mode(
+    raw: &str,
+) -> Result<RepeatEnvironmentGeometryMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "repeat_midpoint" | "repeat-midpoint" | "repeat" | "midpoint" => {
+            Ok(RepeatEnvironmentGeometryMode::RepeatMidpoint)
+        }
+        "transcript_5utr_start" | "transcript-5utr-start" | "5utr" | "5utr_start" => {
+            Ok(RepeatEnvironmentGeometryMode::Transcript5utrStart)
+        }
+        "pol2_promoter_upstream" | "pol2-promoter-upstream" | "promoter" | "promoter_upstream" => {
+            Ok(RepeatEnvironmentGeometryMode::Pol2PromoterUpstream)
+        }
+        "cds_stop_context" | "cds-stop-context" | "stop" | "stop_context" => {
+            Ok(RepeatEnvironmentGeometryMode::CdsStopContext)
+        }
+        other => Err(format!(
+            "Unsupported repeat geometry mode '{other}', expected repeat_midpoint|transcript_5utr_start|pol2_promoter_upstream|cds_stop_context"
+        )),
+    }
+}
+
+fn parse_repeat_filter_option(
+    tokens: &[String],
+    idx: &mut usize,
+    filter: &mut RepeatAnnotationFilter,
+) -> Result<bool, String> {
+    match tokens[*idx].as_str() {
+        "--rep-name" | "--name" => {
+            *idx += 1;
+            filter
+                .rep_names
+                .push(parse_required_value(tokens, idx, "--rep-name")?);
+            Ok(true)
+        }
+        "--rep-class" | "--class" => {
+            *idx += 1;
+            filter
+                .rep_classes
+                .push(parse_required_value(tokens, idx, "--rep-class")?);
+            Ok(true)
+        }
+        "--rep-family" | "--family" => {
+            *idx += 1;
+            filter
+                .rep_families
+                .push(parse_required_value(tokens, idx, "--rep-family")?);
+            Ok(true)
+        }
+        "--alias" | "--normalized-alias" => {
+            *idx += 1;
+            filter
+                .normalized_aliases
+                .push(parse_required_value(tokens, idx, "--alias")?);
+            Ok(true)
+        }
+        "--chromosome" | "--chrom" => {
+            *idx += 1;
+            filter.chromosome = Some(parse_required_value(tokens, idx, "--chromosome")?);
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: query, export-bed, repeat-query, repeat-cohort, window-cohort-tfbs, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "repeat-query" | "repeats-query" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "features repeat-query requires GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path PATH]"
+                        .to_string(),
+                );
+            }
+            let genome_id = tokens[2].clone();
+            let mut rmsk_path: Option<String> = None;
+            let mut filter = RepeatAnnotationFilter::default();
+            let mut limit = None;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                if parse_repeat_filter_option(tokens, &mut idx, &mut filter)? {
+                    continue;
+                }
+                match tokens[idx].as_str() {
+                    "--rmsk" | "--rmsk-path" => {
+                        idx += 1;
+                        rmsk_path = Some(parse_required_value(tokens, &mut idx, "--rmsk")?);
+                    }
+                    "--range" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--range")?;
+                        let (start, end) = parse_feature_range(&raw, "features repeat-query")?;
+                        filter.span_start_0based = Some(start);
+                        filter.span_end_0based_exclusive = Some(end);
+                    }
+                    "--limit" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--limit")?;
+                        limit = Some(parse_usize_option_value(&raw, "--limit")?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!("Unknown features repeat-query option '{other}'"));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesRepeatQuery {
+                genome_id,
+                rmsk_path: rmsk_path
+                    .ok_or_else(|| "features repeat-query requires --rmsk PATH".to_string())?,
+                filter,
+                limit,
+                path,
+            })
+        }
+        "repeat-cohort" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "features repeat-cohort requires GENOME_ID --rmsk PATH [--rep-class CLASS] [--geometry MODE] [--upstream-bp N] [--downstream-bp N] [--limit N] [--catalog PATH] [--cache DIR] [--path PATH]"
+                        .to_string(),
+                );
+            }
+            let genome_id = tokens[2].clone();
+            let mut rmsk_path: Option<String> = None;
+            let mut filter = RepeatAnnotationFilter::default();
+            let mut upstream_bp = 2000usize;
+            let mut downstream_bp = 2000usize;
+            let mut geometry_mode = RepeatEnvironmentGeometryMode::RepeatMidpoint;
+            let mut limit = None;
+            let mut catalog_path = None;
+            let mut cache_dir = None;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                if parse_repeat_filter_option(tokens, &mut idx, &mut filter)? {
+                    continue;
+                }
+                match tokens[idx].as_str() {
+                    "--rmsk" | "--rmsk-path" => {
+                        idx += 1;
+                        rmsk_path = Some(parse_required_value(tokens, &mut idx, "--rmsk")?);
+                    }
+                    "--range" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--range")?;
+                        let (start, end) = parse_feature_range(&raw, "features repeat-cohort")?;
+                        filter.span_start_0based = Some(start);
+                        filter.span_end_0based_exclusive = Some(end);
+                    }
+                    "--upstream-bp" | "--upstream" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--upstream-bp")?;
+                        upstream_bp = parse_usize_option_value(&raw, "--upstream-bp")?;
+                    }
+                    "--downstream-bp" | "--downstream" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--downstream-bp")?;
+                        downstream_bp = parse_usize_option_value(&raw, "--downstream-bp")?;
+                    }
+                    "--geometry" | "--geometry-mode" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--geometry")?;
+                        geometry_mode = parse_repeat_environment_geometry_mode(&raw)?;
+                    }
+                    "--limit" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--limit")?;
+                        limit = Some(parse_usize_option_value(&raw, "--limit")?);
+                    }
+                    "--catalog" | "--catalog-path" => {
+                        idx += 1;
+                        catalog_path = Some(parse_required_value(tokens, &mut idx, "--catalog")?);
+                    }
+                    "--cache" | "--cache-dir" => {
+                        idx += 1;
+                        cache_dir = Some(parse_required_value(tokens, &mut idx, "--cache")?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!("Unknown features repeat-cohort option '{other}'"));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesRepeatCohort {
+                genome_id,
+                rmsk_path: rmsk_path
+                    .ok_or_else(|| "features repeat-cohort requires --rmsk PATH".to_string())?,
+                filter,
+                upstream_bp,
+                downstream_bp,
+                geometry_mode,
+                limit,
+                catalog_path,
+                cache_dir,
+                path,
+            })
+        }
+        "window-cohort-tfbs" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "features window-cohort-tfbs requires COHORT_JSON --motif MOTIF [--score-kind KIND] [--allow-negative] [--catalog PATH] [--cache DIR] [--path PATH]"
+                        .to_string(),
+                );
+            }
+            let cohort_path = tokens[2].clone();
+            let mut motifs = vec![];
+            let mut score_kind = TfbsScoreTrackValueKind::LlrBits;
+            let mut clip_negative = true;
+            let mut catalog_path = None;
+            let mut cache_dir = None;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--motif" | "--tf" => {
+                        idx += 1;
+                        motifs.push(parse_required_value(tokens, &mut idx, "--motif")?);
+                    }
+                    "--score-kind" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--score-kind")?;
+                        score_kind = parse_tfbs_score_track_value_kind_shell(
+                            &raw,
+                            "features window-cohort-tfbs --score-kind",
+                        )?;
+                    }
+                    "--allow-negative" => {
+                        idx += 1;
+                        clip_negative = false;
+                    }
+                    "--clip-negative" => {
+                        idx += 1;
+                        clip_negative = true;
+                    }
+                    "--catalog" | "--catalog-path" => {
+                        idx += 1;
+                        catalog_path = Some(parse_required_value(tokens, &mut idx, "--catalog")?);
+                    }
+                    "--cache" | "--cache-dir" => {
+                        idx += 1;
+                        cache_dir = Some(parse_required_value(tokens, &mut idx, "--cache")?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown features window-cohort-tfbs option '{other}'"
+                        ));
+                    }
+                }
+            }
+            if motifs.is_empty() {
+                return Err("features window-cohort-tfbs requires at least one --motif".to_string());
+            }
+            Ok(ShellCommand::FeaturesWindowCohortTfbs {
+                cohort_path,
+                motifs,
+                score_kind,
+                clip_negative,
+                catalog_path,
+                cache_dir,
+                path,
+            })
+        }
         "query" => {
             if tokens.len() < 3 {
                 return Err(

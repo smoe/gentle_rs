@@ -1078,6 +1078,250 @@ pub struct MultiGenePromoterTfbsReport {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Filter over UCSC RepeatMasker (`rmsk`) annotations.
+pub struct RepeatAnnotationFilter {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rep_names: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rep_classes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rep_families: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub normalized_aliases: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chromosome: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span_end_0based_exclusive: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One RepeatMasker annotation row normalized from a UCSC `rmsk` table.
+pub struct RepeatAnnotationRecord {
+    pub annotation_id: String,
+    pub genome_id: String,
+    pub chromosome: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: String,
+    pub rep_name: String,
+    pub rep_class: String,
+    pub rep_family: String,
+    pub normalized_alias: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub milli_div: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_line_number: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Portable result of filtering one RepeatMasker source file.
+pub struct RepeatAnnotationQueryReport {
+    pub schema: String,
+    pub genome_id: String,
+    pub rmsk_path: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub filter: RepeatAnnotationFilter,
+    pub parsed_row_count: usize,
+    pub matched_row_count: usize,
+    pub returned_row_count: usize,
+    pub malformed_line_count: usize,
+    #[serde(default)]
+    pub malformed_examples: Vec<String>,
+    #[serde(default)]
+    pub rows: Vec<RepeatAnnotationRecord>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Coordinate frame used to derive one repeat-environment window.
+pub enum RepeatEnvironmentGeometryMode {
+    #[default]
+    RepeatMidpoint,
+    Transcript5utrStart,
+    Pol2PromoterUpstream,
+    CdsStopContext,
+}
+
+impl RepeatEnvironmentGeometryMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RepeatMidpoint => "repeat_midpoint",
+            Self::Transcript5utrStart => "transcript_5utr_start",
+            Self::Pol2PromoterUpstream => "pol2_promoter_upstream",
+            Self::CdsStopContext => "cds_stop_context",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One transcript/gene projection attached to a repeat-cohort row.
+pub struct RepeatTranscriptContext {
+    pub gene_label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_id: Option<String>,
+    pub transcript_id: String,
+    pub chromosome: String,
+    pub strand: String,
+    pub transcript_start_1based: usize,
+    pub transcript_end_1based: usize,
+    pub overlaps_repeat: bool,
+    pub repeat_relation: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inferred_5utr_start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inferred_5utr_end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cds_stop_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_tss_distance_bp: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_stop_distance_bp: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Availability and selected coordinates for one geometry mode on one row.
+pub struct RepeatEnvironmentGeometryWindow {
+    pub mode: RepeatEnvironmentGeometryMode,
+    pub available: bool,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chromosome: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_1based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One repeat-locus environment row with transcript-aware geometry metadata.
+pub struct RepeatEnvironmentCohortRow {
+    pub row_id: String,
+    pub repeat: RepeatAnnotationRecord,
+    pub selected_geometry: RepeatEnvironmentGeometryMode,
+    pub selected_window: RepeatEnvironmentGeometryWindow,
+    #[serde(default)]
+    pub geometry_windows: Vec<RepeatEnvironmentGeometryWindow>,
+    #[serde(default)]
+    pub transcript_contexts: Vec<RepeatTranscriptContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_rank_score: Option<f64>,
+    #[serde(default)]
+    pub rna_support_labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Repeat-family cohort with multiple inspectable genomic coordinate frames.
+pub struct RepeatEnvironmentCohortReport {
+    pub schema: String,
+    pub genome_id: String,
+    pub rmsk_path: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub filter: RepeatAnnotationFilter,
+    pub selected_geometry: RepeatEnvironmentGeometryMode,
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    pub parsed_repeat_count: usize,
+    pub matched_repeat_count: usize,
+    pub returned_row_count: usize,
+    #[serde(default)]
+    pub rows: Vec<RepeatEnvironmentCohortRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Per-window TFBS score-track report inside a generic cohort comparison.
+pub struct WindowCohortTfbsWindowReport {
+    pub row_id: String,
+    pub label: String,
+    pub chromosome: String,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub anchor_1based: Option<usize>,
+    pub geometry_mode: RepeatEnvironmentGeometryMode,
+    pub tfbs_score_tracks: TfbsScoreTrackReport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Compact per-window/per-motif summary row for a generic cohort TFBS report.
+pub struct WindowCohortTfbsSummaryRow {
+    pub row_id: String,
+    pub label: String,
+    pub tf_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tf_name: Option<String>,
+    pub max_score: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_position_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_genomic_position_1based: Option<usize>,
+    pub positive_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Generic multi-window TFBS comparison report for stored genomic cohorts.
+pub struct WindowCohortTfbsReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub genome_id: String,
+    pub cohort_schema: String,
+    pub geometry_mode: RepeatEnvironmentGeometryMode,
+    pub score_kind: TfbsScoreTrackValueKind,
+    pub clip_negative: bool,
+    #[serde(default)]
+    pub motifs_requested: Vec<String>,
+    pub returned_window_count: usize,
+    #[serde(default)]
+    pub windows: Vec<WindowCohortTfbsWindowReport>,
+    #[serde(default)]
+    pub summary_rows: Vec<WindowCohortTfbsSummaryRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 /// Topology hint for inline sequence operands used by state-optional scans.
@@ -2914,6 +3158,12 @@ pub struct OpResult {
     pub tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multi_gene_promoter_tfbs: Option<MultiGenePromoterTfbsReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_annotation_query: Option<RepeatAnnotationQueryReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_environment_cohort: Option<RepeatEnvironmentCohortReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_cohort_tfbs: Option<WindowCohortTfbsReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_hit_scan: Option<TfbsHitScanReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

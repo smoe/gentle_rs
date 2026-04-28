@@ -5382,6 +5382,44 @@ Restriction-site scan contract (implemented):
     - `max_hits` caps the total retained row count across the whole scan in
       deterministic motif order and sets `truncated_at_max_hits=true` when
       later hits are skipped
+
+Repeat-environment cohort contract (implemented baseline):
+
+- Shared-shell commands:
+  - `features repeat-query GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path FILE.json]`
+  - `features repeat-cohort GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--geometry repeat_midpoint|transcript_5utr_start|pol2_promoter_upstream|cds_stop_context] [--upstream-bp N] [--downstream-bp N] [--limit N] [--catalog PATH] [--cache DIR] [--path FILE.json]`
+  - `features window-cohort-tfbs COHORT_JSON --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache DIR] [--path FILE.json]`
+- Raw/shared operations:
+  - `{"QueryRepeatAnnotations":{"genome_id":"Human GRCh38 Ensembl 116","rmsk_path":"data/rmsk.txt.gz","filter":{"normalized_alias":"LINE/L1"},"limit":100}}`
+  - `{"BuildRepeatEnvironmentCohort":{"genome_id":"Human GRCh38 Ensembl 116","rmsk_path":"data/rmsk.txt.gz","filter":{"normalized_alias":"LINE/L1"},"geometry_mode":"pol2_promoter_upstream","upstream_bp":2000,"downstream_bp":2000,"limit":50}}`
+  - `{"SummarizeWindowCohortTfbs":{"cohort":{...},"motifs":["SP1","TP73"],"score_kind":"llr_background_tail_log10","clip_negative":true}}`
+- Execution semantics:
+  - `QueryRepeatAnnotations` parses UCSC `rmsk.txt` / `rmsk.txt.gz` rows and
+    preserves deterministic repeat identity fields: `repName`, `repClass`,
+    `repFamily`, strand, chromosome, 1-based genomic span, and optional
+    score/divergence fields.
+  - Repeat filters accept raw class/family/name values plus normalized aliases
+    such as `LINE/L1`, `SINE/Alu`, and `LTR/ERV`; malformed rows are counted
+    and skipped instead of aborting the whole deterministic query.
+  - `BuildRepeatEnvironmentCohort` creates one row per selected repeat locus,
+    then projects transcript/gene context when a prepared genome catalog is
+    available. The report stores all geometry windows, the selected geometry,
+    and explicit missing-reason strings for unavailable 5'UTR/TSS/CDS-stop
+    contexts.
+  - Supported geometry modes are `repeat_midpoint`,
+    `transcript_5utr_start`, `pol2_promoter_upstream`, and
+    `cds_stop_context`. The default flank on each side is 2000 bp.
+  - `SummarizeWindowCohortTfbs` consumes the stored cohort window records and
+    scores the selected windows with the same TFBS score-track machinery used
+    by promoter and inline-DNA analyses; minus-strand windows are
+    reverse-complemented before scoring so cohort rows stay strand-oriented.
+  - RNA-read evidence fields are part of the cohort row shape but remain
+    annotation/ranking extension points in this baseline; repeat selection is
+    never hard-filtered by RNA evidence.
+- Response/report schemas:
+  - `gentle.repeat_annotation_query.v1`
+  - `gentle.repeat_environment_cohort.v1`
+  - `gentle.window_cohort_tfbs.v1`
 - File format:
   - BED6 core columns:
     `chrom`, `chromStart`, `chromEnd`, `name`, `score`, `strand`

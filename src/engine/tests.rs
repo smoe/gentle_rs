@@ -35252,3 +35252,150 @@ fn test_scan_tfbs_hits_supports_circular_wraparound_matches() {
     assert_eq!(wrapped.match_end_0based_exclusive, 1);
     assert_eq!(wrapped.matched_sequence, "AAC");
 }
+
+#[test]
+fn query_repeat_annotations_parses_ucsc_rmsk_and_filters_line_aliases() {
+    let root = tempdir().expect("tempdir");
+    let rmsk_path = root.path().join("toy.rmsk.txt.gz");
+    let file = fs::File::create(&rmsk_path).expect("create gz");
+    let mut encoder = GzEncoder::new(file, Compression::default());
+    writeln!(
+        encoder,
+        "585 1200 12 0 0 chr1 100 180 (0) + L1HS LINE L1 1 80 (0) 1"
+    )
+    .expect("write line");
+    writeln!(
+        encoder,
+        "585 900 8 0 0 chr1 220 290 (0) C AluY SINE Alu 1 70 (0) 2"
+    )
+    .expect("write alu");
+    writeln!(
+        encoder,
+        "750 5 0 0 chr2 500 560 (0) + AluSx SINE Alu 1 60 (0) 3"
+    )
+    .expect("write no-bin ucsc line");
+    writeln!(encoder, "malformed").expect("write malformed");
+    encoder.finish().expect("finish gz");
+
+    let mut engine = GentleEngine::default();
+    let result = engine
+        .apply(Operation::QueryRepeatAnnotations {
+            genome_id: "toy_genome".to_string(),
+            rmsk_path: rmsk_path.to_string_lossy().to_string(),
+            filter: RepeatAnnotationFilter {
+                normalized_aliases: vec!["LINE/L1".to_string()],
+                ..RepeatAnnotationFilter::default()
+            },
+            limit: None,
+            path: None,
+        })
+        .expect("query repeat annotations");
+
+    let report = result.repeat_annotation_query.expect("repeat query report");
+    assert_eq!(report.schema, "gentle.repeat_annotation_query.v1");
+    assert_eq!(report.parsed_row_count, 3);
+    assert_eq!(report.matched_row_count, 1);
+    assert_eq!(report.malformed_line_count, 1);
+    assert_eq!(report.rows[0].chromosome, "chr1");
+    assert_eq!(report.rows[0].start_0based, 100);
+    assert_eq!(report.rows[0].start_1based, 101);
+    assert_eq!(report.rows[0].end_1based, 180);
+    assert_eq!(report.rows[0].rep_class, "LINE");
+    assert_eq!(report.rows[0].rep_family, "L1");
+    assert_eq!(report.rows[0].normalized_alias, "LINE/L1");
+}
+
+#[test]
+fn repeat_transcript_geometry_resolves_5utr_promoter_and_cds_stop_on_both_strands() {
+    let repeat_plus = RepeatAnnotationRecord {
+        genome_id: "toy".to_string(),
+        chromosome: "chr1".to_string(),
+        start_0based: 149,
+        end_0based_exclusive: 170,
+        start_1based: 150,
+        end_1based: 170,
+        strand: "+".to_string(),
+        rep_name: "L1HS".to_string(),
+        rep_class: "LINE".to_string(),
+        rep_family: "L1".to_string(),
+        normalized_alias: "LINE/L1".to_string(),
+        ..RepeatAnnotationRecord::default()
+    };
+    let tx_plus = GenomeTranscriptRecord {
+        chromosome: "chr1".to_string(),
+        transcript_id: "TX_PLUS".to_string(),
+        gene_id: Some("GENE_PLUS".to_string()),
+        gene_name: Some("GenePlus".to_string()),
+        strand: Some('+'),
+        transcript_start_1based: 100,
+        transcript_end_1based: 900,
+        exons_1based: vec![(100, 220), (800, 900)],
+        cds_1based: vec![(180, 220), (800, 860)],
+    };
+    let plus_context = GentleEngine::transcript_context_for_repeat(&repeat_plus, &tx_plus);
+    assert_eq!(plus_context.tss_1based, Some(100));
+    assert_eq!(plus_context.inferred_5utr_start_1based, Some(100));
+    assert_eq!(plus_context.inferred_5utr_end_1based, Some(179));
+    assert_eq!(plus_context.cds_stop_1based, Some(860));
+
+    let plus_windows =
+        GentleEngine::build_repeat_geometry_windows(&repeat_plus, &[plus_context], 50, 10);
+    let promoter = plus_windows
+        .iter()
+        .find(|window| window.mode == RepeatEnvironmentGeometryMode::Pol2PromoterUpstream)
+        .expect("plus promoter window");
+    assert_eq!(promoter.start_1based, Some(50));
+    assert_eq!(promoter.end_1based, Some(110));
+    let stop = plus_windows
+        .iter()
+        .find(|window| window.mode == RepeatEnvironmentGeometryMode::CdsStopContext)
+        .expect("plus stop window");
+    assert_eq!(stop.anchor_1based, Some(860));
+
+    let repeat_minus = RepeatAnnotationRecord {
+        genome_id: "toy".to_string(),
+        chromosome: "chr1".to_string(),
+        start_0based: 729,
+        end_0based_exclusive: 750,
+        start_1based: 730,
+        end_1based: 750,
+        strand: "-".to_string(),
+        rep_name: "L1PA2".to_string(),
+        rep_class: "LINE".to_string(),
+        rep_family: "L1".to_string(),
+        normalized_alias: "LINE/L1".to_string(),
+        ..RepeatAnnotationRecord::default()
+    };
+    let tx_minus = GenomeTranscriptRecord {
+        chromosome: "chr1".to_string(),
+        transcript_id: "TX_MINUS".to_string(),
+        gene_id: Some("GENE_MINUS".to_string()),
+        gene_name: Some("GeneMinus".to_string()),
+        strand: Some('-'),
+        transcript_start_1based: 100,
+        transcript_end_1based: 900,
+        exons_1based: vec![(100, 220), (800, 900)],
+        cds_1based: vec![(140, 220), (800, 840)],
+    };
+    let minus_context = GentleEngine::transcript_context_for_repeat(&repeat_minus, &tx_minus);
+    assert_eq!(minus_context.tss_1based, Some(900));
+    assert_eq!(minus_context.inferred_5utr_start_1based, Some(841));
+    assert_eq!(minus_context.inferred_5utr_end_1based, Some(900));
+    assert_eq!(minus_context.cds_stop_1based, Some(140));
+
+    let minus_windows =
+        GentleEngine::build_repeat_geometry_windows(&repeat_minus, &[minus_context], 50, 10);
+    let promoter = minus_windows
+        .iter()
+        .find(|window| window.mode == RepeatEnvironmentGeometryMode::Pol2PromoterUpstream)
+        .expect("minus promoter window");
+    assert_eq!(promoter.start_1based, Some(890));
+    assert_eq!(promoter.end_1based, Some(950));
+    let stop = minus_windows
+        .iter()
+        .find(|window| window.mode == RepeatEnvironmentGeometryMode::CdsStopContext)
+        .expect("minus stop window");
+    assert_eq!(stop.anchor_1based, Some(140));
+    assert_eq!(stop.start_1based, Some(130));
+    assert_eq!(stop.end_1based, Some(190));
+}

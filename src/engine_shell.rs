@@ -58,7 +58,8 @@ use crate::{
         ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
         QpcrTranscriptTargetingMode, RackAuthoringTemplate, RackCarrierLabelPreset,
         RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-        RackProfileKind, RenderSvgMode, RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
+        RackProfileKind, RenderSvgMode, RepeatAnnotationFilter, RepeatEnvironmentCohortReport,
+        RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
         ReverseTranslationReportSummary, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
@@ -1853,6 +1854,34 @@ pub enum ShellCommand {
         enzymes: Vec<String>,
         max_sites_per_enzyme: Option<usize>,
         include_cut_geometry: bool,
+        path: Option<String>,
+    },
+    FeaturesRepeatQuery {
+        genome_id: String,
+        rmsk_path: String,
+        filter: RepeatAnnotationFilter,
+        limit: Option<usize>,
+        path: Option<String>,
+    },
+    FeaturesRepeatCohort {
+        genome_id: String,
+        rmsk_path: String,
+        filter: RepeatAnnotationFilter,
+        upstream_bp: usize,
+        downstream_bp: usize,
+        geometry_mode: RepeatEnvironmentGeometryMode,
+        limit: Option<usize>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        path: Option<String>,
+    },
+    FeaturesWindowCohortTfbs {
+        cohort_path: String,
+        motifs: Vec<String>,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
         path: Option<String>,
     },
     VariantAnnotatePromoterWindows {
@@ -8379,6 +8408,99 @@ impl ShellCommand {
                     path.as_deref().unwrap_or("-"),
                 )
             }
+            Self::FeaturesRepeatQuery {
+                genome_id,
+                rmsk_path,
+                filter,
+                limit,
+                path,
+            } => format!(
+                "query rmsk repeats for '{}' from '{}' (class={}, family={}, name={}, alias={}, limit={}, path={})",
+                genome_id,
+                rmsk_path,
+                if filter.rep_classes.is_empty() {
+                    "-".to_string()
+                } else {
+                    filter.rep_classes.join(",")
+                },
+                if filter.rep_families.is_empty() {
+                    "-".to_string()
+                } else {
+                    filter.rep_families.join(",")
+                },
+                if filter.rep_names.is_empty() {
+                    "-".to_string()
+                } else {
+                    filter.rep_names.join(",")
+                },
+                if filter.normalized_aliases.is_empty() {
+                    "-".to_string()
+                } else {
+                    filter.normalized_aliases.join(",")
+                },
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string()),
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesRepeatCohort {
+                genome_id,
+                rmsk_path,
+                filter,
+                upstream_bp,
+                downstream_bp,
+                geometry_mode,
+                limit,
+                catalog_path,
+                cache_dir,
+                path,
+            } => format!(
+                "build repeat environment cohort for '{}' from '{}' (class={}, family={}, alias={}, geometry={}, flanks={}up/{}down, limit={}, catalog={}, cache={}, path={})",
+                genome_id,
+                rmsk_path,
+                if filter.rep_classes.is_empty() {
+                    "-".to_string()
+                } else {
+                    filter.rep_classes.join(",")
+                },
+                if filter.rep_families.is_empty() {
+                    "-".to_string()
+                } else {
+                    filter.rep_families.join(",")
+                },
+                if filter.normalized_aliases.is_empty() {
+                    "-".to_string()
+                } else {
+                    filter.normalized_aliases.join(",")
+                },
+                geometry_mode.as_str(),
+                upstream_bp,
+                downstream_bp,
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string()),
+                catalog_path.as_deref().unwrap_or("default"),
+                cache_dir.as_deref().unwrap_or("default"),
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesWindowCohortTfbs {
+                cohort_path,
+                motifs,
+                score_kind,
+                clip_negative,
+                catalog_path,
+                cache_dir,
+                path,
+            } => format!(
+                "summarize TFBS over window cohort '{}' (motifs={}, score_kind={}, clip_negative={}, catalog={}, cache={}, path={})",
+                cohort_path,
+                motifs.join(","),
+                score_kind.as_str(),
+                clip_negative,
+                catalog_path.as_deref().unwrap_or("default"),
+                cache_dir.as_deref().unwrap_or("default"),
+                path.as_deref().unwrap_or("-"),
+            ),
             Self::VariantAnnotatePromoterWindows {
                 seq_id,
                 gene_label,
@@ -25327,6 +25449,105 @@ fn execute_feature_scan_command(
                 }),
             })
         }
+        ShellCommand::FeaturesRepeatQuery {
+            genome_id,
+            rmsk_path,
+            filter,
+            limit,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::QueryRepeatAnnotations {
+                    genome_id: genome_id.clone(),
+                    rmsk_path: rmsk_path.clone(),
+                    filter: filter.clone(),
+                    limit: *limit,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.repeat_annotation_query.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesRepeatCohort {
+            genome_id,
+            rmsk_path,
+            filter,
+            upstream_bp,
+            downstream_bp,
+            geometry_mode,
+            limit,
+            catalog_path,
+            cache_dir,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::BuildRepeatEnvironmentCohort {
+                    genome_id: genome_id.clone(),
+                    rmsk_path: rmsk_path.clone(),
+                    filter: filter.clone(),
+                    upstream_bp: *upstream_bp,
+                    downstream_bp: *downstream_bp,
+                    geometry_mode: *geometry_mode,
+                    limit: *limit,
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.repeat_environment_cohort.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesWindowCohortTfbs {
+            cohort_path,
+            motifs,
+            score_kind,
+            clip_negative,
+            catalog_path,
+            cache_dir,
+            path,
+        } => {
+            let raw = std::fs::read_to_string(cohort_path).map_err(|e| {
+                format!("Could not read repeat/window cohort '{}': {e}", cohort_path)
+            })?;
+            let cohort: RepeatEnvironmentCohortReport =
+                serde_json::from_str(&raw).map_err(|e| {
+                    format!(
+                        "Could not parse repeat/window cohort '{}': {e}",
+                        cohort_path
+                    )
+                })?;
+            let op_result = engine
+                .apply(Operation::SummarizeWindowCohortTfbs {
+                    cohort,
+                    motifs: motifs.clone(),
+                    score_kind: *score_kind,
+                    clip_negative: *clip_negative,
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.window_cohort_tfbs.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         _ => unreachable!("non-feature scan command passed to feature scan helper"),
     }
 }
@@ -28777,6 +28998,9 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
             | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
             | ShellCommand::FeaturesTfbsScan { .. }
+            | ShellCommand::FeaturesRepeatQuery { .. }
+            | ShellCommand::FeaturesRepeatCohort { .. }
+            | ShellCommand::FeaturesWindowCohortTfbs { .. }
     ) {
         return execute_feature_scan_command(engine, command);
     }
@@ -29025,7 +29249,12 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
         | ShellCommand::FeaturesTfbsTrackSimilarity { .. }
         | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
-        | ShellCommand::FeaturesTfbsScan { .. } => execute_feature_scan_command(engine, command)?,
+        | ShellCommand::FeaturesTfbsScan { .. }
+        | ShellCommand::FeaturesRepeatQuery { .. }
+        | ShellCommand::FeaturesRepeatCohort { .. }
+        | ShellCommand::FeaturesWindowCohortTfbs { .. } => {
+            execute_feature_scan_command(engine, command)?
+        }
         ShellCommand::TranscriptsDerive { .. }
         | ShellCommand::TranscriptsResidueGenomicCoordinates { .. }
         | ShellCommand::VariantAnnotatePromoterWindows { .. }

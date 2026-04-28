@@ -3465,6 +3465,22 @@ Planned work:
        ```
      - this keeps GENtle adapter-neutral while still giving ClawBio enough
        stable metadata to choose a first figure and a compact narrative
+   - first repeat-cohort foundation for Anze-style TE environment questions is
+     now in place as shared engine/shell/CLI contracts rather than a GUI-only
+     or ClawBio-specific bundle:
+     - `features repeat-query` parses UCSC `rmsk.txt(.gz)` and filters by raw
+       `repName`/`repClass`/`repFamily` or normalized aliases such as
+       `LINE/L1`, `SINE/Alu`, and `LTR/ERV`
+     - `features repeat-cohort` builds repeat-locus cohorts with
+       transcript-aware geometry modes:
+       `repeat_midpoint`, `transcript_5utr_start`,
+       `pol2_promoter_upstream`, and `cds_stop_context`
+     - `features window-cohort-tfbs` summarizes motif-score windows over saved
+       cohort rows so downstream tools can compose motif/ranking stories from
+       stable JSON
+     - pending follow-up: GUI cohort browser/row actions, RNA-read support as a
+       ranking layer, richer intron/splicing handoff, and first curated
+       ClawBio request examples over a local `data/rmsk.txt.gz`
 5. Plan the terminology move from `helper genomes` to `helper constructs` as
    one atomic protocol/docs/code rename once parallel feature churn is low.
 6. Prepare for ontology-backed helper/vector description:

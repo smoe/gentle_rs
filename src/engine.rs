@@ -486,6 +486,9 @@ const FEATURE_QUERY_MAX_LIMIT: usize = 10_000;
 const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
 const TFBS_SCORE_TRACK_REPORT_SCHEMA: &str = "gentle.tfbs_score_tracks.v1";
 const MULTI_GENE_PROMOTER_TFBS_REPORT_SCHEMA: &str = "gentle.multi_gene_promoter_tfbs.v1";
+const REPEAT_ANNOTATION_QUERY_REPORT_SCHEMA: &str = "gentle.repeat_annotation_query.v1";
+const REPEAT_ENVIRONMENT_COHORT_REPORT_SCHEMA: &str = "gentle.repeat_environment_cohort.v1";
+const WINDOW_COHORT_TFBS_REPORT_SCHEMA: &str = "gentle.window_cohort_tfbs.v1";
 const JASPAR_ENTRY_EXPERT_VIEW_SCHEMA: &str = "gentle.jaspar_entry_expert.v1";
 const JASPAR_ENTRY_PRESENTATION_REPORT_SCHEMA: &str = "gentle.jaspar_entry_presentation.v1";
 const JASPAR_REGISTRY_BENCHMARK_REPORT_SCHEMA: &str = "gentle.jaspar_registry_benchmark.v1";
@@ -574,6 +577,10 @@ fn default_promoter_reporter_max_candidates() -> usize {
     DEFAULT_PROMOTER_REPORTER_MAX_CANDIDATES
 }
 
+fn default_repeat_environment_flank_bp() -> usize {
+    2000
+}
+
 #[derive(Debug, Clone)]
 struct ResolvedGenomePromoterSlice {
     query: String,
@@ -617,6 +624,8 @@ mod operation_handlers;
 mod promoter_design;
 #[path = "engine/analysis/protein_handoff.rs"]
 mod protein_handoff;
+#[path = "engine/analysis/repeat_cohort.rs"]
+mod repeat_cohort;
 #[path = "engine/analysis/rna_reads.rs"]
 mod rna_reads;
 #[path = "engine/state/sequence_ops.rs"]
@@ -3235,6 +3244,50 @@ pub enum Operation {
         max_sites_per_enzyme: Option<usize>,
         #[serde(default = "default_true")]
         include_cut_geometry: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    QueryRepeatAnnotations {
+        genome_id: String,
+        rmsk_path: String,
+        #[serde(default)]
+        filter: RepeatAnnotationFilter,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    BuildRepeatEnvironmentCohort {
+        genome_id: String,
+        rmsk_path: String,
+        #[serde(default)]
+        filter: RepeatAnnotationFilter,
+        #[serde(default = "default_repeat_environment_flank_bp")]
+        upstream_bp: usize,
+        #[serde(default = "default_repeat_environment_flank_bp")]
+        downstream_bp: usize,
+        #[serde(default)]
+        geometry_mode: RepeatEnvironmentGeometryMode,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    SummarizeWindowCohortTfbs {
+        cohort: RepeatEnvironmentCohortReport,
+        motifs: Vec<String>,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
