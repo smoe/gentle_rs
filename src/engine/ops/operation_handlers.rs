@@ -14831,7 +14831,7 @@ impl GentleEngine {
                             .messages
                             .push(format!("Wrote transcript qPCR panel report to '{path}'"));
                     }
-                    result.transcript_qpcr_panel = Some(report);
+                    result.transcript_qpcr_panel = Some(Box::new(report));
                 }
                 Operation::DeriveTranscriptSequences {
                     seq_id,

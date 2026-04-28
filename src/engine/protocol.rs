@@ -2873,7 +2873,7 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protein_residue_genomic_coordinates: Option<ProteinResidueGenomicCoordinateReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub transcript_qpcr_panel: Option<TranscriptQpcrPanelReport>,
+    pub transcript_qpcr_panel: Option<Box<TranscriptQpcrPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub construct_reasoning_graph: Option<ConstructReasoningGraph>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
