@@ -5995,17 +5995,17 @@ impl GentleEngine {
             } else {
                 vec![]
             };
-            if let Some(probe_reverse_binding) = probe_reverse_binding.as_deref()
-                && probe_reverse_binding != probe.as_deref().unwrap_or_default()
-            {
-                probe_hits.extend(Self::cdna_assay_find_primer_hits(
-                    template,
-                    probe_reverse_binding,
-                    "reverse_complement",
-                    max_mismatches,
-                    0,
-                    false,
-                ));
+            if let Some(probe_reverse_binding) = probe_reverse_binding.as_deref() {
+                if probe_reverse_binding != probe.as_deref().unwrap_or_default() {
+                    probe_hits.extend(Self::cdna_assay_find_primer_hits(
+                        template,
+                        probe_reverse_binding,
+                        "reverse_complement",
+                        max_mismatches,
+                        0,
+                        false,
+                    ));
+                }
             }
             probe_hits.sort_by(|left, right| {
                 left.start_0based

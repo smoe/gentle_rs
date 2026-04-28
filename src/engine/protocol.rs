@@ -15,18 +15,15 @@
 use std::collections::HashMap;
 
 pub use gentle_protocol::{
-    ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
-    ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
-    AdapterRestrictionCapturePlan, AnnotationCandidate, AnnotationCandidateSummary,
-    AnnotationCandidateWriteback, AttractPwmMappingPolicy, AttractRegionClass,
-    AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow, AttractSplicingEvidencePolicySummary,
+    AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan,
+    AnnotationCandidate, AnnotationCandidateSummary, AnnotationCandidateWriteback,
+    AttractPwmMappingPolicy, AttractRegionClass, AttractSpeciesMatchMode,
+    AttractSplicingEvidenceHitRow, AttractSplicingEvidencePolicySummary,
     AttractSplicingEvidenceSettings, AttractSplicingEvidenceSummaryRow,
-    AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA,
-    CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA, Capabilities,
-    ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
-    ConstructRole, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
-    CutRunCoverageKind, CutRunDatasetListReport, CutRunDatasetProjectionReport,
-    CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
+    AttractSplicingEvidenceView, Capabilities, ConstructCandidate, ConstructObjective,
+    ConstructReasoningGraph, ConstructReasoningStore, ConstructRole, CutRunAlignConfig,
+    CutRunCatalogEntry, CutRunCatalogListEntry, CutRunCoverageKind, CutRunDatasetListReport,
+    CutRunDatasetProjectionReport, CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
     CutRunMotifAbsentOccupancyInterpretation, CutRunMotifAbsentSupportWindow,
     CutRunMotifContextHit, CutRunMotifContextScope, CutRunMotifContextSummaryRow,
     CutRunPreparedAssetManifest, CutRunPreparedAssetStatus, CutRunPreparedManifest,
@@ -35,19 +32,17 @@ pub use gentle_protocol::{
     CutRunReadUnitStatus, CutRunRegulatoryEvidenceSourceKind, CutRunRegulatoryEvidenceSourceRef,
     CutRunRegulatorySupportReport, CutRunRegulatoryTfbsConfirmationStatus, CutRunRegulatoryTfbsRow,
     CutRunSeedFilterConfig, CutRunSupportCluster, CutRunSupportStrength, CutRunSupportWindowRecord,
-    DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA, DESIGN_FACT_SCHEMA, DecisionMethod,
-    DesignDecisionNode, DesignEvidence, DesignFact, DotplotBoxplotBin, DotplotMatchPoint,
-    DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
+    DecisionMethod, DesignDecisionNode, DesignEvidence, DesignFact, DotplotBoxplotBin,
+    DotplotMatchPoint, DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
     DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec, DotplotOverlayResolvedAnchorSeries,
     DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotReferenceAnnotationInterval,
     DotplotReferenceAnnotationTrack, DotplotView, DotplotViewSummary, EditableStatus, EngineError,
     ErrorCode, EvidenceClass, EvidenceScope, FeatureBedCoordinateMode, FlexibilityModel,
-    GenomeTrackImportProgress, HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile,
-    HostLifecycleRole, HostProfileCatalog, HostProfileRecord, HostRouteStep, PairwiseAlignmentMode,
-    ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
-    ProteinResidueGenomicCoordinateReport, ProteinToDnaHandoffCandidate,
-    ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
-    RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, RnaReadAlignConfig, RnaReadAlignmentBackend,
+    GenomeTrackImportProgress, HelperConstructProfile, HostLifecycleRole, HostProfileCatalog,
+    HostProfileRecord, HostRouteStep, PairwiseAlignmentMode, ProteinResidueGenomicCoordinateBase,
+    ProteinResidueGenomicCoordinateMatch, ProteinResidueGenomicCoordinateReport,
+    ProteinToDnaHandoffCandidate, ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal,
+    ProteinToDnaHandoffStrategy, RnaReadAlignConfig, RnaReadAlignmentBackend,
     RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect,
     RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
     RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
@@ -79,7 +74,11 @@ pub use gentle_protocol::{
     TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
     UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
-    UniprotFeatureCodingDnaSegment,
+    UniprotFeatureCodingDnaSegment, ANNOTATION_CANDIDATE_SCHEMA,
+    ANNOTATION_CANDIDATE_SUMMARY_SCHEMA, ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA,
+    CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA,
+    CONSTRUCT_REASONING_STORE_SCHEMA, DESIGN_DECISION_NODE_SCHEMA, DESIGN_EVIDENCE_SCHEMA,
+    DESIGN_FACT_SCHEMA, HOST_PROFILE_CATALOG_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -87,8 +86,8 @@ use std::collections::BTreeMap;
 use crate::enzymes::default_preferred_restriction_enzyme_names;
 
 use super::{
-    CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PrepareGenomeProgress,
-    ProtocolCartoonTemplateBindings, RunId, SeqId, TfThresholdOverride,
+    OpId, Operation, PrepareGenomeProgress, ProtocolCartoonTemplateBindings, RunId, SeqId,
+    TfThresholdOverride, CLONING_MACRO_TEMPLATE_SCHEMA,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

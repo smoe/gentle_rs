@@ -13,18 +13,17 @@ use super::*;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
-    ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
-    BIGWIG_TO_BEDGRAPH_ENV_BIN, ConstructObjective, ConstructRole, Container, ContainerKind,
-    CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
-    CutRunSeedFilterConfig, EditableStatus, PrimerDesignProgress, PromoterTfbsGeneQuery,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
-    QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
-    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RestrictionCloningPcrHandoffMode,
-    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
-    RnaReadOriginClass, SequenceScanTarget, TfThresholdOverride,
-    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
-    TfbsTrackSimilarityRankingMetric,
+    ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings, ConstructObjective,
+    ConstructRole, Container, ContainerKind, CutRunAlignConfig, CutRunCoverageKind,
+    CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig, EditableStatus,
+    PrimerDesignProgress, PromoterTfbsGeneQuery, ProteinExternalOpinionSource,
+    ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
+    RackProfileSnapshot, RestrictionCloningPcrHandoffMode, RnaReadAlignConfig,
+    RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass,
+    SequenceScanTarget, TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource,
+    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, BIGWIG_TO_BEDGRAPH_ENV_BIN,
 };
 use crate::ensembl_gene::{
     EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -1061,11 +1060,9 @@ fn execute_seq_trace_import_list_and_show_round_trip() {
         shown.output["trace"]["trace_id"].as_str(),
         Some("abi_trace")
     );
-    assert!(
-        shown.output["trace"]["called_bases"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty())
-    );
+    assert!(shown.output["trace"]["called_bases"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
 }
 
 #[test]
@@ -1320,11 +1317,9 @@ fn execute_reverse_translate_commands_store_list_show_and_export_reports() {
     )
     .expect("list reverse-translation reports");
     assert_eq!(list.output["report_count"].as_u64(), Some(1));
-    assert!(
-        list.output["summary_rows"][0]
-            .as_str()
-            .is_some_and(|value| value.contains("gc="))
-    );
+    assert!(list.output["summary_rows"][0]
+        .as_str()
+        .is_some_and(|value| value.contains("gc=")));
 
     let show = execute_shell_command(
         &mut engine,
@@ -1333,11 +1328,9 @@ fn execute_reverse_translate_commands_store_list_show_and_export_reports() {
         },
     )
     .expect("show reverse-translation report");
-    assert!(
-        show.output["summary"]
-            .as_str()
-            .is_some_and(|value| value.contains("speed=ecoli:slow"))
-    );
+    assert!(show.output["summary"]
+        .as_str()
+        .is_some_and(|value| value.contains("speed=ecoli:slow")));
 
     let export = execute_shell_command(
         &mut engine,
@@ -1396,11 +1389,9 @@ fn execute_construct_reasoning_protein_handoff_commands_store_list_show_and_expo
         build.output["graph"]["graph_id"].as_str(),
         Some("protein_handoff_shell")
     );
-    assert!(
-        build.output["graph"]["candidates"]
-            .as_array()
-            .is_some_and(|rows| !rows.is_empty())
-    );
+    assert!(build.output["graph"]["candidates"]
+        .as_array()
+        .is_some_and(|rows| !rows.is_empty()));
 
     let list = execute_shell_command(
         &mut engine,
@@ -1430,11 +1421,9 @@ fn execute_construct_reasoning_protein_handoff_commands_store_list_show_and_expo
         show.output["graph"]["candidates"][0]["protein_to_dna_handoff"]["strategy"].as_str(),
         Some("reverse_translated_synthetic")
     );
-    assert!(
-        show.output["summary"]["summary_lines"]
-            .as_array()
-            .is_some_and(|rows| !rows.is_empty())
-    );
+    assert!(show.output["summary"]["summary_lines"]
+        .as_array()
+        .is_some_and(|rows| !rows.is_empty()));
 
     let export = execute_shell_command(
         &mut engine,
@@ -1491,47 +1480,41 @@ fn execute_construct_reasoning_show_graph_includes_adapter_capture_summary() {
     )
     .expect("show construct-reasoning graph");
 
-    assert!(
-        show.output["summary"]["summary_lines"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| {
-                row.as_str().is_some_and(|text| {
-                    text.contains("Adapter/linker restriction capture requires review")
-                        && text.contains("review_needed")
-                })
-            }))
-            .unwrap_or(false)
-    );
-    assert!(
-        show.output["summary"]["fact_summaries"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| {
-                row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
-                    && row["detail_lines"]
-                        .as_array()
-                        .map(|detail_rows| {
-                            detail_rows.iter().any(|entry| {
-                                entry.as_str().is_some_and(|text| {
-                                    text.contains(
-                                        "aggregate: mcs_capture: all_named_motifs_present",
-                                    )
-                                })
+    assert!(show.output["summary"]["summary_lines"]
+        .as_array()
+        .map(|rows| rows.iter().any(|row| {
+            row.as_str().is_some_and(|text| {
+                text.contains("Adapter/linker restriction capture requires review")
+                    && text.contains("review_needed")
+            })
+        }))
+        .unwrap_or(false));
+    assert!(show.output["summary"]["fact_summaries"]
+        .as_array()
+        .map(|rows| rows.iter().any(|row| {
+            row["fact_type"].as_str() == Some("adapter_restriction_capture_context")
+                && row["detail_lines"]
+                    .as_array()
+                    .map(|detail_rows| {
+                        detail_rows.iter().any(|entry| {
+                            entry.as_str().is_some_and(|text| {
+                                text.contains("aggregate: mcs_capture: all_named_motifs_present")
                             })
                         })
-                        .unwrap_or(false)
-                    && row["warning_lines"]
-                        .as_array()
-                        .map(|warning_rows| {
-                            warning_rows.iter().any(|entry| {
-                                entry.as_str().is_some_and(|text| {
-                                    text == "All adapter motifs already occur on the insert"
-                                })
+                    })
+                    .unwrap_or(false)
+                && row["warning_lines"]
+                    .as_array()
+                    .map(|warning_rows| {
+                        warning_rows.iter().any(|entry| {
+                            entry.as_str().is_some_and(|text| {
+                                text == "All adapter motifs already occur on the insert"
                             })
                         })
-                        .unwrap_or(false)
-            }))
-            .unwrap_or(false)
-    );
+                    })
+                    .unwrap_or(false)
+        }))
+        .unwrap_or(false));
 }
 
 #[test]
@@ -1582,15 +1565,13 @@ fn execute_construct_reasoning_set_annotation_status_updates_graph_and_summary()
         output.output["annotation_candidate"]["editable_status"].as_str(),
         Some("accepted")
     );
-    assert!(
-        output.output["summary"]["summary_lines"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| {
-                row.as_str()
-                    .is_some_and(|text| text.contains("Annotation candidates: 1 accepted"))
-            }))
-            .unwrap_or(false)
-    );
+    assert!(output.output["summary"]["summary_lines"]
+        .as_array()
+        .map(|rows| rows.iter().any(|row| {
+            row.as_str()
+                .is_some_and(|text| text.contains("Annotation candidates: 1 accepted"))
+        }))
+        .unwrap_or(false));
 }
 
 #[test]
@@ -1650,15 +1631,13 @@ fn execute_construct_reasoning_write_annotation_materializes_generated_feature()
         output.output["writeback"]["annotation_id"].as_str(),
         Some(annotation_id.as_str())
     );
-    assert!(
-        output.output["summary"]["summary_lines"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| {
-                row.as_str()
-                    .is_some_and(|text| text.contains("Annotation candidates: 1 accepted"))
-            }))
-            .unwrap_or(false)
-    );
+    assert!(output.output["summary"]["summary_lines"]
+        .as_array()
+        .map(|rows| rows.iter().any(|row| {
+            row.as_str()
+                .is_some_and(|text| text.contains("Annotation candidates: 1 accepted"))
+        }))
+        .unwrap_or(false));
 
     let persisted_dna = engine
         .state()
@@ -1737,24 +1716,20 @@ fn execute_seq_primer_suggest_returns_overlay_report() {
     .expect("execute seq-primer suggest");
 
     assert!(!run.state_changed);
-    assert!(
-        run.output["suggestion_count"]
-            .as_u64()
-            .is_some_and(|value| value >= 2)
-    );
+    assert!(run.output["suggestion_count"]
+        .as_u64()
+        .is_some_and(|value| value >= 2));
     assert_eq!(
         run.output["report"]["confirmation_report_id"].as_str(),
         Some("construct_check")
     );
-    assert!(
-        run.output["report"]["suggestions"]
+    assert!(run.output["report"]["suggestions"]
+        .as_array()
+        .is_some_and(|rows| rows.iter().any(|row| row["covered_target_ids"]
             .as_array()
-            .is_some_and(|rows| rows.iter().any(|row| row["covered_target_ids"]
-                .as_array()
-                .is_some_and(|targets| targets
-                    .iter()
-                    .any(|value| value.as_str() == Some("junction_1")))))
-    );
+            .is_some_and(|targets| targets
+                .iter()
+                .any(|value| value.as_str() == Some("junction_1"))))));
 }
 
 #[test]
@@ -1916,11 +1891,9 @@ fn execute_seq_primer_suggest_report_only_mode_returns_fresh_proposals() {
         run.output["report"]["proposals"][0]["problem_id"].as_str(),
         Some("gap_target")
     );
-    assert!(
-        run.output["report"]["proposals"][0]["reason"]
-            .as_str()
-            .is_some_and(|value| value.contains("No existing primer covered"))
-    );
+    assert!(run.output["report"]["proposals"][0]["reason"]
+        .as_str()
+        .is_some_and(|value| value.contains("No existing primer covered")));
 }
 
 #[test]
@@ -3936,12 +3909,10 @@ fn execute_gibson_apply_creates_output_sequences() {
         mcs.qualifier_values("mcs_crosscheck_status").next(),
         Some("validated_against_assembled_product")
     );
-    assert!(
-        engine
-            .operation_log()
-            .iter()
-            .any(|record| matches!(record.op, Operation::ApplyGibsonAssemblyPlan { .. }))
-    );
+    assert!(engine
+        .operation_log()
+        .iter()
+        .any(|record| matches!(record.op, Operation::ApplyGibsonAssemblyPlan { .. })));
     let gibson_op_id = engine
         .operation_log()
         .last()
@@ -6130,12 +6101,10 @@ fn execute_candidates_generate_score_distance_and_filter() {
     .expect("generate candidates");
     assert!(generated.state_changed);
     assert_eq!(generated.output["set_name"].as_str(), Some("windows"));
-    assert!(
-        generated.output["result"]["messages"]
-            .as_array()
-            .map(|messages| !messages.is_empty())
-            .unwrap_or(false)
-    );
+    assert!(generated.output["result"]["messages"]
+        .as_array()
+        .map(|messages| !messages.is_empty())
+        .unwrap_or(false));
 
     let score_distance = execute_shell_command(
         &mut engine,
@@ -6510,12 +6479,10 @@ fn execute_candidates_template_registry_and_run() {
     .expect("run template");
     assert!(run.state_changed);
     assert_eq!(run.output["template_name"].as_str(), Some("scan"));
-    assert!(
-        engine
-            .list_candidate_sets()
-            .iter()
-            .any(|set| set.name == "hits")
-    );
+    assert!(engine
+        .list_candidate_sets()
+        .iter()
+        .any(|set| set.name == "hits"));
 }
 
 #[test]
@@ -7338,11 +7305,9 @@ fn execute_routines_compare_returns_difference_matrix() {
         .and_then(|value| value.as_array())
         .cloned()
         .unwrap_or_default();
-    assert!(
-        matrix
-            .iter()
-            .any(|row| row.get("axis").and_then(|value| value.as_str()) == Some("assembly_mode"))
-    );
+    assert!(matrix
+        .iter()
+        .any(|row| row.get("axis").and_then(|value| value.as_str()) == Some("assembly_mode")));
 }
 
 #[test]
@@ -7377,63 +7342,54 @@ fn execute_construct_reasoning_show_graph_includes_similarity_predictor_summary(
     )
     .expect("show construct-reasoning graph");
 
-    assert!(
-        show.output["summary"]["summary_lines"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| {
-                row.as_str().is_some_and(|text| {
-                    text.contains("PCR/amplification review suggested")
-                        && text.contains("review_needed")
-                })
-            }))
-            .unwrap_or(false)
-    );
-    assert!(
-        show.output["summary"]["summary_lines"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| {
-                row.as_str().is_some_and(|text| {
-                    text.contains("Nanopore/direct-sequencing review suggested")
-                })
-            }))
-            .unwrap_or(false)
-    );
-    assert!(
-        show.output["summary"]["fact_summaries"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| {
-                row["fact_type"].as_str() == Some("mapping_operational_risk_context")
-                    && row["detail_lines"]
-                        .as_array()
-                        .map(|detail_rows| {
-                            detail_rows.iter().any(|entry| {
-                                entry.as_str().is_some_and(|text| {
-                                    text.contains("mapping_review: repeat_ambiguity=")
-                                })
+    assert!(show.output["summary"]["summary_lines"]
+        .as_array()
+        .map(|rows| rows.iter().any(|row| {
+            row.as_str().is_some_and(|text| {
+                text.contains("PCR/amplification review suggested")
+                    && text.contains("review_needed")
+            })
+        }))
+        .unwrap_or(false));
+    assert!(show.output["summary"]["summary_lines"]
+        .as_array()
+        .map(|rows| rows.iter().any(|row| {
+            row.as_str()
+                .is_some_and(|text| text.contains("Nanopore/direct-sequencing review suggested"))
+        }))
+        .unwrap_or(false));
+    assert!(show.output["summary"]["fact_summaries"]
+        .as_array()
+        .map(|rows| rows.iter().any(|row| {
+            row["fact_type"].as_str() == Some("mapping_operational_risk_context")
+                && row["detail_lines"]
+                    .as_array()
+                    .map(|detail_rows| {
+                        detail_rows.iter().any(|entry| {
+                            entry.as_str().is_some_and(|text| {
+                                text.contains("mapping_review: repeat_ambiguity=")
                             })
                         })
-                        .unwrap_or(false)
-            }))
-            .unwrap_or(false)
-    );
-    assert!(
-        show.output["summary"]["fact_summaries"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| {
-                row["fact_type"].as_str() == Some("cloning_stability_context")
-                    && row["warning_lines"]
-                        .as_array()
-                        .map(|warning_rows| {
-                            warning_rows.iter().any(|entry| {
-                                entry.as_str().is_some_and(|text| {
-                                    text.contains("inversion/recombination review")
-                                })
-                            })
+                    })
+                    .unwrap_or(false)
+        }))
+        .unwrap_or(false));
+    assert!(show.output["summary"]["fact_summaries"]
+        .as_array()
+        .map(|rows| rows.iter().any(|row| {
+            row["fact_type"].as_str() == Some("cloning_stability_context")
+                && row["warning_lines"]
+                    .as_array()
+                    .map(|warning_rows| {
+                        warning_rows.iter().any(|entry| {
+                            entry
+                                .as_str()
+                                .is_some_and(|text| text.contains("inversion/recombination review"))
                         })
-                        .unwrap_or(false)
-            }))
-            .unwrap_or(false)
-    );
+                    })
+                    .unwrap_or(false)
+        }))
+        .unwrap_or(false));
 }
 
 #[test]
@@ -7911,11 +7867,9 @@ fn execute_macros_template_import_directory_recursive() {
         .cloned()
         .unwrap_or_default();
     assert!(templates.iter().any(|v| v.as_str() == Some("reverse_one")));
-    assert!(
-        templates
-            .iter()
-            .any(|v| v.as_str() == Some("complement_one"))
-    );
+    assert!(templates
+        .iter()
+        .any(|v| v.as_str() == Some("complement_one")));
 }
 
 #[test]
@@ -8006,14 +7960,13 @@ fn execute_macros_template_run_validate_only_reports_preflight_without_mutation(
     assert!(!run.state_changed);
     assert_eq!(run.output["validate_only"].as_bool(), Some(true));
     assert_eq!(run.output["can_execute"].as_bool(), Some(false));
-    assert!(
-        run.output
-            .get("preflight")
-            .and_then(|v| v.get("errors"))
-            .and_then(|v| v.as_array())
-            .map(|rows| !rows.is_empty())
-            .unwrap_or(false)
-    );
+    assert!(run
+        .output
+        .get("preflight")
+        .and_then(|v| v.get("errors"))
+        .and_then(|v| v.as_array())
+        .map(|rows| !rows.is_empty())
+        .unwrap_or(false));
     assert!(!engine.state().sequences.contains_key("seqA_branch"));
 }
 
@@ -9606,7 +9559,9 @@ fn execute_primers_prepare_restriction_cloning_returns_saved_report() {
         Some("compatible")
     );
     assert_eq!(
-        run.output["report"]["workflow_hints"]["pcr_advanced_operation"]["PcrAdvanced"]["forward_primer"]["anneal_len"].as_u64(),
+        run.output["report"]["workflow_hints"]["pcr_advanced_operation"]["PcrAdvanced"]
+            ["forward_primer"]["anneal_len"]
+            .as_u64(),
         Some(20)
     );
 }
@@ -10280,16 +10235,12 @@ fn execute_features_tfbs_score_tracks_svg_matches_inline_and_stored_targets() {
         inline.output["result"]["tfbs_score_tracks"]["target_kind"].as_str(),
         Some("inline_sequence")
     );
-    assert!(
-        fs::read_to_string(&stored_output)
-            .expect("stored svg")
-            .contains("tp73_context")
-    );
-    assert!(
-        fs::read_to_string(&inline_output)
-            .expect("inline svg")
-            .contains("tp73_context")
-    );
+    assert!(fs::read_to_string(&stored_output)
+        .expect("stored svg")
+        .contains("tp73_context"));
+    assert!(fs::read_to_string(&inline_output)
+        .expect("inline svg")
+        .contains("tp73_context"));
 }
 
 #[test]
@@ -10534,11 +10485,9 @@ fn execute_features_tfbs_scan_matches_inline_and_stored_sequence_targets() {
         stored.output["result"]["tfbs_hit_scan"]["schema"].as_str(),
         Some("gentle.tfbs_hit_scan.v1")
     );
-    assert!(
-        stored.output["report"]["matched_hit_count"]
-            .as_u64()
-            .is_some_and(|value| value > 0)
-    );
+    assert!(stored.output["report"]["matched_hit_count"]
+        .as_u64()
+        .is_some_and(|value| value > 0));
     assert_eq!(
         stored.output["report"]["rows"],
         inline.output["report"]["rows"]
@@ -10931,11 +10880,9 @@ fn execute_primers_design_qpcr_list_show_export() {
         Some("gentle.qpcr_design_report_list.v1")
     );
     assert_eq!(listed.output["report_count"].as_u64(), Some(1));
-    assert!(
-        listed.output["reports"][0]["best_assay_summary"]
-            .as_str()
-            .is_some_and(|value| !value.trim().is_empty())
-    );
+    assert!(listed.output["reports"][0]["best_assay_summary"]
+        .as_str()
+        .is_some_and(|value| !value.trim().is_empty()));
 
     let shown = execute_shell_command(
         &mut engine,
@@ -10949,16 +10896,12 @@ fn execute_primers_design_qpcr_list_show_export() {
         shown.output["report"]["report_id"].as_str(),
         Some("tp73_qpcr")
     );
-    assert!(
-        shown.output["report"]["best_assay_probe_placement"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty())
-    );
-    assert!(
-        shown.output["report"]["best_assay_summary"]
-            .as_str()
-            .is_some_and(|value| !value.trim().is_empty())
-    );
+    assert!(shown.output["report"]["best_assay_probe_placement"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
+    assert!(shown.output["report"]["best_assay_summary"]
+        .as_str()
+        .is_some_and(|value| !value.trim().is_empty()));
 
     let exported = execute_shell_command(
         &mut engine,
@@ -11089,11 +11032,9 @@ fn execute_primers_seed_from_feature_and_splicing() {
         seeded_qpcr_feature.output["protocol_cartoon"]["protocol"].as_str(),
         Some("pcr.assay.qpcr")
     );
-    assert!(
-        seeded_qpcr_feature.output["rationale"]["summary"]
-            .as_str()
-            .is_some_and(|value| value.contains("Feature span reused"))
-    );
+    assert!(seeded_qpcr_feature.output["rationale"]["summary"]
+        .as_str()
+        .is_some_and(|value| value.contains("Feature span reused")));
     assert_eq!(
         seeded_qpcr_feature.output["rationale"]["recommended_defaults"]["max_assays"].as_u64(),
         Some(200)
@@ -11123,16 +11064,12 @@ fn execute_primers_seed_from_feature_and_splicing() {
         seeded_qpcr_splicing.output["operation"]["DesignQpcrAssays"]["template"].as_str(),
         Some("seq_a")
     );
-    assert!(
-        seeded_qpcr_splicing.output["rationale"]["summary"]
-            .as_str()
-            .is_some_and(|value| value.contains("Splicing-group region reused"))
-    );
-    assert!(
-        seeded_qpcr_splicing.output["rationale"]["why_this_roi"]
-            .as_str()
-            .is_some_and(|value| value.contains("group"))
-    );
+    assert!(seeded_qpcr_splicing.output["rationale"]["summary"]
+        .as_str()
+        .is_some_and(|value| value.contains("Splicing-group region reused")));
+    assert!(seeded_qpcr_splicing.output["rationale"]["why_this_roi"]
+        .as_str()
+        .is_some_and(|value| value.contains("group")));
     assert_eq!(
         seeded_qpcr_splicing.output["operation"]["DesignQpcrAssays"]["transcript_targeting"]
             ["mode"]
@@ -11228,10 +11165,79 @@ fn execute_primers_seed_qpcr_from_splicing_round_trips_into_design_qpcr() {
             .as_str(),
         Some("junction_only")
     );
-    assert!(
-        design.output["report"]["assays"]
-            .as_array()
-            .is_some_and(|rows| !rows.is_empty())
+    assert!(design.output["report"]["assays"]
+        .as_array()
+        .is_some_and(|rows| !rows.is_empty()));
+}
+
+#[test]
+fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
+    let mut dna = DNAsequence::from_sequence("ATGAAACCCGGGTTTTTTTTCCCAAATTTGGG")
+        .expect("synthetic genomic sequence");
+    dna.features_mut().push(Feature {
+        kind: "mRNA".into(),
+        location: Location::Join(vec![
+            Location::simple_range(0, 12),
+            Location::simple_range(20, 32),
+        ]),
+        qualifiers: vec![
+            ("gene".into(), Some("TEST1".to_string())),
+            ("transcript_id".into(), Some("TX1".to_string())),
+            ("label".into(), Some("TEST1 transcript".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("cdna_src".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let pcr = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersTestCdnaPcr {
+            seq_id: "cdna_src".to_string(),
+            feature_id: 0,
+            forward_primer: "AAACCC".to_string(),
+            reverse_primer: "CCCAAA".to_string(),
+            transcript_id: None,
+            min_amplicon_bp: Some(10),
+            max_amplicon_bp: Some(50),
+            max_mismatches: None,
+            require_3prime_exact_bases: Some(4),
+            path: None,
+        },
+    )
+    .expect("cDNA PCR shell report");
+    assert!(!pcr.state_changed);
+    assert_eq!(
+        pcr.output["report"]["schema"].as_str(),
+        Some("gentle.cdna_assay_test_report.v1")
+    );
+    assert_eq!(
+        pcr.output["report"]["overall_status"].as_str(),
+        Some("single_product")
+    );
+
+    let qpcr = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersTestCdnaQpcr {
+            seq_id: "cdna_src".to_string(),
+            feature_id: 0,
+            forward_primer: "AAACCC".to_string(),
+            reverse_primer: "CCCAAA".to_string(),
+            probe: "GGGCCC".to_string(),
+            transcript_id: Some("TX1".to_string()),
+            min_amplicon_bp: Some(10),
+            max_amplicon_bp: Some(50),
+            max_mismatches: None,
+            require_3prime_exact_bases: Some(4),
+            path: None,
+        },
+    )
+    .expect("cDNA qPCR shell report");
+    assert_eq!(qpcr.output["report"]["assay_kind"].as_str(), Some("qpcr"));
+    assert_eq!(
+        qpcr.output["report"]["transcript_results"][0]["products"][0]["probe_hit_indices"][0]
+            .as_u64(),
+        Some(0)
     );
 }
 
@@ -11322,11 +11328,9 @@ fn execute_primers_design_with_options_emits_primer_progress() {
     assert!(out.state_changed);
     let progress_events = progress_events.lock().expect("progress events lock");
     assert!(!progress_events.is_empty());
-    assert!(
-        progress_events
-            .iter()
-            .any(|progress| progress.stage == "forward_candidates")
-    );
+    assert!(progress_events
+        .iter()
+        .any(|progress| progress.stage == "forward_candidates"));
     assert_eq!(
         progress_events
             .last()
@@ -11560,12 +11564,10 @@ fn execute_export_run_bundle_matches_engine_construct_reasoning_block() {
             .map(String::as_str),
         Some("supported")
     );
-    assert!(
-        shell_bundle.construct_reasoning.summaries[0]
-            .supported_selection_rule_ids
-            .iter()
-            .any(|rule_id| rule_id == "ampicillin_vector_selection")
-    );
+    assert!(shell_bundle.construct_reasoning.summaries[0]
+        .supported_selection_rule_ids
+        .iter()
+        .any(|rule_id| rule_id == "ampicillin_vector_selection"));
 }
 
 #[test]
@@ -11780,11 +11782,9 @@ fn execute_async_blast_restart_recovery_marks_orphaned_nonterminal_job_failed() 
             status.output["job"]["error"].as_str(),
             Some(BLAST_ASYNC_RESTART_INTERRUPTED_ERROR)
         );
-        assert!(
-            !status.output["job"]["result_available"]
-                .as_bool()
-                .unwrap_or(true)
-        );
+        assert!(!status.output["job"]["result_available"]
+            .as_bool()
+            .unwrap_or(true));
     });
 }
 
@@ -12052,15 +12052,13 @@ fn execute_macros_instance_list_and_show() {
         shown.output["schema"].as_str(),
         Some("gentle.lineage_macro_instance.v1")
     );
-    assert!(
-        shown
-            .output
-            .get("instance")
-            .and_then(|row| row.get("expanded_op_ids"))
-            .and_then(|v| v.as_array())
-            .map(|rows| !rows.is_empty())
-            .unwrap_or(false)
-    );
+    assert!(shown
+        .output
+        .get("instance")
+        .and_then(|row| row.get("expanded_op_ids"))
+        .and_then(|v| v.as_array())
+        .map(|rows| !rows.is_empty())
+        .unwrap_or(false));
 }
 
 #[test]
@@ -13205,12 +13203,10 @@ fn execute_attract_inspect_splicing_uses_shared_engine_view() {
         out.output["schema"].as_str(),
         Some("gentle.attract_splicing_evidence.v1")
     );
-    assert!(
-        out.output["active_resource_fingerprint"]
-            .as_str()
-            .map(|value| value.starts_with("sha1:"))
-            .unwrap_or(false)
-    );
+    assert!(out.output["active_resource_fingerprint"]
+        .as_str()
+        .map(|value| value.starts_with("sha1:"))
+        .unwrap_or(false));
     assert_eq!(
         out.output["alternate_policy_summary"]["pwm_mapping_policy"].as_str(),
         Some("windowed_submatrix")
@@ -13492,16 +13488,12 @@ fn execute_services_status_reports_combined_readiness() {
         out.output["references"][0]["genome_id"].as_str(),
         Some("Human GRCh38 Ensembl 116")
     );
-    assert!(
-        out.output["references"][0]["resource_key"]
-            .as_str()
-            .is_some()
-    );
-    assert!(
-        out.output["references"][0]["lifecycle_status"]
-            .as_str()
-            .is_some()
-    );
+    assert!(out.output["references"][0]["resource_key"]
+        .as_str()
+        .is_some());
+    assert!(out.output["references"][0]["lifecycle_status"]
+        .as_str()
+        .is_some());
     assert_eq!(
         out.output["helpers"][0]["genome_id"].as_str(),
         Some("Plasmid pUC19 (online)")
@@ -13510,12 +13502,10 @@ fn execute_services_status_reports_combined_readiness() {
         out.output["resources"]["attract"]["display_name"].as_str(),
         Some("ATtRACT")
     );
-    assert!(
-        out.output["summary_lines"]
-            .as_array()
-            .map(|rows| !rows.is_empty())
-            .unwrap_or(false)
-    );
+    assert!(out.output["summary_lines"]
+        .as_array()
+        .map(|rows| !rows.is_empty())
+        .unwrap_or(false));
 }
 
 #[test]
@@ -13541,29 +13531,25 @@ fn execute_services_handoff_reports_actions_and_writes_json() {
         out.output["service_readiness"]["schema"].as_str(),
         Some("gentle.service_readiness.v1")
     );
-    assert!(
-        out.output["status_overview"]["overall_status"]
-            .as_str()
-            .is_some()
-    );
+    assert!(out.output["status_overview"]["overall_status"]
+        .as_str()
+        .is_some());
     assert!(out.output["status_overview"]["recommended_next_action"].is_object());
-    assert!(
-        out.output["readiness"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| row["resource_key"].as_str()
+    assert!(out.output["readiness"]
+        .as_array()
+        .map(|rows| rows
+            .iter()
+            .any(|row| row["resource_key"].as_str()
                 == Some("reference_genome:Human GRCh38 Ensembl 116")))
-            .unwrap_or(false)
-    );
+        .unwrap_or(false));
     assert!(out.output["suggested_actions"].as_array().is_some());
     assert!(out.output["blocked_actions"].as_array().is_some());
-    assert!(
-        out.output["preferred_demo_actions"]
-            .as_array()
-            .map(|rows| rows
-                .iter()
-                .any(|row| row["kind"].as_str() == Some("demo_graphic")))
-            .unwrap_or(false)
-    );
+    assert!(out.output["preferred_demo_actions"]
+        .as_array()
+        .map(|rows| rows
+            .iter()
+            .any(|row| row["kind"].as_str() == Some("demo_graphic")))
+        .unwrap_or(false));
     assert!(output_path.exists());
     let persisted: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(output_path).expect("read handoff report"))
@@ -13595,34 +13581,28 @@ fn execute_services_telegram_guide_reports_menu_and_section_actions() {
     assert_eq!(out.output["section"].as_str(), Some("overview"));
     assert_eq!(out.output["gene"].as_str(), None);
     assert_eq!(out.output["gene_supplied"].as_bool(), Some(false));
-    assert!(
-        out.output["summary_lines"]
-            .as_array()
-            .map(|rows| rows.iter().any(|line| line
-                .as_str()
-                .map(|line| line.contains("If you have a gene of interest"))
-                .unwrap_or(false)))
-            .unwrap_or(false)
-    );
-    assert!(
-        out.output["menu_sections"]
-            .as_array()
-            .map(|rows| rows
-                .iter()
-                .any(|row| row["section_id"].as_str() == Some("tfbs")))
-            .unwrap_or(false)
-    );
-    assert!(
-        out.output["suggested_actions"]
-            .as_array()
-            .map(|actions| actions.iter().any(|action| {
-                action["kind"].as_str() == Some("guide_section")
-                    && action["shell_line"].as_str()
-                        == Some("services guide --channel telegram --section tfbs")
-                    && action["requires_confirmation"].as_bool() == Some(false)
-            }))
-            .unwrap_or(false)
-    );
+    assert!(out.output["summary_lines"]
+        .as_array()
+        .map(|rows| rows.iter().any(|line| line
+            .as_str()
+            .map(|line| line.contains("If you have a gene of interest"))
+            .unwrap_or(false)))
+        .unwrap_or(false));
+    assert!(out.output["menu_sections"]
+        .as_array()
+        .map(|rows| rows
+            .iter()
+            .any(|row| row["section_id"].as_str() == Some("tfbs")))
+        .unwrap_or(false));
+    assert!(out.output["suggested_actions"]
+        .as_array()
+        .map(|actions| actions.iter().any(|action| {
+            action["kind"].as_str() == Some("guide_section")
+                && action["shell_line"].as_str()
+                    == Some("services guide --channel telegram --section tfbs")
+                && action["requires_confirmation"].as_bool() == Some(false)
+        }))
+        .unwrap_or(false));
 }
 
 #[test]
@@ -13641,15 +13621,13 @@ fn execute_services_telegram_guide_tfbs_uses_gene_personalization() {
     assert_eq!(out.output["section"].as_str(), Some("tfbs"));
     assert_eq!(out.output["gene"].as_str(), Some("TERT"));
     assert_eq!(out.output["gene_supplied"].as_bool(), Some(true));
-    assert!(
-        out.output["suggested_actions"]
-            .as_array()
-            .map(|actions| actions.iter().any(|action| action["shell_line"]
-                .as_str()
-                .map(|line| line.contains("promoter-tfbs-svg") && line.contains("--gene \"TERT\""))
-                .unwrap_or(false)))
-            .unwrap_or(false)
-    );
+    assert!(out.output["suggested_actions"]
+        .as_array()
+        .map(|actions| actions.iter().any(|action| action["shell_line"]
+            .as_str()
+            .map(|line| line.contains("promoter-tfbs-svg") && line.contains("--gene \"TERT\""))
+            .unwrap_or(false)))
+        .unwrap_or(false));
 }
 
 #[test]
@@ -13702,31 +13680,35 @@ fn execute_services_telegram_guide_cloning_offers_simple_pcr() {
     .expect("execute cloning services guide");
     assert!(!out.state_changed);
     assert_eq!(out.output["section"].as_str(), Some("cloning"));
-    assert!(
-        out.output["suggested_actions"]
-            .as_array()
-            .map(|actions| actions.iter().any(|action| {
-                action["kind"].as_str() == Some("simple_pcr_primer_design")
-                    && action["shell_line"].as_str()
-                        == Some("workflow @docs/examples/workflows/simple_pcr_primer_design_offline.json")
-                    && action["requires_confirmation"].as_bool() == Some(false)
-                    && action["expected_artifacts"]
-                        .as_array()
-                        .map(|artifacts| artifacts.iter().any(|artifact| {
+    assert!(out.output["suggested_actions"]
+        .as_array()
+        .map(|actions| actions.iter().any(|action| {
+            action["kind"].as_str() == Some("simple_pcr_primer_design")
+                && action["shell_line"].as_str()
+                    == Some(
+                        "workflow @docs/examples/workflows/simple_pcr_primer_design_offline.json",
+                    )
+                && action["requires_confirmation"].as_bool() == Some(false)
+                && action["expected_artifacts"]
+                    .as_array()
+                    .map(|artifacts| {
+                        artifacts.iter().any(|artifact| {
                             artifact.as_str()
                                 == Some("artifacts/simple_pcr_demo_primers.protocol.svg")
-                        }))
-                        .unwrap_or(false)
-                    && action["expected_artifacts"]
-                        .as_array()
-                        .map(|artifacts| artifacts.iter().any(|artifact| {
+                        })
+                    })
+                    .unwrap_or(false)
+                && action["expected_artifacts"]
+                    .as_array()
+                    .map(|artifacts| {
+                        artifacts.iter().any(|artifact| {
                             artifact.as_str()
                                 == Some("artifacts/simple_pcr_demo_primers.report.json")
-                        }))
-                        .unwrap_or(false)
-            }))
-            .unwrap_or(false)
-    );
+                        })
+                    })
+                    .unwrap_or(false)
+        }))
+        .unwrap_or(false));
 }
 
 #[test]
@@ -13866,12 +13848,10 @@ fn execute_import_pool_preserves_supercoiled_topology_hint() {
         .get(imported_id)
         .expect("imported sequence");
     assert!(imported.is_circular());
-    assert!(
-        imported
-            .description()
-            .iter()
-            .any(|line| line.contains("gel_topology=supercoiled"))
-    );
+    assert!(imported
+        .description()
+        .iter()
+        .any(|line| line.contains("gel_topology=supercoiled")));
 }
 
 #[test]
@@ -14343,11 +14323,9 @@ fn execute_genomes_extend_anchor_creates_sequence() {
         .and_then(|v| v.get("created_seq_ids"))
         .and_then(|v| v.as_array())
         .expect("created_seq_ids");
-    assert!(
-        created
-            .iter()
-            .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false))
-    );
+    assert!(created
+        .iter()
+        .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false)));
     let seq = engine
         .state()
         .sequences
@@ -14434,11 +14412,10 @@ fn execute_genomes_extract_region_default_scope_core_with_telemetry() {
         .sequences
         .get("shell_slice_default")
         .expect("sequence created by extract-region");
-    assert!(
-        seq.features()
-            .iter()
-            .any(|f| f.kind.to_string().eq_ignore_ascii_case("gene"))
-    );
+    assert!(seq
+        .features()
+        .iter()
+        .any(|f| f.kind.to_string().eq_ignore_ascii_case("gene")));
 }
 
 #[test]
@@ -14529,11 +14506,9 @@ fn execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand() {
         .and_then(|value| value.get("created_seq_ids"))
         .and_then(|value| value.as_array())
         .expect("created_seq_ids");
-    assert!(
-        created
-            .iter()
-            .any(|value| value.as_str() == Some("neg1_promoter_shell"))
-    );
+    assert!(created
+        .iter()
+        .any(|value| value.as_str() == Some("neg1_promoter_shell")));
 
     let seq = engine
         .state()
@@ -14737,11 +14712,9 @@ fn execute_genomes_verify_anchor_updates_verification_status() {
         .and_then(|v| v.get("changed_seq_ids"))
         .and_then(|v| v.as_array())
         .expect("changed_seq_ids");
-    assert!(
-        changed
-            .iter()
-            .any(|v| v.as_str().map(|id| id == "slice").unwrap_or(false))
-    );
+    assert!(changed
+        .iter()
+        .any(|v| v.as_str().map(|id| id == "slice").unwrap_or(false)));
     let anchor_status = engine
         .describe_sequence_genome_anchor("slice")
         .expect("anchor status");
@@ -15448,14 +15421,12 @@ fn execute_cutrun_interpret_from_prepared_dataset_reads() {
         interpret.output["report"]["read_layout"].as_str(),
         Some("paired_end")
     );
-    assert!(
-        interpret.output["report"]["warnings"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|value| value.as_str())
-            .any(|value| value.contains("resolved CUT&RUN raw reads from prepared dataset"))
-    );
+    assert!(interpret.output["report"]["warnings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str())
+        .any(|value| value.contains("resolved CUT&RUN raw reads from prepared dataset")));
 }
 
 #[test]
@@ -15712,21 +15683,17 @@ fn execute_helpers_list_filters_semantic_metadata() {
         ]
     );
     let interpretation = &out.output["entries"][0]["interpretation"];
-    assert!(
-        interpretation["normalized_terms"]
-            .as_array()
-            .expect("normalized terms")
-            .iter()
-            .any(|row| row["axis"].as_str() == Some("component_kind")
-                && row["value"].as_str() == Some("cloning_site"))
-    );
-    assert!(
-        interpretation["routine_hints"]
-            .as_array()
-            .expect("routine hints")
-            .iter()
-            .any(|row| row["family"].as_str() == Some("restriction"))
-    );
+    assert!(interpretation["normalized_terms"]
+        .as_array()
+        .expect("normalized terms")
+        .iter()
+        .any(|row| row["axis"].as_str() == Some("component_kind")
+            && row["value"].as_str() == Some("cloning_site")));
+    assert!(interpretation["routine_hints"]
+        .as_array()
+        .expect("routine hints")
+        .iter()
+        .any(|row| row["family"].as_str() == Some("restriction")));
 }
 
 #[test]
@@ -15789,21 +15756,17 @@ fn execute_helpers_status_includes_normalized_interpretation() {
             .collect::<Vec<_>>(),
         vec!["ampicillin_selection", "insert_cloning", "selection"]
     );
-    assert!(
-        out.output["interpretation"]["normalized_terms"]
-            .as_array()
-            .expect("normalized terms")
-            .iter()
-            .any(|row| row["axis"].as_str() == Some("component_attribute")
-                && row["value"].as_str() == Some("agent_ampicillin"))
-    );
-    assert!(
-        out.output["interpretation"]["routine_hints"]
-            .as_array()
-            .expect("routine hints")
-            .iter()
-            .any(|row| row["family"].as_str() == Some("restriction"))
-    );
+    assert!(out.output["interpretation"]["normalized_terms"]
+        .as_array()
+        .expect("normalized terms")
+        .iter()
+        .any(|row| row["axis"].as_str() == Some("component_attribute")
+            && row["value"].as_str() == Some("agent_ampicillin")));
+    assert!(out.output["interpretation"]["routine_hints"]
+        .as_array()
+        .expect("routine hints")
+        .iter()
+        .any(|row| row["family"].as_str() == Some("restriction")));
 }
 
 #[test]
@@ -15964,13 +15927,11 @@ fn execute_helpers_vocabulary_doctor_reports_overlay_conflicts_and_provenance() 
     assert_eq!(report["fragment_count"].as_u64(), Some(2));
     assert_eq!(report["term_count"].as_u64(), Some(4));
     assert_eq!(report["known_routine_families"][0].as_str(), Some("gibson"));
-    assert!(
-        report["fragments"]
-            .as_array()
-            .expect("fragments")
-            .iter()
-            .all(|row| row["digest_sha1"].as_str().unwrap_or("").len() == 40)
-    );
+    assert!(report["fragments"]
+        .as_array()
+        .expect("fragments")
+        .iter()
+        .all(|row| row["digest_sha1"].as_str().unwrap_or("").len() == 40));
     let issues = report["issues"].as_array().expect("issues");
     assert!(issues.iter().any(|row| {
         row["code"].as_str() == Some("duplicate_canonical_term")
@@ -16377,11 +16338,9 @@ fn execute_genomes_status_reports_running_lifecycle_and_suppresses_prepare_hint(
         Some("download_sequence")
     );
     assert!(out.output["prepare_command"].is_null());
-    assert!(
-        out.output["status_message"]
-            .as_str()
-            .is_some_and(|value| value.contains("already being prepared"))
-    );
+    assert!(out.output["status_message"]
+        .as_str()
+        .is_some_and(|value| value.contains("already being prepared")));
 }
 
 #[test]
@@ -16528,16 +16487,12 @@ fn execute_ui_intents_lists_shared_target_metadata() {
         assert_eq!(row["detail"].as_str(), Some(target.detail()));
         assert_eq!(row["keywords"].as_str(), Some(target.keywords()));
         let actions = row["actions"].as_array().expect("actions array");
-        assert!(
-            actions
-                .iter()
-                .any(|value| value.as_str() == Some(UiIntentAction::Open.as_str()))
-        );
-        assert!(
-            actions
-                .iter()
-                .any(|value| value.as_str() == Some(UiIntentAction::Focus.as_str()))
-        );
+        assert!(actions
+            .iter()
+            .any(|value| value.as_str() == Some(UiIntentAction::Open.as_str())));
+        assert!(actions
+            .iter()
+            .any(|value| value.as_str() == Some(UiIntentAction::Focus.as_str())));
     }
 }
 
@@ -17604,12 +17559,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     );
     assert_eq!(projection.output["entry_id"].as_str(), Some("PTEST1"));
     assert_eq!(projection.output["seq_id"].as_str(), Some("seq_u"));
-    assert!(
-        projection.output["transcript_projections"]
-            .as_array()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false)
-    );
+    assert!(projection.output["transcript_projections"]
+        .as_array()
+        .map(|v| !v.is_empty())
+        .unwrap_or(false));
 
     let inspect = execute_shell_command(
         &mut engine,
@@ -17636,12 +17589,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         inspect.output["data"]["panel_source"].as_str(),
         Some("Transcript-native proteins with optional UniProt opinion PTEST1 (PTEST1)")
     );
-    assert!(
-        inspect.output["data"]["protein_lanes"]
-            .as_array()
-            .map(|rows| !rows.is_empty())
-            .unwrap_or(false)
-    );
+    assert!(inspect.output["data"]["protein_lanes"]
+        .as_array()
+        .map(|rows| !rows.is_empty())
+        .unwrap_or(false));
 
     let feature_query = execute_shell_command(
         &mut engine,
@@ -17799,12 +17750,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         audit.output["report"]["schema"].as_str(),
         Some("gentle.uniprot_projection_audit.v1")
     );
-    assert!(
-        audit.output["report"]["maintainer_email_draft"]["body"]
-            .as_str()
-            .map(|body| body.contains("presumed inconsistency"))
-            .unwrap_or(false)
-    );
+    assert!(audit.output["report"]["maintainer_email_draft"]["body"]
+        .as_str()
+        .map(|body| body.contains("presumed inconsistency"))
+        .unwrap_or(false));
 
     let listed = execute_shell_command(
         &mut engine,
@@ -18039,15 +17988,13 @@ fn execute_ensembl_protein_list_show_import_and_compare() {
             .as_str(),
         Some("ensembl")
     );
-    assert!(
-        inspect.output["data"]["protein_lanes"][0]["domains"]
-            .as_array()
-            .map(|rows| rows.iter().any(|row| row["name"]
-                .as_str()
-                .map(|name| name.contains("synthetic Ensembl domain"))
-                .unwrap_or(false)))
-            .unwrap_or(false)
-    );
+    assert!(inspect.output["data"]["protein_lanes"][0]["domains"]
+        .as_array()
+        .map(|rows| rows.iter().any(|row| row["name"]
+            .as_str()
+            .map(|name| name.contains("synthetic Ensembl domain"))
+            .unwrap_or(false)))
+        .unwrap_or(false));
 }
 
 #[test]
@@ -19499,16 +19446,12 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         align_result.output["report"]["report_id"].as_str(),
         Some(report_id.as_str())
     );
-    assert!(
-        align_result.output["report"]["read_count_aligned"]
-            .as_u64()
-            .is_some()
-    );
-    assert!(
-        align_result.output["report"]["retained_count_msa_eligible"]
-            .as_u64()
-            .is_some()
-    );
+    assert!(align_result.output["report"]["read_count_aligned"]
+        .as_u64()
+        .is_some());
+    assert!(align_result.output["report"]["retained_count_msa_eligible"]
+        .as_u64()
+        .is_some());
 
     let listed = execute_shell_command(
         &mut engine,
@@ -19526,16 +19469,12 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         listed.output["reports"][0]["roi_seed_capture_enabled"].as_bool(),
         Some(false)
     );
-    assert!(
-        listed.output["summary_rows"][0]
-            .as_str()
-            .is_some_and(|line| line.contains("origin=single_gene"))
-    );
-    assert!(
-        listed.output["summary_rows"][0]
-            .as_str()
-            .is_some_and(|line| line.contains("msa_eligible(retained)="))
-    );
+    assert!(listed.output["summary_rows"][0]
+        .as_str()
+        .is_some_and(|line| line.contains("origin=single_gene")));
+    assert!(listed.output["summary_rows"][0]
+        .as_str()
+        .is_some_and(|line| line.contains("msa_eligible(retained)=")));
 
     let shown = execute_shell_command(
         &mut engine,
@@ -19548,11 +19487,9 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         shown.output["report"]["report_id"].as_str(),
         Some(report_id.as_str())
     );
-    assert!(
-        shown.output["summary"]
-            .as_str()
-            .is_some_and(|line| line.contains("mode=full") && line.contains("origin=single_gene"))
-    );
+    assert!(shown.output["summary"]
+        .as_str()
+        .is_some_and(|line| line.contains("mode=full") && line.contains("origin=single_gene")));
 
     let shown_alignment = execute_shell_command(
         &mut engine,
@@ -19572,16 +19509,12 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         Some(report_id.as_str())
     );
     assert_eq!(shown_alignment.output["record_index"].as_u64(), Some(0));
-    assert!(
-        shown_alignment.output["alignment"]["aligned_query"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty())
-    );
-    assert!(
-        shown_alignment.output["alignment"]["aligned_target"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty())
-    );
+    assert!(shown_alignment.output["alignment"]["aligned_query"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
+    assert!(shown_alignment.output["alignment"]["aligned_target"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
 
     let materialized = execute_shell_command(
         &mut engine,
@@ -19777,7 +19710,8 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         Some("strong")
     );
     assert_eq!(
-        concatemer_inspection.output["inspection"]["rows"][0]["top_disjoint_secondary_transcript_id"]
+        concatemer_inspection.output["inspection"]["rows"][0]
+            ["top_disjoint_secondary_transcript_id"]
             .as_str(),
         Some("tx_secondary")
     );
@@ -20032,9 +19966,7 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     assert!(alignments_text.contains("alignment_mode"));
     assert!(alignments_text.contains("identity_fraction"));
     assert!(alignments_text.contains("selected_record_indices=0"));
-    assert!(
-        alignments_text.contains("subset_spec=filter=selected only | sort=score | search=tp53")
-    );
+    assert!(alignments_text.contains("subset_spec=filter=selected only | sort=score | search=tp53"));
 
     let exported_alignment_dotplot_svg = fasta_dir.path().join("alignment_dotplot.svg");
     let export_alignment_dotplot_result = execute_shell_command(

@@ -3167,28 +3167,22 @@ fn parse_cdna_assay_test_options(
             }
             "--min-amplicon-bp" => {
                 let raw = parse_option_path(tokens, idx, "--min-amplicon-bp", context)?;
-                options.min_amplicon_bp = Some(parse_usize_option_value(
-                    &raw,
-                    "--min-amplicon-bp",
-                )?);
+                options.min_amplicon_bp =
+                    Some(parse_usize_option_value(&raw, "--min-amplicon-bp")?);
             }
             "--max-amplicon-bp" => {
                 let raw = parse_option_path(tokens, idx, "--max-amplicon-bp", context)?;
-                options.max_amplicon_bp = Some(parse_usize_option_value(
-                    &raw,
-                    "--max-amplicon-bp",
-                )?);
+                options.max_amplicon_bp =
+                    Some(parse_usize_option_value(&raw, "--max-amplicon-bp")?);
             }
             "--max-mismatches" => {
                 let raw = parse_option_path(tokens, idx, "--max-mismatches", context)?;
-                options.max_mismatches =
-                    Some(parse_usize_option_value(&raw, "--max-mismatches")?);
+                options.max_mismatches = Some(parse_usize_option_value(&raw, "--max-mismatches")?);
             }
             "--require-3prime-exact-bases" | "--require-3-prime-exact-bases" => {
                 let flag = tokens[*idx].clone();
                 let raw = parse_option_path(tokens, idx, &flag, context)?;
-                options.require_3prime_exact_bases =
-                    Some(parse_usize_option_value(&raw, &flag)?);
+                options.require_3prime_exact_bases = Some(parse_usize_option_value(&raw, &flag)?);
             }
             "--path" | "--output" => {
                 let flag = tokens[*idx].clone();
