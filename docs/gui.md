@@ -1412,12 +1412,14 @@ Patterns menu:
          defined-site, single-insert plans with palindromic cutters
        - dedicated `Tm Model` box repeats the shared assumptions in a visually
          separate section
-       - displayed Tm values use the shared nearest-neighbor model used across
-         GENtle:
-         fixed 50 mM monovalent salt, fixed 250 nM total oligo concentration,
-         exact-complement duplex assumption, no mismatch/dangling-end/Mg
-         correction, fallback to the simple 2/4 estimate for ambiguous or very
-         short sequences
+       - displayed Tm values use the shared Thermo Fisher-style modified
+         Allawi/SantaLucia nearest-neighbor model used across GENtle:
+         exact-complement duplex assumption, Allawi/SantaLucia 1997
+         Watson-Crick table and terminal initiation terms, fixed 215 mM
+         effective monovalent salt term, fixed 500 nM primer concentration,
+         Thermo Fisher high-fidelity empirical adjustment, no
+         mismatch/dangling-end/Mg correction, and fallback to the simple 2/4
+         estimate for ambiguous or very short sequences
     4. `Review`
        - `Preview Gibson Plan` stays disabled until the current opening is
          actually defined enough to build a plan; for `defined opening`, that
@@ -3121,8 +3123,8 @@ qPCR form:
 - same ROI formula support as primer-pair design (`=` expressions +
   `Apply ROI formula`)
 - default qPCR constraints are probe-based/TaqMan-like: 80-200 bp amplicons,
-  18-24 bp primers at 55-65 C with pair delta <= 3 C, and a 20-30 bp probe at
-  63-72 C
+  18-24 bp primers at 63-73 C with pair delta <= 3 C, and a 20-30 bp probe at
+  71-80 C
 - adds a `Transcript targeting` block above ROI/probe controls:
   - `Genomic`
     - keeps the existing direct qPCR flow and emits

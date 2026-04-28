@@ -1791,8 +1791,8 @@ order. Durable architecture constraints and decisions remain in
       recommended default assay limits so agent callers can explain and reuse
       GENtle's expected next-step settings instead of guessing them
     - qPCR-only seed defaults are now probe-based/TaqMan-like by default:
-      80-200 bp amplicons, 18-24 bp primers at 55-65 C with pair delta <= 3 C,
-      and 20-30 bp probes at 63-72 C; assay ranking also prefers probes about
+      80-200 bp amplicons, 18-24 bp primers at 63-73 C with pair delta <= 3 C,
+      and 20-30 bp probes at 71-80 C; assay ranking also prefers probes about
       7.5 C above the primer mean when available
     - ClawBio now also carries a TP53 splicing-group shell example that emits
       the qPCR seed payload directly from saved splicing context
@@ -4757,7 +4757,8 @@ Repeated multi-tool gaps to prioritize:
        - keep this as deterministic guidance input; final pair scoring still
          runs through shared primer report contracts
      - pair interaction checks and richer ion-/structure-aware thermodynamic
-       scoring beyond the current shared nearest-neighbor baseline
+       scoring beyond the current shared Thermo Fisher-style
+       Allawi/SantaLucia nearest-neighbor baseline
      - saved/reusable primer sets with explicit versioning
      - async-capable batch off-target/specificity checks so primer-pair
        selection can run multiple BLAST searches through agent/MCP/CLI routes

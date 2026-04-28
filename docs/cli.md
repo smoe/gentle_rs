@@ -2232,8 +2232,8 @@ Shared shell command:
       - includes `rationale.summary`, `rationale.why_this_roi`, and
         `rationale.recommended_defaults`
       - seeded qPCR defaults are probe-based/TaqMan-like: 80-200 bp amplicons,
-        18-24 bp primers at 55-65 C with pair delta <= 3 C, and a 20-30 bp
-        probe at 63-72 C so retained probes normally sit above the primer mean
+        18-24 bp primers at 63-73 C with pair delta <= 3 C, and a 20-30 bp
+        probe at 71-80 C so retained probes normally sit above the primer mean
       - includes one ready-to-run `operation` (`DesignQpcrAssays`)
       - `primers design-qpcr` now accepts either that full
         `gentle.qpcr_seed_request.v1` payload directly or the nested bare

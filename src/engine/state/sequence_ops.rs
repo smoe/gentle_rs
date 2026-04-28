@@ -2798,9 +2798,9 @@ impl GentleEngine {
 
     pub(crate) fn primer_tm_model_description() -> String {
         format!(
-            "Displayed Tm values use GENtle's shared SantaLucia nearest-neighbor estimate with fixed assumptions: exact complement, {:.0} mM monovalent salt, {:.0} nM total oligo concentration, and no mismatch/dangling-end/Mg correction. Very short or ambiguous sequences fall back to the simple 2/4 estimate.",
-            Self::primer_tm_monovalent_salt_molar() * 1_000.0,
-            Self::primer_tm_total_oligo_concentration_molar() * 1_000_000_000.0
+            "Displayed Tm values use GENtle's shared Thermo Fisher-style modified Allawi/SantaLucia nearest-neighbor estimate with fixed assumptions: exact complement, {:.0} mM effective monovalent salt, {:.0} nM primer concentration, empirical high-fidelity adjustment, and no mismatch/dangling-end/Mg correction. Very short or ambiguous sequences fall back to the simple 2/4 estimate.",
+            Self::primer_tm_effective_monovalent_salt_molar() * 1_000.0,
+            Self::primer_tm_primer_concentration_molar() * 1_000_000_000.0
         )
     }
 
@@ -2811,7 +2811,7 @@ impl GentleEngine {
         let Some(canonical) = Self::canonical_dna_bases(primer) else {
             return Self::estimate_primer_tm_wallace_c(primer);
         };
-        if canonical.len() < 2 {
+        if canonical.len() < 8 {
             return Self::estimate_primer_tm_wallace_c(&canonical);
         }
         Self::estimate_primer_tm_nearest_neighbor_c(&canonical)
@@ -2844,13 +2844,19 @@ impl GentleEngine {
     }
 
     fn estimate_primer_tm_nearest_neighbor_c(primer: &[u8]) -> Option<f64> {
-        let mut delta_h_kcal_per_mol = 0.2;
-        let mut delta_s_cal_per_mol_k = -5.7;
+        const THERMOFISHER_TM_MIN_C: f64 = 0.0;
+        const THERMOFISHER_TM_MAX_C: f64 = 95.0;
+
+        let mut delta_h_kcal_per_mol = 0.0;
+        let mut delta_s_cal_per_mol_k = 0.0;
 
         for terminal_base in [primer.first().copied()?, primer.last().copied()?] {
             if matches!(terminal_base, b'A' | b'T') {
-                delta_h_kcal_per_mol += 2.2;
-                delta_s_cal_per_mol_k += 6.9;
+                delta_h_kcal_per_mol += 2.3;
+                delta_s_cal_per_mol_k += 4.1;
+            } else {
+                delta_h_kcal_per_mol += 0.1;
+                delta_s_cal_per_mol_k -= 2.8;
             }
         }
 
@@ -2860,11 +2866,7 @@ impl GentleEngine {
             delta_s_cal_per_mol_k += pair_s;
         }
 
-        let salt = Self::primer_tm_monovalent_salt_molar();
-        let concentration = Self::primer_tm_total_oligo_concentration_molar();
-        let duplex_phosphates_per_strand = primer.len().saturating_sub(1) as f64;
-        delta_s_cal_per_mol_k += 0.368 * duplex_phosphates_per_strand * salt.ln();
-
+        let concentration = Self::primer_tm_primer_concentration_molar();
         let concentration_term =
             (concentration / 4.0).ln() * Self::primer_tm_gas_constant_cal_per_mol_k();
         let denominator = delta_s_cal_per_mol_k + concentration_term;
@@ -2872,11 +2874,17 @@ impl GentleEngine {
             return None;
         }
 
-        let tm_kelvin = (delta_h_kcal_per_mol * 1_000.0) / denominator;
-        if !tm_kelvin.is_finite() || tm_kelvin <= 0.0 {
+        let salt_adjustment_c = 16.6 * Self::primer_tm_effective_monovalent_salt_molar().log10();
+        let raw_tm_c = (delta_h_kcal_per_mol * 1_000.0) / denominator + salt_adjustment_c - 273.15;
+        if !raw_tm_c.is_finite() {
             return None;
         }
-        Some(tm_kelvin - 273.15)
+        let adjusted_tm_c = (raw_tm_c + 3.0) * Self::primer_tm_thermofisher_adjustment_slope()
+            + Self::primer_tm_thermofisher_adjustment_intercept();
+        if !adjusted_tm_c.is_finite() {
+            return None;
+        }
+        Some(adjusted_tm_c.clamp(THERMOFISHER_TM_MIN_C, THERMOFISHER_TM_MAX_C))
     }
 
     fn primer_tm_nearest_neighbor_parameters(left: u8, right: u8) -> Option<(f64, f64)> {
@@ -2895,12 +2903,22 @@ impl GentleEngine {
         }
     }
 
-    fn primer_tm_monovalent_salt_molar() -> f64 {
-        0.05
+    fn primer_tm_effective_monovalent_salt_molar() -> f64 {
+        // Fixed effective salt term used by Thermo Fisher's v4 high-fidelity All97 path.
+        0.215273974689348
     }
 
-    fn primer_tm_total_oligo_concentration_molar() -> f64 {
-        250e-9
+    fn primer_tm_primer_concentration_molar() -> f64 {
+        500e-9
+    }
+
+    fn primer_tm_thermofisher_adjustment_slope() -> f64 {
+        // Empirical high-fidelity adjustment from Thermo Fisher's v4 All97 path.
+        0.9376798568
+    }
+
+    fn primer_tm_thermofisher_adjustment_intercept() -> f64 {
+        4.5185404499
     }
 
     fn primer_tm_gas_constant_cal_per_mol_k() -> f64 {
@@ -5000,12 +5018,39 @@ mod tests {
         let tm = GentleEngine::estimate_primer_tm_c(primer);
         let wallace = GentleEngine::estimate_primer_tm_wallace_c(primer);
         assert!(
-            (50.0..85.0).contains(&tm),
+            (60.0..75.0).contains(&tm),
             "nearest-neighbor Tm should stay in a realistic range, got {tm}"
         );
         assert!(
             (tm - wallace).abs() > 5.0,
             "nearest-neighbor estimate should materially differ from the Wallace estimate ({tm} vs {wallace})"
+        );
+    }
+
+    #[test]
+    fn estimate_primer_tm_matches_thermofisher_allawi_santalucia_examples() {
+        let cases = [
+            (b"CAGTCAGTCGATC".as_slice(), 46.85),
+            (b"ATGCGTACGTAGCTAGCTA".as_slice(), 60.80),
+            (b"GCGCGCGCGCGCGCGCGC".as_slice(), 82.38),
+            (b"AAAATCGATCGATCGATCGATCGATCGATC".as_slice(), 68.85),
+        ];
+        for (primer, expected_tm) in cases {
+            let observed = GentleEngine::estimate_primer_tm_c(primer);
+            assert!(
+                (observed - expected_tm).abs() < 0.01,
+                "Tm for {} should match Thermo Fisher-style Allawi/SantaLucia calculation ({expected_tm:.2}), got {observed:.2}",
+                String::from_utf8_lossy(primer)
+            );
+        }
+    }
+
+    #[test]
+    fn estimate_primer_tm_falls_back_for_too_short_oligos() {
+        let primer = b"ATGC";
+        assert_eq!(
+            GentleEngine::estimate_primer_tm_c(primer),
+            GentleEngine::estimate_primer_tm_wallace_c(primer)
         );
     }
 
@@ -5021,10 +5066,12 @@ mod tests {
     #[test]
     fn primer_tm_model_description_mentions_shared_assumptions() {
         let description = GentleEngine::primer_tm_model_description();
+        assert!(description.contains("Thermo Fisher"));
         assert!(description.contains("SantaLucia"));
         assert!(description.contains("Displayed Tm values"));
-        assert!(description.contains("50"));
-        assert!(description.contains("250"));
+        assert!(description.contains("215"));
+        assert!(description.contains("500"));
+        assert!(description.contains("high-fidelity"));
         assert!(description.contains("fall back"));
     }
 }

@@ -11054,7 +11054,7 @@ fn execute_primers_seed_from_feature_and_splicing() {
     );
     assert_eq!(
         seeded_qpcr_feature.output["operation"]["DesignQpcrAssays"]["probe"]["min_tm_c"].as_f64(),
-        Some(63.0)
+        Some(71.0)
     );
 
     let seeded_qpcr_splicing = execute_shell_command(

@@ -2020,10 +2020,10 @@ Deferred-scope rules:
 - Add first-class primer-pair design/report baseline (`DesignPrimerPairs`) with
   shared-shell report inspection/export (`primers design|list-reports|show-report|export-report`)
   and metadata persistence (`gentle.primer_design_report.v1`):
-  accepted and implemented baseline, including shared nearest-neighbor Tₘ
-  scoring with fixed salt/concentration assumptions (follow-up planned for
-  richer ion-/structure-aware thermodynamic scoring and off-target evaluation
-  tiers).
+  accepted and implemented baseline, including shared Thermo Fisher-style
+  modified Allawi/SantaLucia nearest-neighbor Tₘ scoring with fixed effective
+  salt/concentration assumptions (follow-up planned for richer
+  ion-/structure-aware thermodynamic scoring and off-target evaluation tiers).
 - Add Primer3 wrapper backend integration for `DesignPrimerPairs` with
   deterministic request/response normalization, provenance capture, and
   adapter-equivalent behavior across GUI/CLI/JS/Lua/agent/MCP:

@@ -3080,8 +3080,8 @@ fn seeded_qpcr_primer_constraint() -> PrimerDesignSideConstraint {
     PrimerDesignSideConstraint {
         min_length: 18,
         max_length: 24,
-        min_tm_c: 55.0,
-        max_tm_c: 65.0,
+        min_tm_c: 63.0,
+        max_tm_c: 73.0,
         min_gc_fraction: 0.35,
         max_gc_fraction: 0.75,
         max_anneal_hits: 1,
@@ -3093,8 +3093,8 @@ fn seeded_qpcr_probe_constraint() -> PrimerDesignSideConstraint {
     PrimerDesignSideConstraint {
         min_length: 20,
         max_length: 30,
-        min_tm_c: 63.0,
-        max_tm_c: 72.0,
+        min_tm_c: 71.0,
+        max_tm_c: 80.0,
         min_gc_fraction: 0.35,
         max_gc_fraction: 0.80,
         max_anneal_hits: 1,

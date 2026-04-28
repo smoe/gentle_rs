@@ -1194,11 +1194,15 @@ Current v1 scope and limits:
   - only the single-insert `defined_site` path is supported
   - only palindromic cutter recognition sequences are currently handled
   - overlap windows must be non-wrapping in the displayed destination sequence
-- current Tₘ fields use the shared GENtle nearest-neighbor estimate with fixed
-  assumptions:
+- current Tₘ fields use the shared GENtle Thermo Fisher-style modified
+  Allawi/SantaLucia nearest-neighbor estimate with fixed assumptions:
   - exact complement
-  - 50 mM monovalent salt
-  - 250 nM total oligo concentration
+  - Allawi/SantaLucia 1997 Watson-Crick nearest-neighbor table and terminal
+    initiation terms
+  - 215 mM effective monovalent salt term, matching the Thermo Fisher
+    high-fidelity calculator path
+  - 500 nM primer concentration
+  - Thermo Fisher high-fidelity empirical adjustment
   - no mismatch/dangling-end/Mg correction
   - fallback to the simple 2/4 estimate for ambiguous or very short sequences
 - generic PCR/qPCR request editing is intentionally out of scope for this
@@ -5174,9 +5178,9 @@ Primer-design shell command family (implemented):
   (`pcr.assay.qpcr`) for shell/CLI/ClawBio promotion.
 - qPCR-only seed helpers default to probe-based/TaqMan-like constraints:
   - primer length 18-24 bp
-  - primer Tm 55-65 C with pair delta <= 3 C
+  - primer Tm 63-73 C with pair delta <= 3 C
   - probe length 20-30 bp
-  - probe Tm 63-72 C, intended to land roughly 5-10 C above the primer mean
+  - probe Tm 71-80 C, intended to land roughly 5-10 C above the primer mean
   - amplicon range 80-200 bp
 - `primers seed-qpcr-from-splicing` additionally supports transcript-aware
   seeding:
