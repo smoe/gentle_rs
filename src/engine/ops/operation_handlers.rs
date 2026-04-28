@@ -16151,7 +16151,7 @@ impl GentleEngine {
                         }
                     ));
                     }
-                    result.construct_reasoning_graph = Some(graph);
+                    result.construct_reasoning_graph = Some(Box::new(graph));
                 }
                 Operation::ComputeDotplot {
                     seq_id,

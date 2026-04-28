@@ -3119,7 +3119,7 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_qpcr_panel: Option<Box<TranscriptQpcrPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub construct_reasoning_graph: Option<ConstructReasoningGraph>,
+    pub construct_reasoning_graph: Option<Box<ConstructReasoningGraph>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_confirmation_report: Option<SequencingConfirmationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

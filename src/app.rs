@@ -18905,7 +18905,7 @@ Error: `{err}`"
         match result {
             Ok(result) => {
                 if let Some(graph) = result.construct_reasoning_graph.as_ref() {
-                    self.protein_handoff_graph = Some(graph.clone());
+                    self.protein_handoff_graph = Some((**graph).clone());
                     self.sync_protein_handoff_candidate_selection();
                     let handoff_candidate_count = graph
                         .candidates
