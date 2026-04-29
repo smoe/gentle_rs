@@ -3190,9 +3190,9 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_candidates: Option<PromoterReporterCandidateSet>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub uniprot_projection_audit: Option<UniprotProjectionAuditReport>,
+    pub uniprot_projection_audit: Option<Box<UniprotProjectionAuditReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub uniprot_projection_audit_parity: Option<UniprotProjectionAuditParityReport>,
+    pub uniprot_projection_audit_parity: Option<Box<UniprotProjectionAuditParityReport>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

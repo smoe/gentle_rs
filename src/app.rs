@@ -19165,7 +19165,7 @@ Error: `{err}`"
                 });
         match result {
             Ok(result) => {
-                self.uniprot_audit_report = result.uniprot_projection_audit.clone();
+                self.uniprot_audit_report = result.uniprot_projection_audit.as_deref().cloned();
                 if let Some(report) = self.uniprot_audit_report.as_ref() {
                     self.uniprot_audit_report_id = report.report_id.clone();
                     self.uniprot_audit_transcript_id =
@@ -19205,7 +19205,8 @@ Error: `{err}`"
             });
         match result {
             Ok(result) => {
-                self.uniprot_audit_parity_report = result.uniprot_projection_audit_parity.clone();
+                self.uniprot_audit_parity_report =
+                    result.uniprot_projection_audit_parity.as_deref().cloned();
                 if let Some(report) = self.uniprot_audit_parity_report.as_ref() {
                     self.uniprot_audit_parity_report_id = report.report_id.clone();
                 }

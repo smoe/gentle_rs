@@ -14001,7 +14001,7 @@ impl GentleEngine {
                         Some(run_id.to_string()),
                     )?;
                     self.upsert_uniprot_projection_audit_report(report.clone())?;
-                    result.uniprot_projection_audit = Some(report.clone());
+                    result.uniprot_projection_audit = Some(Box::new(report.clone()));
                     result.messages.push(format!(
                     "Audited UniProt projection '{}' into report '{}' (transcripts={}, failing={})",
                     projection_id,
@@ -14043,7 +14043,7 @@ impl GentleEngine {
                         Some(run_id.to_string()),
                     )?;
                     self.upsert_uniprot_projection_audit_parity_report(report.clone())?;
-                    result.uniprot_projection_audit_parity = Some(report.clone());
+                    result.uniprot_projection_audit_parity = Some(Box::new(report.clone()));
                     result.messages.push(format!(
                     "Built UniProt projection audit parity report '{}' for '{}' (transcripts={}, divergent={})",
                     report.report_id,
