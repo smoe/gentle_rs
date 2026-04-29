@@ -3260,9 +3260,12 @@ fn test_cdna_qpcr_assay_requires_probe_inside_cdna_product() {
     let product = transcript.products.first().expect("one qPCR product");
     assert_eq!(product.probe_hit_indices, vec![0]);
     let map = report.transcript_map.as_ref().expect("qPCR transcript map");
-    assert!(map.svg.contains("forward primer"));
-    assert!(map.svg.contains("reverse primer"));
-    assert!(map.svg.contains("probe"));
+    assert!(map.svg.contains("forward primer 5&apos;-AAACCC-3&apos;"));
+    assert!(map.svg.contains("reverse primer 5&apos;-CCCAAA-3&apos;"));
+    assert!(map.svg.contains("probe 5&apos;-GGGCCC-3&apos;"));
+    assert!(map.svg.contains("primer binding strand: forward"));
+    assert!(map.svg.contains("primer binding strand: reverse"));
+    assert!(map.svg.contains("probe binding strand: forward"));
 }
 
 #[test]

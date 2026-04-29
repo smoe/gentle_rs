@@ -710,6 +710,30 @@ qPCR now has two clear command-line entry points:
   built-in probe-bearing qPCR strip for reports, ClawBio/OpenClaw bundles, or
   README-style promotion
 
+Concrete cDNA example from the bundled
+[`test_files/tp73.ncbi.gb`](test_files/tp73.ncbi.gb) locus:
+
+| TP73-AS3 qPCR intent | Forward primer | Probe | Reverse primer | Product / support | Genomic carryover check |
+| --- | --- | --- | --- | --- | --- |
+| Shared across all three TP73-AS3 transcripts (`NR_187362.1`, `NR_187363.1`, `NR_187364.1`) | `TTCCTGCTCCAGCAGAACAA`<br><sub>Tm 64.9 C; spans shared exon junction `9638..9750 -> 6128..6915`</sub> | `AGAAATCCTGCAAACTGAGGCTGGACG`<br><sub>Tm 71.5 C</sub> | `TGGGCTTCGTGGTAATCTCG`<br><sub>Tm 64.9 C</sub> | 100 bp cDNA product in all 3/3 TP73-AS3 transcript templates | Low risk in GENtle's cDNA qPCR test; genomic-equivalent product is 2822 bp |
+| Specific to the first TP73-AS3 transcript (`NR_187362.1`) | `TACATGCTTCCAGCAGCTTG`<br><sub>Tm 63.7 C; spans transcript-specific junction `16110..16430 -> 9638..9750`</sub> | `TGACATGAAAGGACCTCCGTGGCTG`<br><sub>Tm 71.2 C</sub> | `GCAAAGGGCAGTTTTGTTCTG`<br><sub>Tm 63.7 C; spans shared junction `9638..9750 -> 6128..6915`</sub> | 147 bp cDNA product in `NR_187362.1` only | Low risk; genomic-equivalent product is 9228 bp |
+
+Both examples were checked with the shared `primers test-cdna-qpcr` path
+against the TP73-AS3 splicing group. ClawBio can already route the same family
+through the `gentle-cloning` modes `qpcr-seed-from-splicing`, `qpcr-design`,
+`cdna-qpcr-test`, and `transcript-qpcr-panel`; it needs either a state/workflow
+that loads the TP73 locus or an equivalent prepared sequence context.
+
+The two transcript-map SVGs below are the direct graphical output of those
+`primers test-cdna-qpcr --svg ...` checks. Each row shows the transcript exon
+structure (`E1`, `E2`, ...), exon-junction ticks, amplicon, primer hits, and a
+one-sided primer/probe glyphs on their detected binding strands; the requested
+primer/probe sequences are printed once in the legend.
+
+![GENtle TP73-AS3 shared cDNA qPCR transcript map](docs/figures/tp73_as3_shared_cdna_qpcr.svg)
+
+![GENtle TP73-AS3 NR_187362.1-specific cDNA qPCR transcript map](docs/figures/tp73_as3_nr187362_cdna_qpcr.svg)
+
 For current detail on contracts and GUI behavior, see
 [`docs/protocol.md`](docs/protocol.md) and [`docs/gui.md`](docs/gui.md). For
 what is actively being built next, see [`docs/roadmap.md`](docs/roadmap.md).

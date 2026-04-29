@@ -120,6 +120,39 @@ cargo run --quiet --bin gentle_cli -- \
   docs/figures/qpcr_assay_protocol_cartoon.svg
 ```
 
+`tp73_as3_shared_cdna_qpcr.svg` and
+`tp73_as3_nr187362_cdna_qpcr.svg` are deterministic transcript-map exports
+from the shared cDNA qPCR assay tester. They use the bundled
+`test_files/tp73.ncbi.gb` locus, the TP73-AS3 splicing group seeded from
+feature id `17`, and the same oligos shown in the README table:
+
+- shared TP73-AS3 cDNA qPCR: one 100 bp product in all three annotated
+  TP73-AS3 transcripts
+- first-transcript-specific TP73-AS3 cDNA qPCR: one 147 bp product in
+  `NR_187362.1`, with the other two transcript rows shown as no-product
+  controls
+
+The SVG rows include group exon labels, exon-junction ticks, the amplicon,
+one-sided primer/probe hits on their detected binding strands, and the
+requested primer/probe sequences in the legend.
+
+Regenerate both transcript-map SVGs from the repository root with:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_as3_qpcr_readme_figures.state.json \
+  op '{"LoadFile":{"path":"test_files/tp73.ncbi.gb","as_id":"tp73"}}' \
+  --confirm
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_as3_qpcr_readme_figures.state.json \
+  shell 'primers test-cdna-qpcr tp73 17 --forward TTCCTGCTCCAGCAGAACAA --reverse TGGGCTTCGTGGTAATCTCG --probe AGAAATCCTGCAAACTGAGGCTGGACG --min-amplicon-bp 70 --max-amplicon-bp 200 --require-3prime-exact-bases 8 --svg docs/figures/tp73_as3_shared_cdna_qpcr.svg'
+
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_as3_qpcr_readme_figures.state.json \
+  shell 'primers test-cdna-qpcr tp73 17 --forward TACATGCTTCCAGCAGCTTG --reverse GCAAAGGGCAGTTTTGTTCTG --probe TGACATGAAAGGACCTCCGTGGCTG --min-amplicon-bp 70 --max-amplicon-bp 700 --require-3prime-exact-bases 8 --svg docs/figures/tp73_as3_nr187362_cdna_qpcr.svg'
+```
+
 `pcr_blunt_vector_ligation_template.json` is the small custom protocol-cartoon
 template for the blunt-end cloning README hero. It is intentionally more
 minimal than the Gibson strips: one blunt PCR product, one intact circular

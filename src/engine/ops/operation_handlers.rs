@@ -553,15 +553,23 @@ impl GentleEngine {
             ));
         }
         let primer_legend_y = 134.0f32;
-        let primer_legend = [
-            ("forward primer", &report.forward_primer, "#2563eb", 36.0f32),
+        let mut primer_legend = vec![
+            (
+                "forward primer",
+                report.forward_primer.as_str(),
+                "#2563eb",
+                36.0f32,
+            ),
             (
                 "reverse primer",
-                &report.reverse_primer,
+                report.reverse_primer.as_str(),
                 "#dc2626",
-                470.0f32,
+                385.0f32,
             ),
         ];
+        if let Some(probe) = report.probe.as_deref() {
+            primer_legend.push(("probe", probe, "#9333ea", 720.0f32));
+        }
         for (label, sequence, color, x) in primer_legend {
             svg.push_str(&format!(
                 "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"14\" height=\"8\" rx=\"2\" fill=\"{}\"/>",
@@ -860,6 +868,17 @@ impl GentleEngine {
             title.push_str("; junctions: ");
             title.push_str(&hit.covered_junction_labels.join(", "));
         }
+        if !hit.oligo_binding_strand.trim().is_empty() {
+            let strand_label = if role == "probe" {
+                "probe binding strand"
+            } else {
+                "primer binding strand"
+            };
+            title.push_str("; ");
+            title.push_str(strand_label);
+            title.push_str(": ");
+            title.push_str(hit.oligo_binding_strand.trim());
+        }
         if role == "forward" {
             let glyph_center_y = center_y - 18.0;
             let tip = x + w;
@@ -899,6 +918,53 @@ impl GentleEngine {
                 glyph_center_y + 9.0,
                 Self::dotplot_svg_xml_escape(&title)
             ));
+        } else if role == "probe" {
+            let binds_reverse = matches!(
+                hit.oligo_binding_strand.trim(),
+                "reverse" | "reverse_complement"
+            );
+            let glyph_center_y = if binds_reverse {
+                center_y + 18.0
+            } else {
+                center_y - 18.0
+            };
+            let notch = (w * 0.22).clamp(3.0, 7.0);
+            if binds_reverse {
+                let tip = x;
+                let right = x + w;
+                svg.push_str(&format!(
+                    "<polygon class=\"{}\" points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\"><title>{}</title></polygon>",
+                    class,
+                    tip,
+                    glyph_center_y,
+                    tip + notch,
+                    glyph_center_y - 7.0,
+                    right,
+                    glyph_center_y - 7.0,
+                    right,
+                    glyph_center_y + 7.0,
+                    tip + notch,
+                    glyph_center_y + 7.0,
+                    Self::dotplot_svg_xml_escape(&title)
+                ));
+            } else {
+                let tip = x + w;
+                svg.push_str(&format!(
+                    "<polygon class=\"{}\" points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\"><title>{}</title></polygon>",
+                    class,
+                    x,
+                    glyph_center_y - 7.0,
+                    tip - notch,
+                    glyph_center_y - 7.0,
+                    tip,
+                    glyph_center_y,
+                    tip - notch,
+                    glyph_center_y + 7.0,
+                    x,
+                    glyph_center_y + 7.0,
+                    Self::dotplot_svg_xml_escape(&title)
+                ));
+            }
         } else {
             svg.push_str(&format!(
                 "<rect class=\"{}\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"18\" rx=\"3\"><title>{}</title></rect>",

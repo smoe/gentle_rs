@@ -2327,10 +2327,11 @@ Shared shell command:
         group/source exon labels (`E1`, `E2`, ...) ordered by transcript
         strand, source-exon identity colors/patterns, and exon-junction ticks
         on each transcript cDNA coordinate axis; requested forward/reverse
-        primer sequences are shown once in the legend, forward primer glyphs
-        are raised above the cDNA axis, reverse primer glyphs are lowered below
-        it, and SVG tooltips retain the transcript-local exon ordinal when it
-        differs from the group label
+        primer and probe sequences are shown once in the legend, forward primer
+        glyphs are one-sided above the cDNA axis, reverse primer glyphs are
+        one-sided below it, probe glyphs are one-sided on the detected
+        probe-binding strand, and SVG tooltips retain the transcript-local exon
+        ordinal when it differs from the group label
       - `--path OUTPUT.json` writes the same structured report returned on
         stdout
       - `--svg OUTPUT.svg` writes the embedded transcript-map SVG as a

@@ -5275,9 +5275,10 @@ Simple PCR constraint handoff:
     forward/reverse primer hits, probe hits, group/source exon labels (`E1`,
     `E2`, ...) ordered by transcript strand, source-exon identity
     colors/patterns, and exon-junction ticks overlaid where products are
-    functional; requested forward/reverse primer sequences are shown once in
-    the legend, forward primer glyphs are raised above the cDNA axis, reverse
-    primer glyphs are lowered below it, and SVG tooltips retain the
+    functional; requested forward/reverse primer and probe sequences are shown
+    once in the legend, forward primer glyphs are one-sided above the cDNA
+    axis, reverse primer glyphs are one-sided below it, probe glyphs are
+    one-sided on the detected probe-binding strand, and SVG tooltips retain the
     transcript-local exon ordinal when it differs from the group label.
 - Report schema:
   - `gentle.cdna_assay_test_report.v1`
