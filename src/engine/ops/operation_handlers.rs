@@ -230,6 +230,140 @@ impl GentleEngine {
         (left, glyph_width)
     }
 
+    fn cdna_assay_exon_color(identity_index: usize) -> &'static str {
+        const COLORS: [&str; 12] = [
+            "#38bdf8", "#f59e0b", "#a78bfa", "#34d399", "#f472b6", "#60a5fa", "#f97316", "#22c55e",
+            "#c084fc", "#14b8a6", "#fb7185", "#84cc16",
+        ];
+        COLORS[identity_index % COLORS.len()]
+    }
+
+    fn push_cdna_assay_exon_pattern_defs(svg: &mut String, unique_exon_count: usize) {
+        if unique_exon_count == 0 {
+            return;
+        }
+        svg.push_str("<defs>");
+        for identity_index in 0..unique_exon_count {
+            let color = Self::cdna_assay_exon_color(identity_index);
+            svg.push_str(&format!(
+                "<pattern id=\"cdna_exon_{}\" patternUnits=\"userSpaceOnUse\" width=\"8\" height=\"8\">\
+                 <rect x=\"0\" y=\"0\" width=\"8\" height=\"8\" fill=\"{}\" fill-opacity=\".82\"/>",
+                identity_index, color
+            ));
+            match identity_index % 4 {
+                1 => svg.push_str(
+                    "<path d=\"M-2,8 L8,-2 M0,10 L10,0\" stroke=\"#0f172a\" stroke-opacity=\".22\" stroke-width=\"1\"/>",
+                ),
+                2 => svg.push_str(
+                    "<path d=\"M0,4 L8,4 M4,0 L4,8\" stroke=\"#0f172a\" stroke-opacity=\".18\" stroke-width=\"1\"/>",
+                ),
+                3 => svg.push_str(
+                    "<circle cx=\"2\" cy=\"2\" r=\"1\" fill=\"#0f172a\" fill-opacity=\".20\"/><circle cx=\"6\" cy=\"6\" r=\"1\" fill=\"#0f172a\" fill-opacity=\".20\"/>",
+                ),
+                _ => {}
+            }
+            svg.push_str("</pattern>");
+        }
+        svg.push_str("</defs>");
+    }
+
+    fn cdna_assay_exon_title(segment: &CdnaAssayTranscriptExonSegment) -> String {
+        format!(
+            "Exon E{}: cDNA {}-{}; source {}-{}",
+            segment.exon_ordinal,
+            segment.local_start_0based.saturating_add(1),
+            segment.local_end_0based_exclusive,
+            segment.source_start_0based.saturating_add(1),
+            segment.source_end_0based_exclusive
+        )
+    }
+
+    fn push_cdna_assay_exon_architecture_svg(
+        svg: &mut String,
+        track_left: f32,
+        track_width: f32,
+        cdna_length_bp: usize,
+        exon_segments: &[CdnaAssayTranscriptExonSegment],
+        exon_identity: &BTreeMap<(usize, usize), usize>,
+        center_y: f32,
+    ) {
+        let exon_center_y = center_y + 20.0;
+        svg.push_str(&format!(
+            "<line class=\"exon-connector\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\"/>",
+            track_left,
+            exon_center_y,
+            track_left + track_width,
+            exon_center_y
+        ));
+        for segment in exon_segments {
+            let (x, w) = Self::cdna_assay_map_interval_rect(
+                track_left,
+                track_width,
+                cdna_length_bp,
+                segment.local_start_0based,
+                segment.local_end_0based_exclusive,
+                6.0,
+            );
+            let identity_index = exon_identity
+                .get(&(
+                    segment.source_start_0based,
+                    segment.source_end_0based_exclusive,
+                ))
+                .copied()
+                .unwrap_or(segment.exon_ordinal.saturating_sub(1));
+            svg.push_str(&format!(
+                "<rect class=\"exon-block\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"13\" rx=\"2\" fill=\"url(#cdna_exon_{})\"><title>{}</title></rect>",
+                x,
+                exon_center_y - 6.5,
+                w,
+                identity_index,
+                Self::dotplot_svg_xml_escape(&Self::cdna_assay_exon_title(segment))
+            ));
+            if w >= 24.0 {
+                svg.push_str(&format!(
+                    "<text class=\"exon-label\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\">E{}</text>",
+                    x + w * 0.5,
+                    exon_center_y + 3.5,
+                    segment.exon_ordinal
+                ));
+            } else {
+                svg.push_str(&format!(
+                    "<text class=\"exon-label\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\">{}</text>",
+                    x + w * 0.5,
+                    exon_center_y + 17.0,
+                    segment.exon_ordinal
+                ));
+            }
+        }
+        for pair in exon_segments.windows(2) {
+            let boundary = pair[0].local_end_0based_exclusive;
+            let x = Self::cdna_assay_map_x(track_left, track_width, cdna_length_bp, boundary);
+            let title = format!(
+                "Junction E{}->E{}: {}-{} to {}-{}",
+                pair[0].exon_ordinal,
+                pair[1].exon_ordinal,
+                pair[0].source_start_0based.saturating_add(1),
+                pair[0].source_end_0based_exclusive,
+                pair[1].source_start_0based.saturating_add(1),
+                pair[1].source_end_0based_exclusive
+            );
+            svg.push_str(&format!(
+                "<line class=\"junction\" x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\"><title>{}</title></line>",
+                x,
+                center_y - 16.0,
+                x,
+                exon_center_y + 10.0,
+                Self::dotplot_svg_xml_escape(&title)
+            ));
+            svg.push_str(&format!(
+                "<text class=\"junction-label\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\">J{}</text>",
+                x,
+                exon_center_y + 23.0,
+                pair[0].exon_ordinal
+            ));
+        }
+    }
+
     fn cdna_assay_transcript_map(report: &CdnaAssayTestReport) -> CdnaAssayTranscriptMap {
         const MAX_ROWS: usize = 80;
         let shown_rows = report
@@ -243,12 +377,12 @@ impl GentleEngine {
             .len()
             .saturating_sub(shown_rows.len());
         let width_px = 1180usize;
-        let row_height = 46usize;
-        let height_px = 152usize + row_count.max(1) * row_height + 60usize;
+        let row_height = 70usize;
+        let height_px = 174usize + row_count.max(1) * row_height + 62usize;
         let track_left = 292.0f32;
         let track_width = 710.0f32;
         let track_right = track_left + track_width;
-        let row_top = 138.0f32;
+        let row_top = 154.0f32;
         let title = format!(
             "cDNA {} assay transcript map",
             report.assay_kind.to_ascii_uppercase()
@@ -271,6 +405,22 @@ impl GentleEngine {
                 omitted_transcript_count
             )
         };
+        let unique_exons = shown_rows
+            .iter()
+            .flat_map(|row| {
+                row.exon_segments.iter().map(|segment| {
+                    (
+                        segment.source_start_0based,
+                        segment.source_end_0based_exclusive,
+                    )
+                })
+            })
+            .collect::<BTreeSet<_>>();
+        let exon_identity = unique_exons
+            .into_iter()
+            .enumerate()
+            .map(|(idx, key)| (key, idx))
+            .collect::<BTreeMap<_, _>>();
 
         let mut svg = String::new();
         svg.push_str(&format!(
@@ -288,9 +438,10 @@ impl GentleEngine {
         ));
         svg.push_str(
             "<style>\
-            .bg{fill:#ffffff}.panel{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1}.title{font:700 24px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#0f172a}.sub{font:500 13px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#475569}.label{font:600 12px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#1e293b}.small{font:500 11px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#64748b}.axis{font:600 10px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#64748b}.track{stroke:#94a3b8;stroke-width:8;stroke-linecap:round}.grid{stroke:#e2e8f0;stroke-width:1}.product{fill:#16a34a;fill-opacity:.78}.forward{fill:#2563eb}.reverse{fill:#dc2626}.probe{fill:#9333ea}.faint{fill-opacity:.32}.status{font:600 12px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#334155}\
+            .bg{fill:#ffffff}.panel{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1}.title{font:700 24px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#0f172a}.sub{font:500 13px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#475569}.label{font:600 12px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#1e293b}.small{font:500 11px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#64748b}.axis{font:600 10px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#64748b}.track{stroke:#94a3b8;stroke-width:5;stroke-linecap:round}.grid{stroke:#e2e8f0;stroke-width:1}.product{fill:#16a34a;fill-opacity:.78}.forward{fill:#2563eb}.reverse{fill:#dc2626}.probe{fill:#9333ea}.faint{fill-opacity:.32}.status{font:600 12px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#334155}.exon-connector{stroke:#94a3b8;stroke-width:2;stroke-linecap:round;stroke-opacity:.72}.exon-block{stroke:#334155;stroke-opacity:.38;stroke-width:.8}.exon-label{font:700 9px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#0f172a}.junction{stroke:#0f172a;stroke-width:1.2;stroke-dasharray:3 3;stroke-opacity:.52}.junction-label{font:700 9px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#475569}\
             </style>",
         );
+        Self::push_cdna_assay_exon_pattern_defs(&mut svg, exon_identity.len().max(1));
         svg.push_str(&format!(
             "<rect class=\"bg\" x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/>",
             width_px, height_px
@@ -344,8 +495,33 @@ impl GentleEngine {
             ));
             legend_x += 126.0;
         }
+        if !exon_identity.is_empty() {
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"14\" height=\"8\" rx=\"2\" fill=\"url(#cdna_exon_0)\"/>",
+                legend_x,
+                legend_y - 7.0
+            ));
+            svg.push_str(&format!(
+                "<text class=\"small\" x=\"{:.1}\" y=\"{:.1}\">exon identity</text>",
+                legend_x + 20.0,
+                legend_y
+            ));
+            legend_x += 126.0;
+            svg.push_str(&format!(
+                "<line class=\"junction\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\"/>",
+                legend_x,
+                legend_y - 8.0,
+                legend_x,
+                legend_y + 2.0
+            ));
+            svg.push_str(&format!(
+                "<text class=\"small\" x=\"{:.1}\" y=\"{:.1}\">exon junction</text>",
+                legend_x + 12.0,
+                legend_y
+            ));
+        }
         svg.push_str(&format!(
-            "<text class=\"axis\" x=\"{:.1}\" y=\"126\" text-anchor=\"middle\">cDNA position within each transcript</text>",
+            "<text class=\"axis\" x=\"{:.1}\" y=\"136\" text-anchor=\"middle\">cDNA position, exon identity, and junction context within each transcript</text>",
             track_left + track_width * 0.5
         ));
 
@@ -359,7 +535,7 @@ impl GentleEngine {
 
         for (row_idx, row) in shown_rows.iter().enumerate() {
             let y = row_top + row_idx as f32 * row_height as f32;
-            let center_y = y + 20.0;
+            let center_y = y + 24.0;
             let label = if row.transcript_label.trim().is_empty()
                 || row.transcript_label == row.transcript_id
             {
@@ -387,10 +563,18 @@ impl GentleEngine {
                 y + 14.0,
                 Self::dotplot_svg_xml_escape(&short_label)
             ));
+            let exon_count_label = if row.exon_segments.is_empty() {
+                "exons n/a".to_string()
+            } else if row.exon_segments.len() == 1 {
+                "1 exon".to_string()
+            } else {
+                format!("{} exons", row.exon_segments.len())
+            };
             svg.push_str(&format!(
-                "<text class=\"small\" x=\"42\" y=\"{:.1}\">{} bp cDNA | {}</text>",
+                "<text class=\"small\" x=\"42\" y=\"{:.1}\">{} bp cDNA | {} | {}</text>",
                 y + 31.0,
                 row.cdna_length_bp,
+                exon_count_label,
                 Self::dotplot_svg_xml_escape(&row.status)
             ));
             for tick_idx in 0..=4 {
@@ -401,7 +585,7 @@ impl GentleEngine {
                     x,
                     y + 7.0,
                     x,
-                    y + 34.0
+                    y + 58.0
                 ));
             }
             svg.push_str(&format!(
@@ -416,6 +600,17 @@ impl GentleEngine {
                 center_y + 4.0,
                 row.cdna_length_bp
             ));
+            if !row.exon_segments.is_empty() {
+                Self::push_cdna_assay_exon_architecture_svg(
+                    &mut svg,
+                    track_left,
+                    track_width,
+                    row.cdna_length_bp,
+                    &row.exon_segments,
+                    &exon_identity,
+                    center_y,
+                );
+            }
 
             for product in &row.products {
                 let (x, w) = Self::cdna_assay_map_interval_rect(
@@ -426,17 +621,25 @@ impl GentleEngine {
                     product.amplicon_end_0based_exclusive,
                     5.0,
                 );
+                let mut product_title = format!(
+                    "Amplicon {}-{} ({} bp)",
+                    product.amplicon_start_0based.saturating_add(1),
+                    product.amplicon_end_0based_exclusive,
+                    product.amplicon_length_bp
+                );
+                if product.spans_junction {
+                    product_title.push_str("; spans exon junction");
+                }
+                if !product.covered_junction_labels.is_empty() {
+                    product_title.push_str("; junctions: ");
+                    product_title.push_str(&product.covered_junction_labels.join(", "));
+                }
                 svg.push_str(&format!(
                     "<rect class=\"product\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"14\" rx=\"4\"><title>{}</title></rect>",
                     x,
                     center_y - 7.0,
                     w,
-                    Self::dotplot_svg_xml_escape(&format!(
-                        "Amplicon {}-{} ({} bp)",
-                        product.amplicon_start_0based.saturating_add(1),
-                        product.amplicon_end_0based_exclusive,
-                        product.amplicon_length_bp
-                    ))
+                    Self::dotplot_svg_xml_escape(&product_title)
                 ));
                 if let Some(hit) = row.forward_hits.get(product.forward_hit_index) {
                     Self::push_cdna_assay_hit_svg(
@@ -585,7 +788,7 @@ impl GentleEngine {
         } else {
             role.to_string()
         };
-        let title = format!(
+        let mut title = format!(
             "{} hit {}-{} ({} mismatch{})",
             role,
             hit.start_0based.saturating_add(1),
@@ -593,6 +796,13 @@ impl GentleEngine {
             hit.mismatch_count,
             if hit.mismatch_count == 1 { "" } else { "es" }
         );
+        if hit.spans_junction {
+            title.push_str("; spans exon junction");
+        }
+        if !hit.covered_junction_labels.is_empty() {
+            title.push_str("; junctions: ");
+            title.push_str(&hit.covered_junction_labels.join(", "));
+        }
         if role == "forward" {
             let tip = x + w;
             let notch = (w * 0.28).clamp(3.0, 8.0);
@@ -7852,6 +8062,18 @@ impl GentleEngine {
             strand: template.strand.clone(),
             cdna_length_bp: template.sequence.len(),
             status: status.to_string(),
+            exon_segments: template
+                .local_exon_segments
+                .iter()
+                .enumerate()
+                .map(|(idx, segment)| CdnaAssayTranscriptExonSegment {
+                    exon_ordinal: idx.saturating_add(1),
+                    local_start_0based: segment.local_start_0based,
+                    local_end_0based_exclusive: segment.local_end_0based_exclusive,
+                    source_start_0based: segment.source_start_0based,
+                    source_end_0based_exclusive: segment.source_end_0based_exclusive,
+                })
+                .collect(),
             forward_hits,
             reverse_hits,
             probe_hits,

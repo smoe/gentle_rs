@@ -1918,6 +1918,10 @@ order. Durable architecture constraints and decisions remain in
   - persisted qPCR reports/list rows now also carry a compact best-assay
     summary plus machine-readable probe-placement label so shell/CLI/agent
     inspection can reuse the same explanation surface
+  - cDNA PCR/qPCR assay-test transcript-map SVGs now render transcript-order
+    exon labels (`E1`, `E2`, ...), source-exon identity colors/patterns, and
+    junction ticks alongside amplicon/primer/probe glyphs so ClawBio and CLI
+    review can explain which exon boundaries support an assay
   - remaining deterministic test gap:
     - TP73-AS2 / TP73-AS3 cover shared-mode success, no-competitor failure,
       transcript-specific junction-only success, transcript-specific

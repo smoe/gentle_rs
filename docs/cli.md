@@ -2323,8 +2323,9 @@ Shared shell command:
         supplied
       - every report carries a `transcript_map` SVG
         (`gentle.cdna_assay_transcript_map.v1`) that places functional
-        products, forward/reverse primer hits, and probe hits on each
-        transcript cDNA coordinate axis
+        products, forward/reverse primer hits, probe hits, transcript-order
+        exon labels (`E1`, `E2`, ...), source-exon identity colors/patterns,
+        and exon-junction ticks on each transcript cDNA coordinate axis
       - `--path OUTPUT.json` writes the same structured report returned on
         stdout
       - `--svg OUTPUT.svg` writes the embedded transcript-map SVG as a

@@ -4910,6 +4910,18 @@ pub struct CdnaAssayProduct {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One exon segment in transcript-local cDNA coordinates, preserving the source
+/// interval that identifies the exon across isoforms.
+pub struct CdnaAssayTranscriptExonSegment {
+    pub exon_ordinal: usize,
+    pub local_start_0based: usize,
+    pub local_end_0based_exclusive: usize,
+    pub source_start_0based: usize,
+    pub source_end_0based_exclusive: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Per-transcript result row for a cDNA PCR/qPCR assay test.
 pub struct CdnaAssayTranscriptResult {
     pub transcript_feature_id: usize,
@@ -4920,6 +4932,8 @@ pub struct CdnaAssayTranscriptResult {
     pub strand: String,
     pub cdna_length_bp: usize,
     pub status: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exon_segments: Vec<CdnaAssayTranscriptExonSegment>,
     #[serde(default)]
     pub forward_hits: Vec<CdnaAssayPrimerHit>,
     #[serde(default)]

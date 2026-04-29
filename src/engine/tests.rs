@@ -3147,6 +3147,11 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
         .expect("one transcript result");
     assert_eq!(transcript.transcript_id, "TX1");
     assert_eq!(transcript.status, "single_product");
+    assert_eq!(transcript.exon_segments.len(), 2);
+    assert_eq!(transcript.exon_segments[0].exon_ordinal, 1);
+    assert_eq!(transcript.exon_segments[0].local_start_0based, 0);
+    assert_eq!(transcript.exon_segments[0].local_end_0based_exclusive, 12);
+    assert_eq!(transcript.exon_segments[1].exon_ordinal, 2);
     let product = transcript.products.first().expect("one product");
     assert_eq!(product.amplicon_length_bp, 21);
     assert!(product.spans_junction);
@@ -3158,6 +3163,11 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert!(map.svg.starts_with("<svg "));
     assert!(map.svg.contains("TX1"));
     assert!(map.svg.contains("Amplicon 4-24 (21 bp)"));
+    assert!(map.svg.contains("exon identity"));
+    assert!(map.svg.contains("exon junction"));
+    assert!(map.svg.contains(">E1<"));
+    assert!(map.svg.contains(">E2<"));
+    assert!(map.svg.contains("Junction E1-&gt;E2"));
 }
 
 #[test]

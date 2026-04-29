@@ -5272,7 +5272,9 @@ Simple PCR constraint handoff:
   - every report includes `transcript_map` with schema
     `gentle.cdna_assay_transcript_map.v1`; the embedded SVG draws each shown
     transcript on its own cDNA coordinate axis, with amplicons, forward/reverse
-    primer hits, and probe hits overlaid where products are functional.
+    primer hits, probe hits, transcript-order exon labels (`E1`, `E2`, ...),
+    source-exon identity colors/patterns, and exon-junction ticks overlaid
+    where products are functional.
 - Report schema:
   - `gentle.cdna_assay_test_report.v1`
   - report-level fields include assay kind, source sequence/feature, group
@@ -5303,8 +5305,8 @@ Simple PCR constraint handoff:
     same detected-row rule for the figure unless `transcript_id` requests one
     specific record.
   - per-transcript rows include transcript feature id, transcript id/label,
-    optional source path, strand, cDNA length, status, primer/probe hits, and
-    products.
+    optional source path, strand, cDNA length, status, transcript-local exon
+    segments when source mapping is available, primer/probe hits, and products.
   - primer/probe hit rows include local cDNA coordinates, binding sequence,
     binding orientation, mismatch count, mapped source ranges, covered junction
     labels, and whether the hit spans a junction.
