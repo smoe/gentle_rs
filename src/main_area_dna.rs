@@ -1299,8 +1299,8 @@ struct EngineOpsUiState {
 #[cfg(test)]
 mod tests {
     use super::{
-        DnaPresentationMode, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP, MainAreaDna,
-        PcrDesignerMode, PcrPaintRole, PrimaryMapMode, QpcrTranscriptIntentUiMode,
+        DnaPresentationMode, FeatureCopyPayloadKind, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP,
+        MainAreaDna, PcrDesignerMode, PcrPaintRole, PrimaryMapMode, QpcrTranscriptIntentUiMode,
         RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
         RnaReadTaskOutcome, SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD,
         SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
@@ -1368,6 +1368,58 @@ mod tests {
                 .map(|(key, value)| (key.to_string().into(), Some(value.to_string())))
                 .collect(),
         }
+    }
+
+    #[test]
+    fn feature_copy_identifier_prefers_transcript_id() {
+        let feature = make_feature(
+            "mRNA",
+            vec![
+                ("gene", "TP73"),
+                ("transcript_id", "NM_005427.4"),
+                ("product", "tumor protein p73, transcript variant 1"),
+            ],
+        );
+
+        assert_eq!(
+            MainAreaDna::feature_copy_payload(&feature, FeatureCopyPayloadKind::Identifier),
+            "NM_005427.4"
+        );
+    }
+
+    #[test]
+    fn feature_copy_description_prefers_product_text() {
+        let feature = make_feature(
+            "mRNA",
+            vec![
+                ("transcript_id", "NM_005427.4"),
+                ("product", "tumor protein p73, transcript variant 1"),
+            ],
+        );
+
+        assert_eq!(
+            MainAreaDna::feature_copy_payload(&feature, FeatureCopyPayloadKind::Description),
+            "tumor protein p73, transcript variant 1"
+        );
+    }
+
+    #[test]
+    fn feature_copy_popup_text_includes_title_range_and_details() {
+        let feature = make_feature(
+            "mRNA",
+            vec![
+                ("transcript_id", "NM_005427.4"),
+                ("product", "tumor protein p73, transcript variant 1"),
+                ("gene", "TP73"),
+            ],
+        );
+
+        let text = MainAreaDna::feature_copy_payload(&feature, FeatureCopyPayloadKind::PopupText);
+
+        assert!(text.contains("NM_005427.4"));
+        assert!(text.contains("1..10 (10 bp)"));
+        assert!(text.contains("product: tumor protein p73, transcript variant 1"));
+        assert!(text.contains("gene: TP73"));
     }
 
     fn sanitize_for_path_for_test(s: &str) -> String {
@@ -12736,6 +12788,45 @@ struct FeatureTreeEntry {
     regulatory_primary_group_label: Option<String>,
     regulatory_secondary_group_key: Option<String>,
     regulatory_secondary_group_label: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FeatureCopyPayloadKind {
+    Identifier,
+    Description,
+    PopupText,
+}
+
+impl FeatureCopyPayloadKind {
+    fn menu_label(self) -> &'static str {
+        match self {
+            Self::Identifier => "Copy identifier",
+            Self::Description => "Copy description",
+            Self::PopupText => "Copy tooltip text",
+        }
+    }
+
+    fn hover_text(self) -> &'static str {
+        match self {
+            Self::Identifier => {
+                "Copy the most specific stable feature identifier, such as transcript_id or protein_id"
+            }
+            Self::Description => {
+                "Copy the human-readable feature description/title shown by GENtle"
+            }
+            Self::PopupText => {
+                "Copy the full feature popup text: title, range, and qualifier details"
+            }
+        }
+    }
+
+    fn status_label(self) -> &'static str {
+        match self {
+            Self::Identifier => "identifier",
+            Self::Description => "description",
+            Self::PopupText => "tooltip text",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -50473,6 +50564,130 @@ impl MainAreaDna {
         None
     }
 
+    fn feature_copy_identifier_text(feature: &gb_io::seq::Feature) -> String {
+        Self::feature_tree_first_nonempty_qualifier(
+            feature,
+            &[
+                "transcript_id",
+                "mrna_id",
+                "rna_id",
+                "protein_id",
+                "gene",
+                "gene_id",
+                "locus_tag",
+                "standard_name",
+                "label",
+                "name",
+                "db_xref",
+            ],
+        )
+        .unwrap_or_else(|| RenderDna::feature_name(feature))
+    }
+
+    fn feature_copy_description_text(feature: &gb_io::seq::Feature) -> String {
+        Self::feature_tree_first_nonempty_qualifier(
+            feature,
+            &[
+                "product",
+                "label",
+                "name",
+                "standard_name",
+                "note",
+                "function",
+                "gene",
+                "gene_synonym",
+                "bound_moiety",
+                "regulatory_class",
+            ],
+        )
+        .unwrap_or_else(|| RenderDna::feature_name(feature))
+    }
+
+    fn feature_copy_popup_text(feature: &gb_io::seq::Feature) -> String {
+        let mut lines = Vec::new();
+        let title = RenderDna::feature_name(feature);
+        if !title.trim().is_empty() {
+            lines.push(title);
+        }
+        let range = RenderDna::feature_range_text(feature);
+        if !range.trim().is_empty() {
+            lines.push(range);
+        }
+        lines.extend(RenderDna::feature_detail_lines(feature));
+        if lines.is_empty() {
+            lines.push(feature.kind.to_string());
+        }
+        lines.join("\n")
+    }
+
+    fn feature_copy_payload(feature: &gb_io::seq::Feature, kind: FeatureCopyPayloadKind) -> String {
+        match kind {
+            FeatureCopyPayloadKind::Identifier => Self::feature_copy_identifier_text(feature),
+            FeatureCopyPayloadKind::Description => Self::feature_copy_description_text(feature),
+            FeatureCopyPayloadKind::PopupText => Self::feature_copy_popup_text(feature),
+        }
+    }
+
+    fn copy_feature_payload_to_clipboard(
+        &mut self,
+        ctx: &egui::Context,
+        feature_id: usize,
+        kind: FeatureCopyPayloadKind,
+    ) {
+        let payload = {
+            let dna = self.dna.read().expect("DNA lock poisoned");
+            dna.features()
+                .get(feature_id)
+                .map(|feature| Self::feature_copy_payload(feature, kind))
+        };
+        match payload {
+            Some(payload) if !payload.trim().is_empty() => {
+                ctx.copy_text(payload);
+                self.op_status = format!(
+                    "Copied feature {} for feature #{}",
+                    kind.status_label(),
+                    feature_id + 1
+                );
+            }
+            Some(_) => {
+                self.op_status = format!(
+                    "Feature #{} has no copyable {}",
+                    feature_id + 1,
+                    kind.status_label()
+                );
+            }
+            None => {
+                self.op_status = format!("Feature #{} is no longer available", feature_id + 1);
+            }
+        }
+    }
+
+    fn render_feature_copy_context_menu_items(
+        &mut self,
+        ui: &mut egui::Ui,
+        feature_id: usize,
+    ) -> bool {
+        let mut copied = false;
+        for kind in [
+            FeatureCopyPayloadKind::Identifier,
+            FeatureCopyPayloadKind::Description,
+            FeatureCopyPayloadKind::PopupText,
+        ] {
+            if ui
+                .button(kind.menu_label())
+                .on_hover_text(kind.hover_text())
+                .clicked()
+            {
+                self.copy_feature_payload_to_clipboard(ui.ctx(), feature_id, kind);
+                copied = true;
+            }
+        }
+        if copied {
+            ui.close();
+        }
+        copied
+    }
+
     fn feature_tree_rna_discriminator(
         feature: &gb_io::seq::Feature,
         range_label: &str,
@@ -51668,6 +51883,7 @@ impl MainAreaDna {
         let mut open_splicing_feature: Option<usize> = None;
         let mut open_rna_read_mapping_feature: Option<usize> = None;
         let mut open_dotplot_feature: Option<usize> = None;
+        let mut copy_feature_payload: Option<(usize, FeatureCopyPayloadKind)> = None;
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
         {
@@ -51801,6 +52017,23 @@ impl MainAreaDna {
                                         fit_feature = Some(entry.id);
                                         ui.close();
                                     }
+                                    ui.separator();
+                                    for kind in [
+                                        FeatureCopyPayloadKind::Identifier,
+                                        FeatureCopyPayloadKind::Description,
+                                        FeatureCopyPayloadKind::PopupText,
+                                    ] {
+                                        if ui
+                                            .button(kind.menu_label())
+                                            .on_hover_text(kind.hover_text())
+                                            .clicked()
+                                        {
+                                            copy_feature_payload = Some((entry.id, kind));
+                                            ui.close();
+                                            return;
+                                        }
+                                    }
+                                    ui.separator();
                                     let promoter_response = ui.add_enabled(
                                         entry.can_seed_promoter_anchor,
                                         egui::Button::new("Use as promoter anchor (Engine Ops)"),
@@ -51988,6 +52221,9 @@ impl MainAreaDna {
                     }
                 });
             }
+        }
+        if let Some((feature_id, kind)) = copy_feature_payload {
+            self.copy_feature_payload_to_clipboard(ui.ctx(), feature_id, kind);
         }
         if let Some((id, additive)) = clicked_feature {
             if additive {
@@ -52202,45 +52438,66 @@ impl MainAreaDna {
                     .strong()
                     .size((detail_font_size + 1.0).clamp(9.0, 26.0)),
             );
-            if let Some(FeatureExpertView::Splicing(splicing)) =
-                self.description_cache_expert_view.clone()
-            {
-                title_response = title_response.on_hover_text(
-                    "Right-click for splicing-linked quick actions: Splicing Expert, RNA-read Mapping, or transcript-derived dotplot",
-                );
+            let description_copy_feature_id = self.description_cache_selected_id;
+            let description_splicing = match self.description_cache_expert_view.clone() {
+                Some(FeatureExpertView::Splicing(splicing)) => Some(splicing),
+                _ => None,
+            };
+            let has_description_copy = description_copy_feature_id.is_some();
+            let has_description_splicing = description_splicing.is_some();
+            if has_description_copy || has_description_splicing {
+                let title_hover = match (has_description_copy, has_description_splicing) {
+                    (true, true) => "Right-click to copy feature text or open splicing-linked quick actions",
+                    (true, false) => {
+                        "Right-click to copy the feature identifier, description, or full tooltip text"
+                    }
+                    (false, true) => "Right-click for splicing-linked quick actions: Splicing Expert, RNA-read Mapping, or transcript-derived dotplot",
+                    (false, false) => "",
+                };
+                title_response = title_response.on_hover_text(title_hover);
                 title_response.context_menu(|ui| {
-                    if ui
-                        .button("Open Splicing Window")
-                        .on_hover_text(
-                            "Open or focus the dedicated Splicing Expert window for this feature",
-                        )
-                        .clicked()
-                    {
-                        self.open_splicing_expert_window_for_view(&splicing);
-                        self.focus_splicing_expert_window_view(ui.ctx(), &splicing);
-                        ui.close();
+                    if let Some(feature_id) = description_copy_feature_id {
+                        if self.render_feature_copy_context_menu_items(ui, feature_id) {
+                            return;
+                        }
+                        if description_splicing.is_some() {
+                            ui.separator();
+                        }
                     }
-                    if ui
-                        .button("Open RNA-read Mapping")
-                        .on_hover_text(
-                            "Open or focus the dedicated RNA-read Mapping workspace for this splicing locus",
-                        )
-                        .clicked()
-                    {
-                        self.open_rna_read_mapping_workspace_for_view(&splicing);
-                        self.focus_rna_read_mapping_workspace_view(ui.ctx(), &splicing);
-                        ui.close();
-                    }
-                    if ui
-                        .button("Derive + Dotplot")
-                        .on_hover_text(
-                            "Derive the selected transcript sequence and open the transcript-vs-genomic dotplot workspace",
-                        )
-                        .clicked()
-                    {
-                        self.derive_selected_transcript_and_open_dotplot(&splicing);
-                        self.focus_dotplot_workspace_view(ui.ctx());
-                        ui.close();
+                    if let Some(splicing) = description_splicing.as_ref() {
+                        if ui
+                            .button("Open Splicing Window")
+                            .on_hover_text(
+                                "Open or focus the dedicated Splicing Expert window for this feature",
+                            )
+                            .clicked()
+                        {
+                            self.open_splicing_expert_window_for_view(splicing);
+                            self.focus_splicing_expert_window_view(ui.ctx(), splicing);
+                            ui.close();
+                        }
+                        if ui
+                            .button("Open RNA-read Mapping")
+                            .on_hover_text(
+                                "Open or focus the dedicated RNA-read Mapping workspace for this splicing locus",
+                            )
+                            .clicked()
+                        {
+                            self.open_rna_read_mapping_workspace_for_view(splicing);
+                            self.focus_rna_read_mapping_workspace_view(ui.ctx(), splicing);
+                            ui.close();
+                        }
+                        if ui
+                            .button("Derive + Dotplot")
+                            .on_hover_text(
+                                "Derive the selected transcript sequence and open the transcript-vs-genomic dotplot workspace",
+                            )
+                            .clicked()
+                        {
+                            self.derive_selected_transcript_and_open_dotplot(splicing);
+                            self.focus_dotplot_workspace_view(ui.ctx());
+                            ui.close();
+                        }
                     }
                 });
             }
@@ -53182,6 +53439,10 @@ impl MainAreaDna {
                     if showed_any {
                         ui.separator();
                     }
+                    if self.render_feature_copy_context_menu_items(ui, feature_id) {
+                        return;
+                    }
+                    ui.separator();
                     let variant_response = ui.add_enabled(
                         promoter_feature_id.is_some() || promoter_reasoning_evidence_id.is_some(),
                         egui::Button::new("Open Promoter Design"),

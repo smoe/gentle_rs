@@ -478,6 +478,7 @@ Feature tree grouping:
   row, not only the text label, accepts the context menu gesture:
   - `Focus feature (current zoom)`
   - `Fit feature in view` (linear map mode)
+  - `Copy identifier`, `Copy description`, and `Copy tooltip text`
   - `Use as promoter anchor (Engine Ops)` for `mRNA`/`transcript` rows
     (seeds anchored extraction defaults with strand-aware boundary/direction)
   - `Open Splicing Window`, `Open RNA-read Mapping`, and `Derive + Dotplot`
@@ -492,7 +493,9 @@ Feature tree grouping:
   - `Feature Details` pane buttons:
     `Open Splicing Window`, `Open RNA-read Mapping`, `Derive + Dotplot`
   - right-click the `Feature Details` title to reopen those same three
-    destinations from the currently selected splicing-compatible feature
+    destinations from the currently selected splicing-compatible feature, or
+    to copy the selected feature identifier, description, or complete tooltip
+    text
 - `Filter` narrows all feature rows in the tree.
   - free text searches kind/label/range and selected qualifiers
   - scoped terms are supported:
@@ -2025,6 +2028,9 @@ Controls:
      - applies simple left/right flank windows from the current beginner
        distance setting
      - opens or focuses the dedicated PCR Designer
+   - when a feature is under the cursor or selected, the map context menu also
+     exposes the same `Copy identifier`, `Copy description`, and
+     `Copy tooltip text` actions as the feature tree.
 - direct ROI seeding now opens or focuses the dedicated `PCR Designer`
   specialist so pair-PCR and qPCR setup can stay out of the crowded lower
   `Engine Ops` pane.
