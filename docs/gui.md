@@ -4618,8 +4618,8 @@ Supported in the current flow:
       - `forward_3=...` (alias `f3=...`)
       - `reverse_5=...` (alias `r5=...`)
       - `reverse_3=...` (alias `r3=...`)
-- NCBI GenBank XML files (`.xml`, `GBSet/GBSeq`)
-  - unsupported XML dialects are rejected with explicit diagnostics
+- NCBI sequence XML files (`.xml`, `GBSet/GBSeq`, `INSDSet/INSDSeq`)
+  - other unsupported XML dialects are rejected with explicit diagnostics
 
 Example FASTA headers:
 

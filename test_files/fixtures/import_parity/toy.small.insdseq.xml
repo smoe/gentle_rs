@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<INSDSet>
+  <INSDSeq>
+    <INSDSeq_locus>TOY_SMALL_120</INSDSeq_locus>
+    <INSDSeq_length>120</INSDSeq_length>
+    <INSDSeq_moltype>DNA</INSDSeq_moltype>
+    <INSDSeq_topology>linear</INSDSeq_topology>
+    <INSDSeq_division>SYN</INSDSeq_division>
+    <INSDSeq_update-date>23-FEB-2026</INSDSeq_update-date>
+    <INSDSeq_create-date>23-FEB-2026</INSDSeq_create-date>
+    <INSDSeq_definition>Synthetic 120 bp test sequence for GENtle cross-format import checks.</INSDSeq_definition>
+    <INSDSeq_primary-accession>TOY000001</INSDSeq_primary-accession>
+    <INSDSeq_accession-version>TOY000001.1</INSDSeq_accession-version>
+    <INSDSeq_source>synthetic DNA construct</INSDSeq_source>
+    <INSDSeq_organism>synthetic DNA construct</INSDSeq_organism>
+    <INSDSeq_taxonomy>other sequences; artificial sequences.</INSDSeq_taxonomy>
+    <INSDSeq_sequence>atggccattgtaatgggccgctgaaagggtgcccgatagttaaccggttaaacccgggtttaaacccgggtttaaaccggatccggtaccgagctcgaattcgcgtacgatcgtacgcta</INSDSeq_sequence>
+    <INSDSeq_feature-table>
+      <INSDFeature>
+        <INSDFeature_key>source</INSDFeature_key>
+        <INSDFeature_location>1..120</INSDFeature_location>
+        <INSDFeature_intervals>
+          <INSDInterval>
+            <INSDInterval_from>1</INSDInterval_from>
+            <INSDInterval_to>120</INSDInterval_to>
+          </INSDInterval>
+        </INSDFeature_intervals>
+        <INSDFeature_quals>
+          <INSDQualifier>
+            <INSDQualifier_name>organism</INSDQualifier_name>
+            <INSDQualifier_value>synthetic DNA construct</INSDQualifier_value>
+          </INSDQualifier>
+          <INSDQualifier>
+            <INSDQualifier_name>mol_type</INSDQualifier_name>
+            <INSDQualifier_value>other DNA</INSDQualifier_value>
+          </INSDQualifier>
+        </INSDFeature_quals>
+      </INSDFeature>
+      <INSDFeature>
+        <INSDFeature_key>gene</INSDFeature_key>
+        <INSDFeature_location>5..30</INSDFeature_location>
+        <INSDFeature_intervals>
+          <INSDInterval>
+            <INSDInterval_from>5</INSDInterval_from>
+            <INSDInterval_to>30</INSDInterval_to>
+          </INSDInterval>
+        </INSDFeature_intervals>
+        <INSDFeature_quals>
+          <INSDQualifier>
+            <INSDQualifier_name>gene</INSDQualifier_name>
+            <INSDQualifier_value>toyA</INSDQualifier_value>
+          </INSDQualifier>
+          <INSDQualifier>
+            <INSDQualifier_name>locus_tag</INSDQualifier_name>
+            <INSDQualifier_value>toyA</INSDQualifier_value>
+          </INSDQualifier>
+        </INSDFeature_quals>
+      </INSDFeature>
+      <INSDFeature>
+        <INSDFeature_key>gene</INSDFeature_key>
+        <INSDFeature_location>complement(60..90)</INSDFeature_location>
+        <INSDFeature_intervals>
+          <INSDInterval>
+            <INSDInterval_from>60</INSDInterval_from>
+            <INSDInterval_to>90</INSDInterval_to>
+            <INSDInterval_iscomp>true</INSDInterval_iscomp>
+          </INSDInterval>
+        </INSDFeature_intervals>
+        <INSDFeature_quals>
+          <INSDQualifier>
+            <INSDQualifier_name>gene</INSDQualifier_name>
+            <INSDQualifier_value>toyB</INSDQualifier_value>
+          </INSDQualifier>
+          <INSDQualifier>
+            <INSDQualifier_name>locus_tag</INSDQualifier_name>
+            <INSDQualifier_value>toyB</INSDQualifier_value>
+          </INSDQualifier>
+        </INSDFeature_quals>
+      </INSDFeature>
+      <INSDFeature>
+        <INSDFeature_key>misc_feature</INSDFeature_key>
+        <INSDFeature_location>96..112</INSDFeature_location>
+        <INSDFeature_intervals>
+          <INSDInterval>
+            <INSDInterval_from>96</INSDInterval_from>
+            <INSDInterval_to>112</INSDInterval_to>
+          </INSDInterval>
+        </INSDFeature_intervals>
+        <INSDFeature_quals>
+          <INSDQualifier>
+            <INSDQualifier_name>note</INSDQualifier_name>
+            <INSDQualifier_value>barcode</INSDQualifier_value>
+          </INSDQualifier>
+        </INSDFeature_quals>
+      </INSDFeature>
+    </INSDSeq_feature-table>
+  </INSDSeq>
+</INSDSet>

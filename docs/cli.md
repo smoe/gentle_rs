@@ -1508,9 +1508,8 @@ Current CLI workflows rely on sequence files supported by internal loaders:
       - `forward_3=...` (alias `f3=...`)
       - `reverse_5=...` (alias `r5=...`)
       - `reverse_3=...` (alias `r3=...`)
-- NCBI GenBank XML (`GBSet/GBSeq`)
-  - currently rejected with explicit diagnostics for unsupported XML dialects
-    (for example `INSDSet/INSDSeq`)
+- NCBI sequence XML (`GBSet/GBSeq`, `INSDSet/INSDSeq`)
+  - other XML dialects are rejected with explicit diagnostics
 
 Example FASTA headers:
 

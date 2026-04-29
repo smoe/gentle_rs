@@ -1,8 +1,8 @@
-//! NCBI GenBank XML (`GBSet/GBSeq`) parser and dialect detection helpers.
+//! NCBI sequence XML parser and dialect detection helpers.
 //!
-//! This module intentionally supports only `GBSet/GBSeq` in the current pass.
-//! Other XML dialects (notably `INSDSet/INSDSeq`) are detected and rejected
-//! with explicit diagnostics so import behavior stays deterministic.
+//! `GBSet/GBSeq` and `INSDSet/INSDSeq` records are normalized into the same
+//! `gb_io::seq::Seq` representation used by GenBank/EMBL import, keeping XML
+//! support on the shared sequence/feature semantics path.
 
 use anyhow::{Result, anyhow};
 use gb_io::seq::{Feature, Location, Seq, Topology};
@@ -37,28 +37,37 @@ pub fn detect_ncbi_xml_dialect(input: &str) -> NcbiXmlDialect {
 }
 
 pub fn parse_gbseq_xml_file(path: &str) -> Result<Vec<Seq>> {
+    Ok(parse_gbseq_xml_file_with_dialect(path)?.0)
+}
+
+pub fn parse_gbseq_xml_file_with_dialect(path: &str) -> Result<(Vec<Seq>, NcbiXmlDialect)> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| anyhow!("Could not read XML file '{path}': {e}"))?;
-    parse_gbseq_xml_text(&text).map_err(|e| anyhow!("Could not parse XML file '{path}': {e}"))
+    parse_gbseq_xml_text_with_dialect(&text)
+        .map_err(|e| anyhow!("Could not parse XML file '{path}': {e}"))
 }
 
 pub fn parse_gbseq_xml_text(xml: &str) -> Result<Vec<Seq>> {
-    match detect_ncbi_xml_dialect(xml) {
-        NcbiXmlDialect::GbSetGbSeq => {}
-        NcbiXmlDialect::InsdSetInsdSeq => {
+    Ok(parse_gbseq_xml_text_with_dialect(xml)?.0)
+}
+
+pub fn parse_gbseq_xml_text_with_dialect(xml: &str) -> Result<(Vec<Seq>, NcbiXmlDialect)> {
+    let dialect = detect_ncbi_xml_dialect(xml);
+    let parsed = match dialect {
+        NcbiXmlDialect::GbSetGbSeq => parse_gbset_xml_text(xml)?,
+        NcbiXmlDialect::InsdSetInsdSeq => parse_insdset_xml_text(xml)?,
+        NcbiXmlDialect::Unknown => {
             return Err(anyhow!(
-                "Unsupported XML dialect '{}'; only GBSet/GBSeq is currently supported",
+                "Unsupported XML dialect: expected '{}' or '{}' root element",
+                NcbiXmlDialect::GbSetGbSeq.label(),
                 NcbiXmlDialect::InsdSetInsdSeq.label()
             ));
         }
-        NcbiXmlDialect::Unknown => {
-            return Err(anyhow!(
-                "Unsupported XML dialect: expected '{}' root element",
-                NcbiXmlDialect::GbSetGbSeq.label()
-            ));
-        }
-    }
+    };
+    Ok((parsed, dialect))
+}
 
+fn parse_gbset_xml_text(xml: &str) -> Result<Vec<Seq>> {
     let parsed: GbSetXml =
         quick_xml::de::from_str(xml).map_err(|e| anyhow!("Malformed GBSet XML: {e}"))?;
     if parsed.sequences.is_empty() {
@@ -67,9 +76,26 @@ pub fn parse_gbseq_xml_text(xml: &str) -> Result<Vec<Seq>> {
 
     parsed
         .sequences
-        .iter()
+        .into_iter()
+        .map(NcbiXmlRecord::from)
         .enumerate()
-        .map(|(record_idx, record)| gbseq_record_to_seq(record, record_idx))
+        .map(|(record_idx, record)| ncbi_xml_record_to_seq(&record, "GBSeq", record_idx))
+        .collect()
+}
+
+fn parse_insdset_xml_text(xml: &str) -> Result<Vec<Seq>> {
+    let parsed: InsdSetXml =
+        quick_xml::de::from_str(xml).map_err(|e| anyhow!("Malformed INSDSet XML: {e}"))?;
+    if parsed.sequences.is_empty() {
+        return Err(anyhow!("Malformed INSDSet XML: no INSDSeq records found"));
+    }
+
+    parsed
+        .sequences
+        .into_iter()
+        .map(NcbiXmlRecord::from)
+        .enumerate()
+        .map(|(record_idx, record)| ncbi_xml_record_to_seq(&record, "INSDSeq", record_idx))
         .collect()
 }
 
@@ -154,7 +180,275 @@ struct GbQualifierXml {
     value: Option<String>,
 }
 
-fn gbseq_record_to_seq(record: &GbSeqXml, record_idx: usize) -> Result<Seq> {
+#[derive(Debug, Deserialize)]
+#[serde(rename = "INSDSet")]
+struct InsdSetXml {
+    #[serde(rename = "INSDSeq", default)]
+    sequences: Vec<InsdSeqXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InsdSeqXml {
+    #[serde(rename = "INSDSeq_locus")]
+    locus: Option<String>,
+    #[serde(rename = "INSDSeq_moltype")]
+    moltype: Option<String>,
+    #[serde(rename = "INSDSeq_topology")]
+    topology: Option<String>,
+    #[serde(rename = "INSDSeq_division")]
+    division: Option<String>,
+    #[serde(rename = "INSDSeq_definition")]
+    definition: Option<String>,
+    #[serde(rename = "INSDSeq_primary-accession")]
+    primary_accession: Option<String>,
+    #[serde(rename = "INSDSeq_accession-version")]
+    accession_version: Option<String>,
+    #[serde(rename = "INSDSeq_source")]
+    _source: Option<String>,
+    #[serde(rename = "INSDSeq_sequence")]
+    sequence: Option<String>,
+    #[serde(rename = "INSDSeq_feature-table")]
+    feature_table: Option<InsdFeatureTableXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InsdFeatureTableXml {
+    #[serde(rename = "INSDFeature", default)]
+    features: Vec<InsdFeatureXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InsdFeatureXml {
+    #[serde(rename = "INSDFeature_key")]
+    key: Option<String>,
+    #[serde(rename = "INSDFeature_location")]
+    location: Option<String>,
+    #[serde(rename = "INSDFeature_intervals")]
+    intervals: Option<InsdFeatureIntervalsXml>,
+    #[serde(rename = "INSDFeature_quals")]
+    qualifiers: Option<InsdFeatureQualsXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InsdFeatureIntervalsXml {
+    #[serde(rename = "INSDInterval", default)]
+    intervals: Vec<InsdIntervalXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InsdIntervalXml {
+    #[serde(rename = "INSDInterval_from")]
+    from: Option<usize>,
+    #[serde(rename = "INSDInterval_to")]
+    to: Option<usize>,
+    #[serde(rename = "INSDInterval_point")]
+    point: Option<usize>,
+    #[serde(rename = "INSDInterval_iscomp")]
+    iscomp: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InsdFeatureQualsXml {
+    #[serde(rename = "INSDQualifier", default)]
+    qualifiers: Vec<InsdQualifierXml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InsdQualifierXml {
+    #[serde(rename = "INSDQualifier_name")]
+    name: Option<String>,
+    #[serde(rename = "INSDQualifier_value")]
+    value: Option<String>,
+}
+
+#[derive(Debug)]
+struct NcbiXmlRecord {
+    locus: Option<String>,
+    moltype: Option<String>,
+    topology: Option<String>,
+    division: Option<String>,
+    definition: Option<String>,
+    primary_accession: Option<String>,
+    accession_version: Option<String>,
+    sequence: Option<String>,
+    features: Vec<NcbiXmlFeature>,
+}
+
+#[derive(Debug)]
+struct NcbiXmlFeature {
+    key: Option<String>,
+    location: Option<String>,
+    intervals: Vec<NcbiXmlInterval>,
+    qualifiers: Vec<NcbiXmlQualifier>,
+}
+
+#[derive(Debug)]
+struct NcbiXmlInterval {
+    from: Option<usize>,
+    to: Option<usize>,
+    point: Option<usize>,
+    iscomp: Option<bool>,
+}
+
+#[derive(Debug)]
+struct NcbiXmlQualifier {
+    name: Option<String>,
+    value: Option<String>,
+}
+
+impl From<GbSeqXml> for NcbiXmlRecord {
+    fn from(record: GbSeqXml) -> Self {
+        Self {
+            locus: record.locus,
+            moltype: record.moltype,
+            topology: record.topology,
+            division: record.division,
+            definition: record.definition,
+            primary_accession: record.primary_accession,
+            accession_version: record.accession_version,
+            sequence: record.sequence,
+            features: record
+                .feature_table
+                .map(|table| {
+                    table
+                        .features
+                        .into_iter()
+                        .map(NcbiXmlFeature::from)
+                        .collect()
+                })
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl From<GbFeatureXml> for NcbiXmlFeature {
+    fn from(feature: GbFeatureXml) -> Self {
+        Self {
+            key: feature.key,
+            location: feature.location,
+            intervals: feature
+                .intervals
+                .map(|intervals| {
+                    intervals
+                        .intervals
+                        .into_iter()
+                        .map(NcbiXmlInterval::from)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            qualifiers: feature
+                .qualifiers
+                .map(|qualifiers| {
+                    qualifiers
+                        .qualifiers
+                        .into_iter()
+                        .map(NcbiXmlQualifier::from)
+                        .collect()
+                })
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl From<GbIntervalXml> for NcbiXmlInterval {
+    fn from(interval: GbIntervalXml) -> Self {
+        Self {
+            from: interval.from,
+            to: interval.to,
+            point: interval.point,
+            iscomp: interval.iscomp,
+        }
+    }
+}
+
+impl From<GbQualifierXml> for NcbiXmlQualifier {
+    fn from(qualifier: GbQualifierXml) -> Self {
+        Self {
+            name: qualifier.name,
+            value: qualifier.value,
+        }
+    }
+}
+
+impl From<InsdSeqXml> for NcbiXmlRecord {
+    fn from(record: InsdSeqXml) -> Self {
+        Self {
+            locus: record.locus,
+            moltype: record.moltype,
+            topology: record.topology,
+            division: record.division,
+            definition: record.definition,
+            primary_accession: record.primary_accession,
+            accession_version: record.accession_version,
+            sequence: record.sequence,
+            features: record
+                .feature_table
+                .map(|table| {
+                    table
+                        .features
+                        .into_iter()
+                        .map(NcbiXmlFeature::from)
+                        .collect()
+                })
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl From<InsdFeatureXml> for NcbiXmlFeature {
+    fn from(feature: InsdFeatureXml) -> Self {
+        Self {
+            key: feature.key,
+            location: feature.location,
+            intervals: feature
+                .intervals
+                .map(|intervals| {
+                    intervals
+                        .intervals
+                        .into_iter()
+                        .map(NcbiXmlInterval::from)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            qualifiers: feature
+                .qualifiers
+                .map(|qualifiers| {
+                    qualifiers
+                        .qualifiers
+                        .into_iter()
+                        .map(NcbiXmlQualifier::from)
+                        .collect()
+                })
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl From<InsdIntervalXml> for NcbiXmlInterval {
+    fn from(interval: InsdIntervalXml) -> Self {
+        Self {
+            from: interval.from,
+            to: interval.to,
+            point: interval.point,
+            iscomp: interval.iscomp,
+        }
+    }
+}
+
+impl From<InsdQualifierXml> for NcbiXmlQualifier {
+    fn from(qualifier: InsdQualifierXml) -> Self {
+        Self {
+            name: qualifier.name,
+            value: qualifier.value,
+        }
+    }
+}
+
+fn ncbi_xml_record_to_seq(
+    record: &NcbiXmlRecord,
+    record_label: &str,
+    record_idx: usize,
+) -> Result<Seq> {
     let mut seq = Seq::empty();
 
     let sequence_text: String = record
@@ -167,7 +461,8 @@ fn gbseq_record_to_seq(record: &GbSeqXml, record_idx: usize) -> Result<Seq> {
         .collect();
     if sequence_text.is_empty() {
         return Err(anyhow!(
-            "GBSeq record {} is missing sequence data",
+            "{} record {} is missing sequence data",
+            record_label,
             record_idx + 1
         ));
     }
@@ -188,23 +483,29 @@ fn gbseq_record_to_seq(record: &GbSeqXml, record_idx: usize) -> Result<Seq> {
     seq.source = None;
     seq.seq = sequence_text.into_bytes();
     seq.len = Some(seq.seq.len());
-    seq.features = parse_features(record, seq.name.as_deref().unwrap_or("<unnamed>"))?;
+    seq.features = parse_features(
+        record,
+        record_label,
+        seq.name.as_deref().unwrap_or("<unnamed>"),
+    )?;
 
     Ok(seq)
 }
 
-fn parse_features(record: &GbSeqXml, seq_label: &str) -> Result<Vec<Feature>> {
+fn parse_features(
+    record: &NcbiXmlRecord,
+    record_label: &str,
+    seq_label: &str,
+) -> Result<Vec<Feature>> {
     let mut features = Vec::new();
-    let Some(feature_table) = &record.feature_table else {
-        return Ok(features);
-    };
-    for (feature_idx, raw_feature) in feature_table.features.iter().enumerate() {
+    for (feature_idx, raw_feature) in record.features.iter().enumerate() {
         let feature_key = nonempty_owned(raw_feature.key.as_deref())
             .unwrap_or_else(|| "misc_feature".to_string());
         let feature_kind = feature_key.clone().into();
         let location_text = resolve_feature_location_text(raw_feature).ok_or_else(|| {
             anyhow!(
-                "GBSeq '{}' feature #{} ('{}') is missing location",
+                "{} '{}' feature #{} ('{}') is missing location",
+                record_label,
                 seq_label,
                 feature_idx + 1,
                 feature_key
@@ -212,7 +513,8 @@ fn parse_features(record: &GbSeqXml, seq_label: &str) -> Result<Vec<Feature>> {
         })?;
         let parsed_location = Location::from_gb_format(location_text.as_str()).map_err(|e| {
             anyhow!(
-                "GBSeq '{}' feature #{} ('{}') has invalid location '{}': {}",
+                "{} '{}' feature #{} ('{}') has invalid location '{}': {}",
+                record_label,
                 seq_label,
                 feature_idx + 1,
                 feature_key,
@@ -222,7 +524,8 @@ fn parse_features(record: &GbSeqXml, seq_label: &str) -> Result<Vec<Feature>> {
         })?;
         let location = canonicalize_location(parsed_location).map_err(|e| {
             anyhow!(
-                "GBSeq '{}' feature #{} ('{}') could not canonicalize location '{}': {}",
+                "{} '{}' feature #{} ('{}') could not canonicalize location '{}': {}",
+                record_label,
                 seq_label,
                 feature_idx + 1,
                 feature_key,
@@ -240,20 +543,14 @@ fn parse_features(record: &GbSeqXml, seq_label: &str) -> Result<Vec<Feature>> {
     Ok(features)
 }
 
-fn resolve_feature_location_text(feature: &GbFeatureXml) -> Option<String> {
+fn resolve_feature_location_text(feature: &NcbiXmlFeature) -> Option<String> {
     if let Some(location) = nonempty_owned(feature.location.as_deref()) {
         return Some(location);
     }
-    location_from_intervals(
-        feature
-            .intervals
-            .as_ref()
-            .map(|raw| raw.intervals.as_slice())
-            .unwrap_or_default(),
-    )
+    location_from_intervals(feature.intervals.as_slice())
 }
 
-fn location_from_intervals(intervals: &[GbIntervalXml]) -> Option<String> {
+fn location_from_intervals(intervals: &[NcbiXmlInterval]) -> Option<String> {
     if intervals.is_empty() {
         return None;
     }
@@ -278,12 +575,9 @@ fn location_from_intervals(intervals: &[GbIntervalXml]) -> Option<String> {
     }
 }
 
-fn parse_qualifiers(feature: &GbFeatureXml) -> Vec<gb_io::seq::Qualifier> {
+fn parse_qualifiers(feature: &NcbiXmlFeature) -> Vec<gb_io::seq::Qualifier> {
     let mut qualifiers = vec![];
-    let Some(raw_quals) = feature.qualifiers.as_ref() else {
-        return qualifiers;
-    };
-    for qualifier in &raw_quals.qualifiers {
+    for qualifier in &feature.qualifiers {
         let Some(name) = nonempty_owned(qualifier.name.as_deref()) else {
             continue;
         };
@@ -345,7 +639,9 @@ mod tests {
     fn test_parse_gbseq_xml_text_toy_small() {
         let text = std::fs::read_to_string("test_files/fixtures/import_parity/toy.small.gbseq.xml")
             .expect("read toy XML");
-        let parsed = parse_gbseq_xml_text(&text).expect("parse GBSet/GBSeq");
+        let (parsed, dialect) =
+            parse_gbseq_xml_text_with_dialect(&text).expect("parse GBSet/GBSeq");
+        assert_eq!(dialect, NcbiXmlDialect::GbSetGbSeq);
         assert_eq!(parsed.len(), 1);
         let seq = &parsed[0];
         assert_eq!(seq.seq.len(), 120);
@@ -357,9 +653,68 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_gbseq_xml_text_rejects_insdset() {
-        let err = parse_gbseq_xml_text("<INSDSet><INSDSeq/></INSDSet>")
-            .expect_err("INSDSet should be rejected");
+    fn test_parse_gbseq_xml_text_toy_small_insdset() {
+        let text =
+            std::fs::read_to_string("test_files/fixtures/import_parity/toy.small.insdseq.xml")
+                .expect("read toy INSD XML");
+        let (parsed, dialect) =
+            parse_gbseq_xml_text_with_dialect(&text).expect("parse INSDSet/INSDSeq");
+        assert_eq!(dialect, NcbiXmlDialect::InsdSetInsdSeq);
+        assert_eq!(parsed.len(), 1);
+        let seq = &parsed[0];
+        assert_eq!(seq.seq.len(), 120);
+        assert!(seq.features.iter().any(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("gene")
+                && feature
+                    .qualifier_values("gene")
+                    .any(|value| value == "toyB")
+        }));
+    }
+
+    #[test]
+    fn test_parse_gbseq_xml_text_multi_record_interval_and_flag_qualifier_edges() {
+        let text = std::fs::read_to_string("test_files/fixtures/import_parity/toy.multi.gbseq.xml")
+            .expect("read multi XML");
+        let (parsed, dialect) =
+            parse_gbseq_xml_text_with_dialect(&text).expect("parse multi GBSet/GBSeq");
+        assert_eq!(dialect, NcbiXmlDialect::GbSetGbSeq);
+        assert_eq!(parsed.len(), 2);
+
+        let first_gene = parsed[0]
+            .features
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("first record should contain a gene");
+        assert_eq!(first_gene.location.to_gb_format(), "join(1..4,9..12)");
+        assert!(
+            first_gene
+                .qualifiers
+                .iter()
+                .any(|(key, value)| key.as_ref() == "pseudo" && value.is_none()),
+            "value-less XML qualifier should be preserved"
+        );
+
+        let second_misc = parsed[1]
+            .features
+            .iter()
+            .find(|feature| {
+                feature
+                    .kind
+                    .to_string()
+                    .eq_ignore_ascii_case("misc_feature")
+            })
+            .expect("second record should contain misc_feature");
+        assert_eq!(second_misc.location.to_gb_format(), "complement(5..16)");
+        assert_eq!(
+            second_misc.qualifier_values("note").next(),
+            Some("line one line two")
+        );
+    }
+
+    #[test]
+    fn test_parse_gbseq_xml_text_rejects_unknown_xml() {
+        let err = parse_gbseq_xml_text("<OtherSet><OtherSeq/></OtherSet>")
+            .expect_err("unknown XML dialect should be rejected");
         assert!(
             err.to_string().contains("Unsupported XML dialect"),
             "expected unsupported-dialect error, got: {err}"
