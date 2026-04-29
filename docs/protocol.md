@@ -2164,9 +2164,8 @@ Isoform-panel operation semantics (current):
 - deterministic probe order: `SnapGene -> GenBank -> EMBL -> FASTA -> XML`
 - SnapGene `.dna` files are supported for sequence/topology/features/basic
   notes import through the shared loader
-- XML scope: `GBSet/GBSeq` is supported
-- unsupported XML dialects (for example `INSDSet/INSDSeq`) return explicit
-  schema/dialect diagnostics
+- XML scope: `GBSet/GBSeq` and `INSDSet/INSDSeq` are supported
+- other unsupported XML dialects return explicit schema/dialect diagnostics
 
 `ExtendGenomeAnchor` side semantics:
 

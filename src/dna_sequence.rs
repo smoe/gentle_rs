@@ -1402,6 +1402,17 @@ mod tests {
                 .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
         );
 
+        let insd_xml_path = "test_files/fixtures/import_parity/toy.small.insdseq.xml";
+        let insd_loaded =
+            GENtleApp::load_from_file(insd_xml_path).expect("load INSD XML by extension");
+        assert_eq!(insd_loaded.len(), 120);
+        assert!(insd_loaded.features().iter().any(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("gene")
+                && feature
+                    .qualifier_values("gene")
+                    .any(|value| value == "toyA")
+        }));
+
         let xml_text = fs::read_to_string(xml_path).expect("read XML fixture");
         let mut tmp = Builder::new()
             .suffix(".txt")

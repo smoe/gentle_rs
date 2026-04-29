@@ -72,7 +72,7 @@ pub mod main_area_dna;
 pub mod mcp_server;
 /// Methylation-site detection and state helpers.
 pub mod methylation_sites;
-/// NCBI GenBank XML (`GBSet/GBSeq`) parsing and dialect detection helpers.
+/// NCBI sequence XML (`GBSet/GBSeq`, `INSDSet/INSDSeq`) parsing helpers.
 pub mod ncbi_genbank_xml;
 /// Open-reading-frame detection logic.
 pub mod open_reading_frame;

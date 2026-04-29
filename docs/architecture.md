@@ -148,9 +148,8 @@ Import-format policy (GenBank-first, XML additive):
   used by GenBank import before touching business logic.
 - The first XML scope is sequence + feature/annotation import only (no
   format-specific behavior divergence).
-- XML parser adapters should target explicit NCBI dialects (`GBSet/GBSeq`
-  first, `INSDSet/INSDSeq` second) and reject unknown dialects with clear
-  diagnostics.
+- XML parser adapters should target explicit NCBI dialects (`GBSet/GBSeq`,
+  `INSDSet/INSDSeq`) and reject unknown dialects with clear diagnostics.
 - Cross-format fixtures must remain small and paired (same biological content
   across `.fa`, `.gb`, `.xml`) so parity tests can detect semantic drift.
 - Proprietary or binary parser logic that has value beyond GENtle itself

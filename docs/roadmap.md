@@ -3224,7 +3224,8 @@ Notes:
    - view-model contract is not yet formalized as a frontend-neutral schema
 7. guideRNA workflow remains incomplete (guide-candidate model, oligo
    generation/export, macro template flow; draft in `docs/rna_guides_spec.md`).
-8. XML import follow-up remains for `INSDSet/INSDSeq` dialect support.
+8. XML import now covers `GBSet/GBSeq` and `INSDSet/INSDSeq`; remaining XML
+   follow-ups are additional edge-case parity fixtures.
 9. Visualization and workflow UX gaps remain:
    - chromosomal-scale BED overview/density view is missing
    - genome-extract failure diagnostics now include alias-aware guidance
@@ -4429,17 +4430,15 @@ Status:
 1. Implemented baseline:
    - deterministic runtime import detection order now includes XML fallback:
      `GenBank -> EMBL -> FASTA -> XML`.
-   - `GBSet/GBSeq` sequence import is mapped to existing `DNAsequence` +
-     feature qualifier structures (no format-specific biology logic branch).
+   - `GBSet/GBSeq` and `INSDSet/INSDSeq` sequence import is mapped to existing
+     `DNAsequence` + feature qualifier structures (no format-specific biology
+     logic branch).
    - genome annotation parser dispatch now ingests `.xml` annotation sources
      and normalizes through existing GenBank-like `GenomeGeneRecord` mapping.
    - GUI open-sequence dialog now exposes XML file filters and docs list XML
      support explicitly.
-   - unsupported XML dialects (for example `INSDSet/INSDSeq`) return explicit,
-     deterministic diagnostics.
+   - unsupported XML dialects return explicit, deterministic diagnostics.
 2. Remaining follow-ups:
-   - implement additive `INSDSet/INSDSeq` adapter without diverging semantic
-     normalization.
    - extend cross-format parity fixtures/tests to include additional XML edge
      cases (multi-record, qualifier-only, interval-only locations).
    - keep large exploratory XML samples out of committed default fixtures.
@@ -5974,7 +5973,9 @@ Post-baseline follow-ups:
     checksums)
   - stricter schema evolution and compatibility reporting for protocol bundles.
 - Define shared frontend-neutral view-model schema for tracks/features/overlays.
-- Complete XML follow-up (`INSDSet/INSDSeq`) without semantic divergence.
+- Extend XML parity coverage with multi-record, qualifier-only, and
+  interval-only edge fixtures while keeping XML import on shared GenBank-like
+  semantics.
 - Add sequencing-confirmation evidence contracts (read-aligned construct
   validation summaries) as a deterministic shared-engine path.
   - shipped: report store + shell/CLI list/show/export path for called-read

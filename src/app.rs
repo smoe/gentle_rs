@@ -7239,7 +7239,7 @@ Error: `{err}`"
             .add_filter("GenBank", &["gb", "gbk", "gbff", "genbank"])
             .add_filter("EMBL", &["embl", "emb"])
             .add_filter("FASTA", &["fa", "fasta", "fna", "fas"])
-            .add_filter("NCBI GenBank XML (GBSet/GBSeq)", &["xml"])
+            .add_filter("NCBI Sequence XML (GBSet/GBSeq, INSDSet/INSDSeq)", &["xml"])
             .pick_files()
         {
             self.open_new_windows_from_files(&paths);
