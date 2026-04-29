@@ -34,7 +34,8 @@
           "min_amplicon_bp": 10,
           "max_amplicon_bp": 50,
           "require_3prime_exact_bases": 4,
-          "path": "artifacts/cdna_assay_demo.pcr_report.json"
+          "path": "artifacts/cdna_assay_demo.pcr_report.json",
+          "svg_path": "artifacts/cdna_assay_demo.pcr_transcript_map.svg"
         }
       },
       {
@@ -48,7 +49,8 @@
           "min_amplicon_bp": 10,
           "max_amplicon_bp": 50,
           "require_3prime_exact_bases": 4,
-          "path": "artifacts/cdna_assay_demo.qpcr_report.json"
+          "path": "artifacts/cdna_assay_demo.qpcr_report.json",
+          "svg_path": "artifacts/cdna_assay_demo.qpcr_transcript_map.svg"
         }
       }
     ]

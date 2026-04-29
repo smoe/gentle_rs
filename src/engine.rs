@@ -311,6 +311,7 @@ const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
+const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map.v1";
 const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
 const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
@@ -3467,6 +3468,8 @@ pub enum Operation {
         require_3prime_exact_bases: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        svg_path: Option<String>,
     },
     TestCdnaQpcr {
         seq_id: SeqId,
@@ -3486,6 +3489,8 @@ pub enum Operation {
         require_3prime_exact_bases: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        svg_path: Option<String>,
     },
     BuildTranscriptQpcrPanel {
         seq_id: SeqId,
@@ -3513,6 +3518,8 @@ pub enum Operation {
         require_3prime_exact_bases: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        svg_path: Option<String>,
     },
     DeriveTranscriptSequences {
         seq_id: SeqId,

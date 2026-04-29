@@ -1853,6 +1853,11 @@ order. Durable architecture constraints and decisions remain in
       evidence, the mapped genomic equivalent of the cDNA amplicon, and the
       configured max amplicon window; medium/high/unknown classifications emit
       explicit DNase/no-RT-control warnings
+    - cDNA assay reports now also carry
+      `gentle.cdna_assay_transcript_map.v1`, an engine-rendered SVG map of
+      functional amplicons plus forward/reverse/probe binding positions across
+      the shown transcript set; `svg_path` / `--svg` exports the same map and
+      ClawBio direct/workflow examples collect it as a graphical artifact
     - assay-test reports now also carry a report-level construct-length
       summary plus `gentle.oligo_qc_report.v1`: deterministic exact
       reverse-complement run QC for supplied primers/probes, including

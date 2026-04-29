@@ -11576,6 +11576,7 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
             max_mismatches: None,
             require_3prime_exact_bases: Some(4),
             path: None,
+            svg_path: None,
         },
     )
     .expect("cDNA PCR shell report");
@@ -11618,6 +11619,7 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
             max_mismatches: None,
             require_3prime_exact_bases: Some(4),
             path: None,
+            svg_path: None,
         },
     )
     .expect("cDNA qPCR shell report");
@@ -11641,6 +11643,15 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
             ["genomic_carryover_rationale"]
             .as_str()
             .is_some_and(|value| value.contains("probe spans an exon-exon junction"))
+    );
+    assert_eq!(
+        qpcr.output["report"]["transcript_map"]["schema"].as_str(),
+        Some("gentle.cdna_assay_transcript_map.v1")
+    );
+    assert!(
+        qpcr.output["report"]["transcript_map"]["svg"]
+            .as_str()
+            .is_some_and(|svg| svg.contains("TX1") && svg.contains("probe"))
     );
 }
 
@@ -11682,6 +11693,7 @@ fn execute_primers_test_cdna_qpcr_fasta_reports_ensembl_products() {
         ],
     );
     let mut engine = GentleEngine::default();
+    let svg_path = td.path().join("cdna_qpcr_fasta_map.svg");
     let run = execute_shell_command(
         &mut engine,
         &ShellCommand::PrimersTestCdnaQpcrFasta {
@@ -11698,6 +11710,7 @@ fn execute_primers_test_cdna_qpcr_fasta_reports_ensembl_products() {
             max_mismatches: None,
             require_3prime_exact_bases: Some(8),
             path: None,
+            svg_path: Some(svg_path.to_string_lossy().to_string()),
         },
     )
     .expect("cDNA qPCR FASTA shell report");
@@ -11721,6 +11734,18 @@ fn execute_primers_test_cdna_qpcr_fasta_reports_ensembl_products() {
         run.output["report"]["transcript_results"][0]["products"][0]["amplicon_length_bp"].as_u64(),
         Some(130)
     );
+    assert_eq!(
+        run.output["svg_path"].as_str(),
+        Some(svg_path.to_string_lossy().as_ref())
+    );
+    assert_eq!(
+        run.output["preferred_artifacts"][0]["artifact_id"].as_str(),
+        Some("cdna_assay_transcript_map_svg")
+    );
+    let svg_text = std::fs::read_to_string(&svg_path).expect("FASTA map SVG");
+    assert!(svg_text.contains("ENST00000637775.1"));
+    assert!(svg_text.contains("ENST00000648526.1"));
+    assert!(svg_text.contains("130 bp"));
 }
 
 #[test]

@@ -4781,11 +4781,16 @@ mod tests {
             "GGGCCC".to_string(),
             "--transcript-id".to_string(),
             "TX1".to_string(),
+            "--svg".to_string(),
+            "qpcr_map.svg".to_string(),
         ])
         .expect("parse primers test-cdna-qpcr");
         assert!(matches!(
             primers_test_cdna_qpcr,
-            ShellCommand::PrimersTestCdnaQpcr { .. }
+            ShellCommand::PrimersTestCdnaQpcr {
+                svg_path: Some(path),
+                ..
+            } if path == "qpcr_map.svg"
         ));
 
         let primers_test_cdna_qpcr_fasta = parse_shell_tokens(&[

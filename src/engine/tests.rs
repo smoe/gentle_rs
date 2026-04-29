@@ -3152,6 +3152,12 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert!(product.spans_junction);
     assert!(!product.covered_junction_labels.is_empty());
     assert_eq!(product.source_ranges_0based.len(), 2);
+    let map = report.transcript_map.as_ref().expect("transcript map");
+    assert_eq!(map.schema, "gentle.cdna_assay_transcript_map.v1");
+    assert_eq!(map.media_type, "image/svg+xml");
+    assert!(map.svg.starts_with("<svg "));
+    assert!(map.svg.contains("TX1"));
+    assert!(map.svg.contains("Amplicon 4-24 (21 bp)"));
 }
 
 #[test]
@@ -3191,6 +3197,10 @@ fn test_cdna_qpcr_assay_requires_probe_inside_cdna_product() {
     assert!(transcript.probe_hits[0].spans_junction);
     let product = transcript.products.first().expect("one qPCR product");
     assert_eq!(product.probe_hit_indices, vec![0]);
+    let map = report.transcript_map.as_ref().expect("qPCR transcript map");
+    assert!(map.svg.contains("forward primer"));
+    assert!(map.svg.contains("reverse primer"));
+    assert!(map.svg.contains("probe"));
 }
 
 #[test]
@@ -3240,6 +3250,7 @@ fn test_cdna_qpcr_operation_writes_report_json() {
     let mut engine = cdna_assay_test_engine();
     let td = tempdir().expect("tempdir");
     let path = td.path().join("cdna_qpcr_report.json");
+    let svg_path = td.path().join("cdna_qpcr_map.svg");
     let result = engine
         .apply(Operation::TestCdnaQpcr {
             seq_id: "cdna_src".to_string(),
@@ -3253,6 +3264,7 @@ fn test_cdna_qpcr_operation_writes_report_json() {
             max_mismatches: None,
             require_3prime_exact_bases: Some(4),
             path: Some(path.to_string_lossy().to_string()),
+            svg_path: Some(svg_path.to_string_lossy().to_string()),
         })
         .expect("operation report");
     assert!(
@@ -3266,6 +3278,10 @@ fn test_cdna_qpcr_operation_writes_report_json() {
     assert!(report_text.contains("\"overall_status\": \"single_product\""));
     assert!(report_text.contains("\"construct_lengths\""));
     assert!(report_text.contains("\"oligo_qc\""));
+    assert!(report_text.contains("\"transcript_map\""));
+    let svg_text = fs::read_to_string(&svg_path).expect("map svg file");
+    assert!(svg_text.contains("gentle.cdna_assay_transcript_map.v1"));
+    assert!(svg_text.contains("TX1"));
 }
 
 fn transcript_qpcr_panel_test_engine() -> GentleEngine {

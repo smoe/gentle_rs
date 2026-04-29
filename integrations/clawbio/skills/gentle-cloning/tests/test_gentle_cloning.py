@@ -3809,7 +3809,9 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             )
             assert payload["expected_artifacts"] == [
                 "artifacts/cdna_assay_demo.pcr_report.json",
+                "artifacts/cdna_assay_demo.pcr_transcript_map.svg",
                 "artifacts/cdna_assay_demo.qpcr_report.json",
+                "artifacts/cdna_assay_demo.qpcr_transcript_map.svg",
             ]
             assert payload["timeout_secs"] == 300
         if name == "request_cdna_pcr_test_demo_direct.json":
@@ -3817,16 +3819,24 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
             assert payload["source_feature_id"] == 2
             assert payload["transcript_id"] == "TX1"
             assert payload["expected_artifacts"] == [
-                "artifacts/cdna_assay_demo.direct_pcr_report.json"
+                "artifacts/cdna_assay_demo.direct_pcr_report.json",
+                "artifacts/cdna_assay_demo.direct_pcr_transcript_map.svg",
             ]
+            assert payload["svg_path"] == (
+                "artifacts/cdna_assay_demo.direct_pcr_transcript_map.svg"
+            )
         if name == "request_cdna_qpcr_taqman_test_demo_direct.json":
             assert payload["seq_id"] == "cdna_assay_demo"
             assert payload["source_feature_id"] == 2
             assert payload["transcript_id"] == "TX1"
             assert payload["probe"] == "GGGCCC"
             assert payload["expected_artifacts"] == [
-                "artifacts/cdna_assay_demo.direct_taqman_report.json"
+                "artifacts/cdna_assay_demo.direct_taqman_report.json",
+                "artifacts/cdna_assay_demo.direct_taqman_transcript_map.svg",
             ]
+            assert payload["svg_path"] == (
+                "artifacts/cdna_assay_demo.direct_taqman_transcript_map.svg"
+            )
         if name in {
             "request_primer_report_show_demo.json",
             "request_primer_report_export_demo.json",
@@ -4245,6 +4255,9 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
     assert cdna_ops[1]["TestCdnaPcr"]["path"] == (
         "artifacts/cdna_assay_demo.pcr_report.json"
     )
+    assert cdna_ops[1]["TestCdnaPcr"]["svg_path"] == (
+        "artifacts/cdna_assay_demo.pcr_transcript_map.svg"
+    )
     assert cdna_ops[2]["TestCdnaQpcr"]["seq_id"] == "cdna_assay_demo"
     assert cdna_ops[2]["TestCdnaQpcr"]["source_feature_id"] == 2
     assert cdna_ops[2]["TestCdnaQpcr"]["forward_primer"] == "AAACCC"
@@ -4253,6 +4266,9 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
     assert cdna_ops[2]["TestCdnaQpcr"]["transcript_id"] == "TX1"
     assert cdna_ops[2]["TestCdnaQpcr"]["path"] == (
         "artifacts/cdna_assay_demo.qpcr_report.json"
+    )
+    assert cdna_ops[2]["TestCdnaQpcr"]["svg_path"] == (
+        "artifacts/cdna_assay_demo.qpcr_transcript_map.svg"
     )
 
     bed_workflow_payload = json.loads(

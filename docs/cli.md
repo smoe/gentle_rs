@@ -268,7 +268,8 @@ Notes:
   over the shared `primers ...` shell family; they cover backend readiness,
   PCR/qPCR seeding, transcript-aware TaqMan seeding, direct qPCR design, and
   direct cDNA qPCR assay testing without requiring callers to hand-write shell
-  strings
+  strings. The direct cDNA assay examples also declare transcript-map SVG
+  artifacts so ClawBio can attach a PNG view of where the assay is functional.
 - `request_primer_reports_list.json`, `request_primer_report_show_demo.json`,
   `request_primer_report_export_demo.json`, `request_qpcr_reports_list.json`,
   `request_qpcr_report_show_demo.json`, and
@@ -1943,10 +1944,10 @@ Shared shell command:
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
     - `primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
-    - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
-    - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
+    - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
+    - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
-    - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]`
+    - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
       - returns `gentle.primer3_preflight.v1` with configured/effective
         executable, resolved path, working directory, and
@@ -2320,8 +2321,15 @@ Shared shell command:
       - FASTA screens count every scanned record but omit non-detected
         transcript rows from the returned report unless `--transcript-id` is
         supplied
+      - every report carries a `transcript_map` SVG
+        (`gentle.cdna_assay_transcript_map.v1`) that places functional
+        products, forward/reverse primer hits, and probe hits on each
+        transcript cDNA coordinate axis
       - `--path OUTPUT.json` writes the same structured report returned on
         stdout
+      - `--svg OUTPUT.svg` writes the embedded transcript-map SVG as a
+        ClawBio/OpenClaw-friendly graphical artifact; shell output also
+        advertises it in `preferred_artifacts[]`
     - Transcript qPCR panel notes
       (`primers transcript-qpcr-panel`):
       - consumes a stored shared-gene qPCR report and the zero-based source

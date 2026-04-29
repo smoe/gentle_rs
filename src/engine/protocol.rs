@@ -4967,6 +4967,25 @@ pub struct CdnaAssayGenomicCarryoverRiskSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Portable SVG map showing where a tested PCR/qPCR assay is functional across
+/// transcript cDNA templates.
+pub struct CdnaAssayTranscriptMap {
+    pub schema: String,
+    pub artifact_id: String,
+    pub media_type: String,
+    pub title: String,
+    pub summary: String,
+    pub width_px: usize,
+    pub height_px: usize,
+    pub row_count: usize,
+    pub shown_transcript_count: usize,
+    pub omitted_transcript_count: usize,
+    pub product_count: usize,
+    pub svg: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Deterministic cDNA PCR/qPCR assay-test report shared by shell/CLI/agents.
 pub struct CdnaAssayTestReport {
     pub schema: String,
@@ -5002,6 +5021,8 @@ pub struct CdnaAssayTestReport {
     pub summary: String,
     #[serde(default)]
     pub transcript_results: Vec<CdnaAssayTranscriptResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_map: Option<CdnaAssayTranscriptMap>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }

@@ -200,6 +200,448 @@ impl GentleEngine {
             .replace('\'', "&apos;")
     }
 
+    fn cdna_assay_map_x(
+        start_x: f32,
+        width: f32,
+        cdna_length_bp: usize,
+        position_0based: usize,
+    ) -> f32 {
+        if cdna_length_bp == 0 {
+            return start_x;
+        }
+        let bounded = position_0based.min(cdna_length_bp);
+        start_x + (bounded as f32 / cdna_length_bp as f32) * width
+    }
+
+    fn cdna_assay_map_interval_rect(
+        start_x: f32,
+        width: f32,
+        cdna_length_bp: usize,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        min_width: f32,
+    ) -> (f32, f32) {
+        let x0 = Self::cdna_assay_map_x(start_x, width, cdna_length_bp, start_0based);
+        let x1 = Self::cdna_assay_map_x(start_x, width, cdna_length_bp, end_0based_exclusive);
+        let raw_width = (x1 - x0).max(0.0);
+        let glyph_width = raw_width.max(min_width).min(width);
+        let centered = x0 + raw_width * 0.5 - glyph_width * 0.5;
+        let left = centered.clamp(start_x, start_x + width - glyph_width);
+        (left, glyph_width)
+    }
+
+    fn cdna_assay_transcript_map(report: &CdnaAssayTestReport) -> CdnaAssayTranscriptMap {
+        const MAX_ROWS: usize = 80;
+        let shown_rows = report
+            .transcript_results
+            .iter()
+            .take(MAX_ROWS)
+            .collect::<Vec<_>>();
+        let row_count = shown_rows.len();
+        let omitted_transcript_count = report
+            .transcript_results
+            .len()
+            .saturating_sub(shown_rows.len());
+        let width_px = 1180usize;
+        let row_height = 46usize;
+        let height_px = 152usize + row_count.max(1) * row_height + 60usize;
+        let track_left = 292.0f32;
+        let track_width = 710.0f32;
+        let track_right = track_left + track_width;
+        let row_top = 138.0f32;
+        let title = format!(
+            "cDNA {} assay transcript map",
+            report.assay_kind.to_ascii_uppercase()
+        );
+        let summary = if omitted_transcript_count == 0 {
+            format!(
+                "{} product(s) across {}/{} transcript template(s); {} row(s) shown.",
+                report.product_count,
+                report.detected_transcript_count,
+                report.transcript_count,
+                row_count
+            )
+        } else {
+            format!(
+                "{} product(s) across {}/{} transcript template(s); {} row(s) shown, {} omitted from the figure.",
+                report.product_count,
+                report.detected_transcript_count,
+                report.transcript_count,
+                row_count,
+                omitted_transcript_count
+            )
+        };
+
+        let mut svg = String::new();
+        svg.push_str(&format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\" role=\"img\" aria-labelledby=\"title desc\" data-schema=\"{}\">",
+            width_px,
+            height_px,
+            width_px,
+            height_px,
+            CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA
+        ));
+        svg.push_str(&format!(
+            "<title id=\"title\">{}</title><desc id=\"desc\">{}</desc>",
+            Self::dotplot_svg_xml_escape(&title),
+            Self::dotplot_svg_xml_escape(&summary)
+        ));
+        svg.push_str(
+            "<style>\
+            .bg{fill:#ffffff}.panel{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1}.title{font:700 24px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#0f172a}.sub{font:500 13px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#475569}.label{font:600 12px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#1e293b}.small{font:500 11px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#64748b}.axis{font:600 10px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#64748b}.track{stroke:#94a3b8;stroke-width:8;stroke-linecap:round}.grid{stroke:#e2e8f0;stroke-width:1}.product{fill:#16a34a;fill-opacity:.78}.forward{fill:#2563eb}.reverse{fill:#dc2626}.probe{fill:#9333ea}.faint{fill-opacity:.32}.status{font:600 12px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#334155}\
+            </style>",
+        );
+        svg.push_str(&format!(
+            "<rect class=\"bg\" x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/>",
+            width_px, height_px
+        ));
+        svg.push_str(&format!(
+            "<rect class=\"panel\" x=\"18\" y=\"18\" width=\"{}\" height=\"{}\" rx=\"8\"/>",
+            width_px - 36,
+            height_px - 36
+        ));
+        svg.push_str(&format!(
+            "<text class=\"title\" x=\"36\" y=\"54\">{}</text>",
+            Self::dotplot_svg_xml_escape(&title)
+        ));
+        svg.push_str(&format!(
+            "<text class=\"sub\" x=\"36\" y=\"78\">{}</text>",
+            Self::dotplot_svg_xml_escape(&summary)
+        ));
+        svg.push_str(&format!(
+            "<text class=\"sub\" x=\"36\" y=\"99\">Forward {} bp, reverse {} bp, probe {}</text>",
+            report.forward_primer.len(),
+            report.reverse_primer.len(),
+            report
+                .probe
+                .as_ref()
+                .map(|probe| format!("{} bp", probe.len()))
+                .unwrap_or_else(|| "none".to_string())
+        ));
+
+        let legend_y = 112.0f32;
+        let mut legend = vec![
+            ("amplicon", "#16a34a"),
+            ("forward primer", "#2563eb"),
+            ("reverse primer", "#dc2626"),
+        ];
+        if report.probe.is_some() {
+            legend.push(("probe", "#9333ea"));
+        }
+        let mut legend_x = 36.0f32;
+        for (label, color) in legend {
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"14\" height=\"8\" rx=\"2\" fill=\"{}\"/>",
+                legend_x,
+                legend_y - 7.0,
+                color
+            ));
+            svg.push_str(&format!(
+                "<text class=\"small\" x=\"{:.1}\" y=\"{:.1}\">{}</text>",
+                legend_x + 20.0,
+                legend_y,
+                Self::dotplot_svg_xml_escape(label)
+            ));
+            legend_x += 126.0;
+        }
+        svg.push_str(&format!(
+            "<text class=\"axis\" x=\"{:.1}\" y=\"126\" text-anchor=\"middle\">cDNA position within each transcript</text>",
+            track_left + track_width * 0.5
+        ));
+
+        if shown_rows.is_empty() {
+            svg.push_str(&format!(
+                "<text class=\"status\" x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\">No transcript rows to display</text>",
+                track_left + track_width * 0.5,
+                row_top + 28.0
+            ));
+        }
+
+        for (row_idx, row) in shown_rows.iter().enumerate() {
+            let y = row_top + row_idx as f32 * row_height as f32;
+            let center_y = y + 20.0;
+            let label = if row.transcript_label.trim().is_empty()
+                || row.transcript_label == row.transcript_id
+            {
+                row.transcript_id.clone()
+            } else {
+                format!("{} | {}", row.transcript_id, row.transcript_label)
+            };
+            let short_label = if label.chars().count() > 36 {
+                let mut clipped = label.chars().take(35).collect::<String>();
+                clipped.push_str("...");
+                clipped
+            } else {
+                label
+            };
+            if row_idx % 2 == 0 {
+                svg.push_str(&format!(
+                    "<rect x=\"28\" y=\"{:.1}\" width=\"{}\" height=\"{}\" fill=\"#ffffff\" fill-opacity=\".72\"/>",
+                    y - 2.0,
+                    width_px - 56,
+                    row_height
+                ));
+            }
+            svg.push_str(&format!(
+                "<text class=\"label\" x=\"42\" y=\"{:.1}\">{}</text>",
+                y + 14.0,
+                Self::dotplot_svg_xml_escape(&short_label)
+            ));
+            svg.push_str(&format!(
+                "<text class=\"small\" x=\"42\" y=\"{:.1}\">{} bp cDNA | {}</text>",
+                y + 31.0,
+                row.cdna_length_bp,
+                Self::dotplot_svg_xml_escape(&row.status)
+            ));
+            for tick_idx in 0..=4 {
+                let frac = tick_idx as f32 / 4.0;
+                let x = track_left + track_width * frac;
+                svg.push_str(&format!(
+                    "<line class=\"grid\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\"/>",
+                    x,
+                    y + 7.0,
+                    x,
+                    y + 34.0
+                ));
+            }
+            svg.push_str(&format!(
+                "<line class=\"track\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\"/>",
+                track_left, center_y, track_right, center_y
+            ));
+            svg.push_str(&format!(
+                "<text class=\"axis\" x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\">1</text><text class=\"axis\" x=\"{:.1}\" y=\"{:.1}\">{}</text>",
+                track_left - 8.0,
+                center_y + 4.0,
+                track_right + 8.0,
+                center_y + 4.0,
+                row.cdna_length_bp
+            ));
+
+            for product in &row.products {
+                let (x, w) = Self::cdna_assay_map_interval_rect(
+                    track_left,
+                    track_width,
+                    row.cdna_length_bp,
+                    product.amplicon_start_0based,
+                    product.amplicon_end_0based_exclusive,
+                    5.0,
+                );
+                svg.push_str(&format!(
+                    "<rect class=\"product\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"14\" rx=\"4\"><title>{}</title></rect>",
+                    x,
+                    center_y - 7.0,
+                    w,
+                    Self::dotplot_svg_xml_escape(&format!(
+                        "Amplicon {}-{} ({} bp)",
+                        product.amplicon_start_0based.saturating_add(1),
+                        product.amplicon_end_0based_exclusive,
+                        product.amplicon_length_bp
+                    ))
+                ));
+                if let Some(hit) = row.forward_hits.get(product.forward_hit_index) {
+                    Self::push_cdna_assay_hit_svg(
+                        &mut svg,
+                        "forward",
+                        track_left,
+                        track_width,
+                        row.cdna_length_bp,
+                        hit,
+                        center_y,
+                        false,
+                    );
+                }
+                if let Some(hit) = row.reverse_hits.get(product.reverse_hit_index) {
+                    Self::push_cdna_assay_hit_svg(
+                        &mut svg,
+                        "reverse",
+                        track_left,
+                        track_width,
+                        row.cdna_length_bp,
+                        hit,
+                        center_y,
+                        false,
+                    );
+                }
+                for probe_index in &product.probe_hit_indices {
+                    if let Some(hit) = row.probe_hits.get(*probe_index) {
+                        Self::push_cdna_assay_hit_svg(
+                            &mut svg,
+                            "probe",
+                            track_left,
+                            track_width,
+                            row.cdna_length_bp,
+                            hit,
+                            center_y,
+                            false,
+                        );
+                    }
+                }
+            }
+
+            if row.products.is_empty() {
+                for hit in &row.forward_hits {
+                    Self::push_cdna_assay_hit_svg(
+                        &mut svg,
+                        "forward",
+                        track_left,
+                        track_width,
+                        row.cdna_length_bp,
+                        hit,
+                        center_y,
+                        true,
+                    );
+                }
+                for hit in &row.reverse_hits {
+                    Self::push_cdna_assay_hit_svg(
+                        &mut svg,
+                        "reverse",
+                        track_left,
+                        track_width,
+                        row.cdna_length_bp,
+                        hit,
+                        center_y,
+                        true,
+                    );
+                }
+                for hit in &row.probe_hits {
+                    Self::push_cdna_assay_hit_svg(
+                        &mut svg,
+                        "probe",
+                        track_left,
+                        track_width,
+                        row.cdna_length_bp,
+                        hit,
+                        center_y,
+                        true,
+                    );
+                }
+            }
+
+            let status_text = if row.products.is_empty() {
+                row.status.clone()
+            } else if row.products.len() == 1 {
+                format!("1 product, {} bp", row.products[0].amplicon_length_bp)
+            } else {
+                let lengths = row
+                    .products
+                    .iter()
+                    .map(|product| product.amplicon_length_bp.to_string())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                format!("{} products, {lengths} bp", row.products.len())
+            };
+            svg.push_str(&format!(
+                "<text class=\"status\" x=\"1030\" y=\"{:.1}\">{}</text>",
+                center_y + 4.0,
+                Self::dotplot_svg_xml_escape(&status_text)
+            ));
+        }
+
+        if omitted_transcript_count > 0 {
+            svg.push_str(&format!(
+                "<text class=\"small\" x=\"36\" y=\"{}\">{} additional transcript row(s) omitted from this compact SVG.</text>",
+                height_px - 34,
+                omitted_transcript_count
+            ));
+        }
+        svg.push_str("</svg>");
+
+        CdnaAssayTranscriptMap {
+            schema: CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA.to_string(),
+            artifact_id: "cdna_assay_transcript_map_svg".to_string(),
+            media_type: "image/svg+xml".to_string(),
+            title,
+            summary,
+            width_px,
+            height_px,
+            row_count: report.transcript_results.len(),
+            shown_transcript_count: row_count,
+            omitted_transcript_count,
+            product_count: report.product_count,
+            svg,
+        }
+    }
+
+    fn push_cdna_assay_hit_svg(
+        svg: &mut String,
+        role: &str,
+        track_left: f32,
+        track_width: f32,
+        cdna_length_bp: usize,
+        hit: &CdnaAssayPrimerHit,
+        center_y: f32,
+        faint: bool,
+    ) {
+        let (x, w) = Self::cdna_assay_map_interval_rect(
+            track_left,
+            track_width,
+            cdna_length_bp,
+            hit.start_0based,
+            hit.end_0based_exclusive,
+            7.0,
+        );
+        let class = if faint {
+            format!("{role} faint")
+        } else {
+            role.to_string()
+        };
+        let title = format!(
+            "{} hit {}-{} ({} mismatch{})",
+            role,
+            hit.start_0based.saturating_add(1),
+            hit.end_0based_exclusive,
+            hit.mismatch_count,
+            if hit.mismatch_count == 1 { "" } else { "es" }
+        );
+        if role == "forward" {
+            let tip = x + w;
+            let notch = (w * 0.28).clamp(3.0, 8.0);
+            svg.push_str(&format!(
+                "<polygon class=\"{}\" points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\"><title>{}</title></polygon>",
+                class,
+                x,
+                center_y - 11.0,
+                tip - notch,
+                center_y - 11.0,
+                tip,
+                center_y,
+                tip - notch,
+                center_y + 11.0,
+                x,
+                center_y + 11.0,
+                Self::dotplot_svg_xml_escape(&title)
+            ));
+        } else if role == "reverse" {
+            let tip = x;
+            let right = x + w;
+            let notch = (w * 0.28).clamp(3.0, 8.0);
+            svg.push_str(&format!(
+                "<polygon class=\"{}\" points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\"><title>{}</title></polygon>",
+                class,
+                tip,
+                center_y,
+                tip + notch,
+                center_y - 11.0,
+                right,
+                center_y - 11.0,
+                right,
+                center_y + 11.0,
+                tip + notch,
+                center_y + 11.0,
+                Self::dotplot_svg_xml_escape(&title)
+            ));
+        } else {
+            svg.push_str(&format!(
+                "<rect class=\"{}\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"18\" rx=\"3\"><title>{}</title></rect>",
+                class,
+                x,
+                center_y - 9.0,
+                w,
+                Self::dotplot_svg_xml_escape(&title)
+            ));
+        }
+    }
+
     fn estimate_protein_molecular_weight_kda(sequence: &str) -> f32 {
         const WATER_MASS_DA: f32 = 18.015_28;
         let residues = sequence
@@ -7568,7 +8010,7 @@ impl GentleEngine {
         if let Some(warning) = Self::cdna_assay_genomic_carryover_warning(&genomic_carryover_risk) {
             warnings.push(warning);
         }
-        Ok(CdnaAssayTestReport {
+        let mut report = CdnaAssayTestReport {
             schema: CDNA_ASSAY_TEST_REPORT_SCHEMA.to_string(),
             assay_kind,
             template_source_kind: "transcript_derived".to_string(),
@@ -7597,8 +8039,11 @@ impl GentleEngine {
             overall_status,
             summary,
             transcript_results,
+            transcript_map: None,
             warnings,
-        })
+        };
+        report.transcript_map = Some(Self::cdna_assay_transcript_map(&report));
+        Ok(report)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -8457,7 +8902,7 @@ impl GentleEngine {
             );
         }
 
-        Ok(CdnaAssayTestReport {
+        let mut report = CdnaAssayTestReport {
             schema: CDNA_ASSAY_TEST_REPORT_SCHEMA.to_string(),
             assay_kind,
             template_source_kind: "external_fasta".to_string(),
@@ -8483,8 +8928,11 @@ impl GentleEngine {
             overall_status,
             summary,
             transcript_results,
+            transcript_map: None,
             warnings,
-        })
+        };
+        report.transcript_map = Some(Self::cdna_assay_transcript_map(&report));
+        Ok(report)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -16588,6 +17036,7 @@ impl GentleEngine {
                     max_mismatches,
                     require_3prime_exact_bases,
                     path,
+                    svg_path,
                 } => {
                     let report = self.test_cdna_pcr_assay(
                         &seq_id,
@@ -16623,6 +17072,26 @@ impl GentleEngine {
                             .messages
                             .push(format!("Wrote cDNA PCR assay-test report to '{path}'"));
                     }
+                    if let Some(svg_path) = svg_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let svg = report
+                            .transcript_map
+                            .as_ref()
+                            .map(|map| map.svg.as_str())
+                            .unwrap_or_default();
+                        std::fs::write(svg_path, svg).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not write cDNA PCR transcript-map SVG '{svg_path}': {e}"
+                            ),
+                        })?;
+                        result
+                            .messages
+                            .push(format!("Wrote cDNA PCR transcript-map SVG to '{svg_path}'"));
+                    }
                 }
                 Operation::TestCdnaQpcr {
                     seq_id,
@@ -16636,6 +17105,7 @@ impl GentleEngine {
                     max_mismatches,
                     require_3prime_exact_bases,
                     path,
+                    svg_path,
                 } => {
                     let report = self.test_cdna_qpcr_assay(
                         &seq_id,
@@ -16671,6 +17141,26 @@ impl GentleEngine {
                         result
                             .messages
                             .push(format!("Wrote cDNA qPCR assay-test report to '{path}'"));
+                    }
+                    if let Some(svg_path) = svg_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let svg = report
+                            .transcript_map
+                            .as_ref()
+                            .map(|map| map.svg.as_str())
+                            .unwrap_or_default();
+                        std::fs::write(svg_path, svg).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not write cDNA qPCR transcript-map SVG '{svg_path}': {e}"
+                            ),
+                        })?;
+                        result.messages.push(format!(
+                            "Wrote cDNA qPCR transcript-map SVG to '{svg_path}'"
+                        ));
                     }
                 }
                 Operation::BuildTranscriptQpcrPanel {
@@ -16723,6 +17213,7 @@ impl GentleEngine {
                     max_mismatches,
                     require_3prime_exact_bases,
                     path,
+                    svg_path,
                 } => {
                     let report = self.test_cdna_qpcr_fasta_assay(
                         &cdna_fasta_paths,
@@ -16754,6 +17245,26 @@ impl GentleEngine {
                         })?;
                         result.messages.push(format!(
                             "Wrote cDNA qPCR FASTA assay-test report to '{path}'"
+                        ));
+                    }
+                    if let Some(svg_path) = svg_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let svg = report
+                            .transcript_map
+                            .as_ref()
+                            .map(|map| map.svg.as_str())
+                            .unwrap_or_default();
+                        std::fs::write(svg_path, svg).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not write cDNA qPCR FASTA transcript-map SVG '{svg_path}': {e}"
+                            ),
+                        })?;
+                        result.messages.push(format!(
+                            "Wrote cDNA qPCR FASTA transcript-map SVG to '{svg_path}'"
                         ));
                     }
                 }

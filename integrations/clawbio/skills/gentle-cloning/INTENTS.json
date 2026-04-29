@@ -677,7 +677,7 @@
     },
     {
       "intent_id": "cdna_pcr_direct_test",
-      "description": "Test a supplied forward/reverse PCR primer pair directly against transcript-derived cDNA templates from one splicing group.",
+      "description": "Test a supplied forward/reverse PCR primer pair directly against transcript-derived cDNA templates from one splicing group and return a transcript-map graphic.",
       "trigger_terms": [
         "direct cdna pcr test",
         "test these cdna pcr primers",
@@ -696,7 +696,7 @@
     },
     {
       "intent_id": "cdna_qpcr_taqman_direct_test",
-      "description": "Test supplied qPCR/TaqMan forward, reverse, and probe oligos directly against transcript-derived cDNA templates from one splicing group.",
+      "description": "Test supplied qPCR/TaqMan forward, reverse, and probe oligos directly against transcript-derived cDNA templates from one splicing group and return a transcript-map graphic.",
       "trigger_terms": [
         "direct cdna qpcr test",
         "direct taqman test",

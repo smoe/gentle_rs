@@ -2011,6 +2011,7 @@ pub enum ShellCommand {
         max_mismatches: Option<usize>,
         require_3prime_exact_bases: Option<usize>,
         path: Option<String>,
+        svg_path: Option<String>,
     },
     PrimersTestCdnaQpcr {
         seq_id: String,
@@ -2024,6 +2025,7 @@ pub enum ShellCommand {
         max_mismatches: Option<usize>,
         require_3prime_exact_bases: Option<usize>,
         path: Option<String>,
+        svg_path: Option<String>,
     },
     PrimersTranscriptQpcrPanel {
         seq_id: String,
@@ -2042,6 +2044,7 @@ pub enum ShellCommand {
         max_mismatches: Option<usize>,
         require_3prime_exact_bases: Option<usize>,
         path: Option<String>,
+        svg_path: Option<String>,
     },
     PrimersPrepareRestrictionCloning {
         request_json: String,
@@ -19925,6 +19928,22 @@ pub fn execute_shell_command(
     execute_shell_command_with_options(engine, command, &ShellExecutionOptions::default())
 }
 
+fn cdna_assay_preferred_artifacts(svg_path: Option<&str>, caption: &str) -> Vec<serde_json::Value> {
+    let Some(path) = svg_path.map(str::trim).filter(|value| !value.is_empty()) else {
+        return vec![];
+    };
+    vec![json!({
+        "artifact_id": "cdna_assay_transcript_map_svg",
+        "path": path,
+        "media_type": "image/svg+xml",
+        "artifact_kind": "transcript_assay_map",
+        "caption": caption,
+        "recommended_use": "Show where the tested PCR/qPCR assay forms products across transcript cDNA templates.",
+        "presentation_rank": 0,
+        "is_best_first_artifact": true,
+    })]
+}
+
 #[inline(never)]
 fn execute_help_command(
     _engine: &mut GentleEngine,
@@ -25279,6 +25298,7 @@ fn execute_primers_command(
             max_mismatches,
             require_3prime_exact_bases,
             path,
+            svg_path,
         } => {
             let report = engine
                 .test_cdna_pcr_assay(
@@ -25304,11 +25324,29 @@ fn execute_primers_command(
                     format!("Could not write cDNA PCR assay-test report to '{path}': {e}")
                 })?;
             }
+            if let Some(svg_path) = svg_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let svg = report
+                    .transcript_map
+                    .as_ref()
+                    .map(|map| map.svg.as_str())
+                    .unwrap_or_default();
+                fs::write(svg_path, svg).map_err(|e| {
+                    format!("Could not write cDNA PCR transcript-map SVG to '{svg_path}': {e}")
+                })?;
+            }
+            let preferred_artifacts =
+                cdna_assay_preferred_artifacts(svg_path.as_deref(), "cDNA PCR transcript map");
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "report": report,
                     "path": path,
+                    "svg_path": svg_path,
+                    "preferred_artifacts": preferred_artifacts,
                 }),
             })
         }
@@ -25324,6 +25362,7 @@ fn execute_primers_command(
             max_mismatches,
             require_3prime_exact_bases,
             path,
+            svg_path,
         } => {
             let report = engine
                 .test_cdna_qpcr_assay(
@@ -25350,11 +25389,29 @@ fn execute_primers_command(
                     format!("Could not write cDNA qPCR assay-test report to '{path}': {e}")
                 })?;
             }
+            if let Some(svg_path) = svg_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let svg = report
+                    .transcript_map
+                    .as_ref()
+                    .map(|map| map.svg.as_str())
+                    .unwrap_or_default();
+                fs::write(svg_path, svg).map_err(|e| {
+                    format!("Could not write cDNA qPCR transcript-map SVG to '{svg_path}': {e}")
+                })?;
+            }
+            let preferred_artifacts =
+                cdna_assay_preferred_artifacts(svg_path.as_deref(), "cDNA qPCR transcript map");
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "report": report,
                     "path": path,
+                    "svg_path": svg_path,
+                    "preferred_artifacts": preferred_artifacts,
                 }),
             })
         }
@@ -25398,6 +25455,7 @@ fn execute_primers_command(
             max_mismatches,
             require_3prime_exact_bases,
             path,
+            svg_path,
         } => {
             let report = engine
                 .test_cdna_qpcr_fasta_assay(
@@ -25424,11 +25482,33 @@ fn execute_primers_command(
                     format!("Could not write cDNA qPCR FASTA assay-test report to '{path}': {e}")
                 })?;
             }
+            if let Some(svg_path) = svg_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let svg = report
+                    .transcript_map
+                    .as_ref()
+                    .map(|map| map.svg.as_str())
+                    .unwrap_or_default();
+                fs::write(svg_path, svg).map_err(|e| {
+                    format!(
+                        "Could not write cDNA qPCR FASTA transcript-map SVG to '{svg_path}': {e}"
+                    )
+                })?;
+            }
+            let preferred_artifacts = cdna_assay_preferred_artifacts(
+                svg_path.as_deref(),
+                "cDNA qPCR FASTA transcript map",
+            );
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
                     "report": report,
                     "path": path,
+                    "svg_path": svg_path,
+                    "preferred_artifacts": preferred_artifacts,
                 }),
             })
         }

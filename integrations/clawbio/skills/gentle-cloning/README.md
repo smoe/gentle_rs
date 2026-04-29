@@ -157,10 +157,11 @@ skill cannot know. Run the status routes:
   `DesignPrimerPairs` and probe-based `DesignQpcrAssays` execution
 - `request_workflow_cdna_pcr_qpcr_assay_test_offline.json` for the smallest
   transcript-derived cDNA PCR/qPCR assay-test demo with exported PCR and qPCR
-  product reports
+  product reports plus transcript-map SVG artifacts
 - `request_cdna_pcr_test_demo_direct.json` and
   `request_cdna_qpcr_taqman_test_demo_direct.json` for direct cDNA assay
-  checks without replaying the larger workflow
+  checks without replaying the larger workflow; both collect the transcript-map
+  SVG so ClawBio can rasterize it into the PNG-first output bundle
 - `resources status` for integrated JASPAR/REBASE/ATtRACT-style resources
 - `genomes status ...` or `genomes list` for reference-genome catalogs/caches
 - `helpers status ...` or `helpers list` for helper/vector assets

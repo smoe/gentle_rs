@@ -167,6 +167,7 @@ class Request:
     protocol_id: str | None = None
     shared_qpcr_report_id: str | None = None
     output_path: str | None = None
+    svg_path: str | None = None
     residue_start_1based: int | None = None
     residue_end_1based: int | None = None
 
@@ -607,6 +608,7 @@ def _normalise_cdna_assay_test_request(request: Request) -> None:
         request.probe = _require_str(request.probe, "probe", request.mode)
     request.transcript_id = _normalise_optional_str(request.transcript_id, "transcript_id")
     request.output_path = _normalise_optional_str(request.output_path, "output_path")
+    request.svg_path = _normalise_optional_str(request.svg_path, "svg_path")
     request.min_amplicon_bp = _coerce_optional_int(
         request.min_amplicon_bp, "min_amplicon_bp", minimum=1
     )
@@ -627,6 +629,14 @@ def _normalise_cdna_assay_test_request(request: Request) -> None:
         "require_3prime_exact_bases",
         minimum=0,
     )
+    if request.expected_artifacts is None:
+        expected = [
+            path
+            for path in (request.output_path, request.svg_path)
+            if isinstance(path, str) and path.strip()
+        ]
+        if expected:
+            request.expected_artifacts = expected
 
 
 def _normalise_restriction_cloning_request(request: Request) -> None:
@@ -769,6 +779,7 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         protocol_id=payload.get("protocol_id"),
         shared_qpcr_report_id=payload.get("shared_qpcr_report_id"),
         output_path=payload.get("output_path"),
+        svg_path=payload.get("svg_path"),
         residue_start_1based=payload.get("residue_start_1based"),
         residue_end_1based=payload.get("residue_end_1based"),
     )
@@ -1082,6 +1093,8 @@ def _build_primer_mode_shell_line(request: Request) -> str:
         )
         if request.output_path:
             tokens.extend(["--path", request.output_path])
+        if request.svg_path:
+            tokens.extend(["--svg", request.svg_path])
     elif mode == "restriction-cloning-pcr-handoff":
         tokens = ["primers", "prepare-restriction-cloning", _request_json_arg(request)]
     elif mode == "restriction-cloning-pcr-handoff-seed":
@@ -2593,6 +2606,7 @@ def _request_payload_for_artifact_continuation(
             "forward_leader_5prime",
             "reverse_leader_5prime",
             "output_path",
+            "svg_path",
         ):
             value = getattr(request, key)
             if value is not None:

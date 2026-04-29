@@ -3544,6 +3544,7 @@ struct ParsedCdnaAssayTestOptions {
     max_mismatches: Option<usize>,
     require_3prime_exact_bases: Option<usize>,
     path: Option<String>,
+    svg_path: Option<String>,
 }
 
 fn parse_usize_option_value(raw: &str, flag: &str) -> Result<usize, String> {
@@ -3602,6 +3603,10 @@ fn parse_cdna_assay_test_options(
             "--path" | "--output" => {
                 let flag = tokens[*idx].clone();
                 options.path = Some(parse_option_path(tokens, idx, &flag, context)?);
+            }
+            "--svg" | "--svg-path" | "--transcript-map-svg" => {
+                let flag = tokens[*idx].clone();
+                options.svg_path = Some(parse_option_path(tokens, idx, &flag, context)?);
             }
             other => return Err(format!("Unknown option '{other}' for {context}")),
         }
@@ -3943,7 +3948,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
         "test-cdna-pcr" => {
             if tokens.len() < 4 {
                 return Err(
-                    "primers test-cdna-pcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+                    "primers test-cdna-pcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
                         .to_string(),
                 );
             }
@@ -3968,12 +3973,13 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 max_mismatches: options.max_mismatches,
                 require_3prime_exact_bases: options.require_3prime_exact_bases,
                 path: options.path,
+                svg_path: options.svg_path,
             })
         }
         "test-cdna-qpcr" => {
             if tokens.len() < 4 {
                 return Err(
-                    "primers test-cdna-qpcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+                    "primers test-cdna-qpcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
                         .to_string(),
                 );
             }
@@ -3999,6 +4005,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 max_mismatches: options.max_mismatches,
                 require_3prime_exact_bases: options.require_3prime_exact_bases,
                 path: options.path,
+                svg_path: options.svg_path,
             })
         }
         "transcript-qpcr-panel" => {
@@ -4045,7 +4052,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
         "test-cdna-qpcr-fasta" | "screen-cdna-qpcr" => {
             if tokens.len() < 3 {
                 return Err(
-                    "primers test-cdna-qpcr-fasta requires CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+                    "primers test-cdna-qpcr-fasta requires CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
                         .to_string(),
                 );
             }
@@ -4081,6 +4088,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 max_mismatches: options.max_mismatches,
                 require_3prime_exact_bases: options.require_3prime_exact_bases,
                 path: options.path,
+                svg_path: options.svg_path,
             })
         }
         "prepare-restriction-cloning" => {

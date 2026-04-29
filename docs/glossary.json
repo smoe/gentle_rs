@@ -2420,8 +2420,8 @@
             "cli-direct"
          ],
          "path": "primers test-cdna-pcr",
-         "summary": "Test supplied PCR primers against transcript-derived cDNA templates for one splicing group.",
-         "usage": "primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+         "summary": "Test supplied PCR primers against transcript-derived cDNA templates for one splicing group and optionally export a transcript-map SVG.",
+         "usage": "primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
       },
       {
          "aliases": [],
@@ -2434,8 +2434,8 @@
             "cli-direct"
          ],
          "path": "primers test-cdna-qpcr",
-         "summary": "Test supplied qPCR primers and probe against transcript-derived cDNA templates for one splicing group.",
-         "usage": "primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+         "summary": "Test supplied qPCR primers and probe against transcript-derived cDNA templates for one splicing group and optionally export a transcript-map SVG.",
+         "usage": "primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
       },
       {
          "aliases": [
@@ -2450,8 +2450,8 @@
             "cli-direct"
          ],
          "path": "primers test-cdna-qpcr-fasta",
-         "summary": "Screen supplied qPCR primers and probe across one or more external cDNA/ncRNA FASTA or FASTA.gz transcript catalogs.",
-         "usage": "primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]"
+         "summary": "Screen supplied qPCR primers and probe across one or more external cDNA/ncRNA FASTA or FASTA.gz transcript catalogs and optionally export a transcript-map SVG.",
+         "usage": "primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
       },
       {
          "aliases": [],
