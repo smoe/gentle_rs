@@ -4232,6 +4232,17 @@ Tutorial projects:
       identical promoter windows that only differ by downstream splice usage
     - `Use this row` retargets the Promoter design score-track / similarity
       span to that grouped promoter interval and representative transcript
+  - the same window now also exposes `Build evidence matrix`, which calls the
+    shared `SummarizePromoterEvidenceMatrix` route and keeps the promoter
+    evidence ledger visible in-window:
+    - rows group DNA-level promoter candidates with transcript support plus
+      existing local TFBS, variant, repeat, enhancer/terminator,
+      external-interval, and CUT&RUN-tagged feature evidence
+    - `Use this row` retargets the Promoter design span to the selected
+      candidate for score tracks, TFBS similarity, and reporter planning
+    - `Export evidence matrix JSON...` writes the cached
+      `gentle.promoter_evidence_matrix.v1` payload through the same engine
+      operation instead of serializing a GUI-only table
   - the same window now also exposes `Export TF score tracks SVG...`, which
     goes through the shared `RenderTfbsScoreTracksSvg` engine route instead of a
     GUI-only painter and can therefore reproduce the same stacked figure style

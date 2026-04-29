@@ -292,6 +292,7 @@ impl MainAreaDna {
             cached_tfbs_track_similarity: None,
             cached_report: None,
             cached_alternative_promoter_comparison: None,
+            cached_promoter_evidence_matrix: None,
             cached_candidates: None,
         };
         Ok(())
@@ -902,6 +903,91 @@ impl MainAreaDna {
         }
     }
 
+    fn summarize_variant_followup_promoter_evidence_matrix(&mut self) {
+        let input = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizePromoterEvidenceMatrix {
+                input,
+                gene_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.gene_label,
+                ),
+                transcript_id: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.transcript_id,
+                ),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                include_feature_overlaps: true,
+                path: None,
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.promoter_evidence_matrix) {
+            self.variant_followup_ui.cached_promoter_evidence_matrix = Some(report);
+        }
+    }
+
+    fn export_variant_followup_promoter_evidence_matrix_json(&mut self) {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_promoter_evidence_matrix
+            .clone()
+        else {
+            self.op_status =
+                "No cached promoter evidence matrix available for JSON export".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_promoter_evidence_matrix.json",
+            Self::sanitize_export_name_component(&report.seq_id, "promoter_design")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Promoter evidence matrix export canceled".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizePromoterEvidenceMatrix {
+                input: report.seq_id.clone(),
+                gene_label: report.gene_label_filter.clone(),
+                transcript_id: report.transcript_id_filter.clone(),
+                promoter_upstream_bp: report.promoter_upstream_bp,
+                promoter_downstream_bp: report.promoter_downstream_bp,
+                include_feature_overlaps: true,
+                path: Some(path.display().to_string()),
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.promoter_evidence_matrix) {
+            self.variant_followup_ui.cached_promoter_evidence_matrix = Some(report);
+        }
+    }
+
     pub(super) fn use_variant_followup_alternative_promoter_row(
         &mut self,
         row: &AlternativePromoterComparisonRow,
@@ -921,6 +1007,7 @@ impl MainAreaDna {
         self.variant_followup_ui.cached_tfbs_track_similarity = None;
         self.variant_followup_ui.cached_report = None;
         self.variant_followup_ui.cached_candidates = None;
+        self.variant_followup_ui.cached_promoter_evidence_matrix = None;
         self.op_status = format!(
             "Promoter design now targets '{}' at {}..{}",
             row.representative_transcript_id
@@ -928,6 +1015,31 @@ impl MainAreaDna {
                 .unwrap_or(row.label.as_str()),
             row.start_0based,
             row.end_0based_exclusive
+        );
+    }
+
+    pub(super) fn use_variant_followup_promoter_evidence_row(
+        &mut self,
+        row: &PromoterEvidenceMatrixRow,
+    ) {
+        if let Some(transcript_id) = row.representative_transcript_id.as_deref() {
+            self.variant_followup_ui.transcript_id = transcript_id.to_string();
+        }
+        if let Some(gene_label) = row.gene_label.as_deref() {
+            self.variant_followup_ui.gene_label = gene_label.to_string();
+        }
+        self.variant_followup_ui.promoter_upstream_bp = row.upstream_bp.to_string();
+        self.variant_followup_ui.promoter_downstream_bp = row.downstream_bp.to_string();
+        self.variant_followup_ui.score_track_start_0based = row.start_0based.to_string();
+        self.variant_followup_ui.score_track_end_0based_exclusive =
+            row.end_0based_exclusive.to_string();
+        self.variant_followup_ui.cached_score_tracks = None;
+        self.variant_followup_ui.cached_tfbs_track_similarity = None;
+        self.variant_followup_ui.cached_report = None;
+        self.variant_followup_ui.cached_candidates = None;
+        self.op_status = format!(
+            "Promoter design evidence row '{}' selected at {}..{}",
+            row.label, row.start_0based, row.end_0based_exclusive
         );
     }
 
@@ -3141,6 +3253,149 @@ impl MainAreaDna {
         }
     }
 
+    fn render_variant_followup_promoter_evidence_matrix_summary(&mut self, ui: &mut egui::Ui) {
+        let mut use_row: Option<PromoterEvidenceMatrixRow> = None;
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_promoter_evidence_matrix
+            .as_ref()
+        else {
+            ui.small(
+                egui::RichText::new(
+                    "No promoter evidence matrix cached yet. Run `Build evidence matrix` to list DNA-level promoter candidates with transcript support and existing local evidence layers.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Promoter evidence matrix").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} promoter candidate(s), {} transcript-window interpretation(s), {} evidence item(s); ranking: {}",
+                    report.promoter_candidate_count,
+                    report.transcript_window_count,
+                    report.evidence_item_count,
+                    report.ranking_mode
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            if !report.evidence_kinds_observed.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Evidence kinds: {}",
+                        report.evidence_kinds_observed.join(", ")
+                    ))
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+            for warning in &report.warnings {
+                ui.small(
+                    egui::RichText::new(warning).color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            egui::ScrollArea::vertical()
+                .id_salt(("variant_followup_promoter_evidence_scroll", report.seq_id.as_str()))
+                .max_height(240.0)
+                .show(ui, |ui| {
+                    egui::Grid::new((
+                        "variant_followup_promoter_evidence_grid",
+                        report.seq_id.as_str(),
+                    ))
+                    .num_columns(7)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("rank").strong());
+                        ui.small(egui::RichText::new("candidate").strong());
+                        ui.small(egui::RichText::new("tx").strong());
+                        ui.small(egui::RichText::new("span").strong());
+                        ui.small(egui::RichText::new("evidence").strong());
+                        ui.small(egui::RichText::new("kinds").strong());
+                        ui.small(egui::RichText::new("action").strong());
+                        ui.end_row();
+                        for row in &report.rows {
+                            ui.monospace(row.display_rank.to_string());
+                            ui.small(row.label.as_str()).on_hover_text(
+                                if row.interpretation_tags.is_empty() {
+                                    row.source.clone()
+                                } else {
+                                    format!(
+                                        "{}\n{}",
+                                        row.source,
+                                        row.interpretation_tags.join("\n")
+                                    )
+                                },
+                            );
+                            ui.small(row.transcript_count.to_string()).on_hover_text(
+                                if row.transcript_labels.is_empty() {
+                                    row.transcript_ids.join(", ")
+                                } else {
+                                    format!(
+                                        "{}\n{}",
+                                        row.transcript_ids.join(", "),
+                                        row.transcript_labels.join(", ")
+                                    )
+                                },
+                            );
+                            ui.monospace(format!(
+                                "{}..{}",
+                                row.start_0based, row.end_0based_exclusive
+                            ));
+                            ui.small(row.evidence_count.to_string()).on_hover_text(
+                                row.evidence
+                                    .iter()
+                                    .map(|item| {
+                                        format!(
+                                            "{}: {} ({})",
+                                            item.kind, item.summary, item.source
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n"),
+                            );
+                            let mut kind_summary = row
+                                .evidence_kind_counts
+                                .iter()
+                                .map(|(kind, count)| format!("{kind}={count}"))
+                                .collect::<Vec<_>>();
+                            let kind_overflow = kind_summary.len().saturating_sub(4);
+                            kind_summary.truncate(4);
+                            let kind_label = if kind_overflow == 0 {
+                                kind_summary.join(", ")
+                            } else {
+                                format!("{}, +{} more", kind_summary.join(", "), kind_overflow)
+                            };
+                            ui.small(if kind_label.is_empty() {
+                                "n/a"
+                            } else {
+                                kind_label.as_str()
+                            })
+                            .on_hover_text(
+                                row.evidence_kind_counts
+                                    .iter()
+                                    .map(|(kind, count)| format!("{kind}: {count}"))
+                                    .collect::<Vec<_>>()
+                                    .join("\n"),
+                            );
+                            if ui
+                                .small_button("Use")
+                                .on_hover_text(
+                                    "Use this evidence-matrix promoter candidate as the current Promoter design transcript/range seed for score tracks, TFBS similarity, and reporter planning.",
+                                )
+                                .clicked()
+                            {
+                                use_row = Some(row.clone());
+                            }
+                            ui.end_row();
+                        }
+                    });
+                });
+        });
+        if let Some(row) = use_row {
+            self.use_variant_followup_promoter_evidence_row(&row);
+        }
+    }
+
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
@@ -3549,6 +3804,7 @@ impl MainAreaDna {
         if summary_params_changed {
             self.variant_followup_ui
                 .cached_alternative_promoter_comparison = None;
+            self.variant_followup_ui.cached_promoter_evidence_matrix = None;
         }
 
         ui.separator();
@@ -3642,6 +3898,18 @@ impl MainAreaDna {
             }
             if ui
                 .add_enabled(
+                    engine_available && !source_missing,
+                    egui::Button::new("Build evidence matrix"),
+                )
+                .on_hover_text(
+                    "Build a conservative promoter evidence ledger that groups DNA-level promoter candidates with transcript support and existing local TFBS, variant, repeat, enhancer, terminator, external-interval, or CUT&RUN-tagged evidence.",
+                )
+                .clicked()
+            {
+                self.summarize_variant_followup_promoter_evidence_matrix();
+            }
+            if ui
+                .add_enabled(
                     engine_available && !source_missing && has_variant_seed,
                     egui::Button::new("Summarize promoter context"),
                 )
@@ -3683,6 +3951,23 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.export_variant_followup_alternative_promoter_comparison_json();
+            }
+            if ui
+                .add_enabled(
+                    engine_available
+                        && !source_missing
+                        && self
+                            .variant_followup_ui
+                            .cached_promoter_evidence_matrix
+                            .is_some(),
+                    egui::Button::new("Export evidence matrix JSON..."),
+                )
+                .on_hover_text(
+                    "Write the currently cached Promoter design evidence matrix as JSON through the shared engine route.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_promoter_evidence_matrix_json();
             }
             let has_candidates = self.variant_followup_ui.cached_candidates.is_some();
             if ui
@@ -3744,6 +4029,8 @@ impl MainAreaDna {
         self.render_variant_followup_tfbs_track_similarity_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_alternative_promoter_summary(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_promoter_evidence_matrix_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_report_summary(ui);
         ui.add_space(8.0);

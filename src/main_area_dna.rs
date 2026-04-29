@@ -77,10 +77,11 @@ use crate::{
         MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
         PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
         PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityPolicy, PromoterReporterCandidateSet,
-        PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
-        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
-        RenderSvgMode, RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
+        PrimerDesignSideConstraint, PrimerSpecificityPolicy, PromoterEvidenceMatrixReport,
+        PromoterEvidenceMatrixRow, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
+        ProtocolCartoonPreviewTelemetry, QpcrDesignReport, QpcrTranscriptSpecificityEvidence,
+        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RenderSvgMode,
+        RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
         RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
         RestrictionEnzymeDisplayMode, RestrictionSiteScanReport, RnaReadAlignConfig,
         RnaReadAlignmentDisplay, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
@@ -13495,6 +13496,7 @@ struct VariantFollowupUiState {
     cached_tfbs_track_similarity: Option<TfbsTrackSimilarityReport>,
     cached_report: Option<VariantPromoterContextReport>,
     cached_alternative_promoter_comparison: Option<AlternativePromoterComparisonReport>,
+    cached_promoter_evidence_matrix: Option<PromoterEvidenceMatrixReport>,
     cached_candidates: Option<PromoterReporterCandidateSet>,
 }
 
@@ -13539,6 +13541,7 @@ impl Default for VariantFollowupUiState {
             cached_tfbs_track_similarity: None,
             cached_report: None,
             cached_alternative_promoter_comparison: None,
+            cached_promoter_evidence_matrix: None,
             cached_candidates: None,
         }
     }
