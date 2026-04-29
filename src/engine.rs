@@ -312,6 +312,7 @@ const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
 const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
+const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
 const RESTRICTION_CLONING_PCR_HANDOFF_REPORT_SCHEMA: &str =
     "gentle.restriction_cloning_pcr_handoff.v1";
@@ -3361,6 +3362,27 @@ pub enum Operation {
         report_id: String,
         path: String,
     },
+    AssessPrimerPairSpecificity {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        primer_report_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pair_rank: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pair_index: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        forward_primer: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reverse_primer: Option<String>,
+        target_genome_id: String,
+        #[serde(default)]
+        policy: PrimerSpecificityPolicy,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        catalog_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     PrepareRestrictionCloningPcrHandoff {
         template: SeqId,
         primer_report_id: String,
@@ -5240,6 +5262,7 @@ impl GentleEngine {
                 "DesignPrimerPairs".to_string(),
                 "DesignInsertionPrimerPairs".to_string(),
                 "ExportPrimerDesignReport".to_string(),
+                "AssessPrimerPairSpecificity".to_string(),
                 "PrepareRestrictionCloningPcrHandoff".to_string(),
                 "PcrOverlapExtensionMutagenesis".to_string(),
                 "DesignQpcrAssays".to_string(),
@@ -7361,6 +7384,7 @@ impl GentleEngine {
                 | Operation::RenderProteaseDigestGelSvg { .. }
                 | Operation::RenderProtein2dGelSvg { .. }
                 | Operation::ExportPrimerDesignReport { .. }
+                | Operation::AssessPrimerPairSpecificity { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
                 | Operation::ValidateProtocolCartoonTemplate { .. }

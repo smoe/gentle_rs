@@ -85,6 +85,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::enzymes::default_preferred_restriction_enzyme_names;
+use crate::genomes::BlastExternalBinaryPreflightReport;
 
 use super::{
     CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PrepareGenomeProgress,
@@ -3119,6 +3120,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_qpcr_panel: Option<Box<TranscriptQpcrPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_specificity_report: Option<Box<PrimerSpecificityReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub construct_reasoning_graph: Option<Box<ConstructReasoningGraph>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequencing_confirmation_report: Option<SequencingConfirmationReport>,
@@ -3623,6 +3626,255 @@ pub struct PrimerDesignPairRecord {
     pub primer_pair_complementary_run_bp: usize,
     pub primer_pair_3prime_complementary_run_bp: usize,
     pub rule_flags: PrimerDesignPairRuleFlags,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Whether primer specificity should merely be reported or enforced by a
+/// design operation.
+pub enum PrimerSpecificityCheckMode {
+    #[default]
+    None,
+    ReportOnly,
+    RequirePass,
+}
+
+impl PrimerSpecificityCheckMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::ReportOnly => "report_only",
+            Self::RequirePass => "require_pass",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Explicit exon-junction placement preference for transcript-aware
+/// PCR/qPCR designs.
+pub enum PrimerExonJunctionPolicy {
+    #[default]
+    NoPreference,
+    MustSpan,
+    MustNotSpan,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Explicit intron-separation preference for transcript-aware PCR/qPCR
+/// designs.
+pub enum PrimerIntronSeparationPolicy {
+    #[default]
+    NoPreference,
+    MustSeparateByIntron,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+/// Local BLAST specificity policy shared by standalone confirmation and future
+/// design-time filtering.
+pub struct PrimerSpecificityPolicy {
+    pub specificity_check: PrimerSpecificityCheckMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity_target_genome_id: Option<String>,
+    pub max_target_amplicon_bp: usize,
+    pub min_primer_coverage_fraction: f64,
+    pub max_3prime_mismatches: usize,
+    pub three_prime_window_bp: usize,
+    pub min_total_mismatches_to_unintended_target: usize,
+    pub allow_same_gene_splice_variants: bool,
+    pub max_hits_per_primer: usize,
+    pub avoid_known_variants: bool,
+    pub avoid_rmsk_repeats: bool,
+    pub avoid_low_complexity: bool,
+}
+
+impl Default for PrimerSpecificityPolicy {
+    fn default() -> Self {
+        Self {
+            specificity_check: PrimerSpecificityCheckMode::ReportOnly,
+            specificity_target_genome_id: None,
+            max_target_amplicon_bp: 4_000,
+            min_primer_coverage_fraction: 0.80,
+            max_3prime_mismatches: 0,
+            three_prime_window_bp: 5,
+            min_total_mismatches_to_unintended_target: 2,
+            allow_same_gene_splice_variants: false,
+            max_hits_per_primer: 500,
+            avoid_known_variants: false,
+            avoid_rmsk_repeats: false,
+            avoid_low_complexity: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Primer role in a specificity-confirmation run.
+pub enum PrimerSpecificityPrimerRole {
+    Forward,
+    Reverse,
+}
+
+impl PrimerSpecificityPrimerRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Forward => "forward",
+            Self::Reverse => "reverse",
+        }
+    }
+}
+
+impl Default for PrimerSpecificityPrimerRole {
+    fn default() -> Self {
+        Self::Forward
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Pairing class inspected for Primer-BLAST-style warnings.
+pub enum PrimerSpecificityAmpliconKind {
+    ForwardReverse,
+    ForwardForward,
+    ReverseReverse,
+}
+
+impl PrimerSpecificityAmpliconKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ForwardReverse => "forward_reverse",
+            Self::ForwardForward => "forward_forward",
+            Self::ReverseReverse => "reverse_reverse",
+        }
+    }
+}
+
+impl Default for PrimerSpecificityAmpliconKind {
+    fn default() -> Self {
+        Self::ForwardReverse
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Primer sequence bundle used for local specificity confirmation. BLAST uses
+/// only the annealing sequence; 5' tails are kept as provenance.
+pub struct PrimerSpecificityInputPrimer {
+    pub role: PrimerSpecificityPrimerRole,
+    pub full_sequence: String,
+    pub annealing_sequence: String,
+    pub annealing_length_bp: usize,
+    pub non_annealing_5prime_tail: String,
+    pub non_annealing_5prime_tail_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One primer BLAST hit normalized into genomic coordinates and primer-end
+/// compatibility metrics.
+pub struct PrimerSpecificityPrimerHit {
+    pub hit_index: usize,
+    pub role: PrimerSpecificityPrimerRole,
+    pub subject_id: String,
+    pub identity_percent: f64,
+    pub alignment_length_bp: usize,
+    pub mismatches: usize,
+    pub gap_opens: usize,
+    pub query_start_1based: usize,
+    pub query_end_1based: usize,
+    pub subject_start_1based: usize,
+    pub subject_end_1based: usize,
+    pub subject_min_1based: usize,
+    pub subject_max_1based: usize,
+    pub strand: String,
+    pub evalue: f64,
+    pub bit_score: f64,
+    pub query_coverage_fraction: f64,
+    pub three_prime_window_bp: usize,
+    pub three_prime_mismatches: usize,
+    pub accepted_by_policy: bool,
+    #[serde(default)]
+    pub rejection_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Candidate product implied by compatible primer-hit orientations.
+pub struct PrimerSpecificityAmplicon {
+    pub kind: PrimerSpecificityAmpliconKind,
+    pub subject_id: String,
+    pub left_role: PrimerSpecificityPrimerRole,
+    pub left_hit_index: usize,
+    pub right_role: PrimerSpecificityPrimerRole,
+    pub right_hit_index: usize,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub length_bp: usize,
+    pub combined_mismatches: usize,
+    pub max_three_prime_mismatches: usize,
+    pub terminal_policy_pass: bool,
+    pub intended: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intended_reason: Option<String>,
+    pub specificity_failure: bool,
+    #[serde(default)]
+    pub failure_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Summary badge for a local primer specificity report.
+pub struct PrimerSpecificitySummary {
+    pub specificity_pass: bool,
+    pub status: String,
+    pub primer_hit_count: usize,
+    pub accepted_primer_hit_count: usize,
+    pub amplicon_count: usize,
+    pub intended_amplicon_count: usize,
+    pub unintended_amplicon_count: usize,
+    pub failing_unintended_amplicon_count: usize,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Engine-owned local Primer-BLAST-parity report for one primer pair against a
+/// prepared genome BLAST database.
+pub struct PrimerSpecificityReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_report_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_rank: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair_index: Option<usize>,
+    pub target_kind: String,
+    pub target_genome_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    #[serde(default)]
+    pub policy: PrimerSpecificityPolicy,
+    #[serde(default)]
+    pub primers: Vec<PrimerSpecificityInputPrimer>,
+    #[serde(default)]
+    pub blast_preflight: BlastExternalBinaryPreflightReport,
+    #[serde(default)]
+    pub blast_runs: Vec<BlastInvocationProvenance>,
+    #[serde(default)]
+    pub forward_hits: Vec<PrimerSpecificityPrimerHit>,
+    #[serde(default)]
+    pub reverse_hits: Vec<PrimerSpecificityPrimerHit>,
+    #[serde(default)]
+    pub amplicons: Vec<PrimerSpecificityAmplicon>,
+    #[serde(default)]
+    pub summary: PrimerSpecificitySummary,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

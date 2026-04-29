@@ -4844,6 +4844,74 @@ Operation progress/cancellation semantics:
 - This is the preferred workflow-owned export step after `DesignPrimerPairs`
   when a chat adapter needs a shareable report rather than only stdout.
 
+`AssessPrimerPairSpecificity` contract (implemented local BLAST baseline):
+
+- Purpose:
+  - confirm one saved or explicit primer pair against a prepared local
+    reference-genome BLAST database
+  - provide Primer-BLAST-like specificity evidence without remote NCBI
+    submission or GUI-only state
+- Operation payload:
+
+```json
+{
+  "AssessPrimerPairSpecificity": {
+    "primer_report_id": "tp73_roi_primers_v1",
+    "pair_rank": 1,
+    "target_genome_id": "GRCh38.p14",
+    "policy": {
+      "specificity_check": "report_only",
+      "max_target_amplicon_bp": 4000,
+      "min_primer_coverage_fraction": 0.8,
+      "max_3prime_mismatches": 0,
+      "three_prime_window_bp": 5,
+      "min_total_mismatches_to_unintended_target": 2,
+      "allow_same_gene_splice_variants": false,
+      "max_hits_per_primer": 500
+    },
+    "path": "tp73_pair1_specificity.json"
+  }
+}
+```
+
+- Explicit primers are accepted instead of `primer_report_id`:
+  - `forward_primer`: forward oligo/annealing sequence
+  - `reverse_primer`: reverse oligo/annealing sequence
+- For saved `PrimerDesignReport` pairs, the recorded
+  `non_annealing_5prime_tail_bp` is removed before BLAST. Full oligos and tails
+  remain in report provenance.
+- Target scope in v1:
+  - prepared reference genomes only
+  - runs through GENtle's existing BLAST index/preflight machinery
+  - local `blastn-short` is used, with `max_hits_per_primer` bounding each
+    primer query
+- Report schema:
+  - `gentle.primer_specificity_report.v1`
+  - includes BLAST binary preflight, per-primer BLAST invocation provenance,
+    input primers, policy, warnings, primer hits, candidate amplicons, and a
+    summary badge
+  - primer hits report identity, coverage, total mismatches, exact 3' terminal
+    mismatch count where prepared subject sequence can be fetched, strand, and
+    1-based subject coordinates
+  - candidate amplicons include forward/reverse products plus Primer-BLAST-style
+    forward/forward and reverse/reverse warning products
+  - intended products are resolved by saved-report amplicon length when
+    available, otherwise by a unique compatible forward/reverse product
+  - unintended compatible products fail when their combined mismatches remain
+    below `min_total_mismatches_to_unintended_target`
+- Additive policy vocabulary reserved for design-time parity:
+  - `specificity_check = none|report_only|require_pass`
+  - `specificity_target_genome_id`
+  - `allow_same_gene_splice_variants`
+  - mask booleans: `avoid_known_variants`, `avoid_rmsk_repeats`,
+    `avoid_low_complexity`
+  - transcript-aware policy enums:
+    `exon_junction_policy = no_preference|must_span|must_not_span` and
+    `intron_separation_policy = no_preference|must_separate_by_intron`
+  - current v1 stores/report-routes these knobs, while hard design-time
+    rejection by genome-wide specificity and binding-site masks remains a
+    follow-up.
+
 Simple PCR constraint handoff:
 
 - ClawBio should treat a simple PCR request as four explicit constraints before

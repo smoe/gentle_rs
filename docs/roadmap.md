@@ -3125,6 +3125,11 @@ Notes:
      - LAMP primer-set design (FIP/BIP/F3/B3 with optional loop primers)
      - custom multiplex tiling panel design + primer pooling strategy outputs
      - virtual PCR/off-target search with mismatch-tolerance reporting
+       now has a first local BLAST confirmation slice through
+       `AssessPrimerPairSpecificity` / `primers specificity`; remaining work is
+       design-time `require_pass` filtering, richer intended-product projection
+       from genomic anchors, custom FASTA BLAST databases, and binding-site
+       repeat/SNP/low-complexity mask enforcement
    - primer design backend parity is still incomplete:
      - Primer3 backend baseline is now available behind `DesignPrimerPairs`
        (with deterministic auto-fallback to internal backend), but deeper

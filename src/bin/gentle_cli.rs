@@ -682,6 +682,8 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]\n\n  \
   gentle_cli [--state PATH|--project PATH] primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N] [--max-hits-per-primer N] [--path OUTPUT.json]\n  \
+  gentle_cli [--state PATH|--project PATH] primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N] [--max-hits-per-primer N] [--path OUTPUT.json]\n  \
   gentle_cli [--state PATH|--project PATH] primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
   gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
   gentle_cli [--state PATH|--project PATH] primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]\n  \

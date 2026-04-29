@@ -15,7 +15,7 @@ use crate::{
     AMINO_ACIDS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
     dna_ladder::default_dna_ladders,
-    genomes::{default_catalog_discovery_label, default_catalog_discovery_token},
+    genomes::{BlastHit, default_catalog_discovery_label, default_catalog_discovery_token},
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     protein_gel::{
         Protein2dGelSpot, ProteinGelGroup, ProteinGelSample, build_grouped_protein_gel_layout,
@@ -80,6 +80,16 @@ struct NormalizedCdnaAssayTestRequest {
     require_3prime_exact_bases: usize,
     min_amplicon_bp: usize,
     max_amplicon_bp: usize,
+}
+
+#[derive(Debug, Clone)]
+struct PrimerSpecificityResolvedInput {
+    primer_report_id: Option<String>,
+    pair_rank: Option<usize>,
+    pair_index: Option<usize>,
+    expected_amplicon_length_bp: Option<usize>,
+    forward: PrimerSpecificityInputPrimer,
+    reverse: PrimerSpecificityInputPrimer,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -5801,6 +5811,762 @@ impl GentleEngine {
         ))
     }
 
+    fn normalize_primer_specificity_sequence(
+        raw: &str,
+        label: &str,
+    ) -> Result<String, EngineError> {
+        let mut out = String::new();
+        for ch in raw.chars() {
+            if ch.is_ascii_whitespace() {
+                continue;
+            }
+            let base = ch.to_ascii_uppercase();
+            let normalized = if base == 'U' { 'T' } else { base };
+            if !normalized.is_ascii() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("{label} contains non-ASCII base '{ch}'"),
+                });
+            }
+            if IupacCode::from_letter(normalized as u8).is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("{label} contains unsupported DNA/IUPAC base '{ch}'"),
+                });
+            }
+            out.push(normalized);
+        }
+        if out.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("{label} cannot be empty"),
+            });
+        }
+        Ok(out)
+    }
+
+    fn primer_specificity_input_from_record(
+        role: PrimerSpecificityPrimerRole,
+        record: &PrimerDesignPrimerRecord,
+    ) -> Result<PrimerSpecificityInputPrimer, EngineError> {
+        let full_sequence =
+            Self::normalize_primer_specificity_sequence(&record.sequence, role.as_str())?;
+        let tail_bp = record.non_annealing_5prime_tail_bp.min(full_sequence.len());
+        let non_annealing_5prime_tail = full_sequence[..tail_bp].to_string();
+        let annealing_sequence = full_sequence[tail_bp..].to_string();
+        if annealing_sequence.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{} primer has no annealing segment after its recorded 5' tail",
+                    role.as_str()
+                ),
+            });
+        }
+        Ok(PrimerSpecificityInputPrimer {
+            role,
+            full_sequence,
+            annealing_length_bp: annealing_sequence.len(),
+            annealing_sequence,
+            non_annealing_5prime_tail,
+            non_annealing_5prime_tail_bp: tail_bp,
+        })
+    }
+
+    fn primer_specificity_input_from_explicit(
+        role: PrimerSpecificityPrimerRole,
+        sequence: &str,
+    ) -> Result<PrimerSpecificityInputPrimer, EngineError> {
+        let annealing_sequence =
+            Self::normalize_primer_specificity_sequence(sequence, role.as_str())?;
+        Ok(PrimerSpecificityInputPrimer {
+            role,
+            full_sequence: annealing_sequence.clone(),
+            annealing_length_bp: annealing_sequence.len(),
+            annealing_sequence,
+            non_annealing_5prime_tail: String::new(),
+            non_annealing_5prime_tail_bp: 0,
+        })
+    }
+
+    fn resolve_primer_specificity_input(
+        &self,
+        primer_report_id: Option<&str>,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
+        forward_primer: Option<&str>,
+        reverse_primer: Option<&str>,
+    ) -> Result<PrimerSpecificityResolvedInput, EngineError> {
+        match (forward_primer, reverse_primer, primer_report_id) {
+            (Some(forward), Some(reverse), None) => Ok(PrimerSpecificityResolvedInput {
+                primer_report_id: None,
+                pair_rank: None,
+                pair_index: None,
+                expected_amplicon_length_bp: None,
+                forward: Self::primer_specificity_input_from_explicit(
+                    PrimerSpecificityPrimerRole::Forward,
+                    forward,
+                )?,
+                reverse: Self::primer_specificity_input_from_explicit(
+                    PrimerSpecificityPrimerRole::Reverse,
+                    reverse,
+                )?,
+            }),
+            (None, None, Some(report_id)) => {
+                if pair_rank == Some(0) {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "--pair-rank / pair_rank must be >= 1".to_string(),
+                    });
+                }
+                let report = self.get_primer_design_report(report_id)?;
+                let (resolved_index, pair) = if let Some(rank) = pair_rank {
+                    report
+                        .pairs
+                        .iter()
+                        .enumerate()
+                        .find(|(_, pair)| pair.rank == rank)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Primer-design report '{}' has no pair with rank {}",
+                                report.report_id, rank
+                            ),
+                        })?
+                } else if let Some(index) = pair_index {
+                    report
+                        .pairs
+                        .get(index)
+                        .map(|pair| (index, pair))
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Primer-design report '{}' has no pair at zero-based index {}",
+                                report.report_id, index
+                            ),
+                        })?
+                } else {
+                    report.pairs.first().map(|pair| (0usize, pair)).ok_or_else(|| {
+                        EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Primer-design report '{}' contains no primer pairs",
+                                report.report_id
+                            ),
+                        }
+                    })?
+                };
+                Ok(PrimerSpecificityResolvedInput {
+                    primer_report_id: Some(report.report_id.clone()),
+                    pair_rank: Some(pair.rank),
+                    pair_index: Some(resolved_index),
+                    expected_amplicon_length_bp: Some(pair.amplicon_length_bp),
+                    forward: Self::primer_specificity_input_from_record(
+                        PrimerSpecificityPrimerRole::Forward,
+                        &pair.forward,
+                    )?,
+                    reverse: Self::primer_specificity_input_from_record(
+                        PrimerSpecificityPrimerRole::Reverse,
+                        &pair.reverse,
+                    )?,
+                })
+            }
+            (Some(_), Some(_), Some(_)) => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "AssessPrimerPairSpecificity accepts either explicit primers or a report id, not both"
+                        .to_string(),
+            }),
+            (Some(_), None, _) | (None, Some(_), _) => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Explicit specificity checks require both forward_primer and reverse_primer"
+                    .to_string(),
+            }),
+            (None, None, None) => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "AssessPrimerPairSpecificity requires primer_report_id or explicit primers"
+                        .to_string(),
+            }),
+        }
+    }
+
+    fn primer_specificity_blast_provenance(
+        report: &GenomeBlastReport,
+        query_label: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> BlastInvocationProvenance {
+        BlastInvocationProvenance {
+            genome_id: report.genome_id.clone(),
+            query_label: query_label.to_string(),
+            query_length: report.query_length,
+            max_hits: report.max_hits,
+            task: report.task.clone(),
+            blastn_executable: report.blastn_executable.clone(),
+            blast_db_prefix: report.blast_db_prefix.clone(),
+            command: report.command.clone(),
+            command_line: report.command.join(" "),
+            catalog_path: catalog_path
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            cache_dir: cache_dir
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            options_override_json: report.options_override_json.clone(),
+            effective_options_json: report.effective_options_json.clone(),
+        }
+    }
+
+    fn primer_specificity_iupac_bases_match(subject_base: u8, query_base: u8) -> bool {
+        Self::cdna_assay_iupac_mismatch_count(&[subject_base], &[query_base]) == Some(0)
+    }
+
+    fn primer_specificity_three_prime_mismatches(
+        catalog: &GenomeCatalog,
+        target_genome_id: &str,
+        cache_dir: Option<&str>,
+        hit: &BlastHit,
+        query_sequence: &str,
+        three_prime_window_bp: usize,
+    ) -> Result<usize, String> {
+        let query = query_sequence.as_bytes();
+        if query.is_empty() || three_prime_window_bp == 0 {
+            return Ok(0);
+        }
+        let window_bp = three_prime_window_bp.min(query.len());
+        let subject_min = hit.subject_start.min(hit.subject_end);
+        let subject_max = hit.subject_start.max(hit.subject_end);
+        let mut subject_sequence = catalog.get_sequence_region_with_cache(
+            target_genome_id,
+            &hit.subject_id,
+            subject_min,
+            subject_max,
+            cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+        )?;
+        subject_sequence = subject_sequence.to_ascii_uppercase();
+        if hit.subject_start > hit.subject_end {
+            subject_sequence = Self::reverse_complement(&subject_sequence);
+        }
+        let subject = subject_sequence.as_bytes();
+        let query_start = hit.query_start.min(hit.query_end).saturating_sub(1);
+        let query_end_exclusive = hit.query_start.max(hit.query_end);
+        let mut mismatches = 0usize;
+        for query_pos in query.len().saturating_sub(window_bp)..query.len() {
+            if query_pos < query_start || query_pos >= query_end_exclusive {
+                mismatches = mismatches.saturating_add(1);
+                continue;
+            }
+            let subject_pos = if hit.query_start <= hit.query_end {
+                query_pos.saturating_sub(query_start)
+            } else {
+                query_end_exclusive
+                    .saturating_sub(1)
+                    .saturating_sub(query_pos)
+            };
+            if subject_pos >= subject.len()
+                || !Self::primer_specificity_iupac_bases_match(
+                    subject[subject_pos],
+                    query[query_pos],
+                )
+            {
+                mismatches = mismatches.saturating_add(1);
+            }
+        }
+        Ok(mismatches)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn primer_specificity_hit_from_blast(
+        catalog: &GenomeCatalog,
+        target_genome_id: &str,
+        cache_dir: Option<&str>,
+        role: PrimerSpecificityPrimerRole,
+        hit_index: usize,
+        query_sequence: &str,
+        hit: &BlastHit,
+        policy: &PrimerSpecificityPolicy,
+        warnings: &mut Vec<String>,
+    ) -> PrimerSpecificityPrimerHit {
+        let query_length = query_sequence.len().max(1);
+        let query_coverage_fraction = hit
+            .query_coverage_percent
+            .map(|value| value / 100.0)
+            .unwrap_or_else(|| hit.alignment_length as f64 / query_length as f64)
+            .clamp(0.0, 1.0);
+        let three_prime_mismatches = match Self::primer_specificity_three_prime_mismatches(
+            catalog,
+            target_genome_id,
+            cache_dir,
+            hit,
+            query_sequence,
+            policy.three_prime_window_bp,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                warnings.push(format!(
+                    "Could not fetch subject sequence for {} hit {} on {}:{}..{} to count 3' mismatches exactly: {}",
+                    role.as_str(),
+                    hit_index,
+                    hit.subject_id,
+                    hit.subject_start.min(hit.subject_end),
+                    hit.subject_start.max(hit.subject_end),
+                    error
+                ));
+                let aligned_to_three_prime = hit.query_start.max(hit.query_end) >= query_length;
+                if aligned_to_three_prime {
+                    hit.mismatches.min(policy.three_prime_window_bp)
+                } else {
+                    policy.three_prime_window_bp.min(query_length)
+                }
+            }
+        };
+        let mut rejection_reasons = vec![];
+        if query_coverage_fraction + f64::EPSILON < policy.min_primer_coverage_fraction {
+            rejection_reasons.push(format!(
+                "query coverage {:.3} is below min_primer_coverage_fraction {:.3}",
+                query_coverage_fraction, policy.min_primer_coverage_fraction
+            ));
+        }
+        if three_prime_mismatches > policy.max_3prime_mismatches {
+            rejection_reasons.push(format!(
+                "3' mismatch count {} exceeds max_3prime_mismatches {}",
+                three_prime_mismatches, policy.max_3prime_mismatches
+            ));
+        }
+        let subject_min_1based = hit.subject_start.min(hit.subject_end);
+        let subject_max_1based = hit.subject_start.max(hit.subject_end);
+        PrimerSpecificityPrimerHit {
+            hit_index,
+            role,
+            subject_id: hit.subject_id.clone(),
+            identity_percent: hit.identity_percent,
+            alignment_length_bp: hit.alignment_length,
+            mismatches: hit.mismatches,
+            gap_opens: hit.gap_opens,
+            query_start_1based: hit.query_start,
+            query_end_1based: hit.query_end,
+            subject_start_1based: hit.subject_start,
+            subject_end_1based: hit.subject_end,
+            subject_min_1based,
+            subject_max_1based,
+            strand: if hit.subject_start <= hit.subject_end {
+                "+".to_string()
+            } else {
+                "-".to_string()
+            },
+            evalue: hit.evalue,
+            bit_score: hit.bit_score,
+            query_coverage_fraction,
+            three_prime_window_bp: policy.three_prime_window_bp.min(query_sequence.len()),
+            three_prime_mismatches,
+            accepted_by_policy: rejection_reasons.is_empty(),
+            rejection_reasons,
+        }
+    }
+
+    fn primer_specificity_inward_amplicon_bounds(
+        left: &PrimerSpecificityPrimerHit,
+        right: &PrimerSpecificityPrimerHit,
+    ) -> Option<(usize, usize, usize)> {
+        if left.subject_id != right.subject_id || left.strand != "+" || right.strand != "-" {
+            return None;
+        }
+        if left.subject_min_1based > right.subject_min_1based {
+            return None;
+        }
+        let start = left.subject_min_1based.min(right.subject_min_1based);
+        let end = left.subject_max_1based.max(right.subject_max_1based);
+        Some((start, end, end.saturating_sub(start).saturating_add(1)))
+    }
+
+    fn primer_specificity_amplicon_from_hits(
+        kind: PrimerSpecificityAmpliconKind,
+        left: &PrimerSpecificityPrimerHit,
+        right: &PrimerSpecificityPrimerHit,
+        policy: &PrimerSpecificityPolicy,
+    ) -> Option<PrimerSpecificityAmplicon> {
+        let (start_1based, end_1based, length_bp) =
+            Self::primer_specificity_inward_amplicon_bounds(left, right)?;
+        if length_bp > policy.max_target_amplicon_bp {
+            return None;
+        }
+        let terminal_policy_pass = left.accepted_by_policy && right.accepted_by_policy;
+        Some(PrimerSpecificityAmplicon {
+            kind,
+            subject_id: left.subject_id.clone(),
+            left_role: left.role,
+            left_hit_index: left.hit_index,
+            right_role: right.role,
+            right_hit_index: right.hit_index,
+            start_1based,
+            end_1based,
+            length_bp,
+            combined_mismatches: left.mismatches.saturating_add(right.mismatches),
+            max_three_prime_mismatches: left
+                .three_prime_mismatches
+                .max(right.three_prime_mismatches),
+            terminal_policy_pass,
+            intended: false,
+            intended_reason: None,
+            specificity_failure: false,
+            failure_reasons: vec![],
+        })
+    }
+
+    fn primer_specificity_collect_amplicons_between(
+        kind: PrimerSpecificityAmpliconKind,
+        left_hits: &[PrimerSpecificityPrimerHit],
+        right_hits: &[PrimerSpecificityPrimerHit],
+        policy: &PrimerSpecificityPolicy,
+        same_role: bool,
+    ) -> Vec<PrimerSpecificityAmplicon> {
+        let mut amplicons = vec![];
+        for (left_pos, left) in left_hits.iter().enumerate() {
+            for (right_pos, right) in right_hits.iter().enumerate() {
+                if same_role && left_pos == right_pos {
+                    continue;
+                }
+                if same_role && left.hit_index > right.hit_index {
+                    continue;
+                }
+                if let Some(amplicon) =
+                    Self::primer_specificity_amplicon_from_hits(kind, left, right, policy)
+                {
+                    amplicons.push(amplicon);
+                }
+            }
+        }
+        amplicons
+    }
+
+    pub(crate) fn primer_specificity_collect_amplicons_for_hits(
+        forward_hits: &[PrimerSpecificityPrimerHit],
+        reverse_hits: &[PrimerSpecificityPrimerHit],
+        policy: &PrimerSpecificityPolicy,
+    ) -> Vec<PrimerSpecificityAmplicon> {
+        let mut amplicons = vec![];
+        amplicons.extend(Self::primer_specificity_collect_amplicons_between(
+            PrimerSpecificityAmpliconKind::ForwardReverse,
+            forward_hits,
+            reverse_hits,
+            policy,
+            false,
+        ));
+        amplicons.extend(Self::primer_specificity_collect_amplicons_between(
+            PrimerSpecificityAmpliconKind::ForwardForward,
+            forward_hits,
+            forward_hits,
+            policy,
+            true,
+        ));
+        amplicons.extend(Self::primer_specificity_collect_amplicons_between(
+            PrimerSpecificityAmpliconKind::ReverseReverse,
+            reverse_hits,
+            reverse_hits,
+            policy,
+            true,
+        ));
+        amplicons.sort_by(|left, right| {
+            left.subject_id
+                .cmp(&right.subject_id)
+                .then(left.start_1based.cmp(&right.start_1based))
+                .then(left.end_1based.cmp(&right.end_1based))
+                .then(left.kind.as_str().cmp(right.kind.as_str()))
+                .then(left.left_hit_index.cmp(&right.left_hit_index))
+                .then(left.right_hit_index.cmp(&right.right_hit_index))
+        });
+        amplicons
+    }
+
+    pub(crate) fn primer_specificity_finalize_amplicons(
+        amplicons: &mut [PrimerSpecificityAmplicon],
+        expected_amplicon_length_bp: Option<usize>,
+        policy: &PrimerSpecificityPolicy,
+    ) {
+        let intended_index = if let Some(expected_len) = expected_amplicon_length_bp {
+            let matches = amplicons
+                .iter()
+                .enumerate()
+                .filter(|(_, amplicon)| {
+                    amplicon.kind == PrimerSpecificityAmpliconKind::ForwardReverse
+                        && amplicon.terminal_policy_pass
+                        && amplicon.length_bp == expected_len
+                })
+                .map(|(idx, _)| idx)
+                .collect::<Vec<_>>();
+            (matches.len() == 1).then_some(matches[0])
+        } else {
+            let matches = amplicons
+                .iter()
+                .enumerate()
+                .filter(|(_, amplicon)| {
+                    amplicon.kind == PrimerSpecificityAmpliconKind::ForwardReverse
+                        && amplicon.terminal_policy_pass
+                })
+                .map(|(idx, _)| idx)
+                .collect::<Vec<_>>();
+            (matches.len() == 1).then_some(matches[0])
+        };
+        if let Some(idx) = intended_index {
+            if let Some(amplicon) = amplicons.get_mut(idx) {
+                amplicon.intended = true;
+                amplicon.intended_reason = Some(
+                    expected_amplicon_length_bp
+                        .map(|_| "matches_saved_primer_pair_amplicon_length")
+                        .unwrap_or("unique_forward_reverse_product")
+                        .to_string(),
+                );
+            }
+        }
+        for amplicon in amplicons {
+            if !amplicon.terminal_policy_pass {
+                amplicon.failure_reasons.push(
+                    "one or both primer hits fail coverage or 3' terminal policy".to_string(),
+                );
+                continue;
+            }
+            if amplicon.intended {
+                continue;
+            }
+            if amplicon.combined_mismatches < policy.min_total_mismatches_to_unintended_target {
+                amplicon.specificity_failure = true;
+                amplicon.failure_reasons.push(format!(
+                    "unintended {} product has combined mismatches {} below threshold {}",
+                    amplicon.kind.as_str(),
+                    amplicon.combined_mismatches,
+                    policy.min_total_mismatches_to_unintended_target
+                ));
+            }
+        }
+    }
+
+    fn primer_specificity_summary(
+        forward_hits: &[PrimerSpecificityPrimerHit],
+        reverse_hits: &[PrimerSpecificityPrimerHit],
+        amplicons: &[PrimerSpecificityAmplicon],
+    ) -> PrimerSpecificitySummary {
+        let primer_hit_count = forward_hits.len().saturating_add(reverse_hits.len());
+        let accepted_primer_hit_count = forward_hits
+            .iter()
+            .chain(reverse_hits.iter())
+            .filter(|hit| hit.accepted_by_policy)
+            .count();
+        let intended_amplicon_count = amplicons
+            .iter()
+            .filter(|amplicon| amplicon.intended)
+            .count();
+        let unintended_amplicon_count = amplicons
+            .iter()
+            .filter(|amplicon| !amplicon.intended && amplicon.terminal_policy_pass)
+            .count();
+        let failing_unintended_amplicon_count = amplicons
+            .iter()
+            .filter(|amplicon| amplicon.specificity_failure)
+            .count();
+        let specificity_pass =
+            intended_amplicon_count == 1 && failing_unintended_amplicon_count == 0;
+        let status = if specificity_pass { "pass" } else { "fail" }.to_string();
+        let summary = if specificity_pass {
+            "Primer pair has one intended compatible product and no failing unintended products under the configured local BLAST policy.".to_string()
+        } else if intended_amplicon_count == 0 {
+            "Primer pair did not yield a unique intended compatible product under the configured local BLAST policy.".to_string()
+        } else {
+            format!(
+                "Primer pair has {} failing unintended compatible product(s) under the configured local BLAST policy.",
+                failing_unintended_amplicon_count
+            )
+        };
+        PrimerSpecificitySummary {
+            specificity_pass,
+            status,
+            primer_hit_count,
+            accepted_primer_hit_count,
+            amplicon_count: amplicons.len(),
+            intended_amplicon_count,
+            unintended_amplicon_count,
+            failing_unintended_amplicon_count,
+            summary,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn assess_primer_pair_specificity(
+        &self,
+        primer_report_id: Option<&str>,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
+        forward_primer: Option<&str>,
+        reverse_primer: Option<&str>,
+        target_genome_id: &str,
+        mut policy: PrimerSpecificityPolicy,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<PrimerSpecificityReport, EngineError> {
+        let target_genome_id = target_genome_id.trim();
+        if target_genome_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "AssessPrimerPairSpecificity requires target_genome_id".to_string(),
+            });
+        }
+        if policy.max_hits_per_primer == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_hits_per_primer must be >= 1".to_string(),
+            });
+        }
+        if policy.max_target_amplicon_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_target_amplicon_bp must be >= 1".to_string(),
+            });
+        }
+        if !(0.0..=1.0).contains(&policy.min_primer_coverage_fraction) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "min_primer_coverage_fraction must be between 0.0 and 1.0".to_string(),
+            });
+        }
+        if policy.specificity_target_genome_id.is_none() {
+            policy.specificity_target_genome_id = Some(target_genome_id.to_string());
+        }
+
+        let resolved_input = self.resolve_primer_specificity_input(
+            primer_report_id,
+            pair_rank,
+            pair_index,
+            forward_primer,
+            reverse_primer,
+        )?;
+        let blast_preflight = self.blast_external_binary_preflight_report();
+        let forward_blast = self.blast_reference_genome_with_project_and_request_options(
+            catalog_path,
+            target_genome_id,
+            &resolved_input.forward.annealing_sequence,
+            None,
+            Some("blastn-short"),
+            Some(policy.max_hits_per_primer),
+            cache_dir,
+        )?;
+        let reverse_blast = self.blast_reference_genome_with_project_and_request_options(
+            catalog_path,
+            target_genome_id,
+            &resolved_input.reverse.annealing_sequence,
+            None,
+            Some("blastn-short"),
+            Some(policy.max_hits_per_primer),
+            cache_dir,
+        )?;
+        let (catalog, resolved_catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        let mut warnings = vec![];
+        if policy.avoid_known_variants || policy.avoid_rmsk_repeats || policy.avoid_low_complexity {
+            warnings.push(
+                "Primer binding-site mask policy was recorded in the specificity report; v1 local BLAST confirmation does not yet reject hits by variant/repeat/low-complexity masks."
+                    .to_string(),
+            );
+        }
+        warnings.extend(forward_blast.warnings.clone());
+        warnings.extend(reverse_blast.warnings.clone());
+        if !forward_blast.stderr.trim().is_empty() {
+            warnings.push(format!(
+                "forward primer blastn stderr: {}",
+                forward_blast.stderr.trim()
+            ));
+        }
+        if !reverse_blast.stderr.trim().is_empty() {
+            warnings.push(format!(
+                "reverse primer blastn stderr: {}",
+                reverse_blast.stderr.trim()
+            ));
+        }
+        let forward_hits = forward_blast
+            .hits
+            .iter()
+            .enumerate()
+            .map(|(idx, hit)| {
+                Self::primer_specificity_hit_from_blast(
+                    &catalog,
+                    target_genome_id,
+                    cache_dir,
+                    PrimerSpecificityPrimerRole::Forward,
+                    idx,
+                    &resolved_input.forward.annealing_sequence,
+                    hit,
+                    &policy,
+                    &mut warnings,
+                )
+            })
+            .collect::<Vec<_>>();
+        let reverse_hits = reverse_blast
+            .hits
+            .iter()
+            .enumerate()
+            .map(|(idx, hit)| {
+                Self::primer_specificity_hit_from_blast(
+                    &catalog,
+                    target_genome_id,
+                    cache_dir,
+                    PrimerSpecificityPrimerRole::Reverse,
+                    idx,
+                    &resolved_input.reverse.annealing_sequence,
+                    hit,
+                    &policy,
+                    &mut warnings,
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut amplicons = Self::primer_specificity_collect_amplicons_for_hits(
+            &forward_hits,
+            &reverse_hits,
+            &policy,
+        );
+        Self::primer_specificity_finalize_amplicons(
+            &mut amplicons,
+            resolved_input.expected_amplicon_length_bp,
+            &policy,
+        );
+        let summary = Self::primer_specificity_summary(&forward_hits, &reverse_hits, &amplicons);
+        Ok(PrimerSpecificityReport {
+            schema: PRIMER_SPECIFICITY_REPORT_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            primer_report_id: resolved_input.primer_report_id,
+            pair_rank: resolved_input.pair_rank,
+            pair_index: resolved_input.pair_index,
+            target_kind: "prepared_reference_genome".to_string(),
+            target_genome_id: target_genome_id.to_string(),
+            catalog_path: Some(resolved_catalog_path),
+            cache_dir: cache_dir
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            policy,
+            primers: vec![resolved_input.forward, resolved_input.reverse],
+            blast_preflight,
+            blast_runs: vec![
+                Self::primer_specificity_blast_provenance(
+                    &forward_blast,
+                    "forward_annealing_segment",
+                    catalog_path,
+                    cache_dir,
+                ),
+                Self::primer_specificity_blast_provenance(
+                    &reverse_blast,
+                    "reverse_annealing_segment",
+                    catalog_path,
+                    cache_dir,
+                ),
+            ],
+            forward_hits,
+            reverse_hits,
+            amplicons,
+            summary,
+            warnings,
+        })
+    }
+
     fn cdna_assay_iupac_mismatch_count(window: &[u8], pattern: &[u8]) -> Option<usize> {
         if window.len() != pattern.len() {
             return None;
@@ -10678,6 +11444,7 @@ impl GentleEngine {
             protease_digest_report: None,
             protein_residue_genomic_coordinates: None,
             transcript_qpcr_panel: None,
+            primer_specificity_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_primer_overlay_report: None,
@@ -15181,6 +15948,54 @@ impl GentleEngine {
                         "Exported primer-design report '{}' with {} pair(s) to '{}'",
                         report.report_id, report.pair_count, path
                     ));
+                }
+                Operation::AssessPrimerPairSpecificity {
+                    primer_report_id,
+                    pair_rank,
+                    pair_index,
+                    forward_primer,
+                    reverse_primer,
+                    target_genome_id,
+                    policy,
+                    catalog_path,
+                    cache_dir,
+                    path,
+                } => {
+                    let report = self.assess_primer_pair_specificity(
+                        primer_report_id.as_deref(),
+                        pair_rank,
+                        pair_index,
+                        forward_primer.as_deref(),
+                        reverse_primer.as_deref(),
+                        &target_genome_id,
+                        policy,
+                        catalog_path.as_deref(),
+                        cache_dir.as_deref(),
+                    )?;
+                    if let Some(path) = path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                    {
+                        let file = File::create(path).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not create primer specificity report '{path}': {e}"
+                            ),
+                        })?;
+                        let writer = BufWriter::new(file);
+                        serde_json::to_writer_pretty(writer, &report).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not serialize primer specificity report '{path}': {e}"
+                            ),
+                        })?;
+                        result
+                            .messages
+                            .push(format!("Wrote primer specificity report to '{path}'"));
+                    }
+                    result.messages.push(report.summary.summary.clone());
+                    result.primer_specificity_report = Some(Box::new(report));
                 }
                 Operation::PrepareRestrictionCloningPcrHandoff {
                     template,

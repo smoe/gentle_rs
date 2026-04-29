@@ -1157,6 +1157,11 @@ impl GentleEngine {
             | Operation::ExtractGenomeGene { genome_id, .. } => {
                 Self::push_unique_token(&mut summary.genome_ids, genome_id);
             }
+            Operation::AssessPrimerPairSpecificity {
+                target_genome_id, ..
+            } => {
+                Self::push_unique_token(&mut summary.genome_ids, target_genome_id);
+            }
             Operation::ImportUniprotSwissProt { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }
@@ -1343,6 +1348,9 @@ impl GentleEngine {
             | Operation::ExportGuideOligos { path, .. }
             | Operation::ExportGuideProtocolText { path, .. }
             | Operation::ExportPrimerDesignReport { path, .. }
+            | Operation::AssessPrimerPairSpecificity {
+                path: Some(path), ..
+            }
             | Operation::ExportRnaReadReport { path, .. }
             | Operation::ExportRnaReadHitsFasta { path, .. }
             | Operation::ExportRnaReadSampleSheet { path, .. }

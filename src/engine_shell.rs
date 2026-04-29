@@ -53,7 +53,7 @@ use crate::{
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, ProjectState, PromoterTfbsGeneQuery,
+        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProjectState, PromoterTfbsGeneQuery,
         PromoterWindowCollapseMode, ProteinExternalOpinionSource, ProteinFeatureFilter,
         ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
         QpcrTranscriptTargetingMode, RackAuthoringTemplate, RackCarrierLabelPreset,
@@ -1968,6 +1968,18 @@ pub enum ShellCommand {
         request_json: String,
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
+    },
+    PrimersSpecificity {
+        primer_report_id: Option<String>,
+        pair_rank: Option<usize>,
+        pair_index: Option<usize>,
+        forward_primer: Option<String>,
+        reverse_primer: Option<String>,
+        target_genome_id: String,
+        policy: PrimerSpecificityPolicy,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        path: Option<String>,
     },
     PrimersTestCdnaPcr {
         seq_id: String,
@@ -8846,6 +8858,25 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("default"),
             ),
+            Self::PrimersSpecificity {
+                primer_report_id,
+                forward_primer,
+                reverse_primer,
+                target_genome_id,
+                path,
+                ..
+            } => format!(
+                "confirm primer-pair specificity against prepared genome '{}' (source={}, explicit_pair={}, path={})",
+                target_genome_id,
+                primer_report_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("explicit"),
+                forward_primer.is_some() && reverse_primer.is_some(),
+                path.as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("none"),
+            ),
             Self::PrimersTestCdnaPcr {
                 seq_id,
                 feature_id,
@@ -9945,6 +9976,7 @@ impl ShellCommand {
                 | Self::VariantMaterializeAllele { .. }
                 | Self::PrimersDesign { .. }
                 | Self::PrimersDesignQpcr { .. }
+                | Self::PrimersSpecificity { .. }
                 | Self::PrimersPrepareRestrictionCloning { .. }
                 | Self::PrimersSeedRestrictionCloningHandoff { .. }
                 | Self::PrimersListRestrictionCloningHandoffs
@@ -25070,6 +25102,51 @@ fn execute_primers_command(
                 }),
             })
         }
+        ShellCommand::PrimersSpecificity {
+            primer_report_id,
+            pair_rank,
+            pair_index,
+            forward_primer,
+            reverse_primer,
+            target_genome_id,
+            policy,
+            catalog_path,
+            cache_dir,
+            path,
+        } => {
+            let report = engine
+                .assess_primer_pair_specificity(
+                    primer_report_id.as_deref(),
+                    *pair_rank,
+                    *pair_index,
+                    forward_primer.as_deref(),
+                    reverse_primer.as_deref(),
+                    target_genome_id,
+                    policy.clone(),
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            if let Some(path) = path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                let json_text = serde_json::to_string_pretty(&report)
+                    .map_err(|e| format!("Could not serialize primer specificity report: {e}"))?;
+                fs::write(path, json_text).map_err(|e| {
+                    format!("Could not write primer specificity report to '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_specificity_command.v1",
+                    "report": report,
+                    "path": path,
+                }),
+            })
+        }
         ShellCommand::PrimersTestCdnaPcr {
             seq_id,
             feature_id,
@@ -29222,6 +29299,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::PrimersSeedQpcrFromSplicing { .. }
             | ShellCommand::PrimersDesign { .. }
             | ShellCommand::PrimersDesignQpcr { .. }
+            | ShellCommand::PrimersSpecificity { .. }
             | ShellCommand::PrimersTestCdnaPcr { .. }
             | ShellCommand::PrimersTestCdnaQpcr { .. }
             | ShellCommand::PrimersTranscriptQpcrPanel { .. }
@@ -30799,6 +30877,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PrimersSeedQpcrFromSplicing { .. }
         | ShellCommand::PrimersDesign { .. }
         | ShellCommand::PrimersDesignQpcr { .. }
+        | ShellCommand::PrimersSpecificity { .. }
         | ShellCommand::PrimersTestCdnaPcr { .. }
         | ShellCommand::PrimersTestCdnaQpcr { .. }
         | ShellCommand::PrimersTranscriptQpcrPanel { .. }

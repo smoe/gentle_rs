@@ -4414,6 +4414,62 @@ fn parse_primers_design_qpcr_with_backend_overrides() {
 }
 
 #[test]
+fn parse_primers_specificity_saved_report_and_explicit_pair() {
+    let saved = parse_shell_line(
+        "primers specificity primer_report_1 --pair-rank 2 --target-genome GRCh38.p14 --max-target-amplicon-bp 800 --max-hits-per-primer 250 --path specificity.json",
+    )
+    .expect("parse saved-report specificity command");
+    match saved {
+        ShellCommand::PrimersSpecificity {
+            primer_report_id,
+            pair_rank,
+            pair_index,
+            forward_primer,
+            reverse_primer,
+            target_genome_id,
+            policy,
+            path,
+            ..
+        } => {
+            assert_eq!(primer_report_id.as_deref(), Some("primer_report_1"));
+            assert_eq!(pair_rank, Some(2));
+            assert_eq!(pair_index, None);
+            assert!(forward_primer.is_none());
+            assert!(reverse_primer.is_none());
+            assert_eq!(target_genome_id, "GRCh38.p14");
+            assert_eq!(policy.max_target_amplicon_bp, 800);
+            assert_eq!(policy.max_hits_per_primer, 250);
+            assert_eq!(path.as_deref(), Some("specificity.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let explicit = parse_shell_line(
+        "primers specificity --forward ACGTACGTACGTACGTAC --reverse TTTTCCCCAAAAGGGGTT --target-genome ToyGenome --min-primer-coverage-fraction 0.9 --max-3prime-mismatches 1 --allow-same-gene-splice-variants",
+    )
+    .expect("parse explicit specificity command");
+    match explicit {
+        ShellCommand::PrimersSpecificity {
+            primer_report_id,
+            forward_primer,
+            reverse_primer,
+            target_genome_id,
+            policy,
+            ..
+        } => {
+            assert!(primer_report_id.is_none());
+            assert_eq!(forward_primer.as_deref(), Some("ACGTACGTACGTACGTAC"));
+            assert_eq!(reverse_primer.as_deref(), Some("TTTTCCCCAAAAGGGGTT"));
+            assert_eq!(target_genome_id, "ToyGenome");
+            assert!((policy.min_primer_coverage_fraction - 0.9).abs() < f64::EPSILON);
+            assert_eq!(policy.max_3prime_mismatches, 1);
+            assert!(policy.allow_same_gene_splice_variants);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_primers_prepare_restriction_cloning_request() {
     let cmd = parse_shell_line("primers prepare-restriction-cloning @handoff_request.json")
         .expect("parse restriction-cloning handoff");

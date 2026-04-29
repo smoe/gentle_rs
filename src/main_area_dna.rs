@@ -77,10 +77,10 @@ use crate::{
         MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
         PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
         PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
-        PrimerDesignSideConstraint, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
-        ProtocolCartoonPreviewTelemetry, QpcrDesignReport, QpcrTranscriptSpecificityEvidence,
-        QpcrTranscriptTargeting, QpcrTranscriptTargetingMode, RenderSvgMode,
-        RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
+        PrimerDesignSideConstraint, PrimerSpecificityPolicy, PromoterReporterCandidateSet,
+        PromoterWindowCollapseMode, ProtocolCartoonPreviewTelemetry, QpcrDesignReport,
+        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+        RenderSvgMode, RestrictionCloningPcrHandoffMode, RestrictionCloningPcrHandoffReport,
         RestrictionCloningPcrHandoffSeedRequest, RestrictionCloningVectorEnzymeSuggestions,
         RestrictionEnzymeDisplayMode, RestrictionSiteScanReport, RnaReadAlignConfig,
         RnaReadAlignmentDisplay, RnaReadAlignmentEffect, RnaReadAlignmentInspection,
@@ -525,6 +525,10 @@ struct PrimerDesignOpsUiState {
     max_tm_delta_c: String,
     max_pairs: String,
     report_id: String,
+    specificity_target_genome_id: String,
+    specificity_pair_rank_1based: String,
+    specificity_max_target_amplicon_bp: String,
+    specificity_max_hits_per_primer: String,
     restriction_cloning: RestrictionCloningPcrHandoffUiState,
 }
 
@@ -541,6 +545,10 @@ impl Default for PrimerDesignOpsUiState {
             max_tm_delta_c: "2.0".to_string(),
             max_pairs: "200".to_string(),
             report_id: "primer_report_gui".to_string(),
+            specificity_target_genome_id: String::new(),
+            specificity_pair_rank_1based: "1".to_string(),
+            specificity_max_target_amplicon_bp: "4000".to_string(),
+            specificity_max_hits_per_primer: "500".to_string(),
             restriction_cloning: RestrictionCloningPcrHandoffUiState::default(),
         }
     }
@@ -1820,6 +1828,7 @@ mod tests {
             protease_digest_report: None,
             protein_residue_genomic_coordinates: None,
             transcript_qpcr_panel: None,
+            primer_specificity_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
             sequencing_trace_import_report: Some(SequencingTraceImportReport {
@@ -4804,6 +4813,7 @@ mod tests {
                 protease_digest_report: None,
                 protein_residue_genomic_coordinates: None,
                 transcript_qpcr_panel: None,
+                primer_specificity_report: None,
                 construct_reasoning_graph: None,
                 sequencing_confirmation_report: None,
                 sequencing_primer_overlay_report: None,
@@ -39611,6 +39621,101 @@ impl MainAreaDna {
         );
     }
 
+    fn confirm_primer_specificity_for_report(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Primer report_id is empty".to_string();
+            return;
+        }
+        let target_genome_id = self.primer_design_ui.specificity_target_genome_id.trim();
+        if target_genome_id.is_empty() {
+            self.op_status = "Primer specificity requires a prepared target genome id".to_string();
+            return;
+        }
+        let pair_rank = match self
+            .primer_design_ui
+            .specificity_pair_rank_1based
+            .trim()
+            .parse::<usize>()
+        {
+            Ok(rank) if rank > 0 => rank,
+            _ => {
+                self.op_status = "Primer specificity pair rank must be >= 1".to_string();
+                return;
+            }
+        };
+        let max_target_amplicon_bp = match self
+            .primer_design_ui
+            .specificity_max_target_amplicon_bp
+            .trim()
+            .parse::<usize>()
+        {
+            Ok(value) if value > 0 => value,
+            _ => {
+                self.op_status = "Primer specificity max amplicon must be >= 1".to_string();
+                return;
+            }
+        };
+        let max_hits_per_primer = match self
+            .primer_design_ui
+            .specificity_max_hits_per_primer
+            .trim()
+            .parse::<usize>()
+        {
+            Ok(value) if value > 0 => value,
+            _ => {
+                self.op_status = "Primer specificity max hits per primer must be >= 1".to_string();
+                return;
+            }
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let policy = PrimerSpecificityPolicy {
+            specificity_target_genome_id: Some(target_genome_id.to_string()),
+            max_target_amplicon_bp,
+            max_hits_per_primer,
+            ..PrimerSpecificityPolicy::default()
+        };
+        let report = match engine
+            .read()
+            .expect("Engine lock poisoned")
+            .assess_primer_pair_specificity(
+                Some(report_id),
+                Some(pair_rank),
+                None,
+                None,
+                None,
+                target_genome_id,
+                policy,
+                None,
+                None,
+            ) {
+            Ok(report) => report,
+            Err(err) => {
+                self.op_status = format!(
+                    "Primer specificity failed for report '{}' rank {} against '{}': {}",
+                    report_id, pair_rank, target_genome_id, err.message
+                );
+                return;
+            }
+        };
+        self.op_status = format!(
+            "Primer specificity {} for '{}' rank {} against '{}': intended={} unintended={} failing_unintended={} primer_hits={} accepted_hits={} warnings={}",
+            report.summary.status,
+            report_id,
+            pair_rank,
+            target_genome_id,
+            report.summary.intended_amplicon_count,
+            report.summary.unintended_amplicon_count,
+            report.summary.failing_unintended_amplicon_count,
+            report.summary.primer_hit_count,
+            report.summary.accepted_primer_hit_count,
+            report.warnings.len()
+        );
+    }
+
     fn load_primer_design_report(&self, report_id: &str) -> Result<PrimerDesignReport, String> {
         let report_id = report_id.trim();
         if report_id.is_empty() {
@@ -43607,6 +43712,61 @@ impl MainAreaDna {
                         let report_id = self.primer_design_ui.report_id.clone();
                         self.export_primer3_request_dialog(&report_id);
                     }
+                });
+                ui.group(|ui| {
+                    ui.label("Local specificity confirmation");
+                    ui.small(
+                        "Confirm one saved primer-pair rank against a prepared reference genome with local BLAST. GENtle uses only annealing segments for BLAST and keeps 5' tails as provenance.",
+                    );
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("target genome").on_hover_text(
+                            "Prepared reference genome id, for example `GRCh38.p14`.",
+                        );
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.primer_design_ui.specificity_target_genome_id,
+                            )
+                            .desired_width(160.0),
+                        )
+                        .on_hover_text("Genome must already be prepared with a BLAST index.");
+                        ui.label("pair rank").on_hover_text(
+                            "Saved primer-pair rank from the report, 1-based.",
+                        );
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.primer_design_ui.specificity_pair_rank_1based,
+                            )
+                            .desired_width(52.0),
+                        );
+                        ui.label("max product").on_hover_text(
+                            "Maximum genomic product length retained as a candidate amplicon.",
+                        );
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.primer_design_ui.specificity_max_target_amplicon_bp,
+                            )
+                            .desired_width(72.0),
+                        );
+                        ui.label("max hits").on_hover_text(
+                            "Maximum BLAST hits retained per primer query.",
+                        );
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.primer_design_ui.specificity_max_hits_per_primer,
+                            )
+                            .desired_width(62.0),
+                        );
+                        if ui
+                            .button("Confirm specificity")
+                            .on_hover_text(
+                                "Run AssessPrimerPairSpecificity for report_id + pair rank against the prepared genome.",
+                            )
+                            .clicked()
+                        {
+                            let report_id = self.primer_design_ui.report_id.clone();
+                            self.confirm_primer_specificity_for_report(&report_id);
+                        }
+                    });
                 });
                 self.render_primer_design_report_preview(ui);
                 self.render_restriction_cloning_handoff_section(ui, &template);

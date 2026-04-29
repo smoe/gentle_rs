@@ -3447,6 +3447,11 @@ fn parse_usize_option_value(raw: &str, flag: &str) -> Result<usize, String> {
         .map_err(|e| format!("Invalid {flag} value '{raw}': {e}"))
 }
 
+fn parse_f64_option_value(raw: &str, flag: &str) -> Result<f64, String> {
+    raw.parse::<f64>()
+        .map_err(|e| format!("Invalid {flag} value '{raw}': {e}"))
+}
+
 fn parse_cdna_assay_test_options(
     tokens: &[String],
     idx: &mut usize,
@@ -3531,7 +3536,7 @@ fn parse_cdna_assay_test_options(
 pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, specificity, test-cdna-pcr, test-cdna-qpcr, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
                 .to_string(),
         );
     }
@@ -3614,6 +3619,221 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 request_json,
                 backend,
                 primer3_executable,
+            })
+        }
+        "specificity" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "primers specificity requires REPORT_ID --pair-rank N --target-genome GENOME_ID or --forward SEQ --reverse SEQ --target-genome GENOME_ID"
+                        .to_string(),
+                );
+            }
+            let mut primer_report_id: Option<String> = None;
+            let mut idx = 2usize;
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                primer_report_id = Some(tokens[idx].clone());
+                idx += 1;
+            }
+            let mut pair_rank: Option<usize> = None;
+            let mut pair_index: Option<usize> = None;
+            let mut forward_primer: Option<String> = None;
+            let mut reverse_primer: Option<String> = None;
+            let mut target_genome_id: Option<String> = None;
+            let mut policy = PrimerSpecificityPolicy::default();
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut path: Option<String> = None;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--pair-rank" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--pair-rank",
+                            "primers specificity",
+                        )?;
+                        let rank = parse_usize_option_value(&raw, "--pair-rank")?;
+                        if rank == 0 {
+                            return Err("--pair-rank must be >= 1".to_string());
+                        }
+                        pair_rank = Some(rank);
+                    }
+                    "--pair-index" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--pair-index",
+                            "primers specificity",
+                        )?;
+                        pair_index = Some(parse_usize_option_value(&raw, "--pair-index")?);
+                    }
+                    "--forward" | "--forward-primer" => {
+                        let flag = tokens[idx].clone();
+                        forward_primer = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers specificity",
+                        )?);
+                    }
+                    "--reverse" | "--reverse-primer" => {
+                        let flag = tokens[idx].clone();
+                        reverse_primer = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers specificity",
+                        )?);
+                    }
+                    "--target-genome" | "--target-genome-id" => {
+                        let flag = tokens[idx].clone();
+                        target_genome_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers specificity",
+                        )?);
+                    }
+                    "--max-target-amplicon-bp" | "--max-amplicon-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "primers specificity")?;
+                        policy.max_target_amplicon_bp = parse_usize_option_value(&raw, &flag)?;
+                    }
+                    "--min-primer-coverage-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-primer-coverage-fraction",
+                            "primers specificity",
+                        )?;
+                        policy.min_primer_coverage_fraction =
+                            parse_f64_option_value(&raw, "--min-primer-coverage-fraction")?;
+                    }
+                    "--max-3prime-mismatches" | "--max-3-prime-mismatches" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "primers specificity")?;
+                        policy.max_3prime_mismatches = parse_usize_option_value(&raw, &flag)?;
+                    }
+                    "--three-prime-window-bp" | "--3prime-window-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "primers specificity")?;
+                        policy.three_prime_window_bp = parse_usize_option_value(&raw, &flag)?;
+                    }
+                    "--min-total-mismatches-to-unintended-target" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-total-mismatches-to-unintended-target",
+                            "primers specificity",
+                        )?;
+                        policy.min_total_mismatches_to_unintended_target =
+                            parse_usize_option_value(
+                                &raw,
+                                "--min-total-mismatches-to-unintended-target",
+                            )?;
+                    }
+                    "--allow-same-gene-splice-variants" => {
+                        policy.allow_same_gene_splice_variants = true;
+                        idx += 1;
+                    }
+                    "--max-hits-per-primer" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-hits-per-primer",
+                            "primers specificity",
+                        )?;
+                        policy.max_hits_per_primer =
+                            parse_usize_option_value(&raw, "--max-hits-per-primer")?;
+                    }
+                    "--avoid-known-variants" => {
+                        policy.avoid_known_variants = true;
+                        idx += 1;
+                    }
+                    "--avoid-rmsk-repeats" => {
+                        policy.avoid_rmsk_repeats = true;
+                        idx += 1;
+                    }
+                    "--avoid-low-complexity" => {
+                        policy.avoid_low_complexity = true;
+                        idx += 1;
+                    }
+                    "--catalog" | "--catalog-path" => {
+                        let flag = tokens[idx].clone();
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers specificity",
+                        )?);
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            "primers specificity",
+                        )?);
+                    }
+                    "--path" | "--output" => {
+                        let flag = tokens[idx].clone();
+                        path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers specificity",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for primers specificity"));
+                    }
+                }
+            }
+            let target_genome_id = target_genome_id
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    "primers specificity requires --target-genome GENOME_ID".to_string()
+                })?;
+            if primer_report_id.is_some() && (forward_primer.is_some() || reverse_primer.is_some())
+            {
+                return Err(
+                    "primers specificity accepts either REPORT_ID or --forward/--reverse, not both"
+                        .to_string(),
+                );
+            }
+            if primer_report_id.is_none()
+                && (forward_primer
+                    .as_deref()
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty()
+                    || reverse_primer
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
+                        .is_empty())
+            {
+                return Err(
+                    "primers specificity without REPORT_ID requires --forward SEQ --reverse SEQ"
+                        .to_string(),
+                );
+            }
+            policy.specificity_target_genome_id = Some(target_genome_id.clone());
+            Ok(ShellCommand::PrimersSpecificity {
+                primer_report_id,
+                pair_rank,
+                pair_index,
+                forward_primer,
+                reverse_primer,
+                target_genome_id,
+                policy,
+                catalog_path,
+                cache_dir,
+                path,
             })
         }
         "test-cdna-pcr" => {
@@ -4104,7 +4324,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, specificity, test-cdna-pcr, test-cdna-qpcr, transcript-qpcr-panel, test-cdna-qpcr-fasta, screen-cdna-qpcr, prepare-restriction-cloning, seed-restriction-cloning-handoff, restriction-cloning-vector-suggestions, list-restriction-cloning-handoffs, show-restriction-cloning-handoff, export-restriction-cloning-handoff, preflight, seed-from-feature, seed-from-splicing, seed-qpcr-from-feature, seed-qpcr-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }

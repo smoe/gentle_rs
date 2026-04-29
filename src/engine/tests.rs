@@ -3010,6 +3010,116 @@ fn cdna_assay_test_engine() -> GentleEngine {
     GentleEngine::from_state(state)
 }
 
+fn primer_specificity_test_hit(
+    role: PrimerSpecificityPrimerRole,
+    hit_index: usize,
+    subject_id: &str,
+    start_1based: usize,
+    end_1based: usize,
+    strand: &str,
+    mismatches: usize,
+) -> PrimerSpecificityPrimerHit {
+    let (subject_start_1based, subject_end_1based) = if strand == "-" {
+        (end_1based, start_1based)
+    } else {
+        (start_1based, end_1based)
+    };
+    PrimerSpecificityPrimerHit {
+        hit_index,
+        role,
+        subject_id: subject_id.to_string(),
+        identity_percent: 100.0,
+        alignment_length_bp: end_1based.saturating_sub(start_1based).saturating_add(1),
+        mismatches,
+        gap_opens: 0,
+        query_start_1based: 1,
+        query_end_1based: end_1based.saturating_sub(start_1based).saturating_add(1),
+        subject_start_1based,
+        subject_end_1based,
+        subject_min_1based: start_1based,
+        subject_max_1based: end_1based,
+        strand: strand.to_string(),
+        evalue: 1e-6,
+        bit_score: 42.0,
+        query_coverage_fraction: 1.0,
+        three_prime_window_bp: 5,
+        three_prime_mismatches: 0,
+        accepted_by_policy: true,
+        rejection_reasons: vec![],
+    }
+}
+
+#[test]
+fn primer_specificity_pairs_forward_reverse_and_same_primer_warning_products() {
+    let policy = PrimerSpecificityPolicy {
+        max_target_amplicon_bp: 1_000,
+        min_total_mismatches_to_unintended_target: 2,
+        ..PrimerSpecificityPolicy::default()
+    };
+    let forward_hits = vec![
+        primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Forward,
+            0,
+            "chr1",
+            100,
+            119,
+            "+",
+            0,
+        ),
+        primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Forward,
+            1,
+            "chr1",
+            500,
+            519,
+            "+",
+            0,
+        ),
+        primer_specificity_test_hit(
+            PrimerSpecificityPrimerRole::Forward,
+            2,
+            "chr1",
+            700,
+            719,
+            "-",
+            0,
+        ),
+    ];
+    let reverse_hits = vec![primer_specificity_test_hit(
+        PrimerSpecificityPrimerRole::Reverse,
+        0,
+        "chr1",
+        220,
+        239,
+        "-",
+        0,
+    )];
+    let mut amplicons = GentleEngine::primer_specificity_collect_amplicons_for_hits(
+        &forward_hits,
+        &reverse_hits,
+        &policy,
+    );
+    GentleEngine::primer_specificity_finalize_amplicons(&mut amplicons, Some(140), &policy);
+    let intended = amplicons
+        .iter()
+        .find(|amplicon| amplicon.intended)
+        .expect("intended forward/reverse product");
+    assert_eq!(intended.kind, PrimerSpecificityAmpliconKind::ForwardReverse);
+    assert_eq!(intended.start_1based, 100);
+    assert_eq!(intended.end_1based, 239);
+
+    let same_primer_warning = amplicons
+        .iter()
+        .find(|amplicon| {
+            amplicon.kind == PrimerSpecificityAmpliconKind::ForwardForward
+                && amplicon.start_1based == 500
+        })
+        .expect("forward/forward warning product");
+    assert!(same_primer_warning.specificity_failure);
+    assert_eq!(same_primer_warning.start_1based, 500);
+    assert_eq!(same_primer_warning.end_1based, 719);
+}
+
 #[test]
 fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     let engine = cdna_assay_test_engine();

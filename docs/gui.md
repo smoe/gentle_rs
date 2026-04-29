@@ -3124,6 +3124,16 @@ Primer pairs form:
     - `Export` (report JSON)
     - `Open` (opens extracted copy when present, otherwise template)
   - `Clear results` removes recorded batch rows without deleting persisted reports
+- local specificity confirmation block:
+  - uses the current primer `report_id` plus a 1-based pair rank
+  - accepts a prepared reference genome id, max product length, and max BLAST
+    hits per primer
+  - `Confirm specificity` calls the shared
+    `AssessPrimerPairSpecificity` engine operation and reports pass/fail,
+    intended/unintended product counts, primer-hit counts, and warning count in
+    the status line
+  - only annealing segments are BLASTed; saved 5' tails remain provenance in
+    the shared report contract
 
 qPCR form:
 
@@ -3206,6 +3216,7 @@ Buttons:
 
 - `Design Primer Pairs`
 - `Design Primer Pairs for queued regions`
+- `Confirm specificity`
 - `Design qPCR Assays`
 - while the internal backend is running, PCR Designer now shows a live
   progress line for:
@@ -3221,6 +3232,7 @@ Beginner tutorial:
   - `List Primer Reports`
   - `Show report_id`
   - `Export report_id...`
+  - `Confirm specificity`
   - in-panel `Primer report preview`
 - qPCR-report helpers (uses current qPCR `report_id` field):
   - `List qPCR Reports`
