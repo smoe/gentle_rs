@@ -4896,6 +4896,16 @@ pub struct CdnaAssayProduct {
     #[serde(default)]
     pub covered_junction_labels: Vec<String>,
     pub spans_junction: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_equivalent_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_equivalent_end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_equivalent_length_bp: Option<usize>,
+    #[serde(default)]
+    pub genomic_carryover_risk: String,
+    #[serde(default)]
+    pub genomic_carryover_rationale: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -4939,6 +4949,24 @@ pub struct CdnaAssayConstructLengthSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Report-level summary of residual genomic-DNA carryover risk for a cDNA
+/// PCR/qPCR assay.
+pub struct CdnaAssayGenomicCarryoverRiskSummary {
+    pub risk_level: String,
+    pub summary: String,
+    pub product_count: usize,
+    pub low_risk_product_count: usize,
+    pub medium_risk_product_count: usize,
+    pub high_risk_product_count: usize,
+    pub unknown_risk_product_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_genomic_equivalent_length_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_genomic_equivalent_length_bp: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Deterministic cDNA PCR/qPCR assay-test report shared by shell/CLI/agents.
 pub struct CdnaAssayTestReport {
     pub schema: String,
@@ -4959,6 +4987,8 @@ pub struct CdnaAssayTestReport {
     pub probe: Option<String>,
     #[serde(default)]
     pub construct_lengths: CdnaAssayConstructLengthSummary,
+    #[serde(default)]
+    pub genomic_carryover_risk: CdnaAssayGenomicCarryoverRiskSummary,
     #[serde(default)]
     pub oligo_qc: OligoQcReport,
     pub max_mismatches: usize,
@@ -5104,6 +5134,16 @@ pub struct QpcrTranscriptAssayContext {
     pub forward_spans_junction: bool,
     pub reverse_spans_junction: bool,
     pub probe_spans_junction: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_equivalent_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_equivalent_end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genomic_equivalent_length_bp: Option<usize>,
+    #[serde(default)]
+    pub genomic_carryover_risk: String,
+    #[serde(default)]
+    pub genomic_carryover_rationale: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_distinguishing_primer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

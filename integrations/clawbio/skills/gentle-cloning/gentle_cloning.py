@@ -2268,6 +2268,18 @@ def _summary_lines_from_primer_qpcr_payload(candidate: Any) -> list[str] | None:
         best_summary = str(candidate.get("best_assay_summary") or "").strip()
         if best_summary:
             lines.append(best_summary)
+        assays = candidate.get("assays")
+        first_assay = assays[0] if isinstance(assays, list) and assays else None
+        if isinstance(first_assay, dict):
+            context = first_assay.get("transcript_context")
+            if isinstance(context, dict):
+                risk = str(context.get("genomic_carryover_risk") or "").strip()
+                rationale = str(context.get("genomic_carryover_rationale") or "").strip()
+                if risk:
+                    line = f"Best assay genomic-DNA carryover risk: {risk}."
+                    if rationale:
+                        line += f" {rationale}"
+                    lines.append(line)
         return lines
     if schema == "gentle.cdna_assay_test_report.v1":
         assay_kind = str(candidate.get("assay_kind") or "cDNA assay").strip()
@@ -2280,7 +2292,17 @@ def _summary_lines_from_primer_qpcr_payload(candidate: Any) -> list[str] | None:
         if product_count is not None:
             line += f" and {product_count} detected product(s)"
         line += "."
-        return [line]
+        lines = [line]
+        risk = candidate.get("genomic_carryover_risk")
+        if isinstance(risk, dict):
+            risk_level = str(risk.get("risk_level") or "").strip()
+            risk_summary = str(risk.get("summary") or "").strip()
+            if risk_level:
+                detail = f"Genomic-DNA carryover risk: {risk_level}."
+                if risk_summary:
+                    detail += f" {risk_summary}"
+                lines.append(detail)
+        return lines
     if schema == "gentle.transcript_qpcr_panel.v1":
         transcript_count = candidate.get("transcript_count")
         group_label = str(candidate.get("group_label") or "splicing group").strip()

@@ -1382,6 +1382,11 @@ inspection/export paths:
     the same primer/probe/product scanner for broad Ensembl cDNA/ncRNA screens;
     adapters may choose how to present reports, but must not construct
     competing cDNA products or transcript hit geometry locally.
+  - cDNA PCR/qPCR reports and transcript-aware qPCR assay contexts carry
+    engine-owned genomic-DNA carryover risk classifications. The classification
+    uses mapped exon/source ranges, junction-spanning primer/probe evidence, and
+    the configured amplicon window so GUI, CLI, ClawBio, JS, and Lua present the
+    same cDNA-vs-genomic contamination warning semantics.
   - `DesignPrimerPairs` materializes graph-visible outputs:
     - one derived sequence per forward/reverse primer in each accepted pair
     - one container per primer pair (forward + reverse members)

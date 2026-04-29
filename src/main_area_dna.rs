@@ -6002,6 +6002,11 @@ mod tests {
                 forward_spans_junction: true,
                 reverse_spans_junction: false,
                 probe_spans_junction: false,
+                genomic_equivalent_start_0based: None,
+                genomic_equivalent_end_0based_exclusive: None,
+                genomic_equivalent_length_bp: None,
+                genomic_carryover_risk: "low".to_string(),
+                genomic_carryover_rationale: "Forward primer spans a junction.".to_string(),
                 transcript_distinguishing_primer: Some("forward".to_string()),
                 realized_specificity_evidence: Some(
                     QpcrTranscriptSpecificityEvidence::JunctionOnly,
@@ -6019,6 +6024,11 @@ mod tests {
             summary
                 .explanation
                 .contains("Forward primer spans a transcript-specific exon junction.")
+        );
+        assert!(
+            summary
+                .explanation
+                .contains("Genomic-DNA carryover risk: low.")
         );
         assert!(
             summary
@@ -40045,6 +40055,12 @@ impl MainAreaDna {
             explanation.push_str(&format!(
                 " Realized specificity evidence: {}.",
                 Self::qpcr_specificity_evidence_label(realized_specificity_evidence)
+            ));
+        }
+        if !context.genomic_carryover_risk.trim().is_empty() {
+            explanation.push_str(&format!(
+                " Genomic-DNA carryover risk: {}.",
+                context.genomic_carryover_risk
             ));
         }
         Some(QpcrSplicingContextSummary {

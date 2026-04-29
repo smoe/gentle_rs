@@ -4397,6 +4397,167 @@ impl GentleEngine {
         }
     }
 
+    fn cdna_assay_genomic_equivalent_span(
+        source_ranges: &[SequenceRange0Based],
+    ) -> Option<(usize, usize, usize)> {
+        let mut start = usize::MAX;
+        let mut end = 0usize;
+        let mut found = false;
+        for range in source_ranges {
+            if range.end_0based_exclusive <= range.start_0based {
+                continue;
+            }
+            found = true;
+            start = start.min(range.start_0based);
+            end = end.max(range.end_0based_exclusive);
+        }
+        found.then_some((start, end, end.saturating_sub(start)))
+    }
+
+    fn cdna_assay_genomic_carryover_risk_for_mapped_product(
+        forward_spans_junction: bool,
+        reverse_spans_junction: bool,
+        probe_spans_junction: bool,
+        source_ranges_0based: &[SequenceRange0Based],
+        max_amplicon_bp: usize,
+    ) -> (Option<(usize, usize, usize)>, String, String) {
+        let genomic_span = Self::cdna_assay_genomic_equivalent_span(source_ranges_0based);
+        if forward_spans_junction || reverse_spans_junction {
+            return (
+                genomic_span,
+                "low".to_string(),
+                "At least one primer spans an exon-exon junction, so unspliced genomic DNA should not provide the same primer binding template.".to_string(),
+            );
+        }
+        if probe_spans_junction {
+            return (
+                genomic_span,
+                "low".to_string(),
+                "The qPCR probe spans an exon-exon junction; primer-only genomic amplification could still occur, but the probe should not report an unspliced genomic template.".to_string(),
+            );
+        }
+        let Some((_, _, genomic_length_bp)) = genomic_span else {
+            return (
+                None,
+                "unknown".to_string(),
+                "No genomic/source exon mapping is available for this cDNA product, so residual genomic-DNA carryover risk cannot be classified.".to_string(),
+            );
+        };
+        if source_ranges_0based.len() <= 1 {
+            return (
+                genomic_span,
+                "high".to_string(),
+                "The assay product maps inside a single exon segment; residual genomic DNA can provide the same local template.".to_string(),
+            );
+        }
+        if genomic_length_bp > max_amplicon_bp {
+            (
+                genomic_span,
+                "low".to_string(),
+                format!(
+                    "The cDNA product spans exon segments whose genomic equivalent is {genomic_length_bp} bp, above the configured max amplicon of {max_amplicon_bp} bp."
+                ),
+            )
+        } else {
+            (
+                genomic_span,
+                "medium".to_string(),
+                format!(
+                    "The cDNA product spans exon segments, but the genomic equivalent is {genomic_length_bp} bp within the configured max amplicon of {max_amplicon_bp} bp; residual genomic DNA could still amplify."
+                ),
+            )
+        }
+    }
+
+    fn cdna_assay_genomic_carryover_risk_summary(
+        transcript_results: &[CdnaAssayTranscriptResult],
+    ) -> CdnaAssayGenomicCarryoverRiskSummary {
+        let mut summary = CdnaAssayGenomicCarryoverRiskSummary::default();
+        let mut min_genomic_len = usize::MAX;
+        let mut max_genomic_len = 0usize;
+        let mut saw_genomic_len = false;
+        for product in transcript_results
+            .iter()
+            .flat_map(|result| result.products.iter())
+        {
+            summary.product_count = summary.product_count.saturating_add(1);
+            match product.genomic_carryover_risk.as_str() {
+                "low" => {
+                    summary.low_risk_product_count =
+                        summary.low_risk_product_count.saturating_add(1);
+                }
+                "medium" => {
+                    summary.medium_risk_product_count =
+                        summary.medium_risk_product_count.saturating_add(1);
+                }
+                "high" => {
+                    summary.high_risk_product_count =
+                        summary.high_risk_product_count.saturating_add(1);
+                }
+                _ => {
+                    summary.unknown_risk_product_count =
+                        summary.unknown_risk_product_count.saturating_add(1);
+                }
+            }
+            if let Some(length) = product.genomic_equivalent_length_bp {
+                saw_genomic_len = true;
+                min_genomic_len = min_genomic_len.min(length);
+                max_genomic_len = max_genomic_len.max(length);
+            }
+        }
+        if saw_genomic_len {
+            summary.min_genomic_equivalent_length_bp = Some(min_genomic_len);
+            summary.max_genomic_equivalent_length_bp = Some(max_genomic_len);
+        }
+        summary.risk_level = if summary.product_count == 0 {
+            "none_detected"
+        } else if summary.high_risk_product_count > 0 {
+            "high"
+        } else if summary.medium_risk_product_count > 0 {
+            "medium"
+        } else if summary.unknown_risk_product_count > 0 {
+            "unknown"
+        } else {
+            "low"
+        }
+        .to_string();
+        summary.summary = match summary.risk_level.as_str() {
+            "none_detected" => {
+                "No cDNA product was detected, so genomic-DNA carryover risk is not applicable."
+                    .to_string()
+            }
+            "low" => format!(
+                "All {} detected product(s) have junction-oligo/probe evidence or a genomic equivalent longer than the configured amplicon window.",
+                summary.product_count
+            ),
+            "medium" => format!(
+                "{} detected product(s) remain medium risk because at least one exon-spanning cDNA product has a genomic equivalent within the configured amplicon window.",
+                summary.medium_risk_product_count
+            ),
+            "high" => format!(
+                "{} detected product(s) are high risk because they map within a single exon segment.",
+                summary.high_risk_product_count
+            ),
+            _ => format!(
+                "{} detected product(s) cannot be classified because genomic/source exon mapping is unavailable.",
+                summary.unknown_risk_product_count
+            ),
+        };
+        summary
+    }
+
+    fn cdna_assay_genomic_carryover_warning(
+        summary: &CdnaAssayGenomicCarryoverRiskSummary,
+    ) -> Option<String> {
+        match summary.risk_level.as_str() {
+            "high" | "medium" | "unknown" => Some(format!(
+                "Genomic-DNA carryover risk is '{}': {} Retain DNase/no-RT controls for cDNA assays.",
+                summary.risk_level, summary.summary
+            )),
+            _ => None,
+        }
+    }
+
     fn transcript_supports_exon_chain(
         transcript: &TranscriptQpcrDesignTemplate,
         exon_chain: &[(usize, usize)],
@@ -4552,6 +4713,12 @@ impl GentleEngine {
                 summary.push_str(&format!(
                     "; specificity={}",
                     realized_specificity_evidence.as_str()
+                ));
+            }
+            if !context.genomic_carryover_risk.trim().is_empty() {
+                summary.push_str(&format!(
+                    "; genomic_carryover_risk={}",
+                    context.genomic_carryover_risk
                 ));
             }
         }
@@ -4888,6 +5055,7 @@ impl GentleEngine {
         probe_mapping: &TranscriptMappedInterval,
         amplicon_mapping: &TranscriptMappedInterval,
         probe_placement: String,
+        max_amplicon_bp: usize,
     ) -> QpcrTranscriptAssayContext {
         let supported_transcript_ids = all_templates
             .iter()
@@ -5109,6 +5277,14 @@ impl GentleEngine {
                 }
             }
         };
+        let (genomic_equivalent_span, genomic_carryover_risk, genomic_carryover_rationale) =
+            Self::cdna_assay_genomic_carryover_risk_for_mapped_product(
+                forward_mapping.spans_junction,
+                reverse_mapping.spans_junction,
+                probe_mapping.spans_junction,
+                &amplicon_mapping.source_ranges_0based,
+                max_amplicon_bp,
+            );
         QpcrTranscriptAssayContext {
             assay_class_label: assay_class_label.to_string(),
             explanation,
@@ -5127,6 +5303,11 @@ impl GentleEngine {
             forward_spans_junction: forward_mapping.spans_junction,
             reverse_spans_junction: reverse_mapping.spans_junction,
             probe_spans_junction: probe_mapping.spans_junction,
+            genomic_equivalent_start_0based: genomic_equivalent_span.map(|(start, _, _)| start),
+            genomic_equivalent_end_0based_exclusive: genomic_equivalent_span.map(|(_, end, _)| end),
+            genomic_equivalent_length_bp: genomic_equivalent_span.map(|(_, _, length)| length),
+            genomic_carryover_risk,
+            genomic_carryover_rationale,
             transcript_distinguishing_primer,
             realized_specificity_evidence,
             satisfies_requested_targeting,
@@ -5573,6 +5754,7 @@ impl GentleEngine {
                             &probe_mapping,
                             &amplicon_mapping,
                             probe_placement,
+                            max_amplicon_bp,
                         );
                         if transcript_targeting.mode
                             == QpcrTranscriptTargetingMode::DistinguishTranscript
@@ -6918,6 +7100,21 @@ impl GentleEngine {
                     amplicon_start,
                     amplicon_end,
                 );
+                let source_ranges_0based = mapping.source_ranges_0based;
+                let covered_junction_labels = mapping.covered_junction_labels;
+                let spans_junction = mapping.spans_junction;
+                let probe_spans_junction = probe_hit_indices
+                    .iter()
+                    .filter_map(|probe_idx| probe_hits.get(*probe_idx))
+                    .any(|probe_hit| probe_hit.spans_junction);
+                let (genomic_equivalent_span, genomic_carryover_risk, genomic_carryover_rationale) =
+                    Self::cdna_assay_genomic_carryover_risk_for_mapped_product(
+                        forward_hit.spans_junction,
+                        reverse_hit.spans_junction,
+                        probe_spans_junction,
+                        &source_ranges_0based,
+                        request.max_amplicon_bp,
+                    );
                 products.push(CdnaAssayProduct {
                     amplicon_start_0based: amplicon_start,
                     amplicon_end_0based_exclusive: amplicon_end,
@@ -6925,9 +7122,17 @@ impl GentleEngine {
                     forward_hit_index: forward_idx,
                     reverse_hit_index: reverse_idx,
                     probe_hit_indices,
-                    source_ranges_0based: mapping.source_ranges_0based,
-                    covered_junction_labels: mapping.covered_junction_labels,
-                    spans_junction: mapping.spans_junction,
+                    source_ranges_0based,
+                    covered_junction_labels,
+                    spans_junction,
+                    genomic_equivalent_start_0based: genomic_equivalent_span
+                        .map(|(start, _, _)| start),
+                    genomic_equivalent_end_0based_exclusive: genomic_equivalent_span
+                        .map(|(_, end, _)| end),
+                    genomic_equivalent_length_bp: genomic_equivalent_span
+                        .map(|(_, _, length)| length),
+                    genomic_carryover_risk,
+                    genomic_carryover_rationale,
                 });
             }
         }
@@ -7128,6 +7333,8 @@ impl GentleEngine {
             oligo_qc_inputs.push(("probe", "probe", probe));
         }
         let oligo_qc = Self::build_oligo_qc_report(&assay_kind, &oligo_qc_inputs);
+        let genomic_carryover_risk =
+            Self::cdna_assay_genomic_carryover_risk_summary(&transcript_results);
         let overall_status = if total_product_count == 0 {
             "not_detected"
         } else if total_product_count == 1 {
@@ -7154,10 +7361,16 @@ impl GentleEngine {
             )
         };
         let summary = format!(
-            "{} Construct lengths: {} Oligo QC: {}.",
-            base_summary, construct_lengths.summary, oligo_qc.status
+            "{} Construct lengths: {} Oligo QC: {}. Genomic carryover risk: {}.",
+            base_summary,
+            construct_lengths.summary,
+            oligo_qc.status,
+            genomic_carryover_risk.summary
         );
-        let warnings = oligo_qc.warnings.clone();
+        let mut warnings = oligo_qc.warnings.clone();
+        if let Some(warning) = Self::cdna_assay_genomic_carryover_warning(&genomic_carryover_risk) {
+            warnings.push(warning);
+        }
         Ok(CdnaAssayTestReport {
             schema: CDNA_ASSAY_TEST_REPORT_SCHEMA.to_string(),
             assay_kind,
@@ -7175,6 +7388,7 @@ impl GentleEngine {
             reverse_primer: request.reverse_primer,
             probe: request.probe,
             construct_lengths,
+            genomic_carryover_risk,
             oligo_qc,
             max_mismatches: request.max_mismatches,
             require_3prime_exact_bases: request.require_3prime_exact_bases,
@@ -8010,6 +8224,8 @@ impl GentleEngine {
             oligo_qc_inputs.push(("probe", "probe", probe));
         }
         let oligo_qc = Self::build_oligo_qc_report(&assay_kind, &oligo_qc_inputs);
+        let genomic_carryover_risk =
+            Self::cdna_assay_genomic_carryover_risk_summary(&transcript_results);
         let overall_status = if total_product_count == 0 {
             "not_detected"
         } else if total_product_count == 1 {
@@ -8024,15 +8240,19 @@ impl GentleEngine {
             format!("external cDNA FASTA set ({} files)", source_paths.len())
         };
         let summary = format!(
-            "cDNA qPCR assay detected {} product(s) across {}/{} transcript FASTA record(s) in {}. Construct lengths: {} Oligo QC: {}.",
+            "cDNA qPCR assay detected {} product(s) across {}/{} transcript FASTA record(s) in {}. Construct lengths: {} Oligo QC: {}. Genomic carryover risk: {}.",
             total_product_count,
             detected_transcript_count,
             transcript_count,
             group_label,
             construct_lengths.summary,
-            oligo_qc.status
+            oligo_qc.status,
+            genomic_carryover_risk.summary
         );
         let mut warnings = oligo_qc.warnings.clone();
+        if let Some(warning) = Self::cdna_assay_genomic_carryover_warning(&genomic_carryover_risk) {
+            warnings.push(warning);
+        }
         if requested_transcript_id.is_none() {
             warnings.push(
                 "External FASTA screens report detected transcript rows only; non-detected records are counted in transcript_count."
@@ -8054,6 +8274,7 @@ impl GentleEngine {
             reverse_primer: request.reverse_primer,
             probe: request.probe,
             construct_lengths,
+            genomic_carryover_risk,
             oligo_qc,
             max_mismatches: request.max_mismatches,
             require_3prime_exact_bases: request.require_3prime_exact_bases,

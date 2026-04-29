@@ -636,8 +636,8 @@ Expected outputs:
 - Primer3/internal-backend readiness reports
 - non-mutating seed payloads that ClawBio can inspect before running design
 - persisted PCR primer reports and qPCR/TaqMan assay reports
-- cDNA PCR/qPCR assay-test reports with transcript-template and junction
-  provenance
+- cDNA PCR/qPCR assay-test reports with transcript-template provenance,
+  junction provenance, and genomic-DNA carryover risk summaries
 - transcript qPCR panel tables with shared reverse/probe plus characteristic
   forward-primer rows when possible
 - PCR-family SVG/PNG protocol cartoons, including `pcr.assay.pair`,

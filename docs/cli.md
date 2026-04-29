@@ -2314,6 +2314,9 @@ Shared shell command:
       - `--require-3prime-exact-bases` gates primer hits only
       - qPCR probes may bind either cDNA orientation but must fall inside the
         primer-bounded amplicon interior
+      - returned reports classify genomic-DNA carryover risk using junction
+        primer/probe evidence, mapped genomic-equivalent amplicon length, and
+        the configured max amplicon window
       - FASTA screens count every scanned record but omit non-detected
         transcript rows from the returned report unless `--transcript-id` is
         supplied

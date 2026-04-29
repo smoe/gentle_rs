@@ -1847,6 +1847,12 @@ order. Durable architecture constraints and decisions remain in
       mapped source ranges, junction labels, and junction-spanning flags so
       downstream tools can explain whether a PCR/qPCR assay detects one
       isoform, many isoforms, or no compatible cDNA product
+    - reports and transcript-aware qPCR assay contexts now also carry
+      genomic-DNA carryover risk labels/rationales (`low`, `medium`, `high`,
+      `unknown`, or `none_detected`) derived from junction primer/probe
+      evidence, the mapped genomic equivalent of the cDNA amplicon, and the
+      configured max amplicon window; medium/high/unknown classifications emit
+      explicit DNase/no-RT-control warnings
     - assay-test reports now also carry a report-level construct-length
       summary plus `gentle.oligo_qc_report.v1`: deterministic exact
       reverse-complement run QC for supplied primers/probes, including

@@ -11588,6 +11588,21 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
         pcr.output["report"]["overall_status"].as_str(),
         Some("single_product")
     );
+    assert_eq!(
+        pcr.output["report"]["genomic_carryover_risk"]["risk_level"].as_str(),
+        Some("medium")
+    );
+    assert_eq!(
+        pcr.output["report"]["transcript_results"][0]["products"][0]["genomic_carryover_risk"]
+            .as_str(),
+        Some("medium")
+    );
+    assert_eq!(
+        pcr.output["report"]["transcript_results"][0]["products"][0]
+            ["genomic_equivalent_length_bp"]
+            .as_u64(),
+        Some(29)
+    );
 
     let qpcr = execute_shell_command(
         &mut engine,
@@ -11611,6 +11626,21 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
         qpcr.output["report"]["transcript_results"][0]["products"][0]["probe_hit_indices"][0]
             .as_u64(),
         Some(0)
+    );
+    assert_eq!(
+        qpcr.output["report"]["genomic_carryover_risk"]["risk_level"].as_str(),
+        Some("low")
+    );
+    assert_eq!(
+        qpcr.output["report"]["transcript_results"][0]["products"][0]["genomic_carryover_risk"]
+            .as_str(),
+        Some("low")
+    );
+    assert!(
+        qpcr.output["report"]["transcript_results"][0]["products"][0]
+            ["genomic_carryover_rationale"]
+            .as_str()
+            .is_some_and(|value| value.contains("probe spans an exon-exon junction"))
     );
 }
 
@@ -11683,6 +11713,10 @@ fn execute_primers_test_cdna_qpcr_fasta_reports_ensembl_products() {
         Some(2)
     );
     assert_eq!(run.output["report"]["product_count"].as_u64(), Some(2));
+    assert_eq!(
+        run.output["report"]["genomic_carryover_risk"]["risk_level"].as_str(),
+        Some("unknown")
+    );
     assert_eq!(
         run.output["report"]["transcript_results"][0]["products"][0]["amplicon_length_bp"].as_u64(),
         Some(130)

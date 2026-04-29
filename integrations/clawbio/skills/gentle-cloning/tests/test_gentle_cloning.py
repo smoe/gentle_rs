@@ -929,6 +929,69 @@ def test_result_payload_promotes_protein_residue_genomic_coordinate_summary(
     assert "QueryProteinResidueGenomicCoordinates" in report
 
 
+def test_result_payload_promotes_cdna_genomic_carryover_risk_summary(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "cdna-qpcr-test",
+                "state_path": ".gentle_state.json",
+                "seq_id": "cdna_src",
+                "source_feature_id": 0,
+                "forward_primer": "AAACCC",
+                "reverse_primer": "CCCAAA",
+                "probe": "GGGCCC",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"cdna_assay_test_report":{"schema":"gentle.cdna_assay_test_report.v1",'
+        '"assay_kind":"qpcr","overall_status":"single_product",'
+        '"transcript_count":1,"product_count":1,'
+        '"genomic_carryover_risk":{"risk_level":"high",'
+        '"summary":"1 detected product is single-exon compatible."}}}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["chat_summary_lines"] == [
+        "qpcr test finished with status 'single_product' across 1 transcript template(s) and 1 detected product(s).",
+        "Genomic-DNA carryover risk: high. 1 detected product is single-exon compatible.",
+    ]
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    assert "Genomic-DNA carryover risk: high." in report
+
+
 def test_qpcr_seed_mode_builds_shared_primer_shell_command(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(

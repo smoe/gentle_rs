@@ -341,6 +341,12 @@ wet-lab plan:
 - DNase treatment decision
 - melt curve or probe-specific validation plan, depending on assay chemistry
 
+Saved transcript-aware qPCR reports and cDNA assay-test reports include a
+`genomic_carryover_risk` classification. GENtle marks junction primer/probe
+evidence or a genomic equivalent longer than the configured amplicon window as
+lower risk, single-exon products as higher risk, and external cDNA FASTA screens
+as unknown unless source exon mapping is available.
+
 GENtle designs and explains the candidate assay; it does not replace those
 experimental controls.
 

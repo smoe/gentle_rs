@@ -5197,6 +5197,9 @@ Simple PCR constraint handoff:
       - mapped source exon ranges for forward/reverse/probe/amplicon
       - covered junction labels
       - whether each oligo spans a junction
+      - genomic-DNA carryover risk based on junction oligos/probes, the mapped
+        genomic equivalent of the cDNA amplicon, and the configured max amplicon
+        window
       - realized specificity evidence
       - whether the assay satisfies the requested targeting intent
   - includes `best_assay_probe_placement` and `best_assay_summary` so
@@ -5257,8 +5260,9 @@ Simple PCR constraint handoff:
   - `gentle.cdna_assay_test_report.v1`
   - report-level fields include assay kind, source sequence/feature, group
     label, strand, requested transcript id, primers/probe, construct-length
-    summary, oligo QC, mismatch/size settings, transcript/product counts,
-    overall status, and warnings.
+    summary, genomic-DNA carryover risk summary, oligo QC,
+    mismatch/size settings, transcript/product counts, overall status, and
+    warnings.
   - `construct_lengths` records forward/reverse/probe oligo lengths plus the
     distinct detected amplicon construct lengths, including min/max when any
     product is found.
@@ -5284,7 +5288,9 @@ Simple PCR constraint handoff:
     labels, and whether the hit spans a junction.
   - product rows include local cDNA amplicon coordinates/length, hit indices,
     optional probe hit indices, mapped source ranges, covered junction labels,
-    and whether the product spans a junction.
+    whether the product spans a junction, the genomic-equivalent span/length
+    when source mapping is available, and a per-product genomic-DNA carryover
+    risk rationale.
 
 Primer-design shell command family (implemented):
 
