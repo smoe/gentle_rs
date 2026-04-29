@@ -4196,6 +4196,9 @@ Status:
       path
   - Native RNA-read batch mapping is now available for ClawBio/CLI/MCP-style
     workflows through `rna-reads batch-map` / `RunRnaReadBatchMap`:
+    - shell, serialized `op`, CLI shell help, GUI help, and MCP help now share
+      the same documented batch-map contract through `docs/glossary.json`; a
+      regression test exercises shell-vs-operation parity for the batch route
     - manifest v1 accepts `sample_id` plus FASTA `input_path` rows, and marks
       SRA-only rows as `needs_preparation` instead of attempting network or
       conversion work

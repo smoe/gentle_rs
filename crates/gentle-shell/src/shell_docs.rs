@@ -345,4 +345,18 @@ mod tests {
         let text = shell_help_text(None).expect("render help");
         assert!(text.contains("|mcp"));
     }
+
+    #[test]
+    fn shell_help_topic_resolves_rna_reads_batch_map() {
+        let topic = vec!["rna-reads".to_string(), "batch-map".to_string()];
+        let help = shell_topic_help_json(&topic, Some("mcp")).expect("render batch-map help");
+        assert_eq!(help["doc"]["path"].as_str(), Some("rna-reads batch-map"));
+        assert_eq!(
+            help["doc"]["engine_operations"]
+                .as_array()
+                .expect("engine operations")[0]
+                .as_str(),
+            Some("RunRnaReadBatchMap")
+        );
+    }
 }

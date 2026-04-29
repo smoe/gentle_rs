@@ -21284,6 +21284,162 @@ fn execute_rna_reads_batch_map_writes_bundle_and_sra_plan() {
 }
 
 #[test]
+fn execute_rna_reads_batch_map_shell_and_op_routes_have_parity() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+    let feature_id = state
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+    let dna = state.sequences.get("seq_a").expect("sequence present");
+    let read_sequence =
+        String::from_utf8(dna.forward_bytes()[98..560].to_vec()).expect("TP53 transcript slice");
+    let td = tempdir().expect("tempdir");
+    let input_path = td.path().join("sample_a.fa");
+    fs::write(&input_path, format!(">tp53_full\n{read_sequence}\n")).expect("write input fasta");
+    let manifest_path = td.path().join("samples.tsv");
+    fs::write(
+        &manifest_path,
+        format!(
+            "sample_id\tinput_path\tsra_accession\nsample_a\t{}\t\nsample_sra\t\tSRR000001\n",
+            input_path.display()
+        ),
+    )
+    .expect("write manifest");
+
+    let mut seed_filter = RnaReadSeedFilterConfig::default();
+    seed_filter.kmer_len = 3;
+    seed_filter.min_seed_hit_fraction = 0.0;
+    seed_filter.min_weighted_seed_hit_fraction = 0.0;
+    seed_filter.min_unique_matched_kmers = 0;
+    seed_filter.min_chain_consistency_fraction = 0.0;
+    seed_filter.max_median_transcript_gap = 10_000.0;
+    seed_filter.min_confirmed_exon_transitions = 0;
+    seed_filter.min_transition_support_fraction = 0.0;
+
+    let make_shell_command = |out_dir: &Path| ShellCommand::RnaReadsBatchMap {
+        manifest_path: manifest_path.display().to_string(),
+        seq_id: "seq_a".to_string(),
+        seed_feature_id: feature_id,
+        gene_ids: vec!["TP53".to_string()],
+        out_dir: out_dir.display().to_string(),
+        profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+        input_format: RnaReadInputFormat::Fasta,
+        scope: SplicingScopePreset::AllOverlappingAnyStrand,
+        origin_mode: None,
+        target_gene_ids: vec![],
+        roi_seed_capture_enabled: false,
+        seed_filter: seed_filter.clone(),
+        align_config: RnaReadAlignConfig {
+            band_width_bp: 24,
+            min_identity_fraction: 0.60,
+            max_secondary_mappings: 5,
+        },
+        report_mode: RnaReadReportMode::Full,
+        align_selection: RnaReadHitSelection::All,
+        complete_rule: RnaReadGeneSupportCompleteRule::Near,
+        concatemer_settings: RnaReadConcatemerInspectionSettings::default(),
+        concatemer_limit: 250,
+        continue_on_error: true,
+    };
+
+    let shell_out_dir = td.path().join("shell_batch_out");
+    let mut shell_engine = GentleEngine::from_state(state.clone());
+    let shell_result =
+        execute_shell_command(&mut shell_engine, &make_shell_command(&shell_out_dir))
+            .expect("execute rna-reads batch-map via shell route");
+    assert!(shell_result.state_changed);
+
+    let op_out_dir = td.path().join("op_batch_out");
+    let op = Operation::RunRnaReadBatchMap {
+        manifest_path: manifest_path.display().to_string(),
+        seq_id: "seq_a".to_string(),
+        seed_feature_id: feature_id,
+        gene_ids: vec!["TP53".to_string()],
+        out_dir: op_out_dir.display().to_string(),
+        profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+        input_format: RnaReadInputFormat::Fasta,
+        scope: SplicingScopePreset::AllOverlappingAnyStrand,
+        origin_mode: None,
+        target_gene_ids: vec![],
+        roi_seed_capture_enabled: false,
+        seed_filter,
+        align_config: RnaReadAlignConfig {
+            band_width_bp: 24,
+            min_identity_fraction: 0.60,
+            max_secondary_mappings: 5,
+        },
+        report_mode: RnaReadReportMode::Full,
+        align_selection: RnaReadHitSelection::All,
+        complete_rule: RnaReadGeneSupportCompleteRule::Near,
+        concatemer_settings: RnaReadConcatemerInspectionSettings::default(),
+        concatemer_limit: 250,
+        continue_on_error: true,
+    };
+    let op_payload = serde_json::to_string(&op).expect("serialize batch operation");
+    let mut op_engine = GentleEngine::from_state(state);
+    let op_result = execute_shell_command(
+        &mut op_engine,
+        &ShellCommand::Op {
+            payload: op_payload,
+        },
+    )
+    .expect("execute rna-reads batch-map via serialized op route");
+    assert!(op_result.state_changed);
+
+    let op_report = &op_result.output["result"]["rna_read_batch_map_report"];
+    assert_eq!(
+        shell_result.output["schema"].as_str(),
+        Some("gentle.rna_read_batch_map_report.v1")
+    );
+    assert_eq!(
+        op_report["schema"].as_str(),
+        Some("gentle.rna_read_batch_map_report.v1")
+    );
+    for field in [
+        "sample_count",
+        "ok_count",
+        "needs_preparation_count",
+        "failed_count",
+    ] {
+        assert_eq!(
+            shell_result.output[field], op_report[field],
+            "shell/op batch-map parity mismatch for {field}"
+        );
+    }
+    let shell_statuses: Vec<_> = shell_result.output["rows"]
+        .as_array()
+        .expect("shell rows")
+        .iter()
+        .map(|row| row["status"].clone())
+        .collect();
+    let op_statuses: Vec<_> = op_report["rows"]
+        .as_array()
+        .expect("op rows")
+        .iter()
+        .map(|row| row["status"].clone())
+        .collect();
+    assert_eq!(shell_statuses, op_statuses);
+    assert!(
+        shell_engine
+            .get_rna_read_report("rna_batch_sample_a")
+            .is_ok()
+    );
+    assert!(op_engine.get_rna_read_report("rna_batch_sample_a").is_ok());
+    for dir in [&shell_out_dir, &op_out_dir] {
+        assert!(dir.join("batch_report.json").exists());
+        assert!(dir.join("batch_summary.tsv").exists());
+        assert!(dir.join("sra_preparation_plan.tsv").exists());
+    }
+}
+
+#[test]
 fn execute_rna_reads_summarize_gene_support_returns_summary_json_and_writes_file() {
     let mut state = ProjectState::default();
     state
