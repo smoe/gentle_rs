@@ -11757,10 +11757,14 @@ fn test_render_dotplot_svg_operation() {
         "query".to_string(),
         DNAsequence::from_sequence("ATGCATGCATGCATGC").expect("query sequence"),
     );
-    state.sequences.insert(
-        "ref".to_string(),
-        DNAsequence::from_sequence("TTTATGCATGCATGCAAAA").expect("reference sequence"),
-    );
+    let mut reference =
+        DNAsequence::from_sequence("TTTATGCATGCATGCAAAA").expect("reference sequence");
+    reference.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(4, 9),
+        qualifiers: vec![("label".into(), Some("exon_1".to_string()))],
+    });
+    state.sequences.insert("ref".to_string(), reference);
     let mut engine = GentleEngine::from_state(state);
     engine
         .apply(Operation::ComputeDotplot {
@@ -11800,6 +11804,8 @@ fn test_render_dotplot_svg_operation() {
     assert!(text.contains("Dotplot workspace export"));
     assert!(text.contains("overlap by 3 bp"));
     assert!(text.contains("4 consecutive ordered windows"));
+    assert!(text.contains("merged exons"));
+    assert!(text.contains("merged_exons=1"));
 }
 
 #[test]
@@ -21839,6 +21845,48 @@ fn test_compute_dotplot_stores_and_retrieves_view() {
     assert!(view.boxplot_bin_count > 0);
     assert!(view.boxplot_bins.iter().any(|bin| bin.hit_count > 0));
     assert!(view.reference_annotation.is_none());
+}
+
+#[test]
+fn test_compute_self_dotplot_carries_reference_exon_annotation_when_available() {
+    let mut sequence = DNAsequence::from_sequence("ATGCATGCATGCATGC").expect("annotated sequence");
+    sequence.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(4, 10),
+        qualifiers: vec![("label".into(), Some("exon_1".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), sequence);
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ComputeDotplot {
+            seq_id: "s".to_string(),
+            reference_seq_id: None,
+            span_start_0based: Some(0),
+            span_end_0based: Some(16),
+            reference_span_start_0based: None,
+            reference_span_end_0based: None,
+            mode: DotplotMode::SelfForward,
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("annotated_self_dotplot".to_string()),
+        })
+        .expect("compute annotated self dotplot");
+
+    let view = engine
+        .get_dotplot_view("annotated_self_dotplot")
+        .expect("annotated self dotplot view");
+    assert!(view.reference_seq_id.is_none());
+    let annotation = view
+        .reference_annotation
+        .as_ref()
+        .expect("self reference exon track");
+    assert_eq!(annotation.seq_id, "s");
+    assert_eq!(annotation.interval_count, 1);
+    assert_eq!(annotation.intervals[0].start_0based, 4);
+    assert_eq!(annotation.intervals[0].end_0based_exclusive, 10);
 }
 
 #[test]

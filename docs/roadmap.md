@@ -5334,6 +5334,14 @@ Status (2026-03-19):
       conserved motif `CATGTGTAACAG`) plus the matching ClawBio workflow
       request
       `integrations/clawbio/skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json`
+  - genomic-axis exon context (2026-04-29):
+    - ordinary pairwise dotplots, annotated self-dotplots, multi-series overlay
+      dotplots, and SVG exports now draw merged exon blocks beside the
+      reference/genomic y-axis whenever the reference sequence carries exon
+      features
+    - no SNP/variant side-track is implemented yet; variant/SNP dotplot context
+      remains parked until SNP data ingestion and coordinate projection are
+      available
   - gene-extraction refinement (2026-03-19):
     - `ExtractGenomeGene` now auto-creates an exon-concatenated synthetic
       companion sequence (`<seq_id>__exons`) with deterministic `N` spacers

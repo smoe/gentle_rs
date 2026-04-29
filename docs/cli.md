@@ -2653,8 +2653,10 @@ Rendering export commands:
     Overlay dotplots suppress that panel because each query series uses its own
     normalized x-axis.
   - `--display-threshold` and `--intensity-gain` apply the same density/contrast controls as GUI dotplot display.
-  - Overlay payload exports render all stored query series with a legend and a
-    merged-exon side track when reference exon annotation is available.
+  - Exon-annotated pairwise, annotated self, and overlay payload exports render
+    a merged-exon side track next to the reference/genomic y-axis when reference
+    exon annotation is available; overlay payloads also render all stored query
+    series with a legend.
   - `shared_exon_anchor` requires `--overlay-anchor-exon START..END` using the
     stored reference-exon coordinates from the overlay payload.
   - `query_anchor_bp` uses explicit `query_anchor_0based` values already stored

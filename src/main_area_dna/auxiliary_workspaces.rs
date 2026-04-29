@@ -2221,9 +2221,14 @@ impl MainAreaDna {
                     .iter()
                     .filter(|bin| bin.hit_count > 0)
                     .count();
+                let annotation_count = view
+                    .reference_annotation
+                    .as_ref()
+                    .map(|track| track.interval_count)
+                    .unwrap_or(0);
                 ui.label(
                     egui::RichText::new(format!(
-                        "loaded payload '{}' generated_at={} mode={} points={} hit_fraction≈{:.6}% box_bins={}/{} | query={} [{}..{}] reference={} [{}..{}]",
+                        "loaded payload '{}' generated_at={} mode={} points={} hit_fraction≈{:.6}% box_bins={}/{} merged_exons={} | query={} [{}..{}] reference={} [{}..{}]",
                         view.dotplot_id,
                         view.generated_at_unix_ms,
                         view.mode.as_str(),
@@ -2231,6 +2236,7 @@ impl MainAreaDna {
                         estimated_hit_fraction,
                         non_empty_box_bins,
                         view.boxplot_bin_count,
+                        annotation_count,
                         view.seq_id,
                         view.span_start_0based.saturating_add(1),
                         view.span_end_0based,
@@ -2345,6 +2351,63 @@ impl MainAreaDna {
                 );
             }
         }
+    }
+
+    fn render_dotplot_reference_annotation_track_ui(
+        painter: &egui::Painter,
+        canvas_rect: egui::Rect,
+        dotplot_rect: egui::Rect,
+        view: &DotplotView,
+        reference_span: usize,
+    ) {
+        let Some(track) = view
+            .reference_annotation
+            .as_ref()
+            .filter(|track| !track.intervals.is_empty())
+        else {
+            return;
+        };
+        let annotation_rect = egui::Rect::from_min_max(
+            egui::pos2(dotplot_rect.left() - 16.0, dotplot_rect.top()),
+            egui::pos2(dotplot_rect.left() - 6.0, dotplot_rect.bottom()),
+        );
+        painter.rect_filled(annotation_rect, 2.0, egui::Color32::from_rgb(248, 250, 252));
+        painter.rect_stroke(
+            annotation_rect,
+            2.0,
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::StrokeKind::Inside,
+        );
+        let reference_span_f32 = reference_span.max(1) as f32;
+        for interval in &track.intervals {
+            let local_start = interval
+                .start_0based
+                .saturating_sub(view.reference_span_start_0based)
+                .min(reference_span);
+            let local_end = interval
+                .end_0based_exclusive
+                .saturating_sub(view.reference_span_start_0based)
+                .min(reference_span);
+            let y0 = annotation_rect.top()
+                + (local_start as f32 / reference_span_f32) * annotation_rect.height();
+            let y1 = annotation_rect.top()
+                + (local_end as f32 / reference_span_f32) * annotation_rect.height();
+            painter.rect_filled(
+                egui::Rect::from_min_max(
+                    egui::pos2(annotation_rect.left() + 1.0, y0),
+                    egui::pos2(annotation_rect.right() - 1.0, y1.max(y0 + 1.0)),
+                ),
+                1.0,
+                egui::Color32::from_rgb(34, 197, 94),
+            );
+        }
+        painter.text(
+            egui::pos2(annotation_rect.center().x, canvas_rect.top() + 4.0),
+            egui::Align2::CENTER_TOP,
+            track.label.as_str(),
+            egui::FontId::monospace(9.0),
+            egui::Color32::from_rgb(51, 65, 85),
+        );
     }
 
     pub(super) fn render_dotplot_density_ui(
@@ -2678,53 +2741,13 @@ impl MainAreaDna {
                 );
             }
 
-            if let Some(track) = view
-                .reference_annotation
-                .as_ref()
-                .filter(|track| !track.intervals.is_empty())
-            {
-                let annotation_rect = egui::Rect::from_min_max(
-                    egui::pos2(dotplot_rect.left() - 16.0, dotplot_rect.top()),
-                    egui::pos2(dotplot_rect.left() - 6.0, dotplot_rect.bottom()),
-                );
-                painter.rect_filled(annotation_rect, 2.0, egui::Color32::from_rgb(248, 250, 252));
-                painter.rect_stroke(
-                    annotation_rect,
-                    2.0,
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
-                    egui::StrokeKind::Inside,
-                );
-                let reference_span_f32 = reference_span.max(1) as f32;
-                for interval in &track.intervals {
-                    let local_start = interval
-                        .start_0based
-                        .saturating_sub(view.reference_span_start_0based)
-                        .min(reference_span);
-                    let local_end = interval
-                        .end_0based_exclusive
-                        .saturating_sub(view.reference_span_start_0based)
-                        .min(reference_span);
-                    let y0 = annotation_rect.top()
-                        + (local_start as f32 / reference_span_f32) * annotation_rect.height();
-                    let y1 = annotation_rect.top()
-                        + (local_end as f32 / reference_span_f32) * annotation_rect.height();
-                    painter.rect_filled(
-                        egui::Rect::from_min_max(
-                            egui::pos2(annotation_rect.left() + 1.0, y0),
-                            egui::pos2(annotation_rect.right() - 1.0, y1.max(y0 + 1.0)),
-                        ),
-                        1.0,
-                        egui::Color32::from_rgb(34, 197, 94),
-                    );
-                }
-                painter.text(
-                    egui::pos2(annotation_rect.center().x, canvas_rect.top() + 4.0),
-                    egui::Align2::CENTER_TOP,
-                    track.label.as_str(),
-                    egui::FontId::monospace(9.0),
-                    egui::Color32::from_rgb(51, 65, 85),
-                );
-            }
+            Self::render_dotplot_reference_annotation_track_ui(
+                &painter,
+                canvas_rect,
+                dotplot_rect,
+                view,
+                reference_span,
+            );
 
             let mut legend_cursor = egui::pos2(dotplot_rect.left(), canvas_rect.top() + 4.0);
             for series in &rendered_series {
@@ -3096,6 +3119,14 @@ impl MainAreaDna {
                 egui::Color32::from_rgb(100, 116, 139),
             );
         }
+
+        Self::render_dotplot_reference_annotation_track_ui(
+            &painter,
+            canvas_rect,
+            dotplot_rect,
+            view,
+            reference_span,
+        );
 
         painter.text(
             egui::pos2(dotplot_rect.left(), canvas_rect.top() + 4.0),

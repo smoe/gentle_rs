@@ -602,6 +602,59 @@ impl GentleEngine {
         }
     }
 
+    fn push_dotplot_svg_reference_annotation_track(
+        svg: &mut String,
+        track: &DotplotReferenceAnnotationTrack,
+        view: &DotplotView,
+        reference_span: usize,
+        dotplot_left: f32,
+        dotplot_top: f32,
+        dotplot_height: f32,
+        label_y: f32,
+    ) {
+        let annotation_left = dotplot_left - 16.0;
+        let annotation_width = 10.0;
+        svg.push_str(&format!(
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#f8fafc\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"2\" ry=\"2\"/>",
+            annotation_left,
+            dotplot_top,
+            annotation_width,
+            dotplot_height
+        ));
+        let reference_span_f32 = reference_span.max(1) as f32;
+        for interval in &track.intervals {
+            let local_start = interval
+                .start_0based
+                .saturating_sub(view.reference_span_start_0based)
+                .min(reference_span);
+            let local_end = interval
+                .end_0based_exclusive
+                .saturating_sub(view.reference_span_start_0based)
+                .min(reference_span);
+            let y0 = dotplot_top + (local_start as f32 / reference_span_f32) * dotplot_height;
+            let y1 = dotplot_top + (local_end as f32 / reference_span_f32) * dotplot_height;
+            svg.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"#22c55e\" rx=\"1\" ry=\"1\"><title>{}</title></rect>",
+                annotation_left + 1.0,
+                y0,
+                annotation_width - 2.0,
+                (y1 - y0).max(1.0),
+                Self::dotplot_svg_xml_escape(&format!(
+                    "{} {}..{}",
+                    interval.label,
+                    interval.start_0based.saturating_add(1),
+                    interval.end_0based_exclusive
+                ))
+            ));
+        }
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" fill=\"#334155\">{}</text>",
+            annotation_left + annotation_width * 0.5,
+            label_y,
+            Self::dotplot_svg_xml_escape(track.label.as_str())
+        ));
+    }
+
     fn build_dotplot_svg_document_for_export(
         view: &DotplotView,
         flex_track: Option<&FlexibilityTrack>,
@@ -954,42 +1007,16 @@ impl GentleEngine {
             }
 
             if let Some(track) = reference_annotation {
-                let annotation_left = dotplot_left - 16.0;
-                let annotation_width = 10.0;
-                svg.push_str(&format!(
-                    "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#f8fafc\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"2\" ry=\"2\"/>",
-                    annotation_left,
+                Self::push_dotplot_svg_reference_annotation_track(
+                    &mut svg,
+                    track,
+                    view,
+                    reference_span,
+                    dotplot_left,
                     dotplot_top,
-                    annotation_width,
-                    dotplot_height
-                ));
-                let reference_span_f32 = reference_span.max(1) as f32;
-                for interval in &track.intervals {
-                    let local_start = interval
-                        .start_0based
-                        .saturating_sub(view.reference_span_start_0based)
-                        .min(reference_span);
-                    let local_end = interval
-                        .end_0based_exclusive
-                        .saturating_sub(view.reference_span_start_0based)
-                        .min(reference_span);
-                    let y0 =
-                        dotplot_top + (local_start as f32 / reference_span_f32) * dotplot_height;
-                    let y1 = dotplot_top + (local_end as f32 / reference_span_f32) * dotplot_height;
-                    svg.push_str(&format!(
-                        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"#22c55e\" rx=\"1\" ry=\"1\"/>",
-                        annotation_left + 1.0,
-                        y0,
-                        annotation_width - 2.0,
-                        (y1 - y0).max(1.0)
-                    ));
-                }
-                svg.push_str(&format!(
-                    "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" fill=\"#334155\">{}</text>",
-                    annotation_left + annotation_width * 0.5,
+                    dotplot_height,
                     outer_margin + 14.0,
-                    Self::dotplot_svg_xml_escape(track.label.as_str())
-                ));
+                );
             }
 
             let header = format!(
@@ -1111,8 +1138,16 @@ impl GentleEngine {
             return svg;
         }
 
+        let reference_annotation = view
+            .reference_annotation
+            .as_ref()
+            .filter(|track| !track.intervals.is_empty());
         let outer_margin = 18.0_f32;
-        let left_margin = 56.0_f32;
+        let left_margin = if reference_annotation.is_some() {
+            78.0_f32
+        } else {
+            56.0_f32
+        };
         let right_margin = 16.0_f32;
         let top_margin = 26.0_f32;
         let bottom_margin = 24.0_f32;
@@ -1266,6 +1301,19 @@ impl GentleEngine {
             ));
         }
 
+        if let Some(track) = reference_annotation {
+            Self::push_dotplot_svg_reference_annotation_track(
+                &mut svg,
+                track,
+                view,
+                reference_span,
+                dotplot_left,
+                dotplot_top,
+                dotplot_height,
+                outer_margin + 14.0,
+            );
+        }
+
         let header = format!(
             "Dotplot workspace export: {} | mode={} | query={} [{}..{}] | reference={} [{}..{}] | word={} step={} mismatches={} | points={} | threshold={:.2} gain={:.2}",
             view.dotplot_id,
@@ -1284,11 +1332,14 @@ impl GentleEngine {
             intensity_gain
         );
         let sampling_line = format!(
-            "{} | rendered_cells={} sampled_points={} sample_stride={}",
+            "{} | rendered_cells={} sampled_points={} sample_stride={} | merged_exons={}",
             Self::dotplot_sampling_overlap_summary(view.word_size.max(1), view.step_bp.max(1)),
             visible_cells.len(),
             view.points.len().div_ceil(sample_stride),
-            sample_stride
+            sample_stride,
+            reference_annotation
+                .map(|track| track.interval_count)
+                .unwrap_or(0)
         );
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#0f172a\">{}</text>",
@@ -17301,6 +17352,7 @@ impl GentleEngine {
                     let (
                         reference_label,
                         reference_seq_id_for_view,
+                        reference_seq_id_for_annotation,
                         reference_text,
                         reference_span_start_0based,
                         reference_span_end_0based,
@@ -17308,6 +17360,7 @@ impl GentleEngine {
                         DotplotMode::SelfForward | DotplotMode::SelfReverseComplement => (
                             seq_id.clone(),
                             None,
+                            seq_id.clone(),
                             query_text.clone(),
                             span_start_0based,
                             span_end_0based,
@@ -17345,6 +17398,7 @@ impl GentleEngine {
                             (
                                 ref_seq_id.to_string(),
                                 Some(ref_seq_id.to_string()),
+                                ref_seq_id.to_string(),
                                 reference_text,
                                 ref_start,
                                 ref_end,
@@ -17412,14 +17466,10 @@ impl GentleEngine {
                         boxplot_bins: primary_series.boxplot_bins.clone(),
                         series_count: 1,
                         query_series: vec![primary_series],
-                        reference_annotation: reference_seq_id_for_view.as_deref().and_then(
-                            |ref_id| {
-                                self.build_dotplot_reference_annotation_track(
-                                    ref_id,
-                                    reference_span_start_0based,
-                                    reference_span_end_0based,
-                                )
-                            },
+                        reference_annotation: self.build_dotplot_reference_annotation_track(
+                            &reference_seq_id_for_annotation,
+                            reference_span_start_0based,
+                            reference_span_end_0based,
                         ),
                         overlay_anchor_exons: vec![],
                     };

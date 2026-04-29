@@ -3889,11 +3889,14 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - optional flexibility track must also belong to `seq_id`
 - Output:
   - deterministic SVG dotplot artifact; operation is non-mutating
-  - overlay payloads render all stored `query_series` with legend + merged
-    reference-exon side track; `overlay_x_axis_mode` chooses whether transcript
-    queries are shown as normalized percent length, as left/right aligned
-    base-pair coordinates, as shared-exon-anchored coordinates, or as
-    explicit per-query-anchor coordinates.
+  - pairwise, annotated self, and overlay payloads render a merged
+    reference-exon side track beside the reference/genomic y-axis when
+    `reference_annotation` intervals are present
+  - overlay payloads render all stored `query_series` with a legend;
+    `overlay_x_axis_mode` chooses whether transcript queries are shown as
+    normalized percent length, as left/right aligned base-pair coordinates, as
+    shared-exon-anchored coordinates, or as explicit per-query-anchor
+    coordinates.
   - `shared_exon_anchor` filters the overlay down to series that contain the
     selected reference exon and shifts each supporting transcript so the exon
     start lands at the maximal observed transcript-local start for that exon.
@@ -5699,6 +5702,7 @@ Dotplot + flexibility operation contract (implemented baseline):
         `query_anchor_label` values for curated cross-family/domain-anchored
         rendering with `query_anchor_bp`
     - optional `reference_annotation` with merged reference-side exon intervals
+      for pairwise, annotated self, and overlay dotplot payloads
     - optional `query_series[].transcript_feature_id` when overlays originate
       from locus transcript lanes
     - optional `overlay_anchor_exons[]` carrying precomputed shared-exon anchor

@@ -328,7 +328,9 @@ Primary map modes (linear topology):
         - each isoform gets a deterministic color while the y-axis stays in
           shared genomic coordinates
         - merged exon annotation for the reference span is drawn beside the
-          genomic axis when exon features are present on the reference sequence
+          genomic axis when exon features are present on the reference sequence;
+          the same side-track is also shown for ordinary pairwise and annotated
+          self-dotplot payloads
         - manually anchored overlay payloads can also be re-opened here even if
           they were computed outside the current locus-transcript picker; the
           x-axis selector stays available so those persisted family/domain
