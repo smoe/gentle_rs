@@ -12770,6 +12770,7 @@ impl GentleEngine {
             sequence_context_bundle: None,
             variant_promoter_context: None,
             alternative_promoter_comparison: None,
+            promoter_evidence_matrix: None,
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
@@ -20035,6 +20036,47 @@ impl GentleEngine {
                         report.collapsed_window_count
                     ));
                     result.alternative_promoter_comparison = Some(report);
+                }
+                Operation::SummarizePromoterEvidenceMatrix {
+                    input,
+                    gene_label,
+                    transcript_id,
+                    promoter_upstream_bp,
+                    promoter_downstream_bp,
+                    include_feature_overlaps,
+                    path,
+                } => {
+                    let mut report = self.summarize_promoter_evidence_matrix(
+                        &input,
+                        gene_label.as_deref(),
+                        transcript_id.as_deref(),
+                        promoter_upstream_bp,
+                        promoter_downstream_bp,
+                        include_feature_overlaps,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "promoter evidence matrix report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote promoter evidence matrix for '{}' to '{}'",
+                            report.seq_id, path
+                        ));
+                    }
+                    for warning in &report.warnings {
+                        result.warnings.push(warning.clone());
+                    }
+                    result.messages.push(format!(
+                        "Promoter evidence matrix for '{}' summarized {} promoter candidate(s) with {} evidence item(s)",
+                        report.seq_id,
+                        report.promoter_candidate_count,
+                        report.evidence_item_count
+                    ));
+                    result.promoter_evidence_matrix = Some(report);
                 }
                 Operation::SuggestPromoterReporterFragments {
                     input,

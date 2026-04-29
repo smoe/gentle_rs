@@ -748,6 +748,643 @@ impl GentleEngine {
         })
     }
 
+    fn promoter_evidence_candidate_key(
+        strand: &str,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> String {
+        format!("{strand}:{start_0based}:{end_0based_exclusive}")
+    }
+
+    fn promoter_evidence_sort_dedup(values: &mut Vec<String>) {
+        values.retain(|value| !value.trim().is_empty());
+        values.sort_by_key(|value| value.to_ascii_lowercase());
+        values.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    }
+
+    fn promoter_evidence_record_label(record: &PromoterWindowRecord) -> String {
+        let base_label = record
+            .gene_label
+            .clone()
+            .unwrap_or_else(|| record.transcript_label.clone());
+        let transcript_count = record
+            .transcript_count
+            .max(record.transcript_ids.len().max(1));
+        if transcript_count > 1 {
+            format!("{base_label} promoter window ({transcript_count} tx)")
+        } else {
+            format!("{base_label} promoter window")
+        }
+    }
+
+    fn promoter_evidence_add_item(row: &mut PromoterEvidenceMatrixRow, item: PromoterEvidenceItem) {
+        row.evidence.push(item);
+        row.evidence_count = row.evidence.len();
+        row.evidence_kind_counts.clear();
+        for evidence in &row.evidence {
+            *row.evidence_kind_counts
+                .entry(evidence.kind.clone())
+                .or_insert(0) += 1;
+        }
+    }
+
+    fn promoter_evidence_feature_kind(feature: &gb_io::seq::Feature) -> Option<String> {
+        let role = Self::construct_reasoning_role_from_feature(feature);
+        if role == Some(ConstructRole::Tfbs) || Self::is_tfbs_feature(feature) {
+            return Some("tfbs_annotation".to_string());
+        }
+        match role {
+            Some(ConstructRole::Variant) => Some("variant_overlap".to_string()),
+            Some(ConstructRole::RepeatRegion) | Some(ConstructRole::MobileElement) => {
+                Some("repeat_context".to_string())
+            }
+            Some(ConstructRole::Enhancer) => Some("enhancer_overlap".to_string()),
+            Some(ConstructRole::Terminator) => Some("terminator_overlap".to_string()),
+            _ => {
+                let kind = feature.kind.to_string().to_ascii_lowercase();
+                if kind == "track" {
+                    let track_name = Self::feature_qualifier_text(feature, "gentle_track_name")
+                        .unwrap_or_default()
+                        .to_ascii_lowercase();
+                    let track_file = Self::feature_qualifier_text(feature, "gentle_track_file")
+                        .unwrap_or_default()
+                        .to_ascii_lowercase();
+                    let label = Self::feature_qualifier_text(feature, "label").unwrap_or_default();
+                    let label = label.to_ascii_lowercase();
+                    if track_name.contains("cut&run")
+                        || track_name.contains("cutrun")
+                        || track_file.contains("cutrun")
+                        || label.contains("cut&run")
+                        || label.contains("cutrun")
+                    {
+                        Some("cutrun_peak_overlap".to_string())
+                    } else {
+                        Some("external_interval_overlap".to_string())
+                    }
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn promoter_evidence_feature_item(
+        feature: &gb_io::seq::Feature,
+        feature_id: usize,
+        candidate_start_0based: usize,
+        candidate_end_0based_exclusive: usize,
+    ) -> Option<PromoterEvidenceItem> {
+        let kind = Self::promoter_evidence_feature_kind(feature)?;
+        let (start_0based, end_0based_exclusive) = Self::feature_span_bounds(feature)?;
+        let overlap_start = start_0based.max(candidate_start_0based);
+        let overlap_end = end_0based_exclusive.min(candidate_end_0based_exclusive);
+        if overlap_end <= overlap_start {
+            return None;
+        }
+        let label = Self::feature_display_label(feature, feature_id);
+        let source = Self::feature_qualifier_text(feature, "gentle_generated")
+            .or_else(|| Self::feature_qualifier_text(feature, "gentle_track_source"))
+            .unwrap_or_else(|| "annotation".to_string());
+        let mut metrics = BTreeMap::new();
+        metrics.insert(
+            "overlap_bp".to_string(),
+            (overlap_end - overlap_start) as f64,
+        );
+        metrics.insert(
+            "feature_length_bp".to_string(),
+            end_0based_exclusive.saturating_sub(start_0based) as f64,
+        );
+        if let Some(score) = Self::feature_qualifier_f64(feature, "score") {
+            metrics.insert("score".to_string(), score);
+        }
+        let mut attributes = BTreeMap::new();
+        attributes.insert(
+            "feature_id_1based".to_string(),
+            (feature_id + 1).to_string(),
+        );
+        attributes.insert("feature_kind".to_string(), feature.kind.to_string());
+        attributes.insert("feature_label".to_string(), label.clone());
+        for key in [
+            "gene",
+            "gene_id",
+            "transcript_id",
+            "regulatory_class",
+            "gentle_generated",
+            "gentle_track_name",
+            "gentle_track_file",
+            "rmsk_rep_name",
+            "rmsk_rep_class",
+            "rmsk_rep_family",
+        ] {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                attributes.insert(key.to_string(), value);
+            }
+        }
+        let mut tags = vec![kind.clone()];
+        if let Some(role) = Self::construct_reasoning_role_from_feature(feature) {
+            tags.push(role.as_str().to_string());
+        }
+        Some(PromoterEvidenceItem {
+            evidence_id: format!(
+                "{}_feature_{}_{}_{}",
+                kind,
+                feature_id + 1,
+                start_0based,
+                end_0based_exclusive
+            ),
+            kind,
+            source,
+            summary: format!(
+                "{} overlaps promoter candidate by {} bp",
+                label,
+                overlap_end - overlap_start
+            ),
+            confidence: None,
+            start_0based: Some(start_0based),
+            end_0based_exclusive: Some(end_0based_exclusive),
+            strand: Some(
+                if feature_is_reverse(feature) {
+                    "-"
+                } else {
+                    "+"
+                }
+                .to_string(),
+            ),
+            overlap_bp: Some(overlap_end - overlap_start),
+            metrics,
+            attributes,
+            provenance_refs: vec![format!("feature:{}", feature_id + 1)],
+            interpretation_tags: tags,
+        })
+    }
+
+    fn promoter_evidence_row_from_record(
+        seq_id: &str,
+        record: PromoterWindowRecord,
+    ) -> PromoterEvidenceMatrixRow {
+        let transcript_count = record
+            .transcript_count
+            .max(record.transcript_ids.len().max(1));
+        let label = Self::promoter_evidence_record_label(&record);
+        let row_id = format!(
+            "promoter_{}_{}_{}",
+            Self::normalize_id_token(&label),
+            record.start_0based.saturating_add(1),
+            record.end_0based_exclusive
+        );
+        let mut row = PromoterEvidenceMatrixRow {
+            row_id,
+            display_rank: 0,
+            label: label.clone(),
+            gene_label: record.gene_label.clone(),
+            gene_id: record.gene_id.clone(),
+            representative_transcript_id: Some(record.transcript_id.clone()),
+            representative_transcript_label: Some(record.transcript_label.clone()),
+            representative_transcript_feature_id: record.transcript_feature_id,
+            transcript_count,
+            transcript_ids: record.transcript_ids.clone(),
+            transcript_labels: record.transcript_labels.clone(),
+            strand: record.strand.clone(),
+            representative_tss_local_0based: Some(record.tss_local_0based),
+            start_0based: record.start_0based,
+            end_0based_exclusive: record.end_0based_exclusive,
+            upstream_bp: record.upstream_bp,
+            downstream_bp: record.downstream_bp,
+            source: record.source.clone(),
+            evidence_count: 0,
+            evidence_kind_counts: BTreeMap::new(),
+            evidence: vec![],
+            interpretation_tags: vec![
+                "promoter_candidate".to_string(),
+                "transcript_tss".to_string(),
+            ],
+        };
+        let mut geometry_metrics = BTreeMap::new();
+        geometry_metrics.insert(
+            "length_bp".to_string(),
+            record
+                .end_0based_exclusive
+                .saturating_sub(record.start_0based) as f64,
+        );
+        geometry_metrics.insert("upstream_bp".to_string(), record.upstream_bp as f64);
+        geometry_metrics.insert("downstream_bp".to_string(), record.downstream_bp as f64);
+        let mut geometry_attributes = BTreeMap::new();
+        geometry_attributes.insert("seq_id".to_string(), seq_id.to_string());
+        geometry_attributes.insert("tss_local_1based".to_string(), {
+            record.tss_local_0based.saturating_add(1).to_string()
+        });
+        let normalized_row_id = Self::normalize_id_token(&row.row_id);
+        Self::promoter_evidence_add_item(
+            &mut row,
+            PromoterEvidenceItem {
+                evidence_id: format!("{}_geometry", normalized_row_id),
+                kind: "promoter_geometry".to_string(),
+                source: record.source.clone(),
+                summary: format!(
+                    "Strand-aware promoter window {}..{} around TSS {} ({} bp upstream / {} bp downstream)",
+                    record.start_0based,
+                    record.end_0based_exclusive,
+                    record.tss_local_0based.saturating_add(1),
+                    record.upstream_bp,
+                    record.downstream_bp
+                ),
+                confidence: Some(0.7),
+                start_0based: Some(record.start_0based),
+                end_0based_exclusive: Some(record.end_0based_exclusive),
+                strand: Some(record.strand.clone()),
+                overlap_bp: None,
+                metrics: geometry_metrics,
+                attributes: geometry_attributes,
+                provenance_refs: record.transcript_ids.clone(),
+                interpretation_tags: vec![
+                    "promoter".to_string(),
+                    "geometry".to_string(),
+                    "transcript_tss".to_string(),
+                ],
+            },
+        );
+        let mut support_metrics = BTreeMap::new();
+        support_metrics.insert("transcript_count".to_string(), transcript_count as f64);
+        Self::promoter_evidence_add_item(
+            &mut row,
+            PromoterEvidenceItem {
+                evidence_id: format!("{}_transcript_support", normalized_row_id),
+                kind: "transcript_support".to_string(),
+                source: "transcript_annotation".to_string(),
+                summary: format!(
+                    "{} transcript interpretation(s) share this exact promoter span",
+                    transcript_count
+                ),
+                confidence: Some(0.8),
+                start_0based: Some(record.start_0based),
+                end_0based_exclusive: Some(record.end_0based_exclusive),
+                strand: Some(record.strand.clone()),
+                overlap_bp: None,
+                metrics: support_metrics,
+                attributes: BTreeMap::new(),
+                provenance_refs: record.transcript_ids.clone(),
+                interpretation_tags: vec![
+                    "transcript_support".to_string(),
+                    "collapsed_exact_span".to_string(),
+                ],
+            },
+        );
+        row
+    }
+
+    fn promoter_evidence_merge_annotation(
+        row: &mut PromoterEvidenceMatrixRow,
+        feature: &gb_io::seq::Feature,
+        feature_id: usize,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) {
+        let label = Self::feature_display_label(feature, feature_id);
+        if row.gene_label.is_none() {
+            row.gene_label = Self::first_nonempty_feature_qualifier(
+                feature,
+                &["gene", "gene_name", "locus_tag"],
+            );
+        }
+        if row.gene_id.is_none() {
+            row.gene_id =
+                Self::first_nonempty_feature_qualifier(feature, &["gene_id", "locus_tag"]);
+        }
+        if row.representative_transcript_id.is_none() {
+            row.representative_transcript_id =
+                Self::feature_qualifier_text(feature, "transcript_id");
+        }
+        if !row.source.contains("annotation_promoter") {
+            row.source = format!("{}+annotation_promoter", row.source);
+        }
+        let mut metrics = BTreeMap::new();
+        metrics.insert(
+            "length_bp".to_string(),
+            end_0based_exclusive.saturating_sub(start_0based) as f64,
+        );
+        let mut attributes = BTreeMap::new();
+        attributes.insert(
+            "feature_id_1based".to_string(),
+            (feature_id + 1).to_string(),
+        );
+        attributes.insert("feature_kind".to_string(), feature.kind.to_string());
+        attributes.insert("feature_label".to_string(), label.clone());
+        for key in [
+            "gene",
+            "gene_id",
+            "transcript_id",
+            "transcript_count",
+            "transcript_ids",
+            "regulatory_class",
+            "gentle_generated",
+            "generated_by",
+            "promoter_source",
+        ] {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                attributes.insert(key.to_string(), value);
+            }
+        }
+        Self::promoter_evidence_add_item(
+            row,
+            PromoterEvidenceItem {
+                evidence_id: format!(
+                    "promoter_annotation_feature_{}_{}_{}",
+                    feature_id + 1,
+                    start_0based,
+                    end_0based_exclusive
+                ),
+                kind: "promoter_annotation".to_string(),
+                source: Self::feature_qualifier_text(feature, "gentle_generated")
+                    .unwrap_or_else(|| "annotation".to_string()),
+                summary: format!(
+                    "Promoter annotation '{}' overlaps this promoter candidate",
+                    label
+                ),
+                confidence: Some(0.8),
+                start_0based: Some(start_0based),
+                end_0based_exclusive: Some(end_0based_exclusive),
+                strand: Some(
+                    if feature_is_reverse(feature) {
+                        "-"
+                    } else {
+                        "+"
+                    }
+                    .to_string(),
+                ),
+                overlap_bp: Some(end_0based_exclusive.saturating_sub(start_0based)),
+                metrics,
+                attributes,
+                provenance_refs: vec![format!("feature:{}", feature_id + 1)],
+                interpretation_tags: vec![
+                    "promoter".to_string(),
+                    "annotation".to_string(),
+                    "dna_level_span".to_string(),
+                ],
+            },
+        );
+    }
+
+    fn promoter_evidence_row_from_annotation(
+        feature: &gb_io::seq::Feature,
+        feature_id: usize,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+    ) -> Option<PromoterEvidenceMatrixRow> {
+        let (start_0based, end_0based_exclusive) = Self::feature_span_bounds(feature)?;
+        let label = Self::feature_display_label(feature, feature_id);
+        let transcript_ids = Self::feature_qualifier_text(feature, "transcript_ids")
+            .or_else(|| Self::feature_qualifier_text(feature, "transcript_id"))
+            .map(|raw| {
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let transcript_labels = Self::feature_qualifier_text(feature, "transcript_labels")
+            .or_else(|| Self::feature_qualifier_text(feature, "transcript_label"))
+            .map(|raw| {
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let transcript_count = Self::feature_qualifier_text(feature, "transcript_count")
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .unwrap_or_else(|| transcript_ids.len().max(1));
+        let strand = if feature_is_reverse(feature) {
+            "-"
+        } else {
+            "+"
+        }
+        .to_string();
+        let mut row = PromoterEvidenceMatrixRow {
+            row_id: format!(
+                "promoter_{}_{}_{}",
+                Self::normalize_id_token(&label),
+                start_0based.saturating_add(1),
+                end_0based_exclusive
+            ),
+            display_rank: 0,
+            label,
+            gene_label: Self::first_nonempty_feature_qualifier(
+                feature,
+                &["gene", "gene_name", "locus_tag"],
+            ),
+            gene_id: Self::first_nonempty_feature_qualifier(feature, &["gene_id", "locus_tag"]),
+            representative_transcript_id: Self::feature_qualifier_text(feature, "transcript_id"),
+            representative_transcript_label: Self::feature_qualifier_text(
+                feature,
+                "transcript_label",
+            ),
+            representative_transcript_feature_id: None,
+            transcript_count,
+            transcript_ids,
+            transcript_labels,
+            strand,
+            representative_tss_local_0based: None,
+            start_0based,
+            end_0based_exclusive,
+            upstream_bp: promoter_upstream_bp,
+            downstream_bp: promoter_downstream_bp,
+            source: "annotation_promoter".to_string(),
+            evidence_count: 0,
+            evidence_kind_counts: BTreeMap::new(),
+            evidence: vec![],
+            interpretation_tags: vec![
+                "promoter_candidate".to_string(),
+                "annotation_promoter".to_string(),
+            ],
+        };
+        Self::promoter_evidence_merge_annotation(
+            &mut row,
+            feature,
+            feature_id,
+            start_0based,
+            end_0based_exclusive,
+        );
+        Some(row)
+    }
+
+    pub(crate) fn summarize_promoter_evidence_matrix(
+        &self,
+        input: &str,
+        gene_label: Option<&str>,
+        transcript_id: Option<&str>,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+        include_feature_overlaps: bool,
+    ) -> Result<PromoterEvidenceMatrixReport, EngineError> {
+        let dna = self.state.sequences.get(input).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Sequence '{}' not found", input),
+        })?;
+        let transcript_windows = self.derive_promoter_window_records(
+            dna,
+            gene_label,
+            transcript_id,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            PromoterWindowCollapseMode::Transcript,
+        );
+        let transcript_window_count = transcript_windows.len();
+        let collapsed_windows =
+            Self::collapse_promoter_window_records_by_exact_span(transcript_windows);
+        let mut rows_by_key: BTreeMap<String, PromoterEvidenceMatrixRow> = BTreeMap::new();
+        for record in collapsed_windows {
+            let key = Self::promoter_evidence_candidate_key(
+                &record.strand,
+                record.start_0based,
+                record.end_0based_exclusive,
+            );
+            rows_by_key.insert(key, Self::promoter_evidence_row_from_record(input, record));
+        }
+
+        for (feature_id, feature) in dna.features().iter().enumerate() {
+            if Self::construct_reasoning_role_from_feature(feature) != Some(ConstructRole::Promoter)
+            {
+                continue;
+            }
+            let Some((start_0based, end_0based_exclusive)) = Self::feature_span_bounds(feature)
+            else {
+                continue;
+            };
+            let strand = if feature_is_reverse(feature) {
+                "-"
+            } else {
+                "+"
+            };
+            let key =
+                Self::promoter_evidence_candidate_key(strand, start_0based, end_0based_exclusive);
+            if let Some(row) = rows_by_key.get_mut(&key) {
+                Self::promoter_evidence_merge_annotation(
+                    row,
+                    feature,
+                    feature_id,
+                    start_0based,
+                    end_0based_exclusive,
+                );
+            } else if let Some(row) = Self::promoter_evidence_row_from_annotation(
+                feature,
+                feature_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+            ) {
+                rows_by_key.insert(key, row);
+            }
+        }
+
+        if rows_by_key.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No promoter candidates could be derived from transcript TSS or promoter annotations on '{}'",
+                    input
+                ),
+            });
+        }
+
+        if include_feature_overlaps {
+            for row in rows_by_key.values_mut() {
+                for (feature_id, feature) in dna.features().iter().enumerate() {
+                    if Self::construct_reasoning_role_from_feature(feature)
+                        == Some(ConstructRole::Promoter)
+                    {
+                        continue;
+                    }
+                    if let Some(item) = Self::promoter_evidence_feature_item(
+                        feature,
+                        feature_id,
+                        row.start_0based,
+                        row.end_0based_exclusive,
+                    ) {
+                        Self::promoter_evidence_add_item(row, item);
+                    }
+                }
+            }
+        }
+
+        let mut rows = rows_by_key.into_values().collect::<Vec<_>>();
+        for row in &mut rows {
+            Self::promoter_evidence_sort_dedup(&mut row.transcript_ids);
+            Self::promoter_evidence_sort_dedup(&mut row.transcript_labels);
+            if row.transcript_count == 0 {
+                row.transcript_count = row.transcript_ids.len().max(1);
+            }
+            row.interpretation_tags
+                .extend(row.evidence_kind_counts.keys().cloned());
+            Self::promoter_evidence_sort_dedup(&mut row.interpretation_tags);
+        }
+        rows.sort_by(|left, right| {
+            right
+                .transcript_count
+                .cmp(&left.transcript_count)
+                .then_with(|| right.evidence_count.cmp(&left.evidence_count))
+                .then_with(|| left.start_0based.cmp(&right.start_0based))
+                .then_with(|| left.end_0based_exclusive.cmp(&right.end_0based_exclusive))
+                .then_with(|| left.strand.cmp(&right.strand))
+                .then_with(|| {
+                    left.label
+                        .to_ascii_lowercase()
+                        .cmp(&right.label.to_ascii_lowercase())
+                })
+        });
+        for (idx, row) in rows.iter_mut().enumerate() {
+            row.display_rank = idx + 1;
+        }
+
+        let evidence_item_count = rows.iter().map(|row| row.evidence_count).sum::<usize>();
+        let mut evidence_kinds_observed = rows
+            .iter()
+            .flat_map(|row| row.evidence_kind_counts.keys().cloned())
+            .collect::<Vec<_>>();
+        Self::promoter_evidence_sort_dedup(&mut evidence_kinds_observed);
+        let mut warnings = vec![];
+        if transcript_window_count == 0 {
+            warnings.push(
+                "No transcript-derived promoter windows were available; report uses existing promoter annotations only.".to_string(),
+            );
+        }
+        if !include_feature_overlaps {
+            warnings.push(
+                "Feature-overlap evidence was not collected because include_feature_overlaps=false."
+                    .to_string(),
+            );
+        }
+
+        Ok(PromoterEvidenceMatrixReport {
+            schema: PROMOTER_EVIDENCE_MATRIX_SCHEMA.to_string(),
+            seq_id: input.to_string(),
+            sequence_length_bp: dna.len(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            gene_label_filter: gene_label
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
+            transcript_id_filter: transcript_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            transcript_window_count,
+            promoter_candidate_count: rows.len(),
+            evidence_item_count,
+            evidence_kinds_observed,
+            ranking_mode: "deterministic_display_order".to_string(),
+            ranking_basis:
+                "transcript_count desc, evidence_count desc, local coordinate asc, label asc"
+                    .to_string(),
+            rows,
+            warnings,
+        })
+    }
+
     pub(crate) fn build_construct_reasoning_generated_promoter_evidence(
         &self,
         seq_id: &str,

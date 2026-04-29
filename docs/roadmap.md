@@ -1355,6 +1355,19 @@ order. Durable architecture constraints and decisions remain in
             - ClawBio/OpenClaw: choose which artifacts matter for the user,
               what order to present them in, and what short narrative to place
               around them
+          - first conservative evidence-ledger slice is now in place:
+            `SummarizePromoterEvidenceMatrix` / shared shell
+            `features promoter-evidence-matrix` emits
+            `gentle.promoter_evidence_matrix.v1`, grouping DNA-level promoter
+            candidates with transcript support, promoter annotations, TFBS,
+            variant, repeat, enhancer/terminator, external interval, and
+            CUT&RUN-tagged interval evidence when such annotations already
+            exist on the sequence
+          - the evidence matrix intentionally uses string-valued evidence
+            kinds and transparent deterministic display ordering, so future
+            ortholog promoter similarity, co-regulated/anti-co-regulated gene
+            similarity, and richer CUT&RUN mappings can be appended without
+            turning the v1 report into a premature biological verdict
           - TFBS-correlation presentation should still prefer one biologically
             stable default (`smoothed_spearman`) while keeping raw/other
             metrics as secondary diagnostics

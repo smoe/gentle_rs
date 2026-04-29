@@ -33850,6 +33850,93 @@ fn apply_summarize_alternative_promoter_comparison_operation_returns_payload() {
 }
 
 #[test]
+fn summarize_promoter_evidence_matrix_collapses_promoters_and_collects_evidence() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(3000)).expect("sequence");
+    for (transcript_id, transcript_label) in [("ENSTTP73A", "TP73-201"), ("ENSTTP73B", "TP73-202")]
+    {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(1200, 1800),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_label.to_string())),
+            ],
+        });
+    }
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "promoter".into(),
+        location: gb_io::seq::Location::simple_range(1000, 1251),
+        qualifiers: vec![
+            ("gene".into(), Some("TP73".to_string())),
+            ("label".into(), Some("TP73 promoter annotation".to_string())),
+        ],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(1030, 1040),
+        qualifiers: vec![("label".into(), Some("SP1".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(1100, 1101),
+        qualifiers: vec![("label".into(), Some("rsPromoter".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "repeat_region".into(),
+        location: gb_io::seq::Location::simple_range(1160, 1180),
+        qualifiers: vec![
+            ("label".into(), Some("L1MC".to_string())),
+            ("rmsk_rep_class".into(), Some("LINE".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_promoter_evidence".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let result = engine
+        .apply(Operation::SummarizePromoterEvidenceMatrix {
+            input: "tp73_promoter_evidence".to_string(),
+            gene_label: Some("TP73".to_string()),
+            transcript_id: None,
+            promoter_upstream_bp: 200,
+            promoter_downstream_bp: 50,
+            include_feature_overlaps: true,
+            path: None,
+        })
+        .expect("promoter evidence matrix");
+
+    let report = result
+        .promoter_evidence_matrix
+        .expect("promoter evidence matrix payload");
+    assert_eq!(report.schema, PROMOTER_EVIDENCE_MATRIX_SCHEMA);
+    assert_eq!(report.transcript_window_count, 2);
+    assert_eq!(report.promoter_candidate_count, 1);
+    assert_eq!(report.rows.len(), 1);
+    let row = &report.rows[0];
+    assert_eq!(row.transcript_count, 2);
+    assert_eq!(row.start_0based, 1000);
+    assert_eq!(row.end_0based_exclusive, 1251);
+    assert!(row.label.contains("(2 tx)"));
+    for expected_kind in [
+        "promoter_geometry",
+        "transcript_support",
+        "promoter_annotation",
+        "tfbs_annotation",
+        "variant_overlap",
+        "repeat_context",
+    ] {
+        assert!(
+            row.evidence_kind_counts.contains_key(expected_kind),
+            "missing evidence kind {expected_kind}: {:?}",
+            row.evidence_kind_counts
+        );
+    }
+}
+
+#[test]
 fn build_construct_reasoning_graph_derives_promoter_assay_from_generated_promoter_window() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

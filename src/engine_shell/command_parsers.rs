@@ -1826,7 +1826,7 @@ fn parse_repeat_filter_option(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
@@ -2138,6 +2138,79 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 clip_negative,
                 catalog_path,
                 cache_dir,
+                path,
+            })
+        }
+        "promoter-evidence-matrix" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features promoter-evidence-matrix requires SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(
+                    "features promoter-evidence-matrix SEQ_ID must not be empty".to_string()
+                );
+            }
+            let mut gene_label: Option<String> = None;
+            let mut transcript_id: Option<String> = None;
+            let mut promoter_upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut promoter_downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut include_feature_overlaps = true;
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene-label" | "--gene" => {
+                        idx += 1;
+                        gene_label = Some(parse_required_value(tokens, &mut idx, "--gene-label")?);
+                    }
+                    "--transcript-id" | "--transcript" => {
+                        idx += 1;
+                        transcript_id =
+                            Some(parse_required_value(tokens, &mut idx, "--transcript-id")?);
+                    }
+                    "--promoter-upstream-bp" | "--upstream-bp" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--promoter-upstream-bp")?;
+                        promoter_upstream_bp =
+                            parse_usize_option_value(&raw, "--promoter-upstream-bp")?;
+                    }
+                    "--promoter-downstream-bp" | "--downstream-bp" => {
+                        idx += 1;
+                        let raw =
+                            parse_required_value(tokens, &mut idx, "--promoter-downstream-bp")?;
+                        promoter_downstream_bp =
+                            parse_usize_option_value(&raw, "--promoter-downstream-bp")?;
+                    }
+                    "--no-feature-overlaps" => {
+                        idx += 1;
+                        include_feature_overlaps = false;
+                    }
+                    "--include-feature-overlaps" => {
+                        idx += 1;
+                        include_feature_overlaps = true;
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features promoter-evidence-matrix"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesPromoterEvidenceMatrix {
+                seq_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                include_feature_overlaps,
                 path,
             })
         }

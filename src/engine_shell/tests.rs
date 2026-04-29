@@ -4984,6 +4984,34 @@ fn parse_features_tfbs_track_similarity_for_inline_targets_with_species_filter()
 }
 
 #[test]
+fn parse_features_promoter_evidence_matrix_with_filters() {
+    let cmd = parse_shell_line(
+        "features promoter-evidence-matrix tp73_context --gene-label TP73 --transcript-id ENSTTP73A --promoter-upstream-bp 1500 --promoter-downstream-bp 250 --no-feature-overlaps --path /tmp/tp73_promoter_evidence.json",
+    )
+    .expect("parse features promoter-evidence-matrix");
+    match cmd {
+        ShellCommand::FeaturesPromoterEvidenceMatrix {
+            seq_id,
+            gene_label,
+            transcript_id,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            include_feature_overlaps,
+            path,
+        } => {
+            assert_eq!(seq_id, "tp73_context");
+            assert_eq!(gene_label.as_deref(), Some("TP73"));
+            assert_eq!(transcript_id.as_deref(), Some("ENSTTP73A"));
+            assert_eq!(promoter_upstream_bp, 1500);
+            assert_eq!(promoter_downstream_bp, 250);
+            assert!(!include_feature_overlaps);
+            assert_eq!(path.as_deref(), Some("/tmp/tp73_promoter_evidence.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_features_restriction_scan_for_stored_and_inline_targets() {
     let cmd = parse_shell_line(
         "features restriction-scan seq_a --range 10..120 --enzyme EcoRI --enzyme SmaI --max-sites-per-enzyme 3 --no-cut-geometry --path /tmp/seq_a.restriction_scan.json",
@@ -10824,6 +10852,64 @@ fn execute_variant_promoter_context_shell_command_returns_report_payload() {
     assert_eq!(
         run.output["report"]["chosen_gene_label"].as_str(),
         Some("VKORC1")
+    );
+}
+
+#[test]
+fn execute_features_promoter_evidence_matrix_returns_report_payload() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(2000)).expect("sequence");
+    for transcript_id in ["ENSTTP73A", "ENSTTP73B"] {
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(800, 1400),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+            ],
+        });
+    }
+    dna.features_mut().push(Feature {
+        kind: "TFBS".into(),
+        location: Location::simple_range(720, 730),
+        qualifiers: vec![("label".into(), Some("SP1".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_promoter_shell".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesPromoterEvidenceMatrix {
+            seq_id: "tp73_promoter_shell".to_string(),
+            gene_label: Some("TP73".to_string()),
+            transcript_id: None,
+            promoter_upstream_bp: 100,
+            promoter_downstream_bp: 25,
+            include_feature_overlaps: true,
+            path: None,
+        },
+    )
+    .expect("promoter evidence matrix");
+
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["report"]["schema"].as_str(),
+        Some("gentle.promoter_evidence_matrix.v1")
+    );
+    assert_eq!(
+        run.output["report"]["promoter_candidate_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        run.output["report"]["rows"][0]["transcript_count"].as_u64(),
+        Some(2)
+    );
+    assert!(
+        run.output["report"]["rows"][0]["evidence_kind_counts"]
+            .get("tfbs_annotation")
+            .is_some()
     );
 }
 

@@ -2198,6 +2198,113 @@ pub struct AlternativePromoterComparisonReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// One evidence item attached to a promoter candidate in the conservative
+/// promoter-evidence ledger.
+///
+/// `kind` is intentionally string-valued so orthology, co-regulation,
+/// anti-co-regulation, CUT&RUN, and future evidence layers can be added
+/// without revving readers that only need to preserve unknown evidence rows.
+pub struct PromoterEvidenceItem {
+    pub evidence_id: String,
+    pub kind: String,
+    pub source: String,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overlap_bp: Option<usize>,
+    #[serde(default)]
+    pub metrics: BTreeMap<String, f64>,
+    #[serde(default)]
+    pub attributes: BTreeMap<String, String>,
+    #[serde(default)]
+    pub provenance_refs: Vec<String>,
+    #[serde(default)]
+    pub interpretation_tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One promoter candidate row with a transparent list of evidence items.
+pub struct PromoterEvidenceMatrixRow {
+    pub row_id: String,
+    pub display_rank: usize,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_transcript_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_transcript_feature_id: Option<usize>,
+    pub transcript_count: usize,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub transcript_labels: Vec<String>,
+    pub strand: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_tss_local_0based: Option<usize>,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    pub source: String,
+    pub evidence_count: usize,
+    #[serde(default)]
+    pub evidence_kind_counts: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub evidence: Vec<PromoterEvidenceItem>,
+    #[serde(default)]
+    pub interpretation_tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Engine-owned promoter evidence matrix for one sequence/locus.
+///
+/// This report is an evidence ledger, not a final biological verdict. Rows are
+/// deterministically ordered for review, and every future scoring/ranking layer
+/// should keep its method and provenance explicit.
+pub struct PromoterEvidenceMatrixReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label_filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    pub promoter_upstream_bp: usize,
+    pub promoter_downstream_bp: usize,
+    pub transcript_window_count: usize,
+    pub promoter_candidate_count: usize,
+    pub evidence_item_count: usize,
+    #[serde(default)]
+    pub evidence_kinds_observed: Vec<String>,
+    pub ranking_mode: String,
+    pub ranking_basis: String,
+    #[serde(default)]
+    pub rows: Vec<PromoterEvidenceMatrixRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One overlapping annotation/evidence row surfaced in a variant-promoter
 /// context report.
 pub struct VariantPromoterContextEvidenceRow {
@@ -3264,6 +3371,8 @@ pub struct OpResult {
     pub variant_promoter_context: Option<VariantPromoterContextReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alternative_promoter_comparison: Option<AlternativePromoterComparisonReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_evidence_matrix: Option<PromoterEvidenceMatrixReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_candidates: Option<PromoterReporterCandidateSet>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

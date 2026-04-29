@@ -1913,6 +1913,15 @@ pub enum ShellCommand {
         cache_dir: Option<String>,
         path: Option<String>,
     },
+    FeaturesPromoterEvidenceMatrix {
+        seq_id: String,
+        gene_label: Option<String>,
+        transcript_id: Option<String>,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+        include_feature_overlaps: bool,
+        path: Option<String>,
+    },
     VariantAnnotatePromoterWindows {
         seq_id: String,
         gene_label: Option<String>,
@@ -8630,6 +8639,24 @@ impl ShellCommand {
                 clip_negative,
                 catalog_path.as_deref().unwrap_or("default"),
                 cache_dir.as_deref().unwrap_or("default"),
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesPromoterEvidenceMatrix {
+                seq_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                include_feature_overlaps,
+                path,
+            } => format!(
+                "summarize promoter evidence matrix on '{}' (gene='{}', transcript='{}', promoter={}up/{}down, feature_overlaps={}, path='{}')",
+                seq_id,
+                gene_label.as_deref().unwrap_or("-"),
+                transcript_id.as_deref().unwrap_or("-"),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                include_feature_overlaps,
                 path.as_deref().unwrap_or("-"),
             ),
             Self::VariantAnnotatePromoterWindows {
@@ -26143,6 +26170,35 @@ fn execute_feature_scan_command(
                 }),
             })
         }
+        ShellCommand::FeaturesPromoterEvidenceMatrix {
+            seq_id,
+            gene_label,
+            transcript_id,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            include_feature_overlaps,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::SummarizePromoterEvidenceMatrix {
+                    input: seq_id.clone(),
+                    gene_label: gene_label.clone(),
+                    transcript_id: transcript_id.clone(),
+                    promoter_upstream_bp: *promoter_upstream_bp,
+                    promoter_downstream_bp: *promoter_downstream_bp,
+                    include_feature_overlaps: *include_feature_overlaps,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.promoter_evidence_matrix.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         _ => unreachable!("non-feature scan command passed to feature scan helper"),
     }
 }
@@ -29603,6 +29659,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesMaterializeRepeats { .. }
             | ShellCommand::FeaturesRepeatCohort { .. }
             | ShellCommand::FeaturesWindowCohortTfbs { .. }
+            | ShellCommand::FeaturesPromoterEvidenceMatrix { .. }
     ) {
         return execute_feature_scan_command(engine, command);
     }
@@ -29856,7 +29913,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesRepeatOverlaps { .. }
         | ShellCommand::FeaturesMaterializeRepeats { .. }
         | ShellCommand::FeaturesRepeatCohort { .. }
-        | ShellCommand::FeaturesWindowCohortTfbs { .. } => {
+        | ShellCommand::FeaturesWindowCohortTfbs { .. }
+        | ShellCommand::FeaturesPromoterEvidenceMatrix { .. } => {
             execute_feature_scan_command(engine, command)?
         }
         ShellCommand::TranscriptsDerive { .. }

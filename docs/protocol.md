@@ -443,6 +443,53 @@ Behavior notes:
   metric itself rather than its absolute value because the intent is “most
   similarly scoring”, not “most strongly related in either direction”
 
+## Promoter Evidence Matrix Contract
+
+GENtle now exposes a conservative promoter-region evidence ledger for one
+sequence/locus. This is deliberately not a final biological verdict; it records
+promoter candidates and evidence items in a versioned structure that can later
+carry orthology, co-regulation, anti-co-regulation, and CUT&RUN evidence.
+
+Shared-shell route:
+
+```bash
+gentle_cli shell 'features promoter-evidence-matrix SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]'
+```
+
+First-class operation route:
+
+```json
+{"SummarizePromoterEvidenceMatrix":{"input":"SEQ_ID","gene_label":"TP73","promoter_upstream_bp":1000,"promoter_downstream_bp":200,"include_feature_overlaps":true,"path":"tp73_promoter_evidence.json"}}
+```
+
+Portable schema:
+
+- `gentle.promoter_evidence_matrix.v1`
+
+Behavior notes:
+
+- transcript-derived promoter windows reuse the same strand-aware TSS geometry
+  and exact-span collapse as Alternative Promoter Comparison
+- existing DNA-level `promoter` annotations are merged into the same candidate
+  row when their span matches a transcript-derived promoter window
+- evidence rows are string-kind based so unknown future evidence can be
+  preserved by older adapters
+- current evidence kinds include:
+  - `promoter_geometry`
+  - `transcript_support`
+  - `promoter_annotation`
+  - `tfbs_annotation`
+  - `variant_overlap`
+  - `repeat_context`
+  - `enhancer_overlap`
+  - `terminator_overlap`
+  - `external_interval_overlap`
+  - `cutrun_peak_overlap` when projected interval metadata identifies CUT&RUN
+- the current `ranking_mode` is only deterministic display ordering:
+  transcript support first, then evidence count, then coordinates and label
+- richer scoring is expected to be additive and method/provenance-tagged rather
+  than replacing the evidence ledger
+
 ## TF query resolution contract
 
 GENtle also exposes one lightweight TF-query resolution report so CLI, GUI,
