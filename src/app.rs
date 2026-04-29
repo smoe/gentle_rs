@@ -1915,6 +1915,43 @@ enum LineageNodeKind {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LineageCopyPayloadKind {
+    NodeId,
+    PrimaryId,
+    DisplayLabel,
+    RowSummary,
+}
+
+impl LineageCopyPayloadKind {
+    fn menu_label(self) -> &'static str {
+        match self {
+            Self::NodeId => "Copy node ID",
+            Self::PrimaryId => "Copy sequence/report ID",
+            Self::DisplayLabel => "Copy display label",
+            Self::RowSummary => "Copy row summary",
+        }
+    }
+
+    fn hover_text(self) -> &'static str {
+        match self {
+            Self::NodeId => "Copy the stable lineage node identifier",
+            Self::PrimaryId => "Copy the most relevant sequence, report, macro, or arrangement ID",
+            Self::DisplayLabel => "Copy the label shown for this lineage row",
+            Self::RowSummary => "Copy a compact multi-line summary of this lineage row",
+        }
+    }
+
+    fn status_label(self) -> &'static str {
+        match self {
+            Self::NodeId => "node ID",
+            Self::PrimaryId => "sequence/report ID",
+            Self::DisplayLabel => "display label",
+            Self::RowSummary => "row summary",
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LineageAnalysisKind {
     Dotplot,
     FlexibilityTrack,
@@ -35906,6 +35943,166 @@ Error: `{err}`"
         }
     }
 
+    fn lineage_node_kind_label(kind: LineageNodeKind) -> &'static str {
+        match kind {
+            LineageNodeKind::Sequence => "sequence",
+            LineageNodeKind::Arrangement => "arrangement",
+            LineageNodeKind::Macro => "macro",
+            LineageNodeKind::Analysis => "analysis",
+        }
+    }
+
+    fn lineage_row_primary_id(row: &LineageRow) -> &str {
+        match row.kind {
+            LineageNodeKind::Sequence => &row.seq_id,
+            LineageNodeKind::Arrangement => row.arrangement_id.as_deref().unwrap_or(&row.seq_id),
+            LineageNodeKind::Macro => row.macro_instance_id.as_deref().unwrap_or(&row.seq_id),
+            LineageNodeKind::Analysis => row.analysis_artifact_id.as_deref().unwrap_or(&row.seq_id),
+        }
+    }
+
+    fn lineage_row_summary_text(row: &LineageRow) -> String {
+        let mut lines = vec![
+            format!("node_id: {}", row.node_id),
+            format!("kind: {}", Self::lineage_node_kind_label(row.kind)),
+            format!("primary_id: {}", Self::lineage_row_primary_id(row)),
+            format!("display_name: {}", row.display_name),
+            format!("seq_id: {}", row.seq_id),
+            format!("origin: {}", row.origin),
+            format!("created_by_op: {}", row.created_by_op),
+            format!("created_at_unix_ms: {}", row.created_at),
+        ];
+
+        if !row.parents.is_empty() {
+            lines.push(format!("parents: {}", row.parents.join(" + ")));
+        }
+
+        match row.kind {
+            LineageNodeKind::Sequence => {
+                lines.push(format!("length_bp: {}", row.length));
+                lines.push(format!(
+                    "topology: {}",
+                    if row.circular { "circular" } else { "linear" }
+                ));
+                if row.pool_size > 1 {
+                    lines.push(format!("pool_size: {}", row.pool_size));
+                    if !row.pool_members.is_empty() {
+                        lines.push(format!("pool_members: {}", row.pool_members.join(", ")));
+                    }
+                }
+                if let Some(anchor) = row.genome_anchor_display.as_deref() {
+                    lines.push(format!("genome_anchor: {anchor}"));
+                }
+                if row.is_full_genome_sequence {
+                    lines.push("full_genome_sequence: true".to_string());
+                }
+                if let Some(descriptor) = row.retrieval_descriptor.as_ref() {
+                    lines.push(format!(
+                        "retrieval_pattern: {}",
+                        Self::lineage_retrieval_pattern_label(descriptor)
+                    ));
+                }
+            }
+            LineageNodeKind::Arrangement => {
+                if let Some(arrangement_id) = row.arrangement_id.as_deref() {
+                    lines.push(format!("arrangement_id: {arrangement_id}"));
+                }
+                if let Some(mode) = row.arrangement_mode.as_deref() {
+                    lines.push(format!("arrangement_mode: {mode}"));
+                }
+                if !row.lane_container_ids.is_empty() {
+                    lines.push(format!(
+                        "lane_container_ids: {}",
+                        row.lane_container_ids.join(", ")
+                    ));
+                }
+                if !row.ladders.is_empty() {
+                    lines.push(format!("ladders: {}", row.ladders.join(", ")));
+                }
+            }
+            LineageNodeKind::Macro => {
+                if let Some(instance_id) = row.macro_instance_id.as_deref() {
+                    lines.push(format!("macro_instance_id: {instance_id}"));
+                }
+                if let Some(routine_id) = row.macro_routine_id.as_deref() {
+                    lines.push(format!("macro_routine_id: {routine_id}"));
+                }
+                if let Some(template_name) = row.macro_template_name.as_deref() {
+                    lines.push(format!("macro_template_name: {template_name}"));
+                }
+                if let Some(status) = row.macro_status.as_deref() {
+                    lines.push(format!("macro_status: {status}"));
+                }
+                if let Some(status_message) = row.macro_status_message.as_deref() {
+                    lines.push(format!("macro_status_message: {status_message}"));
+                }
+                if !row.macro_op_ids.is_empty() {
+                    lines.push(format!("macro_op_ids: {}", row.macro_op_ids.join(", ")));
+                }
+            }
+            LineageNodeKind::Analysis => {
+                if let Some(kind) = row.analysis_kind {
+                    lines.push(format!("analysis_kind: {}", kind.as_str()));
+                }
+                if let Some(artifact_id) = row.analysis_artifact_id.as_deref() {
+                    lines.push(format!("analysis_artifact_id: {artifact_id}"));
+                }
+                if let Some(reference_seq_id) = row.analysis_reference_seq_id.as_deref() {
+                    lines.push(format!("analysis_reference_seq_id: {reference_seq_id}"));
+                }
+                if let Some(mode) = row.analysis_mode.as_deref() {
+                    lines.push(format!("analysis_mode: {mode}"));
+                }
+                if let Some(status) = row.analysis_status.as_deref() {
+                    lines.push(format!("analysis_status: {status}"));
+                }
+                if let Some(count) = row.analysis_target_count {
+                    lines.push(format!("analysis_target_count: {count}"));
+                }
+                if let Some(count) = row.analysis_variant_count {
+                    lines.push(format!("analysis_variant_count: {count}"));
+                }
+            }
+        }
+
+        lines.join("\n")
+    }
+
+    fn lineage_copy_payload(row: &LineageRow, kind: LineageCopyPayloadKind) -> String {
+        match kind {
+            LineageCopyPayloadKind::NodeId => row.node_id.clone(),
+            LineageCopyPayloadKind::PrimaryId => Self::lineage_row_primary_id(row).to_string(),
+            LineageCopyPayloadKind::DisplayLabel => {
+                let display_name = row.display_name.trim();
+                if display_name.is_empty() {
+                    Self::lineage_row_primary_id(row).to_string()
+                } else {
+                    display_name.to_string()
+                }
+            }
+            LineageCopyPayloadKind::RowSummary => Self::lineage_row_summary_text(row),
+        }
+    }
+
+    fn copy_lineage_row_payload_to_clipboard(
+        &mut self,
+        ctx: &egui::Context,
+        row: &LineageRow,
+        kind: LineageCopyPayloadKind,
+    ) {
+        ctx.copy_text(Self::lineage_copy_payload(row, kind));
+        self.lineage_group_status = format!(
+            "Copied {} for lineage node '{}'",
+            kind.status_label(),
+            row.node_id
+        );
+    }
+
+    fn copy_lineage_node_id_to_clipboard(&mut self, ctx: &egui::Context, node_id: &str) {
+        ctx.copy_text(node_id.to_string());
+        self.lineage_group_status = format!("Copied node ID for lineage node '{node_id}'");
+    }
+
     fn render_projected_lineage_svg_text(
         &self,
         rows: &[LineageRow],
@@ -36210,6 +36407,32 @@ Error: `{err}`"
         persist_workspace_after_frame: &mut bool,
     ) {
         ui.label(format!("Node: {node_id}"));
+        ui.separator();
+        if let Some(row) = context_row {
+            for kind in [
+                LineageCopyPayloadKind::NodeId,
+                LineageCopyPayloadKind::PrimaryId,
+                LineageCopyPayloadKind::DisplayLabel,
+                LineageCopyPayloadKind::RowSummary,
+            ] {
+                if ui
+                    .button(kind.menu_label())
+                    .on_hover_text(kind.hover_text())
+                    .clicked()
+                {
+                    self.copy_lineage_row_payload_to_clipboard(ui.ctx(), row, kind);
+                    ui.close();
+                }
+            }
+        } else if ui
+            .button(LineageCopyPayloadKind::NodeId.menu_label())
+            .on_hover_text(LineageCopyPayloadKind::NodeId.hover_text())
+            .clicked()
+        {
+            self.copy_lineage_node_id_to_clipboard(ui.ctx(), node_id);
+            ui.close();
+        }
+
         ui.separator();
         let marked = self.lineage_group_marked_nodes.contains(node_id);
         if !marked {
@@ -44882,18 +45105,19 @@ mod tests {
         GenomeTrackImportTask, GenomeTrackImportTaskMessage, GibsonUiInsertOrientation,
         GibsonUiInsertRow, GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
-        LineageAnalysisKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS, OPENAI_API_KEY_ENV,
-        OPERATION_HISTORY_SCROLL_ID, PendingEnsemblCatalogUpdateDialog,
-        PendingEnsemblInstallableGenomeDialog, PendingEnsemblQuickInstallDialog,
-        PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
-        PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery,
-        PrepareGenomeUiStepState, PrepareGenomeUiStepStatus, PreparedGenomeReinstallDialogHost,
-        PreparedGenomeReinstallRequest, ProjectAction, RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD,
-        RACK_WORKSPACE_METADATA_KEY, ROUTINE_DECISION_TRACE_SCHEMA,
-        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState,
-        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
-        RoutineAssistantStage, TutorialProjectOpenOutcome, TutorialProjectTask,
-        TutorialProjectTaskMessage, TutorialProjectTaskProgress, preferred_local_agent_system_id,
+        LineageAnalysisKind, LineageCopyPayloadKind, LineageNodeKind, LineageRow,
+        MAX_RECENT_PROJECTS, OPENAI_API_KEY_ENV, OPERATION_HISTORY_SCROLL_ID,
+        PendingEnsemblCatalogUpdateDialog, PendingEnsemblInstallableGenomeDialog,
+        PendingEnsemblQuickInstallDialog, PersistedConfiguration, PersistedLineageGraphWorkspace,
+        PersistedLineageNodeGroup, PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction,
+        PrepareGenomeFailureRecovery, PrepareGenomeUiStepState, PrepareGenomeUiStepStatus,
+        PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
+        RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD, RACK_WORKSPACE_METADATA_KEY,
+        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
+        ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
+        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
+        TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
+        TutorialProjectTaskProgress, preferred_local_agent_system_id,
         preferred_openai_agent_system_id,
     };
     use crate::{
@@ -53896,6 +54120,68 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             macro_inputs: vec![],
             macro_outputs: vec![],
         }
+    }
+
+    #[test]
+    fn lineage_copy_primary_id_prefers_analysis_artifact_id() {
+        let mut row = make_lineage_row("analysis:qpcr:tp73_as3", "tp73_as3_template");
+        row.kind = LineageNodeKind::Analysis;
+        row.analysis_kind = Some(LineageAnalysisKind::QpcrDesign);
+        row.analysis_artifact_id = Some("qpcr_report_tp73_as3".to_string());
+
+        assert_eq!(
+            GENtleApp::lineage_copy_payload(&row, LineageCopyPayloadKind::PrimaryId),
+            "qpcr_report_tp73_as3"
+        );
+    }
+
+    #[test]
+    fn lineage_copy_display_label_falls_back_to_primary_id() {
+        let mut row = make_lineage_row("node:seq1", "seq1");
+        row.display_name = "  ".to_string();
+
+        assert_eq!(
+            GENtleApp::lineage_copy_payload(&row, LineageCopyPayloadKind::DisplayLabel),
+            "seq1"
+        );
+    }
+
+    #[test]
+    fn lineage_copy_row_summary_includes_identifiers_and_analysis_context() {
+        let mut row = make_lineage_row("analysis:primer:tp73", "tp73_template");
+        row.kind = LineageNodeKind::Analysis;
+        row.display_name = "TP73 primer report".to_string();
+        row.parents = vec!["node:template".to_string()];
+        row.analysis_kind = Some(LineageAnalysisKind::PrimerDesign);
+        row.analysis_artifact_id = Some("primer_report_tp73".to_string());
+        row.analysis_reference_seq_id = Some("tp73_reference".to_string());
+        row.analysis_mode = Some("oligo".to_string());
+        row.analysis_target_count = Some(3);
+
+        let summary = GENtleApp::lineage_copy_payload(&row, LineageCopyPayloadKind::RowSummary);
+
+        assert!(
+            summary.contains("node_id: analysis:primer:tp73"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("primary_id: primer_report_tp73"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("display_name: TP73 primer report"),
+            "{summary}"
+        );
+        assert!(summary.contains("parents: node:template"), "{summary}");
+        assert!(
+            summary.contains("analysis_kind: primer_design"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("analysis_reference_seq_id: tp73_reference"),
+            "{summary}"
+        );
+        assert!(summary.contains("analysis_target_count: 3"), "{summary}");
     }
 
     fn insert_test_lineage_node(state: &mut ProjectState, node_id: &str, seq_id: &str) {

@@ -1668,6 +1668,13 @@ Node click behavior in lineage `Graph` view:
   same `PCR Designer` on the originating template and restores the saved
   cloning-handoff selection (vector, enzymes, leaders, and saved handoff id).
 - Right-click context menu (graph and table node-id cells):
+  - `Copy node ID`: copies the stable lineage node identifier.
+  - `Copy sequence/report ID`: copies the primary row identifier, such as a
+    sequence ID, qPCR/primer report ID, macro instance ID, or arrangement ID.
+  - `Copy display label`: copies the row label exactly as shown, falling back
+    to the primary ID when no display label exists.
+  - `Copy row summary`: copies a compact multi-line text summary with the node
+    ID, primary ID, operation provenance, and row-type-specific context.
   - `Rename (leaf only)`: updates the node display name (sequence name).
   - `Remove (leaf only)`: opens a confirmation dialog, then removes that
     sequence/node from project state on confirm.
