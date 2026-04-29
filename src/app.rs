@@ -2874,11 +2874,15 @@ impl GENtleApp {
         egui::Id::new(("hosted_help_window", Self::help_viewport_id()))
     }
 
-    fn legacy_root_help_layer_ids(title: &str) -> [egui::LayerId; 1] {
-        [egui::LayerId::new(
-            egui::Order::Middle,
-            egui::Id::new(title.to_string()),
-        )]
+    fn unsaved_changes_dialog_id() -> egui::Id {
+        egui::Id::new("unsaved_changes_dialog")
+    }
+
+    fn legacy_root_help_layer_ids(title: &str) -> [egui::LayerId; 2] {
+        [
+            egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string())),
+            egui::LayerId::new(egui::Order::Middle, egui::Id::new(Self::help_viewport_id())),
+        ]
     }
 
     fn stale_hosted_window_title_layer_id(title: &str) -> egui::LayerId {
@@ -42045,6 +42049,9 @@ Error: `{err}`"
             return;
         }
         egui::Window::new("Unsaved Changes")
+            .id(Self::unsaved_changes_dialog_id())
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
@@ -43224,6 +43231,54 @@ Error: `{err}`"
         }
         let viewport_id = Self::help_viewport_id();
         let title = format!("Help - {}", self.active_help_title());
+        if ctx.embed_viewports() {
+            if Self::reset_root_help_areas_if_legacy_layers_visible(ctx, title.as_str()) {
+                ctx.request_repaint();
+            }
+            let render_started = Instant::now();
+            let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
+            let min_size = Vec2::new(420.0, 320.0);
+            let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+                Vec2::new(860.0, 680.0),
+                constrain_rect,
+                min_size,
+            );
+            let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
+                None,
+                constrain_rect,
+                default_size,
+            );
+            let mut open = self.show_help_dialog;
+            let render_help_in_foreground = self.pending_focus_viewports.contains(&viewport_id)
+                || self
+                    .pending_viewport_focus_timestamps
+                    .contains_key(&viewport_id);
+            let mut window = egui::Window::new("Help")
+                .id(Self::hosted_help_window_id())
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(true)
+                .default_pos(default_pos)
+                .default_size(default_size)
+                .min_size(min_size)
+                .max_size(constrain_rect.size())
+                .constrain_to(constrain_rect);
+            if render_help_in_foreground {
+                window = window.order(egui::Order::Foreground);
+            }
+            window.show(ctx, |ui| {
+                self.render_help_contents(ui);
+            });
+            self.note_slow_open_phase(
+                viewport_id,
+                "Help first-frame render",
+                render_started.elapsed().as_millis(),
+            );
+            self.show_help_dialog =
+                Self::reconcile_embedded_window_open_state(self.show_help_dialog, open);
+            self.finalize_viewport_open_probe(viewport_id, "Help");
+            return;
+        }
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
             .with_inner_size([860.0, 680.0])
@@ -51467,11 +51522,16 @@ mod tests {
         let hosted_help_layer_id =
             egui::LayerId::new(egui::Order::Middle, GENtleApp::hosted_help_window_id());
         let stale_title_layer_id = GENtleApp::stale_help_title_layer_id("Help - GUI Manual");
+        let stale_viewport_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(GENtleApp::help_viewport_id()),
+        );
 
         ctx.begin_pass(egui::RawInput::default());
         app.render_help_dialog(&ctx);
         assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
         let _ = ctx.end_pass();
     }
 
@@ -51490,11 +51550,37 @@ mod tests {
             egui::LayerId::new(egui::Order::Middle, GENtleApp::hosted_help_window_id());
         let stale_title_layer_id =
             GENtleApp::stale_help_title_layer_id("Help - Load pGEX and digest with BamHI/EcoRI");
+        let stale_viewport_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(GENtleApp::help_viewport_id()),
+        );
 
         ctx.begin_pass(egui::RawInput::default());
         app.render_help_dialog(&ctx);
         assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_help_layer_id)));
         assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn focused_embedded_help_window_renders_in_foreground_without_viewport_title_shell() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut app = GENtleApp::default();
+        app.show_help_dialog = true;
+        app.queue_focus_viewport(GENtleApp::help_viewport_id());
+        let foreground_help_layer_id =
+            egui::LayerId::new(egui::Order::Foreground, GENtleApp::hosted_help_window_id());
+        let stale_viewport_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(GENtleApp::help_viewport_id()),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        app.render_help_dialog(&ctx);
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&foreground_help_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
         let _ = ctx.end_pass();
     }
 
@@ -51604,6 +51690,29 @@ mod tests {
             Some(ProjectAction::Quit)
         ));
         assert!(!app.pending_app_quit);
+    }
+
+    #[test]
+    fn unsaved_changes_dialog_renders_in_foreground_above_hosted_workspace() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let mut app = GENtleApp::default();
+        app.pending_project_action = Some(ProjectAction::Quit);
+        let project_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            GENtleApp::main_workspace_hosted_window_id(),
+        );
+        let unsaved_layer_id = egui::LayerId::new(
+            egui::Order::Foreground,
+            GENtleApp::unsaved_changes_dialog_id(),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        app.render_hosted_main_workspace_window(&ctx, true);
+        app.render_unsaved_changes_dialog(&ctx);
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&project_layer_id)));
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&unsaved_layer_id)));
+        let _ = ctx.end_pass();
     }
 
     #[test]
