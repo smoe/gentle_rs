@@ -709,6 +709,33 @@ impl GentleEngine {
         }
     }
 
+    pub(super) fn feature_transcript_display_label(
+        feature: &gb_io::seq::Feature,
+        feature_id: usize,
+    ) -> String {
+        let fallback = format!("{} #{}", feature.kind.to_string(), feature_id + 1);
+        let label = Self::first_nonempty_feature_qualifier(
+            feature,
+            &[
+                "product",
+                "label",
+                "name",
+                "standard_name",
+                "transcript_id",
+                "gene",
+                "gene_id",
+                "locus_tag",
+            ],
+        )
+        .unwrap_or(fallback);
+        let trimmed = label.trim();
+        if trimmed.is_empty() {
+            format!("{} #{}", feature.kind.to_string(), feature_id + 1)
+        } else {
+            trimmed.to_string()
+        }
+    }
+
     pub(super) fn normalize_column_frequencies(counts: [f64; 4]) -> [f64; 4] {
         let total = counts
             .iter()
@@ -6796,6 +6823,7 @@ impl GentleEngine {
                 message: format!("Isoform panel file '{}' has empty gene_symbol", path),
             });
         }
+        Self::normalize_isoform_panel_curation(&mut resource.curation);
         if resource.isoforms.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -6832,6 +6860,7 @@ impl GentleEngine {
                 }
             }
             isoform.transcript_ids = transcript_ids;
+            Self::normalize_isoform_panel_curation(&mut isoform.curation);
             for (domain_idx, domain) in isoform.domains.iter_mut().enumerate() {
                 domain.name = domain.name.trim().to_string();
                 if domain.name.is_empty() {
@@ -6865,6 +6894,55 @@ impl GentleEngine {
         Ok(resource)
     }
 
+    fn normalize_isoform_panel_curation(curation: &mut Option<IsoformPanelCurationInfo>) {
+        let Some(info) = curation.as_mut() else {
+            return;
+        };
+        info.source_kind = info
+            .source_kind
+            .take()
+            .map(|v| v.trim().to_ascii_lowercase())
+            .filter(|v| !v.is_empty());
+        info.source_label = info
+            .source_label
+            .take()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+        info.public_database_status = info
+            .public_database_status
+            .take()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+        Self::normalize_isoform_panel_curation_list(&mut info.evidence);
+        Self::normalize_isoform_panel_curation_list(&mut info.validation_tags);
+        Self::normalize_isoform_panel_curation_list(&mut info.notes);
+        if info.source_kind.is_none()
+            && info.source_label.is_none()
+            && info.evidence.is_empty()
+            && info.validation_tags.is_empty()
+            && info.public_database_status.is_none()
+            && info.notes.is_empty()
+        {
+            *curation = None;
+        }
+    }
+
+    fn normalize_isoform_panel_curation_list(values: &mut Vec<String>) {
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        let mut out: Vec<String> = vec![];
+        for value in values.drain(..) {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let key = trimmed.to_ascii_lowercase();
+            if seen.insert(key) {
+                out.push(trimmed.to_string());
+            }
+        }
+        *values = out;
+    }
+
     pub(super) fn isoform_validation_issue(
         code: &str,
         message: String,
@@ -6879,6 +6957,33 @@ impl GentleEngine {
             isoform_id: isoform_id.map(|v| v.to_string()),
             transcript_probe: transcript_probe.map(|v| v.to_string()),
             domain_name: domain_name.map(|v| v.to_string()),
+        }
+    }
+
+    fn validate_isoform_panel_curation(
+        curation: Option<&IsoformPanelCurationInfo>,
+        issues: &mut Vec<IsoformPanelValidationIssue>,
+        isoform_id: Option<&str>,
+    ) {
+        let Some(info) = curation else {
+            return;
+        };
+        let Some(source_kind) = info.source_kind.as_deref() else {
+            return;
+        };
+        match source_kind {
+            "public_database" | "lab_curated" | "literature_curated" | "vendor_curated"
+            | "mixed" => {}
+            other => issues.push(Self::isoform_validation_issue(
+                "unknown_curation_source_kind",
+                format!(
+                    "Curation source kind '{}' is not one of public_database, lab_curated, literature_curated, vendor_curated, mixed",
+                    other
+                ),
+                isoform_id,
+                None,
+                None,
+            )),
         }
     }
 
@@ -6897,15 +7002,29 @@ impl GentleEngine {
         let mut transcript_probe_count = 0usize;
         let mut unique_transcript_probes: BTreeSet<String> = BTreeSet::new();
         let mut domain_count = 0usize;
+        let curation_source_kind = resource
+            .curation
+            .as_ref()
+            .and_then(|info| info.source_kind.clone());
+        let mut curated_isoform_count = 0usize;
         let mut isoform_id_buckets: HashMap<String, Vec<String>> = HashMap::new();
         let mut transcript_probe_buckets: HashMap<String, BTreeSet<String>> = HashMap::new();
 
+        Self::validate_isoform_panel_curation(resource.curation.as_ref(), &mut issues, None);
         for isoform in &resource.isoforms {
             let isoform_key = isoform.isoform_id.to_ascii_uppercase();
             isoform_id_buckets
                 .entry(isoform_key)
                 .or_default()
                 .push(isoform.isoform_id.clone());
+            if isoform.curation.is_some() {
+                curated_isoform_count += 1;
+            }
+            Self::validate_isoform_panel_curation(
+                isoform.curation.as_ref(),
+                &mut issues,
+                Some(&isoform.isoform_id),
+            );
 
             if isoform.transcript_ids.is_empty() {
                 issues.push(Self::isoform_validation_issue(
@@ -7052,6 +7171,15 @@ impl GentleEngine {
                 domain_count: isoform.domains.len(),
                 expected_length_aa: isoform.expected_length_aa,
                 max_domain_end_aa,
+                curation_source_kind: isoform
+                    .curation
+                    .as_ref()
+                    .and_then(|info| info.source_kind.clone()),
+                validation_tags: isoform
+                    .curation
+                    .as_ref()
+                    .map(|info| info.validation_tags.clone())
+                    .unwrap_or_default(),
             });
         }
 
@@ -7119,6 +7247,8 @@ impl GentleEngine {
             transcript_probe_count,
             unique_transcript_probe_count: unique_transcript_probes.len(),
             domain_count,
+            curation_source_kind,
+            curated_isoform_count,
             issue_count,
             status,
             isoforms,
@@ -8032,7 +8162,7 @@ impl GentleEngine {
             transcripts.push(TranscriptWork {
                 feature_id: idx,
                 transcript_id: Self::feature_transcript_id(feature, idx),
-                label: Self::feature_display_label(feature, idx),
+                label: Self::feature_transcript_display_label(feature, idx),
                 is_reverse,
                 exon_ranges,
                 exon_cds_phases,

@@ -2158,6 +2158,19 @@ Isoform-panel operation semantics (current):
   - `transcript_geometry_mode: exon|cds` (default `exon`)
   - `cds` renders top-panel lanes from transcript CDS segments when available,
     falling back to exon geometry per transcript if CDS metadata is missing.
+- `gentle.isoform_panel_resource.v1` can now carry structured local curation
+  metadata at panel and isoform level:
+  - `curation.source_kind`: `public_database`, `lab_curated`,
+    `literature_curated`, `vendor_curated`, or `mixed`
+  - `curation.source_label`, `curation.evidence[]`,
+    `curation.validation_tags[]`, `curation.public_database_status`, and
+    `curation.notes[]`
+  - validation reports expose the panel `curation_source_kind` and
+    `curated_isoform_count`, and per-isoform validation rows expose
+    `curation_source_kind` plus `validation_tags[]`, so downstream
+    GUI/CLI/ClawBio routes can distinguish local knowledge from public
+    accession anchors instead of flattening both into one free-text source
+    string.
 
 `LoadFile` import detection semantics (current):
 
@@ -5376,6 +5389,9 @@ Simple PCR constraint handoff:
   - per-transcript rows include transcript feature id, transcript id/label,
     optional source path, strand, cDNA length, status, transcript-local exon
     segments when source mapping is available, primer/probe hits, and products.
+    Transcript-derived rows prefer transcript/product descriptions over bare
+    gene symbols for `transcript_label`, so graphical maps can distinguish
+    isoform biology instead of repeating the group label.
   - primer/probe hit rows include local cDNA coordinates, binding sequence,
     binding orientation, mismatch count, mapped source ranges, covered junction
     labels, and whether the hit spans a junction.

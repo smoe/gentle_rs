@@ -3003,6 +3003,10 @@ fn cdna_assay_test_engine() -> GentleEngine {
             ("gene".into(), Some("TEST1".to_string())),
             ("transcript_id".into(), Some("TX1".to_string())),
             ("label".into(), Some("TEST1 transcript".to_string())),
+            (
+                "product".into(),
+                Some("TEST1 transcript variant 1".to_string()),
+            ),
         ],
     });
     let mut state = ProjectState::default();
@@ -3146,6 +3150,7 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
         .first()
         .expect("one transcript result");
     assert_eq!(transcript.transcript_id, "TX1");
+    assert_eq!(transcript.transcript_label, "TEST1 transcript variant 1");
     assert_eq!(transcript.status, "single_product");
     assert_eq!(transcript.exon_segments.len(), 2);
     assert_eq!(transcript.exon_segments[0].exon_ordinal, 1);
@@ -3161,7 +3166,7 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert_eq!(map.schema, "gentle.cdna_assay_transcript_map.v1");
     assert_eq!(map.media_type, "image/svg+xml");
     assert!(map.svg.starts_with("<svg "));
-    assert!(map.svg.contains("TX1"));
+    assert!(map.svg.contains("TX1 | TEST1 transcript variant 1"));
     assert!(map.svg.contains("Amplicon 4-24 (21 bp)"));
     assert!(map.svg.contains("exon identity"));
     assert!(map.svg.contains("exon junction"));
@@ -11813,6 +11818,39 @@ fn test_validate_isoform_panel_resource_reports_summary() {
 }
 
 #[test]
+fn test_validate_tp73_isoform_panel_resource_exposes_local_curation() {
+    let report = GentleEngine::validate_isoform_panel_resource(
+        "assets/panels/tp73_isoforms_v1.json",
+        Some("tp73_isoforms_v1"),
+    )
+    .expect("validate TP73 local panel");
+    assert_eq!(report.schema, "gentle.isoform_panel_validation_report.v1");
+    assert_eq!(report.panel_id, "tp73_isoforms_v1");
+    assert_eq!(report.gene_symbol, "TP73");
+    assert_eq!(report.curation_source_kind.as_deref(), Some("lab_curated"));
+    assert_eq!(report.curated_isoform_count, 15);
+    assert!(report.isoforms.iter().any(|row| row.label == "Ex2-p73α"));
+    assert!(report.isoforms.iter().any(|row| row.label == "Ex3-p73α"));
+    let ex2 = report
+        .isoforms
+        .iter()
+        .find(|row| row.isoform_id == "tp73_ex2_alpha")
+        .expect("Ex2 row");
+    assert_eq!(ex2.curation_source_kind.as_deref(), Some("lab_curated"));
+    assert!(
+        ex2.validation_tags
+            .iter()
+            .any(|tag| tag == "lab_discovered_ex2_ex3_context")
+    );
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "missing_domains")
+    );
+}
+
+#[test]
 fn test_import_isoform_panel_allows_unmapped_when_strict_false_and_no_mrna_features() {
     let mut state = ProjectState::default();
     state
@@ -11988,6 +12026,7 @@ fn test_validate_isoform_panel_resource_detects_curation_issues() {
   "schema": "gentle.isoform_panel_resource.v1",
   "panel_id": "demo_panel",
   "gene_symbol": "DEMO1",
+  "curation": {"source_kind": "mystery"},
   "isoforms": [
     {
       "isoform_id": "alpha",
@@ -12027,6 +12066,7 @@ fn test_validate_isoform_panel_resource_detects_curation_issues() {
     assert!(codes.contains(&"duplicate_isoform_id"));
     assert!(codes.contains(&"shared_transcript_probe"));
     assert!(codes.contains(&"missing_domains"));
+    assert!(codes.contains(&"unknown_curation_source_kind"));
 }
 
 #[test]

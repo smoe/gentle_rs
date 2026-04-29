@@ -153,6 +153,66 @@ cargo run --quiet --bin gentle_cli -- \
   shell 'primers test-cdna-qpcr tp73 17 --forward TACATGCTTCCAGCAGCTTG --reverse GCAAAGGGCAGTTTTGTTCTG --probe TGACATGAAAGGACCTCCGTGGCTG --min-amplicon-bp 70 --max-amplicon-bp 700 --require-3prime-exact-bases 8 --svg docs/figures/tp73_as3_nr187362_cdna_qpcr.svg'
 ```
 
+`tp73_isoform_selector_matrix.svg` and `.png` summarize a complete TP73 cDNA
+PCR selector panel over the bundled local RefSeq annotation. The panel crosses
+five 5' selector primers with seven 3' splice/readout primers. The 3' readouts
+cover alpha, beta, gamma, delta, epsilon, and zeta interpretations by
+combining junction evidence; the local RefSeq fixture does not contain a
+separate eta cDNA row, so eta is noted as absent rather than synthesized into
+the matrix.
+
+The compact matrix is generated from 35 ordinary
+`primers test-cdna-pcr ... --svg ...` reports. To regenerate the per-pair
+reports and maps:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_isoform_selector.state.json \
+  op '{"LoadFile":{"path":"test_files/tp73.ncbi.gb","as_id":"tp73"}}' \
+  --confirm
+
+mkdir -p /tmp/tp73_isoform_selector_full
+for forward in \
+  'TA ACGGCTGCAGAGCGAGCTGC' \
+  'X2 AGGCTTAGCCAAGAGCGAGCTGC' \
+  'X1 AAATAACAGAGCGAGCTGCCCTCG' \
+  'DN ACCTCGCCACGGCCCAGTTCAAT' \
+  'V13 CATCTGCAGGACAGGCCCAGTTC'
+do
+  set -- $forward
+  f_name=$1
+  f_seq=$2
+  for reverse in \
+    'R-alpha-beta GAGCATCCCGGGGCCCAC' \
+    'R-beta-epsilon CCAGGTCCTGACGAGGCTGG' \
+    'R-gamma-epsilon ATCCCGGGGCGGCCTCTGTAG' \
+    'R-delta CCAGGTCGGCCTCTGTAGGAGCT' \
+    'R-zeta TCCTGTTAAAAAAGGCCTCTGTA' \
+    'R-alpha-gamma-zeta CCCCAGGTCCTCAATGGTCA' \
+    'R-common AGTCGTGGCCCTGCTTCAGGTCCT'
+  do
+    set -- $reverse
+    r_name=$1
+    r_seq=$2
+    stem="${f_name}_${r_name}"
+    cargo run --quiet --bin gentle_cli -- \
+      --state /tmp/tp73_isoform_selector.state.json \
+      shell "primers test-cdna-pcr tp73 4 --forward ${f_seq} --reverse ${r_seq} --min-amplicon-bp 1 --max-amplicon-bp 2200 --require-3prime-exact-bases 8 --transcript-order transcript_id --path /tmp/tp73_isoform_selector_full/${stem}.json --svg /tmp/tp73_isoform_selector_full/${stem}.svg"
+    cargo run --quiet --bin gentle_cli -- \
+      svg-png "/tmp/tp73_isoform_selector_full/${stem}.svg" \
+      "/tmp/tp73_isoform_selector_full/${stem}.png" \
+      --scale 0.55
+  done
+done
+python3 docs/figures/tp73_isoform_selector_matrix.py \
+  /tmp/tp73_isoform_selector_full \
+  docs/figures/tp73_isoform_selector_matrix.svg
+cargo run --quiet --bin gentle_cli -- \
+  svg-png docs/figures/tp73_isoform_selector_matrix.svg \
+  docs/figures/tp73_isoform_selector_matrix.png \
+  --scale 0.75
+```
+
 `pcr_blunt_vector_ligation_template.json` is the small custom protocol-cartoon
 template for the blunt-end cloning README hero. It is intentionally more
 minimal than the Gibson strips: one blunt PCR product, one intact circular

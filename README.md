@@ -734,9 +734,30 @@ primer/probe sequences are printed once in the legend.
 
 ![GENtle TP73-AS3 NR_187362.1-specific cDNA qPCR transcript map](docs/figures/tp73_as3_nr187362_cdna_qpcr.svg)
 
+### TP73 cDNA isoform-selector PCR matrix
+
+GENtle can also test long-range cDNA PCR selector pairs against the bundled
+TP73 transcript set. The matrix below crosses five 5' selector primers with a
+complete 3' splice-readout panel for the annotated local RefSeq terminal
+classes: alpha, beta, gamma, delta, epsilon, and zeta. Eta is kept in the
+nomenclature note, but the bundled local TP73 RefSeq region does not contain a
+separate eta cDNA row to test.
+
+![GENtle TP73 cDNA isoform-selector PCR matrix](docs/figures/tp73_isoform_selector_matrix.png)
+
+The design is intentionally read as a panel, not as one magic primer per
+isoform. Some 3' forms are identified by paired readouts: alpha is positive
+with the alpha/beta and alpha/gamma/zeta junction primers, beta with
+alpha/beta plus beta/epsilon, gamma with gamma/epsilon plus alpha/gamma/zeta,
+epsilon with gamma/epsilon plus beta/epsilon, delta with the delta junction,
+and zeta with the zeta plus alpha/gamma/zeta readouts. The full per-pair
+GENtle transcript-map SVG/PNG/JSON outputs can be regenerated from the same
+`primers test-cdna-pcr` command family.
+
 For current detail on contracts and GUI behavior, see
 [`docs/protocol.md`](docs/protocol.md) and [`docs/gui.md`](docs/gui.md). For
 what is actively being built next, see [`docs/roadmap.md`](docs/roadmap.md).
+
 ## Principles
 
 - One engine, many interfaces: GUI, CLI, JavaScript, and Lua all use the same core logic.

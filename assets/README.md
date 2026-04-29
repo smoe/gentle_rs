@@ -13,6 +13,8 @@ helper_genomes.json::
 cutrun.json:: Starter CUT&RUN dataset catalog for processed evidence (BED/BigWig) and future raw-read reuse.
 host_profiles.json:: Starter host/strain catalog for construct-reasoning inspection in GUI/agent-facing workflows.
 blast_defaults.json:: Default BLAST option layer (`task`, `max_hits`, optional thresholds) used when no project/request override is provided.
+panels/tp53_isoforms_v1.json:: Curated TP53 isoform architecture panel used by isoform expert and protein-gel examples.
+panels/tp73_isoforms_v1.json:: Local TP73 isoform curation seed that records lab/public hybrid transcript-class knowledge for assay design without treating public disease-transcript coverage as complete.
 jaspar.motifs.json:: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
 ncoils.matrix::
 
@@ -40,6 +42,10 @@ Data notes:
 - `host_profiles.json` is the starter host-profile catalog used by construct
   reasoning and the Planning-window host browser. It is intentionally
   human-editable and source-noted rather than hidden inside compiled logic.
+- `assets/panels/` contains curated isoform-panel resources. These are
+  machine-readable panels rather than hidden code paths; local/lab-curated
+  panels may carry structured curation metadata so public accession anchors and
+  local biological insight remain distinguishable.
 
 # "Finder" icon (seen in OS' task bar)
 

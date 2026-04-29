@@ -6059,6 +6059,23 @@ pub struct IsoformPanelDomainSpec {
     pub color_hex: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelCurationInfo {
+    #[serde(default)]
+    pub source_kind: Option<String>,
+    #[serde(default)]
+    pub source_label: Option<String>,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+    #[serde(default)]
+    pub validation_tags: Vec<String>,
+    #[serde(default)]
+    pub public_database_status: Option<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum IsoformTranscriptGeometryMode {
@@ -6084,6 +6101,8 @@ pub struct IsoformPanelIsoformSpec {
     #[serde(default)]
     pub reference_end_aa: Option<usize>,
     #[serde(default)]
+    pub curation: Option<IsoformPanelCurationInfo>,
+    #[serde(default)]
     pub domains: Vec<IsoformPanelDomainSpec>,
 }
 
@@ -6101,6 +6120,8 @@ pub struct IsoformPanelResource {
     pub source: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+    #[serde(default)]
+    pub curation: Option<IsoformPanelCurationInfo>,
     #[serde(default)]
     pub isoforms: Vec<IsoformPanelIsoformSpec>,
 }
@@ -6125,6 +6146,10 @@ pub struct IsoformPanelValidationIsoformSummary {
     pub domain_count: usize,
     pub expected_length_aa: Option<usize>,
     pub max_domain_end_aa: Option<usize>,
+    #[serde(default)]
+    pub curation_source_kind: Option<String>,
+    #[serde(default)]
+    pub validation_tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -6139,6 +6164,10 @@ pub struct IsoformPanelValidationReport {
     pub transcript_probe_count: usize,
     pub unique_transcript_probe_count: usize,
     pub domain_count: usize,
+    #[serde(default)]
+    pub curation_source_kind: Option<String>,
+    #[serde(default)]
+    pub curated_isoform_count: usize,
     pub issue_count: usize,
     pub status: String,
     pub isoforms: Vec<IsoformPanelValidationIsoformSummary>,

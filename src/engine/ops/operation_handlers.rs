@@ -668,13 +668,7 @@ impl GentleEngine {
             let track_width = (track_right - track_left).max(180.0);
             let y = row_top + row_in_column as f32 * row_height as f32;
             let center_y = y + 36.0;
-            let label = if row.transcript_label.trim().is_empty()
-                || row.transcript_label == row.transcript_id
-            {
-                row.transcript_id.clone()
-            } else {
-                format!("{} | {}", row.transcript_id, row.transcript_label)
-            };
+            let label = Self::cdna_assay_row_label(row);
             let label_limit = match column_count {
                 1 => 36usize,
                 2 => 28usize,
@@ -688,7 +682,7 @@ impl GentleEngine {
                 clipped.push_str("...");
                 clipped
             } else {
-                label
+                label.clone()
             };
             if row_in_column % 2 == 0 {
                 svg.push_str(&format!(
@@ -700,9 +694,10 @@ impl GentleEngine {
                 ));
             }
             svg.push_str(&format!(
-                "<text class=\"label\" x=\"{:.1}\" y=\"{:.1}\">{}</text>",
+                "<text class=\"label\" x=\"{:.1}\" y=\"{:.1}\"><title>{}</title>{}</text>",
                 label_x,
                 y + 14.0,
+                Self::dotplot_svg_xml_escape(&label),
                 Self::dotplot_svg_xml_escape(&short_label)
             ));
             let exon_count_label = if row.exon_segments.is_empty() {
@@ -917,6 +912,31 @@ impl GentleEngine {
             coordinate_mode: CdnaAssayTranscriptMapCoordinateMode::Cdna,
             product_count: report.product_count,
             svg,
+        }
+    }
+
+    fn cdna_assay_compact_transcript_label(label: &str) -> String {
+        let trimmed = label.trim();
+        if let Some((prefix, variant)) = trimmed.split_once(", transcript variant ") {
+            let compact_prefix = prefix
+                .strip_prefix("tumor protein ")
+                .unwrap_or(prefix)
+                .trim();
+            let variant = variant.trim();
+            if !compact_prefix.is_empty() && !variant.is_empty() {
+                return format!("{compact_prefix} v{variant}");
+            }
+        }
+        trimmed.to_string()
+    }
+
+    fn cdna_assay_row_label(row: &CdnaAssayTranscriptResult) -> String {
+        let transcript_label = row.transcript_label.trim();
+        if transcript_label.is_empty() || transcript_label == row.transcript_id {
+            row.transcript_id.clone()
+        } else {
+            let compact_label = Self::cdna_assay_compact_transcript_label(transcript_label);
+            format!("{} | {}", row.transcript_id, compact_label)
         }
     }
 
@@ -1652,13 +1672,7 @@ impl GentleEngine {
             let track_width = (track_right - track_left).max(180.0);
             let y = row_top + row_in_column as f32 * row_height as f32;
             let center_y = y + 36.0;
-            let label = if row.transcript_label.trim().is_empty()
-                || row.transcript_label == row.transcript_id
-            {
-                row.transcript_id.clone()
-            } else {
-                format!("{} | {}", row.transcript_id, row.transcript_label)
-            };
+            let label = Self::cdna_assay_row_label(row);
             let label_limit = match column_count {
                 1 => 36usize,
                 2 => 28usize,
@@ -1672,7 +1686,7 @@ impl GentleEngine {
                 clipped.push_str("...");
                 clipped
             } else {
-                label
+                label.clone()
             };
             if row_in_column % 2 == 0 {
                 svg.push_str(&format!(
@@ -1684,9 +1698,10 @@ impl GentleEngine {
                 ));
             }
             svg.push_str(&format!(
-                "<text class=\"label\" x=\"{:.1}\" y=\"{:.1}\">{}</text>",
+                "<text class=\"label\" x=\"{:.1}\" y=\"{:.1}\"><title>{}</title>{}</text>",
                 label_x,
                 y + 14.0,
+                Self::dotplot_svg_xml_escape(&label),
                 Self::dotplot_svg_xml_escape(&short_label)
             ));
             let exon_count_label = if row.exon_segments.is_empty() {

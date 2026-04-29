@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -1888,6 +1888,10 @@ order. Durable architecture constraints and decisions remain in
         `SELF_ANY`/`SELF_END` and `COMPL_ANY`/`COMPL_END` vocabulary while
         keeping GENtle's exact-run implementation independent from Primer3
         source code
+    - next gap: materialize detected cDNA PCR/qPCR assay products as portable
+      construct/vial records so the existing vial/container and
+      `RenderPoolGelSvg` paths can arrange assay products into virtual gel
+      bands without adapter-only glue
     - external FASTA screens count all scanned records but keep returned JSON
       compact by reporting detected transcript rows only unless a specific
       `transcript_id` is requested
@@ -3479,7 +3483,48 @@ Planned work:
      prefill/binding suggestions, decision-rationale reuse, and more proactive
      routine/macro handoff scoring) instead of stopping at visibility plus
      ranking context.
-4. Broaden the ClawBio/agent example pack beyond first-run bootstrap into
+4. Add a first-class local-knowledge overlay layer that can sit beside public
+   database imports without pretending to be one.
+   - Started baseline:
+     - isoform-panel resources now accept structured `curation` metadata at
+       panel and isoform level
+     - `assets/panels/tp73_isoforms_v1.json` seeds TP73 local/public hybrid
+       isoform-class knowledge, including Ex2/Ex3 TP73 variants, while
+       explicitly warning that public healthy-tissue annotation is not
+       exhaustive disease-expression evidence
+   - Goal: let labs preserve and use disease-, sample-, construct-, or
+     project-specific knowledge even when public databases are incomplete,
+     delayed, migrated into specialist repositories, or deliberately omit
+     clinically observed sequences.
+   - Initial scope should cover lab-curated transcript/exon-chain models such
+     as cancer-associated TP73 variants, then generalize to curated loci,
+     features, helper constructs, and interpretation notes.
+   - Overlay records need explicit provenance and confidence fields:
+     source kind (`public_database`, `lab_curated`, `literature_curated`,
+     `vendor_curated`), evidence summary, owner/project namespace, date/version,
+     and validation tags such as primer-supported, Sanger-supported, RNA-seq-
+     supported, or pending.
+   - Public and local records should merge through deterministic engine-owned
+     reconciliation:
+     - preserve original accession/source identifiers where available
+     - expose conflicts and missing-public-record warnings instead of silently
+       replacing one model with another
+     - keep local curated models searchable, renderable, and usable for
+       transcript derivation, qPCR/PCR design, dotplots, feature experts,
+       ClawBio routing, JS/Lua/MCP, and future GUI editing
+   - Avoid making the agent prompt the source of truth. Agents may suggest local
+     curation records, but GENtle should store, validate, diff, export, and
+     reopen them as structured project/user/catalog overlays.
+   - UI direction: present local knowledge as an additive evidence layer with
+     provenance badges and "public annotation incomplete" explanations, so
+     users can trust the distinction between biology known locally and biology
+     represented by public databases.
+   - Next family-knowledge seeds should cover:
+     - other p53-family members (`TP53`, `TP63`) using the same local/public
+       isoform curation surface
+     - E2F transcription-factor family membership/aliases and motif/regulatory
+       interpretation notes as family knowledge, not as an isoform panel
+5. Broaden the ClawBio/agent example pack beyond first-run bootstrap into
    richer inspect/extract/BLAST, planning, and graphics/export workflows.
    - Bootstrap plus first follow-on examples are now in place; keep expanding
      the example library so common requests no longer require hand-crafted
