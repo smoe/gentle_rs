@@ -6037,6 +6037,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }`
   - `SummarizeRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, path? }`
   - `InspectRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, cohort_filter?, path? }`
+  - `RunRnaReadBatchMap { manifest_path, seq_id, seed_feature_id, gene_ids[], out_dir, profile?, input_format?, scope?, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter?, align_config?, report_mode?, align_selection?, complete_rule?, concatemer_settings?, concatemer_limit?, continue_on_error? }`
   - persisted RNA-read reports are regular computational artifacts:
     - stored reports now carry `report_id`, `op_id`, and `run_id`
     - `ListRnaReadReports` surfaces the same `op_id` / `run_id` linkage in
@@ -6124,6 +6125,36 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - selected retained rows are pairwise aligned regardless of whether their
       recomputed composite seed-pass flag remains true; the seed-pass result is
       still recomputed and stored independently for later inspection
+  - native batch-map behavior:
+    - manifest v1 is TSV and requires `sample_id` plus either `input_path` or
+      `sra_accession`
+    - `input_path` rows currently accept FASTA only (`.fa`, `.fasta`,
+      `.fa.gz`, `.fasta.gz`) and run the same engine `InterpretRnaReads` plus
+      `AlignRnaReadReport` paths as manual single-sample workflows
+    - rows with only `sra_accession` are not fetched in v1; the batch report
+      marks them `needs_preparation` and writes `sra_preparation_plan.tsv` plus
+      `sra_preparation_commands.sh`
+    - default batch settings are `report_mode=full`, `align_selection=all`,
+      `complete_rule=near`, `max_secondary_mappings=5`, and
+      `continue_on_error=true`
+    - if `origin_mode` is omitted, one requested gene uses `single_gene` and
+      multiple requested/target genes use `multi_gene_sparse`
+    - `RunRnaReadBatchMap` writes one bundle under `out_dir`:
+      `batch_report.json`, `batch_summary.tsv`, `sample_sheet.tsv`,
+      `isoform_support.tsv`, `concatemer_partner_summary.tsv`, optional SRA
+      preparation files, and per-sample gene-support / concatemer JSON
+    - `batch_summary.tsv` is the sample-level dashboard substrate; it includes
+      status/error/warning fields, read counts/fractions, origin-class counts,
+      requested/matched/missing genes, accepted-target and other-gene metrics,
+      complete-near/strict/exact counts, concatemer suspicion counts, and JSON
+      artifact paths
+    - `isoform_support.tsv` aggregates accepted target reads by resolved
+      transcript/isoform, including fragment/complete counts, mean length,
+      mean identity/coverage, and exon/exon-pair/direct-transition support
+      JSON columns
+    - `concatemer_partner_summary.tsv` aggregates conservative suspicion
+      evidence for recurring partner genes/transcripts; target-plus-partner
+      rows remain evidence, not proof of a chimera
     - updated report fields include:
       - per-hit mapping fields (`best_mapping`, `secondary_mappings`)
       - per-hit `msa_eligible` and `msa_eligibility_reason`
@@ -6508,6 +6539,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       `*_compare.svg` plus sidecar instead of overwriting
 - Shared-shell command family:
   - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+  - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--transcript-fasta PATH]... [--transcript-index PATH]...`
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
@@ -6550,6 +6582,11 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       grouped cohort record-index arrays plus row-level `status`,
       `status_reason`, full-length fields, mapped exon/junction audit data,
       and both the audit op plus source-report provenance ids/timestamps
+    - `rna-reads batch-map` returns the full
+      `gentle.rna_read_batch_map_report.v1` payload and writes the durable
+      bundle files listed above; successful FASTA rows also persist ordinary
+      RNA-read reports in engine state under deterministic `rna_batch_*`
+      report ids unless a manifest `report_id` column overrides them
     - `rna-reads inspect-alignments` returns aligned rows ranked by
       alignment-aware retention score (mapping + seed metrics), plus a
       structured `subset_spec` payload (`effect_filter`, `sort_key`, `search`,

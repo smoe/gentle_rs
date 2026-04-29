@@ -7374,7 +7374,7 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
@@ -7719,6 +7719,470 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 checkpoint_path,
                 checkpoint_every_reads,
                 resume_from_checkpoint,
+            })
+        }
+        "batch-map" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads batch-map requires MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID... --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--transcript-fasta PATH]... [--transcript-index PATH]..."
+                        .to_string(),
+                );
+            }
+            let manifest_path = tokens[2].trim().to_string();
+            if manifest_path.is_empty() {
+                return Err("rna-reads batch-map MANIFEST.tsv must not be empty".to_string());
+            }
+            let mut seq_id: Option<String> = None;
+            let mut seed_feature_id: Option<usize> = None;
+            let mut gene_ids: Vec<String> = vec![];
+            let mut out_dir: Option<String> = None;
+            let mut profile = RnaReadInterpretationProfile::NanoporeCdnaV1;
+            let mut input_format = RnaReadInputFormat::Fasta;
+            let mut scope = SplicingScopePreset::AllOverlappingAnyStrand;
+            let mut origin_mode: Option<RnaReadOriginMode> = None;
+            let mut target_gene_ids: Vec<String> = vec![];
+            let mut roi_seed_capture_enabled = false;
+            let mut seed_filter = RnaReadSeedFilterConfig::default();
+            let mut align_config = RnaReadAlignConfig {
+                max_secondary_mappings: 5,
+                ..RnaReadAlignConfig::default()
+            };
+            let mut report_mode = RnaReadReportMode::Full;
+            let mut align_selection = RnaReadHitSelection::All;
+            let mut complete_rule = RnaReadGeneSupportCompleteRule::Near;
+            let mut concatemer_settings = RnaReadConcatemerInspectionSettings::default();
+            let mut concatemer_limit = 5_000usize;
+            let mut continue_on_error = true;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seq-id" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--seq-id", "rna-reads batch-map")?;
+                        if raw.trim().is_empty() {
+                            return Err("--seq-id requires a non-empty sequence id".to_string());
+                        }
+                        seq_id = Some(raw.trim().to_string());
+                    }
+                    "--seed-feature-id" | "--feature-id" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "rna-reads batch-map")?;
+                        seed_feature_id = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --seed-feature-id value '{raw}' for rna-reads batch-map: {e}"
+                            )
+                        })?);
+                    }
+                    "--gene" | "--gene-id" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--gene", "rna-reads batch-map")?;
+                        let gene_id = raw.trim();
+                        if gene_id.is_empty() {
+                            return Err("--gene requires a non-empty gene identifier".to_string());
+                        }
+                        gene_ids.push(gene_id.to_string());
+                    }
+                    "--target-gene" | "--target-gene-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-gene",
+                            "rna-reads batch-map",
+                        )?;
+                        let gene_id = raw.trim();
+                        if gene_id.is_empty() {
+                            return Err(
+                                "--target-gene requires a non-empty gene identifier".to_string()
+                            );
+                        }
+                        target_gene_ids.push(gene_id.to_string());
+                    }
+                    "--out-dir" | "--output-dir" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "rna-reads batch-map")?;
+                        if raw.trim().is_empty() {
+                            return Err("--out-dir requires a non-empty path".to_string());
+                        }
+                        out_dir = Some(raw);
+                    }
+                    "--profile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--profile",
+                            "rna-reads batch-map",
+                        )?;
+                        profile = parse_rna_read_profile(&raw)?;
+                    }
+                    "--format" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--format", "rna-reads batch-map")?;
+                        input_format = parse_rna_read_input_format(&raw)?;
+                    }
+                    "--scope" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--scope", "rna-reads batch-map")?;
+                        scope = parse_splicing_scope_preset(&raw)?;
+                    }
+                    "--origin-mode" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--origin-mode",
+                            "rna-reads batch-map",
+                        )?;
+                        origin_mode = Some(parse_rna_read_origin_mode(&raw)?);
+                    }
+                    "--roi-seed-capture" => {
+                        roi_seed_capture_enabled = true;
+                        idx += 1;
+                    }
+                    "--no-roi-seed-capture" => {
+                        roi_seed_capture_enabled = false;
+                        idx += 1;
+                    }
+                    "--report-mode" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-mode",
+                            "rna-reads batch-map",
+                        )?;
+                        report_mode = parse_rna_read_report_mode(&raw)?;
+                    }
+                    "--align-selection" | "--selection" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "rna-reads batch-map")?;
+                        align_selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    "--complete-rule" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--complete-rule",
+                            "rna-reads batch-map",
+                        )?;
+                        complete_rule = parse_rna_read_gene_support_complete_rule(&raw)?;
+                    }
+                    "--continue-on-error" => {
+                        continue_on_error = true;
+                        idx += 1;
+                    }
+                    "--fail-fast" | "--no-continue-on-error" => {
+                        continue_on_error = false;
+                        idx += 1;
+                    }
+                    "--kmer-len" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--kmer-len",
+                            "rna-reads batch-map",
+                        )?;
+                        seed_filter.kmer_len = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --kmer-len value '{raw}' for rna-reads batch-map: {e}")
+                        })?;
+                    }
+                    "--seed-stride-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seed-stride-bp",
+                            "rna-reads batch-map",
+                        )?;
+                        seed_filter.seed_stride_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --seed-stride-bp value '{raw}' for rna-reads batch-map: {e}"
+                            )
+                        })?;
+                    }
+                    "--min-seed-hit-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-seed-hit-fraction",
+                            "rna-reads batch-map",
+                        )?;
+                        seed_filter.min_seed_hit_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-seed-hit-fraction value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-weighted-seed-hit-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-weighted-seed-hit-fraction",
+                            "rna-reads batch-map",
+                        )?;
+                        seed_filter.min_weighted_seed_hit_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-weighted-seed-hit-fraction value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-unique-matched-kmers" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-unique-matched-kmers",
+                            "rna-reads batch-map",
+                        )?;
+                        seed_filter.min_unique_matched_kmers =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-unique-matched-kmers value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--max-median-transcript-gap" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-median-transcript-gap",
+                            "rna-reads batch-map",
+                        )?;
+                        seed_filter.max_median_transcript_gap =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --max-median-transcript-gap value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-chain-consistency-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-chain-consistency-fraction",
+                            "rna-reads batch-map",
+                        )?;
+                        seed_filter.min_chain_consistency_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-chain-consistency-fraction value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-confirmed-transitions" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-confirmed-transitions",
+                            "rna-reads batch-map",
+                        )?;
+                        seed_filter.min_confirmed_exon_transitions =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-confirmed-transitions value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-transition-support-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-transition-support-fraction",
+                            "rna-reads batch-map",
+                        )?;
+                        seed_filter.min_transition_support_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-transition-support-fraction value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--cdna-poly-t-flip" => {
+                        seed_filter.cdna_poly_t_flip_enabled = true;
+                        idx += 1;
+                    }
+                    "--no-cdna-poly-t-flip" => {
+                        seed_filter.cdna_poly_t_flip_enabled = false;
+                        idx += 1;
+                    }
+                    "--poly-t-prefix-min-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--poly-t-prefix-min-bp",
+                            "rna-reads batch-map",
+                        )?;
+                        seed_filter.poly_t_prefix_min_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --poly-t-prefix-min-bp value '{raw}' for rna-reads batch-map: {e}"
+                            )
+                        })?;
+                    }
+                    "--align-band-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--align-band-bp",
+                            "rna-reads batch-map",
+                        )?;
+                        align_config.band_width_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --align-band-bp value '{raw}' for rna-reads batch-map: {e}"
+                            )
+                        })?;
+                    }
+                    "--align-min-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--align-min-identity",
+                            "rna-reads batch-map",
+                        )?;
+                        align_config.min_identity_fraction = raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --align-min-identity value '{raw}' for rna-reads batch-map: {e}"
+                            )
+                        })?;
+                    }
+                    "--max-secondary-mappings" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-secondary-mappings",
+                            "rna-reads batch-map",
+                        )?;
+                        align_config.max_secondary_mappings =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --max-secondary-mappings value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--concatemer-limit" | "--limit" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "rna-reads batch-map")?;
+                        concatemer_limit = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --concatemer-limit value '{raw}' for rna-reads batch-map: {e}"
+                            )
+                        })?;
+                    }
+                    "--adapter-fasta" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--adapter-fasta",
+                            "rna-reads batch-map",
+                        )?;
+                        concatemer_settings.adapter_fasta_path = Some(raw);
+                    }
+                    "--transcript-fasta" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-fasta",
+                            "rna-reads batch-map",
+                        )?;
+                        concatemer_settings.transcript_fasta_paths.push(raw);
+                    }
+                    "--transcript-index" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript-index",
+                            "rna-reads batch-map",
+                        )?;
+                        concatemer_settings.transcript_index_paths.push(raw);
+                    }
+                    "--fragment-min-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--fragment-min-bp",
+                            "rna-reads batch-map",
+                        )?;
+                        concatemer_settings.fragment_min_bp =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --fragment-min-bp value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--fragment-max-parts" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--fragment-max-parts",
+                            "rna-reads batch-map",
+                        )?;
+                        concatemer_settings.fragment_max_parts =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --fragment-max-parts value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--fragment-min-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--fragment-min-identity",
+                            "rna-reads batch-map",
+                        )?;
+                        concatemer_settings.fragment_min_identity_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --fragment-min-identity value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    "--fragment-min-query-cov" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--fragment-min-query-cov",
+                            "rna-reads batch-map",
+                        )?;
+                        concatemer_settings.fragment_min_query_coverage_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --fragment-min-query-cov value '{raw}' for rna-reads batch-map: {e}"
+                                )
+                            })?;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for rna-reads batch-map"));
+                    }
+                }
+            }
+            if gene_ids.is_empty() {
+                return Err("rna-reads batch-map requires at least one --gene".to_string());
+            }
+            Ok(ShellCommand::RnaReadsBatchMap {
+                manifest_path,
+                seq_id: seq_id
+                    .ok_or_else(|| "rna-reads batch-map requires --seq-id SEQ_ID".to_string())?,
+                seed_feature_id: seed_feature_id.ok_or_else(|| {
+                    "rna-reads batch-map requires --seed-feature-id FEATURE_ID".to_string()
+                })?,
+                gene_ids,
+                out_dir: out_dir
+                    .ok_or_else(|| "rna-reads batch-map requires --out-dir OUT".to_string())?,
+                profile,
+                input_format,
+                scope,
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
+                seed_filter,
+                align_config,
+                report_mode,
+                align_selection,
+                complete_rule,
+                concatemer_settings,
+                concatemer_limit,
+                continue_on_error,
             })
         }
         "align-report" => {
@@ -8989,7 +9453,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }

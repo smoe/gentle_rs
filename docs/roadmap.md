@@ -4194,6 +4194,25 @@ Status:
     - pre-existing opaque SVG files are preserved; the engine falls back to a
       sibling `*_compare.svg` output when it cannot safely extend the original
       path
+  - Native RNA-read batch mapping is now available for ClawBio/CLI/MCP-style
+    workflows through `rna-reads batch-map` / `RunRnaReadBatchMap`:
+    - manifest v1 accepts `sample_id` plus FASTA `input_path` rows, and marks
+      SRA-only rows as `needs_preparation` instead of attempting network or
+      conversion work
+    - successful rows reuse the single-sample interpretation, phase-2
+      alignment, gene-support, audit, sample-sheet, and concatemer-inspection
+      engine paths rather than duplicating biology in the batch wrapper
+    - each bundle writes `batch_report.json`, `batch_summary.tsv`,
+      `sample_sheet.tsv`, `isoform_support.tsv`,
+      `concatemer_partner_summary.tsv`, optional SRA preparation artifacts, and
+      per-sample gene-support/concatemer JSON
+    - the TSVs are intentionally figure-ready but figure-free: sample-level
+      dashboards, isoform completeness/fragment plots, partner-gene bars, and
+      suspicious-fusion heatmaps can now be derived later without rerunning
+      mapping
+    - remaining gap: FASTQ/SRA streaming conversion and graphical dashboards
+      are still deferred; SRA preparation is currently emitted as a deterministic
+      plan/commands file
 
 Track boundaries:
 

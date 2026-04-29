@@ -47,11 +47,13 @@ pub use gentle_protocol::{
     ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
     ProteinResidueGenomicCoordinateReport, ProteinToDnaHandoffCandidate,
     ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
-    RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, RnaReadAlignConfig, RnaReadAlignmentBackend,
-    RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect,
-    RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+    RNA_READ_BATCH_MAP_REPORT_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, RnaReadAlignConfig,
+    RnaReadAlignmentBackend, RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport,
+    RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
     RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
     RnaReadAlignmentInspectionSubsetSpec, RnaReadAlignmentMode, RnaReadAlignmentTsvExport,
+    RnaReadBatchConcatemerPartnerRow, RnaReadBatchIsoformSupportRow, RnaReadBatchMapReport,
+    RnaReadBatchMapSampleRow, RnaReadBatchMapSampleStatus, RnaReadBatchMapSraPreparationRow,
     RnaReadConcatemerAdapterHit, RnaReadConcatemerFragmentOrigin, RnaReadConcatemerInspection,
     RnaReadConcatemerInspectionSettings, RnaReadConcatemerPartnerGeneSummary,
     RnaReadConcatemerPartnerTranscriptSummary, RnaReadConcatemerSuspicionLevel,
@@ -3330,6 +3332,8 @@ pub struct OpResult {
     pub rna_read_gene_support_audit: Option<RnaReadGeneSupportAudit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_target_quality_export: Option<RnaReadTargetQualityExport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_batch_map_report: Option<RnaReadBatchMapReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

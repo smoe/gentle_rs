@@ -100,6 +100,39 @@ struct RnaReadGeneSupportEvaluation {
     rows: Vec<RnaReadGeneSupportEvaluatedRow>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct RnaReadBatchManifestRow {
+    row_number: usize,
+    sample_id: String,
+    sample_name: Option<String>,
+    sample_description: Option<String>,
+    input_path: Option<String>,
+    sra_accession: Option<String>,
+    report_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RnaReadBatchIsoformAccumulator {
+    sample_id: String,
+    report_id: String,
+    seq_id: String,
+    gene_id: String,
+    transcript_feature_id: Option<usize>,
+    transcript_id: String,
+    transcript_label: String,
+    aligned_count: usize,
+    fragment_count: usize,
+    complete_count: usize,
+    complete_strict_count: usize,
+    complete_exact_count: usize,
+    total_read_length_bp: usize,
+    identity_fraction_sum: f64,
+    query_coverage_fraction_sum: f64,
+    exon_counts: BTreeMap<usize, usize>,
+    exon_pair_counts: BTreeMap<(usize, usize), usize>,
+    direct_transition_counts: BTreeMap<(usize, usize), usize>,
+}
+
 #[derive(Debug, Default)]
 struct RnaReadGeneSupportAccumulator {
     read_count: usize,
@@ -5682,6 +5715,1176 @@ impl GentleEngine {
         })
     }
 
+    fn rna_read_batch_invalid_input(message: impl Into<String>) -> EngineError {
+        EngineError {
+            code: ErrorCode::InvalidInput,
+            message: message.into(),
+        }
+    }
+
+    fn rna_read_batch_io_error(path: &Path, action: &str, err: std::io::Error) -> EngineError {
+        EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not {action} '{}': {err}", path.display()),
+        }
+    }
+
+    fn rna_read_batch_path_string(path: &Path) -> String {
+        path.to_string_lossy().to_string()
+    }
+
+    fn rna_read_batch_file_token(raw: &str) -> String {
+        let mut out = String::with_capacity(raw.len().max(1));
+        for ch in raw.trim().chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        if out.is_empty() {
+            "sample".to_string()
+        } else {
+            out
+        }
+    }
+
+    fn rna_read_batch_shell_quote(raw: &str) -> String {
+        if raw.is_empty() {
+            "''".to_string()
+        } else if raw
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | ':'))
+        {
+            raw.to_string()
+        } else {
+            format!("'{}'", raw.replace('\'', "'\\''"))
+        }
+    }
+
+    fn rna_read_batch_json_string<T: Serialize>(
+        value: &T,
+        label: &str,
+    ) -> Result<String, EngineError> {
+        serde_json::to_string(value).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize RNA-read batch {label}: {e}"),
+        })
+    }
+
+    fn write_rna_read_batch_json<T: Serialize>(
+        value: &T,
+        path: &Path,
+        label: &str,
+    ) -> Result<(), EngineError> {
+        let text = serde_json::to_string_pretty(value).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize RNA-read batch {label}: {e}"),
+        })?;
+        std::fs::write(path, text)
+            .map_err(|e| Self::rna_read_batch_io_error(path, "write RNA-read batch JSON", e))
+    }
+
+    fn parse_rna_read_batch_manifest(
+        manifest_path: &str,
+    ) -> Result<Vec<RnaReadBatchManifestRow>, EngineError> {
+        let manifest_path = manifest_path.trim();
+        if manifest_path.is_empty() {
+            return Err(Self::rna_read_batch_invalid_input(
+                "rna-reads batch-map requires a non-empty manifest path",
+            ));
+        }
+        let text = std::fs::read_to_string(manifest_path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read RNA-read batch manifest '{manifest_path}': {e}"),
+        })?;
+        let mut meaningful_lines = text.lines().enumerate().filter(|(_, line)| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with('#')
+        });
+        let Some((header_index, header_line)) = meaningful_lines.next() else {
+            return Err(Self::rna_read_batch_invalid_input(format!(
+                "RNA-read batch manifest '{manifest_path}' is empty"
+            )));
+        };
+        let headers = header_line
+            .trim_start_matches('\u{feff}')
+            .split('\t')
+            .map(|value| value.trim().to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        let header_index_of = |name: &str| headers.iter().position(|header| header == name);
+        let sample_id_idx = header_index_of("sample_id").ok_or_else(|| {
+            Self::rna_read_batch_invalid_input(
+                "RNA-read batch manifest requires a 'sample_id' column",
+            )
+        })?;
+        let input_path_idx = header_index_of("input_path");
+        let sra_accession_idx = header_index_of("sra_accession");
+        if input_path_idx.is_none() && sra_accession_idx.is_none() {
+            return Err(Self::rna_read_batch_invalid_input(
+                "RNA-read batch manifest requires either 'input_path' or 'sra_accession' column",
+            ));
+        }
+        let sample_name_idx = header_index_of("sample_name");
+        let sample_description_idx = header_index_of("sample_description");
+        let report_id_idx = header_index_of("report_id");
+        let manifest_dir = Path::new(manifest_path)
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let mut rows = Vec::<RnaReadBatchManifestRow>::new();
+        for (line_index, line) in meaningful_lines {
+            let columns = line.split('\t').collect::<Vec<_>>();
+            let field = |idx: Option<usize>| -> Option<String> {
+                idx.and_then(|idx| columns.get(idx))
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+            };
+            let sample_id = columns
+                .get(sample_id_idx)
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    Self::rna_read_batch_invalid_input(format!(
+                        "RNA-read batch manifest line {} has empty sample_id",
+                        line_index + 1
+                    ))
+                })?
+                .to_string();
+            let input_path = field(input_path_idx).map(|raw| {
+                let path = Path::new(&raw);
+                if path.is_absolute() {
+                    raw
+                } else {
+                    Self::rna_read_batch_path_string(&manifest_dir.join(path))
+                }
+            });
+            let sra_accession = field(sra_accession_idx);
+            if input_path.is_none() && sra_accession.is_none() {
+                return Err(Self::rna_read_batch_invalid_input(format!(
+                    "RNA-read batch manifest line {} sample '{}' needs input_path or sra_accession",
+                    line_index + 1,
+                    sample_id
+                )));
+            }
+            rows.push(RnaReadBatchManifestRow {
+                row_number: line_index.saturating_add(1).max(header_index + 2),
+                sample_id,
+                sample_name: field(sample_name_idx),
+                sample_description: field(sample_description_idx),
+                input_path,
+                sra_accession,
+                report_id: field(report_id_idx),
+            });
+        }
+        if rows.is_empty() {
+            return Err(Self::rna_read_batch_invalid_input(format!(
+                "RNA-read batch manifest '{manifest_path}' contains no sample rows"
+            )));
+        }
+        Ok(rows)
+    }
+
+    fn rna_read_batch_input_path_supported(path: &str) -> bool {
+        let lower = path.trim().to_ascii_lowercase();
+        lower.ends_with(".fa")
+            || lower.ends_with(".fasta")
+            || lower.ends_with(".fa.gz")
+            || lower.ends_with(".fasta.gz")
+    }
+
+    fn rna_read_batch_sra_preparation_row(
+        out_dir: &Path,
+        row: &RnaReadBatchManifestRow,
+    ) -> RnaReadBatchMapSraPreparationRow {
+        let sample_token = Self::rna_read_batch_file_token(&row.sample_id);
+        let planned_fasta_path = out_dir
+            .join("reads")
+            .join(format!("{sample_token}.fasta.gz"));
+        let planned = Self::rna_read_batch_path_string(&planned_fasta_path);
+        let sra = row.sra_accession.clone().unwrap_or_default();
+        let command = format!(
+            "# Prepare {sra} for GENtle batch-map, then rerun this manifest with input_path={}\nmkdir -p {}\nfasterq-dump --fasta --stdout {} | gzip -c > {}",
+            Self::rna_read_batch_shell_quote(&planned),
+            Self::rna_read_batch_shell_quote(&Self::rna_read_batch_path_string(
+                &out_dir.join("reads")
+            )),
+            Self::rna_read_batch_shell_quote(&sra),
+            Self::rna_read_batch_shell_quote(&planned),
+        );
+        RnaReadBatchMapSraPreparationRow {
+            sample_id: row.sample_id.clone(),
+            sra_accession: sra,
+            planned_fasta_path: planned,
+            preparation_command: command,
+        }
+    }
+
+    fn build_rna_read_batch_isoform_support_rows(
+        sample_id: &str,
+        report: &RnaReadInterpretationReport,
+        audit: &RnaReadGeneSupportAudit,
+    ) -> Result<Vec<RnaReadBatchIsoformSupportRow>, EngineError> {
+        let hits_by_record_index = report
+            .hits
+            .iter()
+            .map(|hit| (hit.record_index, hit))
+            .collect::<HashMap<_, _>>();
+        let mut accumulators = BTreeMap::<
+            (String, Option<usize>, String, String),
+            RnaReadBatchIsoformAccumulator,
+        >::new();
+        for row in audit.rows.iter().filter(|row| {
+            matches!(
+                row.status,
+                RnaReadGeneSupportAuditStatus::AcceptedFragment
+                    | RnaReadGeneSupportAuditStatus::AcceptedComplete
+            )
+        }) {
+            let gene_id = row.gene_id.clone().unwrap_or_default();
+            let transcript_id = row.transcript_id.clone().unwrap_or_default();
+            let transcript_label = row.transcript_label.clone().unwrap_or_default();
+            let key = (
+                gene_id.clone(),
+                row.transcript_feature_id,
+                transcript_id.clone(),
+                transcript_label.clone(),
+            );
+            let accumulator =
+                accumulators
+                    .entry(key)
+                    .or_insert_with(|| RnaReadBatchIsoformAccumulator {
+                        sample_id: sample_id.to_string(),
+                        report_id: report.report_id.clone(),
+                        seq_id: report.seq_id.clone(),
+                        gene_id: gene_id.clone(),
+                        transcript_feature_id: row.transcript_feature_id,
+                        transcript_id: transcript_id.clone(),
+                        transcript_label: transcript_label.clone(),
+                        ..Default::default()
+                    });
+            accumulator.aligned_count = accumulator.aligned_count.saturating_add(1);
+            if !row.full_length_near {
+                accumulator.fragment_count = accumulator.fragment_count.saturating_add(1);
+            }
+            if row.full_length_near {
+                accumulator.complete_count = accumulator.complete_count.saturating_add(1);
+            }
+            if row.full_length_strict {
+                accumulator.complete_strict_count =
+                    accumulator.complete_strict_count.saturating_add(1);
+            }
+            if row.full_length_exact {
+                accumulator.complete_exact_count =
+                    accumulator.complete_exact_count.saturating_add(1);
+            }
+            if let Some(hit) = hits_by_record_index.get(&row.record_index) {
+                accumulator.total_read_length_bp = accumulator
+                    .total_read_length_bp
+                    .saturating_add(hit.read_length_bp);
+            }
+            if let Some(value) = row.identity_fraction {
+                accumulator.identity_fraction_sum += value;
+            }
+            if let Some(value) = row.query_coverage_fraction {
+                accumulator.query_coverage_fraction_sum += value;
+            }
+            for ordinal in &row.mapped_exon_ordinals {
+                *accumulator.exon_counts.entry(*ordinal).or_insert(0) += 1;
+            }
+            for pair in &row.exon_pairs {
+                *accumulator
+                    .exon_pair_counts
+                    .entry((pair.from_exon_ordinal, pair.to_exon_ordinal))
+                    .or_insert(0) += 1;
+            }
+            for pair in &row.direct_transition_pairs {
+                *accumulator
+                    .direct_transition_counts
+                    .entry((pair.from_exon_ordinal, pair.to_exon_ordinal))
+                    .or_insert(0) += 1;
+            }
+        }
+
+        let mut rows = Vec::<RnaReadBatchIsoformSupportRow>::new();
+        for accumulator in accumulators.into_values() {
+            let denom = accumulator.aligned_count.max(1) as f64;
+            let exon_support = accumulator
+                .exon_counts
+                .iter()
+                .map(|(ordinal, count)| {
+                    json!({
+                        "exon_ordinal": ordinal,
+                        "support_read_count": count,
+                        "support_fraction": *count as f64 / denom,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let exon_pair_support = accumulator
+                .exon_pair_counts
+                .iter()
+                .map(|((from, to), count)| {
+                    json!({
+                        "from_exon_ordinal": from,
+                        "to_exon_ordinal": to,
+                        "support_read_count": count,
+                        "support_fraction": *count as f64 / denom,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let direct_transition_support = accumulator
+                .direct_transition_counts
+                .iter()
+                .map(|((from, to), count)| {
+                    json!({
+                        "from_exon_ordinal": from,
+                        "to_exon_ordinal": to,
+                        "support_read_count": count,
+                        "support_fraction": *count as f64 / denom,
+                    })
+                })
+                .collect::<Vec<_>>();
+            rows.push(RnaReadBatchIsoformSupportRow {
+                sample_id: accumulator.sample_id,
+                report_id: accumulator.report_id,
+                seq_id: accumulator.seq_id,
+                gene_id: accumulator.gene_id,
+                transcript_feature_id: accumulator.transcript_feature_id,
+                transcript_id: accumulator.transcript_id,
+                transcript_label: accumulator.transcript_label,
+                aligned_count: accumulator.aligned_count,
+                fragment_count: accumulator.fragment_count,
+                complete_count: accumulator.complete_count,
+                complete_strict_count: accumulator.complete_strict_count,
+                complete_exact_count: accumulator.complete_exact_count,
+                mean_read_length_bp: accumulator.total_read_length_bp as f64 / denom,
+                mean_identity_fraction: accumulator.identity_fraction_sum / denom,
+                mean_query_coverage_fraction: accumulator.query_coverage_fraction_sum / denom,
+                exon_support_json: Self::rna_read_batch_json_string(
+                    &exon_support,
+                    "isoform exon support",
+                )?,
+                exon_pair_support_json: Self::rna_read_batch_json_string(
+                    &exon_pair_support,
+                    "isoform exon-pair support",
+                )?,
+                direct_transition_support_json: Self::rna_read_batch_json_string(
+                    &direct_transition_support,
+                    "isoform direct-transition support",
+                )?,
+            });
+        }
+        Ok(rows)
+    }
+
+    fn build_rna_read_batch_partner_rows(
+        sample_id: &str,
+        report: &RnaReadInterpretationReport,
+        inspection: &RnaReadConcatemerInspection,
+    ) -> Vec<RnaReadBatchConcatemerPartnerRow> {
+        let mut rows = Vec::<RnaReadBatchConcatemerPartnerRow>::new();
+        rows.extend(inspection.partner_gene_summaries.iter().map(|summary| {
+            RnaReadBatchConcatemerPartnerRow {
+                sample_id: sample_id.to_string(),
+                report_id: report.report_id.clone(),
+                seq_id: report.seq_id.clone(),
+                partner_kind: "gene".to_string(),
+                gene_id: summary.gene_id.clone(),
+                transcript_id: String::new(),
+                transcript_label: String::new(),
+                suspicious_read_count: summary.suspicious_read_count,
+                fragment_count: summary.fragment_count,
+            }
+        }));
+        rows.extend(
+            inspection
+                .partner_transcript_summaries
+                .iter()
+                .map(|summary| RnaReadBatchConcatemerPartnerRow {
+                    sample_id: sample_id.to_string(),
+                    report_id: report.report_id.clone(),
+                    seq_id: report.seq_id.clone(),
+                    partner_kind: "transcript".to_string(),
+                    gene_id: summary.gene_id.clone(),
+                    transcript_id: summary.transcript_id.clone(),
+                    transcript_label: summary.transcript_label.clone(),
+                    suspicious_read_count: summary.suspicious_read_count,
+                    fragment_count: summary.fragment_count,
+                }),
+        );
+        rows
+    }
+
+    fn target_partner_gene_fragment_count(
+        inspection: &RnaReadConcatemerInspection,
+        requested_gene_ids: &[String],
+    ) -> usize {
+        let requested = requested_gene_ids
+            .iter()
+            .map(|gene_id| gene_id.trim().to_ascii_lowercase())
+            .filter(|gene_id| !gene_id.is_empty())
+            .collect::<BTreeSet<_>>();
+        if requested.is_empty() {
+            return 0;
+        }
+        inspection
+            .rows
+            .iter()
+            .filter(|row| {
+                let mut has_target = false;
+                let mut has_partner = false;
+                for gene_id in &row.fragment_origin_gene_ids {
+                    if requested.contains(&gene_id.to_ascii_lowercase()) {
+                        has_target = true;
+                    } else {
+                        has_partner = true;
+                    }
+                }
+                has_target && has_partner
+            })
+            .count()
+    }
+
+    fn build_rna_read_batch_sample_row(
+        manifest_row: &RnaReadBatchManifestRow,
+        report: &RnaReadInterpretationReport,
+        summary: &RnaReadGeneSupportSummary,
+        audit: &RnaReadGeneSupportAudit,
+        inspection: &RnaReadConcatemerInspection,
+        requested_gene_ids: &[String],
+        elapsed_ms: u128,
+        gene_support_summary_json_path: &Path,
+        gene_support_audit_json_path: &Path,
+        concatemer_json_path: &Path,
+        isoform_support_count: usize,
+    ) -> RnaReadBatchMapSampleRow {
+        let mean_read_length_bp = if report.read_count_total == 0 {
+            0.0
+        } else {
+            Self::sum_read_length_bases(&report.read_length_counts_all) as f64
+                / report.read_count_total as f64
+        };
+        let accepted_bases = summary.accepted_target_read_lengths.mean_length_bp
+            * summary.accepted_target_read_lengths.sample_count as f64;
+        let mean_assigned_read_length_bp = if summary.accepted_target_count == 0 {
+            0.0
+        } else {
+            accepted_bases / summary.accepted_target_count as f64
+        };
+        let aligned_other_gene_count = audit
+            .rows
+            .iter()
+            .filter(|row| row.status == RnaReadGeneSupportAuditStatus::AlignedOtherGene)
+            .count();
+        RnaReadBatchMapSampleRow {
+            sample_id: manifest_row.sample_id.clone(),
+            sample_name: manifest_row.sample_name.clone(),
+            sample_description: manifest_row.sample_description.clone(),
+            status: RnaReadBatchMapSampleStatus::Ok,
+            input_path: manifest_row.input_path.clone(),
+            sra_accession: manifest_row.sra_accession.clone(),
+            report_id: Some(report.report_id.clone()),
+            seq_id: report.seq_id.clone(),
+            seed_feature_id: report.seed_feature_id,
+            elapsed_ms: Some(elapsed_ms),
+            warnings: report
+                .warnings
+                .iter()
+                .chain(inspection.warnings.iter())
+                .cloned()
+                .collect(),
+            gene_support_summary_json_path: Some(Self::rna_read_batch_path_string(
+                gene_support_summary_json_path,
+            )),
+            gene_support_audit_json_path: Some(Self::rna_read_batch_path_string(
+                gene_support_audit_json_path,
+            )),
+            concatemer_json_path: Some(Self::rna_read_batch_path_string(concatemer_json_path)),
+            read_count_total: report.read_count_total,
+            read_count_seed_passed: report.read_count_seed_passed,
+            read_count_aligned: report.read_count_aligned,
+            seed_pass_fraction: if report.read_count_total == 0 {
+                0.0
+            } else {
+                report.read_count_seed_passed as f64 / report.read_count_total as f64
+            },
+            aligned_fraction: if report.read_count_total == 0 {
+                0.0
+            } else {
+                report.read_count_aligned as f64 / report.read_count_total as f64
+            },
+            mean_read_length_bp,
+            origin_class_counts: report.origin_class_counts.clone(),
+            requested_gene_ids: summary.requested_gene_ids.clone(),
+            matched_gene_ids: summary.matched_gene_ids.clone(),
+            missing_gene_ids: summary.missing_gene_ids.clone(),
+            aligned_base_count: summary.aligned_base_count,
+            accepted_target_count: summary.accepted_target_count,
+            accepted_target_fraction_total: if report.read_count_total == 0 {
+                0.0
+            } else {
+                summary.accepted_target_count as f64 / report.read_count_total as f64
+            },
+            accepted_target_fraction_aligned: if summary.aligned_base_count == 0 {
+                0.0
+            } else {
+                summary.accepted_target_count as f64 / summary.aligned_base_count as f64
+            },
+            aligned_other_gene_count,
+            aligned_other_gene_fraction_aligned: if summary.aligned_base_count == 0 {
+                0.0
+            } else {
+                aligned_other_gene_count as f64 / summary.aligned_base_count as f64
+            },
+            fragment_count: summary.fragment_count,
+            complete_count: summary.complete_count,
+            complete_strict_count: summary.complete_strict_count,
+            complete_exact_count: summary.complete_exact_count,
+            mean_assigned_read_length_bp,
+            isoform_support_count,
+            concatemer_inspected_count: inspection.inspected_count,
+            concatemer_suspicious_count: inspection.suspicious_count,
+            concatemer_strong_count: inspection.strong_count,
+            concatemer_multi_gene_fragment_count: inspection.multi_gene_fragment_count,
+            target_partner_gene_fragment_count: Self::target_partner_gene_fragment_count(
+                inspection,
+                requested_gene_ids,
+            ),
+            internal_adapter_match_count: inspection.internal_adapter_match_count,
+            disjoint_secondary_mapping_count: inspection.disjoint_secondary_mapping_count,
+            low_primary_coverage_count: inspection.low_query_coverage_count,
+            internal_poly_a_count: inspection.internal_poly_a_count,
+            internal_poly_t_count: inspection.internal_poly_t_count,
+            phase1_partial_origin_count: inspection.phase1_partial_origin_count,
+            ..Default::default()
+        }
+    }
+
+    fn write_rna_read_batch_summary_tsv(
+        path: &Path,
+        rows: &[RnaReadBatchMapSampleRow],
+    ) -> Result<(), EngineError> {
+        let file = File::create(path)
+            .map_err(|e| Self::rna_read_batch_io_error(path, "create batch summary TSV", e))?;
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "sample_id\tsample_name\tsample_description\tstatus\terror\twarnings_json\telapsed_ms\treport_id\tseq_id\tseed_feature_id\tinput_path\tsra_accession\ttotal_reads\tseed_passed_reads\taligned_reads\tseed_pass_fraction\taligned_fraction\tmean_read_length_bp\torigin_class_counts_json\trequested_gene_ids_json\tmatched_gene_ids_json\tmissing_gene_ids_json\taccepted_target_count\taccepted_target_fraction_total\taccepted_target_fraction_aligned\taligned_other_gene_count\taligned_other_gene_fraction_aligned\tfragment_count\tcomplete_near_count\tcomplete_strict_count\tcomplete_exact_count\tmean_assigned_read_length_bp\tisoform_support_count\tconcatemer_inspected_count\tconcatemer_suspicious_count\tconcatemer_strong_count\tconcatemer_multi_gene_fragment_count\ttarget_partner_gene_fragment_count\tinternal_adapter_match_count\tdisjoint_secondary_mapping_count\tlow_primary_coverage_count\tinternal_poly_a_count\tinternal_poly_t_count\tphase1_partial_origin_count\tgene_support_summary_json_path\tgene_support_audit_json_path\tconcatemer_json_path"
+        )
+        .map_err(|e| Self::rna_read_batch_io_error(path, "write batch summary TSV header", e))?;
+        for row in rows {
+            let warnings_json = Self::rna_read_batch_json_string(&row.warnings, "warnings")?;
+            let origin_json =
+                Self::rna_read_batch_json_string(&row.origin_class_counts, "origin counts")?;
+            let requested_json =
+                Self::rna_read_batch_json_string(&row.requested_gene_ids, "requested genes")?;
+            let matched_json =
+                Self::rna_read_batch_json_string(&row.matched_gene_ids, "matched genes")?;
+            let missing_json =
+                Self::rna_read_batch_json_string(&row.missing_gene_ids, "missing genes")?;
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                Self::sanitize_tsv_cell(&row.sample_id),
+                Self::sanitize_tsv_cell(row.sample_name.as_deref().unwrap_or("")),
+                Self::sanitize_tsv_cell(row.sample_description.as_deref().unwrap_or("")),
+                row.status.as_str(),
+                Self::sanitize_tsv_cell(row.error.as_deref().unwrap_or("")),
+                Self::sanitize_tsv_cell(&warnings_json),
+                row.elapsed_ms.map(|value| value.to_string()).unwrap_or_default(),
+                Self::sanitize_tsv_cell(row.report_id.as_deref().unwrap_or("")),
+                Self::sanitize_tsv_cell(&row.seq_id),
+                row.seed_feature_id,
+                Self::sanitize_tsv_cell(row.input_path.as_deref().unwrap_or("")),
+                Self::sanitize_tsv_cell(row.sra_accession.as_deref().unwrap_or("")),
+                row.read_count_total,
+                row.read_count_seed_passed,
+                row.read_count_aligned,
+                row.seed_pass_fraction,
+                row.aligned_fraction,
+                row.mean_read_length_bp,
+                Self::sanitize_tsv_cell(&origin_json),
+                Self::sanitize_tsv_cell(&requested_json),
+                Self::sanitize_tsv_cell(&matched_json),
+                Self::sanitize_tsv_cell(&missing_json),
+                row.accepted_target_count,
+                row.accepted_target_fraction_total,
+                row.accepted_target_fraction_aligned,
+                row.aligned_other_gene_count,
+                row.aligned_other_gene_fraction_aligned,
+                row.fragment_count,
+                row.complete_count,
+                row.complete_strict_count,
+                row.complete_exact_count,
+                row.mean_assigned_read_length_bp,
+                row.isoform_support_count,
+                row.concatemer_inspected_count,
+                row.concatemer_suspicious_count,
+                row.concatemer_strong_count,
+                row.concatemer_multi_gene_fragment_count,
+                row.target_partner_gene_fragment_count,
+                row.internal_adapter_match_count,
+                row.disjoint_secondary_mapping_count,
+                row.low_primary_coverage_count,
+                row.internal_poly_a_count,
+                row.internal_poly_t_count,
+                row.phase1_partial_origin_count,
+                Self::sanitize_tsv_cell(
+                    row.gene_support_summary_json_path.as_deref().unwrap_or("")
+                ),
+                Self::sanitize_tsv_cell(row.gene_support_audit_json_path.as_deref().unwrap_or("")),
+                Self::sanitize_tsv_cell(row.concatemer_json_path.as_deref().unwrap_or("")),
+            )
+            .map_err(|e| Self::rna_read_batch_io_error(path, "write batch summary TSV row", e))?;
+        }
+        writer
+            .flush()
+            .map_err(|e| Self::rna_read_batch_io_error(path, "flush batch summary TSV", e))
+    }
+
+    fn write_rna_read_batch_isoform_tsv(
+        path: &Path,
+        rows: &[RnaReadBatchIsoformSupportRow],
+    ) -> Result<(), EngineError> {
+        let file = File::create(path)
+            .map_err(|e| Self::rna_read_batch_io_error(path, "create isoform support TSV", e))?;
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "sample_id\treport_id\tseq_id\tgene_id\ttranscript_feature_id\ttranscript_id\ttranscript_label\taligned_count\tfragment_count\tcomplete_near_count\tcomplete_strict_count\tcomplete_exact_count\tmean_read_length_bp\tmean_identity_fraction\tmean_query_coverage_fraction\texon_support_json\texon_pair_support_json\tdirect_transition_support_json"
+        )
+        .map_err(|e| Self::rna_read_batch_io_error(path, "write isoform support TSV header", e))?;
+        for row in rows {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}",
+                Self::sanitize_tsv_cell(&row.sample_id),
+                Self::sanitize_tsv_cell(&row.report_id),
+                Self::sanitize_tsv_cell(&row.seq_id),
+                Self::sanitize_tsv_cell(&row.gene_id),
+                row.transcript_feature_id
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+                Self::sanitize_tsv_cell(&row.transcript_id),
+                Self::sanitize_tsv_cell(&row.transcript_label),
+                row.aligned_count,
+                row.fragment_count,
+                row.complete_count,
+                row.complete_strict_count,
+                row.complete_exact_count,
+                row.mean_read_length_bp,
+                row.mean_identity_fraction,
+                row.mean_query_coverage_fraction,
+                Self::sanitize_tsv_cell(&row.exon_support_json),
+                Self::sanitize_tsv_cell(&row.exon_pair_support_json),
+                Self::sanitize_tsv_cell(&row.direct_transition_support_json),
+            )
+            .map_err(|e| Self::rna_read_batch_io_error(path, "write isoform support TSV row", e))?;
+        }
+        writer
+            .flush()
+            .map_err(|e| Self::rna_read_batch_io_error(path, "flush isoform support TSV", e))
+    }
+
+    fn write_rna_read_batch_partner_tsv(
+        path: &Path,
+        rows: &[RnaReadBatchConcatemerPartnerRow],
+    ) -> Result<(), EngineError> {
+        let file = File::create(path)
+            .map_err(|e| Self::rna_read_batch_io_error(path, "create concatemer partner TSV", e))?;
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "sample_id\treport_id\tseq_id\tpartner_kind\tgene_id\ttranscript_id\ttranscript_label\tsuspicious_read_count\tfragment_count"
+        )
+        .map_err(|e| Self::rna_read_batch_io_error(path, "write partner TSV header", e))?;
+        for row in rows {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                Self::sanitize_tsv_cell(&row.sample_id),
+                Self::sanitize_tsv_cell(&row.report_id),
+                Self::sanitize_tsv_cell(&row.seq_id),
+                Self::sanitize_tsv_cell(&row.partner_kind),
+                Self::sanitize_tsv_cell(&row.gene_id),
+                Self::sanitize_tsv_cell(&row.transcript_id),
+                Self::sanitize_tsv_cell(&row.transcript_label),
+                row.suspicious_read_count,
+                row.fragment_count,
+            )
+            .map_err(|e| Self::rna_read_batch_io_error(path, "write partner TSV row", e))?;
+        }
+        writer
+            .flush()
+            .map_err(|e| Self::rna_read_batch_io_error(path, "flush partner TSV", e))
+    }
+
+    fn write_rna_read_batch_sra_plan(
+        plan_path: &Path,
+        commands_path: &Path,
+        rows: &[RnaReadBatchMapSraPreparationRow],
+    ) -> Result<(), EngineError> {
+        let file = File::create(plan_path)
+            .map_err(|e| Self::rna_read_batch_io_error(plan_path, "create SRA plan TSV", e))?;
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "sample_id\tsra_accession\tplanned_fasta_path\tpreparation_command"
+        )
+        .map_err(|e| Self::rna_read_batch_io_error(plan_path, "write SRA plan header", e))?;
+        for row in rows {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}",
+                Self::sanitize_tsv_cell(&row.sample_id),
+                Self::sanitize_tsv_cell(&row.sra_accession),
+                Self::sanitize_tsv_cell(&row.planned_fasta_path),
+                Self::sanitize_tsv_cell(&row.preparation_command),
+            )
+            .map_err(|e| Self::rna_read_batch_io_error(plan_path, "write SRA plan row", e))?;
+        }
+        writer
+            .flush()
+            .map_err(|e| Self::rna_read_batch_io_error(plan_path, "flush SRA plan TSV", e))?;
+
+        let mut script = String::from("#!/usr/bin/env bash\nset -euo pipefail\n\n");
+        for row in rows {
+            script.push_str(&row.preparation_command);
+            script.push_str("\n\n");
+        }
+        std::fs::write(commands_path, script).map_err(|e| {
+            Self::rna_read_batch_io_error(commands_path, "write SRA preparation commands", e)
+        })
+    }
+
+    fn write_empty_rna_read_batch_sample_sheet(path: &Path) -> Result<(), EngineError> {
+        let mut writer =
+            BufWriter::new(File::create(path).map_err(|e| {
+                Self::rna_read_batch_io_error(path, "create empty sample sheet", e)
+            })?);
+        writeln!(writer, "# no prepared RNA-read reports were produced")
+            .map_err(|e| Self::rna_read_batch_io_error(path, "write empty sample sheet", e))?;
+        writer
+            .flush()
+            .map_err(|e| Self::rna_read_batch_io_error(path, "flush empty sample sheet", e))
+    }
+
+    pub fn run_rna_read_batch_map(
+        &mut self,
+        manifest_path: &str,
+        seq_id: &str,
+        seed_feature_id: usize,
+        gene_ids: &[String],
+        out_dir: &str,
+        profile: RnaReadInterpretationProfile,
+        input_format: RnaReadInputFormat,
+        scope: SplicingScopePreset,
+        origin_mode: Option<RnaReadOriginMode>,
+        target_gene_ids: &[String],
+        roi_seed_capture_enabled: bool,
+        seed_filter: &RnaReadSeedFilterConfig,
+        align_config: &RnaReadAlignConfig,
+        report_mode: RnaReadReportMode,
+        align_selection: RnaReadHitSelection,
+        complete_rule: RnaReadGeneSupportCompleteRule,
+        concatemer_settings: &RnaReadConcatemerInspectionSettings,
+        concatemer_limit: usize,
+        continue_on_error: bool,
+        op_id: &str,
+        run_id: &str,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<RnaReadBatchMapReport, EngineError> {
+        let gene_ids = gene_ids
+            .iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if gene_ids.is_empty() {
+            return Err(Self::rna_read_batch_invalid_input(
+                "rna-reads batch-map requires at least one --gene",
+            ));
+        }
+        let out_dir = out_dir.trim();
+        if out_dir.is_empty() {
+            return Err(Self::rna_read_batch_invalid_input(
+                "rna-reads batch-map requires a non-empty --out-dir",
+            ));
+        }
+        if concatemer_limit == 0 {
+            return Err(Self::rna_read_batch_invalid_input(
+                "rna-reads batch-map requires --concatemer-limit >= 1",
+            ));
+        }
+        let manifest_rows = Self::parse_rna_read_batch_manifest(manifest_path)?;
+        let out_root = PathBuf::from(out_dir);
+        std::fs::create_dir_all(&out_root)
+            .map_err(|e| Self::rna_read_batch_io_error(&out_root, "create batch output dir", e))?;
+        let gene_support_dir = out_root.join("gene_support");
+        let concatemer_dir = out_root.join("concatemers");
+        std::fs::create_dir_all(&gene_support_dir).map_err(|e| {
+            Self::rna_read_batch_io_error(&gene_support_dir, "create gene-support output dir", e)
+        })?;
+        std::fs::create_dir_all(&concatemer_dir).map_err(|e| {
+            Self::rna_read_batch_io_error(&concatemer_dir, "create concatemer output dir", e)
+        })?;
+        std::fs::create_dir_all(out_root.join("reads")).map_err(|e| {
+            Self::rna_read_batch_io_error(&out_root.join("reads"), "create reads output dir", e)
+        })?;
+
+        let target_gene_ids = if target_gene_ids.is_empty() {
+            gene_ids.clone()
+        } else {
+            target_gene_ids
+                .iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect::<Vec<_>>()
+        };
+        let origin_mode = origin_mode.unwrap_or_else(|| {
+            if gene_ids.len() > 1 || target_gene_ids.len() > 1 {
+                RnaReadOriginMode::MultiGeneSparse
+            } else {
+                RnaReadOriginMode::SingleGene
+            }
+        });
+
+        let batch_report_json_path = out_root.join("batch_report.json");
+        let batch_summary_tsv_path = out_root.join("batch_summary.tsv");
+        let sample_sheet_tsv_path = out_root.join("sample_sheet.tsv");
+        let isoform_support_tsv_path = out_root.join("isoform_support.tsv");
+        let concatemer_partner_summary_tsv_path = out_root.join("concatemer_partner_summary.tsv");
+        let sra_preparation_plan_tsv_path = out_root.join("sra_preparation_plan.tsv");
+        let sra_preparation_commands_sh_path = out_root.join("sra_preparation_commands.sh");
+
+        let mut rows = Vec::<RnaReadBatchMapSampleRow>::new();
+        let mut isoform_support_rows = Vec::<RnaReadBatchIsoformSupportRow>::new();
+        let mut concatemer_partner_rows = Vec::<RnaReadBatchConcatemerPartnerRow>::new();
+        let mut sra_preparation_rows = Vec::<RnaReadBatchMapSraPreparationRow>::new();
+        let mut ok_report_ids = Vec::<String>::new();
+        let mut used_report_ids = BTreeSet::<String>::new();
+        let mut batch_warnings = Vec::<String>::new();
+        if concatemer_settings.transcript_fasta_paths.is_empty()
+            && concatemer_settings.transcript_index_paths.is_empty()
+        {
+            batch_warnings.push(
+                "No external transcript FASTA/index was supplied; target-partner gene evidence is limited to retained report templates and lightweight suspicion signals"
+                    .to_string(),
+            );
+        }
+
+        for manifest_row in manifest_rows {
+            let sample_started = Instant::now();
+            if manifest_row.input_path.is_none() && manifest_row.sra_accession.is_some() {
+                let prep_row = Self::rna_read_batch_sra_preparation_row(&out_root, &manifest_row);
+                let sample_row = RnaReadBatchMapSampleRow {
+                    sample_id: manifest_row.sample_id.clone(),
+                    sample_name: manifest_row.sample_name.clone(),
+                    sample_description: manifest_row.sample_description.clone(),
+                    status: RnaReadBatchMapSampleStatus::NeedsPreparation,
+                    sra_accession: manifest_row.sra_accession.clone(),
+                    seq_id: seq_id.to_string(),
+                    seed_feature_id,
+                    elapsed_ms: Some(sample_started.elapsed().as_millis()),
+                    warnings: vec![
+                        "SRA rows are not fetched in batch-map v1; see sra_preparation_plan.tsv"
+                            .to_string(),
+                    ],
+                    ..Default::default()
+                };
+                sra_preparation_rows.push(prep_row);
+                rows.push(sample_row);
+                continue;
+            }
+
+            let sample_result = (|| -> Result<
+                (
+                    RnaReadBatchMapSampleRow,
+                    Vec<RnaReadBatchIsoformSupportRow>,
+                    Vec<RnaReadBatchConcatemerPartnerRow>,
+                    String,
+                ),
+                EngineError,
+            > {
+                let input_path = manifest_row.input_path.as_deref().ok_or_else(|| {
+                    Self::rna_read_batch_invalid_input(format!(
+                        "sample '{}' has no input_path",
+                        manifest_row.sample_id
+                    ))
+                })?;
+                if !Self::rna_read_batch_input_path_supported(input_path) {
+                    return Err(Self::rna_read_batch_invalid_input(format!(
+                        "sample '{}' input_path '{}' is not supported yet; expected .fa/.fasta/.fa.gz/.fasta.gz",
+                        manifest_row.sample_id, input_path
+                    )));
+                }
+                if !Path::new(input_path).exists() {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "sample '{}' input_path '{}' does not exist",
+                            manifest_row.sample_id, input_path
+                        ),
+                    });
+                }
+                let report_id = match manifest_row.report_id.as_deref() {
+                    Some(raw) => Self::normalize_rna_read_report_id(raw)?,
+                    None => Self::normalize_rna_read_report_id(&format!(
+                        "rna_batch_{}",
+                        Self::rna_read_batch_file_token(&manifest_row.sample_id)
+                    ))?,
+                };
+                let report_key = report_id.to_ascii_lowercase();
+                if !used_report_ids.insert(report_key) {
+                    return Err(Self::rna_read_batch_invalid_input(format!(
+                        "RNA-read batch report_id '{}' is duplicated; add a report_id column to disambiguate samples",
+                        report_id
+                    )));
+                }
+
+                let mut keep_running = || true;
+                let mut report = self.compute_rna_read_report_with_options_and_progress_and_cancel(
+                    seq_id,
+                    seed_feature_id,
+                    profile,
+                    input_path,
+                    input_format,
+                    scope,
+                    origin_mode,
+                    &target_gene_ids,
+                    roi_seed_capture_enabled,
+                    seed_filter,
+                    align_config,
+                    Some(report_id.as_str()),
+                    &RnaReadInterpretOptions {
+                        report_mode,
+                        checkpoint_path: None,
+                        checkpoint_every_reads: RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS,
+                        resume_from_checkpoint: false,
+                    },
+                    on_progress,
+                    &mut keep_running,
+                )?;
+                report.op_id = Some(op_id.to_string());
+                report.run_id = Some(run_id.to_string());
+                self.upsert_rna_read_report(report)?;
+
+                let mut aligned_report = self.align_rna_read_report_with_progress_and_cancel(
+                    &report_id,
+                    align_selection,
+                    Some(align_config.clone()),
+                    &[],
+                    on_progress,
+                    &mut keep_running,
+                )?;
+                aligned_report.op_id = Some(op_id.to_string());
+                aligned_report.run_id = Some(run_id.to_string());
+                self.upsert_rna_read_report(aligned_report.clone())?;
+
+                let file_token = Self::rna_read_batch_file_token(&report_id);
+                let gene_support_summary_json_path =
+                    gene_support_dir.join(format!("{file_token}.gene_support.summary.json"));
+                let gene_support_audit_json_path =
+                    gene_support_dir.join(format!("{file_token}.gene_support.audit.json"));
+                let concatemer_json_path =
+                    concatemer_dir.join(format!("{file_token}.concatemers.json"));
+
+                let mut summary = self.summarize_rna_read_gene_support(
+                    &report_id,
+                    &gene_ids,
+                    &[],
+                    complete_rule,
+                )?;
+                summary.generated_at_unix_ms = Self::now_unix_ms();
+                summary.op_id = Some(op_id.to_string());
+                summary.run_id = Some(run_id.to_string());
+                self.write_rna_read_gene_support_summary_json(
+                    &summary,
+                    &Self::rna_read_batch_path_string(&gene_support_summary_json_path),
+                )?;
+
+                let mut audit = self.inspect_rna_read_gene_support(
+                    &report_id,
+                    &gene_ids,
+                    &[],
+                    complete_rule,
+                    RnaReadGeneSupportAuditCohortFilter::All,
+                )?;
+                audit.generated_at_unix_ms = Self::now_unix_ms();
+                audit.op_id = Some(op_id.to_string());
+                audit.run_id = Some(run_id.to_string());
+                self.write_rna_read_gene_support_audit_json(
+                    &audit,
+                    &Self::rna_read_batch_path_string(&gene_support_audit_json_path),
+                )?;
+
+                let inspection = self.inspect_rna_read_concatemers(
+                    &report_id,
+                    RnaReadHitSelection::Aligned,
+                    concatemer_limit,
+                    vec![],
+                    concatemer_settings.clone(),
+                )?;
+                Self::write_rna_read_batch_json(
+                    &inspection,
+                    &concatemer_json_path,
+                    "concatemer inspection",
+                )?;
+
+                let sample_isoform_rows = Self::build_rna_read_batch_isoform_support_rows(
+                    &manifest_row.sample_id,
+                    &aligned_report,
+                    &audit,
+                )?;
+                let sample_partner_rows = Self::build_rna_read_batch_partner_rows(
+                    &manifest_row.sample_id,
+                    &aligned_report,
+                    &inspection,
+                );
+                let sample_row = Self::build_rna_read_batch_sample_row(
+                    &manifest_row,
+                    &aligned_report,
+                    &summary,
+                    &audit,
+                    &inspection,
+                    &gene_ids,
+                    sample_started.elapsed().as_millis(),
+                    &gene_support_summary_json_path,
+                    &gene_support_audit_json_path,
+                    &concatemer_json_path,
+                    sample_isoform_rows.len(),
+                );
+                Ok((
+                    sample_row,
+                    sample_isoform_rows,
+                    sample_partner_rows,
+                    report_id,
+                ))
+            })();
+
+            match sample_result {
+                Ok((sample_row, sample_isoform_rows, sample_partner_rows, report_id)) => {
+                    ok_report_ids.push(report_id);
+                    isoform_support_rows.extend(sample_isoform_rows);
+                    concatemer_partner_rows.extend(sample_partner_rows);
+                    rows.push(sample_row);
+                }
+                Err(err) => {
+                    if !continue_on_error {
+                        return Err(err);
+                    }
+                    rows.push(RnaReadBatchMapSampleRow {
+                        sample_id: manifest_row.sample_id,
+                        sample_name: manifest_row.sample_name,
+                        sample_description: manifest_row.sample_description,
+                        status: RnaReadBatchMapSampleStatus::Failed,
+                        input_path: manifest_row.input_path,
+                        sra_accession: manifest_row.sra_accession,
+                        report_id: manifest_row.report_id,
+                        seq_id: seq_id.to_string(),
+                        seed_feature_id,
+                        elapsed_ms: Some(sample_started.elapsed().as_millis()),
+                        error: Some(err.message),
+                        warnings: vec![format!(
+                            "sample row {} failed but continue-on-error is enabled",
+                            manifest_row.row_number
+                        )],
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        if ok_report_ids.is_empty() {
+            Self::write_empty_rna_read_batch_sample_sheet(&sample_sheet_tsv_path)?;
+        } else {
+            self.export_rna_read_sample_sheet(
+                &Self::rna_read_batch_path_string(&sample_sheet_tsv_path),
+                Some(seq_id),
+                &ok_report_ids,
+                &gene_ids,
+                complete_rule,
+                false,
+            )?;
+        }
+        Self::write_rna_read_batch_summary_tsv(&batch_summary_tsv_path, &rows)?;
+        Self::write_rna_read_batch_isoform_tsv(&isoform_support_tsv_path, &isoform_support_rows)?;
+        Self::write_rna_read_batch_partner_tsv(
+            &concatemer_partner_summary_tsv_path,
+            &concatemer_partner_rows,
+        )?;
+        let (sra_plan_path, sra_commands_path) = if sra_preparation_rows.is_empty() {
+            (None, None)
+        } else {
+            Self::write_rna_read_batch_sra_plan(
+                &sra_preparation_plan_tsv_path,
+                &sra_preparation_commands_sh_path,
+                &sra_preparation_rows,
+            )?;
+            (
+                Some(Self::rna_read_batch_path_string(
+                    &sra_preparation_plan_tsv_path,
+                )),
+                Some(Self::rna_read_batch_path_string(
+                    &sra_preparation_commands_sh_path,
+                )),
+            )
+        };
+
+        let ok_count = rows
+            .iter()
+            .filter(|row| row.status == RnaReadBatchMapSampleStatus::Ok)
+            .count();
+        let failed_count = rows
+            .iter()
+            .filter(|row| row.status == RnaReadBatchMapSampleStatus::Failed)
+            .count();
+        let needs_preparation_count = rows
+            .iter()
+            .filter(|row| row.status == RnaReadBatchMapSampleStatus::NeedsPreparation)
+            .count();
+        let report = RnaReadBatchMapReport {
+            schema: RNA_READ_BATCH_MAP_REPORT_SCHEMA.to_string(),
+            manifest_path: manifest_path.to_string(),
+            out_dir: out_dir.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            seq_id: seq_id.to_string(),
+            seed_feature_id,
+            requested_gene_ids: gene_ids,
+            target_gene_ids,
+            profile: profile.as_str().to_string(),
+            input_format: input_format.as_str().to_string(),
+            scope: scope.as_str().to_string(),
+            origin_mode: origin_mode.as_str().to_string(),
+            report_mode: report_mode.as_str().to_string(),
+            align_selection: align_selection.as_str().to_string(),
+            complete_rule: complete_rule.as_str().to_string(),
+            max_secondary_mappings: align_config.max_secondary_mappings,
+            continue_on_error,
+            batch_report_json_path: Self::rna_read_batch_path_string(&batch_report_json_path),
+            batch_summary_tsv_path: Self::rna_read_batch_path_string(&batch_summary_tsv_path),
+            sample_sheet_tsv_path: Self::rna_read_batch_path_string(&sample_sheet_tsv_path),
+            isoform_support_tsv_path: Self::rna_read_batch_path_string(&isoform_support_tsv_path),
+            concatemer_partner_summary_tsv_path: Self::rna_read_batch_path_string(
+                &concatemer_partner_summary_tsv_path,
+            ),
+            sra_preparation_plan_tsv_path: sra_plan_path,
+            sra_preparation_commands_sh_path: sra_commands_path,
+            sample_count: rows.len(),
+            ok_count,
+            failed_count,
+            needs_preparation_count,
+            rows,
+            isoform_support_rows,
+            concatemer_partner_rows,
+            sra_preparation_rows,
+            warnings: batch_warnings,
+        };
+        Self::write_rna_read_batch_json(&report, &batch_report_json_path, "report")?;
+        Ok(report)
+    }
+
     pub fn collect_rna_seed_hash_catalog(
         &self,
         seq_id: &str,
@@ -9977,6 +11180,7 @@ impl GentleEngine {
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
+            rna_read_batch_map_report: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -10063,6 +11267,7 @@ impl GentleEngine {
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
+            rna_read_batch_map_report: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,

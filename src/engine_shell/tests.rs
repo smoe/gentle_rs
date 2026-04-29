@@ -19664,6 +19664,51 @@ fn parse_rna_reads_commands() {
         other => panic!("expected RnaReadsInterpret, got {other:?}"),
     }
 
+    let batch_map = parse_shell_line(
+        "rna-reads batch-map samples.tsv --seq-id seq_a --seed-feature-id 7 --gene TP53 --gene TP73 --target-gene TP53 --out-dir out/rna_batch --origin-mode multi_gene_sparse --report-mode full --align-selection all --complete-rule strict --max-secondary-mappings 5 --transcript-fasta transcripts.fa --transcript-index transcripts.index.json --fail-fast",
+    )
+    .expect("parse rna-reads batch-map");
+    match batch_map {
+        ShellCommand::RnaReadsBatchMap {
+            manifest_path,
+            seq_id,
+            seed_feature_id,
+            gene_ids,
+            out_dir,
+            origin_mode,
+            target_gene_ids,
+            report_mode,
+            align_selection,
+            complete_rule,
+            align_config,
+            concatemer_settings,
+            continue_on_error,
+            ..
+        } => {
+            assert_eq!(manifest_path, "samples.tsv");
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(seed_feature_id, 7);
+            assert_eq!(gene_ids, vec!["TP53".to_string(), "TP73".to_string()]);
+            assert_eq!(target_gene_ids, vec!["TP53".to_string()]);
+            assert_eq!(out_dir, "out/rna_batch");
+            assert_eq!(origin_mode, Some(RnaReadOriginMode::MultiGeneSparse));
+            assert_eq!(report_mode, RnaReadReportMode::Full);
+            assert_eq!(align_selection, RnaReadHitSelection::All);
+            assert_eq!(complete_rule, RnaReadGeneSupportCompleteRule::Strict);
+            assert_eq!(align_config.max_secondary_mappings, 5);
+            assert_eq!(
+                concatemer_settings.transcript_fasta_paths,
+                vec!["transcripts.fa".to_string()]
+            );
+            assert_eq!(
+                concatemer_settings.transcript_index_paths,
+                vec!["transcripts.index.json".to_string()]
+            );
+            assert!(!continue_on_error);
+        }
+        other => panic!("expected RnaReadsBatchMap, got {other:?}"),
+    }
+
     let interpret_checkpoint = parse_shell_line(
             "rna-reads interpret seq_a 7 reads.fa --report-mode seed_passed_only --checkpoint-path /tmp/tp53.chk.json --checkpoint-every-reads 2500 --resume-from-checkpoint",
         )
@@ -21121,6 +21166,121 @@ fn execute_rna_reads_export_sample_sheet_supports_target_gene_columns() {
     assert!(sheet_text.contains("gene_support_exon_pair_support_json"));
     assert!(sheet_text.contains("gene_support_mean_assigned_read_length_bp"));
     assert!(sheet_text.contains("[\"TP53\"]"));
+}
+
+#[test]
+fn execute_rna_reads_batch_map_writes_bundle_and_sra_plan() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let feature_id = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+    let dna = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present");
+    let read_sequence =
+        String::from_utf8(dna.forward_bytes()[98..560].to_vec()).expect("TP53 transcript slice");
+    let td = tempdir().expect("tempdir");
+    let input_path = td.path().join("sample_a.fa");
+    fs::write(&input_path, format!(">tp53_full\n{read_sequence}\n")).expect("write input fasta");
+    let manifest_path = td.path().join("samples.tsv");
+    fs::write(
+        &manifest_path,
+        format!(
+            "sample_id\tinput_path\tsra_accession\nsample_a\t{}\t\nsample_sra\t\tSRR000001\n",
+            input_path.display()
+        ),
+    )
+    .expect("write manifest");
+    let out_dir = td.path().join("batch_out");
+    let mut seed_filter = RnaReadSeedFilterConfig::default();
+    seed_filter.kmer_len = 3;
+    seed_filter.min_seed_hit_fraction = 0.0;
+    seed_filter.min_weighted_seed_hit_fraction = 0.0;
+    seed_filter.min_unique_matched_kmers = 0;
+    seed_filter.min_chain_consistency_fraction = 0.0;
+    seed_filter.max_median_transcript_gap = 10_000.0;
+    seed_filter.min_confirmed_exon_transitions = 0;
+    seed_filter.min_transition_support_fraction = 0.0;
+
+    let result = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsBatchMap {
+            manifest_path: manifest_path.display().to_string(),
+            seq_id: "seq_a".to_string(),
+            seed_feature_id: feature_id,
+            gene_ids: vec!["TP53".to_string()],
+            out_dir: out_dir.display().to_string(),
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
+            origin_mode: None,
+            target_gene_ids: vec![],
+            roi_seed_capture_enabled: false,
+            seed_filter,
+            align_config: RnaReadAlignConfig {
+                band_width_bp: 24,
+                min_identity_fraction: 0.60,
+                max_secondary_mappings: 5,
+            },
+            report_mode: RnaReadReportMode::Full,
+            align_selection: RnaReadHitSelection::All,
+            complete_rule: RnaReadGeneSupportCompleteRule::Near,
+            concatemer_settings: RnaReadConcatemerInspectionSettings::default(),
+            concatemer_limit: 250,
+            continue_on_error: true,
+        },
+    )
+    .expect("execute rna-reads batch-map");
+
+    assert!(result.state_changed);
+    assert_eq!(
+        result.output["schema"].as_str(),
+        Some("gentle.rna_read_batch_map_report.v1")
+    );
+    assert_eq!(result.output["sample_count"].as_u64(), Some(2));
+    assert_eq!(result.output["ok_count"].as_u64(), Some(1));
+    assert_eq!(result.output["needs_preparation_count"].as_u64(), Some(1));
+    assert!(engine.get_rna_read_report("rna_batch_sample_a").is_ok());
+
+    let batch_summary = out_dir.join("batch_summary.tsv");
+    let isoform_support = out_dir.join("isoform_support.tsv");
+    let partner_summary = out_dir.join("concatemer_partner_summary.tsv");
+    let sample_sheet = out_dir.join("sample_sheet.tsv");
+    let sra_plan = out_dir.join("sra_preparation_plan.tsv");
+    let batch_json = out_dir.join("batch_report.json");
+    for path in [
+        &batch_summary,
+        &isoform_support,
+        &partner_summary,
+        &sample_sheet,
+        &sra_plan,
+        &batch_json,
+    ] {
+        assert!(path.exists(), "expected '{}' to exist", path.display());
+    }
+    let summary_text = fs::read_to_string(batch_summary).expect("read batch summary");
+    assert!(summary_text.contains("aligned_other_gene_count"));
+    assert!(summary_text.contains("sample_sra\t"));
+    let isoform_text = fs::read_to_string(isoform_support).expect("read isoform support");
+    assert!(isoform_text.contains("complete_near_count"));
+    assert!(isoform_text.contains("TP53"));
+    let sample_sheet_text = fs::read_to_string(sample_sheet).expect("read sample sheet");
+    assert!(sample_sheet_text.contains("gene_support_accepted_target_count"));
+    let sra_plan_text = fs::read_to_string(sra_plan).expect("read SRA plan");
+    assert!(sra_plan_text.contains("SRR000001"));
+    assert!(sra_plan_text.contains("planned_fasta_path"));
 }
 
 #[test]

@@ -14014,6 +14014,7 @@ impl GentleEngine {
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
+            rna_read_batch_map_report: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -20896,6 +20897,62 @@ impl GentleEngine {
                     audit.cohort_filter.as_str()
                 ));
                     result.rna_read_gene_support_audit = Some(audit);
+                }
+                Operation::RunRnaReadBatchMap {
+                    manifest_path,
+                    seq_id,
+                    seed_feature_id,
+                    gene_ids,
+                    out_dir,
+                    profile,
+                    input_format,
+                    scope,
+                    origin_mode,
+                    target_gene_ids,
+                    roi_seed_capture_enabled,
+                    seed_filter,
+                    align_config,
+                    report_mode,
+                    align_selection,
+                    complete_rule,
+                    concatemer_settings,
+                    concatemer_limit,
+                    continue_on_error,
+                } => {
+                    let report = self.run_rna_read_batch_map(
+                        &manifest_path,
+                        &seq_id,
+                        seed_feature_id,
+                        &gene_ids,
+                        &out_dir,
+                        profile,
+                        input_format,
+                        scope,
+                        origin_mode,
+                        &target_gene_ids,
+                        roi_seed_capture_enabled,
+                        &seed_filter,
+                        &align_config,
+                        report_mode,
+                        align_selection,
+                        complete_rule,
+                        &concatemer_settings,
+                        concatemer_limit,
+                        continue_on_error,
+                        &result.op_id,
+                        run_id,
+                        on_progress,
+                    )?;
+                    result.messages.push(format!(
+                        "RNA-read batch-map processed {} sample row(s): ok={}, needs_preparation={}, failed={}; outputs in '{}'",
+                        report.sample_count,
+                        report.ok_count,
+                        report.needs_preparation_count,
+                        report.failed_count,
+                        report.out_dir
+                    ));
+                    result.warnings.extend(report.warnings.iter().cloned());
+                    result.rna_read_batch_map_report = Some(report);
                 }
                 op @ Operation::FindRestrictionSites { .. }
                 | op @ Operation::QueryRepeatOverlaps { .. }

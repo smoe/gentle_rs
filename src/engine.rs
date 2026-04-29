@@ -666,6 +666,17 @@ fn default_rna_read_checkpoint_every_reads() -> usize {
     RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS
 }
 
+fn default_rna_read_batch_concatemer_limit() -> usize {
+    5_000
+}
+
+fn default_rna_read_batch_align_config() -> RnaReadAlignConfig {
+    RnaReadAlignConfig {
+        max_secondary_mappings: 5,
+        ..RnaReadAlignConfig::default()
+    }
+}
+
 fn default_cutrun_roi_flank_bp() -> usize {
     150
 }
@@ -3831,6 +3842,42 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    RunRnaReadBatchMap {
+        manifest_path: String,
+        seq_id: SeqId,
+        seed_feature_id: usize,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        gene_ids: Vec<String>,
+        out_dir: String,
+        #[serde(default)]
+        profile: RnaReadInterpretationProfile,
+        #[serde(default)]
+        input_format: RnaReadInputFormat,
+        #[serde(default)]
+        scope: SplicingScopePreset,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        origin_mode: Option<RnaReadOriginMode>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        target_gene_ids: Vec<String>,
+        #[serde(default)]
+        roi_seed_capture_enabled: bool,
+        #[serde(default)]
+        seed_filter: RnaReadSeedFilterConfig,
+        #[serde(default = "default_rna_read_batch_align_config")]
+        align_config: RnaReadAlignConfig,
+        #[serde(default)]
+        report_mode: RnaReadReportMode,
+        #[serde(default)]
+        align_selection: RnaReadHitSelection,
+        #[serde(default)]
+        complete_rule: RnaReadGeneSupportCompleteRule,
+        #[serde(default)]
+        concatemer_settings: RnaReadConcatemerInspectionSettings,
+        #[serde(default = "default_rna_read_batch_concatemer_limit")]
+        concatemer_limit: usize,
+        #[serde(default = "default_true")]
+        continue_on_error: bool,
+    },
     SummarizeTfbsRegion {
         seq_id: String,
         focus_start_0based: usize,
@@ -5351,6 +5398,7 @@ impl GentleEngine {
                 "ShowRnaReadReport".to_string(),
                 "SummarizeRnaReadGeneSupport".to_string(),
                 "InspectRnaReadGeneSupport".to_string(),
+                "RunRnaReadBatchMap".to_string(),
                 "SummarizeTfbsRegion".to_string(),
                 "SummarizeTfbsScoreTracks".to_string(),
                 "SummarizeTfbsTrackSimilarity".to_string(),

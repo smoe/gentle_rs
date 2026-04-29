@@ -2292,6 +2292,27 @@ pub enum ShellCommand {
         checkpoint_every_reads: usize,
         resume_from_checkpoint: bool,
     },
+    RnaReadsBatchMap {
+        manifest_path: String,
+        seq_id: String,
+        seed_feature_id: usize,
+        gene_ids: Vec<String>,
+        out_dir: String,
+        profile: RnaReadInterpretationProfile,
+        input_format: RnaReadInputFormat,
+        scope: SplicingScopePreset,
+        origin_mode: Option<RnaReadOriginMode>,
+        target_gene_ids: Vec<String>,
+        roi_seed_capture_enabled: bool,
+        seed_filter: RnaReadSeedFilterConfig,
+        align_config: RnaReadAlignConfig,
+        report_mode: RnaReadReportMode,
+        align_selection: RnaReadHitSelection,
+        complete_rule: RnaReadGeneSupportCompleteRule,
+        concatemer_settings: RnaReadConcatemerInspectionSettings,
+        concatemer_limit: usize,
+        continue_on_error: bool,
+    },
     RnaReadsAlignReport {
         report_id: String,
         selection: RnaReadHitSelection,
@@ -9592,6 +9613,52 @@ impl ShellCommand {
                 checkpoint_every_reads,
                 resume_from_checkpoint
             ),
+            Self::RnaReadsBatchMap {
+                manifest_path,
+                seq_id,
+                seed_feature_id,
+                gene_ids,
+                out_dir,
+                profile,
+                input_format,
+                scope,
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
+                seed_filter,
+                align_config,
+                report_mode,
+                align_selection,
+                complete_rule,
+                concatemer_limit,
+                continue_on_error,
+                ..
+            } => format!(
+                "batch-map RNA reads from manifest '{}' for '{}' feature={} into '{}' (genes={}, target_genes={}, profile={}, format={}, scope={}, origin_mode={}, report_mode={}, align_selection={}, complete_rule={}, roi_seed_capture={}, k={}, seed_stride_bp={}, align_band={}, align_min_identity={:.2}, max_secondary={}, concatemer_limit={}, continue_on_error={})",
+                manifest_path,
+                seq_id,
+                seed_feature_id,
+                out_dir,
+                gene_ids.len(),
+                target_gene_ids.len(),
+                profile.as_str(),
+                input_format.as_str(),
+                scope.as_str(),
+                origin_mode
+                    .map(|mode| mode.as_str().to_string())
+                    .unwrap_or_else(|| "auto".to_string()),
+                report_mode.as_str(),
+                align_selection.as_str(),
+                complete_rule.as_str(),
+                roi_seed_capture_enabled,
+                seed_filter.kmer_len,
+                seed_filter.seed_stride_bp,
+                align_config.band_width_bp,
+                align_config.min_identity_fraction,
+                align_config.max_secondary_mappings,
+                concatemer_limit,
+                continue_on_error,
+            ),
             Self::RnaReadsAlignReport {
                 report_id,
                 selection,
@@ -10101,6 +10168,7 @@ impl ShellCommand {
                 | Self::ConstructReasoningBuildProteinDnaHandoff { .. }
                 | Self::ConstructReasoningSetAnnotationStatus { .. }
                 | Self::RnaReadsInterpret { .. }
+                | Self::RnaReadsBatchMap { .. }
                 | Self::RnaReadsAlignReport { .. }
                 | Self::BatchRun { .. }
                 | Self::SetParameter { .. }
@@ -28316,6 +28384,59 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsBatchMap {
+            manifest_path,
+            seq_id,
+            seed_feature_id,
+            gene_ids,
+            out_dir,
+            profile,
+            input_format,
+            scope,
+            origin_mode,
+            target_gene_ids,
+            roi_seed_capture_enabled,
+            seed_filter,
+            align_config,
+            report_mode,
+            align_selection,
+            complete_rule,
+            concatemer_settings,
+            concatemer_limit,
+            continue_on_error,
+        } => {
+            let result = engine
+                .apply(Operation::RunRnaReadBatchMap {
+                    manifest_path: manifest_path.clone(),
+                    seq_id: seq_id.clone(),
+                    seed_feature_id: *seed_feature_id,
+                    gene_ids: gene_ids.clone(),
+                    out_dir: out_dir.clone(),
+                    profile: *profile,
+                    input_format: *input_format,
+                    scope: *scope,
+                    origin_mode: *origin_mode,
+                    target_gene_ids: target_gene_ids.clone(),
+                    roi_seed_capture_enabled: *roi_seed_capture_enabled,
+                    seed_filter: seed_filter.clone(),
+                    align_config: align_config.clone(),
+                    report_mode: *report_mode,
+                    align_selection: *align_selection,
+                    complete_rule: *complete_rule,
+                    concatemer_settings: concatemer_settings.clone(),
+                    concatemer_limit: *concatemer_limit,
+                    continue_on_error: *continue_on_error,
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result.rna_read_batch_map_report.clone().ok_or_else(|| {
+                "RunRnaReadBatchMap did not return a batch report payload".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: report.ok_count > 0,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize RNA-read batch report: {e}"))?,
+            })
+        }
         ShellCommand::RnaReadsAlignReport {
             report_id,
             selection,
@@ -29771,6 +29892,7 @@ pub fn execute_shell_command_with_options(
     if matches!(
         command,
         ShellCommand::RnaReadsInterpret { .. }
+            | ShellCommand::RnaReadsBatchMap { .. }
             | ShellCommand::RnaReadsAlignReport { .. }
             | ShellCommand::RnaReadsListReports { .. }
             | ShellCommand::RnaReadsShowReport { .. }
@@ -31245,6 +31367,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::SeqConfirmExportSupportTsv { .. }
         | ShellCommand::SeqPrimerSuggest { .. } => execute_sequencing_command(engine, command)?,
         ShellCommand::RnaReadsInterpret { .. }
+        | ShellCommand::RnaReadsBatchMap { .. }
         | ShellCommand::RnaReadsAlignReport { .. }
         | ShellCommand::RnaReadsListReports { .. }
         | ShellCommand::RnaReadsShowReport { .. }

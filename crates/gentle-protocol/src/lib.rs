@@ -3238,6 +3238,189 @@ pub struct RnaReadSampleSheetExport {
     pub complete_rule: RnaReadGeneSupportCompleteRule,
 }
 
+pub const RNA_READ_BATCH_MAP_REPORT_SCHEMA: &str = "gentle.rna_read_batch_map_report.v1";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadBatchMapSampleStatus {
+    #[default]
+    Ok,
+    Failed,
+    NeedsPreparation,
+}
+
+impl RnaReadBatchMapSampleStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Failed => "failed",
+            Self::NeedsPreparation => "needs_preparation",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadBatchMapSampleRow {
+    pub sample_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_description: Option<String>,
+    pub status: RnaReadBatchMapSampleStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sra_accession: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_id: Option<String>,
+    pub seq_id: String,
+    pub seed_feature_id: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elapsed_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_support_summary_json_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_support_audit_json_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concatemer_json_path: Option<String>,
+    pub read_count_total: usize,
+    pub read_count_seed_passed: usize,
+    pub read_count_aligned: usize,
+    pub seed_pass_fraction: f64,
+    pub aligned_fraction: f64,
+    pub mean_read_length_bp: f64,
+    #[serde(default)]
+    pub origin_class_counts: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub requested_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub matched_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub missing_gene_ids: Vec<String>,
+    pub aligned_base_count: usize,
+    pub accepted_target_count: usize,
+    pub accepted_target_fraction_total: f64,
+    pub accepted_target_fraction_aligned: f64,
+    pub aligned_other_gene_count: usize,
+    pub aligned_other_gene_fraction_aligned: f64,
+    pub fragment_count: usize,
+    pub complete_count: usize,
+    pub complete_strict_count: usize,
+    pub complete_exact_count: usize,
+    pub mean_assigned_read_length_bp: f64,
+    pub isoform_support_count: usize,
+    pub concatemer_inspected_count: usize,
+    pub concatemer_suspicious_count: usize,
+    pub concatemer_strong_count: usize,
+    pub concatemer_multi_gene_fragment_count: usize,
+    pub target_partner_gene_fragment_count: usize,
+    pub internal_adapter_match_count: usize,
+    pub disjoint_secondary_mapping_count: usize,
+    pub low_primary_coverage_count: usize,
+    pub internal_poly_a_count: usize,
+    pub internal_poly_t_count: usize,
+    pub phase1_partial_origin_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadBatchIsoformSupportRow {
+    pub sample_id: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub gene_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_feature_id: Option<usize>,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub aligned_count: usize,
+    pub fragment_count: usize,
+    pub complete_count: usize,
+    pub complete_strict_count: usize,
+    pub complete_exact_count: usize,
+    pub mean_read_length_bp: f64,
+    pub mean_identity_fraction: f64,
+    pub mean_query_coverage_fraction: f64,
+    pub exon_support_json: String,
+    pub exon_pair_support_json: String,
+    pub direct_transition_support_json: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadBatchConcatemerPartnerRow {
+    pub sample_id: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub partner_kind: String,
+    pub gene_id: String,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub suspicious_read_count: usize,
+    pub fragment_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadBatchMapSraPreparationRow {
+    pub sample_id: String,
+    pub sra_accession: String,
+    pub planned_fasta_path: String,
+    pub preparation_command: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadBatchMapReport {
+    pub schema: String,
+    pub manifest_path: String,
+    pub out_dir: String,
+    pub generated_at_unix_ms: u128,
+    pub seq_id: String,
+    pub seed_feature_id: usize,
+    #[serde(default)]
+    pub requested_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub target_gene_ids: Vec<String>,
+    pub profile: String,
+    pub input_format: String,
+    pub scope: String,
+    pub origin_mode: String,
+    pub report_mode: String,
+    pub align_selection: String,
+    pub complete_rule: String,
+    pub max_secondary_mappings: usize,
+    pub continue_on_error: bool,
+    pub batch_report_json_path: String,
+    pub batch_summary_tsv_path: String,
+    pub sample_sheet_tsv_path: String,
+    pub isoform_support_tsv_path: String,
+    pub concatemer_partner_summary_tsv_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sra_preparation_plan_tsv_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sra_preparation_commands_sh_path: Option<String>,
+    pub sample_count: usize,
+    pub ok_count: usize,
+    pub failed_count: usize,
+    pub needs_preparation_count: usize,
+    #[serde(default)]
+    pub rows: Vec<RnaReadBatchMapSampleRow>,
+    #[serde(default)]
+    pub isoform_support_rows: Vec<RnaReadBatchIsoformSupportRow>,
+    #[serde(default)]
+    pub concatemer_partner_rows: Vec<RnaReadBatchConcatemerPartnerRow>,
+    #[serde(default)]
+    pub sra_preparation_rows: Vec<RnaReadBatchMapSraPreparationRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadTargetQualityComparisonEntry {
