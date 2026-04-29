@@ -3231,6 +3231,7 @@ impl GENtleApp {
         target.show_cds_features = source.show_cds_features;
         target.show_gene_features = source.show_gene_features;
         target.show_mrna_features = source.show_mrna_features;
+        target.show_repeat_features = source.show_repeat_features;
         target.show_tfbs = source.show_tfbs;
         target.regulatory_tracks_near_baseline = source.regulatory_tracks_near_baseline;
         target.regulatory_feature_max_view_span_bp = source.regulatory_feature_max_view_span_bp;
@@ -6384,6 +6385,7 @@ Error: `{err}`"
         display.show_cds_features.hash(&mut hasher);
         display.show_gene_features.hash(&mut hasher);
         display.show_mrna_features.hash(&mut hasher);
+        display.show_repeat_features.hash(&mut hasher);
         display.show_tfbs.hash(&mut hasher);
         display.regulatory_tracks_near_baseline.hash(&mut hasher);
         display
@@ -15746,6 +15748,8 @@ Error: `{err}`"
                 tfbs_track_similarity: None,
                 multi_gene_promoter_tfbs: None,
                 repeat_annotation_query: None,
+                sequence_repeat_overlaps: None,
+                repeat_feature_materialization: None,
                 repeat_environment_cohort: None,
                 window_cohort_tfbs: None,
                 tfbs_hit_scan: None,
@@ -40724,6 +40728,7 @@ Error: `{err}`"
         self.configuration_graphics.show_cds_features = defaults.show_cds_features;
         self.configuration_graphics.show_gene_features = defaults.show_gene_features;
         self.configuration_graphics.show_mrna_features = defaults.show_mrna_features;
+        self.configuration_graphics.show_repeat_features = defaults.show_repeat_features;
         self.configuration_graphics.show_tfbs = defaults.show_tfbs;
         self.configuration_graphics.regulatory_tracks_near_baseline =
             defaults.regulatory_tracks_near_baseline;
@@ -41543,6 +41548,15 @@ Error: `{err}`"
             .checkbox(
                 &mut self.configuration_graphics.show_mrna_features,
                 "Show mRNA features",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_repeat_features,
+                "Show repeat features",
+            )
+            .on_hover_text(
+                "Show RepeatMasker/rmsk-derived repeat_region and mobile-element features",
             )
             .changed();
         changed |= ui
@@ -43819,6 +43833,7 @@ Error: `{err}`"
                     DisplayTarget::CdsFeatures => "CDS features",
                     DisplayTarget::GeneFeatures => "Gene features",
                     DisplayTarget::MrnaFeatures => "mRNA features",
+                    DisplayTarget::RepeatFeatures => "Repeat features",
                     DisplayTarget::ConstructReasoningOverlay => "Construct reasoning overlay",
                     DisplayTarget::Tfbs => "TFBS",
                     DisplayTarget::RestrictionEnzymes => "Restriction enzymes",
@@ -53232,6 +53247,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 tfbs_track_similarity: None,
                 multi_gene_promoter_tfbs: None,
                 repeat_annotation_query: None,
+                sequence_repeat_overlaps: None,
+                repeat_feature_materialization: None,
                 repeat_environment_cohort: None,
                 window_cohort_tfbs: None,
                 tfbs_hit_scan: None,
@@ -53327,6 +53344,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 tfbs_track_similarity: None,
                 multi_gene_promoter_tfbs: None,
                 repeat_annotation_query: None,
+                sequence_repeat_overlaps: None,
+                repeat_feature_materialization: None,
                 repeat_environment_cohort: None,
                 window_cohort_tfbs: None,
                 tfbs_hit_scan: None,
@@ -53407,6 +53426,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 tfbs_track_similarity: None,
                 multi_gene_promoter_tfbs: None,
                 repeat_annotation_query: None,
+                sequence_repeat_overlaps: None,
+                repeat_feature_materialization: None,
                 repeat_environment_cohort: None,
                 window_cohort_tfbs: None,
                 tfbs_hit_scan: None,
@@ -53492,6 +53513,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             tfbs_track_similarity: None,
             multi_gene_promoter_tfbs: None,
             repeat_annotation_query: None,
+            sequence_repeat_overlaps: None,
+            repeat_feature_materialization: None,
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,

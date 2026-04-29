@@ -1865,6 +1865,8 @@ mod tests {
             tfbs_track_similarity: None,
             multi_gene_promoter_tfbs: None,
             repeat_annotation_query: None,
+            sequence_repeat_overlaps: None,
+            repeat_feature_materialization: None,
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
@@ -4835,6 +4837,8 @@ mod tests {
                 tfbs_track_similarity: None,
                 multi_gene_promoter_tfbs: None,
                 repeat_annotation_query: None,
+                sequence_repeat_overlaps: None,
+                repeat_feature_materialization: None,
                 repeat_environment_cohort: None,
                 window_cohort_tfbs: None,
                 tfbs_hit_scan: None,
@@ -12762,6 +12766,7 @@ struct FeatureTreeCacheKey {
     show_cds_features: bool,
     show_gene_features: bool,
     show_mrna_features: bool,
+    show_repeat_features: bool,
     show_contextual_transcript_features: bool,
     show_tfbs: bool,
     tfbs_display_criteria: TfbsDisplayCriteria,
@@ -12794,6 +12799,8 @@ struct SequencePanelLayoutConfig {
 #[derive(Clone, Debug, Default)]
 struct LayerVisibilityCounts {
     feature_kind_counts: HashMap<String, usize>,
+    repeat_feature_kind_counts: HashMap<String, usize>,
+    repeat_feature_count: usize,
     construct_reasoning_evidence_count: usize,
     contextual_transcript_feature_count: usize,
     regulatory_feature_count: usize,
@@ -12820,6 +12827,10 @@ impl LayerVisibilityCounts {
             + self.kind_count("PROTEIN_BIND")
     }
 
+    fn repeat_count(&self) -> usize {
+        self.repeat_feature_count
+    }
+
     fn construct_reasoning_evidence_count(&self) -> usize {
         self.construct_reasoning_evidence_count
     }
@@ -12836,6 +12847,7 @@ impl LayerVisibilityCounts {
 #[derive(Clone, Debug)]
 struct DeclutterSnapshot {
     show_tfbs: bool,
+    show_repeat_features: bool,
     show_restriction_enzymes: bool,
     show_gc_contents: bool,
     show_open_reading_frames: bool,
@@ -14879,6 +14891,13 @@ impl MainAreaDna {
                 if kind.is_empty() {
                     continue;
                 }
+                if RenderDna::is_repeat_feature(feature) {
+                    counts.repeat_feature_count = counts.repeat_feature_count.saturating_add(1);
+                    *counts
+                        .repeat_feature_kind_counts
+                        .entry(kind.clone())
+                        .or_insert(0) += 1;
+                }
                 let is_contextual_transcript = RenderDna::is_contextual_transcript_feature(feature);
                 if is_contextual_transcript {
                     counts.contextual_transcript_feature_count =
@@ -15001,6 +15020,7 @@ impl MainAreaDna {
         show_cds_features: bool,
         show_gene_features: bool,
         show_mrna_features: bool,
+        show_repeat_features: bool,
         show_tfbs: bool,
         show_restriction_enzymes: bool,
         show_gc_contents: bool,
@@ -15014,6 +15034,7 @@ impl MainAreaDna {
             display.set_show_cds_features(show_cds_features);
             display.set_show_gene_features(show_gene_features);
             display.set_show_mrna_features(show_mrna_features);
+            display.set_show_repeat_features(show_repeat_features);
             display.set_show_tfbs(show_tfbs);
             display.set_show_restriction_enzyme_sites(show_restriction_enzymes);
             display.set_show_gc_contents(show_gc_contents);
@@ -15026,6 +15047,7 @@ impl MainAreaDna {
         self.set_display_visibility(DisplayTarget::CdsFeatures, show_cds_features);
         self.set_display_visibility(DisplayTarget::GeneFeatures, show_gene_features);
         self.set_display_visibility(DisplayTarget::MrnaFeatures, show_mrna_features);
+        self.set_display_visibility(DisplayTarget::RepeatFeatures, show_repeat_features);
         self.set_display_visibility(DisplayTarget::Tfbs, show_tfbs);
         self.set_display_visibility(DisplayTarget::RestrictionEnzymes, show_restriction_enzymes);
         self.set_display_visibility(DisplayTarget::GcContents, show_gc_contents);
@@ -15075,6 +15097,7 @@ impl MainAreaDna {
                 true,
                 true,
                 true,
+                true,
                 false,
                 false,
                 true,
@@ -15084,6 +15107,7 @@ impl MainAreaDna {
                 hidden_feature_kinds,
             ),
             MapViewPreset::Cloning => self.apply_display_preset_visibility(
+                true,
                 true,
                 true,
                 true,
@@ -15102,6 +15126,7 @@ impl MainAreaDna {
                 true,
                 true,
                 true,
+                true,
                 false,
                 false,
                 false,
@@ -15114,6 +15139,7 @@ impl MainAreaDna {
                 false,
                 true,
                 false,
+                true,
                 false,
                 false,
                 true,
@@ -15131,6 +15157,20 @@ impl MainAreaDna {
         !matches!(kind, "CDS" | "GENE" | "MRNA")
     }
 
+    fn is_repeat_feature_kind_for_layer_toggle(kind: &str) -> bool {
+        matches!(
+            kind.trim().to_ascii_uppercase().as_str(),
+            "REPEAT_REGION"
+                | "MOBILE_ELEMENT"
+                | "LTR"
+                | "SINE"
+                | "LINE"
+                | "SATELLITE"
+                | "SIMPLE_REPEAT"
+                | "LOW_COMPLEXITY"
+        )
+    }
+
     fn visible_feature_noise_metrics(
         &self,
         counts: &LayerVisibilityCounts,
@@ -15140,6 +15180,7 @@ impl MainAreaDna {
             show_cds,
             show_gene,
             show_mrna,
+            show_repeat,
             show_tfbs,
             show_restriction_enzymes,
             show_open_reading_frames,
@@ -15156,6 +15197,7 @@ impl MainAreaDna {
                     display.show_cds_features_effective(),
                     display.show_gene_features(),
                     display.show_mrna_features(),
+                    display.show_repeat_features(),
                     display.show_tfbs(),
                     display.show_restriction_enzyme_sites(),
                     display.show_open_reading_frames(),
@@ -15166,6 +15208,7 @@ impl MainAreaDna {
                 )
             })
             .unwrap_or((
+                true,
                 true,
                 true,
                 true,
@@ -15188,6 +15231,19 @@ impl MainAreaDna {
             if hidden_feature_kinds.contains(kind) {
                 continue;
             }
+            let repeat_count = counts
+                .repeat_feature_kind_counts
+                .get(kind)
+                .copied()
+                .unwrap_or(0);
+            let count = if show_repeat {
+                *count
+            } else {
+                (*count).saturating_sub(repeat_count)
+            };
+            if count == 0 {
+                continue;
+            }
             let visible = match kind.as_str() {
                 "CDS" => show_cds,
                 "GENE" => show_gene,
@@ -15198,15 +15254,18 @@ impl MainAreaDna {
             if !visible {
                 continue;
             }
-            visible_feature_count = visible_feature_count.saturating_add(*count);
+            visible_feature_count = visible_feature_count.saturating_add(count);
             if Self::is_low_value_feature_kind(kind) {
-                low_value_visible_count = low_value_visible_count.saturating_add(*count);
+                low_value_visible_count = low_value_visible_count.saturating_add(count);
             }
         }
 
         let mut noise_score = low_value_visible_count;
         if show_tfbs {
             noise_score = noise_score.saturating_add(counts.tfbs_count());
+        }
+        if show_repeat {
+            noise_score = noise_score.saturating_add(counts.repeat_count() / 2);
         }
         if show_restriction_enzymes {
             noise_score = noise_score.saturating_add(counts.restriction_site_count / 2);
@@ -15227,6 +15286,7 @@ impl MainAreaDna {
         if let Some(snapshot) = self.declutter_snapshot.take() {
             if let Ok(mut display) = self.dna_display.write() {
                 display.set_show_tfbs(snapshot.show_tfbs);
+                display.set_show_repeat_features(snapshot.show_repeat_features);
                 display.set_show_restriction_enzyme_sites(snapshot.show_restriction_enzymes);
                 display.set_show_gc_contents(snapshot.show_gc_contents);
                 display.set_show_open_reading_frames(snapshot.show_open_reading_frames);
@@ -15236,6 +15296,10 @@ impl MainAreaDna {
                 display.set_hidden_feature_kinds(snapshot.hidden_feature_kinds);
             }
             self.set_display_visibility(DisplayTarget::Tfbs, snapshot.show_tfbs);
+            self.set_display_visibility(
+                DisplayTarget::RepeatFeatures,
+                snapshot.show_repeat_features,
+            );
             self.set_display_visibility(
                 DisplayTarget::RestrictionEnzymes,
                 snapshot.show_restriction_enzymes,
@@ -15274,6 +15338,7 @@ impl MainAreaDna {
             .ok()
             .map(|display| DeclutterSnapshot {
                 show_tfbs: display.show_tfbs(),
+                show_repeat_features: display.show_repeat_features(),
                 show_restriction_enzymes: display.show_restriction_enzyme_sites(),
                 show_gc_contents: display.show_gc_contents(),
                 show_open_reading_frames: display.show_open_reading_frames(),
@@ -15294,6 +15359,7 @@ impl MainAreaDna {
         }
         if let Ok(mut display) = self.dna_display.write() {
             display.set_show_tfbs(false);
+            display.set_show_repeat_features(false);
             display.set_show_restriction_enzyme_sites(false);
             display.set_show_open_reading_frames(false);
             display.set_show_methylation_sites(false);
@@ -15301,6 +15367,7 @@ impl MainAreaDna {
             display.set_hidden_feature_kinds(hidden_feature_kinds);
         }
         self.set_display_visibility(DisplayTarget::Tfbs, false);
+        self.set_display_visibility(DisplayTarget::RepeatFeatures, false);
         self.set_display_visibility(DisplayTarget::RestrictionEnzymes, false);
         self.set_display_visibility(DisplayTarget::OpenReadingFrames, false);
         self.set_display_visibility(DisplayTarget::MethylationSites, false);
@@ -16337,6 +16404,29 @@ impl MainAreaDna {
                 self.set_display_visibility(DisplayTarget::MrnaFeatures, visible);
             }
 
+            let repeat_active = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_repeat_features();
+            let repeat_count = layer_counts.repeat_count();
+            let repeat_response = ui
+                .selectable_label(repeat_active, format!("Repeats ({repeat_count})"))
+                .on_hover_text(format!(
+                    "Show or hide rmsk/RepeatMasker repeat features ({repeat_count} in current view)"
+                ));
+            if repeat_response.clicked() {
+                let visible = {
+                    let display = self.dna_display.read().expect("DNA display lock poisoned");
+                    !display.show_repeat_features()
+                };
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .set_show_repeat_features(visible);
+                self.set_display_visibility(DisplayTarget::RepeatFeatures, visible);
+            }
+
             let construct_reasoning_active = self
                 .dna_display
                 .read()
@@ -16459,7 +16549,10 @@ impl MainAreaDna {
             for kind in self
                 .feature_kinds_for_toggle_buttons()
                 .into_iter()
-                .filter(|kind| !matches!(kind.as_str(), "CDS" | "GENE" | "MRNA" | "TFBS"))
+                .filter(|kind| {
+                    !matches!(kind.as_str(), "CDS" | "GENE" | "MRNA" | "TFBS")
+                        && !Self::is_repeat_feature_kind_for_layer_toggle(kind)
+                })
             {
                 let visible = self
                     .dna_display
@@ -19538,6 +19631,7 @@ impl MainAreaDna {
         display.set_show_cds_features(settings.show_cds_features);
         display.set_show_gene_features(settings.show_gene_features);
         display.set_show_mrna_features(settings.show_mrna_features);
+        display.set_show_repeat_features(settings.show_repeat_features);
         display.set_show_construct_reasoning_overlay(settings.show_construct_reasoning_overlay);
         display.set_show_tfbs(settings.show_tfbs);
         display.set_tfbs_display_criteria(TfbsDisplayCriteria {
@@ -51004,6 +51098,7 @@ impl MainAreaDna {
             show_cds_features,
             show_gene_features,
             show_mrna_features,
+            show_repeat_features,
             show_contextual_transcript_features,
             show_tfbs,
             tfbs_display_criteria,
@@ -51015,6 +51110,7 @@ impl MainAreaDna {
                 display.show_cds_features_effective(),
                 display.show_gene_features(),
                 display.show_mrna_features(),
+                display.show_repeat_features(),
                 display.show_contextual_transcript_features(),
                 display.show_tfbs(),
                 display.tfbs_display_criteria(),
@@ -51031,6 +51127,7 @@ impl MainAreaDna {
             show_cds_features,
             show_gene_features,
             show_mrna_features,
+            show_repeat_features,
             show_contextual_transcript_features,
             show_tfbs,
             tfbs_display_criteria,
@@ -51064,6 +51161,9 @@ impl MainAreaDna {
                     if !key.show_contextual_transcript_features
                         && RenderDna::is_contextual_transcript_feature(feature)
                     {
+                        return None;
+                    }
+                    if !key.show_repeat_features && RenderDna::is_repeat_feature(feature) {
                         return None;
                     }
                     if key

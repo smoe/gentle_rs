@@ -1126,6 +1126,10 @@ pub enum ShellCommand {
         assembly_database: Option<String>,
         max_records: Option<usize>,
     },
+    ResourcesPrepareUcscRmskIndex {
+        resource_path: String,
+        output: Option<String>,
+    },
     ResourcesSuggestUcscRmskIndex {
         assembly_database: Option<String>,
         output: Option<String>,
@@ -1871,6 +1875,21 @@ pub enum ShellCommand {
         rmsk_path: String,
         filter: RepeatAnnotationFilter,
         limit: Option<usize>,
+        path: Option<String>,
+    },
+    FeaturesRepeatOverlaps {
+        seq_id: String,
+        rmsk_index_path: String,
+        start_0based: Option<usize>,
+        end_0based_exclusive: Option<usize>,
+        limit: Option<usize>,
+        path: Option<String>,
+    },
+    FeaturesMaterializeRepeats {
+        seq_id: String,
+        rmsk_index_path: String,
+        max_features: Option<usize>,
+        clear_existing: bool,
         path: Option<String>,
     },
     FeaturesRepeatCohort {
@@ -6319,6 +6338,14 @@ impl ShellCommand {
                         .unwrap_or_default()
                 )
             }
+            Self::ResourcesPrepareUcscRmskIndex {
+                resource_path,
+                output,
+            } => format!(
+                "prepare UCSC rmsk interval index from '{}' (output='{}')",
+                resource_path,
+                output.as_deref().unwrap_or("default"),
+            ),
             Self::ResourcesSuggestUcscRmskIndex {
                 assembly_database,
                 output,
@@ -8504,6 +8531,44 @@ impl ShellCommand {
                 limit
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "all".to_string()),
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesRepeatOverlaps {
+                seq_id,
+                rmsk_index_path,
+                start_0based,
+                end_0based_exclusive,
+                limit,
+                path,
+            } => format!(
+                "query indexed rmsk repeat overlaps on '{}' from '{}' (range={}..{}, limit={}, path={})",
+                seq_id,
+                rmsk_index_path,
+                start_0based
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                end_0based_exclusive
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "full".to_string()),
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string()),
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesMaterializeRepeats {
+                seq_id,
+                rmsk_index_path,
+                max_features,
+                clear_existing,
+                path,
+            } => format!(
+                "materialize indexed rmsk repeats on '{}' from '{}' (max_features={}, clear_existing={}, path={})",
+                seq_id,
+                rmsk_index_path,
+                max_features
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string()),
+                clear_existing,
                 path.as_deref().unwrap_or("-"),
             ),
             Self::FeaturesRepeatCohort {
@@ -18124,6 +18189,49 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         max_records,
                     })
                 }
+                "prepare-ucsc-rmsk-index" | "index-ucsc-rmsk" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources prepare-ucsc-rmsk-index requires RESOURCE.rmsk.json"
+                                .to_string(),
+                        );
+                    }
+                    let resource_path = tokens[2].clone();
+                    let mut output: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources prepare-ucsc-rmsk-index"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            value if value.starts_with("--") => {
+                                return Err(format!(
+                                    "Unknown option '{value}' for resources prepare-ucsc-rmsk-index"
+                                ));
+                            }
+                            value => {
+                                if output.is_some() {
+                                    return Err(format!(
+                                        "Unexpected extra positional argument '{value}' for resources prepare-ucsc-rmsk-index"
+                                    ));
+                                }
+                                output = Some(value.to_string());
+                                idx += 1;
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesPrepareUcscRmskIndex {
+                        resource_path,
+                        output,
+                    })
+                }
                 "suggest-ucsc-rmsk-index" | "describe-ucsc-rmsk" => {
                     let mut assembly_database: Option<String> = None;
                     let mut output: Option<String> = None;
@@ -21756,6 +21864,19 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: json!({
                     "message": format!("Synced {} {} rows to '{}'", report.item_count, report.resource, report.output),
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::ResourcesPrepareUcscRmskIndex {
+            resource_path,
+            output,
+        } => {
+            let report = resource_sync::prepare_ucsc_rmsk_index(resource_path, output.as_deref())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!("Prepared {} {} row(s) to '{}'", report.resource, report.item_count, report.output),
                     "report": report,
                 }),
             })
@@ -25816,6 +25937,58 @@ fn execute_feature_scan_command(
                 }),
             })
         }
+        ShellCommand::FeaturesRepeatOverlaps {
+            seq_id,
+            rmsk_index_path,
+            start_0based,
+            end_0based_exclusive,
+            limit,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::QueryRepeatOverlaps {
+                    seq_id: seq_id.clone(),
+                    rmsk_index_path: rmsk_index_path.clone(),
+                    start_0based: *start_0based,
+                    end_0based_exclusive: *end_0based_exclusive,
+                    limit: *limit,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.sequence_repeat_overlaps.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesMaterializeRepeats {
+            seq_id,
+            rmsk_index_path,
+            max_features,
+            clear_existing,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::MaterializeRepeatFeatures {
+                    seq_id: seq_id.clone(),
+                    rmsk_index_path: rmsk_index_path.clone(),
+                    max_features: *max_features,
+                    clear_existing: Some(*clear_existing),
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.repeat_feature_materialization.clone();
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::FeaturesRepeatCohort {
             genome_id,
             rmsk_path,
@@ -29170,6 +29343,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
             | ShellCommand::ResourcesSyncUcscRmsk { .. }
+            | ShellCommand::ResourcesPrepareUcscRmskIndex { .. }
             | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
             | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
             | ShellCommand::ResourcesBenchmarkJaspar { .. }
@@ -29345,6 +29519,8 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
             | ShellCommand::FeaturesTfbsScan { .. }
             | ShellCommand::FeaturesRepeatQuery { .. }
+            | ShellCommand::FeaturesRepeatOverlaps { .. }
+            | ShellCommand::FeaturesMaterializeRepeats { .. }
             | ShellCommand::FeaturesRepeatCohort { .. }
             | ShellCommand::FeaturesWindowCohortTfbs { .. }
     ) {
@@ -29597,6 +29773,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesTfbsScoreTrackCorrelationSvg { .. }
         | ShellCommand::FeaturesTfbsScan { .. }
         | ShellCommand::FeaturesRepeatQuery { .. }
+        | ShellCommand::FeaturesRepeatOverlaps { .. }
+        | ShellCommand::FeaturesMaterializeRepeats { .. }
         | ShellCommand::FeaturesRepeatCohort { .. }
         | ShellCommand::FeaturesWindowCohortTfbs { .. } => {
             execute_feature_scan_command(engine, command)?
@@ -29793,6 +29971,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesSyncRebase { .. }
         | ShellCommand::ResourcesSyncJaspar { .. }
         | ShellCommand::ResourcesSyncUcscRmsk { .. }
+        | ShellCommand::ResourcesPrepareUcscRmskIndex { .. }
         | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
         | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
         | ShellCommand::ResourcesBenchmarkJaspar { .. }

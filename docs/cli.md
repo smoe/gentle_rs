@@ -1604,6 +1604,7 @@ cargo run --bin gentle_cli -- resources status
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
 cargo run --bin gentle_cli -- resources sync-ucsc-rmsk rmsk.txt.gz data/resources/ucsc.rmsk.hg38.json --assembly hg38
+cargo run --bin gentle_cli -- resources prepare-ucsc-rmsk-index data/resources/ucsc.rmsk.hg38.json data/resources/ucsc.rmsk.hg38.interval-index.json
 cargo run --bin gentle_cli -- resources suggest-ucsc-rmsk-index --assembly hg38 --output rmsk.indexing.json
 cargo run --bin gentle_cli -- resources sync-jaspar-remote-metadata --filter TP --limit 50 data/resources/jaspar.remote_metadata.json
 cargo run --bin gentle_cli -- resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output jaspar.summary.json
@@ -1795,6 +1796,7 @@ Shared shell command:
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
     - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
+    - `resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]`
     - `resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]`
     - `resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]`
     - `resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]`
@@ -1886,6 +1888,8 @@ Shared shell command:
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
     - `features repeat-query GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path FILE.json]`
+    - `features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]`
+    - `features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]`
     - `features repeat-cohort GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--geometry repeat_midpoint|transcript_5utr_start|pol2_promoter_upstream|cds_stop_context] [--upstream-bp N] [--downstream-bp N] [--limit N] [--catalog PATH] [--cache DIR] [--path FILE.json]`
     - `features window-cohort-tfbs COHORT_JSON --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache DIR] [--path FILE.json]`
     - `features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]`
@@ -2399,16 +2403,27 @@ Shared shell command:
         coordinates, plus optional cleavage geometry unless
         `--no-cut-geometry` is set
     - Repeat-cohort helper notes (`features repeat-query`,
+      `features repeat-overlaps`, `features materialize-repeats`,
       `features repeat-cohort`, `features window-cohort-tfbs`):
       - non-mutating structured result schemas:
         `gentle.repeat_annotation_query.v1`,
+        `gentle.sequence_repeat_overlap.v1`,
         `gentle.repeat_environment_cohort.v1`, and
         `gentle.window_cohort_tfbs.v1`
+      - mutating materialization schema:
+        `gentle.repeat_feature_materialization.v1`
       - `--rmsk PATH` accepts UCSC `rmsk.txt` or `rmsk.txt.gz` rows and keeps
         raw `repName`, `repClass`, `repFamily`, strand, genomic span, and
         optional score/divergence fields
       - filters can use raw labels or normalized aliases such as `LINE/L1`,
         `SINE/Alu`, and `LTR/ERV`
+      - `repeat-overlaps` uses a prepared interval index plus the selected
+        sequence's genome anchor provenance to return clipped local repeat
+        spans with strand flipped correctly on reverse anchors
+      - `materialize-repeats` writes those overlaps back as regular
+        `repeat_region` features with UCSC `rmsk_*` and
+        `repName`/`repClass`/`repFamily` qualifiers; omit `--append` to replace
+        prior generated UCSC-rmsk features for the sequence
       - `repeat-cohort` builds one repeat-locus row per selected annotation and
         stores all available geometry frames while marking missing transcript,
         UTR, or CDS-stop context explicitly
@@ -2420,6 +2435,8 @@ Shared shell command:
         composition boundary rather than a pre-bundled GENtle dossier
       - example with a local UCSC file:
         - `gentle_cli shell 'features repeat-query "Human GRCh38 Ensembl 116" --rmsk data/rmsk.txt.gz --alias LINE/L1 --limit 100 --path /tmp/grch38_l1_repeats.json'`
+        - `gentle_cli shell 'features repeat-overlaps grch38_tp53 --index data/resources/ucsc.rmsk.hg38.interval-index.json --range 0..5000 --limit 100 --path /tmp/tp53_repeat_overlaps.json'`
+        - `gentle_cli shell 'features materialize-repeats grch38_tp53 --index data/resources/ucsc.rmsk.hg38.interval-index.json --max-features 1000 --path /tmp/tp53_repeat_materialization.json'`
         - `gentle_cli shell 'features repeat-cohort "Human GRCh38 Ensembl 116" --rmsk data/rmsk.txt.gz --alias LINE/L1 --geometry pol2_promoter_upstream --upstream-bp 2000 --downstream-bp 2000 --limit 50 --path /tmp/grch38_l1_promoter_context.json'`
         - `gentle_cli shell 'features window-cohort-tfbs /tmp/grch38_l1_promoter_context.json --motif SP1 --motif TP73 --score-kind llr_background_tail_log10 --path /tmp/grch38_l1_promoter_tfbs.json'`
     - TFBS/JASPAR direct scan helper notes (`features tfbs-scan`):
@@ -3049,6 +3066,16 @@ Resource sync commands:
     `repClass`, `repFamily`, etc.).
   - `--limit N` is intended for fixtures/smoke checks; a limited output is
     marked `truncated=true` and should not be used as a full assembly resource.
+- `resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]`
+  - Builds `gentle.ucsc_rmsk_interval_index.v1` from a complete normalized
+    resource snapshot.
+  - Default hg38 output:
+    `data/resources/ucsc.rmsk.hg38.interval-index.json`.
+  - The sidecar groups records by chromosome, stores intervals sorted by
+    `(start,end,row_offset)`, and carries class/family and repeat-name lookup
+    dictionaries for deterministic overlap and display filtering.
+  - Truncated snapshots are rejected so smoke-test resources cannot be used as
+    full assembly indexes by accident.
 - `resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]`
   - Emits the source URLs, column schema, and indexing recommendations without
     downloading the full table.

@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-28
+Last updated: 2026-04-29
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -772,14 +772,20 @@ order. Durable architecture constraints and decisions remain in
   - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT] --assembly DB`
     normalizes the 17-column UCSC table into
     `gentle.ucsc_rmsk_resource.v1`
+  - `resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT]` now builds
+    the prepared `gentle.ucsc_rmsk_interval_index.v1` sidecar and rejects
+    truncated snapshots
   - `resources suggest-ucsc-rmsk-index` emits the matching
     `gentle.ucsc_rmsk_descriptor.v1` source/field/index recommendation
     payload without requiring the large table download
   - `resources status` now reports the default hg38 runtime snapshot path,
     UCSC download/schema URLs, validation state, and recommended indexes
-  - near-term implementation target: replace direct JSON scans with a
-    per-assembly `(genoName, bin, genoStart, genoEnd)` interval sidecar plus
-    class/family and repeat-name dictionaries for display filtering
+  - engine/shell operations now query the prepared index against genome-anchored
+    sequence coordinates (`features repeat-overlaps`) and can materialize
+    overlapping rows as generated `repeat_region` features
+    (`features materialize-repeats`)
+  - GUI/SVG display now has a shared `show_repeat_features` layer toggle for
+    RepeatMasker/rmsk-derived repeat features
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
 - Shared engine/shell TFBS region summary path now reports grouped factor

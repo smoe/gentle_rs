@@ -143,6 +143,54 @@ fn resource_fixture_path(name: &str) -> String {
     )
 }
 
+fn write_ucsc_rmsk_interval_index_fixture(root: &Path) -> std::path::PathBuf {
+    let resource_path = root.join("ucsc.rmsk.hg38.json");
+    crate::ucsc_rmsk::write_ucsc_rmsk_resource_snapshot(
+        std::io::Cursor::new(include_str!(
+            "../../test_files/fixtures/resources/ucsc.rmsk.hg38.edge.txt"
+        )),
+        "fixture",
+        "hg38",
+        resource_path.to_string_lossy().as_ref(),
+        None,
+        123,
+    )
+    .expect("write rmsk resource");
+    let index_path = root.join("ucsc.rmsk.hg38.interval-index.json");
+    crate::ucsc_rmsk::write_ucsc_rmsk_interval_index_from_resource(
+        resource_path.to_string_lossy().as_ref(),
+        index_path.to_string_lossy().as_ref(),
+    )
+    .expect("write rmsk interval index");
+    index_path
+}
+
+fn rmsk_anchored_state(seq_id: &str, anchor_strand: &str) -> ProjectState {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        seq_id.to_string(),
+        DNAsequence::from_sequence(&"A".repeat(1000)).expect("valid anchored sequence"),
+    );
+    state.metadata.insert(
+        "provenance".to_string(),
+        serde_json::json!({
+            "genome_extractions": [
+                {
+                    "seq_id": seq_id,
+                    "genome_id": "hg38",
+                    "chromosome": "chr1",
+                    "start_1based": 10001,
+                    "end_1based": 11000,
+                    "anchor_strand": anchor_strand,
+                    "anchor_verified": true,
+                    "recorded_at_unix_ms": 123
+                }
+            ]
+        }),
+    );
+    state
+}
+
 fn write_synthetic_attract_zip(dir: &Path) -> std::path::PathBuf {
     let unique = ATTRACT_RELOAD_TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let case_dir = dir.join(format!("attract_case_{unique}"));
@@ -5045,6 +5093,50 @@ fn parse_features_repeat_query_and_cohort_commands() {
             assert_eq!(catalog_path.as_deref(), Some("assets/genomes.json"));
             assert_eq!(cache_dir.as_deref(), Some("data/genomes"));
             assert_eq!(path.as_deref(), Some("/tmp/line_cohort.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let overlaps = parse_shell_line(
+        "features repeat-overlaps seq_1 --index data/resources/ucsc.rmsk.hg38.interval-index.json --range 10..90 --limit 5 --path /tmp/repeat_overlaps.json",
+    )
+    .expect("parse repeat-overlaps");
+    match overlaps {
+        ShellCommand::FeaturesRepeatOverlaps {
+            seq_id,
+            rmsk_index_path,
+            start_0based,
+            end_0based_exclusive,
+            limit,
+            path,
+        } => {
+            assert_eq!(seq_id, "seq_1");
+            assert!(rmsk_index_path.ends_with("ucsc.rmsk.hg38.interval-index.json"));
+            assert_eq!(start_0based, Some(10));
+            assert_eq!(end_0based_exclusive, Some(90));
+            assert_eq!(limit, Some(5));
+            assert_eq!(path.as_deref(), Some("/tmp/repeat_overlaps.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let materialize = parse_shell_line(
+        "features materialize-repeats seq_1 --index rmsk.interval-index.json --max-features 100 --append --path /tmp/materialized.json",
+    )
+    .expect("parse materialize-repeats");
+    match materialize {
+        ShellCommand::FeaturesMaterializeRepeats {
+            seq_id,
+            rmsk_index_path,
+            max_features,
+            clear_existing,
+            path,
+        } => {
+            assert_eq!(seq_id, "seq_1");
+            assert_eq!(rmsk_index_path, "rmsk.interval-index.json");
+            assert_eq!(max_features, Some(100));
+            assert!(!clear_existing);
+            assert_eq!(path.as_deref(), Some("/tmp/materialized.json"));
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -13162,6 +13254,24 @@ fn parse_resources_suggest_ucsc_rmsk_index_with_options() {
 }
 
 #[test]
+fn parse_resources_prepare_ucsc_rmsk_index_with_output() {
+    let cmd = parse_shell_line(
+        "resources prepare-ucsc-rmsk-index data/resources/ucsc.rmsk.hg38.json --output rmsk.interval-index.json",
+    )
+    .expect("parse resources prepare-ucsc-rmsk-index");
+    match cmd {
+        ShellCommand::ResourcesPrepareUcscRmskIndex {
+            resource_path,
+            output,
+        } => {
+            assert_eq!(resource_path, "data/resources/ucsc.rmsk.hg38.json");
+            assert_eq!(output.as_deref(), Some("rmsk.interval-index.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_resources_summarize_jaspar_with_options() {
     let cmd = parse_shell_line(
         "resources summarize-jaspar --motif SP1 --motifs REST,PATZ1 --random-length 512 --seed 99 --output jaspar.json",
@@ -13478,6 +13588,108 @@ fn execute_resources_sync_ucsc_rmsk_with_local_fixture() {
             .get("repClass")
             .and_then(|v| v.as_str()),
         Some("Simple_repeat")
+    );
+}
+
+#[test]
+fn execute_resources_prepare_ucsc_rmsk_index_with_synced_fixture() {
+    let td = tempdir().expect("tempdir");
+    let resource_path = td.path().join("rmsk.sync.json");
+    let index_path = td.path().join("rmsk.interval-index.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesSyncUcscRmsk {
+            input: resource_fixture_path("ucsc.rmsk.hg38.edge.txt"),
+            output: Some(resource_path.to_string_lossy().to_string()),
+            assembly_database: Some("hg38".to_string()),
+            max_records: None,
+        },
+    )
+    .expect("sync rmsk");
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesPrepareUcscRmskIndex {
+            resource_path: resource_path.to_string_lossy().to_string(),
+            output: Some(index_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute resources prepare-ucsc-rmsk-index");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["report"]["resource"].as_str(),
+        Some("ucsc-rmsk-interval-index")
+    );
+    assert_eq!(out.output["report"]["item_count"].as_u64(), Some(4));
+    let written = fs::read_to_string(&index_path).expect("read rmsk index");
+    let json: serde_json::Value = serde_json::from_str(&written).expect("parse index");
+    assert_eq!(
+        json.get("schema").and_then(|v| v.as_str()),
+        Some(crate::ucsc_rmsk::UCSC_RMSK_INTERVAL_INDEX_SCHEMA)
+    );
+    assert_eq!(
+        json["chromosomes"]["chr1"].as_array().map(Vec::len),
+        Some(4)
+    );
+}
+
+#[test]
+fn execute_features_repeat_overlaps_and_materialize_repeats_with_rmsk_index() {
+    let td = tempdir().expect("tempdir");
+    let index_path = write_ucsc_rmsk_interval_index_fixture(td.path());
+    let mut engine = GentleEngine::from_state(rmsk_anchored_state("anchored", "+"));
+
+    let overlaps = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesRepeatOverlaps {
+            seq_id: "anchored".to_string(),
+            rmsk_index_path: index_path.to_string_lossy().to_string(),
+            start_0based: Some(400),
+            end_0based_exclusive: Some(700),
+            limit: None,
+            path: None,
+        },
+    )
+    .expect("execute features repeat-overlaps");
+    assert!(!overlaps.state_changed);
+    assert_eq!(
+        overlaps.output["report"]["rows"][0]["local_start_0based"].as_u64(),
+        Some(400)
+    );
+    assert_eq!(
+        overlaps.output["report"]["rows"][1]["repeat"]["rep_name"].as_str(),
+        Some("TAR1")
+    );
+
+    let materialized = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesMaterializeRepeats {
+            seq_id: "anchored".to_string(),
+            rmsk_index_path: index_path.to_string_lossy().to_string(),
+            max_features: Some(2),
+            clear_existing: true,
+            path: None,
+        },
+    )
+    .expect("execute features materialize-repeats");
+    assert!(materialized.state_changed);
+    assert_eq!(
+        materialized.output["report"]["added_feature_count"].as_u64(),
+        Some(2)
+    );
+    let dna = engine
+        .state()
+        .sequences
+        .get("anchored")
+        .expect("anchored sequence");
+    assert_eq!(dna.features().len(), 2);
+    assert_eq!(dna.features()[0].kind.to_string(), "repeat_region");
+    assert_eq!(
+        dna.features()[0].qualifier_values("rmsk_name").next(),
+        Some("(TAACCC)n")
     );
 }
 

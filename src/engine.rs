@@ -488,6 +488,9 @@ const TFBS_REGION_SUMMARY_SCHEMA: &str = "gentle.tfbs_region_summary.v1";
 const TFBS_SCORE_TRACK_REPORT_SCHEMA: &str = "gentle.tfbs_score_tracks.v1";
 const MULTI_GENE_PROMOTER_TFBS_REPORT_SCHEMA: &str = "gentle.multi_gene_promoter_tfbs.v1";
 const REPEAT_ANNOTATION_QUERY_REPORT_SCHEMA: &str = "gentle.repeat_annotation_query.v1";
+const SEQUENCE_REPEAT_OVERLAP_REPORT_SCHEMA: &str = "gentle.sequence_repeat_overlap.v1";
+const REPEAT_FEATURE_MATERIALIZATION_REPORT_SCHEMA: &str =
+    "gentle.repeat_feature_materialization.v1";
 const REPEAT_ENVIRONMENT_COHORT_REPORT_SCHEMA: &str = "gentle.repeat_environment_cohort.v1";
 const WINDOW_COHORT_TFBS_REPORT_SCHEMA: &str = "gentle.window_cohort_tfbs.v1";
 const JASPAR_ENTRY_EXPERT_VIEW_SCHEMA: &str = "gentle.jaspar_entry_expert.v1";
@@ -3258,6 +3261,28 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    QueryRepeatOverlaps {
+        seq_id: SeqId,
+        rmsk_index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        end_0based_exclusive: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    MaterializeRepeatFeatures {
+        seq_id: SeqId,
+        rmsk_index_path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_features: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clear_existing: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     BuildRepeatEnvironmentCohort {
         genome_id: String,
         rmsk_path: String,
@@ -5254,6 +5279,10 @@ impl GentleEngine {
                 "FilterContainerByMolecularWeight".to_string(),
                 "Digest".to_string(),
                 "FindRestrictionSites".to_string(),
+                "QueryRepeatAnnotations".to_string(),
+                "QueryRepeatOverlaps".to_string(),
+                "MaterializeRepeatFeatures".to_string(),
+                "BuildRepeatEnvironmentCohort".to_string(),
                 "MergeContainers".to_string(),
                 "Ligation".to_string(),
                 "Pcr".to_string(),
@@ -7415,6 +7444,9 @@ impl GentleEngine {
                 | Operation::InspectRnaReadGeneSupport { .. }
                 | Operation::QueryProteinResidueGenomicCoordinates { .. }
                 | Operation::FindRestrictionSites { .. }
+                | Operation::QueryRepeatAnnotations { .. }
+                | Operation::QueryRepeatOverlaps { .. }
+                | Operation::BuildRepeatEnvironmentCohort { .. }
                 | Operation::SummarizeTfbsRegion { .. }
                 | Operation::SummarizeTfbsScoreTracks { .. }
                 | Operation::SummarizeTfbsTrackSimilarity { .. }
@@ -10705,6 +10737,7 @@ impl GentleEngine {
             "cds" => &["CDS"],
             "promoter" => &["PROMOTER"],
             "variation" => &["VARIATION"],
+            "repeat" => &["REPEAT_REGION", "MOBILE_ELEMENT"],
             "tfbs" => &["TFBS"],
             _ => &[],
         }
@@ -10726,6 +10759,9 @@ impl GentleEngine {
             }
             classes.push("promoter".to_string());
             classes.push("variation".to_string());
+            if display.show_repeat_features {
+                classes.push("repeat".to_string());
+            }
             if display.show_tfbs {
                 classes.push("tfbs".to_string());
             }

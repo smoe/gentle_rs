@@ -33,29 +33,7 @@ impl GentleEngine {
         rep_class: &str,
         rep_family: &str,
     ) -> String {
-        let class = rep_class.trim();
-        let family = rep_family.trim();
-        let name = rep_name.trim();
-        let class_upper = class.to_ascii_uppercase();
-        let family_upper = family.to_ascii_uppercase();
-        let name_upper = name.to_ascii_uppercase();
-        if class_upper == "SINE" && (family_upper.contains("ALU") || name_upper.contains("ALU")) {
-            return "SINE/Alu".to_string();
-        }
-        if class_upper == "LINE" && (family_upper.starts_with("L1") || name_upper.starts_with("L1"))
-        {
-            return "LINE/L1".to_string();
-        }
-        if class_upper == "LTR" && (family_upper.contains("ERV") || name_upper.contains("ERV")) {
-            return "LTR/ERV".to_string();
-        }
-        if !class.is_empty() && !family.is_empty() {
-            format!("{class}/{family}")
-        } else if !class.is_empty() {
-            class.to_string()
-        } else {
-            name.to_string()
-        }
+        crate::ucsc_rmsk::normalized_repeat_alias(rep_name, rep_class, rep_family)
     }
 
     fn parse_optional_f64(raw: Option<&str>) -> Option<f64> {
@@ -286,6 +264,333 @@ impl GentleEngine {
             malformed_examples,
             rows,
             warnings: vec![],
+        })
+    }
+
+    fn repeat_record_from_indexed_interval(
+        genome_id: &str,
+        interval: &crate::ucsc_rmsk::UcscRmskIndexedInterval,
+    ) -> RepeatAnnotationRecord {
+        RepeatAnnotationRecord {
+            annotation_id: format!(
+                "{}:{}-{}:{}:{}",
+                interval.chromosome,
+                interval.start_0based,
+                interval.end_0based_exclusive,
+                interval.rep_name,
+                interval.source_row + 1
+            ),
+            genome_id: genome_id.to_string(),
+            chromosome: interval.chromosome.clone(),
+            start_0based: interval.start_0based,
+            end_0based_exclusive: interval.end_0based_exclusive,
+            start_1based: interval.start_0based.saturating_add(1),
+            end_1based: interval.end_0based_exclusive,
+            strand: interval.strand.clone(),
+            rep_name: interval.rep_name.clone(),
+            rep_class: interval.rep_class.clone(),
+            rep_family: interval.rep_family.clone(),
+            normalized_alias: interval.normalized_alias.clone(),
+            score: Some(interval.sw_score as f64),
+            milli_div: Some(interval.milli_div as f64),
+            source_line_number: Some(interval.source_row + 1),
+        }
+    }
+
+    fn rmsk_projection_anchor_from_sequence(
+        anchor: &SequenceGenomeAnchorSummary,
+    ) -> crate::ucsc_rmsk::UcscRmskProjectionAnchor {
+        crate::ucsc_rmsk::UcscRmskProjectionAnchor {
+            chromosome: anchor.chromosome.clone(),
+            start_1based: anchor.start_1based,
+            end_1based: anchor.end_1based,
+            strand: anchor.strand,
+        }
+    }
+
+    pub fn query_sequence_repeat_overlaps(
+        &self,
+        seq_id: &str,
+        rmsk_index_path: &str,
+        start_0based: Option<usize>,
+        end_0based_exclusive: Option<usize>,
+        limit: Option<usize>,
+    ) -> Result<SequenceRepeatOverlapReport, EngineError> {
+        let seq_id = seq_id.trim();
+        if seq_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "QueryRepeatOverlaps requires non-empty seq_id".to_string(),
+            });
+        }
+        if rmsk_index_path.trim().is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "QueryRepeatOverlaps requires non-empty rmsk_index_path".to_string(),
+            });
+        }
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let sequence_length = dna.len();
+        let start = start_0based.unwrap_or(0).min(sequence_length);
+        let end = end_0based_exclusive
+            .unwrap_or(sequence_length)
+            .min(sequence_length);
+        if end < start {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "QueryRepeatOverlaps requires end >= start (got {}..{})",
+                    start, end
+                ),
+            });
+        }
+        let anchor = self.sequence_genome_anchor_summary(seq_id)?;
+        let index =
+            crate::ucsc_rmsk::read_ucsc_rmsk_interval_index(rmsk_index_path).map_err(|e| {
+                EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: e,
+                }
+            })?;
+        let projection_anchor = Self::rmsk_projection_anchor_from_sequence(&anchor);
+        let overlaps = crate::ucsc_rmsk::project_index_overlaps_to_anchor(
+            &index,
+            &projection_anchor,
+            Some(start),
+            Some(end),
+            None,
+        );
+        let matched_repeat_count = overlaps.len();
+        let effective_limit = limit.unwrap_or(usize::MAX);
+        let rows = overlaps
+            .into_iter()
+            .take(effective_limit)
+            .map(|overlap| SequenceRepeatOverlapRow {
+                repeat: Self::repeat_record_from_indexed_interval(
+                    &anchor.genome_id,
+                    &overlap.interval,
+                ),
+                local_start_0based: overlap.local_start_0based,
+                local_end_0based_exclusive: overlap.local_end_0based_exclusive,
+                local_strand: overlap.local_strand,
+                genomic_start_0based: overlap.genomic_start_0based,
+                genomic_end_0based_exclusive: overlap.genomic_end_0based_exclusive,
+                overlap_bp: overlap.overlap_bp,
+                clipped: overlap.clipped,
+            })
+            .collect::<Vec<_>>();
+        Ok(SequenceRepeatOverlapReport {
+            schema: SEQUENCE_REPEAT_OVERLAP_REPORT_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            rmsk_index_path: rmsk_index_path.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            genome_anchor: Some(anchor),
+            query_start_0based: Some(start),
+            query_end_0based_exclusive: Some(end),
+            matched_repeat_count,
+            returned_repeat_count: rows.len(),
+            rows,
+            warnings: vec![],
+        })
+    }
+
+    fn is_generated_ucsc_rmsk_feature(feature: &gb_io::seq::Feature) -> bool {
+        feature
+            .qualifier_values("gentle_generated")
+            .any(|value| value.eq_ignore_ascii_case("ucsc_rmsk"))
+    }
+
+    fn repeat_feature_annotation_id(
+        interval: &crate::ucsc_rmsk::UcscRmskIndexedInterval,
+    ) -> String {
+        format!(
+            "{}:{}-{}:{}:{}",
+            interval.chromosome,
+            interval.start_0based,
+            interval.end_0based_exclusive,
+            interval.rep_name,
+            interval.source_row + 1
+        )
+    }
+
+    fn build_ucsc_rmsk_feature(
+        overlap: &crate::ucsc_rmsk::UcscRmskProjectedOverlap,
+        rmsk_index_path: &str,
+    ) -> gb_io::seq::Feature {
+        let mut location = gb_io::seq::Location::simple_range(
+            overlap.local_start_0based as i64,
+            overlap.local_end_0based_exclusive as i64,
+        );
+        if overlap.local_strand == "-" {
+            location = gb_io::seq::Location::Complement(Box::new(location));
+        }
+        let interval = &overlap.interval;
+        let annotation_id = Self::repeat_feature_annotation_id(interval);
+        let label = if interval.rep_family.trim().is_empty() {
+            interval.rep_name.clone()
+        } else {
+            format!("{} ({})", interval.rep_name, interval.rep_family)
+        };
+        gb_io::seq::Feature {
+            kind: "repeat_region".into(),
+            location,
+            qualifiers: vec![
+                ("label".into(), Some(label)),
+                (
+                    "note".into(),
+                    Some("UCSC RepeatMasker rmsk interval".to_string()),
+                ),
+                ("gentle_generated".into(), Some("ucsc_rmsk".to_string())),
+                (
+                    "gentle_feature_source".into(),
+                    Some("ucsc_rmsk".to_string()),
+                ),
+                ("rmsk_index_path".into(), Some(rmsk_index_path.to_string())),
+                ("rmsk_annotation_id".into(), Some(annotation_id)),
+                (
+                    "rmsk_row_offset".into(),
+                    Some(interval.source_row.to_string()),
+                ),
+                ("rmsk_bin".into(), Some(interval.bin.to_string())),
+                ("rmsk_name".into(), Some(interval.rep_name.clone())),
+                ("rmsk_class".into(), Some(interval.rep_class.clone())),
+                ("rmsk_family".into(), Some(interval.rep_family.clone())),
+                ("repName".into(), Some(interval.rep_name.clone())),
+                ("repClass".into(), Some(interval.rep_class.clone())),
+                ("repFamily".into(), Some(interval.rep_family.clone())),
+                ("repeat_name".into(), Some(interval.rep_name.clone())),
+                ("repeat_class".into(), Some(interval.rep_class.clone())),
+                ("repeat_family".into(), Some(interval.rep_family.clone())),
+                (
+                    "repeat_alias".into(),
+                    Some(interval.normalized_alias.clone()),
+                ),
+                ("strand".into(), Some(overlap.local_strand.clone())),
+                ("rmsk_genomic_strand".into(), Some(interval.strand.clone())),
+                ("chromosome".into(), Some(interval.chromosome.clone())),
+                (
+                    "genomic_start_1based".into(),
+                    Some(overlap.genomic_start_0based.saturating_add(1).to_string()),
+                ),
+                (
+                    "genomic_end_1based".into(),
+                    Some(overlap.genomic_end_0based_exclusive.to_string()),
+                ),
+                ("swScore".into(), Some(interval.sw_score.to_string())),
+                ("milliDiv".into(), Some(interval.milli_div.to_string())),
+                ("milliDel".into(), Some(interval.milli_del.to_string())),
+                ("milliIns".into(), Some(interval.milli_ins.to_string())),
+                ("rmsk_clipped".into(), Some(overlap.clipped.to_string())),
+            ],
+        }
+    }
+
+    pub fn materialize_sequence_repeat_features(
+        &mut self,
+        seq_id: &str,
+        rmsk_index_path: &str,
+        max_features: Option<usize>,
+        clear_existing: bool,
+    ) -> Result<RepeatFeatureMaterializationReport, EngineError> {
+        let anchor = self.sequence_genome_anchor_summary(seq_id)?;
+        let projection_anchor = Self::rmsk_projection_anchor_from_sequence(&anchor);
+        let index =
+            crate::ucsc_rmsk::read_ucsc_rmsk_interval_index(rmsk_index_path).map_err(|e| {
+                EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: e,
+                }
+            })?;
+        let overlaps = crate::ucsc_rmsk::project_index_overlaps_to_anchor(
+            &index,
+            &projection_anchor,
+            None,
+            None,
+            None,
+        );
+        let mut warnings = vec![];
+        let matched_repeat_count = overlaps.len();
+        let feature_limit = max_features.unwrap_or(usize::MAX);
+        if matched_repeat_count > feature_limit {
+            warnings.push(format!(
+                "Materialized only the first {} of {} overlapping UCSC rmsk repeat(s)",
+                feature_limit, matched_repeat_count
+            ));
+        }
+        let dna = self
+            .state
+            .sequences
+            .get_mut(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let mut removed_existing_count = 0usize;
+        if clear_existing {
+            let before = dna.features().len();
+            dna.features_mut()
+                .retain(|feature| !Self::is_generated_ucsc_rmsk_feature(feature));
+            removed_existing_count = before.saturating_sub(dna.features().len());
+        }
+        let existing_ids = dna
+            .features()
+            .iter()
+            .filter(|feature| Self::is_generated_ucsc_rmsk_feature(feature))
+            .flat_map(|feature| feature.qualifier_values("rmsk_annotation_id"))
+            .map(str::to_string)
+            .collect::<HashSet<_>>();
+        let sequence_length = dna.len();
+        let mut feature_ids = vec![];
+        let mut skipped_existing_count = 0usize;
+        for row in overlaps.into_iter().take(feature_limit) {
+            let annotation_id = Self::repeat_feature_annotation_id(&row.interval);
+            if row.local_start_0based >= sequence_length
+                || row.local_end_0based_exclusive > sequence_length
+                || row.local_end_0based_exclusive <= row.local_start_0based
+            {
+                warnings.push(format!(
+                    "Skipped repeat '{}' because projected local span {}..{} is outside sequence length {}",
+                    annotation_id,
+                    row.local_start_0based,
+                    row.local_end_0based_exclusive,
+                    sequence_length
+                ));
+                continue;
+            }
+            if !clear_existing && existing_ids.contains(&annotation_id) {
+                skipped_existing_count = skipped_existing_count.saturating_add(1);
+                continue;
+            }
+            let feature_id = dna.features().len();
+            dna.features_mut()
+                .push(Self::build_ucsc_rmsk_feature(&row, rmsk_index_path));
+            feature_ids.push(feature_id);
+        }
+        let added_feature_count = feature_ids.len();
+        Self::prepare_sequence(dna);
+        Ok(RepeatFeatureMaterializationReport {
+            schema: REPEAT_FEATURE_MATERIALIZATION_REPORT_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            rmsk_index_path: rmsk_index_path.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            genome_anchor: Some(anchor),
+            matched_repeat_count,
+            added_feature_count,
+            skipped_existing_count,
+            removed_existing_count,
+            feature_ids,
+            warnings,
         })
     }
 

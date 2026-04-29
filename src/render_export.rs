@@ -917,6 +917,9 @@ fn collect_features(
         if kind == "MRNA" && !display.show_mrna_features {
             continue;
         }
+        if is_repeat_feature(feature) && !display.show_repeat_features {
+            continue;
+        }
         if is_tfbs_feature(feature) {
             if !display.show_tfbs {
                 continue;
@@ -3442,6 +3445,26 @@ mod tests {
         let svg = export_linear_svg(&dna, &DisplaySettings::default());
         assert!(svg.contains("L1PA2 (LINE / L1)"));
         assert!(svg.contains("#2563eb"));
+    }
+
+    #[test]
+    fn linear_svg_export_honors_repeat_feature_visibility() {
+        let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(120)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "repeat_region".into(),
+            location: Location::simple_range(80, 180),
+            qualifiers: vec![
+                ("repName".into(), Some("AluY".to_string())),
+                ("repClass".into(), Some("SINE".to_string())),
+                ("repFamily".into(), Some("Alu".to_string())),
+            ],
+        });
+
+        let mut display = DisplaySettings::default();
+        display.show_repeat_features = false;
+        let svg = export_linear_svg(&dna, &display);
+        assert!(!svg.contains("AluY"));
+        assert!(!svg.contains("SINE / Alu"));
     }
 
     #[test]

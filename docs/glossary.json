@@ -1,5 +1,5 @@
 {
-   "command_count": 369,
+   "command_count": 372,
    "commands": [
       {
          "aliases": [
@@ -1347,6 +1347,20 @@
       },
       {
          "aliases": [
+            "resources index-ucsc-rmsk"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources prepare-ucsc-rmsk-index",
+         "summary": "Build a prepared per-assembly UCSC rmsk interval index sidecar from a complete resource snapshot.",
+         "usage": "resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]"
+      },
+      {
+         "aliases": [
             "resources describe-ucsc-rmsk"
          ],
          "engine_operations": [],
@@ -2647,6 +2661,38 @@
          "path": "features repeat-query",
          "summary": "Query UCSC rmsk repeat annotations by raw repeat labels or normalized aliases.",
          "usage": "features repeat-query GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path FILE.json]"
+      },
+      {
+         "aliases": [
+            "features rmsk-overlaps"
+         ],
+         "engine_operations": [
+            "QueryRepeatOverlaps"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features repeat-overlaps",
+         "summary": "Project prepared UCSC rmsk intervals onto one genome-anchored sequence and report local overlap coordinates.",
+         "usage": "features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]"
+      },
+      {
+         "aliases": [
+            "features materialize-rmsk-repeats"
+         ],
+         "engine_operations": [
+            "MaterializeRepeatFeatures"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features materialize-repeats",
+         "summary": "Materialize prepared UCSC rmsk overlaps as ordinary generated repeat_region features on one genome-anchored sequence.",
+         "usage": "features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]"
       },
       {
          "aliases": [],

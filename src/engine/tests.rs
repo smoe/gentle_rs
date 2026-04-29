@@ -35502,6 +35502,190 @@ fn query_repeat_annotations_parses_ucsc_rmsk_and_filters_line_aliases() {
     assert_eq!(report.rows[0].normalized_alias, "LINE/L1");
 }
 
+fn write_ucsc_rmsk_interval_index_fixture(root: &Path) -> PathBuf {
+    let text = include_str!("../../test_files/fixtures/resources/ucsc.rmsk.hg38.edge.txt");
+    let resource_path = root.join("ucsc.rmsk.hg38.json");
+    crate::ucsc_rmsk::write_ucsc_rmsk_resource_snapshot(
+        std::io::Cursor::new(text),
+        "fixture",
+        "hg38",
+        resource_path.to_string_lossy().as_ref(),
+        None,
+        123,
+    )
+    .expect("write rmsk resource");
+    let index_path = root.join("ucsc.rmsk.hg38.interval-index.json");
+    crate::ucsc_rmsk::write_ucsc_rmsk_interval_index_from_resource(
+        resource_path.to_string_lossy().as_ref(),
+        index_path.to_string_lossy().as_ref(),
+    )
+    .expect("write rmsk interval index");
+    index_path
+}
+
+fn engine_with_rmsk_anchored_sequence(seq_id: &str, anchor_strand: &str) -> GentleEngine {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        seq_id.to_string(),
+        DNAsequence::from_sequence(&"A".repeat(1000)).expect("valid anchored sequence"),
+    );
+    state.metadata.insert(
+        PROVENANCE_METADATA_KEY.to_string(),
+        serde_json::json!({
+            GENOME_EXTRACTIONS_METADATA_KEY: [
+                {
+                    "seq_id": seq_id,
+                    "genome_id": "hg38",
+                    "chromosome": "chr1",
+                    "start_1based": 10001,
+                    "end_1based": 11000,
+                    "anchor_strand": anchor_strand,
+                    "anchor_verified": true,
+                    "recorded_at_unix_ms": 123
+                }
+            ]
+        }),
+    );
+    GentleEngine::from_state(state)
+}
+
+#[test]
+fn query_repeat_overlaps_projects_ucsc_rmsk_rows_to_local_query_span() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_ucsc_rmsk_interval_index_fixture(root.path());
+    let mut engine = engine_with_rmsk_anchored_sequence("anchored_plus", "+");
+
+    let result = engine
+        .apply(Operation::QueryRepeatOverlaps {
+            seq_id: "anchored_plus".to_string(),
+            rmsk_index_path: index_path.to_string_lossy().to_string(),
+            start_0based: Some(400),
+            end_0based_exclusive: Some(700),
+            limit: None,
+            path: None,
+        })
+        .expect("query repeat overlaps");
+
+    let report = result
+        .sequence_repeat_overlaps
+        .expect("repeat overlap report");
+    assert_eq!(report.schema, "gentle.sequence_repeat_overlap.v1");
+    assert_eq!(report.query_start_0based, Some(400));
+    assert_eq!(report.query_end_0based_exclusive, Some(700));
+    assert_eq!(report.matched_repeat_count, 2);
+    assert_eq!(report.rows.len(), 2);
+
+    let first = &report.rows[0];
+    assert_eq!(first.repeat.rep_name, "(TAACCC)n");
+    assert_eq!(first.local_start_0based, 400);
+    assert_eq!(first.local_end_0based_exclusive, 468);
+    assert_eq!(first.local_strand, "+");
+    assert_eq!(first.genomic_start_0based, 10400);
+    assert_eq!(first.genomic_end_0based_exclusive, 10468);
+    assert_eq!(first.overlap_bp, 68);
+    assert!(first.clipped);
+
+    let second = &report.rows[1];
+    assert_eq!(second.repeat.rep_name, "TAR1");
+    assert_eq!(second.repeat.rep_class, "Satellite");
+    assert_eq!(second.local_start_0based, 468);
+    assert_eq!(second.local_end_0based_exclusive, 700);
+    assert_eq!(second.local_strand, "-");
+    assert_eq!(second.genomic_start_0based, 10468);
+    assert_eq!(second.genomic_end_0based_exclusive, 10700);
+    assert_eq!(second.overlap_bp, 232);
+    assert!(second.clipped);
+}
+
+#[test]
+fn materialize_repeat_features_creates_repeat_regions_on_reverse_anchor() {
+    let root = tempdir().expect("tempdir");
+    let index_path = write_ucsc_rmsk_interval_index_fixture(root.path());
+    let mut engine = engine_with_rmsk_anchored_sequence("anchored_minus", "-");
+
+    let result = engine
+        .apply(Operation::MaterializeRepeatFeatures {
+            seq_id: "anchored_minus".to_string(),
+            rmsk_index_path: index_path.to_string_lossy().to_string(),
+            max_features: Some(2),
+            clear_existing: Some(true),
+            path: None,
+        })
+        .expect("materialize repeat features");
+
+    let report = result
+        .repeat_feature_materialization
+        .expect("repeat materialization report");
+    assert_eq!(report.schema, "gentle.repeat_feature_materialization.v1");
+    assert_eq!(report.matched_repeat_count, 2);
+    assert_eq!(report.added_feature_count, 2);
+    assert_eq!(report.feature_ids, vec![0, 1]);
+    assert_eq!(result.changed_seq_ids, vec!["anchored_minus".to_string()]);
+
+    let dna = engine
+        .state()
+        .sequences
+        .get("anchored_minus")
+        .expect("anchored sequence");
+    assert_eq!(dna.features().len(), 2);
+    let first = &dna.features()[0];
+    assert_eq!(first.kind.to_string(), "repeat_region");
+    assert!(crate::feature_location::feature_is_reverse(first));
+    assert_eq!(first.location.find_bounds().expect("bounds"), (532, 1000));
+    assert_eq!(
+        first.qualifier_values("rmsk_name").next(),
+        Some("(TAACCC)n")
+    );
+    assert_eq!(
+        first.qualifier_values("repeat_family").next(),
+        Some("Simple_repeat")
+    );
+    assert_eq!(first.qualifier_values("strand").next(), Some("-"));
+    assert_eq!(
+        first.qualifier_values("rmsk_genomic_strand").next(),
+        Some("+")
+    );
+    assert_eq!(first.qualifier_values("rmsk_clipped").next(), Some("false"));
+    assert_eq!(
+        first.qualifier_values("gentle_generated").next(),
+        Some("ucsc_rmsk")
+    );
+
+    let second = &dna.features()[1];
+    assert!(!crate::feature_location::feature_is_reverse(second));
+    assert_eq!(second.location.find_bounds().expect("bounds"), (0, 532));
+    assert_eq!(second.qualifier_values("rmsk_name").next(), Some("TAR1"));
+    assert_eq!(
+        second.qualifier_values("repeat_class").next(),
+        Some("Satellite")
+    );
+    assert_eq!(second.qualifier_values("strand").next(), Some("+"));
+    assert_eq!(
+        second.qualifier_values("rmsk_genomic_strand").next(),
+        Some("-")
+    );
+    assert_eq!(second.qualifier_values("rmsk_clipped").next(), Some("true"));
+}
+
+#[test]
+fn set_display_visibility_controls_repeat_features() {
+    let mut engine = GentleEngine::default();
+    assert!(engine.state().display.show_repeat_features);
+    let result = engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::RepeatFeatures,
+            visible: false,
+        })
+        .expect("set repeat display visibility");
+    assert!(!engine.state().display.show_repeat_features);
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("repeat_features"))
+    );
+}
+
 #[test]
 fn repeat_transcript_geometry_resolves_5utr_promoter_and_cds_stop_on_both_strands() {
     let repeat_plus = RepeatAnnotationRecord {

@@ -10822,6 +10822,81 @@ impl GentleEngine {
                 ));
                 result.repeat_annotation_query = Some(report);
             }
+            Operation::QueryRepeatOverlaps {
+                seq_id,
+                rmsk_index_path,
+                start_0based,
+                end_0based_exclusive,
+                limit,
+                path,
+            } => {
+                let mut report = self.query_sequence_repeat_overlaps(
+                    &seq_id,
+                    &rmsk_index_path,
+                    start_0based,
+                    end_0based_exclusive,
+                    limit,
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(&report, path, "sequence repeat-overlap report")?;
+                    result.messages.push(format!(
+                        "Wrote repeat-overlap report for '{}' to '{}'",
+                        report.seq_id, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                result.messages.push(format!(
+                    "Repeat-overlap lookup for '{}' returned {} of {} matched interval(s)",
+                    report.seq_id, report.returned_repeat_count, report.matched_repeat_count
+                ));
+                result.sequence_repeat_overlaps = Some(report);
+            }
+            Operation::MaterializeRepeatFeatures {
+                seq_id,
+                rmsk_index_path,
+                max_features,
+                clear_existing,
+                path,
+            } => {
+                let mut report = self.materialize_sequence_repeat_features(
+                    &seq_id,
+                    &rmsk_index_path,
+                    max_features,
+                    clear_existing.unwrap_or(true),
+                )?;
+                report.op_id = Some(result.op_id.clone());
+                report.run_id = Some(run_id.to_string());
+                if let Some(path) = path.as_deref() {
+                    self.write_pretty_json_file(
+                        &report,
+                        path,
+                        "repeat-feature materialization report",
+                    )?;
+                    result.messages.push(format!(
+                        "Wrote repeat-feature materialization report for '{}' to '{}'",
+                        report.seq_id, path
+                    ));
+                }
+                for warning in &report.warnings {
+                    result.warnings.push(warning.clone());
+                }
+                result.messages.push(format!(
+                    "Materialized {} UCSC rmsk repeat feature(s) on '{}' (matched={}, skipped_existing={}, removed_existing={})",
+                    report.added_feature_count,
+                    report.seq_id,
+                    report.matched_repeat_count,
+                    report.skipped_existing_count,
+                    report.removed_existing_count
+                ));
+                if report.added_feature_count > 0 || report.removed_existing_count > 0 {
+                    result.changed_seq_ids.push(report.seq_id.clone());
+                }
+                result.repeat_feature_materialization = Some(report);
+            }
             Operation::BuildRepeatEnvironmentCohort {
                 genome_id,
                 rmsk_path,
@@ -11466,6 +11541,8 @@ impl GentleEngine {
             tfbs_track_similarity: None,
             multi_gene_promoter_tfbs: None,
             repeat_annotation_query: None,
+            sequence_repeat_overlaps: None,
+            repeat_feature_materialization: None,
             repeat_environment_cohort: None,
             window_cohort_tfbs: None,
             tfbs_hit_scan: None,
@@ -11489,6 +11566,8 @@ impl GentleEngine {
             &op,
             Operation::FindRestrictionSites { .. }
                 | Operation::QueryRepeatAnnotations { .. }
+                | Operation::QueryRepeatOverlaps { .. }
+                | Operation::MaterializeRepeatFeatures { .. }
                 | Operation::BuildRepeatEnvironmentCohort { .. }
                 | Operation::SummarizeWindowCohortTfbs { .. }
                 | Operation::SummarizeTfbsRegion { .. }
@@ -18270,6 +18349,8 @@ impl GentleEngine {
                     result.rna_read_gene_support_audit = Some(audit);
                 }
                 op @ Operation::FindRestrictionSites { .. }
+                | op @ Operation::QueryRepeatOverlaps { .. }
+                | op @ Operation::MaterializeRepeatFeatures { .. }
                 | op @ Operation::SummarizeTfbsRegion { .. }
                 | op @ Operation::SummarizeTfbsScoreTracks { .. }
                 | op @ Operation::SummarizeMultiGenePromoterTfbs { .. }
@@ -20128,6 +20209,10 @@ impl GentleEngine {
                         DisplayTarget::MrnaFeatures => {
                             ("mrna_features", &mut self.state.display.show_mrna_features)
                         }
+                        DisplayTarget::RepeatFeatures => (
+                            "repeat_features",
+                            &mut self.state.display.show_repeat_features,
+                        ),
                         DisplayTarget::ConstructReasoningOverlay => (
                             "construct_reasoning_overlay",
                             &mut self.state.display.show_construct_reasoning_overlay,

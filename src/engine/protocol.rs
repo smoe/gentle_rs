@@ -1148,6 +1148,68 @@ pub struct RepeatAnnotationQueryReport {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One UCSC `rmsk` interval projected onto a GENtle sequence anchor.
+pub struct SequenceRepeatOverlapRow {
+    pub repeat: RepeatAnnotationRecord,
+    pub local_start_0based: usize,
+    pub local_end_0based_exclusive: usize,
+    pub local_strand: String,
+    pub genomic_start_0based: usize,
+    pub genomic_end_0based_exclusive: usize,
+    pub overlap_bp: usize,
+    pub clipped: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Repeat-overlap lookup over one genome-anchored sequence and prepared rmsk index.
+pub struct SequenceRepeatOverlapReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub rmsk_index_path: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub genome_anchor: Option<SequenceGenomeAnchorSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_end_0based_exclusive: Option<usize>,
+    pub matched_repeat_count: usize,
+    pub returned_repeat_count: usize,
+    #[serde(default)]
+    pub rows: Vec<SequenceRepeatOverlapRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Result of attaching UCSC rmsk overlaps as ordinary sequence features.
+pub struct RepeatFeatureMaterializationReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub rmsk_index_path: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    pub genome_anchor: Option<SequenceGenomeAnchorSummary>,
+    pub matched_repeat_count: usize,
+    pub added_feature_count: usize,
+    pub skipped_existing_count: usize,
+    pub removed_existing_count: usize,
+    #[serde(default)]
+    pub feature_ids: Vec<usize>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 /// Coordinate frame used to derive one repeat-environment window.
@@ -2834,6 +2896,7 @@ pub enum DisplayTarget {
     CdsFeatures,
     GeneFeatures,
     MrnaFeatures,
+    RepeatFeatures,
     ConstructReasoningOverlay,
     Tfbs,
     RestrictionEnzymes,
@@ -2928,6 +2991,8 @@ pub struct DisplaySettings {
     pub show_cds_features: bool,
     pub show_gene_features: bool,
     pub show_mrna_features: bool,
+    #[serde(default = "DisplaySettings::default_show_repeat_features")]
+    pub show_repeat_features: bool,
     #[serde(default = "DisplaySettings::default_show_construct_reasoning_overlay")]
     pub show_construct_reasoning_overlay: bool,
     pub show_tfbs: bool,
@@ -2987,6 +3052,10 @@ pub struct DisplaySettings {
 }
 
 impl DisplaySettings {
+    pub const fn default_show_repeat_features() -> bool {
+        true
+    }
+
     pub const fn default_show_construct_reasoning_overlay() -> bool {
         true
     }
@@ -3028,6 +3097,7 @@ impl Default for DisplaySettings {
             show_cds_features: true,
             show_gene_features: true,
             show_mrna_features: true,
+            show_repeat_features: Self::default_show_repeat_features(),
             show_construct_reasoning_overlay: Self::default_show_construct_reasoning_overlay(),
             show_tfbs: false,
             regulatory_tracks_near_baseline: false,
@@ -3163,6 +3233,10 @@ pub struct OpResult {
     pub multi_gene_promoter_tfbs: Option<MultiGenePromoterTfbsReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_annotation_query: Option<RepeatAnnotationQueryReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_repeat_overlaps: Option<SequenceRepeatOverlapReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_feature_materialization: Option<RepeatFeatureMaterializationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_environment_cohort: Option<RepeatEnvironmentCohortReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -322,6 +322,7 @@ pub struct DnaDisplay {
     suppress_cds_features_for_gene_annotations: bool,
     show_gene_features: bool,
     show_mrna_features: bool,
+    show_repeat_features: bool,
     show_construct_reasoning_overlay: bool,
     construct_reasoning_overlay: Option<ConstructReasoningOverlay>,
     hidden_construct_reasoning_roles: BTreeSet<ConstructRole>,
@@ -593,6 +594,17 @@ impl DnaDisplay {
     pub fn set_show_mrna_features(&mut self, value: bool) {
         if self.show_mrna_features != value {
             self.show_mrna_features = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn show_repeat_features(&self) -> bool {
+        self.show_repeat_features
+    }
+
+    pub fn set_show_repeat_features(&mut self, value: bool) {
+        if self.show_repeat_features != value {
+            self.show_repeat_features = value;
             self.mark_layout_dirty();
         }
     }
@@ -1179,6 +1191,7 @@ impl Default for DnaDisplay {
             suppress_cds_features_for_gene_annotations: false,
             show_gene_features: true,
             show_mrna_features: true,
+            show_repeat_features: true,
             show_construct_reasoning_overlay: true,
             construct_reasoning_overlay: None,
             hidden_construct_reasoning_roles: BTreeSet::new(),

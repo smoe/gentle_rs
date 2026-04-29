@@ -1737,6 +1737,10 @@ Toolbar layout:
   wrap-everything flow:
   - map/navigation row
   - display/layer toggles row
+    - includes a dedicated `Repeats (N)` toggle backed by shared
+      `show_repeat_features` display state; the same setting is honored by
+      linear/circular map rendering, feature-tree filtering, declutter restore,
+      and SVG export
   - ROI/selection row
   - derivation/export/action row
 - The `Selection formula` / `Apply Sel` controls now stay left-aligned on
@@ -2065,6 +2069,10 @@ Controls:
      `rmsk_*` / `repeat_*` / `rpt_*` aliases) use repeat-class labels,
      feature-tree grouping, and subtype colors instead of a single generic
      repeat style.
+   - Generated UCSC-rmsk features materialized from the prepared interval
+     index carry `gentle_generated=ucsc_rmsk` and remain ordinary
+     `repeat_region` features, so the Repeat layer toggle controls them
+     without adding a separate adapter-only track.
    - When imported sequence metadata provides a clearer title than the raw
      locus-like name, circular export prefers a bench-facing display title
      derived from `definition` plus accession/version when available.

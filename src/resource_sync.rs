@@ -1157,6 +1157,24 @@ pub fn sync_ucsc_rmsk(
     })
 }
 
+pub fn prepare_ucsc_rmsk_index(
+    resource_path: &str,
+    output: Option<&str>,
+) -> Result<SyncReport, String> {
+    let snapshot = crate::ucsc_rmsk::read_ucsc_rmsk_resource_snapshot(resource_path)?;
+    let output = output.map(str::to_string).unwrap_or_else(|| {
+        crate::ucsc_rmsk::default_ucsc_rmsk_index_path(&snapshot.assembly_database)
+    });
+    let summary =
+        crate::ucsc_rmsk::write_ucsc_rmsk_interval_index_from_resource(resource_path, &output)?;
+    Ok(SyncReport {
+        source: resource_path.to_string(),
+        output,
+        item_count: summary.row_count,
+        resource: "ucsc-rmsk-interval-index".to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1260,6 +1278,35 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some("LINE")
         );
+    }
+
+    #[test]
+    fn prepares_ucsc_rmsk_interval_index_from_resource_snapshot() {
+        let td = tempdir().expect("tempdir");
+        let resource = td.path().join("rmsk.resource.json");
+        let index = td.path().join("rmsk.index.json");
+        sync_ucsc_rmsk(
+            "test_files/fixtures/resources/ucsc.rmsk.hg38.edge.txt",
+            Some(resource.to_string_lossy().as_ref()),
+            Some("hg38"),
+            None,
+        )
+        .expect("sync rmsk");
+        let report = prepare_ucsc_rmsk_index(
+            resource.to_string_lossy().as_ref(),
+            Some(index.to_string_lossy().as_ref()),
+        )
+        .expect("prepare index");
+        assert_eq!(report.resource, "ucsc-rmsk-interval-index");
+        assert_eq!(report.item_count, 4);
+        let json: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(index).expect("read rmsk index"))
+                .expect("parse rmsk index");
+        assert_eq!(
+            json["schema"].as_str(),
+            Some(crate::ucsc_rmsk::UCSC_RMSK_INTERVAL_INDEX_SCHEMA)
+        );
+        assert_eq!(json["chromosome_count"].as_u64(), Some(1));
     }
 
     #[test]

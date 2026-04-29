@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-28
+Last updated: 2026-04-29
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -457,8 +457,8 @@ Container semantics now exist as first-class state.
 `SelectCandidate` remains explicit in-silico disambiguation when multiple
 possible products exist.
 
-Display state (`ProjectState.display`) now also carries TFBS and VCF
-display-filter criteria so interactive GUI filtering and SVG export use one
+Display state (`ProjectState.display`) now also carries repeat, TFBS, and VCF
+display/filter criteria so interactive GUI filtering and SVG export use one
 shared contract.
 
 ### Operation-based execution
@@ -1142,6 +1142,11 @@ Sequence-linked construct reasoning graph direction:
     interval-indexed in shared resource code; adapters should materialize only
     overlapping rows into GENtle features and preserve original `repName`,
     `repClass`, and `repFamily` qualifiers for display/filtering.
+  - Prepared `rmsk` interval indexes are the shared overlap-service boundary:
+    engine, shell, GUI, and future adapters should query/project them through
+    the same coordinate helper, then materialize selected rows as ordinary
+    `repeat_region` sequence features rather than inventing parallel repeat
+    tracks.
   - frontends must not fake non-sequence host facts as anonymous sequence spans
     just to make them visible.
 - Evidence classes must remain explicit rather than collapsed into one opaque

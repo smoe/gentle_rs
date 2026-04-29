@@ -1826,7 +1826,7 @@ fn parse_repeat_filter_option(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: query, export-bed, repeat-query, repeat-cohort, window-cohort-tfbs, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
@@ -1880,6 +1880,110 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                     .ok_or_else(|| "features repeat-query requires --rmsk PATH".to_string())?,
                 filter,
                 limit,
+                path,
+            })
+        }
+        "repeat-overlaps" | "rmsk-overlaps" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "features repeat-overlaps SEQ_ID --index PATH [--range START..END] [--limit N] [--path PATH]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let mut rmsk_index_path: Option<String> = None;
+            let mut start_0based = None;
+            let mut end_0based_exclusive = None;
+            let mut limit = None;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--index" | "--rmsk-index" | "--rmsk-index-path" => {
+                        idx += 1;
+                        rmsk_index_path = Some(parse_required_value(tokens, &mut idx, "--index")?);
+                    }
+                    "--range" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--range")?;
+                        let (start, end) = parse_feature_range(&raw, "features repeat-overlaps")?;
+                        start_0based = Some(start);
+                        end_0based_exclusive = Some(end);
+                    }
+                    "--limit" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--limit")?;
+                        limit = Some(parse_usize_option_value(&raw, "--limit")?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!("Unknown features repeat-overlaps option '{other}'"));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesRepeatOverlaps {
+                seq_id,
+                rmsk_index_path: rmsk_index_path
+                    .ok_or_else(|| "features repeat-overlaps requires --index PATH".to_string())?,
+                start_0based,
+                end_0based_exclusive,
+                limit,
+                path,
+            })
+        }
+        "materialize-repeats" | "materialize-rmsk-repeats" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "features materialize-repeats SEQ_ID --index PATH [--max-features N] [--append] [--path PATH]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let mut rmsk_index_path: Option<String> = None;
+            let mut max_features = None;
+            let mut clear_existing = true;
+            let mut path = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--index" | "--rmsk-index" | "--rmsk-index-path" => {
+                        idx += 1;
+                        rmsk_index_path = Some(parse_required_value(tokens, &mut idx, "--index")?);
+                    }
+                    "--max-features" | "--limit" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--max-features")?;
+                        max_features = Some(parse_usize_option_value(&raw, "--max-features")?);
+                    }
+                    "--append" | "--keep-existing" => {
+                        clear_existing = false;
+                        idx += 1;
+                    }
+                    "--clear-existing" => {
+                        clear_existing = true;
+                        idx += 1;
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown features materialize-repeats option '{other}'"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesMaterializeRepeats {
+                seq_id,
+                rmsk_index_path: rmsk_index_path.ok_or_else(|| {
+                    "features materialize-repeats requires --index PATH".to_string()
+                })?,
+                max_features,
+                clear_existing,
                 path,
             })
         }
