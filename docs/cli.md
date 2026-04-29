@@ -2653,10 +2653,14 @@ Rendering export commands:
     Overlay dotplots suppress that panel because each query series uses its own
     normalized x-axis.
   - `--display-threshold` and `--intensity-gain` apply the same density/contrast controls as GUI dotplot display.
-  - Exon-annotated pairwise, annotated self, and overlay payload exports render
-    a merged-exon side track next to the reference/genomic y-axis when reference
-    exon annotation is available; overlay payloads also render all stored query
-    series with a legend.
+  - Annotated pairwise, annotated self, and overlay payload exports render a
+    genome-context side rail next to the reference/genomic y-axis when the
+    reference sequence already carries supported features; exon blocks keep
+    sense/antisense strand cues in separate lanes, and materialized
+    RepeatMasker/UCSC `rmsk` repeat features render in a repeat lane.
+  - Dotplot rendering does not query a RepeatMasker index on its own; use
+    `features materialize-repeats` first when the repeat context should travel
+    with the project state and exported SVG.
   - `shared_exon_anchor` requires `--overlay-anchor-exon START..END` using the
     stored reference-exon coordinates from the overlay payload.
   - `query_anchor_bp` uses explicit `query_anchor_0based` values already stored

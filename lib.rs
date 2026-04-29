@@ -1911,6 +1911,14 @@ pub struct DotplotReferenceAnnotationInterval {
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
     pub label: String,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    pub lane: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_rgb: Option<[u8; 3]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2122,6 +2130,14 @@ impl DotplotView {
         }
         if let Some(annotation) = self.reference_annotation.as_mut() {
             annotation.interval_count = annotation.intervals.len();
+            for interval in &mut annotation.intervals {
+                if interval.kind.trim().is_empty() {
+                    interval.kind = "exon".to_string();
+                }
+                if interval.label.trim().is_empty() {
+                    interval.label = interval.kind.clone();
+                }
+            }
         }
         for anchor in &mut self.overlay_anchor_exons {
             anchor.support_series_count = anchor.supporting_series.len();

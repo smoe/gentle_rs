@@ -3889,9 +3889,10 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - optional flexibility track must also belong to `seq_id`
 - Output:
   - deterministic SVG dotplot artifact; operation is non-mutating
-  - pairwise, annotated self, and overlay payloads render a merged
-    reference-exon side track beside the reference/genomic y-axis when
-    `reference_annotation` intervals are present
+  - pairwise, annotated self, and overlay payloads render a genome-context side
+    rail beside the reference/genomic y-axis when `reference_annotation`
+    intervals are present; supported intervals include exon and materialized
+    RepeatMasker/UCSC repeat context
   - overlay payloads render all stored `query_series` with a legend;
     `overlay_x_axis_mode` chooses whether transcript queries are shown as
     normalized percent length, as left/right aligned base-pair coordinates, as
@@ -5701,8 +5702,17 @@ Dotplot + flexibility operation contract (implemented baseline):
       - each series may also carry optional `query_anchor_0based` +
         `query_anchor_label` values for curated cross-family/domain-anchored
         rendering with `query_anchor_bp`
-    - optional `reference_annotation` with merged reference-side exon intervals
-      for pairwise, annotated self, and overlay dotplot payloads
+    - optional `reference_annotation` genome-context side rail for pairwise,
+      annotated self, and overlay dotplot payloads
+      - intervals carry `kind`, `label`, optional `strand`, `lane`,
+        optional `color_rgb`, and optional human-readable `detail`
+      - exon intervals are not filtered to one selected gene; sense and
+        antisense exons remain separate so opposite-strand context survives
+      - materialized RepeatMasker/UCSC `rmsk` repeat annotations
+        (`repeat_region` / `mobile_element` features with repeat qualifiers)
+        are represented as repeat intervals
+      - dotplot computation/rendering does not perform live repeat-index
+        queries; repeat context must already be present as sequence features
     - optional `query_series[].transcript_feature_id` when overlays originate
       from locus transcript lanes
     - optional `overlay_anchor_exons[]` carrying precomputed shared-exon anchor

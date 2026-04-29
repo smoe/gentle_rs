@@ -580,6 +580,83 @@ impl GentleEngine {
         ]
     }
 
+    fn dotplot_reference_annotation_lane_count(track: &DotplotReferenceAnnotationTrack) -> usize {
+        track
+            .intervals
+            .iter()
+            .map(|interval| interval.lane)
+            .max()
+            .map(|lane| lane.saturating_add(1))
+            .unwrap_or(1)
+            .max(1)
+    }
+
+    fn dotplot_reference_annotation_color(
+        interval: &DotplotReferenceAnnotationInterval,
+    ) -> [u8; 3] {
+        if let Some(color_rgb) = interval.color_rgb {
+            return color_rgb;
+        }
+        match interval.kind.to_ascii_lowercase().as_str() {
+            "exon" => [34, 197, 94],
+            "repeat" => [71, 85, 105],
+            _ => [59, 130, 246],
+        }
+    }
+
+    fn dotplot_reference_annotation_class_token(value: &str) -> String {
+        let token = value
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c.to_ascii_lowercase()
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string();
+        if token.is_empty() {
+            "interval".to_string()
+        } else {
+            token
+        }
+    }
+
+    fn dotplot_reference_annotation_title(interval: &DotplotReferenceAnnotationInterval) -> String {
+        interval.detail.clone().unwrap_or_else(|| {
+            let strand = interval.strand.as_deref().unwrap_or("?");
+            format!(
+                "{} {} {}..{} strand={}",
+                interval.kind,
+                interval.label,
+                interval.start_0based.saturating_add(1),
+                interval.end_0based_exclusive,
+                strand
+            )
+        })
+    }
+
+    fn dotplot_reference_annotation_stats(
+        track: Option<&DotplotReferenceAnnotationTrack>,
+    ) -> (usize, usize, usize) {
+        let Some(track) = track else {
+            return (0, 0, 0);
+        };
+        let exons = track
+            .intervals
+            .iter()
+            .filter(|interval| interval.kind.eq_ignore_ascii_case("exon"))
+            .count();
+        let repeats = track
+            .intervals
+            .iter()
+            .filter(|interval| interval.kind.eq_ignore_ascii_case("repeat"))
+            .count();
+        (track.interval_count, exons, repeats)
+    }
+
     fn dotplot_sampling_overlap_summary(window_len: usize, step_bp: usize) -> String {
         let safe_step = step_bp.max(1);
         let overlap_bp = window_len.saturating_sub(safe_step);
@@ -612,16 +689,52 @@ impl GentleEngine {
         dotplot_height: f32,
         label_y: f32,
     ) {
-        let annotation_left = dotplot_left - 16.0;
-        let annotation_width = 10.0;
+        let lane_count = Self::dotplot_reference_annotation_lane_count(track);
+        let lane_width = 8.0;
+        let annotation_width = (lane_count as f32 * lane_width) + 2.0;
+        let annotation_left = dotplot_left - annotation_width - 6.0;
         svg.push_str(&format!(
-            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#f8fafc\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"2\" ry=\"2\"/>",
+            "<rect class=\"dotplot-genome-context-track\" x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#f8fafc\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"2\" ry=\"2\"/>",
             annotation_left,
             dotplot_top,
             annotation_width,
             dotplot_height
         ));
         let reference_span_f32 = reference_span.max(1) as f32;
+        for lane in 0..lane_count {
+            let lane_x = annotation_left + 1.0 + lane as f32 * lane_width + lane_width * 0.5;
+            let mut exon_intervals = track
+                .intervals
+                .iter()
+                .filter(|interval| {
+                    interval.lane == lane && interval.kind.eq_ignore_ascii_case("exon")
+                })
+                .collect::<Vec<_>>();
+            exon_intervals.sort_by(|a, b| {
+                a.start_0based
+                    .cmp(&b.start_0based)
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+            });
+            for pair in exon_intervals.windows(2) {
+                let upper_end = pair[0]
+                    .end_0based_exclusive
+                    .saturating_sub(view.reference_span_start_0based)
+                    .min(reference_span);
+                let lower_start = pair[1]
+                    .start_0based
+                    .saturating_sub(view.reference_span_start_0based)
+                    .min(reference_span);
+                if lower_start <= upper_end {
+                    continue;
+                }
+                let y0 = dotplot_top + (upper_end as f32 / reference_span_f32) * dotplot_height;
+                let y1 = dotplot_top + (lower_start as f32 / reference_span_f32) * dotplot_height;
+                svg.push_str(&format!(
+                    "<line class=\"dotplot-annotation-intron-guide\" x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#bbf7d0\" stroke-width=\"1\" stroke-dasharray=\"2 2\"/>",
+                    lane_x, y0, lane_x, y1
+                ));
+            }
+        }
         for interval in &track.intervals {
             let local_start = interval
                 .start_0based
@@ -633,19 +746,48 @@ impl GentleEngine {
                 .min(reference_span);
             let y0 = dotplot_top + (local_start as f32 / reference_span_f32) * dotplot_height;
             let y1 = dotplot_top + (local_end as f32 / reference_span_f32) * dotplot_height;
+            let lane_x = annotation_left + 1.0 + interval.lane as f32 * lane_width;
+            let interval_width = lane_width - 1.5;
+            let color = Self::dotplot_reference_annotation_color(interval);
+            let class_token = Self::dotplot_reference_annotation_class_token(&interval.kind);
             svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"#22c55e\" rx=\"1\" ry=\"1\"><title>{}</title></rect>",
-                annotation_left + 1.0,
+                "<rect class=\"dotplot-genome-context-interval dotplot-genome-context-{}\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"rgb({},{},{})\" rx=\"1\" ry=\"1\"><title>{}</title></rect>",
+                class_token,
+                lane_x,
                 y0,
-                annotation_width - 2.0,
+                interval_width,
                 (y1 - y0).max(1.0),
+                color[0],
+                color[1],
+                color[2],
                 Self::dotplot_svg_xml_escape(&format!(
-                    "{} {}..{}",
-                    interval.label,
-                    interval.start_0based.saturating_add(1),
-                    interval.end_0based_exclusive
+                    "{}",
+                    Self::dotplot_reference_annotation_title(interval)
                 ))
             ));
+            let strand = interval.strand.as_deref().unwrap_or_default();
+            if matches!(strand, "+" | "-") {
+                let marker_y = if strand == "+" { y1.max(y0 + 1.0) } else { y0 };
+                let marker_top = if strand == "+" {
+                    marker_y - 4.0
+                } else {
+                    marker_y + 4.0
+                };
+                let x_mid = lane_x + interval_width * 0.5;
+                svg.push_str(&format!(
+                    "<polygon class=\"dotplot-annotation-strand\" points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"#0f172a\" fill-opacity=\"0.72\"><title>{}</title></polygon>",
+                    x_mid,
+                    marker_y,
+                    x_mid - 2.4,
+                    marker_top,
+                    x_mid + 2.4,
+                    marker_top,
+                    Self::dotplot_svg_xml_escape(&format!(
+                        "{} strand {}",
+                        interval.label, strand
+                    ))
+                ));
+            }
         }
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" fill=\"#334155\">{}</text>",
@@ -1039,13 +1181,15 @@ impl GentleEngine {
                 density_threshold,
                 intensity_gain
             );
+            let (annotation_intervals, exon_intervals, repeat_intervals) =
+                Self::dotplot_reference_annotation_stats(reference_annotation);
             let sampling_line = format!(
-                "{} | rendered_cells={} | merged_exons={}",
+                "{} | rendered_cells={} | annotation_intervals={} exons={} repeats={}",
                 Self::dotplot_sampling_overlap_summary(view.word_size.max(1), view.step_bp.max(1)),
                 total_visible_cells,
-                reference_annotation
-                    .map(|track| track.interval_count)
-                    .unwrap_or(0)
+                annotation_intervals,
+                exon_intervals,
+                repeat_intervals
             );
             svg.push_str(&format!(
                 "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#0f172a\">{}</text>",
@@ -1331,15 +1475,17 @@ impl GentleEngine {
             density_threshold,
             intensity_gain
         );
+        let (annotation_intervals, exon_intervals, repeat_intervals) =
+            Self::dotplot_reference_annotation_stats(reference_annotation);
         let sampling_line = format!(
-            "{} | rendered_cells={} sampled_points={} sample_stride={} | merged_exons={}",
+            "{} | rendered_cells={} sampled_points={} sample_stride={} | annotation_intervals={} exons={} repeats={}",
             Self::dotplot_sampling_overlap_summary(view.word_size.max(1), view.step_bp.max(1)),
             visible_cells.len(),
             view.points.len().div_ceil(sample_stride),
             sample_stride,
-            reference_annotation
-                .map(|track| track.interval_count)
-                .unwrap_or(0)
+            annotation_intervals,
+            exon_intervals,
+            repeat_intervals
         );
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#0f172a\">{}</text>",

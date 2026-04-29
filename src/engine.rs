@@ -21399,6 +21399,135 @@ impl GentleEngine {
         }
     }
 
+    fn dotplot_reference_annotation_first_qualifier(
+        feature: &gb_io::seq::Feature,
+        keys: &[&str],
+    ) -> Option<String> {
+        Self::first_nonempty_feature_qualifier(feature, keys)
+    }
+
+    fn dotplot_reference_annotation_exon_label(feature: &gb_io::seq::Feature) -> String {
+        let base = Self::dotplot_reference_annotation_first_qualifier(
+            feature,
+            &[
+                "label",
+                "gene",
+                "gene_name",
+                "name",
+                "standard_name",
+                "transcript_id",
+                "locus_tag",
+            ],
+        )
+        .unwrap_or_else(|| "exon".to_string());
+        let Some(exon_number) = Self::feature_qualifier_text(feature, "exon_number") else {
+            return base;
+        };
+        let lower = base.to_ascii_lowercase();
+        if lower.contains("exon") || lower.contains(&exon_number.to_ascii_lowercase()) {
+            base
+        } else {
+            format!("{base} exon {exon_number}")
+        }
+    }
+
+    fn dotplot_reference_annotation_repeat_fields(
+        feature: &gb_io::seq::Feature,
+    ) -> Option<(String, Option<String>, Option<String>)> {
+        let kind = feature.kind.to_string();
+        let kind_lower = kind.to_ascii_lowercase();
+        let repeat_name = Self::dotplot_reference_annotation_first_qualifier(
+            feature,
+            &[
+                "rmsk_name",
+                "repeat_name",
+                "repName",
+                "mobile_element_type",
+                "mobile_element",
+                "standard_name",
+                "name",
+                "label",
+            ],
+        );
+        let repeat_class = Self::dotplot_reference_annotation_first_qualifier(
+            feature,
+            &["repeat_class", "rmsk_class", "repClass"],
+        );
+        let repeat_family = Self::dotplot_reference_annotation_first_qualifier(
+            feature,
+            &["repeat_family", "rmsk_family", "repFamily"],
+        );
+        let generated_from_rmsk = feature
+            .qualifier_values("gentle_generated")
+            .any(|value| value.eq_ignore_ascii_case("ucsc_rmsk"));
+        let has_repeat_qualifier =
+            repeat_name.is_some() || repeat_class.is_some() || repeat_family.is_some();
+        let is_repeat_kind = matches!(kind_lower.as_str(), "repeat_region" | "mobile_element");
+        if !(is_repeat_kind || generated_from_rmsk || has_repeat_qualifier) {
+            return None;
+        }
+        let label = repeat_name
+            .or_else(|| repeat_family.clone())
+            .or_else(|| repeat_class.clone())
+            .unwrap_or_else(|| kind);
+        Some((label, repeat_class, repeat_family))
+    }
+
+    fn dotplot_reference_annotation_repeat_color(
+        repeat_class: Option<&str>,
+        repeat_family: Option<&str>,
+    ) -> [u8; 3] {
+        let key = repeat_class
+            .or(repeat_family)
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if key.contains("line") {
+            [239, 68, 68]
+        } else if key.contains("sine") {
+            [217, 119, 6]
+        } else if key.contains("ltr") {
+            [124, 58, 237]
+        } else if key.contains("satellite") {
+            [14, 116, 144]
+        } else if key.contains("simple") || key.contains("low_complexity") {
+            [100, 116, 139]
+        } else {
+            [71, 85, 105]
+        }
+    }
+
+    fn dotplot_reference_annotation_detail(
+        feature: &gb_io::seq::Feature,
+        kind: &str,
+        label: &str,
+        strand: &str,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> String {
+        let mut parts = vec![format!(
+            "{} {} {}..{} strand={}",
+            kind,
+            label,
+            start_0based.saturating_add(1),
+            end_0based_exclusive,
+            strand
+        )];
+        for (key, prefix) in [
+            ("gene", "gene"),
+            ("gene_name", "gene"),
+            ("transcript_id", "transcript"),
+            ("rmsk_name", "repeat"),
+            ("repeat_class", "class"),
+            ("repeat_family", "family"),
+            ("rmsk_genomic_strand", "genomic_strand"),
+        ] {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                parts.push(format!("{prefix}={value}"));
+            }
+        }
+        parts.join("; ")
+    }
+
     fn build_dotplot_reference_annotation_track(
         &self,
         reference_seq_id: &str,
@@ -21406,48 +21535,78 @@ impl GentleEngine {
         reference_span_end_0based: usize,
     ) -> Option<DotplotReferenceAnnotationTrack> {
         let dna = self.state.sequences.get(reference_seq_id)?;
-        let mut intervals: Vec<(usize, usize)> = vec![];
+        let mut intervals: Vec<DotplotReferenceAnnotationInterval> = vec![];
         for feature in dna.features() {
-            if !feature.kind.to_string().eq_ignore_ascii_case("exon") {
+            let feature_kind = feature.kind.to_string();
+            let feature_kind_lower = feature_kind.to_ascii_lowercase();
+            let strand = if feature_is_reverse(feature) {
+                "-"
+            } else {
+                "+"
+            };
+            let (kind, lane, label, color_rgb) = if feature_kind_lower == "exon" {
+                let lane = if strand == "-" { 1 } else { 0 };
+                (
+                    "exon".to_string(),
+                    lane,
+                    Self::dotplot_reference_annotation_exon_label(feature),
+                    [34, 197, 94],
+                )
+            } else if let Some((repeat_label, repeat_class, repeat_family)) =
+                Self::dotplot_reference_annotation_repeat_fields(feature)
+            {
+                (
+                    "repeat".to_string(),
+                    2,
+                    format!("repeat: {repeat_label}"),
+                    Self::dotplot_reference_annotation_repeat_color(
+                        repeat_class.as_deref(),
+                        repeat_family.as_deref(),
+                    ),
+                )
+            } else {
                 continue;
-            }
+            };
             let mut ranges: Vec<(usize, usize)> = vec![];
             collect_location_ranges_usize(&feature.location, &mut ranges);
             for (start_0based, end_0based_exclusive) in ranges {
                 let clipped_start = start_0based.max(reference_span_start_0based);
                 let clipped_end = end_0based_exclusive.min(reference_span_end_0based);
                 if clipped_end > clipped_start {
-                    intervals.push((clipped_start, clipped_end));
+                    intervals.push(DotplotReferenceAnnotationInterval {
+                        start_0based: clipped_start,
+                        end_0based_exclusive: clipped_end,
+                        label: label.clone(),
+                        kind: kind.clone(),
+                        strand: Some(strand.to_string()),
+                        lane,
+                        color_rgb: Some(color_rgb),
+                        detail: Some(Self::dotplot_reference_annotation_detail(
+                            feature,
+                            &kind,
+                            &label,
+                            strand,
+                            clipped_start,
+                            clipped_end,
+                        )),
+                    });
                 }
             }
         }
         if intervals.is_empty() {
             return None;
         }
-        intervals.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-        let mut merged: Vec<(usize, usize)> = vec![];
-        for (start, end) in intervals {
-            if let Some(last) = merged.last_mut()
-                && start <= last.1
-            {
-                last.1 = last.1.max(end);
-            } else {
-                merged.push((start, end));
-            }
-        }
-        let intervals = merged
-            .into_iter()
-            .map(
-                |(start_0based, end_0based_exclusive)| DotplotReferenceAnnotationInterval {
-                    start_0based,
-                    end_0based_exclusive,
-                    label: "exon".to_string(),
-                },
-            )
-            .collect::<Vec<_>>();
+        intervals.sort_unstable_by(|a, b| {
+            a.lane
+                .cmp(&b.lane)
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                .then(a.kind.cmp(&b.kind))
+                .then(a.label.cmp(&b.label))
+        });
         Some(DotplotReferenceAnnotationTrack {
             seq_id: reference_seq_id.to_string(),
-            label: "merged exons".to_string(),
+            label: "genome context".to_string(),
             interval_count: intervals.len(),
             intervals,
         })

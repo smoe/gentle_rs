@@ -10,7 +10,9 @@
 //! - window-sizing/default helpers for extracted auxiliary tools
 
 use super::*;
-use crate::engine::DotplotOverlayQuerySpec;
+use crate::engine::{
+    DotplotOverlayQuerySpec, DotplotReferenceAnnotationInterval, DotplotReferenceAnnotationTrack,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -2187,11 +2189,8 @@ impl MainAreaDna {
                 (point_count as f64 / estimated_pair_evaluations as f64) * 100.0
             };
             if overlay_mode {
-                let annotation_count = view
-                    .reference_annotation
-                    .as_ref()
-                    .map(|track| track.interval_count)
-                    .unwrap_or(0);
+                let (annotation_count, exon_count, repeat_count) =
+                    Self::dotplot_reference_annotation_stats(view.reference_annotation.as_ref());
                 let labels = view
                     .query_series
                     .iter()
@@ -2199,7 +2198,7 @@ impl MainAreaDna {
                     .collect::<Vec<_>>();
                 ui.label(
                     egui::RichText::new(format!(
-                        "loaded payload '{}' generated_at={} overlay series={} total_points={} hit_fraction≈{:.6}% owner={} reference={} [{}..{}] merged_exons={} | {}",
+                        "loaded payload '{}' generated_at={} overlay series={} total_points={} hit_fraction≈{:.6}% owner={} reference={} [{}..{}] annotation_intervals={} exons={} repeats={} | {}",
                         view.dotplot_id,
                         view.generated_at_unix_ms,
                         view.series_count.max(view.query_series.len()),
@@ -2210,6 +2209,8 @@ impl MainAreaDna {
                         view.reference_span_start_0based.saturating_add(1),
                         view.reference_span_end_0based,
                         annotation_count,
+                        exon_count,
+                        repeat_count,
                         labels.join(", ")
                     ))
                     .monospace()
@@ -2221,14 +2222,11 @@ impl MainAreaDna {
                     .iter()
                     .filter(|bin| bin.hit_count > 0)
                     .count();
-                let annotation_count = view
-                    .reference_annotation
-                    .as_ref()
-                    .map(|track| track.interval_count)
-                    .unwrap_or(0);
+                let (annotation_count, exon_count, repeat_count) =
+                    Self::dotplot_reference_annotation_stats(view.reference_annotation.as_ref());
                 ui.label(
                     egui::RichText::new(format!(
-                        "loaded payload '{}' generated_at={} mode={} points={} hit_fraction≈{:.6}% box_bins={}/{} merged_exons={} | query={} [{}..{}] reference={} [{}..{}]",
+                        "loaded payload '{}' generated_at={} mode={} points={} hit_fraction≈{:.6}% box_bins={}/{} annotation_intervals={} exons={} repeats={} | query={} [{}..{}] reference={} [{}..{}]",
                         view.dotplot_id,
                         view.generated_at_unix_ms,
                         view.mode.as_str(),
@@ -2237,6 +2235,8 @@ impl MainAreaDna {
                         non_empty_box_bins,
                         view.boxplot_bin_count,
                         annotation_count,
+                        exon_count,
+                        repeat_count,
                         view.seq_id,
                         view.span_start_0based.saturating_add(1),
                         view.span_end_0based,
@@ -2353,6 +2353,49 @@ impl MainAreaDna {
         }
     }
 
+    fn dotplot_reference_annotation_lane_count(track: &DotplotReferenceAnnotationTrack) -> usize {
+        track
+            .intervals
+            .iter()
+            .map(|interval| interval.lane)
+            .max()
+            .map(|lane| lane.saturating_add(1))
+            .unwrap_or(1)
+            .max(1)
+    }
+
+    fn dotplot_reference_annotation_color(
+        interval: &DotplotReferenceAnnotationInterval,
+    ) -> egui::Color32 {
+        let color_rgb = interval.color_rgb.unwrap_or_else(|| {
+            match interval.kind.to_ascii_lowercase().as_str() {
+                "exon" => [34, 197, 94],
+                "repeat" => [71, 85, 105],
+                _ => [59, 130, 246],
+            }
+        });
+        egui::Color32::from_rgb(color_rgb[0], color_rgb[1], color_rgb[2])
+    }
+
+    fn dotplot_reference_annotation_stats(
+        track: Option<&DotplotReferenceAnnotationTrack>,
+    ) -> (usize, usize, usize) {
+        let Some(track) = track else {
+            return (0, 0, 0);
+        };
+        let exons = track
+            .intervals
+            .iter()
+            .filter(|interval| interval.kind.eq_ignore_ascii_case("exon"))
+            .count();
+        let repeats = track
+            .intervals
+            .iter()
+            .filter(|interval| interval.kind.eq_ignore_ascii_case("repeat"))
+            .count();
+        (track.interval_count, exons, repeats)
+    }
+
     fn render_dotplot_reference_annotation_track_ui(
         painter: &egui::Painter,
         canvas_rect: egui::Rect,
@@ -2367,8 +2410,14 @@ impl MainAreaDna {
         else {
             return;
         };
+        let lane_count = Self::dotplot_reference_annotation_lane_count(track);
+        let lane_width = 8.0;
+        let annotation_width = lane_count as f32 * lane_width + 2.0;
         let annotation_rect = egui::Rect::from_min_max(
-            egui::pos2(dotplot_rect.left() - 16.0, dotplot_rect.top()),
+            egui::pos2(
+                dotplot_rect.left() - annotation_width - 6.0,
+                dotplot_rect.top(),
+            ),
             egui::pos2(dotplot_rect.left() - 6.0, dotplot_rect.bottom()),
         );
         painter.rect_filled(annotation_rect, 2.0, egui::Color32::from_rgb(248, 250, 252));
@@ -2379,6 +2428,42 @@ impl MainAreaDna {
             egui::StrokeKind::Inside,
         );
         let reference_span_f32 = reference_span.max(1) as f32;
+        for lane in 0..lane_count {
+            let lane_x = annotation_rect.left() + 1.0 + lane as f32 * lane_width + lane_width * 0.5;
+            let mut exon_intervals = track
+                .intervals
+                .iter()
+                .filter(|interval| {
+                    interval.lane == lane && interval.kind.eq_ignore_ascii_case("exon")
+                })
+                .collect::<Vec<_>>();
+            exon_intervals.sort_by(|a, b| {
+                a.start_0based
+                    .cmp(&b.start_0based)
+                    .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+            });
+            for pair in exon_intervals.windows(2) {
+                let upper_end = pair[0]
+                    .end_0based_exclusive
+                    .saturating_sub(view.reference_span_start_0based)
+                    .min(reference_span);
+                let lower_start = pair[1]
+                    .start_0based
+                    .saturating_sub(view.reference_span_start_0based)
+                    .min(reference_span);
+                if lower_start <= upper_end {
+                    continue;
+                }
+                let y0 = annotation_rect.top()
+                    + (upper_end as f32 / reference_span_f32) * annotation_rect.height();
+                let y1 = annotation_rect.top()
+                    + (lower_start as f32 / reference_span_f32) * annotation_rect.height();
+                painter.line_segment(
+                    [egui::pos2(lane_x, y0), egui::pos2(lane_x, y1)],
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(187, 247, 208)),
+                );
+            }
+        }
         for interval in &track.intervals {
             let local_start = interval
                 .start_0based
@@ -2392,14 +2477,35 @@ impl MainAreaDna {
                 + (local_start as f32 / reference_span_f32) * annotation_rect.height();
             let y1 = annotation_rect.top()
                 + (local_end as f32 / reference_span_f32) * annotation_rect.height();
+            let lane_left = annotation_rect.left() + 1.0 + interval.lane as f32 * lane_width;
+            let interval_width = lane_width - 1.5;
             painter.rect_filled(
                 egui::Rect::from_min_max(
-                    egui::pos2(annotation_rect.left() + 1.0, y0),
-                    egui::pos2(annotation_rect.right() - 1.0, y1.max(y0 + 1.0)),
+                    egui::pos2(lane_left, y0),
+                    egui::pos2(lane_left + interval_width, y1.max(y0 + 1.0)),
                 ),
                 1.0,
-                egui::Color32::from_rgb(34, 197, 94),
+                Self::dotplot_reference_annotation_color(interval),
             );
+            let strand = interval.strand.as_deref().unwrap_or_default();
+            if matches!(strand, "+" | "-") {
+                let marker_y = if strand == "+" { y1.max(y0 + 1.0) } else { y0 };
+                let marker_tip = egui::pos2(lane_left + interval_width * 0.5, marker_y);
+                let marker_base_y = if strand == "+" {
+                    marker_y - 4.0
+                } else {
+                    marker_y + 4.0
+                };
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        marker_tip,
+                        egui::pos2(lane_left + interval_width * 0.5 - 2.4, marker_base_y),
+                        egui::pos2(lane_left + interval_width * 0.5 + 2.4, marker_base_y),
+                    ],
+                    egui::Color32::from_rgba_unmultiplied(15, 23, 42, 184),
+                    egui::Stroke::NONE,
+                ));
+            }
         }
         painter.text(
             egui::pos2(annotation_rect.center().x, canvas_rect.top() + 4.0),

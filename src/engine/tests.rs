@@ -11804,8 +11804,8 @@ fn test_render_dotplot_svg_operation() {
     assert!(text.contains("Dotplot workspace export"));
     assert!(text.contains("overlap by 3 bp"));
     assert!(text.contains("4 consecutive ordered windows"));
-    assert!(text.contains("merged exons"));
-    assert!(text.contains("merged_exons=1"));
+    assert!(text.contains("genome context"));
+    assert!(text.contains("annotation_intervals=1 exons=1 repeats=0"));
 }
 
 #[test]
@@ -11893,7 +11893,7 @@ fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
     assert!(text.contains("overlay owner=ref reference=ref"));
     assert!(text.contains("Isoform A"));
     assert!(text.contains("Isoform B"));
-    assert!(text.contains("merged exons"));
+    assert!(text.contains("genome context"));
     assert!(text.contains("x: transcript length (%)"));
 }
 
@@ -21882,11 +21882,137 @@ fn test_compute_self_dotplot_carries_reference_exon_annotation_when_available() 
     let annotation = view
         .reference_annotation
         .as_ref()
-        .expect("self reference exon track");
+        .expect("self reference annotation track");
     assert_eq!(annotation.seq_id, "s");
+    assert_eq!(annotation.label, "genome context");
     assert_eq!(annotation.interval_count, 1);
     assert_eq!(annotation.intervals[0].start_0based, 4);
     assert_eq!(annotation.intervals[0].end_0based_exclusive, 10);
+    assert_eq!(annotation.intervals[0].kind, "exon");
+    assert_eq!(annotation.intervals[0].strand.as_deref(), Some("+"));
+}
+
+#[test]
+fn test_dotplot_reference_annotation_preserves_antisense_exons_and_repeatmasker_context() {
+    let mut reference = DNAsequence::from_sequence(&"ATGC".repeat(30)).expect("reference");
+    reference.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::simple_range(8, 20),
+        qualifiers: vec![
+            ("gene".into(), Some("sense_gene".to_string())),
+            ("transcript_id".into(), Some("tx_plus".to_string())),
+        ],
+    });
+    reference.features_mut().push(gb_io::seq::Feature {
+        kind: "exon".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            12, 24,
+        ))),
+        qualifiers: vec![
+            ("gene".into(), Some("antisense_gene".to_string())),
+            ("transcript_id".into(), Some("tx_minus".to_string())),
+        ],
+    });
+    reference.features_mut().push(gb_io::seq::Feature {
+        kind: "repeat_region".into(),
+        location: gb_io::seq::Location::simple_range(28, 44),
+        qualifiers: vec![
+            ("rmsk_name".into(), Some("AluY".to_string())),
+            ("repeat_class".into(), Some("SINE".to_string())),
+            ("repeat_family".into(), Some("Alu".to_string())),
+            ("gentle_generated".into(), Some("ucsc_rmsk".to_string())),
+            ("strand".into(), Some("-".to_string())),
+        ],
+    });
+
+    let mut state = ProjectState::default();
+    state.sequences.insert("ref".to_string(), reference);
+    state.sequences.insert(
+        "query".to_string(),
+        DNAsequence::from_sequence(&"ATGC".repeat(8)).expect("query"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ComputeDotplot {
+            seq_id: "query".to_string(),
+            reference_seq_id: Some("ref".to_string()),
+            span_start_0based: Some(0),
+            span_end_0based: Some(32),
+            reference_span_start_0based: Some(0),
+            reference_span_end_0based: Some(64),
+            mode: DotplotMode::PairForward,
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("context_dotplot".to_string()),
+        })
+        .expect("compute context dotplot");
+
+    let view = engine
+        .get_dotplot_view("context_dotplot")
+        .expect("context dotplot view");
+    let annotation = view
+        .reference_annotation
+        .as_ref()
+        .expect("genome context annotation");
+    assert_eq!(annotation.label, "genome context");
+    assert_eq!(annotation.interval_count, 3);
+    assert!(
+        annotation.intervals.iter().any(|interval| {
+            interval.kind == "exon"
+                && interval.label == "sense_gene"
+                && interval.strand.as_deref() == Some("+")
+                && interval.lane == 0
+        }),
+        "sense exon should remain visible on the forward exon lane"
+    );
+    assert!(
+        annotation.intervals.iter().any(|interval| {
+            interval.kind == "exon"
+                && interval.label == "antisense_gene"
+                && interval.strand.as_deref() == Some("-")
+                && interval.lane == 1
+        }),
+        "antisense exon should remain visible on a separate reverse exon lane"
+    );
+    let repeat = annotation
+        .intervals
+        .iter()
+        .find(|interval| interval.kind == "repeat")
+        .expect("repeat interval");
+    assert_eq!(repeat.label, "repeat: AluY");
+    assert_eq!(repeat.strand.as_deref(), Some("-"));
+    assert_eq!(repeat.lane, 2);
+    assert_eq!(repeat.color_rgb, Some([217, 119, 6]));
+    assert!(
+        repeat
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("class=SINE")
+    );
+
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let path = tmp.path().with_extension("context.dotplot.svg");
+    let path_text = path.display().to_string();
+    engine
+        .apply(Operation::RenderDotplotSvg {
+            seq_id: "query".to_string(),
+            dotplot_id: "context_dotplot".to_string(),
+            path: path_text.clone(),
+            flex_track_id: None,
+            display_density_threshold: Some(0.0),
+            display_intensity_gain: Some(1.0),
+            overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
+            overlay_anchor_exon: None,
+        })
+        .expect("render context dotplot");
+    let svg = std::fs::read_to_string(path_text).unwrap();
+    assert!(svg.contains("dotplot-genome-context-repeat"));
+    assert!(svg.contains("dotplot-annotation-strand"));
+    assert!(svg.contains("repeat: AluY"));
+    assert!(svg.contains("annotation_intervals=3 exons=2 repeats=1"));
 }
 
 #[test]
@@ -22039,14 +22165,18 @@ fn test_compute_dotplot_overlay_stores_multiple_series_and_reference_annotation(
     let annotation = view
         .reference_annotation
         .as_ref()
-        .expect("merged exon track");
+        .expect("genome context track");
     assert_eq!(annotation.seq_id, "ref");
-    assert_eq!(annotation.label, "merged exons");
+    assert_eq!(annotation.label, "genome context");
     assert_eq!(annotation.interval_count, 2);
     assert_eq!(annotation.intervals[0].start_0based, 4);
     assert_eq!(annotation.intervals[0].end_0based_exclusive, 12);
+    assert_eq!(annotation.intervals[0].kind, "exon");
+    assert_eq!(annotation.intervals[0].strand.as_deref(), Some("+"));
     assert_eq!(annotation.intervals[1].start_0based, 20);
     assert_eq!(annotation.intervals[1].end_0based_exclusive, 28);
+    assert_eq!(annotation.intervals[1].kind, "exon");
+    assert_eq!(annotation.intervals[1].strand.as_deref(), Some("+"));
 }
 
 #[test]

@@ -5293,12 +5293,12 @@ Status (2026-03-19):
     - added engine operation `ComputeDotplotOverlay` for multiple query series
       against one shared reference span
     - dotplot payloads now carry `owner_seq_id`, `query_series[]`, and optional
-      merged reference-exon annotation in one engine-owned/exportable record
+      reference/genome-context annotation in one engine-owned/exportable record
     - the standalone Dotplot workspace can overlay transcript isoforms from the
       active splicing/RNA-mapping locus in one canvas with deterministic colors
     - cheap requests auto-compute after debounce; large requests stay explicit
-    - GUI + SVG export now render multi-series overlays with legend and merged
-      exon side track
+    - GUI + SVG export now render multi-series overlays with legend and a
+      reference/genome-context side rail
   - shell/CLI overlay parity (2026-04-14):
     - shared-shell/direct CLI now exposes `dotplot overlay-compute`
     - repeated `--query-spec JSON_OR_@FILE` values feed the same
@@ -5334,11 +5334,17 @@ Status (2026-03-19):
       conserved motif `CATGTGTAACAG`) plus the matching ClawBio workflow
       request
       `integrations/clawbio/skills/gentle-cloning/examples/request_workflow_p53_family_query_anchor_dotplot.json`
-  - genomic-axis exon context (2026-04-29):
+  - genomic-axis genome context (2026-04-29):
     - ordinary pairwise dotplots, annotated self-dotplots, multi-series overlay
-      dotplots, and SVG exports now draw merged exon blocks beside the
-      reference/genomic y-axis whenever the reference sequence carries exon
-      features
+      dotplots, and SVG exports now draw structured genome-context blocks
+      beside the reference/genomic y-axis whenever the reference sequence
+      carries supported features
+    - exon blocks are not constrained to one selected gene; sense and antisense
+      exon annotations keep strand cues in separate lanes so opposite-strand
+      context remains visible
+    - RepeatMasker/UCSC `rmsk` context is shown when it has been materialized
+      into ordinary `repeat_region` / `mobile_element` features first; dotplot
+      rendering intentionally does not perform live repeat-index lookups
     - no SNP/variant side-track is implemented yet; variant/SNP dotplot context
       remains parked until SNP data ingestion and coordinate projection are
       available

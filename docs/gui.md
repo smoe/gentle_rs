@@ -275,6 +275,13 @@ Primary map modes (linear topology):
         shown)
       - overlay exports switch to owner/reference-oriented naming and include
         the overlaid series count
+      - pairwise, annotated self, and overlay dotplots draw a genome-context
+        side rail beside the reference/genomic y-axis when the reference
+        sequence already carries supported annotation features
+      - the rail is not constrained to a selected gene: exon features keep
+        sense/antisense strand cues in separate lanes, and materialized
+        RepeatMasker/UCSC `rmsk` repeat features (`repeat_region` /
+        `mobile_element`) render as a repeat lane
     - `dotplot_id` / `flex_track_id` selection
   - full parameter editing and plot inspection now live in the standalone window:
     - before a dotplot payload is loaded, the standalone window stays in a
@@ -327,10 +334,10 @@ Primary map modes (linear topology):
             start observed among the displayed transcripts for that exon
         - each isoform gets a deterministic color while the y-axis stays in
           shared genomic coordinates
-        - merged exon annotation for the reference span is drawn beside the
-          genomic axis when exon features are present on the reference sequence;
-          the same side-track is also shown for ordinary pairwise and annotated
-          self-dotplot payloads
+        - genome-context annotation for the reference span is drawn beside the
+          genomic axis when supported features are present on the reference
+          sequence; exons keep sense/antisense lanes and materialized
+          RepeatMasker/UCSC repeat features share the same side rail
         - manually anchored overlay payloads can also be re-opened here even if
           they were computed outside the current locus-transcript picker; the
           x-axis selector stays available so those persisted family/domain
