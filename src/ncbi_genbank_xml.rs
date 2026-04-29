@@ -672,6 +672,46 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_gbseq_xml_text_multi_record_interval_and_flag_qualifier_edges() {
+        let text = std::fs::read_to_string("test_files/fixtures/import_parity/toy.multi.gbseq.xml")
+            .expect("read multi XML");
+        let (parsed, dialect) =
+            parse_gbseq_xml_text_with_dialect(&text).expect("parse multi GBSet/GBSeq");
+        assert_eq!(dialect, NcbiXmlDialect::GbSetGbSeq);
+        assert_eq!(parsed.len(), 2);
+
+        let first_gene = parsed[0]
+            .features
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("first record should contain a gene");
+        assert_eq!(first_gene.location.to_gb_format(), "join(1..4,9..12)");
+        assert!(
+            first_gene
+                .qualifiers
+                .iter()
+                .any(|(key, value)| key.as_ref() == "pseudo" && value.is_none()),
+            "value-less XML qualifier should be preserved"
+        );
+
+        let second_misc = parsed[1]
+            .features
+            .iter()
+            .find(|feature| {
+                feature
+                    .kind
+                    .to_string()
+                    .eq_ignore_ascii_case("misc_feature")
+            })
+            .expect("second record should contain misc_feature");
+        assert_eq!(second_misc.location.to_gb_format(), "complement(5..16)");
+        assert_eq!(
+            second_misc.qualifier_values("note").next(),
+            Some("line one line two")
+        );
+    }
+
+    #[test]
     fn test_parse_gbseq_xml_text_rejects_unknown_xml() {
         let err = parse_gbseq_xml_text("<OtherSet><OtherSeq/></OtherSet>")
             .expect_err("unknown XML dialect should be rejected");

@@ -4438,9 +4438,13 @@ Status:
    - GUI open-sequence dialog now exposes XML file filters and docs list XML
      support explicitly.
    - unsupported XML dialects return explicit, deterministic diagnostics.
+   - compact XML parity fixtures now cover `INSDSet/INSDSeq`, multi-record
+     `GBSet/GBSeq`, interval-derived feature locations, text-only feature
+     locations, and value-less/flag qualifiers.
 2. Remaining follow-ups:
-   - extend cross-format parity fixtures/tests to include additional XML edge
-     cases (multi-record, qualifier-only, interval-only locations).
+   - extend cross-format parity fixtures/tests to additional XML edge cases as
+     they are found in real-world imports, while keeping the default fixture
+     pack compact.
    - keep large exploratory XML samples out of committed default fixtures.
 
 ### Cloning routine catalog + macro-box graph track (new)
@@ -5973,9 +5977,8 @@ Post-baseline follow-ups:
     checksums)
   - stricter schema evolution and compatibility reporting for protocol bundles.
 - Define shared frontend-neutral view-model schema for tracks/features/overlays.
-- Extend XML parity coverage with multi-record, qualifier-only, and
-  interval-only edge fixtures while keeping XML import on shared GenBank-like
-  semantics.
+- Continue XML parity coverage for newly discovered real-world edge cases while
+  keeping XML import on shared GenBank-like semantics.
 - Add sequencing-confirmation evidence contracts (read-aligned construct
   validation summaries) as a deterministic shared-engine path.
   - shipped: report store + shell/CLI list/show/export path for called-read

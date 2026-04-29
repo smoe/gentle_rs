@@ -1469,11 +1469,26 @@ mod tests {
     fn test_toy_multi_embl_parses_multiple_records() {
         let seqs = DNAsequence::from_embl_file("test_files/fixtures/import_parity/toy.multi.embl")
             .expect("parse multi-record EMBL fixture");
+        let xml_seqs = DNAsequence::from_ncbi_gbseq_xml_file(
+            "test_files/fixtures/import_parity/toy.multi.gbseq.xml",
+        )
+        .expect("parse multi-record XML fixture");
         assert_eq!(seqs.len(), 2);
+        assert_eq!(xml_seqs.len(), 2);
         let first = &seqs[0];
         let second = &seqs[1];
+        let first_xml = &xml_seqs[0];
+        let second_xml = &xml_seqs[1];
         assert_eq!(first.len(), 24);
         assert_eq!(second.len(), 24);
+        assert_eq!(
+            first.get_forward_string().to_ascii_uppercase(),
+            first_xml.get_forward_string().to_ascii_uppercase()
+        );
+        assert_eq!(
+            second.get_forward_string().to_ascii_uppercase(),
+            second_xml.get_forward_string().to_ascii_uppercase()
+        );
 
         let first_gene = first
             .features()
@@ -1481,6 +1496,22 @@ mod tests {
             .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
             .expect("first record should contain a gene feature");
         assert_eq!(first_gene.location.to_gb_format(), "join(1..4,9..12)");
+        let first_xml_gene = first_xml
+            .features()
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("first XML record should contain a gene feature");
+        assert_eq!(
+            first_xml_gene.location.to_gb_format(),
+            first_gene.location.to_gb_format()
+        );
+        assert!(
+            first_xml_gene
+                .qualifiers
+                .iter()
+                .any(|(key, value)| key.as_ref() == "pseudo" && value.is_none()),
+            "XML value-less qualifier should survive DNAsequence import"
+        );
 
         let second_misc = second
             .features()
@@ -1498,6 +1529,20 @@ mod tests {
             .unwrap_or_default();
         assert!(note.contains("line one"));
         assert!(note.contains("line two"));
+        let second_xml_misc = second_xml
+            .features()
+            .iter()
+            .find(|feature| {
+                feature
+                    .kind
+                    .to_string()
+                    .eq_ignore_ascii_case("misc_feature")
+            })
+            .expect("second XML record should contain a misc_feature");
+        assert_eq!(
+            second_xml_misc.location.to_gb_format(),
+            second_misc.location.to_gb_format()
+        );
     }
 
     #[test]

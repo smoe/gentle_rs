@@ -15,6 +15,7 @@ checks.
   - `toy.multi.embl`
   - `toy.small.gbseq.xml`
   - `toy.small.insdseq.xml`
+  - `toy.multi.gbseq.xml`
 - `resources/`
   - `jaspar.edge.pfm`
   - `rebase.edge.withrefm`
@@ -63,6 +64,25 @@ checks.
   - Wrapped feature-location and wrapped qualifier regression coverage.
 - Purpose: ensure parser behavior stays stable for realistic EMBL line wrapping
   and record boundaries.
+
+### `import_parity/toy.multi.gbseq.xml`
+
+- Origin: hand-crafted two-record NCBI GenBank XML fixture paired with
+  `toy.multi.embl`.
+- Deterministic self-creation:
+  - encode the two 24 bp synthetic records from `toy.multi.embl` as
+    `GBSet/GBSeq` records
+  - keep record A's `gene` location interval-only
+    (`GBFeature_intervals` without `GBFeature_location`)
+  - keep record A's `pseudo` qualifier value-less
+  - keep record B's `misc_feature` location text-only
+    (`GBFeature_location` without `GBFeature_intervals`)
+- Primary usage:
+  - XML multi-record import tests.
+  - XML interval-derived location regression tests.
+  - XML flag/value-less qualifier preservation tests.
+- Purpose: keep XML edge-case coverage small and paired with the existing EMBL
+  multi-record fixture.
 
 ### `resources/jaspar.edge.pfm`
 
