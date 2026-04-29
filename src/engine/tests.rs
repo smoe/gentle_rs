@@ -3165,9 +3165,61 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
     assert!(map.svg.contains("Amplicon 4-24 (21 bp)"));
     assert!(map.svg.contains("exon identity"));
     assert!(map.svg.contains("exon junction"));
+    assert!(map.svg.contains("forward primer 5&apos;-AAACCC-3&apos;"));
+    assert!(map.svg.contains("reverse primer 5&apos;-CCCAAA-3&apos;"));
+    assert_eq!(map.svg.matches("AAACCC").count(), 1);
+    assert_eq!(map.svg.matches("CCCAAA").count(), 1);
     assert!(map.svg.contains(">E1<"));
     assert!(map.svg.contains(">E2<"));
     assert!(map.svg.contains("Junction E1-&gt;E2"));
+}
+
+#[test]
+fn test_cdna_pcr_map_uses_group_exon_ordinals_for_tp73_as3() {
+    let (engine, tp73_as3_feature_id, _) = load_tp73_engine_for_transcript_aware_qpcr();
+    let report = engine
+        .test_cdna_pcr_assay(
+            "tp73",
+            tp73_as3_feature_id,
+            "CTGCTCCAGCAGAACAAAAC",
+            "TCGTGGTAATCTCGCTGATG",
+            None,
+            Some(1),
+            Some(5000),
+            Some(0),
+            Some(20),
+        )
+        .expect("TP73-AS3 shared primer cDNA PCR assay report");
+    assert_eq!(report.transcript_count, 3);
+    assert_eq!(report.detected_transcript_count, 3);
+    assert_eq!(report.product_count, 3);
+    let map = report.transcript_map.as_ref().expect("transcript map");
+    assert!(map.svg.contains("Exon E1: cDNA 1-321; source 16110-16430"));
+    assert!(map.svg.contains("Exon E2: cDNA 1-49; source 12407-12455"));
+    assert!(map.svg.contains("Exon E3: cDNA 1-151; source 11849-11999"));
+    assert!(
+        map.svg
+            .contains("forward primer 5&apos;-CTGCTCCAGCAGAACAAAAC-3&apos;")
+    );
+    assert!(
+        map.svg
+            .contains("reverse primer 5&apos;-TCGTGGTAATCTCGCTGATG-3&apos;")
+    );
+    assert_eq!(map.svg.matches("CTGCTCCAGCAGAACAAAAC").count(), 1);
+    assert_eq!(map.svg.matches("TCGTGGTAATCTCGCTGATG").count(), 1);
+    assert!(
+        map.svg
+            .contains("Exon E4: cDNA 322-434; source 9638-9750; transcript-local E2")
+    );
+    assert!(
+        map.svg
+            .contains("Exon E5: cDNA 435-1222; source 6128-6915; transcript-local E3")
+    );
+    assert!(map.svg.contains(">E1-E4<"));
+    assert!(map.svg.contains(">E2-E4<"));
+    assert!(map.svg.contains(">E3-E4<"));
+    assert!(map.svg.contains(">E4-E5<"));
+    assert!(map.svg.contains("Junction E4-&gt;E5"));
 }
 
 #[test]

@@ -267,15 +267,22 @@ impl GentleEngine {
         svg.push_str("</defs>");
     }
 
-    fn cdna_assay_exon_title(segment: &CdnaAssayTranscriptExonSegment) -> String {
-        format!(
+    fn cdna_assay_exon_title(
+        segment: &CdnaAssayTranscriptExonSegment,
+        group_exon_ordinal: usize,
+    ) -> String {
+        let mut title = format!(
             "Exon E{}: cDNA {}-{}; source {}-{}",
-            segment.exon_ordinal,
+            group_exon_ordinal,
             segment.local_start_0based.saturating_add(1),
             segment.local_end_0based_exclusive,
             segment.source_start_0based.saturating_add(1),
             segment.source_end_0based_exclusive
-        )
+        );
+        if group_exon_ordinal != segment.exon_ordinal {
+            title.push_str(&format!("; transcript-local E{}", segment.exon_ordinal));
+        }
+        title
     }
 
     fn push_cdna_assay_exon_architecture_svg(
@@ -287,7 +294,7 @@ impl GentleEngine {
         exon_identity: &BTreeMap<(usize, usize), usize>,
         center_y: f32,
     ) {
-        let exon_center_y = center_y + 20.0;
+        let exon_center_y = center_y + 42.0;
         svg.push_str(&format!(
             "<line class=\"exon-connector\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\"/>",
             track_left,
@@ -311,37 +318,57 @@ impl GentleEngine {
                 ))
                 .copied()
                 .unwrap_or(segment.exon_ordinal.saturating_sub(1));
+            let group_exon_ordinal = identity_index.saturating_add(1);
             svg.push_str(&format!(
                 "<rect class=\"exon-block\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"13\" rx=\"2\" fill=\"url(#cdna_exon_{})\"><title>{}</title></rect>",
                 x,
                 exon_center_y - 6.5,
                 w,
                 identity_index,
-                Self::dotplot_svg_xml_escape(&Self::cdna_assay_exon_title(segment))
+                Self::dotplot_svg_xml_escape(&Self::cdna_assay_exon_title(
+                    segment,
+                    group_exon_ordinal
+                ))
             ));
             if w >= 24.0 {
                 svg.push_str(&format!(
                     "<text class=\"exon-label\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\">E{}</text>",
                     x + w * 0.5,
                     exon_center_y + 3.5,
-                    segment.exon_ordinal
+                    group_exon_ordinal
                 ));
             } else {
                 svg.push_str(&format!(
                     "<text class=\"exon-label\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\">{}</text>",
                     x + w * 0.5,
                     exon_center_y + 17.0,
-                    segment.exon_ordinal
+                    group_exon_ordinal
                 ));
             }
         }
         for pair in exon_segments.windows(2) {
             let boundary = pair[0].local_end_0based_exclusive;
             let x = Self::cdna_assay_map_x(track_left, track_width, cdna_length_bp, boundary);
+            let from_ordinal = exon_identity
+                .get(&(
+                    pair[0].source_start_0based,
+                    pair[0].source_end_0based_exclusive,
+                ))
+                .copied()
+                .unwrap_or(pair[0].exon_ordinal.saturating_sub(1))
+                .saturating_add(1);
+            let to_ordinal = exon_identity
+                .get(&(
+                    pair[1].source_start_0based,
+                    pair[1].source_end_0based_exclusive,
+                ))
+                .copied()
+                .unwrap_or(pair[1].exon_ordinal.saturating_sub(1))
+                .saturating_add(1);
             let title = format!(
                 "Junction E{}->E{}: {}-{} to {}-{}",
-                pair[0].exon_ordinal,
-                pair[1].exon_ordinal,
+                from_ordinal,
+                to_ordinal,
                 pair[0].source_start_0based.saturating_add(1),
                 pair[0].source_end_0based_exclusive,
                 pair[1].source_start_0based.saturating_add(1),
@@ -350,16 +377,17 @@ impl GentleEngine {
             svg.push_str(&format!(
                 "<line class=\"junction\" x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\"><title>{}</title></line>",
                 x,
-                center_y - 16.0,
+                center_y + 6.0,
                 x,
                 exon_center_y + 10.0,
                 Self::dotplot_svg_xml_escape(&title)
             ));
             svg.push_str(&format!(
-                "<text class=\"junction-label\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\">J{}</text>",
+                "<text class=\"junction-label\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\">E{}-E{}</text>",
                 x,
                 exon_center_y + 23.0,
-                pair[0].exon_ordinal
+                from_ordinal,
+                to_ordinal
             ));
         }
     }
@@ -377,12 +405,12 @@ impl GentleEngine {
             .len()
             .saturating_sub(shown_rows.len());
         let width_px = 1180usize;
-        let row_height = 70usize;
-        let height_px = 174usize + row_count.max(1) * row_height + 62usize;
+        let row_height = 104usize;
+        let height_px = 194usize + row_count.max(1) * row_height + 62usize;
         let track_left = 292.0f32;
         let track_width = 710.0f32;
         let track_right = track_left + track_width;
-        let row_top = 154.0f32;
+        let row_top = 174.0f32;
         let title = format!(
             "cDNA {} assay transcript map",
             report.assay_kind.to_ascii_uppercase()
@@ -405,7 +433,7 @@ impl GentleEngine {
                 omitted_transcript_count
             )
         };
-        let unique_exons = shown_rows
+        let mut unique_exons = shown_rows
             .iter()
             .flat_map(|row| {
                 row.exon_segments.iter().map(|segment| {
@@ -415,7 +443,15 @@ impl GentleEngine {
                     )
                 })
             })
-            .collect::<BTreeSet<_>>();
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        if report.strand.trim() == "-" {
+            unique_exons.sort_by(|left, right| right.0.cmp(&left.0).then(right.1.cmp(&left.1)));
+        } else {
+            unique_exons
+                .sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        }
         let exon_identity = unique_exons
             .into_iter()
             .enumerate()
@@ -438,7 +474,7 @@ impl GentleEngine {
         ));
         svg.push_str(
             "<style>\
-            .bg{fill:#ffffff}.panel{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1}.title{font:700 24px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#0f172a}.sub{font:500 13px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#475569}.label{font:600 12px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#1e293b}.small{font:500 11px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#64748b}.axis{font:600 10px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#64748b}.track{stroke:#94a3b8;stroke-width:5;stroke-linecap:round}.grid{stroke:#e2e8f0;stroke-width:1}.product{fill:#16a34a;fill-opacity:.78}.forward{fill:#2563eb}.reverse{fill:#dc2626}.probe{fill:#9333ea}.faint{fill-opacity:.32}.status{font:600 12px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#334155}.exon-connector{stroke:#94a3b8;stroke-width:2;stroke-linecap:round;stroke-opacity:.72}.exon-block{stroke:#334155;stroke-opacity:.38;stroke-width:.8}.exon-label{font:700 9px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#0f172a}.junction{stroke:#0f172a;stroke-width:1.2;stroke-dasharray:3 3;stroke-opacity:.52}.junction-label{font:700 9px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#475569}\
+            .bg{fill:#ffffff}.panel{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1}.title{font:700 24px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#0f172a}.sub{font:500 13px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#475569}.label{font:600 12px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#1e293b}.small{font:500 11px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#64748b}.axis{font:600 10px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#64748b}.track{stroke:#94a3b8;stroke-width:5;stroke-linecap:round}.grid{stroke:#e2e8f0;stroke-width:1}.product{fill:#16a34a;fill-opacity:.72}.forward{fill:#2563eb}.reverse{fill:#dc2626}.probe{fill:#9333ea}.faint{fill-opacity:.32}.status{font:600 12px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#334155}.exon-connector{stroke:#94a3b8;stroke-width:2;stroke-linecap:round;stroke-opacity:.72}.exon-block{stroke:#334155;stroke-opacity:.38;stroke-width:.8}.exon-label{font:700 9px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#0f172a}.junction{stroke:#0f172a;stroke-width:1.2;stroke-dasharray:3 3;stroke-opacity:.52}.junction-label{font:700 9px 'Avenir Next','Segoe UI',Arial,sans-serif;fill:#475569}\
             </style>",
         );
         Self::push_cdna_assay_exon_pattern_defs(&mut svg, exon_identity.len().max(1));
@@ -471,16 +507,12 @@ impl GentleEngine {
         ));
 
         let legend_y = 112.0f32;
-        let mut legend = vec![
-            ("amplicon", "#16a34a"),
-            ("forward primer", "#2563eb"),
-            ("reverse primer", "#dc2626"),
-        ];
+        let mut legend = vec![("amplicon", "#16a34a", 112.0f32)];
         if report.probe.is_some() {
-            legend.push(("probe", "#9333ea"));
+            legend.push(("probe", "#9333ea", 92.0));
         }
         let mut legend_x = 36.0f32;
-        for (label, color) in legend {
+        for (label, color, advance) in legend {
             svg.push_str(&format!(
                 "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"14\" height=\"8\" rx=\"2\" fill=\"{}\"/>",
                 legend_x,
@@ -493,7 +525,7 @@ impl GentleEngine {
                 legend_y,
                 Self::dotplot_svg_xml_escape(label)
             ));
-            legend_x += 126.0;
+            legend_x += advance;
         }
         if !exon_identity.is_empty() {
             svg.push_str(&format!(
@@ -520,8 +552,33 @@ impl GentleEngine {
                 legend_y
             ));
         }
+        let primer_legend_y = 134.0f32;
+        let primer_legend = [
+            ("forward primer", &report.forward_primer, "#2563eb", 36.0f32),
+            (
+                "reverse primer",
+                &report.reverse_primer,
+                "#dc2626",
+                470.0f32,
+            ),
+        ];
+        for (label, sequence, color, x) in primer_legend {
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"14\" height=\"8\" rx=\"2\" fill=\"{}\"/>",
+                x,
+                primer_legend_y - 7.0,
+                color
+            ));
+            svg.push_str(&format!(
+                "<text class=\"small\" x=\"{:.1}\" y=\"{:.1}\">{} 5&apos;-{}-3&apos;</text>",
+                x + 20.0,
+                primer_legend_y,
+                Self::dotplot_svg_xml_escape(label),
+                Self::dotplot_svg_xml_escape(sequence)
+            ));
+        }
         svg.push_str(&format!(
-            "<text class=\"axis\" x=\"{:.1}\" y=\"136\" text-anchor=\"middle\">cDNA position, exon identity, and junction context within each transcript</text>",
+            "<text class=\"axis\" x=\"{:.1}\" y=\"158\" text-anchor=\"middle\">cDNA position, exon identity, and junction context within each transcript</text>",
             track_left + track_width * 0.5
         ));
 
@@ -535,7 +592,7 @@ impl GentleEngine {
 
         for (row_idx, row) in shown_rows.iter().enumerate() {
             let y = row_top + row_idx as f32 * row_height as f32;
-            let center_y = y + 24.0;
+            let center_y = y + 36.0;
             let label = if row.transcript_label.trim().is_empty()
                 || row.transcript_label == row.transcript_id
             {
@@ -585,7 +642,7 @@ impl GentleEngine {
                     x,
                     y + 7.0,
                     x,
-                    y + 58.0
+                    y + 96.0
                 ));
             }
             svg.push_str(&format!(
@@ -804,24 +861,26 @@ impl GentleEngine {
             title.push_str(&hit.covered_junction_labels.join(", "));
         }
         if role == "forward" {
+            let glyph_center_y = center_y - 18.0;
             let tip = x + w;
             let notch = (w * 0.28).clamp(3.0, 8.0);
             svg.push_str(&format!(
                 "<polygon class=\"{}\" points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\"><title>{}</title></polygon>",
                 class,
                 x,
-                center_y - 11.0,
+                glyph_center_y - 9.0,
                 tip - notch,
-                center_y - 11.0,
+                glyph_center_y - 9.0,
                 tip,
-                center_y,
+                glyph_center_y,
                 tip - notch,
-                center_y + 11.0,
+                glyph_center_y + 9.0,
                 x,
-                center_y + 11.0,
+                glyph_center_y + 9.0,
                 Self::dotplot_svg_xml_escape(&title)
             ));
         } else if role == "reverse" {
+            let glyph_center_y = center_y + 18.0;
             let tip = x;
             let right = x + w;
             let notch = (w * 0.28).clamp(3.0, 8.0);
@@ -829,15 +888,15 @@ impl GentleEngine {
                 "<polygon class=\"{}\" points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\"><title>{}</title></polygon>",
                 class,
                 tip,
-                center_y,
+                glyph_center_y,
                 tip + notch,
-                center_y - 11.0,
+                glyph_center_y - 9.0,
                 right,
-                center_y - 11.0,
+                glyph_center_y - 9.0,
                 right,
-                center_y + 11.0,
+                glyph_center_y + 9.0,
                 tip + notch,
-                center_y + 11.0,
+                glyph_center_y + 9.0,
                 Self::dotplot_svg_xml_escape(&title)
             ));
         } else {
