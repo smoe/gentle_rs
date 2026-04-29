@@ -2923,48 +2923,12 @@ impl GENtleApp {
     }
 
     fn stale_hosted_window_title_layer_id(title: &str) -> egui::LayerId {
-        egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string()))
+        crate::egui_compat::hosted_window_title_layer_id(title)
     }
 
     #[cfg(test)]
     fn stale_help_title_layer_id(title: &str) -> egui::LayerId {
         Self::stale_hosted_window_title_layer_id(title)
-    }
-
-    fn reset_hosted_window_areas_if_legacy_title_layer_visible(
-        ctx: &egui::Context,
-        title: &str,
-    ) -> bool {
-        let stale_title_layer = Self::stale_hosted_window_title_layer_id(title);
-        if ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)) {
-            ctx.memory_mut(|mem| mem.reset_areas());
-            true
-        } else {
-            false
-        }
-    }
-
-    fn reset_sequence_window_areas_if_legacy_layers_visible(
-        ctx: &egui::Context,
-        viewport_id: ViewportId,
-        title: &str,
-    ) -> bool {
-        let stale_title_layer = Self::stale_hosted_window_title_layer_id(title);
-        let stale_viewport_layer =
-            egui::LayerId::new(egui::Order::Middle, egui::Id::new(viewport_id));
-        if ctx.memory(|mem| {
-            mem.areas().is_visible(&stale_title_layer)
-                || mem.areas().is_visible(&stale_viewport_layer)
-        }) {
-            ctx.memory_mut(|mem| mem.reset_areas());
-            true
-        } else {
-            false
-        }
-    }
-
-    fn reset_help_areas_if_legacy_title_layer_visible(ctx: &egui::Context, title: &str) -> bool {
-        Self::reset_hosted_window_areas_if_legacy_title_layer_visible(ctx, title)
     }
 
     fn reset_root_help_areas_if_legacy_layers_visible(ctx: &egui::Context, title: &str) -> bool {
@@ -3879,10 +3843,9 @@ Error: `{err}`"
     fn open_configuration_dialog_for_tab(&mut self, tab: ConfigurationTab) {
         if self.show_configuration_dialog {
             self.configuration_tab = tab;
-            self.queue_focus_viewport(Self::configuration_viewport_id());
+            self.mark_window_open_or_focus(Self::configuration_viewport_id(), true);
             return;
         }
-        self.mark_viewport_open_requested(Self::configuration_viewport_id());
         let sync_started = Instant::now();
         self.sync_configuration_from_runtime();
         self.note_slow_phase(
@@ -3892,7 +3855,7 @@ Error: `{err}`"
         self.configuration_tab = tab;
         self.show_configuration_dialog = true;
         self.configuration_status.clear();
-        self.queue_focus_viewport(Self::configuration_viewport_id());
+        self.mark_window_open_or_focus(Self::configuration_viewport_id(), false);
     }
 
     fn open_configuration_dialog(&mut self) {
@@ -3920,11 +3883,10 @@ Error: `{err}`"
     }
 
     fn open_command_palette_dialog(&mut self) {
-        if self.show_command_palette_dialog {
-            self.queue_focus_viewport(Self::command_palette_viewport_id());
-        }
+        let was_open = self.show_command_palette_dialog;
         self.show_command_palette_dialog = true;
         self.command_palette_focus_query = true;
+        self.mark_window_open_or_focus(Self::command_palette_viewport_id(), was_open);
     }
 
     fn track_hover_status<S: Into<String>>(
@@ -5484,6 +5446,32 @@ Error: `{err}`"
     fn mark_viewport_open_requested(&mut self, viewport_id: ViewportId) {
         self.pending_window_open_timestamps
             .insert(viewport_id, Instant::now());
+    }
+
+    fn mark_window_open_or_focus(&mut self, viewport_id: ViewportId, was_open: bool) {
+        if !was_open {
+            self.mark_viewport_open_requested(viewport_id);
+        }
+        self.queue_focus_viewport(viewport_id);
+    }
+
+    fn viewport_foreground_requested(&self, viewport_id: ViewportId) -> bool {
+        self.pending_focus_viewports.contains(&viewport_id)
+            || self
+                .pending_viewport_focus_timestamps
+                .contains_key(&viewport_id)
+    }
+
+    fn hosted_window_spec_for_viewport(
+        &self,
+        title: impl Into<String>,
+        stable_id: egui::Id,
+        viewport_id: ViewportId,
+        default_size: Vec2,
+        min_size: Vec2,
+    ) -> crate::egui_compat::HostedWindowSpec {
+        crate::egui_compat::HostedWindowSpec::new(title, stable_id, default_size, min_size)
+            .foreground(self.viewport_foreground_requested(viewport_id))
     }
 
     fn note_slow_phase(&mut self, label: &str, elapsed_ms: u128) {
@@ -7591,7 +7579,7 @@ Error: `{err}`"
         if self.show_arrangement_gel_preview_dialog
             && self.arrangement_gel_preview.arrangement_id == arrangement_id
         {
-            self.queue_focus_viewport(Self::arrangement_gel_preview_viewport_id());
+            self.mark_window_open_or_focus(Self::arrangement_gel_preview_viewport_id(), true);
             return;
         }
         self.refresh_lineage_cache_if_needed();
@@ -7625,8 +7613,7 @@ Error: `{err}`"
             );
         }
         self.show_arrangement_gel_preview_dialog = true;
-        self.mark_viewport_open_requested(Self::arrangement_gel_preview_viewport_id());
-        self.queue_focus_viewport(Self::arrangement_gel_preview_viewport_id());
+        self.mark_window_open_or_focus(Self::arrangement_gel_preview_viewport_id(), false);
         self.refresh_arrangement_gel_preview_svg();
     }
 
@@ -7817,7 +7804,7 @@ Error: `{err}`"
             && self.rack_labels_preview.rack_id == rack_id
             && self.rack_labels_preview.arrangement_id == arrangement_id
         {
-            self.queue_focus_viewport(Self::rack_labels_preview_viewport_id());
+            self.mark_window_open_or_focus(Self::rack_labels_preview_viewport_id(), true);
             return;
         }
         self.rack_labels_preview.rack_id = rack.rack_id.clone();
@@ -7831,8 +7818,7 @@ Error: `{err}`"
         self.rack_labels_preview.status.clear();
         self.rack_labels_preview.svg_uri.clear();
         self.show_rack_labels_preview_dialog = true;
-        self.mark_viewport_open_requested(Self::rack_labels_preview_viewport_id());
-        self.queue_focus_viewport(Self::rack_labels_preview_viewport_id());
+        self.mark_window_open_or_focus(Self::rack_labels_preview_viewport_id(), false);
         self.refresh_rack_labels_preview_svg();
     }
 
@@ -8177,9 +8163,9 @@ Error: `{err}`"
             self.rack_custom_profile_columns = rack.profile.columns.to_string();
             self.rack_blocked_coordinates_text = rack.profile.blocked_coordinates.join(", ");
         }
+        let was_open = self.show_rack_dialog;
         self.show_rack_dialog = true;
-        self.mark_viewport_open_requested(Self::rack_viewport_id());
-        self.queue_focus_viewport(Self::rack_viewport_id());
+        self.mark_window_open_or_focus(Self::rack_viewport_id(), was_open);
     }
 
     fn open_arrangement_rack_dialog(&mut self, arrangement_id: &str) {
@@ -10407,26 +10393,26 @@ Error: `{err}`"
         } else {
             format!("Rack — {}", self.rack_view_rack_id.trim())
         };
-        let builder = egui::ViewportBuilder::default()
-            .with_title(title.clone())
-            .with_inner_size([1000.0, 760.0])
-            .with_min_inner_size([760.0, 520.0]);
-        ctx.show_viewport_immediate(Self::rack_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::rack_viewport_id());
+        let viewport_id = Self::rack_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            title.clone(),
+            egui::Id::new(("hosted_rack_window", viewport_id)),
+            viewport_id,
+            Vec2::new(1000.0, 760.0),
+            Vec2::new(760.0, 520.0),
+        );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                egui::Window::new(title.clone())
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size(Vec2::new(1000.0, 760.0))
-                    .show(ctx, |ui| {
-                        egui::ScrollArea::both()
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                close_requested = self.render_rack_contents(ui);
-                            });
-                    });
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    egui::ScrollArea::both()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            close_requested = self.render_rack_contents(ui);
+                        });
+                });
                 if close_requested {
                     open = false;
                 }
@@ -10670,27 +10656,23 @@ Error: `{err}`"
 
     fn open_prepare_genome_dialog_for_scope(&mut self, scope: GenomeDialogScope) {
         self.set_genome_dialog_scope(scope);
-        if self.show_reference_genome_prepare_dialog {
-            self.queue_focus_viewport(Self::prepare_genome_viewport_id());
-        }
+        let was_open = self.show_reference_genome_prepare_dialog;
         self.show_reference_genome_prepare_dialog = true;
+        self.mark_window_open_or_focus(Self::prepare_genome_viewport_id(), was_open);
     }
 
     fn open_retrieve_genome_dialog_for_scope(&mut self, scope: GenomeDialogScope) {
         self.set_genome_dialog_scope(scope);
-        if self.show_reference_genome_retrieve_dialog {
-            self.queue_focus_viewport(Self::retrieve_genome_viewport_id());
-            return;
-        }
+        let was_open = self.show_reference_genome_retrieve_dialog;
         self.show_reference_genome_retrieve_dialog = true;
+        self.mark_window_open_or_focus(Self::retrieve_genome_viewport_id(), was_open);
     }
 
     fn open_blast_genome_dialog_for_scope(&mut self, scope: GenomeDialogScope) {
         self.set_genome_dialog_scope(scope);
-        if self.show_reference_genome_blast_dialog {
-            self.queue_focus_viewport(Self::blast_genome_viewport_id());
-        }
+        let was_open = self.show_reference_genome_blast_dialog;
         self.show_reference_genome_blast_dialog = true;
+        self.mark_window_open_or_focus(Self::blast_genome_viewport_id(), was_open);
     }
 
     fn open_reference_genome_prepare_dialog(&mut self) {
@@ -10991,7 +10973,9 @@ Error: `{err}`"
 
     fn open_genome_bed_track_dialog(&mut self) {
         self.load_bed_track_subscriptions_from_state();
+        let was_open = self.show_genome_bed_track_dialog;
         self.show_genome_bed_track_dialog = true;
+        self.mark_window_open_or_focus(Self::bed_track_viewport_id(), was_open);
     }
 
     fn active_dna_window_context(&self) -> Option<(String, Option<(usize, usize)>)> {
@@ -11127,14 +11111,15 @@ Error: `{err}`"
             self.open_sequence_window(seq_id);
         }
         self.pcr_design_seq_id = seq_id.to_string();
+        let was_open = self.show_pcr_design_dialog;
         self.show_pcr_design_dialog = true;
-        self.queue_focus_viewport(Self::pcr_design_viewport_id());
+        self.mark_window_open_or_focus(Self::pcr_design_viewport_id(), was_open);
         Ok(())
     }
 
     fn open_pcr_design_dialog(&mut self) {
         if self.show_pcr_design_dialog && !self.pcr_design_seq_id.trim().is_empty() {
-            self.queue_focus_viewport(Self::pcr_design_viewport_id());
+            self.mark_window_open_or_focus(Self::pcr_design_viewport_id(), true);
             return;
         }
         let target_seq_id = self
@@ -11154,7 +11139,7 @@ Error: `{err}`"
 
     fn open_sequencing_confirmation_dialog(&mut self) {
         if self.show_sequencing_confirmation_dialog {
-            self.queue_focus_viewport(Self::sequencing_confirmation_viewport_id());
+            self.mark_window_open_or_focus(Self::sequencing_confirmation_viewport_id(), true);
             return;
         }
         let target_seq_id = self
@@ -11169,33 +11154,38 @@ Error: `{err}`"
             self.open_sequence_window(&seq_id);
         }
         self.sequencing_confirmation_seq_id = seq_id;
+        let was_open = self.show_sequencing_confirmation_dialog;
         self.show_sequencing_confirmation_dialog = true;
+        self.mark_window_open_or_focus(Self::sequencing_confirmation_viewport_id(), was_open);
     }
 
     fn open_gibson_dialog(&mut self) {
         if self.show_gibson_dialog {
-            self.queue_focus_viewport(Self::gibson_viewport_id());
+            self.mark_window_open_or_focus(Self::gibson_viewport_id(), true);
             return;
         }
         self.prefill_gibson_from_active_context();
         self.show_gibson_dialog = true;
+        self.mark_window_open_or_focus(Self::gibson_viewport_id(), false);
     }
 
     fn open_planning_dialog(&mut self) {
         if self.show_planning_dialog {
-            self.queue_focus_viewport(Self::planning_viewport_id());
+            self.mark_window_open_or_focus(Self::planning_viewport_id(), true);
             return;
         }
         self.refresh_planning_editor_buffers_from_engine();
         self.show_planning_dialog = true;
+        self.mark_window_open_or_focus(Self::planning_viewport_id(), false);
     }
 
     fn open_routine_assistant_dialog(&mut self) {
         if self.show_routine_assistant_dialog {
-            self.queue_focus_viewport(Self::routine_assistant_viewport_id());
+            self.mark_window_open_or_focus(Self::routine_assistant_viewport_id(), true);
             return;
         }
         self.show_routine_assistant_dialog = true;
+        self.mark_window_open_or_focus(Self::routine_assistant_viewport_id(), false);
         if self.routine_assistant_candidates.is_empty() {
             self.refresh_routine_assistant_candidates();
         }
@@ -11209,7 +11199,9 @@ Error: `{err}`"
 
     fn open_agent_assistant_dialog(&mut self) {
         self.refresh_agent_system_catalog();
+        let was_open = self.show_agent_assistant_dialog;
         self.show_agent_assistant_dialog = true;
+        self.mark_window_open_or_focus(Self::agent_assistant_viewport_id(), was_open);
     }
 
     fn open_jaspar_expert_dialog(&mut self) {
@@ -11238,24 +11230,24 @@ Error: `{err}`"
     }
 
     fn open_uniprot_dialog(&mut self) {
-        if self.show_uniprot_dialog {
-            self.queue_focus_viewport(Self::uniprot_viewport_id());
-        }
+        let was_open = self.show_uniprot_dialog;
         if self.uniprot_map_seq_id.trim().is_empty() {
             if let Some(seq_id) = self.project_sequence_ids_for_blast().first() {
                 self.uniprot_map_seq_id = seq_id.clone();
             }
         }
         self.show_uniprot_dialog = true;
+        self.mark_window_open_or_focus(Self::uniprot_viewport_id(), was_open);
     }
 
     fn open_genbank_dialog(&mut self) {
         if self.show_genbank_dialog {
-            self.queue_focus_viewport(Self::genbank_viewport_id());
+            self.mark_window_open_or_focus(Self::genbank_viewport_id(), true);
             return;
         }
         self.seed_dbsnp_defaults_if_needed();
         self.show_genbank_dialog = true;
+        self.mark_window_open_or_focus(Self::genbank_viewport_id(), false);
     }
 
     fn infer_genome_dialog_scope_from_paths(
@@ -19662,119 +19654,121 @@ Error: `{err}`"
             return;
         }
         const WINDOW_TITLE: &str = "GenBank / dbSNP Fetch";
+        let viewport_id = Self::genbank_viewport_id();
         let mut open = self.show_genbank_dialog;
         let mut close_requested = false;
-        egui::Window::new(WINDOW_TITLE)
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_size(Vec2::new(820.0, 420.0))
-            .min_size(Vec2::new(680.0, 320.0))
-            .show(ctx, |ui| {
-                let close_hover = Self::specialist_window_close_hover_text(WINDOW_TITLE);
-                if self.render_specialist_window_nav_with_close(
-                    ui,
-                    Some(("Close", close_hover.as_str())),
-                ) {
-                    close_requested = true;
-                }
-                ui.label(
+        let spec = self.hosted_window_spec_for_viewport(
+            WINDOW_TITLE,
+            egui::Id::new(("hosted_genbank_window", viewport_id)),
+            viewport_id,
+            Vec2::new(820.0, 420.0),
+            Vec2::new(680.0, 320.0),
+        );
+        crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            let close_hover = Self::specialist_window_close_hover_text(WINDOW_TITLE);
+            if self
+                .render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str())))
+            {
+                close_requested = true;
+            }
+            ui.label(
                     "Fetch one GenBank accession as a project sequence, or resolve a dbSNP rsID into an annotated genomic region from a prepared reference genome.",
                 );
+            ui.separator();
+            ui.label("GenBank accession");
+            ui.horizontal(|ui| {
+                ui.label("accession");
+                ui.text_edit_singleline(&mut self.genbank_accession)
+                    .on_hover_text("GenBank accession (for example AY738222 or NC_000001)");
+                if ui
+                    .button("Fetch")
+                    .on_hover_text("Fetch accession and import sequence into the project")
+                    .clicked()
+                {
+                    self.fetch_genbank_accession_from_dialog();
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("as_id");
+                ui.text_edit_singleline(&mut self.genbank_as_id)
+                    .on_hover_text(
+                        "Optional project sequence id override (auto-uses accession when empty)",
+                    );
+            });
+            ui.small("Examples: AY738222, NC_000001");
+            ui.small(
+                    "If network fetch is unavailable, use File -> Open Sequence... with a local GenBank file.",
+                );
+            if !self.genbank_status.trim().is_empty() {
                 ui.separator();
-                ui.label("GenBank accession");
+                ui.monospace(self.genbank_status.clone());
+            }
+            ui.separator();
+            ui.label("dbSNP locus extraction");
+            ui.small(
+                    "Resolve one rsID through NCBI Variation, then extract +/- flank bp with full feature annotation from the selected prepared reference genome.",
+                );
+            let dbsnp_fetch_running = self.dbsnp_fetch_task.is_some();
+            ui.add_enabled_ui(!dbsnp_fetch_running, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label("accession");
-                    ui.text_edit_singleline(&mut self.genbank_accession)
-                        .on_hover_text("GenBank accession (for example AY738222 or NC_000001)");
+                    ui.label("rs_id");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.dbsnp_rs_id)
+                            .hint_text(DEFAULT_DBSNP_TUTORIAL_RS_ID),
+                    )
+                    .on_hover_text("dbSNP identifier such as rs9923231");
+                    ui.label("genome");
+                    ui.text_edit_singleline(&mut self.dbsnp_genome_id)
+                        .on_hover_text(
+                            "Prepared reference genome ID from the reference genome catalog",
+                        );
                     if ui
-                        .button("Fetch")
-                        .on_hover_text("Fetch accession and import sequence into the project")
+                        .button("Fetch Region")
+                        .on_hover_text(
+                            "Resolve the rsID and extract the annotated genomic interval",
+                        )
                         .clicked()
                     {
-                        self.fetch_genbank_accession_from_dialog();
+                        self.fetch_dbsnp_region_from_dialog();
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.label("as_id");
-                    ui.text_edit_singleline(&mut self.genbank_as_id).on_hover_text(
-                        "Optional project sequence id override (auto-uses accession when empty)",
-                    );
-                });
-                ui.small("Examples: AY738222, NC_000001");
-                ui.small(
-                    "If network fetch is unavailable, use File -> Open Sequence... with a local GenBank file.",
-                );
-                if !self.genbank_status.trim().is_empty() {
-                    ui.separator();
-                    ui.monospace(self.genbank_status.clone());
-                }
-                ui.separator();
-                ui.label("dbSNP locus extraction");
-                ui.small(
-                    "Resolve one rsID through NCBI Variation, then extract +/- flank bp with full feature annotation from the selected prepared reference genome.",
-                );
-                let dbsnp_fetch_running = self.dbsnp_fetch_task.is_some();
-                ui.add_enabled_ui(!dbsnp_fetch_running, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("rs_id");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.dbsnp_rs_id)
-                                .hint_text(DEFAULT_DBSNP_TUTORIAL_RS_ID),
-                        )
-                        .on_hover_text("dbSNP identifier such as rs9923231");
-                        ui.label("genome");
-                        ui.text_edit_singleline(&mut self.dbsnp_genome_id)
-                            .on_hover_text(
-                                "Prepared reference genome ID from the reference genome catalog",
-                            );
-                        if ui
-                            .button("Fetch Region")
-                            .on_hover_text(
-                                "Resolve the rsID and extract the annotated genomic interval",
-                            )
-                            .clicked()
-                        {
-                            self.fetch_dbsnp_region_from_dialog();
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("flank_bp");
-                        ui.text_edit_singleline(&mut self.dbsnp_flank_bp).on_hover_text(
-                            "Bases to include on each side of the SNP (default 3000)",
-                        );
-                        ui.label("output_id");
-                        ui.text_edit_singleline(&mut self.dbsnp_output_id).on_hover_text(
+                    ui.label("flank_bp");
+                    ui.text_edit_singleline(&mut self.dbsnp_flank_bp)
+                        .on_hover_text("Bases to include on each side of the SNP (default 3000)");
+                    ui.label("output_id");
+                    ui.text_edit_singleline(&mut self.dbsnp_output_id)
+                        .on_hover_text(
                             "Optional project sequence id override (auto-generated when empty)",
                         );
-                    });
                 });
-                ui.small(format!(
-                    "Quick try: {} (VKORC1 warfarin-sensitivity locus)",
-                    DEFAULT_DBSNP_TUTORIAL_RS_ID
-                ));
-                let catalog_label = self
-                    .dbsnp_catalog_path_opt()
-                    .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
-                let cache_label = self
-                    .dbsnp_cache_dir_opt()
-                    .unwrap_or_else(configured_reference_genome_cache_dir);
-                ui.small(format!("Examples: {}, rs334", DEFAULT_DBSNP_TUTORIAL_RS_ID));
-                ui.small(format!(
-                    "Uses reference genome catalog '{}' and cache '{}'.",
-                    catalog_label, cache_label
-                ));
-                if dbsnp_fetch_running {
-                    ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new());
-                        ui.label("dbSNP fetch in progress...");
-                    });
-                }
-                if !self.dbsnp_status.trim().is_empty() {
-                    ui.separator();
-                    ui.monospace(self.dbsnp_status.clone());
-                }
             });
+            ui.small(format!(
+                "Quick try: {} (VKORC1 warfarin-sensitivity locus)",
+                DEFAULT_DBSNP_TUTORIAL_RS_ID
+            ));
+            let catalog_label = self
+                .dbsnp_catalog_path_opt()
+                .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+            let cache_label = self
+                .dbsnp_cache_dir_opt()
+                .unwrap_or_else(configured_reference_genome_cache_dir);
+            ui.small(format!("Examples: {}, rs334", DEFAULT_DBSNP_TUTORIAL_RS_ID));
+            ui.small(format!(
+                "Uses reference genome catalog '{}' and cache '{}'.",
+                catalog_label, cache_label
+            ));
+            if dbsnp_fetch_running {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new());
+                    ui.label("dbSNP fetch in progress...");
+                });
+            }
+            if !self.dbsnp_status.trim().is_empty() {
+                ui.separator();
+                ui.monospace(self.dbsnp_status.clone());
+            }
+        });
         if close_requested {
             open = false;
         }
@@ -20860,33 +20854,32 @@ Error: `{err}`"
             return;
         }
 
-        let builder = egui::ViewportBuilder::default()
-            .with_title("Protein Evidence")
-            .with_inner_size([1040.0, 680.0])
-            .with_min_inner_size([820.0, 480.0]);
-        ctx.show_viewport_immediate(Self::uniprot_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::uniprot_viewport_id());
+        let viewport_id = Self::uniprot_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            "Protein Evidence",
+            egui::Id::new(("hosted_uniprot_window", viewport_id)),
+            viewport_id,
+            Vec2::new(1040.0, 680.0),
+            Vec2::new(820.0, 480.0),
+        );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_uniprot_dialog;
                 let mut close_requested = false;
-                egui::Window::new("Protein Evidence")
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size(Vec2::new(1040.0, 680.0))
-                    .min_size(Vec2::new(820.0, 480.0))
-                    .show(ctx, |ui| {
-                        egui::ScrollArea::vertical()
-                            .id_salt("protein_evidence_embedded_scroll")
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                    ui,
-                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                                );
-                                close_requested = self.render_uniprot_dialog_contents(ui);
-                            });
-                    });
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("protein_evidence_embedded_scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            close_requested = self.render_uniprot_dialog_contents(ui);
+                        });
+                });
                 if close_requested {
                     open = false;
                 }
@@ -21220,29 +21213,29 @@ Error: `{err}`"
             return;
         }
         let title = self.genome_dialog_scope.prepare_title();
+        let viewport_id = Self::prepare_genome_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            title,
+            egui::Id::new(("hosted_prepare_genome_window", viewport_id)),
+            viewport_id,
+            Vec2::new(760.0, 560.0),
+            Vec2::new(520.0, 360.0),
+        );
 
-        let builder = egui::ViewportBuilder::default()
-            .with_title(title)
-            .with_inner_size([760.0, 560.0])
-            .with_min_inner_size([520.0, 360.0]);
-        ctx.show_viewport_immediate(Self::prepare_genome_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::prepare_genome_viewport_id());
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_reference_genome_prepare_dialog;
                 let mut close_requested = false;
-                egui::Window::new(title)
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size(Vec2::new(760.0, 560.0))
-                    .show(ctx, |ui| {
-                        egui::ScrollArea::vertical()
-                            .id_salt("prepare_genome_embedded_scroll")
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                close_requested = self.render_reference_genome_prepare_contents(ui);
-                            });
-                    });
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("prepare_genome_embedded_scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            close_requested = self.render_reference_genome_prepare_contents(ui);
+                        });
+                });
                 if close_requested {
                     open = false;
                     self.dismiss_pending_prepared_genome_reinstall_for_host(
@@ -22320,45 +22313,40 @@ Error: `{err}`"
         }
         self.refresh_genome_catalog_list();
         let title = self.genome_dialog_scope.retrieve_title();
+        let viewport_id = Self::retrieve_genome_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            title,
+            egui::Id::new(("hosted_retrieve_genome_window", viewport_id)),
+            viewport_id,
+            Vec2::new(980.0, 760.0),
+            Vec2::new(860.0, 520.0),
+        );
 
-        let builder = egui::ViewportBuilder::default()
-            .with_title(title)
-            .with_inner_size([980.0, 760.0])
-            .with_min_inner_size([860.0, 520.0]);
-        ctx.show_viewport_immediate(
-            Self::retrieve_genome_viewport_id(),
-            builder,
-            |ctx, class| {
-                self.note_viewport_focus_if_active(ctx, Self::retrieve_genome_viewport_id());
-                if class == egui::ViewportClass::EmbeddedWindow {
-                    let mut open = self.show_reference_genome_retrieve_dialog;
-                    let mut close_requested = false;
-                    egui::Window::new(title)
-                        .open(&mut open)
-                        .collapsible(false)
-                        .resizable(true)
-                        .default_size(Vec2::new(980.0, 760.0))
-                        .min_size(Vec2::new(860.0, 520.0))
-                        .show(ctx, |ui| {
-                            close_requested = self.render_reference_genome_retrieve_contents(ui);
-                        });
-                    if close_requested {
-                        open = false;
-                    }
-                    self.show_reference_genome_retrieve_dialog = open;
-                    return;
-                }
-
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
+            if class == egui::ViewportClass::EmbeddedWindow {
+                let mut open = self.show_reference_genome_retrieve_dialog;
                 let mut close_requested = false;
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                     close_requested = self.render_reference_genome_retrieve_contents(ui);
                 });
-
-                if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
-                    self.show_reference_genome_retrieve_dialog = false;
+                if close_requested {
+                    open = false;
                 }
-            },
-        );
+                self.show_reference_genome_retrieve_dialog = open;
+                return;
+            }
+
+            let mut close_requested = false;
+            crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+                close_requested = self.render_reference_genome_retrieve_contents(ui);
+            });
+
+            if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                self.show_reference_genome_retrieve_dialog = false;
+            }
+        });
     }
 
     fn format_blast_command_line(executable: &str, args: &[String]) -> String {
@@ -22999,24 +22987,24 @@ Error: `{err}`"
             return;
         }
         let title = self.genome_dialog_scope.blast_title();
+        let viewport_id = Self::blast_genome_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            title,
+            egui::Id::new(("hosted_blast_genome_window", viewport_id)),
+            viewport_id,
+            Vec2::new(980.0, 700.0),
+            Vec2::new(640.0, 420.0),
+        );
 
-        let builder = egui::ViewportBuilder::default()
-            .with_title(title)
-            .with_inner_size([980.0, 700.0])
-            .with_min_inner_size([640.0, 420.0]);
-        ctx.show_viewport_immediate(Self::blast_genome_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::blast_genome_viewport_id());
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_reference_genome_blast_dialog;
                 let mut close_requested = false;
-                egui::Window::new(title)
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size(Vec2::new(980.0, 700.0))
-                    .show(ctx, |ui| {
-                        close_requested = self.render_reference_genome_blast_contents(ui);
-                    });
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    close_requested = self.render_reference_genome_blast_contents(ui);
+                });
                 if close_requested {
                     open = false;
                 }
@@ -23048,84 +23036,86 @@ Error: `{err}`"
         };
         let mut open = self.show_reference_genome_inspector_dialog;
         let mut close_requested = false;
-        egui::Window::new(title)
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .show(ctx, |ui| {
-                let close_hover = Self::specialist_window_close_hover_text(title);
-                if self.render_specialist_window_nav_with_close(
-                    ui,
-                    Some(("Close", close_hover.as_str())),
-                ) {
-                    close_requested = true;
+        let spec = crate::egui_compat::HostedWindowSpec::new(
+            title,
+            egui::Id::new((
+                "hosted_reference_genome_inspector_window",
+                matches!(scope, GenomeDialogScope::Helper),
+            )),
+            Vec2::new(900.0, 620.0),
+            Vec2::new(620.0, 360.0),
+        );
+        crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            let close_hover = Self::specialist_window_close_hover_text(title);
+            if self
+                .render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str())))
+            {
+                close_requested = true;
+            }
+            ui.label(format!(
+                "Inspect prepared {} installations and integrity metadata.",
+                scope.description()
+            ));
+            ui.horizontal(|ui| {
+                ui.label("catalog");
+                ui.text_edit_singleline(&mut self.genome_catalog_path);
+                if ui
+                    .button("Browse...")
+                    .on_hover_text("Browse filesystem and fill this path")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("JSON", &["json"])
+                        .pick_file()
+                    {
+                        self.genome_catalog_path = path.display().to_string();
+                    }
                 }
-                ui.label(format!(
-                    "Inspect prepared {} installations and integrity metadata.",
-                    scope.description()
-                ));
-                ui.horizontal(|ui| {
-                    ui.label("catalog");
-                    ui.text_edit_singleline(&mut self.genome_catalog_path);
+            });
+            ui.horizontal(|ui| {
+                ui.label("cache_dir");
+                ui.text_edit_singleline(&mut self.genome_cache_dir);
+                if ui
+                    .button("Browse...")
+                    .on_hover_text("Browse filesystem and fill this path")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                        self.genome_cache_dir = path.display().to_string();
+                    }
+                }
+            });
+            if !self.genome_catalog_error.is_empty() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("Catalog error: {}", self.genome_catalog_error),
+                );
+            }
+            match self.collect_prepared_genome_inspections() {
+                Ok((inspections, errors)) => {
+                    let total_size: u64 = inspections.iter().map(|r| r.total_size_bytes).sum();
+                    let catalog_writable = self.selected_genome_catalog_is_writable();
+                    ui.label(format!(
+                        "Prepared references: {} | total size: {}",
+                        inspections.len(),
+                        Self::format_bytes_compact(total_size)
+                    ));
                     if ui
-                        .button("Browse...")
-                        .on_hover_text("Browse filesystem and fill this path")
+                        .small_button("Clear Caches...")
+                        .on_hover_text("Open the conservative prepared-cache cleanup specialist")
                         .clicked()
                     {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .pick_file()
-                        {
-                            self.genome_catalog_path = path.display().to_string();
-                        }
+                        self.open_cache_cleanup_dialog();
                     }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("cache_dir");
-                    ui.text_edit_singleline(&mut self.genome_cache_dir);
-                    if ui
-                        .button("Browse...")
-                        .on_hover_text("Browse filesystem and fill this path")
-                        .clicked()
-                    {
-                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            self.genome_cache_dir = path.display().to_string();
-                        }
-                    }
-                });
-                if !self.genome_catalog_error.is_empty() {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(190, 70, 70),
-                        format!("Catalog error: {}", self.genome_catalog_error),
-                    );
-                }
-                match self.collect_prepared_genome_inspections() {
-                    Ok((inspections, errors)) => {
-                        let total_size: u64 = inspections.iter().map(|r| r.total_size_bytes).sum();
-                        let catalog_writable = self.selected_genome_catalog_is_writable();
-                        ui.label(format!(
-                            "Prepared references: {} | total size: {}",
-                            inspections.len(),
-                            Self::format_bytes_compact(total_size)
-                        ));
-                        if ui
-                            .small_button("Clear Caches...")
-                            .on_hover_text(
-                                "Open the conservative prepared-cache cleanup specialist",
-                            )
-                            .clicked()
-                        {
-                            self.open_cache_cleanup_dialog();
-                        }
-                        if !catalog_writable {
-                            ui.small(
+                    if !catalog_writable {
+                        ui.small(
                                 "Catalog-entry removal is hidden here because the active catalog file is not writable.",
                             );
-                        }
-                        if inspections.is_empty() {
-                            ui.label("No prepared references found for this catalog/cache.");
-                        } else {
-                            egui::ScrollArea::vertical()
+                    }
+                    if inspections.is_empty() {
+                        ui.label("No prepared references found for this catalog/cache.");
+                    } else {
+                        egui::ScrollArea::vertical()
                                 .id_salt("prepared_genome_inspector_scroll")
                                 .max_height(320.0)
                                 .show(ui, |ui| {
@@ -23273,96 +23263,94 @@ Error: `{err}`"
                                         });
                                 });
 
-                            ui.separator();
-                            ui.label("Chromosome inspector");
-                            let prepared_ids: Vec<String> =
-                                inspections.iter().map(|i| i.genome_id.clone()).collect();
-                            if !prepared_ids.is_empty()
-                                && !prepared_ids.iter().any(|id| id == &self.genome_id)
+                        ui.separator();
+                        ui.label("Chromosome inspector");
+                        let prepared_ids: Vec<String> =
+                            inspections.iter().map(|i| i.genome_id.clone()).collect();
+                        if !prepared_ids.is_empty()
+                            && !prepared_ids.iter().any(|id| id == &self.genome_id)
+                        {
+                            self.genome_id = prepared_ids[0].clone();
+                        }
+                        ui.horizontal(|ui| {
+                            ui.label("genome");
+                            egui::ComboBox::from_id_salt("prepared_genome_chromosome_inspect")
+                                .selected_text(if self.genome_id.trim().is_empty() {
+                                    "<select genome>"
+                                } else {
+                                    self.genome_id.as_str()
+                                })
+                                .show_ui(ui, |ui| {
+                                    for genome_id in &prepared_ids {
+                                        ui.selectable_value(
+                                            &mut self.genome_id,
+                                            genome_id.clone(),
+                                            genome_id,
+                                        );
+                                    }
+                                });
+                            if ui
+                                .small_button("Use In Retrieve")
+                                .on_hover_text("Open retrieval dialog preselected for this genome")
+                                .clicked()
                             {
-                                self.genome_id = prepared_ids[0].clone();
+                                self.invalidate_genome_genes();
+                                self.open_retrieve_genome_dialog_for_scope(
+                                    self.genome_dialog_scope,
+                                );
                             }
-                            ui.horizontal(|ui| {
-                                ui.label("genome");
-                                egui::ComboBox::from_id_salt("prepared_genome_chromosome_inspect")
-                                    .selected_text(if self.genome_id.trim().is_empty() {
-                                        "<select genome>"
-                                    } else {
-                                        self.genome_id.as_str()
-                                    })
-                                    .show_ui(ui, |ui| {
-                                        for genome_id in &prepared_ids {
-                                            ui.selectable_value(
-                                                &mut self.genome_id,
-                                                genome_id.clone(),
-                                                genome_id,
-                                            );
-                                        }
-                                    });
-                                if ui
-                                    .small_button("Use In Retrieve")
-                                    .on_hover_text(
-                                        "Open retrieval dialog preselected for this genome",
-                                    )
-                                    .clicked()
-                                {
-                                    self.invalidate_genome_genes();
-                                    self.open_retrieve_genome_dialog_for_scope(
-                                        self.genome_dialog_scope,
+                        });
+                        if !self.genome_id.trim().is_empty() {
+                            match self.prepared_genome_chromosome_records(&self.genome_id) {
+                                Ok(chromosomes) => {
+                                    Self::render_chromosome_length_lines(ui, &chromosomes);
+                                }
+                                Err(e) => {
+                                    ui.colored_label(
+                                        egui::Color32::from_rgb(190, 70, 70),
+                                        format!("Chromosome inspector error: {e}"),
                                     );
                                 }
-                            });
-                            if !self.genome_id.trim().is_empty() {
-                                match self.prepared_genome_chromosome_records(&self.genome_id) {
-                                    Ok(chromosomes) => {
-                                        Self::render_chromosome_length_lines(ui, &chromosomes);
-                                    }
-                                    Err(e) => {
-                                        ui.colored_label(
-                                            egui::Color32::from_rgb(190, 70, 70),
-                                            format!("Chromosome inspector error: {e}"),
-                                        );
-                                    }
-                                }
-                            }
-                            if matches!(scope, GenomeDialogScope::Helper) {
-                                match self.selected_helper_catalog_entry_for_scope(scope) {
-                                    Ok(Some(entry)) => {
-                                        Self::render_helper_catalog_entry_panel(
-                                            ui,
-                                            &entry,
-                                            "Selected Helper Construct",
-                                        );
-                                    }
-                                    Ok(None) => {}
-                                    Err(e) => {
-                                        ui.colored_label(
-                                            egui::Color32::from_rgb(190, 70, 70),
-                                            format!("Helper interpretation error: {e}"),
-                                        );
-                                    }
-                                }
                             }
                         }
-                        if !errors.is_empty() {
-                            ui.separator();
-                            ui.colored_label(
-                                egui::Color32::from_rgb(190, 70, 70),
-                                "Inspection errors:",
-                            );
-                            for err in errors {
-                                ui.colored_label(egui::Color32::from_rgb(190, 70, 70), err);
+                        if matches!(scope, GenomeDialogScope::Helper) {
+                            match self.selected_helper_catalog_entry_for_scope(scope) {
+                                Ok(Some(entry)) => {
+                                    Self::render_helper_catalog_entry_panel(
+                                        ui,
+                                        &entry,
+                                        "Selected Helper Construct",
+                                    );
+                                }
+                                Ok(None) => {}
+                                Err(e) => {
+                                    ui.colored_label(
+                                        egui::Color32::from_rgb(190, 70, 70),
+                                        format!("Helper interpretation error: {e}"),
+                                    );
+                                }
                             }
                         }
                     }
-                    Err(e) => {
+                    if !errors.is_empty() {
+                        ui.separator();
                         ui.colored_label(
                             egui::Color32::from_rgb(190, 70, 70),
-                            format!("Inspector error: {e}"),
+                            "Inspection errors:",
                         );
+                        for err in errors {
+                            ui.colored_label(egui::Color32::from_rgb(190, 70, 70), err);
+                        }
                     }
                 }
-            });
+                Err(e) => {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        format!("Inspector error: {e}"),
+                    );
+                }
+            }
+        });
         if close_requested {
             open = false;
         }
@@ -23843,23 +23831,23 @@ Error: `{err}`"
         if !self.show_genome_bed_track_dialog {
             return;
         }
-        let builder = egui::ViewportBuilder::default()
-            .with_title("Import Genome Tracks")
-            .with_inner_size([980.0, 620.0])
-            .with_min_inner_size([620.0, 320.0]);
-        ctx.show_viewport_immediate(Self::bed_track_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::bed_track_viewport_id());
+        let viewport_id = Self::bed_track_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            "Import Genome Tracks",
+            egui::Id::new(("hosted_bed_track_window", viewport_id)),
+            viewport_id,
+            Vec2::new(980.0, 620.0),
+            Vec2::new(620.0, 320.0),
+        );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_genome_bed_track_dialog;
                 let mut close_requested = false;
-                egui::Window::new("Import Genome Tracks")
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size(Vec2::new(980.0, 620.0))
-                    .show(ctx, |ui| {
-                        close_requested = self.render_genome_bed_track_contents(ui)
-                    });
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    close_requested = self.render_genome_bed_track_contents(ui)
+                });
                 if close_requested {
                     open = false;
                 }
@@ -26761,24 +26749,24 @@ Error: `{err}`"
         }
         let mut open = self.show_gibson_dialog;
         let mut cancel_clicked = false;
-        let builder = egui::ViewportBuilder::default()
-            .with_title("Gibson")
-            .with_inner_size([1040.0, 820.0])
-            .with_min_inner_size([760.0, 560.0]);
-        ctx.show_viewport_immediate(Self::gibson_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::gibson_viewport_id());
+        let viewport_id = Self::gibson_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            "Gibson",
+            egui::Id::new(("hosted_gibson_window", viewport_id)),
+            viewport_id,
+            Vec2::new(1040.0, 820.0),
+            Vec2::new(760.0, 560.0),
+        );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
-                egui::Window::new("Gibson")
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size(Vec2::new(1040.0, 820.0))
-                    .show(ctx, |ui| {
-                        egui::ScrollArea::vertical()
-                            .id_salt("gibson_embedded_scroll")
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| cancel_clicked = self.render_gibson_contents(ui));
-                    });
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("gibson_embedded_scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| cancel_clicked = self.render_gibson_contents(ui));
+                });
             } else {
                 crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                     egui::ScrollArea::vertical()
@@ -27032,58 +27020,45 @@ Error: `{err}`"
         }
         let mut open = self.show_arrangement_gel_preview_dialog;
         let title = self.arrangement_gel_preview_title();
-        let builder = egui::ViewportBuilder::default()
-            .with_title(title.clone())
-            .with_inner_size([980.0, 760.0])
-            .with_min_inner_size([760.0, 560.0]);
-        ctx.show_viewport_immediate(
-            Self::arrangement_gel_preview_viewport_id(),
-            builder,
-            |ctx, class| {
-                self.note_viewport_focus_if_active(
-                    ctx,
-                    Self::arrangement_gel_preview_viewport_id(),
-                );
-                if class == egui::ViewportClass::EmbeddedWindow {
-                    let mut close_requested = false;
-                    egui::Window::new(title.clone())
-                        .open(&mut open)
-                        .collapsible(false)
-                        .resizable(true)
-                        .default_size(Vec2::new(980.0, 760.0))
-                        .show(ctx, |ui| {
-                            egui::ScrollArea::vertical()
-                                .id_salt("arrangement_gel_embedded_scroll")
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    close_requested =
-                                        self.render_arrangement_gel_preview_contents(ui);
-                                });
-                        });
-                    if close_requested {
-                        open = false;
-                    }
-                } else {
-                    let mut close_requested = false;
-                    crate::egui_compat::show_central_panel(
-                        ctx,
-                        egui::CentralPanel::default(),
-                        |ui| {
-                            egui::ScrollArea::vertical()
-                                .id_salt("arrangement_gel_viewport_scroll")
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    close_requested =
-                                        self.render_arrangement_gel_preview_contents(ui);
-                                });
-                        },
-                    );
-                    if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
-                        open = false;
-                    }
-                }
-            },
+        let viewport_id = Self::arrangement_gel_preview_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            title.clone(),
+            egui::Id::new(("hosted_arrangement_gel_preview_window", viewport_id)),
+            viewport_id,
+            Vec2::new(980.0, 760.0),
+            Vec2::new(760.0, 560.0),
         );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
+            if class == egui::ViewportClass::EmbeddedWindow {
+                let mut close_requested = false;
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("arrangement_gel_embedded_scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            close_requested = self.render_arrangement_gel_preview_contents(ui);
+                        });
+                });
+                if close_requested {
+                    open = false;
+                }
+            } else {
+                let mut close_requested = false;
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("arrangement_gel_viewport_scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            close_requested = self.render_arrangement_gel_preview_contents(ui);
+                        });
+                });
+                if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
+        });
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             open = false;
         }
@@ -27194,51 +27169,43 @@ Error: `{err}`"
         }
         let mut open = self.show_rack_labels_preview_dialog;
         let title = self.rack_labels_preview_title();
-        let builder = egui::ViewportBuilder::default()
-            .with_title(title.clone())
-            .with_inner_size([980.0, 760.0])
-            .with_min_inner_size([760.0, 560.0]);
-        ctx.show_viewport_immediate(
-            Self::rack_labels_preview_viewport_id(),
-            builder,
-            |ctx, class| {
-                self.note_viewport_focus_if_active(ctx, Self::rack_labels_preview_viewport_id());
-                if class == egui::ViewportClass::EmbeddedWindow {
-                    let mut close_requested = false;
-                    egui::Window::new(title.clone())
-                        .open(&mut open)
-                        .collapsible(false)
-                        .resizable(true)
-                        .default_size(Vec2::new(980.0, 760.0))
-                        .show(ctx, |ui| {
-                            egui::ScrollArea::vertical()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    close_requested = self.render_rack_labels_preview_contents(ui);
-                                });
-                        });
-                    if close_requested {
-                        open = false;
-                    }
-                } else {
-                    let mut close_requested = false;
-                    crate::egui_compat::show_central_panel(
-                        ctx,
-                        egui::CentralPanel::default(),
-                        |ui| {
-                            egui::ScrollArea::vertical()
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    close_requested = self.render_rack_labels_preview_contents(ui);
-                                });
-                        },
-                    );
-                    if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
-                        open = false;
-                    }
-                }
-            },
+        let viewport_id = Self::rack_labels_preview_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            title.clone(),
+            egui::Id::new(("hosted_rack_labels_preview_window", viewport_id)),
+            viewport_id,
+            Vec2::new(980.0, 760.0),
+            Vec2::new(760.0, 560.0),
         );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
+            if class == egui::ViewportClass::EmbeddedWindow {
+                let mut close_requested = false;
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            close_requested = self.render_rack_labels_preview_contents(ui);
+                        });
+                });
+                if close_requested {
+                    open = false;
+                }
+            } else {
+                let mut close_requested = false;
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            close_requested = self.render_rack_labels_preview_contents(ui);
+                        });
+                });
+                if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
+        });
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             open = false;
         }
@@ -27316,27 +27283,27 @@ Error: `{err}`"
         } else {
             format!("PCR Designer — {}", self.pcr_design_seq_id.trim())
         };
-        let builder = egui::ViewportBuilder::default()
-            .with_title(title.clone())
-            .with_inner_size([1200.0, 840.0])
-            .with_min_inner_size([920.0, 620.0]);
-        ctx.show_viewport_immediate(Self::pcr_design_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::pcr_design_viewport_id());
+        let viewport_id = Self::pcr_design_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            title.clone(),
+            egui::Id::new(("hosted_pcr_design_window", viewport_id)),
+            viewport_id,
+            Vec2::new(1200.0, 840.0),
+            Vec2::new(920.0, 620.0),
+        );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                egui::Window::new(title.clone())
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size(Vec2::new(1200.0, 840.0))
-                    .show(ctx, |ui| {
-                        egui::ScrollArea::vertical()
-                            .id_salt("pcr_design_embedded_scroll")
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                close_requested = self.render_pcr_design_contents(ui, ctx)
-                            });
-                    });
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("pcr_design_embedded_scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            close_requested = self.render_pcr_design_contents(ui, ctx)
+                        });
+                });
                 if close_requested {
                     open = false;
                 }
@@ -27439,58 +27406,45 @@ Error: `{err}`"
                 self.sequencing_confirmation_seq_id.trim()
             )
         };
-        let builder = egui::ViewportBuilder::default()
-            .with_title(title.clone())
-            .with_inner_size([1180.0, 820.0])
-            .with_min_inner_size([920.0, 620.0]);
-        ctx.show_viewport_immediate(
-            Self::sequencing_confirmation_viewport_id(),
-            builder,
-            |ctx, class| {
-                self.note_viewport_focus_if_active(
-                    ctx,
-                    Self::sequencing_confirmation_viewport_id(),
-                );
-                if class == egui::ViewportClass::EmbeddedWindow {
-                    let mut close_requested = false;
-                    egui::Window::new(title.clone())
-                        .open(&mut open)
-                        .collapsible(false)
-                        .resizable(true)
-                        .default_size(Vec2::new(1180.0, 820.0))
-                        .show(ctx, |ui| {
-                            egui::ScrollArea::vertical()
-                                .id_salt("sequencing_confirmation_embedded_scroll")
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    close_requested =
-                                        self.render_sequencing_confirmation_contents(ui, ctx)
-                                });
-                        });
-                    if close_requested {
-                        open = false;
-                    }
-                } else {
-                    let mut close_requested = false;
-                    crate::egui_compat::show_central_panel(
-                        ctx,
-                        egui::CentralPanel::default(),
-                        |ui| {
-                            egui::ScrollArea::vertical()
-                                .id_salt("sequencing_confirmation_viewport_scroll")
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    close_requested =
-                                        self.render_sequencing_confirmation_contents(ui, ctx)
-                                });
-                        },
-                    );
-                    if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
-                        open = false;
-                    }
-                }
-            },
+        let viewport_id = Self::sequencing_confirmation_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            title.clone(),
+            egui::Id::new(("hosted_sequencing_confirmation_window", viewport_id)),
+            viewport_id,
+            Vec2::new(1180.0, 820.0),
+            Vec2::new(920.0, 620.0),
         );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
+            if class == egui::ViewportClass::EmbeddedWindow {
+                let mut close_requested = false;
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("sequencing_confirmation_embedded_scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            close_requested = self.render_sequencing_confirmation_contents(ui, ctx)
+                        });
+                });
+                if close_requested {
+                    open = false;
+                }
+            } else {
+                let mut close_requested = false;
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("sequencing_confirmation_viewport_scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            close_requested = self.render_sequencing_confirmation_contents(ui, ctx)
+                        });
+                });
+                if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
+        });
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             open = false;
         }
@@ -27999,22 +27953,22 @@ Error: `{err}`"
             return;
         }
         let mut open = self.show_planning_dialog;
-        let builder = egui::ViewportBuilder::default()
-            .with_title("Planning")
-            .with_inner_size([980.0, 760.0])
-            .with_min_inner_size([700.0, 520.0]);
-        ctx.show_viewport_immediate(Self::planning_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::planning_viewport_id());
+        let viewport_id = Self::planning_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            "Planning",
+            egui::Id::new(("hosted_planning_window", viewport_id)),
+            viewport_id,
+            Vec2::new(980.0, 760.0),
+            Vec2::new(700.0, 520.0),
+        );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut close_requested = false;
-                egui::Window::new("Planning")
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size(Vec2::new(980.0, 760.0))
-                    .show(ctx, |ui| {
-                        close_requested = self.render_planning_contents(ui)
-                    });
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    close_requested = self.render_planning_contents(ui)
+                });
                 if close_requested {
                     open = false;
                 }
@@ -28717,43 +28671,35 @@ Error: `{err}`"
         }
         let was_open = self.show_routine_assistant_dialog;
         let mut open = self.show_routine_assistant_dialog;
-        let builder = egui::ViewportBuilder::default()
-            .with_title("Routine Assistant")
-            .with_inner_size([980.0, 720.0])
-            .with_min_inner_size([720.0, 480.0]);
-        ctx.show_viewport_immediate(
-            Self::routine_assistant_viewport_id(),
-            builder,
-            |ctx, class| {
-                self.note_viewport_focus_if_active(ctx, Self::routine_assistant_viewport_id());
-                if class == egui::ViewportClass::EmbeddedWindow {
-                    let mut close_requested = false;
-                    egui::Window::new("Routine Assistant")
-                        .open(&mut open)
-                        .collapsible(false)
-                        .resizable(true)
-                        .default_size(Vec2::new(980.0, 720.0))
-                        .show(ctx, |ui| {
-                            close_requested = self.render_routine_assistant_contents(ui);
-                        });
-                    if close_requested {
-                        open = false;
-                    }
-                } else {
-                    let mut close_requested = false;
-                    crate::egui_compat::show_central_panel(
-                        ctx,
-                        egui::CentralPanel::default(),
-                        |ui| {
-                            close_requested = self.render_routine_assistant_contents(ui);
-                        },
-                    );
-                    if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
-                        open = false;
-                    }
-                }
-            },
+        let viewport_id = Self::routine_assistant_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            "Routine Assistant",
+            egui::Id::new(("hosted_routine_assistant_window", viewport_id)),
+            viewport_id,
+            Vec2::new(980.0, 720.0),
+            Vec2::new(720.0, 480.0),
         );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
+            if class == egui::ViewportClass::EmbeddedWindow {
+                let mut close_requested = false;
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    close_requested = self.render_routine_assistant_contents(ui);
+                });
+                if close_requested {
+                    open = false;
+                }
+            } else {
+                let mut close_requested = false;
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+                    close_requested = self.render_routine_assistant_contents(ui);
+                });
+                if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
+        });
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             open = false;
         }
@@ -29544,44 +29490,36 @@ Error: `{err}`"
             return;
         }
         let mut open = self.show_agent_assistant_dialog;
-        let builder = egui::ViewportBuilder::default()
-            .with_title("Agent Assistant")
-            .with_inner_size([980.0, 720.0])
-            .with_min_inner_size([640.0, 420.0]);
-        ctx.show_viewport_immediate(
-            Self::agent_assistant_viewport_id(),
-            builder,
-            |ctx, class| {
-                self.note_viewport_focus_if_active(ctx, Self::agent_assistant_viewport_id());
-                if class == egui::ViewportClass::EmbeddedWindow {
-                    let mut close_requested = false;
-                    egui::Window::new("Agent Assistant")
-                        .open(&mut open)
-                        .collapsible(false)
-                        .resizable(true)
-                        .default_size(Vec2::new(980.0, 720.0))
-                        .show(ctx, |ui| {
-                            close_requested = self.render_agent_assistant_contents(ui);
-                        });
-                    if close_requested {
-                        open = false;
-                    }
-                } else {
-                    let mut close_requested = false;
-                    crate::egui_compat::show_central_panel(
-                        ctx,
-                        egui::CentralPanel::default(),
-                        |ui| {
-                            close_requested = self.render_agent_assistant_contents(ui);
-                        },
-                    );
-
-                    if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
-                        open = false;
-                    }
-                }
-            },
+        let viewport_id = Self::agent_assistant_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            "Agent Assistant",
+            egui::Id::new(("hosted_agent_assistant_window", viewport_id)),
+            viewport_id,
+            Vec2::new(980.0, 720.0),
+            Vec2::new(640.0, 420.0),
         );
+        let builder = crate::egui_compat::viewport_builder_for_hosted_window(&spec);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
+            if class == egui::ViewportClass::EmbeddedWindow {
+                let mut close_requested = false;
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    close_requested = self.render_agent_assistant_contents(ui);
+                });
+                if close_requested {
+                    open = false;
+                }
+            } else {
+                let mut close_requested = false;
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+                    close_requested = self.render_agent_assistant_contents(ui);
+                });
+
+                if close_requested || Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
+        });
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             open = false;
         }
@@ -33127,39 +33065,18 @@ Error: `{err}`"
         if ctx.embed_viewports() {
             let update_result = catch_unwind(AssertUnwindSafe(|| {
                 if let Ok(mut w) = window.write() {
-                    if Self::reset_sequence_window_areas_if_legacy_layers_visible(
-                        ctx,
-                        id,
-                        window_title.as_str(),
-                    ) {
-                        ctx.request_repaint();
-                    }
                     let mut open = true;
-                    let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
                     let min_size = Vec2::new(820.0, 520.0);
-                    let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+                    let spec = crate::egui_compat::HostedWindowSpec::new(
+                        window_title.clone(),
+                        egui::Id::new(("hosted_sequence_window", id)),
                         Vec2::new(1200.0, 860.0),
-                        constrain_rect,
                         min_size,
-                    );
-                    let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
-                        initial_position,
-                        constrain_rect,
-                        default_size,
-                    );
-                    let mut hosted_window = egui::Window::new(window_title.clone())
-                        .id(egui::Id::new(("hosted_sequence_window", id)))
-                        .open(&mut open)
-                        .resizable(true)
-                        .default_pos(default_pos)
-                        .default_size(default_size)
-                        .min_size(min_size)
-                        .max_size(constrain_rect.size())
-                        .constrain_to(constrain_rect);
-                    if render_hosted_sequence_in_foreground {
-                        hosted_window = hosted_window.order(egui::Order::Foreground);
-                    }
-                    hosted_window.show(ctx, |ui| {
+                    )
+                    .initial_pos(initial_position)
+                    .foreground(render_hosted_sequence_in_foreground)
+                    .legacy_layer_id(egui::LayerId::new(egui::Order::Middle, egui::Id::new(id)));
+                    crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                         w.update_embedded(ui);
                     });
                     if !open {
@@ -33207,44 +33124,28 @@ Error: `{err}`"
                 let update_result = catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut w) = window.write() {
                         if class == egui::ViewportClass::EmbeddedWindow {
-                            if Self::reset_hosted_window_areas_if_legacy_title_layer_visible(
-                                ui.ctx(),
-                                window_title.as_str(),
-                            ) {
-                                // Older hosted sequence windows used the visible title as the
-                                // implicit egui::Window id, which can leave a detached title bar
-                                // behind when reopening under the stable hosted id.
-                                ui.ctx().request_repaint();
-                            }
                             let mut open = true;
-                            let constrain_rect =
-                                crate::egui_compat::hosted_window_safe_rect(ui.ctx());
                             let min_size = Vec2::new(820.0, 520.0);
-                            let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+                            let spec = crate::egui_compat::HostedWindowSpec::new(
+                                window_title.clone(),
+                                egui::Id::new(("hosted_sequence_window", id)),
                                 Vec2::new(1200.0, 860.0),
-                                constrain_rect,
                                 min_size,
+                            )
+                            .initial_pos(initial_position)
+                            .foreground(render_hosted_sequence_in_foreground)
+                            .legacy_layer_id(egui::LayerId::new(
+                                egui::Order::Middle,
+                                egui::Id::new(id),
+                            ));
+                            crate::egui_compat::show_hosted_window(
+                                ui.ctx(),
+                                &spec,
+                                &mut open,
+                                |ui| {
+                                    w.update_embedded(ui);
+                                },
                             );
-                            let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
-                                initial_position,
-                                constrain_rect,
-                                default_size,
-                            );
-                            let mut hosted_window = egui::Window::new(window_title.clone())
-                                .id(egui::Id::new(("hosted_sequence_window", id)))
-                                .open(&mut open)
-                                .resizable(true)
-                                .default_pos(default_pos)
-                                .default_size(default_size)
-                                .min_size(min_size)
-                                .max_size(constrain_rect.size())
-                                .constrain_to(constrain_rect);
-                            if render_hosted_sequence_in_foreground {
-                                hosted_window = hosted_window.order(egui::Order::Foreground);
-                            }
-                            hosted_window.show(ui, |ui| {
-                                w.update_embedded(ui);
-                            });
                             if !open {
                                 w.take_close_requested();
                                 if let Ok(mut to_close) = windows_to_close.write() {
@@ -33302,38 +33203,21 @@ Error: `{err}`"
                 let update_result = catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut w) = window.write() {
                         if class == egui::ViewportClass::EmbeddedWindow {
-                            if Self::reset_hosted_window_areas_if_legacy_title_layer_visible(
-                                ctx,
-                                window_title.as_str(),
-                            ) {
-                                ctx.request_repaint();
-                            }
                             let mut open = true;
-                            let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
                             let min_size = Vec2::new(820.0, 520.0);
-                            let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+                            let spec = crate::egui_compat::HostedWindowSpec::new(
+                                window_title.clone(),
+                                egui::Id::new(("hosted_sequence_window", id)),
                                 Vec2::new(1200.0, 860.0),
-                                constrain_rect,
                                 min_size,
-                            );
-                            let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
-                                initial_position,
-                                constrain_rect,
-                                default_size,
-                            );
-                            let mut hosted_window = egui::Window::new(window_title.clone())
-                                .id(egui::Id::new(("hosted_sequence_window", id)))
-                                .open(&mut open)
-                                .resizable(true)
-                                .default_pos(default_pos)
-                                .default_size(default_size)
-                                .min_size(min_size)
-                                .max_size(constrain_rect.size())
-                                .constrain_to(constrain_rect);
-                            if render_hosted_sequence_in_foreground {
-                                hosted_window = hosted_window.order(egui::Order::Foreground);
-                            }
-                            hosted_window.show(ctx, |ui| {
+                            )
+                            .initial_pos(initial_position)
+                            .foreground(render_hosted_sequence_in_foreground)
+                            .legacy_layer_id(egui::LayerId::new(
+                                egui::Order::Middle,
+                                egui::Id::new(id),
+                            ));
+                            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                                 w.update_embedded(ui);
                             });
                             if !open {
@@ -40844,27 +40728,20 @@ Error: `{err}`"
     }
 
     fn render_hosted_main_workspace_window(&mut self, ctx: &egui::Context, project_dirty: bool) {
-        let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
         let min_size = Vec2::new(900.0, 560.0);
-        let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+        let mut open = true;
+        let spec = crate::egui_compat::HostedWindowSpec::new(
+            format!("Project — {}", self.current_project_name()),
+            Self::main_workspace_hosted_window_id(),
             Vec2::new(1280.0, 860.0),
-            constrain_rect,
             min_size,
-        );
-        let default_pos =
-            crate::egui_compat::clamp_hosted_window_default_pos(None, constrain_rect, default_size);
-        egui::Window::new(format!("Project — {}", self.current_project_name()))
-            .id(Self::main_workspace_hosted_window_id())
-            .collapsible(false)
-            .resizable(true)
-            .default_pos(default_pos)
-            .default_size(default_size)
-            .min_size(min_size)
-            .max_size(constrain_rect.size())
-            .constrain_to(constrain_rect)
-            .show(ctx, |ui| {
-                self.render_main_workspace_host(ui, project_dirty);
-            });
+        )
+        .collapsible(false)
+        .resizable(true)
+        .cleanup_legacy_title_layer(true);
+        crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            self.render_main_workspace_host(ui, project_dirty);
+        });
     }
 
     fn render_root_workspace(&mut self, ctx: &egui::Context, project_dirty: bool) {
@@ -42215,29 +42092,22 @@ Error: `{err}`"
             if class == egui::ViewportClass::EmbeddedWindow {
                 let mut open = self.show_configuration_dialog;
                 let render_started = Instant::now();
-                let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
                 let min_size = Vec2::new(460.0, 320.0);
-                let default_size = crate::egui_compat::clamp_hosted_window_default_size(
+                let spec = crate::egui_compat::HostedWindowSpec::new(
+                    "Configuration",
+                    Self::hosted_configuration_window_id(),
                     Vec2::new(720.0, 540.0),
-                    constrain_rect,
                     min_size,
+                )
+                .foreground(
+                    self.pending_focus_viewports.contains(&viewport_id)
+                        || self
+                            .pending_viewport_focus_timestamps
+                            .contains_key(&viewport_id),
                 );
-                let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
-                    None,
-                    constrain_rect,
-                    default_size,
-                );
-                egui::Window::new("Configuration")
-                    .id(Self::hosted_configuration_window_id())
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_pos(default_pos)
-                    .default_size(default_size)
-                    .min_size(min_size)
-                    .max_size(constrain_rect.size())
-                    .constrain_to(constrain_rect)
-                    .show(ctx, |ui| self.render_configuration_contents(ui));
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    self.render_configuration_contents(ui)
+                });
                 self.note_slow_open_phase(
                     viewport_id,
                     "Configuration first-frame render",
@@ -42359,98 +42229,96 @@ Error: `{err}`"
 
         let mut open = self.show_command_palette_dialog;
         let mut execute_action: Option<CommandPaletteAction> = None;
+        let viewport_id = Self::command_palette_viewport_id();
+        let render_command_palette_in_foreground = self.viewport_foreground_requested(viewport_id);
         let builder = egui::ViewportBuilder::default()
             .with_title("Command Palette")
             .with_inner_size([760.0, 520.0])
             .with_min_inner_size([500.0, 320.0]);
-        ctx.show_viewport_immediate(
-            Self::command_palette_viewport_id(),
-            builder,
-            |ctx, class| {
-                self.note_viewport_focus_if_active(ctx, Self::command_palette_viewport_id());
-                let mut render_contents = |ui: &mut Ui| {
-                    ui.label("Search actions, settings, and help topics");
-                    let input_id = ui.make_persistent_id("gentle_command_palette_search");
-                    let search_response = ui.add(
-                        egui::TextEdit::singleline(&mut self.command_palette_query)
-                            .id(input_id)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("Type action name (Cmd/Ctrl+K)"),
-                    );
-                    if self.command_palette_focus_query {
-                        search_response.request_focus();
-                        self.command_palette_focus_query = false;
-                    }
-                    if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
-                        if !entries.is_empty() {
-                            self.command_palette_selected =
-                                (self.command_palette_selected + 1) % entries.len();
-                        }
-                    }
-                    if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
-                        if self.command_palette_selected == 0 {
-                            self.command_palette_selected = entries.len() - 1;
-                        } else {
-                            self.command_palette_selected -= 1;
-                        }
-                    }
-                    if ui.input(|i| i.key_pressed(Key::Enter))
-                        && !entries.is_empty()
-                        && self.command_palette_selected < entries.len()
-                    {
-                        execute_action = Some(entries[self.command_palette_selected].action);
-                    }
-
-                    ui.separator();
-                    if entries.is_empty() {
-                        ui.small("No matching commands");
-                    } else {
-                        egui::ScrollArea::vertical()
-                            .id_salt("command_palette_results_scroll")
-                            .max_height(400.0)
-                            .show(ui, |ui| {
-                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                    ui,
-                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                                );
-                                for (idx, entry) in entries.iter().enumerate() {
-                                    let selected = self.command_palette_selected == idx;
-                                    let label = format!("{} — {}", entry.title, entry.detail);
-                                    let response = ui.selectable_label(selected, label);
-                                    if response.hovered() {
-                                        self.command_palette_selected = idx;
-                                        self.hover_status_name =
-                                            format!("Command palette: {}", entry.title);
-                                    }
-                                    if response.clicked() {
-                                        execute_action = Some(entry.action);
-                                    }
-                                }
-                            });
-                    }
-                };
-
-                if class == egui::ViewportClass::EmbeddedWindow {
-                    egui::Window::new("Command Palette")
-                        .open(&mut open)
-                        .collapsible(false)
-                        .resizable(true)
-                        .default_size(Vec2::new(760.0, 520.0))
-                        .show(ctx, |ui| render_contents(ui));
-                } else {
-                    crate::egui_compat::show_central_panel(
-                        ctx,
-                        egui::CentralPanel::default(),
-                        |ui| {
-                            render_contents(ui);
-                        },
-                    );
-                    if Self::viewport_close_requested_or_shortcut(ctx) {
-                        open = false;
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
+            let mut render_contents = |ui: &mut Ui| {
+                ui.label("Search actions, settings, and help topics");
+                let input_id = ui.make_persistent_id("gentle_command_palette_search");
+                let search_response = ui.add(
+                    egui::TextEdit::singleline(&mut self.command_palette_query)
+                        .id(input_id)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Type action name (Cmd/Ctrl+K)"),
+                );
+                if self.command_palette_focus_query {
+                    search_response.request_focus();
+                    self.command_palette_focus_query = false;
+                }
+                if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
+                    if !entries.is_empty() {
+                        self.command_palette_selected =
+                            (self.command_palette_selected + 1) % entries.len();
                     }
                 }
-            },
-        );
+                if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
+                    if self.command_palette_selected == 0 {
+                        self.command_palette_selected = entries.len() - 1;
+                    } else {
+                        self.command_palette_selected -= 1;
+                    }
+                }
+                if ui.input(|i| i.key_pressed(Key::Enter))
+                    && !entries.is_empty()
+                    && self.command_palette_selected < entries.len()
+                {
+                    execute_action = Some(entries[self.command_palette_selected].action);
+                }
+
+                ui.separator();
+                if entries.is_empty() {
+                    ui.small("No matching commands");
+                } else {
+                    egui::ScrollArea::vertical()
+                        .id_salt("command_palette_results_scroll")
+                        .max_height(400.0)
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            for (idx, entry) in entries.iter().enumerate() {
+                                let selected = self.command_palette_selected == idx;
+                                let label = format!("{} — {}", entry.title, entry.detail);
+                                let response = ui.selectable_label(selected, label);
+                                if response.hovered() {
+                                    self.command_palette_selected = idx;
+                                    self.hover_status_name =
+                                        format!("Command palette: {}", entry.title);
+                                }
+                                if response.clicked() {
+                                    execute_action = Some(entry.action);
+                                }
+                            }
+                        });
+                }
+            };
+
+            if class == egui::ViewportClass::EmbeddedWindow {
+                let spec = crate::egui_compat::HostedWindowSpec::new(
+                    "Command Palette",
+                    egui::Id::new("Command Palette"),
+                    Vec2::new(760.0, 520.0),
+                    Vec2::new(500.0, 320.0),
+                )
+                .foreground(render_command_palette_in_foreground);
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    render_contents(ui)
+                });
+            } else {
+                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+                    render_contents(ui);
+                });
+                if Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
+        });
 
         if let Some(action) = execute_action {
             self.execute_command_palette_action(ctx, action);
@@ -43322,8 +43190,10 @@ Error: `{err}`"
             .with_title("Operation History")
             .with_inner_size([820.0, 520.0])
             .with_min_inner_size([560.0, 320.0]);
-        ctx.show_viewport_immediate(Self::history_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::history_viewport_id());
+        let viewport_id = Self::history_viewport_id();
+        let render_history_in_foreground = self.viewport_foreground_requested(viewport_id);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             let mut render_contents = |ui: &mut Ui| {
                 ui.label("Operation-level history with undo/redo");
                 ui.horizontal(|ui| {
@@ -43367,12 +43237,16 @@ Error: `{err}`"
             };
 
             if class == egui::ViewportClass::EmbeddedWindow {
-                egui::Window::new("Operation History")
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_size(Vec2::new(820.0, 520.0))
-                    .show(ctx, |ui| render_contents(ui));
+                let spec = crate::egui_compat::HostedWindowSpec::new(
+                    "Operation History",
+                    egui::Id::new("Operation History"),
+                    Vec2::new(820.0, 520.0),
+                    Vec2::new(560.0, 320.0),
+                )
+                .foreground(render_history_in_foreground);
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    render_contents(ui)
+                });
             } else {
                 crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
                     render_contents(ui);
@@ -43459,41 +43333,28 @@ Error: `{err}`"
         let viewport_id = Self::help_viewport_id();
         let title = format!("Help - {}", self.active_help_title());
         if ctx.embed_viewports() {
-            if Self::reset_root_help_areas_if_legacy_layers_visible(ctx, title.as_str()) {
-                ctx.request_repaint();
-            }
             let render_started = Instant::now();
-            let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
             let min_size = Vec2::new(420.0, 320.0);
-            let default_size = crate::egui_compat::clamp_hosted_window_default_size(
-                Vec2::new(860.0, 680.0),
-                constrain_rect,
-                min_size,
-            );
-            let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
-                None,
-                constrain_rect,
-                default_size,
-            );
             let mut open = self.show_help_dialog;
             let render_help_in_foreground = self.pending_focus_viewports.contains(&viewport_id)
                 || self
                     .pending_viewport_focus_timestamps
                     .contains_key(&viewport_id);
-            let mut window = egui::Window::new("Help")
-                .id(Self::hosted_help_window_id())
-                .open(&mut open)
-                .collapsible(false)
-                .resizable(true)
-                .default_pos(default_pos)
-                .default_size(default_size)
-                .min_size(min_size)
-                .max_size(constrain_rect.size())
-                .constrain_to(constrain_rect);
-            if render_help_in_foreground {
-                window = window.order(egui::Order::Foreground);
-            }
-            window.show(ctx, |ui| {
+            let spec = crate::egui_compat::HostedWindowSpec::new(
+                "Help",
+                Self::hosted_help_window_id(),
+                Vec2::new(860.0, 680.0),
+                min_size,
+            )
+            .foreground(render_help_in_foreground)
+            .legacy_layer_id(crate::egui_compat::hosted_window_title_layer_id(
+                title.as_str(),
+            ))
+            .legacy_layer_id(egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(Self::help_viewport_id()),
+            ));
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                 self.render_help_contents(ui);
             });
             self.note_slow_open_phase(
@@ -43513,43 +43374,25 @@ Error: `{err}`"
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::EmbeddedWindow {
-                if self
-                    .pending_window_open_timestamps
-                    .contains_key(&viewport_id)
-                    || Self::reset_help_areas_if_legacy_title_layer_visible(ctx, title.as_str())
-                {
-                    // Older help builds used the visible title as the implicit
-                    // egui::Window id. Reset those legacy title-based areas when
-                    // reopening so topic switches do not leave a detached shell.
-                    ctx.memory_mut(|mem| mem.reset_areas());
-                }
                 let render_started = Instant::now();
-                let constrain_rect = crate::egui_compat::hosted_window_safe_rect(ctx);
                 let min_size = Vec2::new(420.0, 320.0);
-                let default_size = crate::egui_compat::clamp_hosted_window_default_size(
-                    Vec2::new(860.0, 680.0),
-                    constrain_rect,
-                    min_size,
-                );
-                let default_pos = crate::egui_compat::clamp_hosted_window_default_pos(
-                    None,
-                    constrain_rect,
-                    default_size,
-                );
                 let mut open = self.show_help_dialog;
-                egui::Window::new("Help")
-                    .id(Self::hosted_help_window_id())
-                    .open(&mut open)
-                    .collapsible(false)
-                    .resizable(true)
-                    .default_pos(default_pos)
-                    .default_size(default_size)
-                    .min_size(min_size)
-                    .max_size(constrain_rect.size())
-                    .constrain_to(constrain_rect)
-                    .show(ctx, |ui| {
-                        self.render_help_contents(ui);
-                    });
+                let spec = crate::egui_compat::HostedWindowSpec::new(
+                    "Help",
+                    Self::hosted_help_window_id(),
+                    Vec2::new(860.0, 680.0),
+                    min_size,
+                )
+                .legacy_layer_id(crate::egui_compat::hosted_window_title_layer_id(
+                    title.as_str(),
+                ))
+                .legacy_layer_id(egui::LayerId::new(
+                    egui::Order::Middle,
+                    egui::Id::new(Self::help_viewport_id()),
+                ));
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    self.render_help_contents(ui);
+                });
                 self.note_slow_open_phase(
                     viewport_id,
                     "Help first-frame render",
@@ -45175,6 +45018,66 @@ mod tests {
         time::{Duration, Instant},
     };
     use tempfile::tempdir;
+
+    #[test]
+    fn direct_egui_windows_are_limited_to_wrapper_and_deferred_modal_allowlist() {
+        let app_source = include_str!("app.rs");
+        let app_production_source = app_source
+            .split_once("\n#[cfg(test)]\nmod tests")
+            .map(|(production, _)| production)
+            .unwrap_or(app_source);
+        let files = [
+            ("src/app.rs", app_production_source),
+            ("src/main_area_dna.rs", include_str!("main_area_dna.rs")),
+            (
+                "src/main_area_dna/auxiliary_workspaces.rs",
+                include_str!("main_area_dna/auxiliary_workspaces.rs"),
+            ),
+            (
+                "src/main_area_dna/variant_followup.rs",
+                include_str!("main_area_dna/variant_followup.rs"),
+            ),
+        ];
+        let deferred_modal_allowlist = [
+            "Place Arrangement on Existing Rack",
+            "Reindex Prepared Genome",
+            "Update Ensembl Specs",
+            "Browse Ensembl Candidates",
+            "Quick Install Ensembl Candidate",
+            "Remove Prepared Genome",
+            "Remove Catalog Entry",
+            "Clear Caches",
+            "Rename Leaf Node",
+            "Remove Leaf Node",
+            "Unsaved Changes",
+            "About GENtle",
+            "Background Jobs",
+            "Operation Failed",
+            "Select Prepared Genome",
+        ];
+        let mut unexpected = Vec::new();
+        for (path, source) in files {
+            for (line_index, line) in source.lines().enumerate() {
+                if !line.contains("egui::Window::new") {
+                    continue;
+                }
+                if line.contains(".show(&ctx")
+                    || deferred_modal_allowlist
+                        .iter()
+                        .any(|allowed| line.contains(allowed))
+                {
+                    continue;
+                }
+                unexpected.push(format!("{path}:{}: {}", line_index + 1, line.trim()));
+            }
+        }
+
+        assert!(
+            unexpected.is_empty(),
+            "hosted/specialist windows should use egui_compat::show_hosted_window; add only explicitly deferred modals here:\n{}",
+            unexpected.join("\n")
+        );
+    }
 
     fn make_prepare_plan(step_ids: &[PrepareGenomeStepId]) -> PrepareGenomePlan {
         PrepareGenomePlan {
@@ -50061,6 +49964,42 @@ mod tests {
         app.finalize_viewport_focus_probe(viewport_id);
         assert!(
             !app.pending_viewport_focus_timestamps
+                .contains_key(&viewport_id)
+        );
+    }
+
+    #[test]
+    fn mark_window_open_or_focus_marks_open_and_queues_focus_for_closed_window() {
+        let mut app = GENtleApp::default();
+        let viewport_id = GENtleApp::planning_viewport_id();
+
+        app.mark_window_open_or_focus(viewport_id, false);
+
+        assert!(
+            app.pending_window_open_timestamps
+                .contains_key(&viewport_id)
+        );
+        assert!(app.pending_focus_viewports.contains(&viewport_id));
+        assert!(
+            app.pending_viewport_focus_timestamps
+                .contains_key(&viewport_id)
+        );
+    }
+
+    #[test]
+    fn mark_window_open_or_focus_focuses_existing_window_without_new_open_probe() {
+        let mut app = GENtleApp::default();
+        let viewport_id = GENtleApp::planning_viewport_id();
+
+        app.mark_window_open_or_focus(viewport_id, true);
+
+        assert!(
+            !app.pending_window_open_timestamps
+                .contains_key(&viewport_id)
+        );
+        assert!(app.pending_focus_viewports.contains(&viewport_id));
+        assert!(
+            app.pending_viewport_focus_timestamps
                 .contains_key(&viewport_id)
         );
     }

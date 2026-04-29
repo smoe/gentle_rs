@@ -36485,43 +36485,42 @@ impl MainAreaDna {
             .unwrap_or_else(|| view.panel_id.clone());
         let title = Self::isoform_expert_window_title(&panel_id, &view.seq_id, &view);
         let viewport_id = Self::isoform_expert_viewport_id(&view.seq_id, &panel_id);
+        let default_size = Vec2::new(1120.0, 700.0);
+        let min_size = Vec2::new(840.0, 460.0);
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
-            .with_inner_size([1120.0, 700.0])
-            .with_min_inner_size([840.0, 460.0]);
+            .with_inner_size([default_size.x, default_size.y])
+            .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::EmbeddedWindow {
-                Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(
-                    ctx,
-                    title.as_str(),
-                );
                 let mut open = self.show_isoform_expert_window;
-                egui::Window::new(title.clone())
-                    .id(egui::Id::new(format!(
+                let spec = crate::egui_compat::HostedWindowSpec::new(
+                    title.clone(),
+                    egui::Id::new(format!(
                         "isoform_expert_window_embedded_{}_{}",
                         view.seq_id, panel_id
-                    )))
-                    .open(&mut open)
-                    .resizable(true)
-                    .default_size(Vec2::new(1120.0, 700.0))
-                    .show(ctx, |ui| {
-                        let backdrop_settings = current_window_backdrop_settings();
-                        paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                        egui::ScrollArea::both()
-                            .id_salt(format!(
-                                "isoform_expert_window_scroll_embedded_{}_{}",
-                                view.seq_id, panel_id
-                            ))
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                    ui,
-                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                                );
-                                ui.set_min_size(Vec2::new(1040.0, 620.0));
-                                self.render_isoform_architecture_expert_view_ui(ui, &view);
-                            });
-                    });
+                    )),
+                    default_size,
+                    min_size,
+                );
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    let backdrop_settings = current_window_backdrop_settings();
+                    paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                    egui::ScrollArea::both()
+                        .id_salt(format!(
+                            "isoform_expert_window_scroll_embedded_{}_{}",
+                            view.seq_id, panel_id
+                        ))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            ui.set_min_size(Vec2::new(1040.0, 620.0));
+                            self.render_isoform_architecture_expert_view_ui(ui, &view);
+                        });
+                });
                 self.show_isoform_expert_window = open;
                 return;
             }

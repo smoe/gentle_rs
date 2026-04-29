@@ -545,6 +545,9 @@ Practical rule:
 - Never duplicate biology logic
 - Provide searchable action routing (Command Palette) that dispatches only to
   existing engine/adaptor actions (no duplicate logic path).
+- Route hosted/specialist working windows through `egui_compat::HostedWindowSpec`
+  and `show_hosted_window` so stable ids, safe-area clamping, foreground focus,
+  viewport-builder defaults, and stale title-layer cleanup stay centralized.
 - Keep anchored-data imports preflighted in UI (detected anchor, matching
   status, projected targets), while execution remains engine-owned.
 - Current GUI-only routing note:
