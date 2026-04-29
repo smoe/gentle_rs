@@ -1860,6 +1860,10 @@ order. Durable architecture constraints and decisions remain in
       mapped source ranges, junction labels, and junction-spanning flags so
       downstream tools can explain whether a PCR/qPCR assay detects one
       isoform, many isoforms, or no compatible cDNA product
+    - transcript maps can now be emitted on either transcript-local cDNA axes
+      or a shared genomic/source-coordinate axis (`genomic_aligned`) so common
+      primer loci, exon identities, and spliced amplicon source gaps line up
+      visually across isoforms
     - reports and transcript-aware qPCR assay contexts now also carry
       genomic-DNA carryover risk labels/rationales (`low`, `medium`, `high`,
       `unknown`, or `none_detected`) derived from junction primer/probe
@@ -1871,6 +1875,10 @@ order. Durable architecture constraints and decisions remain in
       functional amplicons plus forward/reverse/probe binding positions across
       the shown transcript set; `svg_path` / `--svg` exports the same map and
       ClawBio direct/workflow examples collect it as a graphical artifact
+    - transcript-derived cDNA assay tests can preserve Ensembl transcript-id
+      row order or instead order transcript maps by first exon, last exon, or
+      inverted antisense first-exon genomic position for multi-isoform
+      interpretation
     - assay-test reports now also carry a report-level construct-length
       summary plus `gentle.oligo_qc_report.v1`: deterministic exact
       reverse-complement run QC for supplied primers/probes, including
@@ -1936,8 +1944,9 @@ order. Durable architecture constraints and decisions remain in
     colors/patterns, and junction ticks alongside amplicon/primer/probe glyphs
     so ClawBio and CLI review can explain which exon boundaries support an
     assay; forward/reverse primer glyphs are separated into upper/lower lanes
-    while requested oligo sequences are shown once in the legend, and
-    transcript-local exon ordinals remain available in SVG tooltips
+    while requested oligo sequences are shown once in the legend, crowded
+    transcript sets auto-wrap into columns, and transcript-local exon ordinals
+    remain available in SVG tooltips
   - remaining deterministic test gap:
     - TP73-AS2 / TP73-AS3 cover shared-mode success, no-competitor failure,
       transcript-specific junction-only success, transcript-specific

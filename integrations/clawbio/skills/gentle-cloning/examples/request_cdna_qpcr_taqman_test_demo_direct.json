@@ -8,6 +8,7 @@
   "reverse_primer": "CCCAAA",
   "probe": "GGGCCC",
   "transcript_id": "TX1",
+  "map_coordinate_mode": "genomic_aligned",
   "min_amplicon_bp": 20,
   "max_amplicon_bp": 200,
   "output_path": "artifacts/cdna_assay_demo.direct_taqman_report.json",

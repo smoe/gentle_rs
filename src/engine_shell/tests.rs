@@ -14,16 +14,17 @@ use crate::dna_sequence::DNAsequence;
 use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
     ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
-    BIGWIG_TO_BEDGRAPH_ENV_BIN, ConstructObjective, ConstructRole, Container, ContainerKind,
-    CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
-    CutRunSeedFilterConfig, EditableStatus, PrimerDesignProgress, PromoterTfbsGeneQuery,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
-    QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
-    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RepeatEnvironmentGeometryMode,
-    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
-    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
-    TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+    BIGWIG_TO_BEDGRAPH_ENV_BIN, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
+    ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig,
+    CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
+    EditableStatus, PrimerDesignProgress, PromoterTfbsGeneQuery, ProteinExternalOpinionSource,
+    ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack,
+    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+    RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
+    RackProfileSnapshot, RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode,
+    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
+    RnaReadOriginClass, SequenceScanTarget, TfThresholdOverride,
+    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_gene::{
@@ -4698,6 +4699,33 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && shared_qpcr_report_id == "shared_qpcr_1"
             && path.as_deref() == Some("panel.json")
     ));
+
+    let ordered_cdna = parse_shell_line(
+        "primers test-cdna-pcr seq_a 17 --forward AAACCC --reverse CCCAAG --transcript-order antisense_first_exon --map-coordinate-mode genomic_aligned --svg ordered.svg",
+    )
+    .expect("parse ordered cDNA PCR test");
+    assert!(matches!(
+        ordered_cdna,
+        ShellCommand::PrimersTestCdnaPcr {
+            seq_id,
+            feature_id,
+            transcript_order,
+            transcript_map_coordinate_mode,
+            svg_path,
+            ..
+        } if seq_id == "seq_a"
+            && feature_id == 17
+            && transcript_order == Some(CdnaAssayTranscriptOrder::AntisenseFirstExon)
+            && transcript_map_coordinate_mode
+                == Some(CdnaAssayTranscriptMapCoordinateMode::GenomicAligned)
+            && svg_path.as_deref() == Some("ordered.svg")
+    ));
+
+    let fasta_order_err = parse_shell_line(
+        "primers test-cdna-qpcr-fasta cdna.fa.gz --forward AAACCC --reverse CCCAAG --probe GGGCCC --transcript-order genomic_first_exon",
+    )
+    .expect_err("reject transcript order for cDNA FASTA screens");
+    assert!(fasta_order_err.contains("only supported for transcript-derived"));
 }
 
 #[test]
@@ -11661,6 +11689,8 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
             max_amplicon_bp: Some(50),
             max_mismatches: None,
             require_3prime_exact_bases: Some(4),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
             path: None,
             svg_path: None,
         },
@@ -11704,6 +11734,8 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
             max_amplicon_bp: Some(50),
             max_mismatches: None,
             require_3prime_exact_bases: Some(4),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
             path: None,
             svg_path: None,
         },

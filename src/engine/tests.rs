@@ -3175,6 +3175,247 @@ fn test_cdna_pcr_assay_detects_spliced_transcript_product() {
 }
 
 #[test]
+fn test_cdna_pcr_map_can_use_genomic_aligned_coordinates() {
+    let forward = "AAGGGGAAGCATTGGGAAAC";
+    let reverse = "GAATCGCTTGAACCTGGGAG";
+    let reverse_binding = "CTCCCAGGTTCAAGCGATTC";
+    let mut source = vec![b'A'; 240];
+    source[100..120].copy_from_slice(forward.as_bytes());
+    source[180..200].copy_from_slice(reverse_binding.as_bytes());
+    let mut dna = seq(&String::from_utf8(source).expect("DNA fixture"));
+    for (transcript_id, label, location) in [
+        (
+            "TX_CONT",
+            "continuous exon",
+            gb_io::seq::Location::simple_range(100, 200),
+        ),
+        (
+            "TX_SPLIT",
+            "split exon chain",
+            gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(100, 120),
+                gb_io::seq::Location::simple_range(180, 200),
+            ]),
+        ),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location,
+            qualifiers: vec![
+                ("gene".into(), Some("TESTALIGN".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(label.to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("cdna_align".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .test_cdna_pcr_assay_with_map_options(
+            "cdna_align",
+            0,
+            forward,
+            reverse,
+            None,
+            Some(1),
+            Some(5000),
+            Some(0),
+            Some(20),
+            CdnaAssayTranscriptOrder::TranscriptId,
+            CdnaAssayTranscriptMapCoordinateMode::GenomicAligned,
+        )
+        .expect("genomic-aligned cDNA PCR assay report");
+
+    assert_eq!(
+        report.transcript_map_coordinate_mode,
+        CdnaAssayTranscriptMapCoordinateMode::GenomicAligned
+    );
+    assert_eq!(report.detected_transcript_count, 2);
+    assert_eq!(report.product_count, 2);
+    let source_range_counts = report
+        .transcript_results
+        .iter()
+        .flat_map(|row| row.products.iter())
+        .map(|product| product.source_ranges_0based.len())
+        .collect::<Vec<_>>();
+    assert!(source_range_counts.contains(&1));
+    assert!(source_range_counts.contains(&2));
+    let map = report.transcript_map.as_ref().expect("transcript map");
+    assert_eq!(
+        map.coordinate_mode,
+        CdnaAssayTranscriptMapCoordinateMode::GenomicAligned
+    );
+    assert!(map.svg.contains("data-coordinate-mode=\"genomic_aligned\""));
+    assert!(map.svg.contains("shared source/genomic coordinate axis"));
+    assert!(map.svg.contains("product-bridge"));
+    assert!(map.svg.contains("TX_CONT"));
+    assert!(map.svg.contains("TX_SPLIT"));
+}
+
+#[test]
+fn test_cdna_pcr_map_wraps_crowded_transcript_sets_into_columns() {
+    let mut dna = seq(&"ATG".repeat(140));
+    for idx in 0..17usize {
+        let start = (idx * 18) as i64;
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start, start + 30),
+            qualifiers: vec![
+                ("gene".into(), Some("TESTCOL".to_string())),
+                (
+                    "transcript_id".into(),
+                    Some(format!("TX{:02}", idx.saturating_add(1))),
+                ),
+                (
+                    "label".into(),
+                    Some(format!("TESTCOL transcript {}", idx.saturating_add(1))),
+                ),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("cdna_many".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .test_cdna_pcr_assay(
+            "cdna_many",
+            0,
+            "CCCCCCCCCCCCCCCCCCCC",
+            "CCCCCCCCCCCCCCCCCCCA",
+            None,
+            Some(1),
+            Some(5000),
+            Some(0),
+            Some(20),
+        )
+        .expect("crowded cDNA PCR assay report");
+    assert_eq!(report.transcript_count, 17);
+    assert_eq!(report.detected_transcript_count, 0);
+    let map = report.transcript_map.as_ref().expect("transcript map");
+    assert_eq!(map.column_count, 2);
+    assert_eq!(map.rows_per_column, 9);
+    assert!(map.summary.contains("17 row(s) shown in 2 columns"));
+    assert!(map.width_px > 1180);
+    assert!(map.height_px < 194 + 17 * 104 + 62);
+    assert!(map.svg.contains("TX01 | TESTCOL transcript 1"));
+    assert!(map.svg.contains("TX17 | TESTCOL transcript 17"));
+    let pattern_fill = |pattern_id: &str| -> String {
+        let pattern_pos = map
+            .svg
+            .find(&format!("id=\"{pattern_id}\""))
+            .expect("pattern id in transcript map");
+        let fill_marker = "fill=\"";
+        let fill_start = pattern_pos
+            + map.svg[pattern_pos..]
+                .find(fill_marker)
+                .expect("pattern fill")
+            + fill_marker.len();
+        let fill_end = fill_start + map.svg[fill_start..].find('"').expect("fill end");
+        map.svg[fill_start..fill_end].to_string()
+    };
+    assert_ne!(pattern_fill("cdna_exon_0"), pattern_fill("cdna_exon_12"));
+}
+
+#[test]
+fn test_cdna_pcr_transcript_map_supports_genomic_row_ordering() {
+    let mut dna = seq(&"ATG".repeat(200));
+    for (transcript_id, label, exons) in [
+        ("TX_C", "middle first exon", [(100, 120), (300, 330)]),
+        ("TX_A", "low first exon", [(5, 25), (260, 280)]),
+        ("TX_B", "high first exon", [(140, 160), (500, 530)]),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(
+                exons
+                    .iter()
+                    .map(|(start, end)| gb_io::seq::Location::simple_range(*start, *end))
+                    .collect(),
+            ))),
+            qualifiers: vec![
+                ("gene".into(), Some("TESTORDER".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(label.to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("cdna_order".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let order_ids = |order| {
+        engine
+            .test_cdna_pcr_assay_with_transcript_order(
+                "cdna_order",
+                0,
+                "CCCCCCCCCCCCCCCCCCCC",
+                "CCCCCCCCCCCCCCCCCCCA",
+                None,
+                Some(1),
+                Some(5000),
+                Some(0),
+                Some(20),
+                order,
+            )
+            .expect("ordered cDNA PCR assay report")
+            .transcript_results
+            .into_iter()
+            .map(|row| row.transcript_id)
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        order_ids(CdnaAssayTranscriptOrder::TranscriptId),
+        vec!["TX_A", "TX_B", "TX_C"]
+    );
+    assert_eq!(
+        order_ids(CdnaAssayTranscriptOrder::GenomicFirstExon),
+        vec!["TX_B", "TX_C", "TX_A"]
+    );
+    assert_eq!(
+        order_ids(CdnaAssayTranscriptOrder::GenomicLastExon),
+        vec!["TX_A", "TX_C", "TX_B"]
+    );
+    let antisense_report = engine
+        .test_cdna_pcr_assay_with_transcript_order(
+            "cdna_order",
+            0,
+            "CCCCCCCCCCCCCCCCCCCC",
+            "CCCCCCCCCCCCCCCCCCCA",
+            None,
+            Some(1),
+            Some(5000),
+            Some(0),
+            Some(20),
+            CdnaAssayTranscriptOrder::AntisenseFirstExon,
+        )
+        .expect("antisense-ordered cDNA PCR assay report");
+    assert_eq!(
+        antisense_report
+            .transcript_results
+            .iter()
+            .map(|row| row.transcript_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["TX_A", "TX_C", "TX_B"]
+    );
+    assert_eq!(
+        antisense_report.transcript_order,
+        CdnaAssayTranscriptOrder::AntisenseFirstExon
+    );
+    assert_eq!(
+        antisense_report
+            .transcript_map
+            .as_ref()
+            .expect("transcript map")
+            .transcript_order,
+        CdnaAssayTranscriptOrder::AntisenseFirstExon
+    );
+}
+
+#[test]
 fn test_cdna_pcr_map_uses_group_exon_ordinals_for_tp73_as3() {
     let (engine, tp73_as3_feature_id, _) = load_tp73_engine_for_transcript_aware_qpcr();
     let report = engine
@@ -3328,6 +3569,8 @@ fn test_cdna_qpcr_operation_writes_report_json() {
             max_amplicon_bp: Some(50),
             max_mismatches: None,
             require_3prime_exact_bases: Some(4),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
             path: Some(path.to_string_lossy().to_string()),
             svg_path: Some(svg_path.to_string_lossy().to_string()),
         })

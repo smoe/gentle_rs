@@ -639,7 +639,9 @@ Expected outputs:
 - cDNA PCR/qPCR assay-test reports with transcript-template and junction
   provenance, genomic-DNA carryover risk summaries, and transcript-map SVG/PNG
   artifacts that show where products are functional across the shown cDNA
-  transcripts
+  transcripts; direct cDNA assay requests can set
+  `map_coordinate_mode=genomic_aligned` to produce an alignment-like transcript
+  map on a shared source/genomic axis
 - transcript qPCR panel tables with shared reverse/probe plus characteristic
   forward-primer rows when possible
 - PCR-family SVG/PNG protocol cartoons, including `pcr.assay.pair`,

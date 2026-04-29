@@ -1766,8 +1766,8 @@ Current draft operations:
 - `ExportPrimerDesignReport { report_id, path }`
 - `PcrOverlapExtensionMutagenesis { ... }` (implemented baseline; insertion/deletion/replacement overlap-extension flow)
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
-- `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }` (implemented baseline; transcript-derived cDNA assay test)
-- `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }` (implemented baseline; transcript-derived cDNA assay test with internal probe)
+- `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, transcript_order?, transcript_map_coordinate_mode?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }` (implemented baseline; transcript-derived cDNA assay test)
+- `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, transcript_order?, transcript_map_coordinate_mode?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }` (implemented baseline; transcript-derived cDNA assay test with internal probe)
 - `BuildTranscriptQpcrPanel { seq_id, source_feature_id, shared_qpcr_report_id, path? }` (implemented baseline; shared qPCR components plus transcript-characteristic forward-primer table)
 - `TestCdnaQpcrFasta { cdna_fasta_paths[], forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }` (implemented baseline; cDNA/ncRNA FASTA/FASTA.gz screen with internal probe)
 - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
@@ -5290,6 +5290,12 @@ Simple PCR constraint handoff:
   - `probe` for `TestCdnaQpcr` and `TestCdnaQpcrFasta`
   - optional `transcript_id`
     - limits testing to one derived transcript template when supplied
+  - optional `transcript_order`
+    - transcript-derived tests only; controls report/map row order
+  - optional `transcript_map_coordinate_mode`
+    - transcript-derived tests only; `cdna` keeps the existing transcript-local
+      cDNA axes, while `genomic_aligned` draws the map on the shared
+      source/genomic axis
   - optional `min_amplicon_bp` / `max_amplicon_bp`
   - optional `max_mismatches`
     - defaults to `0`
@@ -5325,8 +5331,19 @@ Simple PCR constraint handoff:
     functional; requested forward/reverse primer and probe sequences are shown
     once in the legend, forward primer glyphs are one-sided above the cDNA
     axis, reverse primer glyphs are one-sided below it, probe glyphs are
-    one-sided on the detected probe-binding strand, and SVG tooltips retain the
-    transcript-local exon ordinal when it differs from the group label.
+    one-sided on the detected probe-binding strand, crowded transcript sets
+    auto-wrap into columns, and SVG tooltips retain the transcript-local exon
+    ordinal when it differs from the group label.
+  - `transcript_map.column_count` and `transcript_map.rows_per_column` describe
+    the selected SVG layout so adapters can size previews without parsing the
+    SVG.
+  - `transcript_order` is included at report level and in `transcript_map`.
+    It defaults to `transcript_id`; transcript-derived tests may request
+    `genomic_first_exon`, `genomic_last_exon`, or `antisense_first_exon`.
+  - `transcript_map_coordinate_mode` is included at report level, and
+    `transcript_map.coordinate_mode` repeats the realized map axis. The default
+    is `cdna`; `genomic_aligned` SVGs use shared source/genomic coordinates for
+    exon blocks, primer/probe glyphs, and amplicon source spans.
 - Report schema:
   - `gentle.cdna_assay_test_report.v1`
   - report-level fields include assay kind, source sequence/feature, group
@@ -5373,8 +5390,8 @@ Primer-design shell command family (implemented):
 - Shared-shell family:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
-  - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
-  - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
+  - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
+  - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
   - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
   - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
@@ -5403,7 +5420,16 @@ Primer-design shell command family (implemented):
 - `primers test-cdna-pcr` and `primers test-cdna-qpcr` are non-mutating assay
   checks over transcript-derived cDNA templates and return
   `gentle.cdna_assay_test_report.v1`; `--path` persists that same report and
-  `--svg` writes the embedded transcript-map SVG. Shell output includes
+  `--svg` writes the embedded transcript-map SVG. `--transcript-order` controls
+  transcript-map/report row order for transcript-derived tests only.
+  `--map-coordinate-mode` selects the map axis: `cdna` keeps each transcript on
+  its own cDNA-length axis, while `genomic_aligned` draws exon blocks,
+  primer/probe glyphs, and amplicon source spans on the shared source/genomic
+  coordinate range so common primer loci line up across isoforms. The returned
+  report carries `transcript_map_coordinate_mode`, and the embedded
+  `transcript_map` carries `coordinate_mode`; in genomic-aligned SVGs dashed
+  product bridges mark spliced products whose source ranges skip genomic
+  sequence while amplicon labels remain cDNA lengths. Shell output includes
   `preferred_artifacts[]` when `--svg` is supplied so ClawBio can promote the
   same map through its PNG-first artifact bundle.
 - `primers transcript-qpcr-panel` is a non-mutating table/report helper for

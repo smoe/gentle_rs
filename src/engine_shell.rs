@@ -36,7 +36,8 @@ use crate::{
         CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CANDIDATE_SETS_METADATA_KEY,
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, CutRunAlignConfig,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm,
+        CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
         CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
@@ -2019,6 +2020,8 @@ pub enum ShellCommand {
         max_amplicon_bp: Option<usize>,
         max_mismatches: Option<usize>,
         require_3prime_exact_bases: Option<usize>,
+        transcript_order: Option<CdnaAssayTranscriptOrder>,
+        transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
         path: Option<String>,
         svg_path: Option<String>,
     },
@@ -2033,6 +2036,8 @@ pub enum ShellCommand {
         max_amplicon_bp: Option<usize>,
         max_mismatches: Option<usize>,
         require_3prime_exact_bases: Option<usize>,
+        transcript_order: Option<CdnaAssayTranscriptOrder>,
+        transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
         path: Option<String>,
         svg_path: Option<String>,
     },
@@ -8978,9 +8983,11 @@ impl ShellCommand {
                 forward_primer,
                 reverse_primer,
                 transcript_id,
+                transcript_order,
+                transcript_map_coordinate_mode,
                 ..
             } => format!(
-                "test cDNA PCR assay on '{}' feature n-{} (forward_len={}, reverse_len={}, transcript={})",
+                "test cDNA PCR assay on '{}' feature n-{} (forward_len={}, reverse_len={}, transcript={}, order={}, map_mode={})",
                 seq_id,
                 feature_id + 1,
                 forward_primer.len(),
@@ -8990,6 +8997,8 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
                     .unwrap_or("all"),
+                transcript_order.unwrap_or_default().as_str(),
+                transcript_map_coordinate_mode.unwrap_or_default().as_str(),
             ),
             Self::PrimersTestCdnaQpcr {
                 seq_id,
@@ -8998,9 +9007,11 @@ impl ShellCommand {
                 reverse_primer,
                 probe,
                 transcript_id,
+                transcript_order,
+                transcript_map_coordinate_mode,
                 ..
             } => format!(
-                "test cDNA qPCR assay on '{}' feature n-{} (forward_len={}, reverse_len={}, probe_len={}, transcript={})",
+                "test cDNA qPCR assay on '{}' feature n-{} (forward_len={}, reverse_len={}, probe_len={}, transcript={}, order={}, map_mode={})",
                 seq_id,
                 feature_id + 1,
                 forward_primer.len(),
@@ -9011,6 +9022,8 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
                     .unwrap_or("all"),
+                transcript_order.unwrap_or_default().as_str(),
+                transcript_map_coordinate_mode.unwrap_or_default().as_str(),
             ),
             Self::PrimersTranscriptQpcrPanel {
                 seq_id,
@@ -25324,11 +25337,13 @@ fn execute_primers_command(
             max_amplicon_bp,
             max_mismatches,
             require_3prime_exact_bases,
+            transcript_order,
+            transcript_map_coordinate_mode,
             path,
             svg_path,
         } => {
             let report = engine
-                .test_cdna_pcr_assay(
+                .test_cdna_pcr_assay_with_map_options(
                     seq_id,
                     *feature_id,
                     forward_primer,
@@ -25338,6 +25353,8 @@ fn execute_primers_command(
                     *max_amplicon_bp,
                     *max_mismatches,
                     *require_3prime_exact_bases,
+                    transcript_order.unwrap_or_default(),
+                    transcript_map_coordinate_mode.unwrap_or_default(),
                 )
                 .map_err(|e| e.to_string())?;
             if let Some(path) = path
@@ -25388,11 +25405,13 @@ fn execute_primers_command(
             max_amplicon_bp,
             max_mismatches,
             require_3prime_exact_bases,
+            transcript_order,
+            transcript_map_coordinate_mode,
             path,
             svg_path,
         } => {
             let report = engine
-                .test_cdna_qpcr_assay(
+                .test_cdna_qpcr_assay_with_map_options(
                     seq_id,
                     *feature_id,
                     forward_primer,
@@ -25403,6 +25422,8 @@ fn execute_primers_command(
                     *max_amplicon_bp,
                     *max_mismatches,
                     *require_3prime_exact_bases,
+                    transcript_order.unwrap_or_default(),
+                    transcript_map_coordinate_mode.unwrap_or_default(),
                 )
                 .map_err(|e| e.to_string())?;
             if let Some(path) = path

@@ -93,7 +93,9 @@ intended framing is:
 - GENtle can test supplied PCR and qPCR/TaqMan oligos against
   transcript-derived cDNA templates, returning per-transcript product/hit
   reports with exon-junction provenance instead of treating cDNA assays as
-  genomic-only PCR.
+  genomic-only PCR. Transcript maps can stay on transcript-local cDNA axes or
+  switch to the `genomic_aligned` axis when ClawBio needs common primer loci,
+  exon identity, and spliced source gaps to line up across isoforms.
 - GENtle's TFBS surface now also includes continuous score-track views and
   JASPAR motif-presentation reports, not only thresholded annotation hits.
 - GENtle can bootstrap reusable local Ensembl/reference assets, including
@@ -162,8 +164,12 @@ skill cannot know. Run the status routes:
   `request_cdna_qpcr_taqman_test_demo_direct.json` for direct cDNA assay
   checks without replaying the larger workflow; both collect the transcript-map
   SVG, including legend primer sequences, group/source exon labels, and
-  junction ticks when source mapping is available, so ClawBio can rasterize it
-  into the PNG-first output bundle
+  junction ticks when source mapping is available; crowded transcript maps
+  auto-wrap into columns so ClawBio can rasterize them into a shorter
+  PNG-first output bundle; transcript-derived tests can also request
+  transcript-row order by Ensembl transcript id, first exon, last exon, or the
+  inverted antisense first-exon order, and can request
+  `--map-coordinate-mode genomic_aligned` for alignment-like isoform maps
 - `resources status` for integrated JASPAR/REBASE/ATtRACT-style resources
 - `genomes status ...` or `genomes list` for reference-genome catalogs/caches
 - `helpers status ...` or `helpers list` for helper/vector assets

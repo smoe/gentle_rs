@@ -4964,6 +4964,46 @@ impl QpcrTranscriptSpecificityEvidence {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+/// Transcript-row ordering policy for cDNA PCR/qPCR transcript maps.
+pub enum CdnaAssayTranscriptOrder {
+    #[default]
+    TranscriptId,
+    GenomicFirstExon,
+    GenomicLastExon,
+    AntisenseFirstExon,
+}
+
+impl CdnaAssayTranscriptOrder {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::TranscriptId => "transcript_id",
+            Self::GenomicFirstExon => "genomic_first_exon",
+            Self::GenomicLastExon => "genomic_last_exon",
+            Self::AntisenseFirstExon => "antisense_first_exon",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+/// Coordinate system used by the portable cDNA PCR/qPCR transcript map.
+pub enum CdnaAssayTranscriptMapCoordinateMode {
+    #[default]
+    Cdna,
+    GenomicAligned,
+}
+
+impl CdnaAssayTranscriptMapCoordinateMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cdna => "cdna",
+            Self::GenomicAligned => "genomic_aligned",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 /// Exact source-template interval used by a transcript-aware primer or amplicon.
@@ -5103,6 +5143,10 @@ pub struct CdnaAssayTranscriptMap {
     pub row_count: usize,
     pub shown_transcript_count: usize,
     pub omitted_transcript_count: usize,
+    pub column_count: usize,
+    pub rows_per_column: usize,
+    pub transcript_order: CdnaAssayTranscriptOrder,
+    pub coordinate_mode: CdnaAssayTranscriptMapCoordinateMode,
     pub product_count: usize,
     pub svg: String,
 }
@@ -5140,6 +5184,8 @@ pub struct CdnaAssayTestReport {
     pub transcript_count: usize,
     pub detected_transcript_count: usize,
     pub product_count: usize,
+    pub transcript_order: CdnaAssayTranscriptOrder,
+    pub transcript_map_coordinate_mode: CdnaAssayTranscriptMapCoordinateMode,
     pub overall_status: String,
     pub summary: String,
     #[serde(default)]

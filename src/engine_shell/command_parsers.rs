@@ -13,9 +13,10 @@
 
 use super::*;
 use crate::engine::{
-    CutRunAlignConfig, CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout,
-    CutRunSeedFilterConfig, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
-    QpcrTranscriptTargetingMode, RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
+    CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
+    CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
+    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
+    RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
     TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric,
 };
@@ -3616,6 +3617,8 @@ struct ParsedCdnaAssayTestOptions {
     max_amplicon_bp: Option<usize>,
     max_mismatches: Option<usize>,
     require_3prime_exact_bases: Option<usize>,
+    transcript_order: Option<CdnaAssayTranscriptOrder>,
+    transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
     path: Option<String>,
     svg_path: Option<String>,
 }
@@ -3628,6 +3631,45 @@ fn parse_usize_option_value(raw: &str, flag: &str) -> Result<usize, String> {
 fn parse_f64_option_value(raw: &str, flag: &str) -> Result<f64, String> {
     raw.parse::<f64>()
         .map_err(|e| format!("Invalid {flag} value '{raw}': {e}"))
+}
+
+fn parse_cdna_assay_transcript_order(raw: &str) -> Result<CdnaAssayTranscriptOrder, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "transcript_id" | "transcript-id" | "id" | "ensembl_id" | "ensembl-id" => {
+            Ok(CdnaAssayTranscriptOrder::TranscriptId)
+        }
+        "genomic_first_exon" | "genomic-first-exon" | "first_exon" | "first-exon" | "first" => {
+            Ok(CdnaAssayTranscriptOrder::GenomicFirstExon)
+        }
+        "genomic_last_exon" | "genomic-last-exon" | "last_exon" | "last-exon" | "last" => {
+            Ok(CdnaAssayTranscriptOrder::GenomicLastExon)
+        }
+        "antisense_first_exon"
+        | "antisense-first-exon"
+        | "antisense"
+        | "first_exon_reverse"
+        | "first-exon-reverse"
+        | "reverse_first_exon"
+        | "reverse-first-exon" => Ok(CdnaAssayTranscriptOrder::AntisenseFirstExon),
+        other => Err(format!(
+            "Unsupported cDNA assay transcript order '{other}', expected transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon"
+        )),
+    }
+}
+
+fn parse_cdna_assay_transcript_map_coordinate_mode(
+    raw: &str,
+) -> Result<CdnaAssayTranscriptMapCoordinateMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "cdna" | "transcript" | "transcript_cdna" | "transcript-cdna" => {
+            Ok(CdnaAssayTranscriptMapCoordinateMode::Cdna)
+        }
+        "genomic" | "genomic_aligned" | "genomic-aligned" | "source" | "source_aligned"
+        | "source-aligned" => Ok(CdnaAssayTranscriptMapCoordinateMode::GenomicAligned),
+        other => Err(format!(
+            "Unsupported cDNA assay transcript-map coordinate mode '{other}', expected cdna|genomic_aligned"
+        )),
+    }
 }
 
 fn parse_cdna_assay_test_options(
@@ -3672,6 +3714,17 @@ fn parse_cdna_assay_test_options(
                 let flag = tokens[*idx].clone();
                 let raw = parse_option_path(tokens, idx, &flag, context)?;
                 options.require_3prime_exact_bases = Some(parse_usize_option_value(&raw, &flag)?);
+            }
+            "--transcript-order" | "--row-order" => {
+                let flag = tokens[*idx].clone();
+                let raw = parse_option_path(tokens, idx, &flag, context)?;
+                options.transcript_order = Some(parse_cdna_assay_transcript_order(&raw)?);
+            }
+            "--map-coordinate-mode" | "--coordinate-mode" | "--map-mode" => {
+                let flag = tokens[*idx].clone();
+                let raw = parse_option_path(tokens, idx, &flag, context)?;
+                options.transcript_map_coordinate_mode =
+                    Some(parse_cdna_assay_transcript_map_coordinate_mode(&raw)?);
             }
             "--path" | "--output" => {
                 let flag = tokens[*idx].clone();
@@ -4021,7 +4074,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
         "test-cdna-pcr" => {
             if tokens.len() < 4 {
                 return Err(
-                    "primers test-cdna-pcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+                    "primers test-cdna-pcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
                         .to_string(),
                 );
             }
@@ -4045,6 +4098,8 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 max_amplicon_bp: options.max_amplicon_bp,
                 max_mismatches: options.max_mismatches,
                 require_3prime_exact_bases: options.require_3prime_exact_bases,
+                transcript_order: options.transcript_order,
+                transcript_map_coordinate_mode: options.transcript_map_coordinate_mode,
                 path: options.path,
                 svg_path: options.svg_path,
             })
@@ -4052,7 +4107,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
         "test-cdna-qpcr" => {
             if tokens.len() < 4 {
                 return Err(
-                    "primers test-cdna-qpcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+                    "primers test-cdna-qpcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
                         .to_string(),
                 );
             }
@@ -4077,6 +4132,8 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 max_amplicon_bp: options.max_amplicon_bp,
                 max_mismatches: options.max_mismatches,
                 require_3prime_exact_bases: options.require_3prime_exact_bases,
+                transcript_order: options.transcript_order,
+                transcript_map_coordinate_mode: options.transcript_map_coordinate_mode,
                 path: options.path,
                 svg_path: options.svg_path,
             })
@@ -4150,6 +4207,20 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 "primers test-cdna-qpcr-fasta",
                 true,
             )?;
+            if options.transcript_order.is_some() {
+                return Err(
+                    "--transcript-order is only supported for transcript-derived cDNA PCR/qPCR tests"
+                        .to_string(),
+                );
+            }
+            if options.transcript_map_coordinate_mode
+                == Some(CdnaAssayTranscriptMapCoordinateMode::GenomicAligned)
+            {
+                return Err(
+                    "--map-coordinate-mode genomic_aligned is only supported for transcript-derived cDNA PCR/qPCR tests"
+                        .to_string(),
+                );
+            }
             Ok(ShellCommand::PrimersTestCdnaQpcrFasta {
                 cdna_fasta_paths,
                 forward_primer: options.forward_primer.unwrap_or_default(),

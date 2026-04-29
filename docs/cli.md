@@ -1945,8 +1945,8 @@ Shared shell command:
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
     - `primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
-    - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
-    - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
+    - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
+    - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
     - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
@@ -2312,6 +2312,17 @@ Shared shell command:
         FASTA/FASTA.gz files directly, so callers can screen complete Ensembl
         cDNA and ncRNA catalogs without importing them into project state
       - `--transcript-id ID` narrows the test to one transcript product
+      - transcript-derived tests default to Ensembl transcript-id row order;
+        `--transcript-order genomic_first_exon` orders rows by the first
+        transcript exon in strand-aware genomic direction,
+        `genomic_last_exon` orders by the last exon genomic coordinate, and
+        `antisense_first_exon` inverts the first-exon order for antisense
+        interpretation
+      - transcript-derived tests default to `--map-coordinate-mode cdna`, where
+        each row uses its transcript-local cDNA length as the axis; use
+        `--map-coordinate-mode genomic_aligned` to draw every row against the
+        shared source/genomic coordinate range so common primer loci and
+        skipped introns line up across isoforms
       - `--max-mismatches` defaults to exact/IUPAC-compatible matching
       - `--require-3prime-exact-bases` gates primer hits only
       - qPCR probes may bind either cDNA orientation but must fall inside the
@@ -2331,8 +2342,13 @@ Shared shell command:
         primer and probe sequences are shown once in the legend, forward primer
         glyphs are one-sided above the cDNA axis, reverse primer glyphs are
         one-sided below it, probe glyphs are one-sided on the detected
-        probe-binding strand, and SVG tooltips retain the transcript-local exon
-        ordinal when it differs from the group label
+        probe-binding strand, crowded maps auto-wrap into multiple columns, and
+        SVG tooltips retain the transcript-local exon ordinal when it differs
+        from the group label
+      - in `genomic_aligned` mode the same SVG uses source/genomic coordinates
+        for exon blocks, primer/probe glyphs, and amplicon source spans; dashed
+        product bridges mark spliced cDNA products whose source ranges skip
+        genomic sequence while length labels remain cDNA amplicon lengths
       - `--path OUTPUT.json` writes the same structured report returned on
         stdout
       - `--svg OUTPUT.svg` writes the embedded transcript-map SVG as a

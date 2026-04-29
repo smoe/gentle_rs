@@ -145,6 +145,8 @@ class Request:
     seq_id: str | None = None
     source_feature_id: int | None = None
     transcript_id: str | None = None
+    transcript_order: str | None = None
+    map_coordinate_mode: str | None = None
     qpcr_mode: str | None = None
     specificity_evidence: str | None = None
     backend: str | None = None
@@ -607,6 +609,26 @@ def _normalise_cdna_assay_test_request(request: Request) -> None:
     if request.mode == "cdna-qpcr-test":
         request.probe = _require_str(request.probe, "probe", request.mode)
     request.transcript_id = _normalise_optional_str(request.transcript_id, "transcript_id")
+    request.transcript_order = _normalise_optional_str(
+        request.transcript_order, "transcript_order"
+    )
+    if request.transcript_order is not None and request.transcript_order not in {
+        "transcript_id",
+        "genomic_first_exon",
+        "genomic_last_exon",
+        "antisense_first_exon",
+    }:
+        raise SkillError(
+            "transcript_order must be transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon"
+        )
+    request.map_coordinate_mode = _normalise_optional_str(
+        request.map_coordinate_mode, "map_coordinate_mode"
+    )
+    if request.map_coordinate_mode is not None and request.map_coordinate_mode not in {
+        "cdna",
+        "genomic_aligned",
+    }:
+        raise SkillError("map_coordinate_mode must be cdna or genomic_aligned")
     request.output_path = _normalise_optional_str(request.output_path, "output_path")
     request.svg_path = _normalise_optional_str(request.svg_path, "svg_path")
     request.min_amplicon_bp = _coerce_optional_int(
@@ -757,6 +779,10 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         seq_id=payload.get("seq_id"),
         source_feature_id=payload.get("source_feature_id"),
         transcript_id=payload.get("transcript_id"),
+        transcript_order=payload.get("transcript_order"),
+        map_coordinate_mode=payload.get(
+            "map_coordinate_mode", payload.get("transcript_map_coordinate_mode")
+        ),
         qpcr_mode=payload.get("qpcr_mode"),
         specificity_evidence=payload.get("specificity_evidence"),
         backend=payload.get("backend"),
@@ -1083,6 +1109,10 @@ def _build_primer_mode_shell_line(request: Request) -> str:
             tokens.extend(["--probe", request.probe or "PROBE"])
         if request.transcript_id:
             tokens.extend(["--transcript-id", request.transcript_id])
+        if request.transcript_order:
+            tokens.extend(["--transcript-order", request.transcript_order])
+        if request.map_coordinate_mode:
+            tokens.extend(["--map-coordinate-mode", request.map_coordinate_mode])
         _append_optional_int(tokens, "--min-amplicon-bp", request.min_amplicon_bp)
         _append_optional_int(tokens, "--max-amplicon-bp", request.max_amplicon_bp)
         _append_optional_int(tokens, "--max-mismatches", request.max_mismatches)
@@ -2586,6 +2616,8 @@ def _request_payload_for_artifact_continuation(
             "seq_id",
             "source_feature_id",
             "transcript_id",
+            "transcript_order",
+            "map_coordinate_mode",
             "qpcr_mode",
             "specificity_evidence",
             "backend",

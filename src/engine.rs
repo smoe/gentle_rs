@@ -3468,6 +3468,10 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         require_3prime_exact_bases: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_order: Option<CdnaAssayTranscriptOrder>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         svg_path: Option<String>,
@@ -3488,6 +3492,10 @@ pub enum Operation {
         max_mismatches: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         require_3prime_exact_bases: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_order: Option<CdnaAssayTranscriptOrder>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
