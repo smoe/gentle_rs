@@ -17474,7 +17474,7 @@ fn execute_genomes_status_reports_running_lifecycle_and_suppresses_prepare_hint(
         "updated_at_unix_ms": now,
         "finished_at_unix_ms": null,
         "last_error": null,
-        "owner_pid": 12345
+        "owner_pid": std::process::id()
     });
     fs::write(
         &status_path,
@@ -17509,6 +17509,97 @@ fn execute_genomes_status_reports_running_lifecycle_and_suppresses_prepare_hint(
         out.output["status_message"]
             .as_str()
             .is_some_and(|value| value.contains("already being prepared"))
+    );
+}
+
+#[test]
+fn execute_genomes_prepare_running_message_reports_effective_activity_path() {
+    let td = tempdir().expect("tempdir");
+    let root = td.path();
+    let assets_dir = root.join("assets");
+    fs::create_dir_all(&assets_dir).expect("create assets dir");
+    let fasta = root.join("toy.fa");
+    let gtf = root.join("toy.gtf");
+    fs::write(&fasta, ">chr1\nACGT\n").expect("write fasta");
+    fs::write(
+        &gtf,
+        "chr1\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+    )
+    .expect("write gtf");
+    let catalog = assets_dir.join("genomes.json");
+    fs::write(
+        &catalog,
+        format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "data/genomes"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display()
+        ),
+    )
+    .expect("write catalog");
+
+    let effective_install_dir = assets_dir.join("data/genomes/toygenome");
+    fs::create_dir_all(&effective_install_dir).expect("create effective install dir");
+    let status_path = effective_install_dir.join(".prepare_activity.json");
+    let lock_path = effective_install_dir.join(".prepare_activity.lock");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time")
+        .as_millis();
+    let activity = serde_json::json!({
+        "genome_id": "ToyGenome",
+        "status_path": status_path.display().to_string(),
+        "lock_path": lock_path.display().to_string(),
+        "lifecycle_status": "running",
+        "prepare_mode": "prepare_or_reuse",
+        "phase": "index_fasta",
+        "item": "sequence.fa.fai",
+        "bytes_done": 1,
+        "bytes_total": 10,
+        "percent": 10.0,
+        "step_id": null,
+        "step_label": null,
+        "started_at_unix_ms": now.saturating_sub(1_000),
+        "updated_at_unix_ms": now,
+        "finished_at_unix_ms": null,
+        "last_error": null,
+        "owner_pid": std::process::id()
+    });
+    let activity_text = serde_json::to_string_pretty(&activity).expect("serialize activity");
+    fs::write(&status_path, &activity_text).expect("write activity status");
+    fs::write(&lock_path, &activity_text).expect("write activity lock");
+
+    let mut engine = GentleEngine::new();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReferencePrepare {
+            helper_mode: false,
+            genome_id: "ToyGenome".to_string(),
+            catalog_path: Some(catalog.to_string_lossy().to_string()),
+            cache_dir: Some("data/genomes".to_string()),
+            timeout_seconds: None,
+        },
+    )
+    .expect("execute prepare");
+
+    let message = out.output["result"]["messages"]
+        .as_array()
+        .expect("messages")
+        .first()
+        .and_then(|value| value.as_str())
+        .expect("prepare message");
+    assert!(message.contains("already running"));
+    assert!(message.contains(effective_install_dir.to_string_lossy().as_ref()));
+    assert!(message.contains(status_path.to_string_lossy().as_ref()));
+    assert!(message.contains("phase: index_fasta"));
+    assert!(
+        !message.contains("in 'data/genomes'"),
+        "message should not present the raw relative cache arg as the running location: {message}"
     );
 }
 

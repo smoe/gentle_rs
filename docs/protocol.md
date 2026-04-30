@@ -4753,6 +4753,8 @@ Operation progress/cancellation semantics:
       "running"` instead of starting redundant work
     - stale heartbeat markers are converted into `lifecycle_status = "stale"`
       and can then be retried safely
+    - on Unix, a `running` marker with a dead `owner_pid` is also converted to
+      `stale`; other platforms retain the existing lock/heartbeat behavior
   - genome-track imports support cooperative cancellation and return partial
     import warnings.
   - dbSNP fetch currently emits staged progress events (`validate_input`,
