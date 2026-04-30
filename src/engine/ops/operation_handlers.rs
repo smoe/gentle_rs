@@ -14748,7 +14748,7 @@ impl GentleEngine {
                 Operation::RenderRnaStructureSvg { seq_id, path } => {
                     let report = self.render_rna_structure_svg_to_path(&seq_id, &path)?;
                     result.messages.push(format!(
-                        "Wrote RNA structure SVG for '{}' to '{}' using {}",
+                        "Wrote RNA structure SVG for '{}' to '{}' using RNAfold/{}",
                         seq_id, path, report.tool
                     ));
                 }

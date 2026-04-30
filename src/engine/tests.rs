@@ -1108,21 +1108,13 @@ fn write_multi_member_gzip(path: &Path, members: &[&str]) {
 fn install_fake_rnapkin(path: &Path) -> String {
     let script_path = path.join("fake_rnapkin.sh");
     let script = r#"#!/bin/sh
-if [ "$1" = "-v" ] && [ "$2" = "-p" ]; then
-  seq="$3"
-  echo "rnapkin textual report"
-  echo "sequence_length=${#seq}"
-  echo "points:"
-  echo "0.0 0.0"
-  echo "1.0 1.0"
-  exit 0
-fi
-
-if [ "$#" -eq 2 ]; then
-  seq="$1"
+if [ "$1" = "-o" ] && [ "$#" -eq 3 ]; then
   out="$2"
+  input="$3"
+  seq="$(sed -n '1p' "$input")"
+  structure="$(sed -n '2p' "$input")"
   cat > "$out" <<EOF
-<svg xmlns="http://www.w3.org/2000/svg" width="160" height="80"><text x="10" y="40">$seq</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="80"><text x="10" y="40">$seq $structure</text></svg>
 EOF
   echo "wrote $out" >&2
   exit 0
@@ -1137,6 +1129,29 @@ exit 2
         .permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&script_path, perms).expect("chmod fake rnapkin");
+    script_path.display().to_string()
+}
+
+#[cfg(unix)]
+fn install_fake_rnafold(path: &Path) -> String {
+    let script_path = path.join("fake_rnafold.sh");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--noPS" ]; then
+  read seq
+  echo "$seq"
+  echo "...... ( -1.20)"
+  exit 0
+fi
+
+echo "unexpected args: $@" >&2
+exit 2
+"#;
+    std::fs::write(&script_path, script).expect("write fake RNAfold");
+    let mut perms = std::fs::metadata(&script_path)
+        .expect("metadata fake RNAfold")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).expect("chmod fake RNAfold");
     script_path.display().to_string()
 }
 
@@ -9392,10 +9407,10 @@ fn test_fasta_roundtrip_synthetic_dsdna_with_overhangs() {
 
 #[cfg(unix)]
 #[test]
-fn test_inspect_rna_structure_returns_rnapkin_textual_output() {
+fn test_inspect_rna_structure_returns_rnafold_textual_output() {
     let td = tempdir().unwrap();
-    let fake_rnapkin = install_fake_rnapkin(td.path());
-    let _bin_guard = EnvVarGuard::set("GENTLE_RNAPKIN_BIN", &fake_rnapkin);
+    let fake_rnafold = install_fake_rnafold(td.path());
+    let _fold_guard = EnvVarGuard::set("GENTLE_RNAFOLD_BIN", &fake_rnafold);
 
     let mut state = ProjectState::default();
     state
@@ -9404,17 +9419,20 @@ fn test_inspect_rna_structure_returns_rnapkin_textual_output() {
     let engine = GentleEngine::from_state(state);
     let report = engine.inspect_rna_structure("rna").unwrap();
 
-    assert_eq!(report.tool, "rnapkin");
-    assert!(report.stdout.contains("rnapkin textual report"));
-    assert!(report.stdout.contains("points:"));
+    assert_eq!(report.tool, "RNAfold");
+    assert_eq!(report.structure, "......");
+    assert_eq!(report.mfe_kcal_per_mol, Some(-1.20));
+    assert!(report.stdout.contains("AUGCAU"));
 }
 
 #[cfg(unix)]
 #[test]
 fn test_render_rna_structure_svg_operation() {
     let td = tempdir().unwrap();
+    let fake_rnafold = install_fake_rnafold(td.path());
     let fake_rnapkin = install_fake_rnapkin(td.path());
-    let _bin_guard = EnvVarGuard::set("GENTLE_RNAPKIN_BIN", &fake_rnapkin);
+    let _fold_guard = EnvVarGuard::set("GENTLE_RNAFOLD_BIN", &fake_rnafold);
+    let _rnapkin_guard = EnvVarGuard::set("GENTLE_RNAPKIN_BIN", &fake_rnapkin);
 
     let mut state = ProjectState::default();
     state
@@ -9434,6 +9452,7 @@ fn test_render_rna_structure_svg_operation() {
     assert!(res.messages.iter().any(|m| m.contains("RNA structure SVG")));
     let svg = std::fs::read_to_string(output_text).unwrap();
     assert!(svg.contains("<svg"));
+    assert!(svg.contains("......"));
 }
 
 #[test]

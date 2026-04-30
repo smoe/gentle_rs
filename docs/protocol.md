@@ -909,6 +909,30 @@ Indexing guidance:
   and `milliIns` columnar by row offset so divergence/quality shading can be
   added without changing the interval index
 
+## RNA structure executable resources
+
+`resources status` and `services status` also expose the executable resources
+used by RNA secondary-structure rendering so ClawBio and other automation
+layers can distinguish missing tools from missing biological data snapshots.
+
+Resource fields:
+
+- `vienna_rna`
+  - display name: `ViennaRNA RNAfold`
+  - resolves `GENTLE_RNAFOLD_BIN`, then `RNAfold` on `PATH`
+  - version probe: `RNAfold --version`
+  - used to compute dot-bracket structure and MFE
+- `rnapkin`
+  - display name: `rnapkin RNA structure renderer`
+  - resolves `GENTLE_RNAPKIN_BIN`, then `rnapkin` on `PATH`
+  - version probe: `rnapkin --version`, falling back to `rnapkin -V`
+  - used to render RNAfold structure input as SVG/PNG
+
+Each executable resource reports `support_status`, `available`,
+`resolved_executable`, `version_command`, optional `version_output`, optional
+`error`, and explanatory `notes[]`. In service handoff/readiness views these
+appear as `external_tool:*` rows rather than as normalized data-snapshot rows.
+
 ## JASPAR expert contract
 
 GENtle also exposes a portable single-entry JASPAR expert contract for the
@@ -4622,16 +4646,20 @@ RNA secondary-structure semantics:
 
 - Inspection API:
   - `GentleEngine::inspect_rna_structure(seq_id)`
-  - Runs `rnapkin -v -p <sequence>` and returns structured text report (`stdout`/`stderr` + command metadata).
+  - Runs `RNAfold --noPS` on the normalized RNA sequence and returns a structured text report (`stdout`/`stderr`, dot-bracket `structure`, optional `mfe_kcal_per_mol`, and command metadata).
 - Export operation:
   - `RenderRnaStructureSvg { seq_id, path }`
-  - Runs `rnapkin <sequence> <path>` and expects SVG output at `path`.
+  - Runs `RNAfold --noPS`, writes a temporary two-line `sequence` + dot-bracket input file, then runs `rnapkin -o <path> <input>`.
+  - Expects SVG/PNG output according to the extension accepted by `rnapkin`; current operation naming remains SVG-oriented for existing callers.
 - Input constraints:
   - accepted only for single-stranded RNA (`molecule_type` `RNA` or `ssRNA`)
   - empty sequence is rejected
 - Runtime dependency:
-  - external `rnapkin` executable is required
-  - executable path resolution order:
+  - external `RNAfold` and `rnapkin` executables are required for rendering
+  - executable path resolution order for folding:
+    1. env var `GENTLE_RNAFOLD_BIN`
+    2. fallback executable name `RNAfold` in `PATH`
+  - executable path resolution order for drawing:
     1. env var `GENTLE_RNAPKIN_BIN`
     2. fallback executable name `rnapkin` in `PATH`
 

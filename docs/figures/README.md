@@ -213,6 +213,57 @@ cargo run --quiet --bin gentle_cli -- \
   --scale 0.75
 ```
 
+`tp73_long_range_cdna_virtual_gel.svg` and `.png` extend that public-template
+matrix into a local-knowledge panel. The bundled public TP73 annotation has
+TA and DeltaN rows for alpha through zeta, but Ex2, Ex3, and V13 are only
+present as alpha-ending public templates. The virtual panel therefore
+materializes all five 5' classes crossed with alpha, beta, gamma, delta,
+epsilon, and zeta by joining each 5' prefix to each observed 3' suffix at the
+shared TP73 cDNA anchor. The generated asset files are:
+
+- `assets/panels/tp73_long_range_cdna_virtual_panel_v1.json`
+- `assets/panels/tp73_long_range_cdna_virtual_panel_v1.fasta`
+- `docs/figures/tp73_long_range_cdna_virtual_products.tsv`
+- `docs/figures/tp73_long_range_cdna_rt_risk.tsv`
+
+The Python generator is intentionally limited to local-hypothesis sequence
+materialization and this README figure. Routine cDNA PCR/qPCR product
+materialization and product-gel rendering should use GENtle's shared
+`primers test-cdna-pcr` / `primers test-cdna-qpcr` `--product-gel-svg` path
+so CLI, GUI, ClawBio, JS, and Lua stay on one engine-owned assay contract.
+The virtual gel itself groups each set of three columns with a top bar for the
+shared 5-prime forward primer and sequence, labels each lane with its
+3-prime readout, and prints the reverse primer sequences used by the column
+set.
+
+Regenerate the virtual local-knowledge asset and gel from a GENtle state that
+contains the derived TP73 transcripts:
+
+```sh
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_long_range_selector.state.json \
+  op '{"LoadFile":{"path":"test_files/tp73.ncbi.gb","as_id":"tp73"}}' \
+  --confirm
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_long_range_selector.state.json \
+  shell 'transcripts derive tp73 --feature-id 4 --scope target_group_target_strand --output-prefix tp73_tx'
+cargo run --quiet --bin gentle_cli -- \
+  --state /tmp/tp73_long_range_selector.state.json \
+  export-state /tmp/tp73_long_range_selector.export.json
+python3 docs/figures/tp73_long_range_cdna_virtual_panel.py \
+  --source-state /tmp/tp73_long_range_selector.export.json
+cargo run --quiet --bin gentle_cli -- \
+  svg-png docs/figures/tp73_long_range_cdna_virtual_gel.svg \
+  docs/figures/tp73_long_range_cdna_virtual_gel.png \
+  --scale 0.9
+```
+
+The virtual gel marks local 5-prime by 3-prime hypotheses that are not present
+in the bundled public transcript panel from the generated `source_status`
+metadata. The default `--unreported-style dim_tag` renders those bands at lower
+intensity with a dashed outline and `*` tag; `dim`, `tag`, and `none` are also
+accepted for comparison figures.
+
 `pcr_blunt_vector_ligation_template.json` is the small custom protocol-cartoon
 template for the blunt-end cloning README hero. It is intentionally more
 minimal than the Gibson strips: one blunt PCR product, one intact circular

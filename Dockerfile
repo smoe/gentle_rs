@@ -92,6 +92,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     GENTLE_BLASTN_BIN=/usr/bin/blastn \
     GENTLE_CONTAINER_FLAVOR=cli \
     GENTLE_MAKEBLASTDB_BIN=/usr/bin/makeblastdb \
+    GENTLE_RNAFOLD_BIN=/usr/bin/RNAfold \
     GENTLE_RNAPKIN_BIN=/usr/local/bin/rnapkin \
     HOME=/home/gentle \
     LANG=C.UTF-8 \
@@ -111,6 +112,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     primer3 \
     python3 \
     python3-pybigwig \
+    vienna-rna \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

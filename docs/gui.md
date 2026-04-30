@@ -151,6 +151,8 @@ Tabs:
     - `blastn` (`GENTLE_BLASTN_BIN`)
     - `bigWigToBedGraph` (`GENTLE_BIGWIG_TO_BEDGRAPH_BIN`)
   - Validate executable availability/version from within the UI.
+  - `RNAfold` is resolved by the shared RNA-structure engine path through
+    `GENTLE_RNAFOLD_BIN` or `PATH`.
 - `Graphics`
   - Configure project-level display visibility defaults (panels, feature layers, overlays).
   - Configure sequence text-panel max length (`Sequence panel max text length`, default `200000 bp`, `0=unlimited`).
@@ -2145,18 +2147,18 @@ the DNA window shows an `RNA Structure (rnapkin)` panel in the top area.
 Features:
 
 - `Refresh RNA Structure`
-  - Runs `rnapkin` through shared engine APIs to fetch text output and refresh SVG preview.
+  - Runs `RNAfold --noPS` through shared engine APIs to fetch the dot-bracket/MFE text output and refreshes the SVG preview through `rnapkin`.
 - `Export RNA SVG`
   - Saves a chosen SVG path through engine operation `RenderRnaStructureSvg`.
 - Textual report
-  - Shows command metadata and `stdout`/`stderr` from `rnapkin`.
+  - Shows command metadata, dot-bracket structure, optional MFE, and `stdout`/`stderr` from `RNAfold`.
 - SVG preview
   - Displays rendered structure image in-panel.
 
 Runtime dependency:
 
-- `rnapkin` must be installed and reachable in `PATH`, or
-- set `GENTLE_RNAPKIN_BIN` to the `rnapkin` executable path.
+- `RNAfold` and `rnapkin` must be installed and reachable in `PATH`, or
+- set `GENTLE_RNAFOLD_BIN` / `GENTLE_RNAPKIN_BIN` to explicit executable paths.
 
 ## GENtle Shell (GUI)
 

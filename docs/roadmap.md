@@ -475,7 +475,7 @@ order. Durable architecture constraints and decisions remain in
   - CLI/MCP/JS/Lua/Python wrapper available from the same image
   - helper-tool coverage in container:
     - Debian packages for `primer3`, `ncbi-blast+`, `python3-pybigwig`,
-      `novnc`, `x11vnc`, `xvfb`
+      `vienna-rna`, `novnc`, `x11vnc`, `xvfb`
     - explicit container compatibility wrapper for `bigWigToBedGraph`
     - explicit non-Debian exception for `rnapkin`
     - no ALSA runtime dependency (GENtle does not need sound output)
@@ -691,6 +691,9 @@ order. Durable architecture constraints and decisions remain in
   with anchor-aware coordinate remapping.
 - Resource ingestion/update path for REBASE, JASPAR, and ATtRACT snapshots
   across GUI/CLI and scripting adapters.
+- ClawBio-facing `resources status` / `services status` now also treat
+  ViennaRNA/RNAfold and rnapkin as first-class executable resources for RNA
+  secondary-structure folding/rendering readiness.
 - Shared JASPAR entry presentation now exists too:
   `SummarizeJasparEntries` plus `resources summarize-jaspar` derive one
   maximizing sequence, one minimizing sequence, and deterministic random-DNA
@@ -862,6 +865,13 @@ order. Durable architecture constraints and decisions remain in
     - `Derive group transcripts`
     - `Derive all mRNA`
     - `Derive + Dotplot` (selected transcript; strand-aware pair mode)
+- RNA secondary-structure rendering now uses a two-tool shared-engine path:
+  - `RNAfold --noPS` provides the dot-bracket structure and MFE report fields
+  - `rnapkin -o` renders the RNAfold structure input to SVG/PNG output
+  - current follow-up gap: GENtle still lacks a first-class transcript-wide
+    reverse-transcriptase obstacle/processivity proxy report based on
+    `RNALfold`/`RNAplfold` local ΔG density; keep this as an engine-level
+    operation rather than GUI-only analysis when implemented
 - Protein residue genomic coordinate mapping is now parity-wired through shared
   engine and adapter surfaces:
   - engine operation:
@@ -3503,6 +3513,11 @@ Planned work:
        isoform-class knowledge, including Ex2/Ex3 TP73 variants, while
        explicitly warning that public healthy-tissue annotation is not
        exhaustive disease-expression evidence
+     - `assets/panels/tp73_long_range_cdna_virtual_panel_v1.json` and its
+       companion FASTA now materialize a TP73 local-knowledge long-range cDNA
+       selector panel: public RefSeq-backed 5' x 3' combinations remain marked
+       as observed, while Ex2/Ex3/V13 non-alpha endings are explicit virtual
+       hypotheses for primer/gel readout exploration
    - Goal: let labs preserve and use disease-, sample-, construct-, or
      project-specific knowledge even when public databases are incomplete,
      delayed, migrated into specialist repositories, or deliberately omit

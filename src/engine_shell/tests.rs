@@ -14378,6 +14378,30 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
         out.output["attract"]["download_url"].as_str(),
         Some("https://attract.cnic.es/attract/static/ATtRACT.zip")
     );
+    assert_eq!(
+        out.output["vienna_rna"]["resource_id"].as_str(),
+        Some("vienna_rna")
+    );
+    assert_eq!(
+        out.output["vienna_rna"]["display_name"].as_str(),
+        Some("ViennaRNA RNAfold")
+    );
+    assert_eq!(
+        out.output["vienna_rna"]["env_var"].as_str(),
+        Some("GENTLE_RNAFOLD_BIN")
+    );
+    assert_eq!(
+        out.output["rnapkin"]["resource_id"].as_str(),
+        Some("rnapkin")
+    );
+    assert_eq!(
+        out.output["rnapkin"]["display_name"].as_str(),
+        Some("rnapkin RNA structure renderer")
+    );
+    assert_eq!(
+        out.output["rnapkin"]["env_var"].as_str(),
+        Some("GENTLE_RNAPKIN_BIN")
+    );
 }
 
 #[test]
@@ -14582,6 +14606,14 @@ fn execute_services_status_reports_combined_readiness() {
         out.output["resources"]["attract"]["display_name"].as_str(),
         Some("ATtRACT")
     );
+    assert_eq!(
+        out.output["resources"]["vienna_rna"]["display_name"].as_str(),
+        Some("ViennaRNA RNAfold")
+    );
+    assert_eq!(
+        out.output["resources"]["rnapkin"]["display_name"].as_str(),
+        Some("rnapkin RNA structure renderer")
+    );
     assert!(
         out.output["summary_lines"]
             .as_array()
@@ -14624,6 +14656,22 @@ fn execute_services_handoff_reports_actions_and_writes_json() {
             .as_array()
             .map(|rows| rows.iter().any(|row| row["resource_key"].as_str()
                 == Some("reference_genome:Human GRCh38 Ensembl 116")))
+            .unwrap_or(false)
+    );
+    assert!(
+        out.output["readiness"]
+            .as_array()
+            .map(|rows| rows
+                .iter()
+                .any(|row| row["resource_key"].as_str() == Some("external_tool:vienna_rna")))
+            .unwrap_or(false)
+    );
+    assert!(
+        out.output["readiness"]
+            .as_array()
+            .map(|rows| rows
+                .iter()
+                .any(|row| row["resource_key"].as_str() == Some("external_tool:rnapkin")))
             .unwrap_or(false)
     );
     assert!(out.output["suggested_actions"].as_array().is_some());

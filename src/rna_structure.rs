@@ -4,13 +4,15 @@ use crate::dna_sequence::DNAsequence;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
-    io::ErrorKind,
+    io::{ErrorKind, Write},
     path::Path,
-    process::{Command, Output},
+    process::{Command, Output, Stdio},
 };
 
-const DEFAULT_RNAPKIN_BIN: &str = "rnapkin";
-const RNAPKIN_ENV_BIN: &str = "GENTLE_RNAPKIN_BIN";
+pub const DEFAULT_RNAFOLD_BIN: &str = "RNAfold";
+pub const RNAFOLD_ENV_BIN: &str = "GENTLE_RNAFOLD_BIN";
+pub const DEFAULT_RNAPKIN_BIN: &str = "rnapkin";
+pub const RNAPKIN_ENV_BIN: &str = "GENTLE_RNAPKIN_BIN";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RnaStructureTextReport {
@@ -20,6 +22,10 @@ pub struct RnaStructureTextReport {
     pub command: Vec<String>,
     pub stdout: String,
     pub stderr: String,
+    #[serde(default)]
+    pub structure: String,
+    #[serde(default)]
+    pub mfe_kcal_per_mol: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +37,18 @@ pub struct RnaStructureSvgReport {
     pub command: Vec<String>,
     pub stdout: String,
     pub stderr: String,
+    #[serde(default)]
+    pub fold_executable: String,
+    #[serde(default)]
+    pub fold_command: Vec<String>,
+    #[serde(default)]
+    pub fold_stdout: String,
+    #[serde(default)]
+    pub fold_stderr: String,
+    #[serde(default)]
+    pub structure: String,
+    #[serde(default)]
+    pub mfe_kcal_per_mol: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -65,8 +83,8 @@ impl fmt::Display for RnaStructureError {
             Self::EmptySequence => write!(f, "RNA sequence is empty"),
             Self::ToolNotFound { executable } => write!(
                 f,
-                "Could not find rnapkin executable '{}'. Install rnapkin or set {}",
-                executable, RNAPKIN_ENV_BIN
+                "Could not find RNA structure executable '{}'. Install RNAfold/rnapkin or set {} / {}",
+                executable, RNAFOLD_ENV_BIN, RNAPKIN_ENV_BIN
             ),
             Self::ToolFailed {
                 executable,
@@ -76,7 +94,7 @@ impl fmt::Display for RnaStructureError {
                 stderr,
             } => write!(
                 f,
-                "rnapkin command failed: {} {} (status={:?}, stdout='{}', stderr='{}')",
+                "RNA structure command failed: {} {} (status={:?}, stdout='{}', stderr='{}')",
                 executable,
                 args.join(" "),
                 status,
@@ -101,6 +119,10 @@ fn rnapkin_executable() -> String {
     crate::tool_overrides::resolve_tool_executable(RNAPKIN_ENV_BIN, DEFAULT_RNAPKIN_BIN)
 }
 
+fn rnafold_executable() -> String {
+    crate::tool_overrides::resolve_tool_executable(RNAFOLD_ENV_BIN, DEFAULT_RNAFOLD_BIN)
+}
+
 fn normalized_rna_sequence(dna: &DNAsequence) -> String {
     dna.get_forward_string()
         .chars()
@@ -112,23 +134,62 @@ fn normalized_rna_sequence(dna: &DNAsequence) -> String {
         .collect()
 }
 
-fn run_rnapkin(executable: &str, args: &[String]) -> Result<Output, RnaStructureError> {
-    Command::new(executable).args(args).output().map_err(|e| {
-        if e.kind() == ErrorKind::NotFound {
-            RnaStructureError::ToolNotFound {
-                executable: executable.to_string(),
-            }
-        } else {
-            RnaStructureError::Io {
-                message: format!(
-                    "Could not run rnapkin executable '{}' with args [{}]: {}",
-                    executable,
-                    args.join(" "),
-                    e
-                ),
-            }
+fn run_tool(
+    executable: &str,
+    args: &[String],
+    stdin_text: Option<&str>,
+) -> Result<Output, RnaStructureError> {
+    if let Some(stdin_text) = stdin_text {
+        let mut child = Command::new(executable)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| map_spawn_error(executable, args, e))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(stdin_text.as_bytes())
+                .map_err(|e| RnaStructureError::Io {
+                    message: format!(
+                        "Could not write RNA structure input to '{}' with args [{}]: {}",
+                        executable,
+                        args.join(" "),
+                        e
+                    ),
+                })?;
         }
-    })
+        return child.wait_with_output().map_err(|e| RnaStructureError::Io {
+            message: format!(
+                "Could not collect RNA structure output from '{}' with args [{}]: {}",
+                executable,
+                args.join(" "),
+                e
+            ),
+        });
+    }
+
+    Command::new(executable)
+        .args(args)
+        .output()
+        .map_err(|e| map_spawn_error(executable, args, e))
+}
+
+fn map_spawn_error(executable: &str, args: &[String], e: std::io::Error) -> RnaStructureError {
+    if e.kind() == ErrorKind::NotFound {
+        RnaStructureError::ToolNotFound {
+            executable: executable.to_string(),
+        }
+    } else {
+        RnaStructureError::Io {
+            message: format!(
+                "Could not run RNA structure executable '{}' with args [{}]: {}",
+                executable,
+                args.join(" "),
+                e
+            ),
+        }
+    }
 }
 
 fn ensure_rna_input(dna: &DNAsequence) -> Result<String, RnaStructureError> {
@@ -144,11 +205,51 @@ fn ensure_rna_input(dna: &DNAsequence) -> Result<String, RnaStructureError> {
     Ok(sequence)
 }
 
-pub fn inspect_text(dna: &DNAsequence) -> Result<RnaStructureTextReport, RnaStructureError> {
-    let sequence = ensure_rna_input(dna)?;
-    let executable = rnapkin_executable();
-    let args = vec!["-v".to_string(), "-p".to_string(), sequence];
-    let output = run_rnapkin(&executable, &args)?;
+#[derive(Debug, Clone)]
+struct RnaFoldResult {
+    executable: String,
+    args: Vec<String>,
+    stdout: String,
+    stderr: String,
+    structure: String,
+    mfe_kcal_per_mol: Option<f64>,
+}
+
+fn parse_rnafold_structure(stdout: &str) -> Result<(String, Option<f64>), RnaStructureError> {
+    let mut lines = stdout.lines().filter(|line| !line.trim().is_empty());
+    let _sequence_line = lines.next().ok_or_else(|| RnaStructureError::Io {
+        message: "RNAfold did not emit a folded sequence line".to_string(),
+    })?;
+    let structure_line = lines.next().ok_or_else(|| RnaStructureError::Io {
+        message: "RNAfold did not emit a dot-bracket structure line".to_string(),
+    })?;
+    let structure = structure_line
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if structure.is_empty() {
+        return Err(RnaStructureError::Io {
+            message: "RNAfold emitted an empty dot-bracket structure".to_string(),
+        });
+    }
+    let rest = structure_line
+        .strip_prefix(&structure)
+        .unwrap_or_default()
+        .trim();
+    let mfe_kcal_per_mol = rest
+        .strip_prefix('(')
+        .and_then(|v| v.strip_suffix(')'))
+        .and_then(|v| v.trim().parse::<f64>().ok());
+    Ok((structure, mfe_kcal_per_mol))
+}
+
+fn fold_rna_sequence(sequence: &str) -> Result<RnaFoldResult, RnaStructureError> {
+    let executable = rnafold_executable();
+    let args = vec!["--noPS".to_string()];
+    let input = format!("{sequence}\n");
+    let output = run_tool(&executable, &args, Some(&input))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
@@ -162,13 +263,30 @@ pub fn inspect_text(dna: &DNAsequence) -> Result<RnaStructureTextReport, RnaStru
         });
     }
 
-    Ok(RnaStructureTextReport {
-        tool: "rnapkin".to_string(),
+    let (structure, mfe_kcal_per_mol) = parse_rnafold_structure(&stdout)?;
+    Ok(RnaFoldResult {
         executable,
-        sequence_length: dna.len(),
-        command: args,
+        args,
         stdout,
         stderr,
+        structure,
+        mfe_kcal_per_mol,
+    })
+}
+
+pub fn inspect_text(dna: &DNAsequence) -> Result<RnaStructureTextReport, RnaStructureError> {
+    let sequence = ensure_rna_input(dna)?;
+    let fold = fold_rna_sequence(&sequence)?;
+
+    Ok(RnaStructureTextReport {
+        tool: "RNAfold".to_string(),
+        executable: fold.executable,
+        sequence_length: dna.len(),
+        command: fold.args,
+        stdout: fold.stdout,
+        stderr: fold.stderr,
+        structure: fold.structure,
+        mfe_kcal_per_mol: fold.mfe_kcal_per_mol,
     })
 }
 
@@ -192,9 +310,24 @@ pub fn render_svg(
         }
     }
 
+    let fold = fold_rna_sequence(&sequence)?;
+    let mut rnapkin_input = tempfile::NamedTempFile::new().map_err(|e| RnaStructureError::Io {
+        message: format!("Could not create temporary rnapkin input: {e}"),
+    })?;
+    writeln!(rnapkin_input, "{sequence}").map_err(|e| RnaStructureError::Io {
+        message: format!("Could not write temporary rnapkin sequence: {e}"),
+    })?;
+    writeln!(rnapkin_input, "{}", fold.structure).map_err(|e| RnaStructureError::Io {
+        message: format!("Could not write temporary rnapkin structure: {e}"),
+    })?;
+    rnapkin_input.flush().map_err(|e| RnaStructureError::Io {
+        message: format!("Could not flush temporary rnapkin input: {e}"),
+    })?;
+
     let executable = rnapkin_executable();
-    let args = vec![sequence, output_path.to_string()];
-    let output = run_rnapkin(&executable, &args)?;
+    let input_path = rnapkin_input.path().display().to_string();
+    let args = vec!["-o".to_string(), output_path.to_string(), input_path];
+    let output = run_tool(&executable, &args, None)?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
@@ -225,5 +358,11 @@ pub fn render_svg(
         command: args,
         stdout,
         stderr,
+        fold_executable: fold.executable,
+        fold_command: fold.args,
+        fold_stdout: fold.stdout,
+        fold_stderr: fold.stderr,
+        structure: fold.structure,
+        mfe_kcal_per_mol: fold.mfe_kcal_per_mol,
     })
 }

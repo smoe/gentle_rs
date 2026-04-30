@@ -60,6 +60,7 @@ to use:
 - `makeblastdb`
 - `primer3`
 - `bigWigToBedGraph`
+- `RNAfold` (ViennaRNA)
 - `rnapkin`
 
 Container policy:
@@ -71,6 +72,7 @@ Current implementation detail:
 
 - `bigWigToBedGraph` is provided by a compatibility wrapper script that uses
   Debian's `python3-pybigwig`
+- `RNAfold` is provided by the Debian `vienna-rna` package
 - `rnapkin` is installed via `cargo install` because it is not presently part
   of the Debian package set we rely on
 - release/distribution follow-up: pin the `rnapkin` source/version explicitly
@@ -85,6 +87,8 @@ Filesystem/layout note:
     - `gentle-entrypoint`
     - `bigWigToBedGraph`
     - `rnapkin`
+  - Debian-provided helper tools on the normal system `PATH` include
+    `RNAfold`
 
 This follows normal container conventions: application payload under `/opt`,
 generic executable entrypoints on `PATH`.

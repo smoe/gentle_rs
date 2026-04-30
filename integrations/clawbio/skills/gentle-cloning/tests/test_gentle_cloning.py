@@ -283,6 +283,24 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         "runtime_lineage": "GENtle Rust rewrite used by ClawBio",
         "version_scope": "installed_local_clawbio_runtime",
         "classical_gentle_disambiguation": "This skill reports the locally installed ClawBio GENtle rewrite runtime, not the classical GENtle desktop release line.",
+        "external_tool_resources": [
+            {
+                "resource_id": "vienna_rna",
+                "display_name": "ViennaRNA RNAfold",
+                "env_var": "GENTLE_RNAFOLD_BIN",
+                "default_executable": "RNAfold",
+                "status_shell_line": "resources status",
+                "used_for": "RNA secondary-structure folding, dot-bracket output, and MFE reporting.",
+            },
+            {
+                "resource_id": "rnapkin",
+                "display_name": "rnapkin RNA structure renderer",
+                "env_var": "GENTLE_RNAPKIN_BIN",
+                "default_executable": "rnapkin",
+                "status_shell_line": "resources status",
+                "used_for": "Rendering ViennaRNA/RNAfold dot-bracket structures as SVG/PNG graphics.",
+            },
+        ],
         "ui_intent_support": {
             "catalog_request_mode": "capabilities",
             "catalog_shell_line": "ui intents",
@@ -296,6 +314,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         "gentle-cloning skill version 0.1.0 (mvp).",
         "Request schema: gentle.clawbio_skill_request.v1; result schema: gentle.clawbio_skill_result.v1.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
+        "Use `resources status` or `services status` to check RNAfold/ViennaRNA and rnapkin executable-resource readiness.",
         "This skill reports the locally installed ClawBio GENtle rewrite runtime, not the classical GENtle desktop release line.",
     ]
     assert "# no command executed" in (
@@ -4498,6 +4517,7 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "direct DNA fragment requests" in description
     assert "mechanistic follow-up" in description
     assert "installed-runtime and resource-readiness checks" in description
+    assert "ViennaRNA/RNAfold and rnapkin executable resources" in description
     assert "full shared PCR/qPCR command family for ClawBio" in description
     assert "Primer3 preflight" in description
     assert "probe-based qPCR/TaqMan design" in description
@@ -4511,6 +4531,19 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     tags = set(catalog_entry["tags"])
     assert "runtime-status" in tags
     assert "resource-status" in tags
+    assert "rna-structure" in tags
+    assert "viennarna" in tags
+    assert "rnapkin" in tags
+
+    dependencies = set(catalog_entry["dependencies"])
+    assert (
+        "ViennaRNA RNAfold on PATH or explicit GENTLE_RNAFOLD_BIN for RNA secondary-structure folding"
+        in dependencies
+    )
+    assert (
+        "rnapkin on PATH or explicit GENTLE_RNAPKIN_BIN for RNA secondary-structure rendering"
+        in dependencies
+    )
 
     trigger_keywords = set(catalog_entry["trigger_keywords"])
     assert "gentle guide" in trigger_keywords
@@ -4578,6 +4611,15 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "database status" in trigger_keywords
     assert "installed databases" in trigger_keywords
     assert "resources status" in trigger_keywords
+    assert "rna structure resources" in trigger_keywords
+    assert "rnafold resource" in trigger_keywords
+    assert "viennarna resource" in trigger_keywords
+    assert "rnapkin resource" in trigger_keywords
+    assert "rna secondary structure" in trigger_keywords
+    assert "rnafold" in trigger_keywords
+    assert "viennarna" in trigger_keywords
+    assert "rnapkin" in trigger_keywords
+    assert "mfe" in trigger_keywords
     assert "protein gel" in trigger_keywords
     assert "protein 2d gel" in trigger_keywords
     assert "2d gel" in trigger_keywords
@@ -4639,6 +4681,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "pcr_primer_design_operation",
         "qpcr_taqman_design_operation",
         "cdna_pcr_qpcr_assay_test",
+        "cdna_pcr_qpcr_product_gel_nonspecific",
         "cdna_pcr_direct_test",
         "cdna_qpcr_taqman_direct_test",
         "primer_report_list",
@@ -4703,6 +4746,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         ),
         "cdna_pcr_qpcr_assay_test": (
             "examples/request_workflow_cdna_pcr_qpcr_assay_test_offline.json"
+        ),
+        "cdna_pcr_qpcr_product_gel_nonspecific": (
+            "examples/request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json"
         ),
         "cdna_pcr_direct_test": "examples/request_cdna_pcr_test_demo_direct.json",
         "cdna_qpcr_taqman_direct_test": (
@@ -4864,7 +4910,10 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "trigger_terms"
     ]
     assert "local resources" in routes["services_status"]["trigger_terms"]
+    assert "rnafold resource" in routes["services_status"]["trigger_terms"]
     assert "installed databases" in routes["resources_status"]["trigger_terms"]
+    assert "rnapkin" in routes["resources_status"]["trigger_terms"]
+    assert "viennarna" in routes["resources_status"]["trigger_terms"]
     assert "genomic codon" in routes["protein_residue_genomic_coordinates"][
         "trigger_terms"
     ]

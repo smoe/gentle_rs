@@ -7,7 +7,7 @@
 use crate::{
     engine::GentleEngine,
     genomes::{GenomeCatalog, PrepareGenomeActivityStatus},
-    resource_status::{ResourceCatalogReport, resource_catalog_status},
+    resource_status::{ExternalToolResourceStatus, ResourceCatalogReport, resource_catalog_status},
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -386,6 +386,36 @@ fn build_summary_lines(
         "REBASE is active from the {} snapshot ({} enzymes).",
         resources.rebase.active_source, resources.rebase.active_item_count
     ));
+    lines.push(format!(
+        "{} is {} for RNA secondary-structure folding{}.",
+        resources.vienna_rna.display_name,
+        if resources.vienna_rna.available {
+            "available"
+        } else {
+            "not available"
+        },
+        resources
+            .vienna_rna
+            .version_output
+            .as_deref()
+            .map(|version| format!(" ({version})"))
+            .unwrap_or_default()
+    ));
+    lines.push(format!(
+        "{} is {} for RNA secondary-structure rendering{}.",
+        resources.rnapkin.display_name,
+        if resources.rnapkin.available {
+            "available"
+        } else {
+            "not available"
+        },
+        resources
+            .rnapkin
+            .version_output
+            .as_deref()
+            .map(|version| format!(" ({version})"))
+            .unwrap_or_default()
+    ));
     if resources.attract.runtime_valid {
         lines.push(format!(
             "ATtRACT is active from the {} snapshot ({} motifs); splice-aware RBP evidence can now draw from the normalized motif set, including PWM-backed rows when Matrix_id-mapped PWM blocks are present.",
@@ -645,7 +675,47 @@ fn resource_readiness_rows(resources: &ResourceCatalogReport) -> Vec<ServiceHand
         last_error: resources.attract.runtime_error.clone(),
         current_activity: None,
     });
+    rows.push(external_tool_readiness_row(&resources.vienna_rna));
+    rows.push(external_tool_readiness_row(&resources.rnapkin));
     rows
+}
+
+fn external_tool_readiness_row(tool: &ExternalToolResourceStatus) -> ServiceHandoffReadinessRow {
+    let version_suffix = tool
+        .version_output
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!(" ({value})"))
+        .unwrap_or_default();
+    let status_summary = if tool.available {
+        format!(
+            "{} is available via '{}'{}.",
+            tool.display_name, tool.resolved_executable, version_suffix
+        )
+    } else {
+        format!(
+            "{} is not available via '{}'{}.",
+            tool.display_name,
+            tool.resolved_executable,
+            tool.error
+                .as_deref()
+                .map(|error| format!(": {error}"))
+                .unwrap_or_default()
+        )
+    };
+    ServiceHandoffReadinessRow {
+        resource_key: format!("external_tool:{}", tool.resource_id),
+        display_name: tool.display_name.clone(),
+        resource_kind: "external_tool".to_string(),
+        prepared: tool.available,
+        lifecycle_status: if tool.available { "ready" } else { "missing" }.to_string(),
+        status_summary,
+        cache_dir: None,
+        runtime_path: Some(tool.resolved_executable.clone()),
+        source: Some(tool.support_status.clone()),
+        last_error: tool.error.clone(),
+        current_activity: None,
+    }
 }
 
 fn build_handoff_status_overview(

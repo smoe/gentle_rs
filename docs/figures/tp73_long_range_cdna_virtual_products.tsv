@@ -1,0 +1,31 @@
+lane	five_prime_class	reverse_readout	three_prime_class	display_name	source_status	observed_accession	amplicon_length_bp	forward_start_0based	reverse_target_start_0based	reverse_target_end_0based_exclusive
+ta+agz	ta	agz	alpha	TAp73-alpha	public_refseq_observed	NM_005427.4	1630	116	1726	1746
+ta+agz	ta	agz	gamma	TAp73-gamma	public_refseq_observed	NM_001204185.2	1481	116	1577	1597
+ta+agz	ta	agz	zeta	TAp73-zeta	public_refseq_observed	NM_001204188.2	1342	116	1438	1458
+ta+be	ta	be	beta	TAp73-beta	public_refseq_observed	NM_001204184.2	1534	116	1630	1650
+ta+be	ta	be	epsilon	TAp73-epsilon	public_refseq_observed	NM_001204187.2	1385	116	1481	1501
+ta+delta	ta	delta	delta	TAp73-delta	public_refseq_observed	NM_001204186.2	1242	116	1335	1358
+x2+agz	x2	agz	alpha	Ex2-p73-alpha	public_refseq_observed	XM_047429524.1	1633	75	1688	1708
+x2+agz	x2	agz	gamma	Ex2-p73-gamma	virtual_local_hypothesis		1484	75	1539	1559
+x2+agz	x2	agz	zeta	Ex2-p73-zeta	virtual_local_hypothesis		1345	75	1400	1420
+x2+be	x2	be	beta	Ex2-p73-beta	virtual_local_hypothesis		1537	75	1592	1612
+x2+be	x2	be	epsilon	Ex2-p73-epsilon	virtual_local_hypothesis		1388	75	1443	1463
+x2+delta	x2	delta	delta	Ex2-p73-delta	virtual_local_hypothesis		1245	75	1297	1320
+x1+agz	x1	agz	alpha	Ex3-p73-alpha	public_refseq_observed	XM_047429521.1	1629	62	1671	1691
+x1+agz	x1	agz	gamma	Ex3-p73-gamma	virtual_local_hypothesis		1480	62	1522	1542
+x1+agz	x1	agz	zeta	Ex3-p73-zeta	virtual_local_hypothesis		1341	62	1383	1403
+x1+be	x1	be	beta	Ex3-p73-beta	virtual_local_hypothesis		1533	62	1575	1595
+x1+be	x1	be	epsilon	Ex3-p73-epsilon	virtual_local_hypothesis		1384	62	1426	1446
+x1+delta	x1	delta	delta	Ex3-p73-delta	virtual_local_hypothesis		1241	62	1280	1303
+dn+agz	dn	agz	alpha	DeltaN-p73-alpha	public_refseq_observed	NM_001126240.3	1412	262	1654	1674
+dn+agz	dn	agz	gamma	DeltaN-p73-gamma	public_refseq_observed	NM_001126242.3	1263	262	1505	1525
+dn+agz	dn	agz	zeta	DeltaN-p73-zeta	public_refseq_observed	NM_001204191.2	1124	262	1366	1386
+dn+be	dn	be	beta	DeltaN-p73-beta	public_refseq_observed	NM_001126241.3	1316	262	1558	1578
+dn+be	dn	be	epsilon	DeltaN-p73-epsilon	public_refseq_observed	NM_001204190.2	1167	262	1409	1429
+dn+delta	dn	delta	delta	DeltaN-p73-delta	public_refseq_observed	NM_001204189.2	1024	262	1263	1286
+v13+agz	v13	agz	alpha	V13-p73-alpha	public_refseq_observed	NM_001204192.2	1415	92	1487	1507
+v13+agz	v13	agz	gamma	V13-p73-gamma	virtual_local_hypothesis		1266	92	1338	1358
+v13+agz	v13	agz	zeta	V13-p73-zeta	virtual_local_hypothesis		1127	92	1199	1219
+v13+be	v13	be	beta	V13-p73-beta	virtual_local_hypothesis		1319	92	1391	1411
+v13+be	v13	be	epsilon	V13-p73-epsilon	virtual_local_hypothesis		1170	92	1242	1262
+v13+delta	v13	delta	delta	V13-p73-delta	virtual_local_hypothesis		1027	92	1096	1119

@@ -754,6 +754,28 @@ and zeta with the zeta plus alpha/gamma/zeta readouts. The full per-pair
 GENtle transcript-map SVG/PNG/JSON outputs can be regenerated from the same
 `primers test-cdna-pcr` command family.
 
+### TP73 virtual local-knowledge cDNA selector gel
+
+For disease-oriented TP73 work, absence from the bundled public transcript set
+is not treated as proof that a 5' x 3' combination cannot exist. GENtle now
+ships a local virtual cDNA panel that explicitly materializes all five 5'
+classes crossed with alpha, beta, gamma, delta, epsilon, and zeta 3' classes.
+The theoretical sequences live in
+`assets/panels/tp73_long_range_cdna_virtual_panel_v1.fasta`, with provenance
+and primer products in the adjacent JSON panel.
+
+![GENtle TP73 virtual long-range cDNA selector gel](docs/figures/tp73_long_range_cdna_virtual_gel.png)
+
+The compact readout set keeps 5' specificity in the forward primer and reads
+the 3' class by lane plus gel size: alpha/gamma/zeta, beta/epsilon, and delta.
+Dimmed, dashed, `*`-tagged bands are explicit local hypotheses that are not yet
+reported in the bundled public GenBank/Ensembl-style TP73 transcript panel.
+The RNA-structure screen in
+`docs/figures/tp73_long_range_cdna_rt_risk.tsv` suggests that the TA 5' class
+is the only subset with an extra 5'-proximal reverse-transcription obstacle
+proxy; the 3' class does not materially change that proxy in this virtual
+panel.
+
 For current detail on contracts and GUI behavior, see
 [`docs/protocol.md`](docs/protocol.md) and [`docs/gui.md`](docs/gui.md). For
 what is actively being built next, see [`docs/roadmap.md`](docs/roadmap.md).

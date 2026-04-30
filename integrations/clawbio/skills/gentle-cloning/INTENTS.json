@@ -257,7 +257,11 @@
         "readiness",
         "ready",
         "local resources",
-        "resources are ready"
+        "resources are ready",
+        "rna structure resources",
+        "rnafold resource",
+        "viennarna resource",
+        "rnapkin resource"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [
@@ -279,7 +283,14 @@
         "installed databases",
         "jaspar",
         "rebase",
-        "attract"
+        "attract",
+        "rna structure resources",
+        "rna secondary structure resources",
+        "rnafold",
+        "viennarna",
+        "vienna rna",
+        "rnapkin",
+        "mfe"
       ],
       "demo_policy": "never_unless_explicit",
       "plan": [

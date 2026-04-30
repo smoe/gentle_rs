@@ -2757,7 +2757,7 @@ Rendering export commands:
 - `render-rna-svg SEQ_ID OUTPUT.svg`
   - Calls engine operation `RenderRnaStructureSvg`.
   - Accepts only single-stranded RNA (`molecule_type` of `RNA`/`ssRNA`).
-  - Uses external `rnapkin` executable (set `GENTLE_RNAPKIN_BIN` to override executable path).
+  - Uses external `RNAfold` for folding and `rnapkin` for drawing (set `GENTLE_RNAFOLD_BIN` / `GENTLE_RNAPKIN_BIN` to override executable paths).
 - `render-lineage-svg OUTPUT.svg`
   - Calls engine operation `RenderLineageSvg`.
 - `protocol-cartoon list`
@@ -2984,10 +2984,10 @@ Rendering export commands:
 RNA secondary-structure text command:
 
 - `rna-info SEQ_ID`
-  - Returns a JSON report from `rnapkin -v -p <sequence>`.
-  - Includes `stdout`/`stderr` and command metadata.
+  - Returns a JSON report from `RNAfold --noPS`.
+  - Includes `stdout`/`stderr`, dot-bracket `structure`, optional `mfe_kcal_per_mol`, and command metadata.
   - Accepts only single-stranded RNA (`molecule_type` of `RNA`/`ssRNA`).
-  - Uses external `rnapkin` executable (set `GENTLE_RNAPKIN_BIN` to override executable path).
+  - Uses external `RNAfold` executable (set `GENTLE_RNAFOLD_BIN` to override executable path).
 
 DNA ladder catalog commands:
 
@@ -3094,6 +3094,14 @@ Resource sync commands:
     default normalized snapshot path `data/resources/ucsc.rmsk.hg38.json`,
     whether that snapshot exists and validates, and the embedded index
     recommendations used by `resources suggest-ucsc-rmsk-index`.
+  - RNA secondary-structure executable resources are reported as first-class
+    readiness entries:
+    - `vienna_rna`: resolves `GENTLE_RNAFOLD_BIN` or `RNAfold` and probes
+      `RNAfold --version`
+    - `rnapkin`: resolves `GENTLE_RNAPKIN_BIN` or `rnapkin` and probes
+      `rnapkin --version` / `rnapkin -V`
+    - these are executable tool resources, not normalized data snapshots;
+      GENtle uses ViennaRNA/RNAfold for folding and rnapkin for rendering
 - `resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]`
   - Parses REBASE/Bairoch-style records (`withrefm`) into GENtle restriction-enzyme JSON.
   - `INPUT` may be a local file path or an `https://...` URL.

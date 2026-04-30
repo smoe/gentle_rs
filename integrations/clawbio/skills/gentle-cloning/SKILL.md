@@ -7,6 +7,8 @@ description: >-
   sequence-grounded mechanistic follow-up, assay-planning artifacts,
   stateless sequence inspection, reusable local reference-preparation
   workflows, transcript-native protein-residue-to-genomic-codon mapping,
+  RNA secondary-structure readiness via ViennaRNA/RNAfold and rnapkin
+  executable resources,
   ClawBio-accessible PCR/qPCR/TaqMan automation (Primer3 preflight, seed
   helpers, PCR primer design, probe-based qPCR/TaqMan design, transcript-
   derived cDNA PCR/qPCR assay testing, report inspection/export, PCR protocol
@@ -19,7 +21,7 @@ description: >-
 version: 0.1.0
 author: GENtle project
 license: MIT
-    tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, cdna, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest]
+    tags: [cloning, dna-design, primer-design, gibson, pcr, qpcr, cdna, genome-context, reproducibility, tfbs, restriction-sites, ensembl, protein-gel, protein-analysis, protease-digest, rna-structure, viennarna, rnapkin]
 metadata:
   openclaw:
     requires:
@@ -107,6 +109,15 @@ metadata:
       - database status
       - installed databases
       - resources status
+      - rna structure resources
+      - rnafold resource
+      - viennarna resource
+      - rnapkin resource
+      - rna secondary structure
+      - rnafold
+      - viennarna
+      - rnapkin
+      - mfe
       - protein gel
       - gene panel protein gel
       - multi gene protein gel
@@ -166,6 +177,9 @@ Preferred behavior by request type:
     current service/reference status
 - "Do you have Ensembl / reference / motif / restriction data?"
   - run status checks first
+- "Do you have RNAfold / ViennaRNA / rnapkin / RNA structure resources?"
+  - run `resources status` or `services status`; report the `vienna_rna` and
+    `rnapkin` readiness entries, not only prose
 - "Can you prepare/download the needed data?"
   - run the preparation route or state-preparation preflight, do not merely
     describe the command
@@ -217,6 +231,9 @@ capability-led language:
   - inspect pasted DNA fragments directly for restriction sites or TFBS hits
     without first creating project-state records when the task is purely
     read-only,
+  - check ViennaRNA/RNAfold and rnapkin as executable resources for RNA
+    secondary-structure folding/rendering via `resources status` or
+    `services status`,
   - seed, design, inspect, and export PCR primer and qPCR/TaqMan assay work
     through typed ClawBio modes over the shared `primers ...` command family,
   - test supplied PCR and qPCR/TaqMan oligos against transcript-derived cDNA
@@ -391,6 +408,7 @@ For a generic "what is installed?" or "what databases do you know about?"
 question, use `services status` first because it gives the ClawBio-facing
 readiness view across references, helpers, and integrated resources. Follow
 with `resources status` for JASPAR/REBASE/ATtRACT-style resource snapshots,
+ViennaRNA/RNAfold and rnapkin executable resources,
 `genomes status` or `genomes list` for reference genomes, and `helpers status`
 or `helpers list` for helper/vector assets.
 
@@ -406,6 +424,12 @@ Interpret resource readiness conservatively:
     reports a valid runtime snapshot
   - when the ZIP path is not known, treat sync as a blocked action rather than
     an immediately executable command
+- `ViennaRNA/RNAfold` and `rnapkin`
+  - executable resources, not local database snapshots
+  - report `vienna_rna.available`, `rnapkin.available`, version output, and
+    any missing-tool error from `resources status`
+  - do not claim RNA secondary-structure rendering is ready unless both are
+    available
 
 When the user says they want to prepare for future questions, say what you are
 preparing and then execute the relevant preparation/status steps rather than
@@ -467,7 +491,7 @@ Preferred handling:
 ## Capability Split Inside This One Skill
 
 `gentle-cloning` is still one runtime alias in ClawBio/OpenClaw, but it should
-be treated as a bundle of nine explicit sub-capabilities rather than one vague
+be treated as a bundle of ten explicit sub-capabilities rather than one vague
 "do anything with GENtle" wrapper.
 
 ### 1. Runtime and Resource Readiness
@@ -1383,13 +1407,14 @@ Apply the following methodology:
       plus the messenger-facing PNG companion
   - `examples/request_resources_status.json`
     - reports which integrated external resource snapshots are active right
-      now (`REBASE`, `JASPAR`) and records `ATtRACT` explicitly as
-      not-yet-integrated, including its current published ZIP download URL
+      now (`REBASE`, `JASPAR`, normalized `ATtRACT` when present), plus
+      executable RNA-structure resources (`vienna_rna`, `rnapkin`) and the
+      ATtRACT ZIP download/sync route when no valid runtime snapshot is active
   - `examples/request_services_status.json`
     - reports one combined readiness view across canonical references, helper
-      backbones, and active external resource snapshots so chat/report layers
-      can answer "what can this GENtle instance work with right now?" from one
-      deterministic artifact
+      backbones, active external resource snapshots, and executable
+      RNA-structure resources so chat/report layers can answer "what can this
+      GENtle instance work with right now?" from one deterministic artifact
     - when a prepare/reindex run is active, the same report can also surface
       current phase/progress hints (`download_sequence`, `index_blast`, etc.)
       and failed/cancelled prepare states instead of only static readiness

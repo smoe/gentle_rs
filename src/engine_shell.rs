@@ -5923,7 +5923,7 @@ impl ShellCommand {
                 format!("render RNA structure SVG for '{seq_id}' to '{output}'")
             }
             Self::RnaInfo { seq_id } => {
-                format!("inspect rnapkin textual RNA report for '{seq_id}'")
+                format!("inspect RNAfold textual RNA report for '{seq_id}'")
             }
             Self::RenderLineageSvg { output } => format!("render lineage SVG to '{output}'"),
             Self::ProtocolCartoonList => "list available protocol cartoon renderers".to_string(),

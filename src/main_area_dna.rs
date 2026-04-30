@@ -38786,12 +38786,19 @@ impl MainAreaDna {
         match outcome {
             (Ok(text_report), Ok(_svg_report)) => {
                 let mut text = format!(
-                    "Tool: {}\nExecutable: {}\nSequence length: {}\nCommand: rnapkin {}\n",
+                    "Tool: {}\nExecutable: {}\nSequence length: {}\nCommand: {} {}\n",
                     text_report.tool,
                     text_report.executable,
                     text_report.sequence_length,
+                    text_report.executable,
                     text_report.command.join(" ")
                 );
+                if !text_report.structure.is_empty() {
+                    text.push_str(&format!("Structure: {}\n", text_report.structure));
+                }
+                if let Some(mfe) = text_report.mfe_kcal_per_mol {
+                    text.push_str(&format!("MFE: {mfe:.2} kcal/mol\n"));
+                }
                 if !text_report.stdout.trim().is_empty() {
                     text.push_str("\nstdout:\n");
                     text.push_str(&text_report.stdout);
@@ -38809,7 +38816,7 @@ impl MainAreaDna {
                 self.rna_info_text = text;
                 self.rna_preview_path = Some(preview_path.clone());
                 self.rna_svg_uri = format!("file://{}", preview_path.display());
-                self.rna_status = "RNA structure refreshed from rnapkin".to_string();
+                self.rna_status = "RNA structure refreshed from RNAfold/rnapkin".to_string();
             }
             (Err(e), _) | (_, Err(e)) => {
                 self.rna_status = format!("RNA structure error: {}", e);
@@ -38862,7 +38869,7 @@ impl MainAreaDna {
             ui.horizontal(|ui| {
                 if ui
                     .button("Refresh RNA Structure")
-                    .on_hover_text("Run rnapkin and refresh textual report + SVG preview")
+                    .on_hover_text("Run RNAfold for the structure and rnapkin for the SVG preview")
                     .clicked()
                 {
                     self.refresh_rna_structure();

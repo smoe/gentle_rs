@@ -12,7 +12,9 @@ use crate::{
     },
     enzymes::load_restriction_enzymes_from_json_text,
     resource_sync::DEFAULT_JASPAR_REMOTE_METADATA_PATH,
+    rna_structure::{DEFAULT_RNAFOLD_BIN, DEFAULT_RNAPKIN_BIN, RNAFOLD_ENV_BIN, RNAPKIN_ENV_BIN},
     tf_motifs::list_motif_summaries,
+    tool_overrides::resolve_tool_executable,
     ucsc_rmsk::{
         DEFAULT_UCSC_RMSK_ASSEMBLY, DEFAULT_UCSC_RMSK_RESOURCE_PATH, UCSC_RMSK_RESOURCE_SCHEMA,
         UcscRmskIndexRecommendation, ucsc_rmsk_descriptor, ucsc_rmsk_index_recommendations,
@@ -22,6 +24,8 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{
     fs,
+    io::ErrorKind,
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -43,6 +47,8 @@ pub struct ResourceCatalogReport {
     pub jaspar: ResourceSnapshotStatus,
     pub attract: AttractResourceStatus,
     pub ucsc_rmsk: UcscRmskResourceStatus,
+    pub vienna_rna: ExternalToolResourceStatus,
+    pub rnapkin: ExternalToolResourceStatus,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,6 +84,22 @@ pub struct ExternalDatabaseStatus {
     pub support_status: String,
     pub homepage: String,
     pub download_url: Option<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExternalToolResourceStatus {
+    pub resource_id: String,
+    pub display_name: String,
+    pub support_status: String,
+    pub homepage: String,
+    pub env_var: String,
+    pub default_executable: String,
+    pub resolved_executable: String,
+    pub available: bool,
+    pub version_command: Vec<String>,
+    pub version_output: Option<String>,
+    pub error: Option<String>,
     pub notes: Vec<String>,
 }
 
@@ -127,6 +149,125 @@ fn now_unix_ms() -> u128 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0)
+}
+
+fn first_non_empty_output_line(stdout: &[u8], stderr: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .chain(String::from_utf8_lossy(stderr).lines())
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_string())
+}
+
+fn external_tool_status(
+    resource_id: &str,
+    display_name: &str,
+    homepage: &str,
+    env_var: &str,
+    default_executable: &str,
+    version_arg_sets: &[&[&str]],
+    notes: Vec<String>,
+) -> ExternalToolResourceStatus {
+    let resolved_executable = resolve_tool_executable(env_var, default_executable);
+    let mut version_command = Vec::new();
+    let mut last_error: Option<String> = None;
+    for args in version_arg_sets {
+        version_command = std::iter::once(resolved_executable.clone())
+            .chain(args.iter().map(|arg| (*arg).to_string()))
+            .collect();
+        match Command::new(&resolved_executable).args(*args).output() {
+            Ok(output) if output.status.success() => {
+                return ExternalToolResourceStatus {
+                    resource_id: resource_id.to_string(),
+                    display_name: display_name.to_string(),
+                    support_status: "ready_runtime".to_string(),
+                    homepage: homepage.to_string(),
+                    env_var: env_var.to_string(),
+                    default_executable: default_executable.to_string(),
+                    resolved_executable,
+                    available: true,
+                    version_command,
+                    version_output: first_non_empty_output_line(&output.stdout, &output.stderr),
+                    error: None,
+                    notes,
+                };
+            }
+            Ok(output) => {
+                let preview = first_non_empty_output_line(&output.stdout, &output.stderr)
+                    .unwrap_or_else(|| "no output".to_string());
+                last_error = Some(format!(
+                    "Version probe exited with status {:?}: {}",
+                    output.status.code(),
+                    preview
+                ));
+            }
+            Err(err) if err.kind() == ErrorKind::NotFound => {
+                return ExternalToolResourceStatus {
+                    resource_id: resource_id.to_string(),
+                    display_name: display_name.to_string(),
+                    support_status: "missing".to_string(),
+                    homepage: homepage.to_string(),
+                    env_var: env_var.to_string(),
+                    default_executable: default_executable.to_string(),
+                    resolved_executable,
+                    available: false,
+                    version_command,
+                    version_output: None,
+                    error: Some(format!(
+                        "Executable not found. Set {env_var} or make '{default_executable}' available on PATH."
+                    )),
+                    notes,
+                };
+            }
+            Err(err) => {
+                last_error = Some(format!("Could not execute version probe: {err}"));
+            }
+        }
+    }
+    ExternalToolResourceStatus {
+        resource_id: resource_id.to_string(),
+        display_name: display_name.to_string(),
+        support_status: "runtime_invalid".to_string(),
+        homepage: homepage.to_string(),
+        env_var: env_var.to_string(),
+        default_executable: default_executable.to_string(),
+        resolved_executable,
+        available: false,
+        version_command,
+        version_output: None,
+        error: last_error,
+        notes,
+    }
+}
+
+fn vienna_rna_status() -> ExternalToolResourceStatus {
+    external_tool_status(
+        "vienna_rna",
+        "ViennaRNA RNAfold",
+        "https://www.tbi.univie.ac.at/RNA/",
+        RNAFOLD_ENV_BIN,
+        DEFAULT_RNAFOLD_BIN,
+        &[&["--version"]],
+        vec![
+            "Used by GENtle's shared RNA secondary-structure path to compute dot-bracket structure and MFE.".to_string(),
+            "ClawBio should treat this as an executable resource for RNA/cDNA structure questions, not as a GENtle-only data snapshot.".to_string(),
+        ],
+    )
+}
+
+fn rnapkin_status() -> ExternalToolResourceStatus {
+    external_tool_status(
+        "rnapkin",
+        "rnapkin RNA structure renderer",
+        "https://crates.io/crates/rnapkin",
+        RNAPKIN_ENV_BIN,
+        DEFAULT_RNAPKIN_BIN,
+        &[&["--version"], &["-V"]],
+        vec![
+            "Used by GENtle's shared RNA secondary-structure path to render RNAfold dot-bracket input as SVG/PNG.".to_string(),
+            "Rendering depends on ViennaRNA/RNAfold for structure calculation; rnapkin is the drawing layer.".to_string(),
+        ],
+    )
 }
 
 fn count_jaspar_snapshot_items(text: &str) -> Result<usize, String> {
@@ -474,5 +615,7 @@ pub fn resource_catalog_status() -> ResourceCatalogReport {
         jaspar: jaspar_status(),
         attract: attract_status(),
         ucsc_rmsk: ucsc_rmsk_status(),
+        vienna_rna: vienna_rna_status(),
+        rnapkin: rnapkin_status(),
     }
 }

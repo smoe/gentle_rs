@@ -26,7 +26,7 @@ could be used.
 ## Logical capability split
 
 The runtime alias is still `gentle-cloning`, but the intended ClawBio-facing
-surface is now nine explicit sub-capabilities:
+surface is now ten explicit sub-capabilities:
 
 - runtime and resource readiness
 - genomic context
@@ -34,6 +34,7 @@ surface is now nine explicit sub-capabilities:
 - restriction analysis
 - PCR/qPCR/TaqMan automation
 - splicing expert
+- RNA secondary-structure tool readiness
 - isoform architecture
 - protein isoform gel / 2D-gel rendering
 - experimental follow-up
@@ -112,6 +113,10 @@ intended framing is:
   classical GENtle desktop release line. GENtle can also answer installed
   database/resource questions by running `services status`, `resources status`,
   `genomes status`, `helpers status`, or the relevant list route.
+- GENtle treats ViennaRNA/RNAfold and rnapkin as ClawBio-visible executable
+  resources. Use `resources status` or `services status` to report whether
+  RNAfold is available for dot-bracket/MFE folding and rnapkin is available
+  for SVG/PNG structure rendering.
 
 ### Ensembl availability answers
 
@@ -184,6 +189,7 @@ skill cannot know. Run the status routes:
   cDNA demo locus; they request product materialization implicitly by asking
   for `product_gel_svg_path`
 - `resources status` for integrated JASPAR/REBASE/ATtRACT-style resources
+  and executable RNA-structure resources (`vienna_rna`, `rnapkin`)
 - `genomes status ...` or `genomes list` for reference-genome catalogs/caches
 - `helpers status ...` or `helpers list` for helper/vector assets
 
@@ -241,6 +247,11 @@ Interpret resource preparation honestly:
     `resources sync-attract /path/to/ATtRACT.zip`
   - `services handoff` keeps this as a blocked action until the local ZIP path
     is supplied
+- `ViennaRNA/RNAfold` / `rnapkin`
+  - reported as executable resources, not normalized data snapshots
+  - `vienna_rna` readiness checks `GENTLE_RNAFOLD_BIN` or `RNAfold`
+  - `rnapkin` readiness checks `GENTLE_RNAPKIN_BIN` or `rnapkin`
+  - these power RNA secondary-structure folding/MFE and structure rendering
 
 ### Investigating stale Ensembl answers
 
@@ -721,8 +732,9 @@ Included follow-on analysis/planning/graphics requests:
     exports a compact linear genomic-context SVG into the wrapper bundle
 - `examples/request_resources_status.json`
   - reports which integrated external resource snapshots are active right now
-    (`REBASE`, `JASPAR`) and records `ATtRACT` explicitly as
-    not-yet-integrated, including its current published ZIP download URL
+    (`REBASE`, `JASPAR`, normalized `ATtRACT` when present), plus executable
+    RNA-structure resources (`vienna_rna`, `rnapkin`) and the ATtRACT ZIP
+    download/sync route when no valid runtime snapshot is active
 - `examples/request_services_status.json`
   - reports one combined readiness view across canonical references, helper
     backbones, and active external resource snapshots so chat/report layers can

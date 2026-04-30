@@ -205,7 +205,7 @@
             "cli-direct"
          ],
          "path": "render-rna-svg",
-         "summary": "Render RNA secondary structure SVG.",
+         "summary": "Render RNA secondary structure SVG via RNAfold and rnapkin.",
          "usage": "render-rna-svg SEQ_ID OUTPUT.svg"
       },
       {
@@ -217,7 +217,7 @@
             "cli-direct"
          ],
          "path": "rna-info",
-         "summary": "Inspect textual RNA secondary-structure report.",
+         "summary": "Inspect RNAfold dot-bracket/MFE secondary-structure report.",
          "usage": "rna-info SEQ_ID"
       },
       {

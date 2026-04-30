@@ -103,6 +103,24 @@ CLASSICAL_GENTLE_DISAMBIGUATION = (
     "This skill reports the locally installed ClawBio GENtle rewrite runtime, "
     "not the classical GENtle desktop release line."
 )
+EXTERNAL_TOOL_RESOURCES = [
+    {
+        "resource_id": "vienna_rna",
+        "display_name": "ViennaRNA RNAfold",
+        "env_var": "GENTLE_RNAFOLD_BIN",
+        "default_executable": "RNAfold",
+        "status_shell_line": "resources status",
+        "used_for": "RNA secondary-structure folding, dot-bracket output, and MFE reporting.",
+    },
+    {
+        "resource_id": "rnapkin",
+        "display_name": "rnapkin RNA structure renderer",
+        "env_var": "GENTLE_RNAPKIN_BIN",
+        "default_executable": "rnapkin",
+        "status_shell_line": "resources status",
+        "used_for": "Rendering ViennaRNA/RNAfold dot-bracket structures as SVG/PNG graphics.",
+    },
+]
 
 
 class SkillError(RuntimeError):
@@ -258,6 +276,7 @@ def _skill_info_payload(script_path: Path) -> dict[str, Any]:
         "runtime_lineage": LOCAL_RUNTIME_LINEAGE,
         "version_scope": VERSION_SCOPE,
         "classical_gentle_disambiguation": CLASSICAL_GENTLE_DISAMBIGUATION,
+        "external_tool_resources": EXTERNAL_TOOL_RESOURCES,
         "ui_intent_support": {
             "catalog_request_mode": "capabilities",
             "catalog_shell_line": UI_INTENT_DISCOVERY_SHELL_LINE,
@@ -277,6 +296,7 @@ def _skill_info_chat_summary_lines(info: dict[str, Any]) -> list[str]:
         f"{name} skill version {version} ({status}).",
         f"Request schema: {info.get('request_schema')}; result schema: {info.get('result_schema')}.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
+        "Use `resources status` or `services status` to check RNAfold/ViennaRNA and rnapkin executable-resource readiness.",
         CLASSICAL_GENTLE_DISAMBIGUATION,
     ]
 
