@@ -3436,6 +3436,9 @@ Genome convenience commands:
     also includes a ready-to-run `prepare_command` hint.
   - When lifecycle is `running` or `ready`, `prepare_command` is suppressed so
     callers do not accidentally trigger redundant parallel prepares.
+  - On Unix, a `running` activity whose `owner_pid` no longer exists is treated
+    as `stale` immediately, even if the heartbeat is younger than the regular
+    stale timeout.
   - Also reports resolved source details: `sequence_source_type`,
     `annotation_source_type`, `sequence_source`, `annotation_source`.
   - Also reports optional mass metadata:
@@ -3449,6 +3452,11 @@ Genome convenience commands:
   - Output now includes `binary_preflight` (`gentle.blast_external_binary_preflight.v1`)
     with `makeblastdb`/`blastn` found/missing/version/path diagnostics captured
     before prepare work starts.
+  - If an active prepare is reused, the human message reports the effective
+    prepared-install/activity-status path when available, not only the raw
+    `--cache-dir` argument. This matters for relative cache directories because
+    they resolve relative to the catalog file or fragment that supplied the
+    entry.
 - `genomes remove-prepared GENOME_ID [--catalog PATH] [--cache-dir PATH]`
   - Deletes only the prepared install directory for one genome from the selected cache.
   - Catalog JSON is left unchanged.

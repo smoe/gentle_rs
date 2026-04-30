@@ -7157,6 +7157,41 @@ fn prepare_activity_is_stale(status: &PrepareGenomeActivityStatus, now: u128) ->
     now.saturating_sub(status.updated_at_unix_ms) > PREPARE_ACTIVITY_STALE_AFTER_MS
 }
 
+#[cfg(unix)]
+fn prepare_activity_owner_pid_is_running(pid: u32) -> Option<bool> {
+    if pid == 0 {
+        return None;
+    }
+    Command::new("ps")
+        .arg("-p")
+        .arg(pid.to_string())
+        .arg("-o")
+        .arg("pid=")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .ok()
+        .map(|status| status.success())
+}
+
+#[cfg(not(unix))]
+fn prepare_activity_owner_pid_is_running(_pid: u32) -> Option<bool> {
+    None
+}
+
+fn prepare_activity_owner_pid_stale_reason(status: &PrepareGenomeActivityStatus) -> Option<String> {
+    if status.lifecycle_status != "running" {
+        return None;
+    }
+    let pid = status.owner_pid?;
+    match prepare_activity_owner_pid_is_running(pid) {
+        Some(false) => Some(format!(
+            "Prepare activity owner_pid {pid} is no longer running and is treated as stale"
+        )),
+        Some(true) | None => None,
+    }
+}
+
 fn mark_prepare_activity_stale(
     status_path: &Path,
     lock_path: &Path,
@@ -7195,6 +7230,14 @@ fn inspect_prepare_activity_status_paths(
                 lock_path,
                 status,
                 "Prepare activity lost its active lock and is treated as stale",
+            )));
+        }
+        if let Some(reason) = prepare_activity_owner_pid_stale_reason(&status) {
+            return Ok(Some(mark_prepare_activity_stale(
+                status_path,
+                lock_path,
+                status,
+                &reason,
             )));
         }
         if prepare_activity_is_stale(&status, now_unix_ms()) {
@@ -13461,6 +13504,80 @@ mod tests {
         let report = catalog.prepare_genome_once("ToyGenome").unwrap();
         assert_eq!(report.lifecycle_status, "ready");
         assert!(!report.reused_existing_activity);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_running_prepare_activity_with_dead_owner_pid_is_marked_stale() {
+        let dead_pid = u32::MAX;
+        if prepare_activity_owner_pid_is_running(dead_pid) != Some(false) {
+            return;
+        }
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let cache_dir = root.join("cache");
+        let install_dir = cache_dir.join("toygenome");
+        fs::create_dir_all(&install_dir).unwrap();
+        let status_path = prepare_activity_status_path(&install_dir);
+        let lock_path = prepare_activity_lock_path(&install_dir);
+        let now = now_unix_ms();
+        let running_status = PrepareGenomeActivityStatus {
+            genome_id: "ToyGenome".to_string(),
+            status_path: canonical_or_display(&status_path),
+            lock_path: Some(canonical_or_display(&lock_path)),
+            lifecycle_status: "running".to_string(),
+            prepare_mode: PrepareGenomeMode::PrepareOrReuse.label().to_string(),
+            phase: Some("index_fasta".to_string()),
+            item: Some("sequence.fa.fai".to_string()),
+            bytes_done: 1,
+            bytes_total: Some(10),
+            percent: Some(10.0),
+            step_id: Some(PrepareGenomeStepId::FastaIndex),
+            step_label: Some(PrepareGenomeStepId::FastaIndex.label().to_string()),
+            started_at_unix_ms: now.saturating_sub(1_000),
+            updated_at_unix_ms: now,
+            finished_at_unix_ms: None,
+            last_error: None,
+            owner_pid: Some(dead_pid),
+        };
+        write_prepare_activity_status(&status_path, &running_status).unwrap();
+        assert!(create_prepare_activity_lock(&lock_path, &running_status).unwrap());
+
+        let catalog_path = root.join("catalog.json");
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "toy.fa",
+    "annotations_local": "toy.gtf",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                cache_dir.display()
+            ),
+        )
+        .unwrap();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+
+        let inspected = catalog
+            .inspect_prepare_activity_status("ToyGenome", None)
+            .unwrap()
+            .expect("dead-owner activity should still be inspectable as stale");
+        assert_eq!(inspected.lifecycle_status, "stale");
+        assert!(
+            inspected
+                .last_error
+                .as_deref()
+                .is_some_and(|value| value.contains("owner_pid"))
+        );
+        assert_eq!(inspected.owner_pid, Some(dead_pid));
+        assert!(
+            !lock_path.exists(),
+            "dead-owner stale inspection should release abandoned locks"
+        );
     }
 
     #[test]
