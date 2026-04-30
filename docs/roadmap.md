@@ -3133,6 +3133,9 @@ Notes:
     compiler and replayable execution layer
   - MCP and the ClawBio wrapper now expose that typed planner boundary instead
     of depending on chat-only assistant flows
+  - JS and Lua now also expose thin shared-shell-backed
+    `plan_agent_system` / `execute_agent_plan` helpers for the same typed
+    planner boundary
   - the GUI Agent Assistant now also has a small first-run UX pass:
     quick-start transport selection, inline setup preflight, live
     non-generating model-list setup probes for native HTTP transports, an

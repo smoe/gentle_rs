@@ -60,6 +60,9 @@ Entry points:
 - CLI/shared shell:
   - `agents plan SYSTEM_ID --prompt TEXT`
   - `agents execute-plan PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]`
+- JavaScript/Lua:
+  - `plan_agent_system(...)`
+  - `execute_agent_plan(...)`
 - MCP:
   - `agent_plan`
   - `agent_execute_plan`
