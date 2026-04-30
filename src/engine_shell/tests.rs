@@ -15587,6 +15587,21 @@ fn execute_genomes_extract_region_default_scope_core_with_telemetry() {
 
 #[test]
 fn execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand() {
+    assert_execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand();
+}
+
+#[test]
+fn execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand_on_small_stack() {
+    thread::Builder::new()
+        .name("gentle-test-small-stack-extract-promoter".to_string())
+        .stack_size(256 * 1024)
+        .spawn(assert_execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand)
+        .expect("spawn small-stack extract-promoter regression test")
+        .join()
+        .expect("small-stack extract-promoter regression test panicked");
+}
+
+fn assert_execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand() {
     let td = tempdir().expect("tempdir");
     let fasta = td.path().join("toy.fa");
     let gtf = td.path().join("toy.gtf");
@@ -15690,6 +15705,21 @@ fn execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand() {
 
 #[test]
 fn execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads() {
+    assert_execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads();
+}
+
+#[test]
+fn execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads_on_small_stack() {
+    thread::Builder::new()
+        .name("gentle-test-small-stack-promoter-tfbs".to_string())
+        .stack_size(256 * 1024)
+        .spawn(assert_execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads)
+        .expect("spawn small-stack promoter-tfbs regression test")
+        .join()
+        .expect("small-stack promoter-tfbs regression test panicked");
+}
+
+fn assert_execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads() {
     let td = tempdir().expect("tempdir");
     let fasta = td.path().join("toy.fa");
     let gtf = td.path().join("toy.gtf");
@@ -15800,6 +15830,21 @@ fn execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloads() {
 
 #[test]
 fn execute_genomes_verify_anchor_updates_verification_status() {
+    assert_execute_genomes_verify_anchor_updates_verification_status();
+}
+
+#[test]
+fn execute_genomes_verify_anchor_updates_verification_status_on_small_stack() {
+    thread::Builder::new()
+        .name("gentle-test-small-stack-verify-anchor".to_string())
+        .stack_size(256 * 1024)
+        .spawn(assert_execute_genomes_verify_anchor_updates_verification_status)
+        .expect("spawn small-stack verify-anchor regression test")
+        .join()
+        .expect("small-stack verify-anchor regression test panicked");
+}
+
+fn assert_execute_genomes_verify_anchor_updates_verification_status() {
     let td = tempdir().expect("tempdir");
     let fasta = td.path().join("toy.fa");
     let gtf = td.path().join("toy.gtf");
@@ -17438,6 +17483,21 @@ fn execute_genomes_status_reports_effective_cache_dir_and_prepare_hint_when_unpr
 
 #[test]
 fn execute_genomes_status_reports_running_lifecycle_and_suppresses_prepare_hint() {
+    assert_execute_genomes_status_reports_running_lifecycle_and_suppresses_prepare_hint();
+}
+
+#[test]
+fn execute_genomes_status_reports_running_lifecycle_and_suppresses_prepare_hint_on_small_stack() {
+    thread::Builder::new()
+        .name("gentle-test-small-stack-reference-status".to_string())
+        .stack_size(256 * 1024)
+        .spawn(assert_execute_genomes_status_reports_running_lifecycle_and_suppresses_prepare_hint)
+        .expect("spawn small-stack reference-status regression test")
+        .join()
+        .expect("small-stack reference-status regression test panicked");
+}
+
+fn assert_execute_genomes_status_reports_running_lifecycle_and_suppresses_prepare_hint() {
     let td = tempdir().expect("tempdir");
     let fasta = td.path().join("toy.fa");
     let gtf = td.path().join("toy.gtf");

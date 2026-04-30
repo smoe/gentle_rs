@@ -221,6 +221,10 @@ order. Durable architecture constraints and decisions remain in
     `ui` intent/query, and macro-instance inspection command families through
     dedicated
     `#[inline(never)]` helpers before the monolithic inner matcher
+  - reference/track shell commands now also run inside a dedicated expanded-
+    stack worker so small-stack callers no longer abort on status/promoter/
+    anchor/TFBS routes that still transit the large shared reference
+    dispatcher frame
   - the inner exhaustive matcher still owns the same implementation path by
     delegating those variants back into the same helpers, so stack-hardening
     did not fork shell behavior or create adapter-only command logic

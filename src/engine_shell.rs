@@ -148,7 +148,7 @@ const BLAST_ASYNC_MAX_CONCURRENT_HARD_LIMIT: usize = 256;
 const BLAST_ASYNC_RESTART_INTERRUPTED_ERROR: &str =
     "BLAST async job interrupted by restart/reload before completion";
 static BLAST_ASYNC_JOB_COUNTER: AtomicU64 = AtomicU64::new(1);
-const SHELL_ENGINE_APPLY_STACK_SIZE: usize = 8 * 1024 * 1024;
+const SHELL_EXPANDED_STACK_SIZE: usize = 8 * 1024 * 1024;
 
 pub type ShellProgressCallback = Arc<Mutex<Box<dyn FnMut(OperationProgress) -> bool + Send>>>;
 
@@ -20130,7 +20130,7 @@ fn execute_shell_command_default(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     if is_reference_or_track_command(command) {
-        return execute_reference_and_track_command(engine, command);
+        return execute_reference_and_track_command_with_expanded_stack(engine, command);
     }
     if matches!(
         command,
@@ -29281,7 +29281,7 @@ fn apply_shell_operation_with_expanded_stack(
     let engine_ptr = engine as *mut GentleEngine as usize;
     let worker = thread::Builder::new()
         .name("gentle-shell-engine-apply".to_string())
-        .stack_size(SHELL_ENGINE_APPLY_STACK_SIZE)
+        .stack_size(SHELL_EXPANDED_STACK_SIZE)
         .spawn(move || {
             // SAFETY: the caller synchronously joins this worker before returning
             // and does not access `engine` while the worker is running. This keeps
@@ -29304,6 +29304,35 @@ fn apply_shell_operation_with_expanded_stack(
             code: ErrorCode::Internal,
             message: format!("Shell engine worker thread panicked: {message}"),
         }
+    })?
+}
+
+#[inline(never)]
+fn execute_reference_and_track_command_with_expanded_stack(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    let engine_ptr = engine as *mut GentleEngine as usize;
+    let command = command.clone();
+    let worker = thread::Builder::new()
+        .name("gentle-shell-reference-command".to_string())
+        .stack_size(SHELL_EXPANDED_STACK_SIZE)
+        .spawn(move || {
+            // SAFETY: the caller synchronously joins this worker before returning
+            // and does not access `engine` while the worker is running. This keeps
+            // the shared reference/track command path intact while avoiding the
+            // large dispatcher frame on smaller thread stacks.
+            let engine = unsafe { &mut *(engine_ptr as *mut GentleEngine) };
+            execute_reference_and_track_command(engine, &command)
+        })
+        .map_err(|error| format!("Could not start shell reference worker thread: {error}"))?;
+    worker.join().map_err(|panic_payload| {
+        let message = panic_payload
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_string())
+            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_string());
+        format!("Shell reference worker thread panicked: {message}")
     })?
 }
 
@@ -30120,7 +30149,7 @@ pub fn execute_shell_command_with_options(
         return execute_cutrun_command(engine, command);
     }
     if is_reference_or_track_command(command) {
-        return execute_reference_and_track_command(engine, command);
+        return execute_reference_and_track_command_with_expanded_stack(engine, command);
     }
     if matches!(
         command,
