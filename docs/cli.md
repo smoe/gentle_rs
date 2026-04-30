@@ -547,7 +547,9 @@ Construct-reasoning inspection capability status:
 
 Agent-assistant capability status:
 
-- `gentle_cli`: supported via shared-shell command family (`agents list`, `agents ask`) and direct forwarding (`gentle_cli agents ...`)
+- `gentle_cli`: supported via shared-shell command family (`agents list`,
+  `agents ask`, `agents plan`, `agents execute-plan`) and direct forwarding
+  (`gentle_cli agents ...`)
 - `gentle_js`: supported via helper wrappers (`list_agent_systems`, `ask_agent_system`) over shared shell execution
 - `gentle_lua`: supported via helper wrappers (`list_agent_systems`, `ask_agent_system`) over shared shell execution
 - GUI: supported via standalone `Agent Assistant` viewport using the same bridge and command executor
@@ -3334,7 +3336,8 @@ Conceptual/tutorial companion:
   - Suggested commands are executed only when explicitly selected
     (`--execute-all`, `--execute-index`) or when `--allow-auto-exec` is enabled
     and the suggestion intent is `auto`.
-  - Recursive `agents ask` execution from suggested commands is blocked by design.
+  - Recursive `agents ask`, `agents plan`, and `agents execute-plan` execution
+    from suggested commands is blocked by design.
   - Failures use deterministic error prefixes for scripting, e.g.
     `AGENT_ADAPTER_UNAVAILABLE`, `AGENT_ADAPTER_TRANSIENT`,
     `AGENT_RESPONSE_PARSE`, `AGENT_RESPONSE_VALIDATION`.

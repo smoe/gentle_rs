@@ -250,11 +250,12 @@ order. Durable architecture constraints and decisions remain in
     import and downstream render/engine paths stay deterministic under
     `gb-io 0.9.x`
 - Engine-shell agent recursion guardrail is now hardened transitively:
-  - nested `agents ask` invocations are blocked not only as direct suggested
-    commands, but also when they are wrapped inside `macros run` or expanded
-    through `macros template-run`
+  - nested `agents ask`, `agents plan`, and `agents execute-plan` invocations
+    are blocked not only as direct suggested commands, but also when they are
+    wrapped inside `macros run` or expanded through `macros template-run`
   - deterministic regression coverage now includes the macro-wrapped route that
-    previously allowed a CI-only stack-overflow path
+    previously allowed a CI-only stack-overflow path, plus GUI suggested-command
+    and stored-plan execution checks for the full nested `agents ...` family
   - remaining follow-up if policy needs to become stricter:
     inspect deeper generic `op` / `workflow` JSON payload wrappers for hidden
     agent invocations rather than only shell/macro routes
@@ -3062,7 +3063,7 @@ order. Durable architecture constraints and decisions remain in
     `blast-start|status|list` responses.
   - agent-suggested shell commands can execute shared BLAST routes
     (`genomes/helpers blast`, `genomes/helpers blast-track`); recursion guardrail
-    blocks only nested `agents ask`
+    blocks nested `agents ask`, `agents plan`, and `agents execute-plan`
 - Native macOS menu mirrors of open windows are available under:
   - `Window -> GENtle Open Windows…`
   - `GENtle -> GENtle Windows…`
@@ -3246,6 +3247,9 @@ Notes:
    coverage).
 4. Mutating-intent safety policy is not yet fully hardened across agent, voice,
    and MCP invocation paths.
+   - Improved 2026-05-01: GUI Agent Assistant suggested-command execution and
+     shared plan execution now reject the full nested `agents ...` family
+     (`ask`, `plan`, `execute-plan`) instead of only the chat assistant route.
 5. Async long-running command orchestration is still incomplete:
   - BLAST async job-handle/progress/cancel baseline is now available through
     shared shell (`genomes/helpers blast-start|status|cancel|list`) and MCP

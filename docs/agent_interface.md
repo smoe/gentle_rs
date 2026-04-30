@@ -156,8 +156,8 @@ Key properties:
 - produces suggestions that can be executed through shared shell commands
 - optimized for human-in-the-loop chat and suggestion review, not as ClawBio's
   primary machine-facing planning API
-- recursion guardrail blocks nested `agents ask` execution from suggested
-  commands
+- recursion guardrail blocks nested `agents ask`, `agents plan`, and
+  `agents execute-plan` execution from suggested commands
 - suggested commands can execute shared BLAST routes (`genomes/helpers blast`,
   `genomes/helpers blast-track`) because they use the same parser/executor as
   CLI shell

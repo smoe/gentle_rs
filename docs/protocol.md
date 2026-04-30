@@ -3129,7 +3129,8 @@ Execution safety rules:
 - Execution is per suggestion:
   - explicit run (`--execute-index`, `--execute-all`, GUI row `Run`)
   - optional auto-run only for `execution = auto` + `--allow-auto-exec`
-- Recursive `agents ask` execution from suggested commands is blocked.
+- Recursive `agents ask`, `agents plan`, and `agents execute-plan` execution
+  from suggested commands is blocked.
 
 Failure-handling policy for external adapters:
 

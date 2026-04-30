@@ -14,7 +14,7 @@
 //!
 //! Safety and consistency constraints:
 //! - Suggested agent commands execute through the same parser/executor path.
-//! - Recursive/nested `agents ask` execution from suggested commands is blocked.
+//! - Recursive/nested `agents ...` execution from suggested commands is blocked.
 //! - Screenshot-capture routes remain explicitly policy-gated.
 
 use crate::{
@@ -19702,7 +19702,7 @@ fn run_workflow_macro(
     })
 }
 
-fn macro_statement_contains_agents_ask(engine: &GentleEngine, statement: &str) -> bool {
+fn macro_statement_contains_agent_invocation(engine: &GentleEngine, statement: &str) -> bool {
     let statement = statement.trim();
     if statement.is_empty() {
         return false;
@@ -19718,10 +19718,13 @@ fn macro_statement_contains_agents_ask(engine: &GentleEngine, statement: &str) -
         };
         command
     };
-    shell_command_contains_agents_ask(engine, &parsed)
+    shell_command_contains_agent_invocation(engine, &parsed)
 }
 
-fn workflow_macro_script_contains_agents_ask(engine: &GentleEngine, script_or_ref: &str) -> bool {
+fn workflow_macro_script_contains_agent_invocation(
+    engine: &GentleEngine,
+    script_or_ref: &str,
+) -> bool {
     let Ok(script) = load_workflow_macro_script(script_or_ref) else {
         return false;
     };
@@ -19730,21 +19733,21 @@ fn workflow_macro_script_contains_agents_ask(engine: &GentleEngine, script_or_re
     };
     statements
         .iter()
-        .any(|statement| macro_statement_contains_agents_ask(engine, statement))
+        .any(|statement| macro_statement_contains_agent_invocation(engine, statement))
 }
 
-fn shell_command_contains_agents_ask(engine: &GentleEngine, command: &ShellCommand) -> bool {
+fn shell_command_contains_agent_invocation(engine: &GentleEngine, command: &ShellCommand) -> bool {
     match command {
         ShellCommand::AgentsAsk { .. }
         | ShellCommand::AgentsPlan { .. }
         | ShellCommand::AgentsExecutePlan { .. } => true,
         ShellCommand::MacrosRun { script, .. } => {
-            workflow_macro_script_contains_agents_ask(engine, script)
+            workflow_macro_script_contains_agent_invocation(engine, script)
         }
         ShellCommand::MacrosTemplateRun { name, bindings, .. } => engine
             .render_workflow_macro_template_script(name, bindings)
             .ok()
-            .map(|script| workflow_macro_script_contains_agents_ask(engine, &script))
+            .map(|script| workflow_macro_script_contains_agent_invocation(engine, &script))
             .unwrap_or(false),
         _ => false,
     }
@@ -20283,7 +20286,7 @@ fn execute_agents_ask_command(
 ) -> Result<ShellRunResult, String> {
     if !options.allow_agent_commands {
         return Err(
-            "agents ask execution is blocked in this context (agent-to-agent recursion guardrail)"
+            "agent command execution is blocked in this context (agent-to-agent recursion guardrail)"
                 .to_string(),
         );
     }
@@ -30400,9 +30403,9 @@ fn execute_shell_command_with_options_inner(
     command: &ShellCommand,
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
-    if !options.allow_agent_commands && shell_command_contains_agents_ask(engine, command) {
+    if !options.allow_agent_commands && shell_command_contains_agent_invocation(engine, command) {
         return Err(
-            "agents ask execution is blocked in this context (agent-to-agent recursion guardrail)"
+            "agent command execution is blocked in this context (agent-to-agent recursion guardrail)"
                 .to_string(),
         );
     }
@@ -30744,7 +30747,7 @@ fn execute_shell_command_with_options_inner(
         } => {
             if !options.allow_agent_commands {
                 return Err(
-                    "agents ask execution is blocked in this context (agent-to-agent recursion guardrail)"
+                    "agent command execution is blocked in this context (agent-to-agent recursion guardrail)"
                         .to_string(),
                 );
             }
