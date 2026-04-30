@@ -2024,6 +2024,10 @@ pub enum ShellCommand {
         transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
         path: Option<String>,
         svg_path: Option<String>,
+        materialize_products: bool,
+        product_output_prefix: Option<String>,
+        product_gel_svg_path: Option<String>,
+        product_gel_ladders: Option<Vec<String>>,
     },
     PrimersTestCdnaQpcr {
         seq_id: String,
@@ -2040,6 +2044,10 @@ pub enum ShellCommand {
         transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
         path: Option<String>,
         svg_path: Option<String>,
+        materialize_products: bool,
+        product_output_prefix: Option<String>,
+        product_gel_svg_path: Option<String>,
+        product_gel_ladders: Option<Vec<String>>,
     },
     PrimersTranscriptQpcrPanel {
         seq_id: String,
@@ -20036,20 +20044,44 @@ pub fn execute_shell_command(
     execute_shell_command_with_options(engine, command, &ShellExecutionOptions::default())
 }
 
-fn cdna_assay_preferred_artifacts(svg_path: Option<&str>, caption: &str) -> Vec<serde_json::Value> {
-    let Some(path) = svg_path.map(str::trim).filter(|value| !value.is_empty()) else {
-        return vec![];
-    };
-    vec![json!({
-        "artifact_id": "cdna_assay_transcript_map_svg",
-        "path": path,
-        "media_type": "image/svg+xml",
-        "artifact_kind": "transcript_assay_map",
-        "caption": caption,
-        "recommended_use": "Show where the tested PCR/qPCR assay forms products across transcript cDNA templates.",
-        "presentation_rank": 0,
-        "is_best_first_artifact": true,
-    })]
+fn cdna_assay_preferred_artifacts(
+    transcript_map_svg_path: Option<&str>,
+    transcript_map_caption: &str,
+    product_gel_svg_path: Option<&str>,
+    product_gel_caption: &str,
+) -> Vec<serde_json::Value> {
+    let product_gel_path = product_gel_svg_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let transcript_map_path = transcript_map_svg_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let mut artifacts = vec![];
+    if let Some(path) = product_gel_path {
+        artifacts.push(json!({
+            "artifact_id": "cdna_assay_product_gel_svg",
+            "path": path,
+            "media_type": "image/svg+xml",
+            "artifact_kind": "cdna_assay_product_gel",
+            "caption": product_gel_caption,
+            "recommended_use": "Show materialized cDNA PCR/qPCR assay products as a vial/pool lane, including non-specific products as multiple bands.",
+            "presentation_rank": 0,
+            "is_best_first_artifact": true,
+        }));
+    }
+    if let Some(path) = transcript_map_path {
+        artifacts.push(json!({
+            "artifact_id": "cdna_assay_transcript_map_svg",
+            "path": path,
+            "media_type": "image/svg+xml",
+            "artifact_kind": "transcript_assay_map",
+            "caption": transcript_map_caption,
+            "recommended_use": "Show where the tested PCR/qPCR assay forms products across transcript cDNA templates.",
+            "presentation_rank": if product_gel_path.is_some() { 1 } else { 0 },
+            "is_best_first_artifact": product_gel_path.is_none(),
+        }));
+    }
+    artifacts
 }
 
 #[inline(never)]
@@ -25409,7 +25441,75 @@ fn execute_primers_command(
             transcript_map_coordinate_mode,
             path,
             svg_path,
+            materialize_products,
+            product_output_prefix,
+            product_gel_svg_path,
+            product_gel_ladders,
         } => {
+            let should_materialize = *materialize_products
+                || product_gel_svg_path
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty());
+            if should_materialize {
+                let op_result = engine
+                    .apply(Operation::TestCdnaPcr {
+                        seq_id: seq_id.clone(),
+                        source_feature_id: *feature_id,
+                        forward_primer: forward_primer.clone(),
+                        reverse_primer: reverse_primer.clone(),
+                        transcript_id: transcript_id.clone(),
+                        min_amplicon_bp: *min_amplicon_bp,
+                        max_amplicon_bp: *max_amplicon_bp,
+                        max_mismatches: *max_mismatches,
+                        require_3prime_exact_bases: *require_3prime_exact_bases,
+                        transcript_order: *transcript_order,
+                        transcript_map_coordinate_mode: *transcript_map_coordinate_mode,
+                        path: path.clone(),
+                        svg_path: svg_path.clone(),
+                        materialize_products: *materialize_products,
+                        product_output_prefix: product_output_prefix.clone(),
+                        product_gel_svg_path: product_gel_svg_path.clone(),
+                        product_gel_ladders: product_gel_ladders.clone(),
+                    })
+                    .map_err(|e| e.to_string())?;
+                let report = op_result
+                    .cdna_assay_test_report
+                    .as_ref()
+                    .map(|report| (**report).clone())
+                    .ok_or_else(|| {
+                        "cDNA PCR operation did not return its assay report".to_string()
+                    })?;
+                let materialization = op_result.cdna_assay_product_materialization.clone();
+                let product_gel_path = materialization
+                    .as_ref()
+                    .and_then(|summary| summary.product_gel_svg_path.as_deref())
+                    .or(product_gel_svg_path.as_deref())
+                    .map(ToString::to_string);
+                let preferred_artifacts = cdna_assay_preferred_artifacts(
+                    svg_path.as_deref(),
+                    "cDNA PCR transcript map",
+                    product_gel_path.as_deref(),
+                    "cDNA PCR product gel",
+                );
+                let state_changed = materialization
+                    .as_ref()
+                    .is_some_and(|summary| !summary.product_seq_ids.is_empty());
+                return Ok(ShellRunResult {
+                    state_changed,
+                    output: json!({
+                        "schema": "gentle.cdna_assay_test_command.v1",
+                        "report": report.clone(),
+                        "cdna_assay_test_report": report,
+                        "materialization": materialization,
+                        "path": path,
+                        "svg_path": svg_path,
+                        "product_gel_svg_path": product_gel_path,
+                        "preferred_artifacts": preferred_artifacts,
+                        "result": op_result,
+                    }),
+                });
+            }
             let report = engine
                 .test_cdna_pcr_assay_with_map_options(
                     seq_id,
@@ -25450,12 +25550,19 @@ fn execute_primers_command(
                     format!("Could not write cDNA PCR transcript-map SVG to '{svg_path}': {e}")
                 })?;
             }
-            let preferred_artifacts =
-                cdna_assay_preferred_artifacts(svg_path.as_deref(), "cDNA PCR transcript map");
+            let preferred_artifacts = cdna_assay_preferred_artifacts(
+                svg_path.as_deref(),
+                "cDNA PCR transcript map",
+                None,
+                "cDNA PCR product gel",
+            );
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
-                    "report": report,
+                    "schema": "gentle.cdna_assay_test_command.v1",
+                    "report": report.clone(),
+                    "cdna_assay_test_report": report,
+                    "materialization": null,
                     "path": path,
                     "svg_path": svg_path,
                     "preferred_artifacts": preferred_artifacts,
@@ -25477,7 +25584,76 @@ fn execute_primers_command(
             transcript_map_coordinate_mode,
             path,
             svg_path,
+            materialize_products,
+            product_output_prefix,
+            product_gel_svg_path,
+            product_gel_ladders,
         } => {
+            let should_materialize = *materialize_products
+                || product_gel_svg_path
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty());
+            if should_materialize {
+                let op_result = engine
+                    .apply(Operation::TestCdnaQpcr {
+                        seq_id: seq_id.clone(),
+                        source_feature_id: *feature_id,
+                        forward_primer: forward_primer.clone(),
+                        reverse_primer: reverse_primer.clone(),
+                        probe: probe.clone(),
+                        transcript_id: transcript_id.clone(),
+                        min_amplicon_bp: *min_amplicon_bp,
+                        max_amplicon_bp: *max_amplicon_bp,
+                        max_mismatches: *max_mismatches,
+                        require_3prime_exact_bases: *require_3prime_exact_bases,
+                        transcript_order: *transcript_order,
+                        transcript_map_coordinate_mode: *transcript_map_coordinate_mode,
+                        path: path.clone(),
+                        svg_path: svg_path.clone(),
+                        materialize_products: *materialize_products,
+                        product_output_prefix: product_output_prefix.clone(),
+                        product_gel_svg_path: product_gel_svg_path.clone(),
+                        product_gel_ladders: product_gel_ladders.clone(),
+                    })
+                    .map_err(|e| e.to_string())?;
+                let report = op_result
+                    .cdna_assay_test_report
+                    .as_ref()
+                    .map(|report| (**report).clone())
+                    .ok_or_else(|| {
+                        "cDNA qPCR operation did not return its assay report".to_string()
+                    })?;
+                let materialization = op_result.cdna_assay_product_materialization.clone();
+                let product_gel_path = materialization
+                    .as_ref()
+                    .and_then(|summary| summary.product_gel_svg_path.as_deref())
+                    .or(product_gel_svg_path.as_deref())
+                    .map(ToString::to_string);
+                let preferred_artifacts = cdna_assay_preferred_artifacts(
+                    svg_path.as_deref(),
+                    "cDNA qPCR transcript map",
+                    product_gel_path.as_deref(),
+                    "cDNA qPCR product gel",
+                );
+                let state_changed = materialization
+                    .as_ref()
+                    .is_some_and(|summary| !summary.product_seq_ids.is_empty());
+                return Ok(ShellRunResult {
+                    state_changed,
+                    output: json!({
+                        "schema": "gentle.cdna_assay_test_command.v1",
+                        "report": report.clone(),
+                        "cdna_assay_test_report": report,
+                        "materialization": materialization,
+                        "path": path,
+                        "svg_path": svg_path,
+                        "product_gel_svg_path": product_gel_path,
+                        "preferred_artifacts": preferred_artifacts,
+                        "result": op_result,
+                    }),
+                });
+            }
             let report = engine
                 .test_cdna_qpcr_assay_with_map_options(
                     seq_id,
@@ -25519,12 +25695,19 @@ fn execute_primers_command(
                     format!("Could not write cDNA qPCR transcript-map SVG to '{svg_path}': {e}")
                 })?;
             }
-            let preferred_artifacts =
-                cdna_assay_preferred_artifacts(svg_path.as_deref(), "cDNA qPCR transcript map");
+            let preferred_artifacts = cdna_assay_preferred_artifacts(
+                svg_path.as_deref(),
+                "cDNA qPCR transcript map",
+                None,
+                "cDNA qPCR product gel",
+            );
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
-                    "report": report,
+                    "schema": "gentle.cdna_assay_test_command.v1",
+                    "report": report.clone(),
+                    "cdna_assay_test_report": report,
+                    "materialization": null,
                     "path": path,
                     "svg_path": svg_path,
                     "preferred_artifacts": preferred_artifacts,
@@ -25617,6 +25800,8 @@ fn execute_primers_command(
             let preferred_artifacts = cdna_assay_preferred_artifacts(
                 svg_path.as_deref(),
                 "cDNA qPCR FASTA transcript map",
+                None,
+                "cDNA qPCR product gel",
             );
             Ok(ShellRunResult {
                 state_changed: false,

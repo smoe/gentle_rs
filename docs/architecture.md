@@ -1368,8 +1368,8 @@ inspection/export paths:
   - `DesignPrimerPairs { template, roi_start_0based, roi_end_0based, forward, reverse, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_pairs?, report_id? }`
   - `PcrOverlapExtensionMutagenesis { template, edit_start_0based, edit_end_0based_exclusive, insert_sequence?, constraints?, output_prefix? }`
   - `DesignQpcrAssays { template, roi_start_0based, roi_end_0based, forward, reverse, probe, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays?, report_id? }`
-  - `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }`
-  - `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }`
+  - `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }`
+  - `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }`
   - `BuildTranscriptQpcrPanel { seq_id, source_feature_id, shared_qpcr_report_id, path? }`
   - `TestCdnaQpcrFasta { cdna_fasta_paths[], forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }`
   - `forward`/`reverse` side constraints now include optional sequence-level filters:
@@ -1381,6 +1381,13 @@ inspection/export paths:
     the same primer/probe/product scanner for broad Ensembl cDNA/ncRNA screens;
     adapters may choose how to present reports, but must not construct
     competing cDNA products or transcript hit geometry locally.
+  - transcript-derived cDNA PCR/qPCR assay tests are intentionally
+    non-mutating unless `materialize_products` is set or `product_gel_svg_path`
+    is requested. In the materializing path, GENtle derives each detected
+    product sequence from the transcript template, creates deterministic
+    product sequence entries, groups them into one singleton/pool container,
+    and renders optional product-gel SVGs through the shared pool-gel renderer
+    so non-specific products remain visible as multiple vial/gel bands.
   - cDNA PCR/qPCR reports and transcript-aware qPCR assay contexts carry
     engine-owned genomic-DNA carryover risk classifications. The classification
     uses mapped exon/source ranges, junction-spanning primer/probe evidence, and
@@ -1407,8 +1414,8 @@ inspection/export paths:
 - Shared-shell commands:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
-  - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [...] [--svg OUTPUT.svg]`
-  - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [...] [--svg OUTPUT.svg]`
+  - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [...] [--svg OUTPUT.svg] [--materialize-products] [--product-gel-svg OUTPUT.svg]`
+  - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [...] [--svg OUTPUT.svg] [--materialize-products] [--product-gel-svg OUTPUT.svg]`
   - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [...] [--svg OUTPUT.svg]`
   - `primers seed-from-feature SEQ_ID FEATURE_ID`
   - `primers seed-from-splicing SEQ_ID FEATURE_ID`

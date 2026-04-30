@@ -3014,6 +3014,32 @@ fn cdna_assay_test_engine() -> GentleEngine {
     GentleEngine::from_state(state)
 }
 
+fn cdna_assay_nonspecific_test_engine() -> GentleEngine {
+    let mut dna = seq("ATGAAACCCGGGAAAAAAAA\
+         CCCAAATTTGGGAAAAAAAA\
+         CCCCCCCCCCCCCCCCCCCCCCCCCCTTTGGG");
+    for (transcript_id, label, second_exon) in [
+        ("TX_SHORT", "short product transcript", (20, 32)),
+        ("TX_LONG", "long product transcript", (40, 72)),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(0, 12),
+                gb_io::seq::Location::simple_range(second_exon.0, second_exon.1),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("NONSPEC".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(label.to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("cdna_nonspecific".to_string(), dna);
+    GentleEngine::from_state(state)
+}
+
 fn primer_specificity_test_hit(
     role: PrimerSpecificityPrimerRole,
     hit_index: usize,
@@ -3578,6 +3604,10 @@ fn test_cdna_qpcr_operation_writes_report_json() {
             transcript_map_coordinate_mode: None,
             path: Some(path.to_string_lossy().to_string()),
             svg_path: Some(svg_path.to_string_lossy().to_string()),
+            materialize_products: false,
+            product_output_prefix: None,
+            product_gel_svg_path: None,
+            product_gel_ladders: None,
         })
         .expect("operation report");
     assert!(
@@ -3595,6 +3625,134 @@ fn test_cdna_qpcr_operation_writes_report_json() {
     let svg_text = fs::read_to_string(&svg_path).expect("map svg file");
     assert!(svg_text.contains("gentle.cdna_assay_transcript_map.v1"));
     assert!(svg_text.contains("TX1"));
+    assert!(result.created_seq_ids.is_empty());
+    assert!(result.cdna_assay_product_materialization.is_none());
+    assert!(result.cdna_assay_test_report.is_some());
+}
+
+#[test]
+fn test_cdna_pcr_operation_can_materialize_nonspecific_products_as_pool_gel() {
+    let mut engine = cdna_assay_nonspecific_test_engine();
+    let td = tempdir().expect("tempdir");
+    let gel_path = td.path().join("cdna_pcr_products.gel.svg");
+    let result = engine
+        .apply(Operation::TestCdnaPcr {
+            seq_id: "cdna_nonspecific".to_string(),
+            source_feature_id: 0,
+            forward_primer: "AAACCC".to_string(),
+            reverse_primer: "CCCAAA".to_string(),
+            transcript_id: None,
+            min_amplicon_bp: Some(10),
+            max_amplicon_bp: Some(80),
+            max_mismatches: None,
+            require_3prime_exact_bases: Some(4),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
+            path: None,
+            svg_path: None,
+            materialize_products: true,
+            product_output_prefix: Some("nonspecific_cdna_pcr".to_string()),
+            product_gel_svg_path: Some(gel_path.to_string_lossy().to_string()),
+            product_gel_ladders: None,
+        })
+        .expect("materialized cDNA PCR products");
+    assert_eq!(result.created_seq_ids.len(), 2);
+    let report = result
+        .cdna_assay_test_report
+        .as_ref()
+        .expect("assay report");
+    assert_eq!(report.overall_status, "multiple_products");
+    assert_eq!(report.product_count, 2);
+    let materialization = result
+        .cdna_assay_product_materialization
+        .as_ref()
+        .expect("materialization summary");
+    assert_eq!(
+        materialization.schema,
+        "gentle.cdna_assay_product_materialization.v1"
+    );
+    assert_eq!(materialization.product_seq_ids.len(), 2);
+    assert!(matches!(
+        materialization.container_kind,
+        Some(ContainerKind::Pool)
+    ));
+    let container_id = materialization
+        .container_id
+        .as_ref()
+        .expect("product container id");
+    let container = engine
+        .state()
+        .container_state
+        .containers
+        .get(container_id)
+        .expect("product container");
+    assert!(matches!(container.kind, ContainerKind::Pool));
+    assert_eq!(container.members, materialization.product_seq_ids);
+    let mut lengths = materialization
+        .product_seq_ids
+        .iter()
+        .map(|seq_id| {
+            engine
+                .state()
+                .sequences
+                .get(seq_id)
+                .expect("materialized product")
+                .get_forward_string()
+                .len()
+        })
+        .collect::<Vec<_>>();
+    lengths.sort_unstable();
+    assert_eq!(lengths, vec![21, 41]);
+    let svg_text = fs::read_to_string(&gel_path).expect("product gel svg");
+    assert!(svg_text.contains("Serial Gel Preview"));
+    assert!(svg_text.contains("cDNA PCR products"));
+    assert!(svg_text.contains("nonspecific_cdna_pcr_TX_SHORT_p1_21bp"));
+    assert!(svg_text.contains("nonspecific_cdna_pcr_TX_LONG_p1_41bp"));
+}
+
+#[test]
+fn test_cdna_qpcr_operation_materializes_probe_supported_products() {
+    let mut engine = cdna_assay_nonspecific_test_engine();
+    let result = engine
+        .apply(Operation::TestCdnaQpcr {
+            seq_id: "cdna_nonspecific".to_string(),
+            source_feature_id: 0,
+            forward_primer: "AAACCC".to_string(),
+            reverse_primer: "CCCAAA".to_string(),
+            probe: "GGGCCC".to_string(),
+            transcript_id: None,
+            min_amplicon_bp: Some(10),
+            max_amplicon_bp: Some(80),
+            max_mismatches: None,
+            require_3prime_exact_bases: Some(4),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
+            path: None,
+            svg_path: None,
+            materialize_products: true,
+            product_output_prefix: Some("nonspecific_cdna_qpcr".to_string()),
+            product_gel_svg_path: None,
+            product_gel_ladders: None,
+        })
+        .expect("materialized cDNA qPCR products");
+    let report = result
+        .cdna_assay_test_report
+        .as_ref()
+        .expect("assay report");
+    assert_eq!(report.assay_kind, "qpcr");
+    assert_eq!(report.overall_status, "multiple_products");
+    assert_eq!(report.product_count, 2);
+    assert!(report.transcript_results.iter().all(|row| {
+        row.products
+            .iter()
+            .all(|product| product.probe_hit_indices == vec![0])
+    }));
+    let materialization = result
+        .cdna_assay_product_materialization
+        .as_ref()
+        .expect("materialization summary");
+    assert_eq!(materialization.product_seq_ids.len(), 2);
+    assert!(materialization.product_gel_svg_path.is_none());
 }
 
 fn transcript_qpcr_panel_test_engine() -> GentleEngine {

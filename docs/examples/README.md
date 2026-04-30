@@ -50,6 +50,14 @@ syntax.
     `docs/examples/workflows/cdna_pcr_qpcr_assay_test_offline.json` and the
     ClawBio request
     `integrations/clawbio/skills/gentle-cloning/examples/request_workflow_cdna_pcr_qpcr_assay_test_offline.json`
+- `docs/examples/assets/cdna_assay_nonspecific_demo.gb`
+  - synthetic/hand-authored 72 bp GenBank locus with two transcripts that share
+    one primer pair but produce different cDNA amplicon lengths
+  - deterministic recreation and usage notes live in
+    `docs/examples/assets/README.md`
+  - used by:
+    `docs/examples/workflows/cdna_pcr_qpcr_product_gel_nonspecific_offline.json`
+    and the matching ClawBio product-gel requests
 
 ## Generate adapter snippets
 

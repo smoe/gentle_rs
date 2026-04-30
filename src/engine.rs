@@ -106,6 +106,10 @@ pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";
 pub const DEFAULT_CUTRUN_CATALOG_PATH: &str = "assets/cutrun.json";
 pub const DEFAULT_CUTRUN_CACHE_DIR: &str = "data/cutrun";
 
+fn bool_is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PrepareReferenceGenomeMode {
     PrepareOrReuse,
@@ -312,6 +316,8 @@ const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 const CDNA_ASSAY_TEST_REPORT_SCHEMA: &str = "gentle.cdna_assay_test_report.v1";
 const CDNA_ASSAY_TRANSCRIPT_MAP_SCHEMA: &str = "gentle.cdna_assay_transcript_map.v1";
+const CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA: &str =
+    "gentle.cdna_assay_product_materialization.v1";
 const OLIGO_QC_REPORT_SCHEMA: &str = "gentle.oligo_qc_report.v1";
 const PRIMER_SPECIFICITY_REPORT_SCHEMA: &str = "gentle.primer_specificity_report.v1";
 pub const TRANSCRIPT_QPCR_PANEL_REPORT_SCHEMA: &str = "gentle.transcript_qpcr_panel.v1";
@@ -3486,6 +3492,14 @@ pub enum Operation {
         path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         svg_path: Option<String>,
+        #[serde(default, skip_serializing_if = "bool_is_false")]
+        materialize_products: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        product_output_prefix: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        product_gel_svg_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        product_gel_ladders: Option<Vec<String>>,
     },
     TestCdnaQpcr {
         seq_id: SeqId,
@@ -3511,6 +3525,14 @@ pub enum Operation {
         path: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         svg_path: Option<String>,
+        #[serde(default, skip_serializing_if = "bool_is_false")]
+        materialize_products: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        product_output_prefix: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        product_gel_svg_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        product_gel_ladders: Option<Vec<String>>,
     },
     BuildTranscriptQpcrPanel {
         seq_id: SeqId,

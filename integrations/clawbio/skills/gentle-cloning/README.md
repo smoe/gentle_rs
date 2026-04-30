@@ -96,6 +96,10 @@ intended framing is:
   genomic-only PCR. Transcript maps can stay on transcript-local cDNA axes or
   switch to the `genomic_aligned` axis when ClawBio needs common primer loci,
   exon identity, and spliced source gaps to line up across isoforms.
+- If a user asks to visualize cDNA PCR/qPCR products or non-specific PCR
+  products on a gel, request product materialization or a product-gel SVG; this
+  keeps report-only tests non-mutating by default while using GENtle's existing
+  vial/container gel renderer for the actual bands.
 - GENtle's TFBS surface now also includes continuous score-track views and
   JASPAR motif-presentation reports, not only thresholded annotation hits.
 - GENtle can bootstrap reusable local Ensembl/reference assets, including
@@ -160,6 +164,10 @@ skill cannot know. Run the status routes:
 - `request_workflow_cdna_pcr_qpcr_assay_test_offline.json` for the smallest
   transcript-derived cDNA PCR/qPCR assay-test demo with exported PCR and qPCR
   product reports plus transcript-map SVG artifacts
+- `request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json` for a
+  gel-ready cDNA PCR/qPCR demo: detected transcript-derived products are
+  materialized into one vial/container and rendered as a product-pool gel so
+  non-specific products appear as multiple bands
 - `request_cdna_pcr_test_demo_direct.json` and
   `request_cdna_qpcr_taqman_test_demo_direct.json` for direct cDNA assay
   checks without replaying the larger workflow; both collect the transcript-map
@@ -170,6 +178,11 @@ skill cannot know. Run the status routes:
   transcript-row order by Ensembl transcript id, first exon, last exon, or the
   inverted antisense first-exon order, and can request
   `--map-coordinate-mode genomic_aligned` for alignment-like isoform maps
+- `request_cdna_pcr_products_gel_demo_direct.json` and
+  `request_cdna_qpcr_taqman_products_gel_demo_direct.json` are follow-on
+  direct routes for a state that already contains the synthetic nonspecific
+  cDNA demo locus; they request product materialization implicitly by asking
+  for `product_gel_svg_path`
 - `resources status` for integrated JASPAR/REBASE/ATtRACT-style resources
 - `genomes status ...` or `genomes list` for reference-genome catalogs/caches
 - `helpers status ...` or `helpers list` for helper/vector assets
@@ -360,6 +373,9 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_design_qpcr_taqman_tp53_operation.json --output /tmp/gentle_tp53_taqman_design
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_cdna_pcr_test_demo_direct.json --output /tmp/gentle_cdna_pcr_direct
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_cdna_qpcr_taqman_test_demo_direct.json --output /tmp/gentle_cdna_taqman_direct
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json --output /tmp/gentle_cdna_product_gel_workflow
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_cdna_pcr_products_gel_demo_direct.json --output /tmp/gentle_cdna_pcr_products_gel
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_cdna_qpcr_taqman_products_gel_demo_direct.json --output /tmp/gentle_cdna_qpcr_products_gel
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_reports_list.json --output /tmp/gentle_primer_reports
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_report_show_demo.json --output /tmp/gentle_primer_report_show
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_report_export_demo.json --output /tmp/gentle_primer_report_export

@@ -67,6 +67,10 @@ metadata:
       - direct taqman test
       - qpcr assay test
       - taqman assay test
+      - non-specific pcr products
+      - nonspecific pcr products
+      - show pcr products on gel
+      - cdna product gel
       - pcr protocol cartoon
       - taqman protocol cartoon
       - restriction cloning pcr handoff
@@ -642,6 +646,12 @@ Expected outputs:
   transcripts; direct cDNA assay requests can set
   `map_coordinate_mode=genomic_aligned` to produce an alignment-like transcript
   map on a shared source/genomic axis
+- ordinary GENtle PCR design/product workflows already have product/vial/gel
+  parity; transcript-derived cDNA PCR/qPCR assay tests stay report-only unless
+  `materialize_products` or `product_gel_svg_path` is requested, at which point
+  detected products become deterministic sequence entries in one vial/container
+  and optional product-gel SVG/PNG artifacts show non-specific products as
+  multiple bands in one lane
 - transcript qPCR panel tables with shared reverse/probe plus characteristic
   forward-primer rows when possible
 - PCR-family SVG/PNG protocol cartoons, including `pcr.assay.pair`,
@@ -1028,6 +1038,15 @@ python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_cdna_qpcr_taqman_test_demo_direct.json \
   --output /tmp/gentle_clawbio_cdna_taqman_direct_test
 python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json \
+  --output /tmp/gentle_clawbio_cdna_product_gel_workflow
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_cdna_pcr_products_gel_demo_direct.json \
+  --output /tmp/gentle_clawbio_cdna_pcr_products_gel
+python clawbio.py run gentle-cloning \
+  --input skills/gentle-cloning/examples/request_cdna_qpcr_taqman_products_gel_demo_direct.json \
+  --output /tmp/gentle_clawbio_cdna_qpcr_products_gel
+python clawbio.py run gentle-cloning \
   --input skills/gentle-cloning/examples/request_primer_reports_list.json \
   --output /tmp/gentle_clawbio_primer_reports
 python clawbio.py run gentle-cloning \
@@ -1094,6 +1113,15 @@ Notes:
 - `request_cdna_pcr_test_demo_direct.json` and
   `request_cdna_qpcr_taqman_test_demo_direct.json` expose direct cDNA assay
   tests without replaying the larger bundled workflow
+- `request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json`
+  demonstrates the gel-ready cDNA PCR/qPCR path for prompts such as "show
+  non-specific PCR products on a gel": it materializes detected cDNA products,
+  creates one product vial/container, and promotes the product-gel artifact
+  before the transcript-map artifact
+- `request_cdna_pcr_products_gel_demo_direct.json` and
+  `request_cdna_qpcr_taqman_products_gel_demo_direct.json` are follow-on direct
+  routes for a state that already contains the synthetic nonspecific cDNA demo
+  locus
 - `request_primer_reports_list.json`, `request_primer_report_show_demo.json`,
   `request_primer_report_export_demo.json`, `request_qpcr_reports_list.json`,
   `request_qpcr_report_show_demo.json`, and

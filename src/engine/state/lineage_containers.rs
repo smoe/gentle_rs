@@ -3244,6 +3244,8 @@ impl GentleEngine {
             Operation::DesignPrimerPairs { .. }
                 | Operation::DesignInsertionPrimerPairs { .. }
                 | Operation::PcrOverlapExtensionMutagenesis { .. }
+                | Operation::TestCdnaPcr { .. }
+                | Operation::TestCdnaQpcr { .. }
         ) {
             return;
         }

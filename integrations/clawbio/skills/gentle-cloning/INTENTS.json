@@ -676,8 +676,32 @@
       ]
     },
     {
+      "intent_id": "cdna_pcr_qpcr_product_gel_nonspecific",
+      "description": "Run the offline cDNA PCR/qPCR assay-test workflow that materializes detected transcript-derived products into one vial/container and renders product-gel SVGs so non-specific products are visible as multiple bands.",
+      "trigger_terms": [
+        "show non-specific pcr products on a gel",
+        "show nonspecific pcr products on a gel",
+        "visualize non-specific pcr products",
+        "visualize nonspecific pcr products",
+        "pcr products gel",
+        "qpcr products gel",
+        "cdna product gel",
+        "show cdna pcr products on gel",
+        "show cdna qpcr products on gel",
+        "multiple pcr products gel"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json"
+        }
+      ]
+    },
+    {
       "intent_id": "cdna_pcr_direct_test",
-      "description": "Test a supplied forward/reverse PCR primer pair directly against transcript-derived cDNA templates from one splicing group and return a transcript-map graphic, optionally on a genomic-aligned axis.",
+      "description": "Test a supplied forward/reverse PCR primer pair directly against transcript-derived cDNA templates from one splicing group and return a transcript-map graphic, optionally on a genomic-aligned axis; product materialization/product-gel output is available when requested.",
       "trigger_terms": [
         "direct cdna pcr test",
         "test these cdna pcr primers",
@@ -696,7 +720,7 @@
     },
     {
       "intent_id": "cdna_qpcr_taqman_direct_test",
-      "description": "Test supplied qPCR/TaqMan forward, reverse, and probe oligos directly against transcript-derived cDNA templates from one splicing group and return a transcript-map graphic, optionally on a genomic-aligned axis.",
+      "description": "Test supplied qPCR/TaqMan forward, reverse, and probe oligos directly against transcript-derived cDNA templates from one splicing group and return a transcript-map graphic, optionally on a genomic-aligned axis; product materialization/product-gel output is available when requested.",
       "trigger_terms": [
         "direct cdna qpcr test",
         "direct taqman test",

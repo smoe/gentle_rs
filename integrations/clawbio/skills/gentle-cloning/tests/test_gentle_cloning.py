@@ -992,6 +992,74 @@ def test_result_payload_promotes_cdna_genomic_carryover_risk_summary(
     assert "Genomic-DNA carryover risk: high." in report
 
 
+def test_result_payload_promotes_cdna_product_materialization_summary(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "cdna-pcr-test",
+                "state_path": ".gentle_state.json",
+                "seq_id": "cdna_src",
+                "source_feature_id": 0,
+                "forward_primer": "AAACCC",
+                "reverse_primer": "CCCAAA",
+                "product_gel_svg_path": "artifacts/products.gel.svg",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat <<'JSON'\n"
+        '{"schema":"gentle.cdna_assay_test_command.v1",'
+        '"cdna_assay_test_report":{"schema":"gentle.cdna_assay_test_report.v1",'
+        '"assay_kind":"pcr","overall_status":"multiple_products",'
+        '"transcript_count":2,"product_count":2},'
+        '"materialization":{"schema":"gentle.cdna_assay_product_materialization.v1",'
+        '"product_count":2,"product_seq_ids":["p1","p2"],'
+        '"container_id":"container-7",'
+        '"product_gel_svg_path":"artifacts/products.gel.svg"},'
+        '"preferred_artifacts":[{"artifact_kind":"cdna_assay_product_gel",'
+        '"path":"artifacts/products.gel.svg","is_best_first_artifact":true}]}\n'
+        "JSON\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["chat_summary_lines"] == [
+        "pcr test finished with status 'multiple_products' across 2 transcript template(s) and 2 detected product(s).",
+        "Materialized 2 cDNA assay product sequence(s) into product container 'container-7'.",
+        "Product gel SVG: artifacts/products.gel.svg",
+    ]
+    assert result["preferred_artifacts"][0]["artifact_kind"] == "cdna_assay_product_gel"
+
+
 def test_cdna_assay_mode_builds_genomic_aligned_map_shell_command(
     tmp_path: Path,
 ) -> None:
@@ -1044,6 +1112,63 @@ def test_cdna_assay_mode_builds_genomic_aligned_map_shell_command(
         ".gentle_state.json",
         "shell",
         "primers test-cdna-pcr gfod3p 29 --forward AAGGGGAAGCATTGGGAAAC --reverse GAATCGCTTGAACCTGGGAG --transcript-order antisense_first_exon --map-coordinate-mode genomic_aligned",
+    ]
+
+
+def test_cdna_assay_mode_builds_product_gel_shell_command(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "cdna-pcr-test",
+                "state_path": ".gentle_state.json",
+                "seq_id": "cdna_nonspecific_demo",
+                "source_feature_id": 2,
+                "forward_primer": "AAACCC",
+                "reverse_primer": "CCCAAA",
+                "product_output_prefix": "cdna_nonspecific_pcr",
+                "product_gel_svg_path": "artifacts/cdna_nonspecific.pcr_products.gel.svg",
+                "product_gel_ladders": ["NEB 100bp DNA Ladder"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text("#!/usr/bin/env bash\necho '{}'\n", encoding="utf-8")
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["command"] == [
+        str(fake_cli),
+        "--state",
+        ".gentle_state.json",
+        "shell",
+        "primers test-cdna-pcr cdna_nonspecific_demo 2 --forward AAACCC --reverse CCCAAA --product-output-prefix cdna_nonspecific_pcr --product-gel-svg artifacts/cdna_nonspecific.pcr_products.gel.svg --product-gel-ladder 'NEB 100bp DNA Ladder'",
+    ]
+    assert result["request"]["expected_artifacts"] == [
+        "artifacts/cdna_nonspecific.pcr_products.gel.svg"
     ]
 
 

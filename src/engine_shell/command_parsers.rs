@@ -3621,6 +3621,10 @@ struct ParsedCdnaAssayTestOptions {
     transcript_map_coordinate_mode: Option<CdnaAssayTranscriptMapCoordinateMode>,
     path: Option<String>,
     svg_path: Option<String>,
+    materialize_products: bool,
+    product_output_prefix: Option<String>,
+    product_gel_svg_path: Option<String>,
+    product_gel_ladders: Vec<String>,
 }
 
 fn parse_usize_option_value(raw: &str, flag: &str) -> Result<usize, String> {
@@ -3733,6 +3737,29 @@ fn parse_cdna_assay_test_options(
             "--svg" | "--svg-path" | "--transcript-map-svg" => {
                 let flag = tokens[*idx].clone();
                 options.svg_path = Some(parse_option_path(tokens, idx, &flag, context)?);
+            }
+            "--materialize-products" => {
+                options.materialize_products = true;
+                *idx += 1;
+            }
+            "--product-output-prefix" => {
+                options.product_output_prefix = Some(parse_option_path(
+                    tokens,
+                    idx,
+                    "--product-output-prefix",
+                    context,
+                )?);
+            }
+            "--product-gel-svg" | "--products-gel-svg" => {
+                let flag = tokens[*idx].clone();
+                options.product_gel_svg_path =
+                    Some(parse_option_path(tokens, idx, &flag, context)?);
+            }
+            "--product-gel-ladder" | "--products-gel-ladder" => {
+                let flag = tokens[*idx].clone();
+                options
+                    .product_gel_ladders
+                    .push(parse_option_path(tokens, idx, &flag, context)?);
             }
             other => return Err(format!("Unknown option '{other}' for {context}")),
         }
@@ -4074,7 +4101,7 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
         "test-cdna-pcr" => {
             if tokens.len() < 4 {
                 return Err(
-                    "primers test-cdna-pcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+                    "primers test-cdna-pcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]"
                         .to_string(),
                 );
             }
@@ -4102,12 +4129,17 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 transcript_map_coordinate_mode: options.transcript_map_coordinate_mode,
                 path: options.path,
                 svg_path: options.svg_path,
+                materialize_products: options.materialize_products,
+                product_output_prefix: options.product_output_prefix,
+                product_gel_svg_path: options.product_gel_svg_path,
+                product_gel_ladders: (!options.product_gel_ladders.is_empty())
+                    .then_some(options.product_gel_ladders),
             })
         }
         "test-cdna-qpcr" => {
             if tokens.len() < 4 {
                 return Err(
-                    "primers test-cdna-qpcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+                    "primers test-cdna-qpcr requires SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]"
                         .to_string(),
                 );
             }
@@ -4136,6 +4168,11 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 transcript_map_coordinate_mode: options.transcript_map_coordinate_mode,
                 path: options.path,
                 svg_path: options.svg_path,
+                materialize_products: options.materialize_products,
+                product_output_prefix: options.product_output_prefix,
+                product_gel_svg_path: options.product_gel_svg_path,
+                product_gel_ladders: (!options.product_gel_ladders.is_empty())
+                    .then_some(options.product_gel_ladders),
             })
         }
         "transcript-qpcr-panel" => {

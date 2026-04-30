@@ -1,0 +1,15 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow_path": "docs/examples/workflows/cdna_pcr_qpcr_product_gel_nonspecific_offline.json",
+  "expected_artifacts": [
+    "artifacts/cdna_nonspecific_demo.pcr_report.json",
+    "artifacts/cdna_nonspecific_demo.pcr_transcript_map.svg",
+    "artifacts/cdna_nonspecific_demo.pcr_products.gel.svg",
+    "artifacts/cdna_nonspecific_demo.qpcr_report.json",
+    "artifacts/cdna_nonspecific_demo.qpcr_transcript_map.svg",
+    "artifacts/cdna_nonspecific_demo.qpcr_products.gel.svg"
+  ],
+  "timeout_secs": 300
+}

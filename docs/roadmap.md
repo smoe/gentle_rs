@@ -1630,6 +1630,13 @@ order. Durable architecture constraints and decisions remain in
           `TestCdnaPcr` and `TestCdnaQpcr` on supplied oligos, and exports
           deterministic PCR/qPCR assay-test reports without requiring any
           external genome/protein evidence
+        - a second offline cDNA assay-test workflow now demonstrates product
+          materialization and gels:
+          `cdna_pcr_qpcr_product_gel_nonspecific_offline` loads a synthetic
+          two-transcript locus, tests one shared cDNA PCR/qPCR assay,
+          materializes the detected transcript-derived products as GENtle
+          sequence/vial records, and renders pool-gel SVGs so non-specific
+          products are visible as multiple bands
         - shared TF query resolution is now in place for CLI/ClawBio-facing
           promoter work too:
           aliases such as `OCT4`, built-in groups such as `Yamanaka factors` /
@@ -1888,17 +1895,20 @@ order. Durable architecture constraints and decisions remain in
         `SELF_ANY`/`SELF_END` and `COMPL_ANY`/`COMPL_END` vocabulary while
         keeping GENtle's exact-run implementation independent from Primer3
         source code
-    - next gap: materialize detected cDNA PCR/qPCR assay products as portable
-      construct/vial records so the existing vial/container and
-      `RenderPoolGelSvg` paths can arrange assay products into virtual gel
-      bands without adapter-only glue
+    - transcript-derived cDNA assay tests now have an opt-in materialization
+      path: `materialize_products` or `product_gel_svg_path` creates
+      deterministic product sequence entries, a singleton/pool container, and
+      an optional product-gel SVG rendered through the existing pool-gel
+      renderer; report-only behavior remains the default
     - external FASTA screens count all scanned records but keep returned JSON
       compact by reporting detected transcript rows only unless a specific
       `transcript_id` is requested
     - canonical example coverage now includes
-      `cdna_pcr_qpcr_assay_test_offline` plus a ClawBio request/intent route,
-      and workflow-example execution rewrites the optional report paths so the
-      same example is safe in per-run output directories
+      `cdna_pcr_qpcr_assay_test_offline` and
+      `cdna_pcr_qpcr_product_gel_nonspecific_offline` plus ClawBio
+      request/intent routes, and workflow-example execution rewrites the
+      optional report/SVG paths so the same examples are safe in per-run output
+      directories
   - transcript qPCR panel summarization is now a shared engine/shell surface:
     - `BuildTranscriptQpcrPanel` and `primers transcript-qpcr-panel` consume a
       stored shared-gene qPCR report and emit

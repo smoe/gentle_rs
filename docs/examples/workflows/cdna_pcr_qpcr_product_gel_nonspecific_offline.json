@@ -1,0 +1,62 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "cdna_pcr_qpcr_product_gel_nonspecific_offline",
+  "title": "cDNA PCR/qPCR nonspecific product gel demo (offline)",
+  "summary": "Loads a tiny synthetic two-transcript GenBank locus, tests one shared cDNA PCR/qPCR assay, materializes the detected transcript-derived products as GENtle sequence entries, and renders product-pool gel SVGs so nonspecific products are visible as multiple bands.",
+  "test_mode": "always",
+  "required_files": [
+    "docs/examples/assets/cdna_assay_nonspecific_demo.gb"
+  ],
+  "tags": [
+    "cdna",
+    "pcr",
+    "qpcr",
+    "assay-test",
+    "nonspecific-products",
+    "pool-gel",
+    "offline",
+    "clawbio"
+  ],
+  "workflow": {
+    "run_id": "example_cdna_pcr_qpcr_product_gel_nonspecific_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "docs/examples/assets/cdna_assay_nonspecific_demo.gb",
+          "as_id": "cdna_nonspecific_demo"
+        }
+      },
+      {
+        "TestCdnaPcr": {
+          "seq_id": "cdna_nonspecific_demo",
+          "source_feature_id": 2,
+          "forward_primer": "AAACCC",
+          "reverse_primer": "CCCAAA",
+          "min_amplicon_bp": 10,
+          "max_amplicon_bp": 80,
+          "require_3prime_exact_bases": 4,
+          "path": "artifacts/cdna_nonspecific_demo.pcr_report.json",
+          "svg_path": "artifacts/cdna_nonspecific_demo.pcr_transcript_map.svg",
+          "product_output_prefix": "cdna_nonspecific_demo_pcr_product",
+          "product_gel_svg_path": "artifacts/cdna_nonspecific_demo.pcr_products.gel.svg"
+        }
+      },
+      {
+        "TestCdnaQpcr": {
+          "seq_id": "cdna_nonspecific_demo",
+          "source_feature_id": 2,
+          "forward_primer": "AAACCC",
+          "reverse_primer": "CCCAAA",
+          "probe": "GGGCCC",
+          "min_amplicon_bp": 10,
+          "max_amplicon_bp": 80,
+          "require_3prime_exact_bases": 4,
+          "path": "artifacts/cdna_nonspecific_demo.qpcr_report.json",
+          "svg_path": "artifacts/cdna_nonspecific_demo.qpcr_transcript_map.svg",
+          "product_output_prefix": "cdna_nonspecific_demo_qpcr_product",
+          "product_gel_svg_path": "artifacts/cdna_nonspecific_demo.qpcr_products.gel.svg"
+        }
+      }
+    ]
+  }
+}

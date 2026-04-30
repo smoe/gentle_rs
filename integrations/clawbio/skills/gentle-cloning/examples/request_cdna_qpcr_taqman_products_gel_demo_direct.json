@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "cdna-qpcr-test",
+  "state_path": ".gentle_state.json",
+  "seq_id": "cdna_nonspecific_demo",
+  "source_feature_id": 2,
+  "forward_primer": "AAACCC",
+  "reverse_primer": "CCCAAA",
+  "probe": "GGGCCC",
+  "min_amplicon_bp": 10,
+  "max_amplicon_bp": 80,
+  "require_3prime_exact_bases": 4,
+  "output_path": "artifacts/cdna_nonspecific_demo.direct_taqman_report.json",
+  "svg_path": "artifacts/cdna_nonspecific_demo.direct_taqman_transcript_map.svg",
+  "product_output_prefix": "cdna_nonspecific_demo_direct_qpcr_product",
+  "product_gel_svg_path": "artifacts/cdna_nonspecific_demo.direct_taqman_products.gel.svg",
+  "expected_artifacts": [
+    "artifacts/cdna_nonspecific_demo.direct_taqman_report.json",
+    "artifacts/cdna_nonspecific_demo.direct_taqman_transcript_map.svg",
+    "artifacts/cdna_nonspecific_demo.direct_taqman_products.gel.svg"
+  ],
+  "timeout_secs": 180
+}

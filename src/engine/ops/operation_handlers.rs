@@ -9529,6 +9529,303 @@ impl GentleEngine {
         Ok(report)
     }
 
+    fn cdna_assay_product_id_token(raw: &str) -> String {
+        let token = raw
+            .trim()
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>()
+            .trim_matches('_')
+            .to_string();
+        if token.is_empty() {
+            "product".to_string()
+        } else {
+            token
+        }
+    }
+
+    fn default_cdna_assay_product_prefix(report: &CdnaAssayTestReport) -> String {
+        format!(
+            "{}_{}_cdna_product",
+            Self::cdna_assay_product_id_token(&report.source_seq_id),
+            Self::cdna_assay_product_id_token(&report.assay_kind)
+        )
+    }
+
+    fn cdna_assay_template_sequence_map(
+        &self,
+        report: &CdnaAssayTestReport,
+    ) -> Result<BTreeMap<(usize, String), String>, EngineError> {
+        let source_dna = self
+            .state
+            .sequences
+            .get(&report.source_seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Sequence '{}' not found for cDNA assay product materialization",
+                    report.source_seq_id
+                ),
+            })?;
+        let splicing = self.build_splicing_expert_view(
+            &report.source_seq_id,
+            report.source_feature_id,
+            SplicingScopePreset::TargetGroupTargetStrand,
+        )?;
+        let templates = Self::build_qpcr_transcript_design_templates(source_dna, &splicing)?;
+        Ok(templates
+            .into_iter()
+            .map(|template| {
+                (
+                    (template.transcript_feature_id, template.transcript_id),
+                    template.sequence,
+                )
+            })
+            .collect())
+    }
+
+    fn materialize_cdna_assay_products(
+        &mut self,
+        result: &mut OpResult,
+        report: &CdnaAssayTestReport,
+        product_output_prefix: Option<&str>,
+        product_gel_svg_path: Option<&str>,
+        product_gel_ladders: Option<&[String]>,
+    ) -> Result<CdnaAssayProductMaterialization, EngineError> {
+        let requested_prefix = product_output_prefix
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        let prefix = requested_prefix
+            .clone()
+            .unwrap_or_else(|| Self::default_cdna_assay_product_prefix(report));
+        let mut summary = CdnaAssayProductMaterialization {
+            schema: CDNA_ASSAY_PRODUCT_MATERIALIZATION_SCHEMA.to_string(),
+            assay_kind: report.assay_kind.clone(),
+            source_seq_id: report.source_seq_id.clone(),
+            source_feature_id: report.source_feature_id,
+            group_label: report.group_label.clone(),
+            product_count: report.product_count,
+            product_output_prefix: Some(prefix.clone()),
+            ..CdnaAssayProductMaterialization::default()
+        };
+        if report.product_count == 0 {
+            summary.warnings.push(format!(
+                "No cDNA {} products were materialized because the assay detected 0 products.",
+                report.assay_kind
+            ));
+            return Ok(summary);
+        }
+
+        let template_sequences = self.cdna_assay_template_sequence_map(report)?;
+        let mut created_product_seq_ids = vec![];
+        for transcript in &report.transcript_results {
+            let Some(template_sequence) = template_sequences.get(&(
+                transcript.transcript_feature_id,
+                transcript.transcript_id.clone(),
+            )) else {
+                summary.warnings.push(format!(
+                    "Could not materialize products for transcript '{}' because its template sequence was not rebuilt.",
+                    transcript.transcript_id
+                ));
+                continue;
+            };
+            for (product_idx, product) in transcript.products.iter().enumerate() {
+                if product.amplicon_end_0based_exclusive > template_sequence.len()
+                    || product.amplicon_start_0based >= product.amplicon_end_0based_exclusive
+                {
+                    summary.warnings.push(format!(
+                        "Skipped invalid cDNA {} product {} for transcript '{}' ({}..{}).",
+                        report.assay_kind,
+                        product_idx.saturating_add(1),
+                        transcript.transcript_id,
+                        product.amplicon_start_0based,
+                        product.amplicon_end_0based_exclusive
+                    ));
+                    continue;
+                }
+                let product_sequence = &template_sequence
+                    [product.amplicon_start_0based..product.amplicon_end_0based_exclusive];
+                let mut dna =
+                    DNAsequence::from_sequence(product_sequence).map_err(|e| EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!(
+                            "Could not create cDNA {} product for transcript '{}': {e}",
+                            report.assay_kind, transcript.transcript_id
+                        ),
+                    })?;
+                dna.set_circular(false);
+                dna.set_name(format!(
+                    "cDNA {} product {} for {} ({} bp)",
+                    report.assay_kind,
+                    product_idx.saturating_add(1),
+                    transcript.transcript_id,
+                    product.amplicon_length_bp
+                ));
+                Self::prepare_sequence(&mut dna);
+                let seq_id = self.unique_seq_id(&format!(
+                    "{}_{}_p{}_{}bp",
+                    prefix,
+                    Self::cdna_assay_product_id_token(&transcript.transcript_id),
+                    product_idx.saturating_add(1),
+                    product.amplicon_length_bp
+                ));
+                self.state.sequences.insert(seq_id.clone(), dna);
+                self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                result.created_seq_ids.push(seq_id.clone());
+                created_product_seq_ids.push(seq_id.clone());
+                result.messages.push(format!(
+                    "Materialized cDNA {} product '{}' from transcript '{}' ({} bp).",
+                    report.assay_kind, seq_id, transcript.transcript_id, product.amplicon_length_bp
+                ));
+            }
+        }
+        summary.product_seq_ids = created_product_seq_ids.clone();
+        if created_product_seq_ids.is_empty() {
+            summary.warnings.push(format!(
+                "The cDNA {} assay reported products, but none could be materialized.",
+                report.assay_kind
+            ));
+            return Ok(summary);
+        }
+
+        let container_kind = if created_product_seq_ids.len() > 1 {
+            ContainerKind::Pool
+        } else {
+            ContainerKind::Singleton
+        };
+        let product_label = if report.assay_kind == "qpcr" {
+            "qPCR"
+        } else {
+            "PCR"
+        };
+        let container_name = format!("cDNA {product_label} products ({})", report.group_label);
+        let container_id = self
+            .add_container(
+                &created_product_seq_ids,
+                container_kind.clone(),
+                Some(container_name),
+                Some(&result.op_id),
+            )
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::Internal,
+                message: "Could not create cDNA assay product container".to_string(),
+            })?;
+        summary.container_id = Some(container_id.clone());
+        summary.container_kind = Some(container_kind);
+        result.messages.push(format!(
+            "Materialized {} cDNA {} product sequence(s) in container '{}'.",
+            created_product_seq_ids.len(),
+            report.assay_kind,
+            container_id
+        ));
+
+        if let Some(path) = product_gel_svg_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let container_ids = vec![container_id.clone()];
+            let layout = self.build_serial_gel_layout_for_render(
+                &[],
+                Some(container_ids.as_slice()),
+                None,
+                product_gel_ladders,
+                None,
+            )?;
+            let svg = export_pool_gel_svg(&layout);
+            std::fs::write(path, svg).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write cDNA assay product gel SVG '{path}': {e}"),
+            })?;
+            summary.product_gel_svg_path = Some(path.to_string());
+            result.messages.push(format!(
+                "Wrote cDNA {} product gel SVG to '{}'.",
+                report.assay_kind, path
+            ));
+        }
+
+        Ok(summary)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn finalize_cdna_assay_test_operation_outputs(
+        &mut self,
+        result: &mut OpResult,
+        report: &CdnaAssayTestReport,
+        path: Option<&str>,
+        svg_path: Option<&str>,
+        materialize_products: bool,
+        product_output_prefix: Option<&str>,
+        product_gel_svg_path: Option<&str>,
+        product_gel_ladders: Option<&[String]>,
+    ) -> Result<(), EngineError> {
+        let product_label = if report.assay_kind == "qpcr" {
+            "qPCR"
+        } else {
+            "PCR"
+        };
+        if let Some(path) = path.map(str::trim).filter(|value| !value.is_empty()) {
+            let file = File::create(path).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not create cDNA {product_label} assay-test report '{path}': {e}"
+                ),
+            })?;
+            let writer = BufWriter::new(file);
+            serde_json::to_writer_pretty(writer, report).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not serialize cDNA {product_label} assay-test report '{path}': {e}"
+                ),
+            })?;
+            result.messages.push(format!(
+                "Wrote cDNA {product_label} assay-test report to '{path}'"
+            ));
+        }
+        if let Some(svg_path) = svg_path.map(str::trim).filter(|value| !value.is_empty()) {
+            let svg = report
+                .transcript_map
+                .as_ref()
+                .map(|map| map.svg.as_str())
+                .unwrap_or_default();
+            std::fs::write(svg_path, svg).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write cDNA {product_label} transcript-map SVG '{svg_path}': {e}"
+                ),
+            })?;
+            result.messages.push(format!(
+                "Wrote cDNA {product_label} transcript-map SVG to '{svg_path}'"
+            ));
+        }
+        let should_materialize = materialize_products
+            || product_gel_svg_path
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty());
+        if should_materialize {
+            let materialization = self.materialize_cdna_assay_products(
+                result,
+                report,
+                product_output_prefix,
+                product_gel_svg_path,
+                product_gel_ladders,
+            )?;
+            for warning in &materialization.warnings {
+                result.warnings.push(warning.clone());
+                result.messages.push(warning.clone());
+            }
+            result.cdna_assay_product_materialization = Some(materialization);
+        }
+        result.cdna_assay_test_report = Some(Box::new(report.clone()));
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn test_cdna_pcr_assay(
         &self,
@@ -13996,6 +14293,8 @@ impl GentleEngine {
             reverse_translation_report: None,
             protease_digest_report: None,
             protein_residue_genomic_coordinates: None,
+            cdna_assay_test_report: None,
+            cdna_assay_product_materialization: None,
             transcript_qpcr_panel: None,
             primer_specificity_report: None,
             construct_reasoning_graph: None,
@@ -18653,7 +18952,12 @@ impl GentleEngine {
                     transcript_map_coordinate_mode,
                     path,
                     svg_path,
+                    materialize_products,
+                    product_output_prefix,
+                    product_gel_svg_path,
+                    product_gel_ladders,
                 } => {
+                    parent_seq_ids.push(seq_id.clone());
                     let report = self.test_cdna_pcr_assay_with_map_options(
                         &seq_id,
                         source_feature_id,
@@ -18668,48 +18972,16 @@ impl GentleEngine {
                         transcript_map_coordinate_mode.unwrap_or_default(),
                     )?;
                     result.messages.push(report.summary.clone());
-                    if let Some(path) = path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                    {
-                        let file = File::create(path).map_err(|e| EngineError {
-                            code: ErrorCode::Io,
-                            message: format!(
-                                "Could not create cDNA PCR assay-test report '{path}': {e}"
-                            ),
-                        })?;
-                        let writer = BufWriter::new(file);
-                        serde_json::to_writer_pretty(writer, &report).map_err(|e| EngineError {
-                            code: ErrorCode::Io,
-                            message: format!(
-                                "Could not serialize cDNA PCR assay-test report '{path}': {e}"
-                            ),
-                        })?;
-                        result
-                            .messages
-                            .push(format!("Wrote cDNA PCR assay-test report to '{path}'"));
-                    }
-                    if let Some(svg_path) = svg_path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                    {
-                        let svg = report
-                            .transcript_map
-                            .as_ref()
-                            .map(|map| map.svg.as_str())
-                            .unwrap_or_default();
-                        std::fs::write(svg_path, svg).map_err(|e| EngineError {
-                            code: ErrorCode::Io,
-                            message: format!(
-                                "Could not write cDNA PCR transcript-map SVG '{svg_path}': {e}"
-                            ),
-                        })?;
-                        result
-                            .messages
-                            .push(format!("Wrote cDNA PCR transcript-map SVG to '{svg_path}'"));
-                    }
+                    self.finalize_cdna_assay_test_operation_outputs(
+                        &mut result,
+                        &report,
+                        path.as_deref(),
+                        svg_path.as_deref(),
+                        materialize_products,
+                        product_output_prefix.as_deref(),
+                        product_gel_svg_path.as_deref(),
+                        product_gel_ladders.as_deref(),
+                    )?;
                 }
                 Operation::TestCdnaQpcr {
                     seq_id,
@@ -18726,7 +18998,12 @@ impl GentleEngine {
                     transcript_map_coordinate_mode,
                     path,
                     svg_path,
+                    materialize_products,
+                    product_output_prefix,
+                    product_gel_svg_path,
+                    product_gel_ladders,
                 } => {
+                    parent_seq_ids.push(seq_id.clone());
                     let report = self.test_cdna_qpcr_assay_with_map_options(
                         &seq_id,
                         source_feature_id,
@@ -18742,48 +19019,16 @@ impl GentleEngine {
                         transcript_map_coordinate_mode.unwrap_or_default(),
                     )?;
                     result.messages.push(report.summary.clone());
-                    if let Some(path) = path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                    {
-                        let file = File::create(path).map_err(|e| EngineError {
-                            code: ErrorCode::Io,
-                            message: format!(
-                                "Could not create cDNA qPCR assay-test report '{path}': {e}"
-                            ),
-                        })?;
-                        let writer = BufWriter::new(file);
-                        serde_json::to_writer_pretty(writer, &report).map_err(|e| EngineError {
-                            code: ErrorCode::Io,
-                            message: format!(
-                                "Could not serialize cDNA qPCR assay-test report '{path}': {e}"
-                            ),
-                        })?;
-                        result
-                            .messages
-                            .push(format!("Wrote cDNA qPCR assay-test report to '{path}'"));
-                    }
-                    if let Some(svg_path) = svg_path
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                    {
-                        let svg = report
-                            .transcript_map
-                            .as_ref()
-                            .map(|map| map.svg.as_str())
-                            .unwrap_or_default();
-                        std::fs::write(svg_path, svg).map_err(|e| EngineError {
-                            code: ErrorCode::Io,
-                            message: format!(
-                                "Could not write cDNA qPCR transcript-map SVG '{svg_path}': {e}"
-                            ),
-                        })?;
-                        result.messages.push(format!(
-                            "Wrote cDNA qPCR transcript-map SVG to '{svg_path}'"
-                        ));
-                    }
+                    self.finalize_cdna_assay_test_operation_outputs(
+                        &mut result,
+                        &report,
+                        path.as_deref(),
+                        svg_path.as_deref(),
+                        materialize_products,
+                        product_output_prefix.as_deref(),
+                        product_gel_svg_path.as_deref(),
+                        product_gel_ladders.as_deref(),
+                    )?;
                 }
                 Operation::BuildTranscriptQpcrPanel {
                     seq_id,

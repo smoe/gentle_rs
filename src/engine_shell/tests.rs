@@ -1405,99 +1405,108 @@ fn execute_reverse_translate_commands_store_list_show_and_export_reports() {
 
 #[test]
 fn execute_construct_reasoning_protein_handoff_commands_store_list_show_and_export_graphs() {
-    let td = tempdir().expect("tempdir");
-    let export_path = td.path().join("protein_handoff_graph.json");
+    std::thread::Builder::new()
+        .name("construct-reasoning-protein-handoff-shell-test".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            let td = tempdir().expect("tempdir");
+            let export_path = td.path().join("protein_handoff_graph.json");
 
-    let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
-    protein.set_name("Toy protein");
-    protein.set_molecule_type("protein");
+            let mut protein = DNAsequence::from_sequence("MKP").expect("protein");
+            protein.set_name("Toy protein");
+            protein.set_molecule_type("protein");
 
-    let mut state = ProjectState::default();
-    state.sequences.insert(
-        "target".to_string(),
-        DNAsequence::from_sequence("ACGTACGTACGT").expect("dna"),
-    );
-    state.sequences.insert("prot".to_string(), protein);
-    let mut engine = GentleEngine::from_state(state);
+            let mut state = ProjectState::default();
+            state.sequences.insert(
+                "target".to_string(),
+                DNAsequence::from_sequence("ACGTACGTACGT").expect("dna"),
+            );
+            state.sequences.insert("prot".to_string(), protein);
+            let mut engine = GentleEngine::from_state(state);
 
-    let build = execute_shell_command(
-        &mut engine,
-        &ShellCommand::ConstructReasoningBuildProteinDnaHandoff {
-            seq_id: "target".to_string(),
-            protein_seq_id: "prot".to_string(),
-            transcript_filter: None,
-            projection_id: None,
-            ensembl_entry_id: Some("ENSPTOY1".to_string()),
-            feature_query: None,
-            ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
-            speed_profile: Some(TranslationSpeedProfile::Ecoli),
-            speed_mark: Some(TranslationSpeedMark::Slow),
-            translation_table: Some(11),
-            target_anneal_tm_c: Some(58.0),
-            anneal_window_bp: Some(9),
-            objective_id: None,
-            graph_id: Some("protein_handoff_shell".to_string()),
-        },
-    )
-    .expect("execute construct-reasoning build-protein-dna-handoff");
-    assert!(build.state_changed);
-    assert_eq!(
-        build.output["graph"]["graph_id"].as_str(),
-        Some("protein_handoff_shell")
-    );
-    assert!(
-        build.output["graph"]["candidates"]
-            .as_array()
-            .is_some_and(|rows| !rows.is_empty())
-    );
+            let build = execute_shell_command(
+                &mut engine,
+                &ShellCommand::ConstructReasoningBuildProteinDnaHandoff {
+                    seq_id: "target".to_string(),
+                    protein_seq_id: "prot".to_string(),
+                    transcript_filter: None,
+                    projection_id: None,
+                    ensembl_entry_id: Some("ENSPTOY1".to_string()),
+                    feature_query: None,
+                    ranking_goal: ProteinToDnaHandoffRankingGoal::BalancedProvenance,
+                    speed_profile: Some(TranslationSpeedProfile::Ecoli),
+                    speed_mark: Some(TranslationSpeedMark::Slow),
+                    translation_table: Some(11),
+                    target_anneal_tm_c: Some(58.0),
+                    anneal_window_bp: Some(9),
+                    objective_id: None,
+                    graph_id: Some("protein_handoff_shell".to_string()),
+                },
+            )
+            .expect("execute construct-reasoning build-protein-dna-handoff");
+            assert!(build.state_changed);
+            assert_eq!(
+                build.output["graph"]["graph_id"].as_str(),
+                Some("protein_handoff_shell")
+            );
+            assert!(
+                build.output["graph"]["candidates"]
+                    .as_array()
+                    .is_some_and(|rows| !rows.is_empty())
+            );
 
-    let list = execute_shell_command(
-        &mut engine,
-        &ShellCommand::ConstructReasoningListGraphs {
-            seq_id: Some("target".to_string()),
-        },
-    )
-    .expect("list construct-reasoning graphs");
-    assert_eq!(list.output["graph_count"].as_u64(), Some(1));
-    assert_eq!(
-        list.output["graphs"][0]["contains_protein_to_dna_handoff"].as_bool(),
-        Some(true)
-    );
+            let list = execute_shell_command(
+                &mut engine,
+                &ShellCommand::ConstructReasoningListGraphs {
+                    seq_id: Some("target".to_string()),
+                },
+            )
+            .expect("list construct-reasoning graphs");
+            assert_eq!(list.output["graph_count"].as_u64(), Some(1));
+            assert_eq!(
+                list.output["graphs"][0]["contains_protein_to_dna_handoff"].as_bool(),
+                Some(true)
+            );
 
-    let show = execute_shell_command(
-        &mut engine,
-        &ShellCommand::ConstructReasoningShowGraph {
-            graph_id: "protein_handoff_shell".to_string(),
-        },
-    )
-    .expect("show construct-reasoning graph");
-    assert_eq!(
-        show.output["graph"]["graph_id"].as_str(),
-        Some("protein_handoff_shell")
-    );
-    assert_eq!(
-        show.output["graph"]["candidates"][0]["protein_to_dna_handoff"]["strategy"].as_str(),
-        Some("reverse_translated_synthetic")
-    );
-    assert!(
-        show.output["summary"]["summary_lines"]
-            .as_array()
-            .is_some_and(|rows| !rows.is_empty())
-    );
+            let show = execute_shell_command(
+                &mut engine,
+                &ShellCommand::ConstructReasoningShowGraph {
+                    graph_id: "protein_handoff_shell".to_string(),
+                },
+            )
+            .expect("show construct-reasoning graph");
+            assert_eq!(
+                show.output["graph"]["graph_id"].as_str(),
+                Some("protein_handoff_shell")
+            );
+            assert_eq!(
+                show.output["graph"]["candidates"][0]["protein_to_dna_handoff"]["strategy"]
+                    .as_str(),
+                Some("reverse_translated_synthetic")
+            );
+            assert!(
+                show.output["summary"]["summary_lines"]
+                    .as_array()
+                    .is_some_and(|rows| !rows.is_empty())
+            );
 
-    let export = execute_shell_command(
-        &mut engine,
-        &ShellCommand::ConstructReasoningExportGraph {
-            graph_id: "protein_handoff_shell".to_string(),
-            path: export_path.display().to_string(),
-        },
-    )
-    .expect("export construct-reasoning graph");
-    assert_eq!(
-        export.output["graph_id"].as_str(),
-        Some("protein_handoff_shell")
-    );
-    assert!(export_path.exists());
+            let export = execute_shell_command(
+                &mut engine,
+                &ShellCommand::ConstructReasoningExportGraph {
+                    graph_id: "protein_handoff_shell".to_string(),
+                    path: export_path.display().to_string(),
+                },
+            )
+            .expect("export construct-reasoning graph");
+            assert_eq!(
+                export.output["graph_id"].as_str(),
+                Some("protein_handoff_shell")
+            );
+            assert!(export_path.exists());
+        })
+        .expect("spawn construct-reasoning protein handoff shell test")
+        .join()
+        .expect("construct-reasoning protein handoff shell test");
 }
 
 #[test]
@@ -4701,7 +4710,7 @@ fn parse_primers_seed_from_feature_and_splicing() {
     ));
 
     let ordered_cdna = parse_shell_line(
-        "primers test-cdna-pcr seq_a 17 --forward AAACCC --reverse CCCAAG --transcript-order antisense_first_exon --map-coordinate-mode genomic_aligned --svg ordered.svg",
+        "primers test-cdna-pcr seq_a 17 --forward AAACCC --reverse CCCAAG --transcript-order antisense_first_exon --map-coordinate-mode genomic_aligned --svg ordered.svg --materialize-products --product-output-prefix cdna_products --product-gel-svg products.gel.svg --product-gel-ladder \"NEB 100bp DNA Ladder\"",
     )
     .expect("parse ordered cDNA PCR test");
     assert!(matches!(
@@ -4712,6 +4721,10 @@ fn parse_primers_seed_from_feature_and_splicing() {
             transcript_order,
             transcript_map_coordinate_mode,
             svg_path,
+            materialize_products,
+            product_output_prefix,
+            product_gel_svg_path,
+            product_gel_ladders,
             ..
         } if seq_id == "seq_a"
             && feature_id == 17
@@ -4719,6 +4732,10 @@ fn parse_primers_seed_from_feature_and_splicing() {
             && transcript_map_coordinate_mode
                 == Some(CdnaAssayTranscriptMapCoordinateMode::GenomicAligned)
             && svg_path.as_deref() == Some("ordered.svg")
+            && materialize_products
+            && product_output_prefix.as_deref() == Some("cdna_products")
+            && product_gel_svg_path.as_deref() == Some("products.gel.svg")
+            && product_gel_ladders == Some(vec!["NEB 100bp DNA Ladder".to_string()])
     ));
 
     let fasta_order_err = parse_shell_line(
@@ -11693,6 +11710,10 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
             transcript_map_coordinate_mode: None,
             path: None,
             svg_path: None,
+            materialize_products: false,
+            product_output_prefix: None,
+            product_gel_svg_path: None,
+            product_gel_ladders: None,
         },
     )
     .expect("cDNA PCR shell report");
@@ -11738,6 +11759,10 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
             transcript_map_coordinate_mode: None,
             path: None,
             svg_path: None,
+            materialize_products: false,
+            product_output_prefix: None,
+            product_gel_svg_path: None,
+            product_gel_ladders: None,
         },
     )
     .expect("cDNA qPCR shell report");
@@ -11771,6 +11796,85 @@ fn execute_primers_test_cdna_pcr_and_qpcr_reports_products() {
             .as_str()
             .is_some_and(|svg| svg.contains("TX1") && svg.contains("probe"))
     );
+}
+
+#[test]
+fn execute_primers_test_cdna_pcr_materializes_product_gel_artifact() {
+    let mut dna = DNAsequence::from_sequence(
+        "ATGAAACCCGGGAAAAAAAA\
+         CCCAAATTTGGGAAAAAAAA\
+         CCCCCCCCCCCCCCCCCCCCCCCCCCTTTGGG",
+    )
+    .expect("synthetic genomic sequence");
+    for (transcript_id, label, second_exon) in [
+        ("TX_SHORT", "short product transcript", (20, 32)),
+        ("TX_LONG", "long product transcript", (40, 72)),
+    ] {
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: Location::Join(vec![
+                Location::simple_range(0, 12),
+                Location::simple_range(second_exon.0, second_exon.1),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("NONSPEC".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(label.to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("cdna_nonspecific".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let td = tempdir().expect("tempdir");
+    let gel_path = td.path().join("cdna_products.gel.svg");
+
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersTestCdnaPcr {
+            seq_id: "cdna_nonspecific".to_string(),
+            feature_id: 0,
+            forward_primer: "AAACCC".to_string(),
+            reverse_primer: "CCCAAA".to_string(),
+            transcript_id: None,
+            min_amplicon_bp: Some(10),
+            max_amplicon_bp: Some(80),
+            max_mismatches: None,
+            require_3prime_exact_bases: Some(4),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
+            path: None,
+            svg_path: None,
+            materialize_products: false,
+            product_output_prefix: Some("shell_cdna_products".to_string()),
+            product_gel_svg_path: Some(gel_path.to_string_lossy().to_string()),
+            product_gel_ladders: None,
+        },
+    )
+    .expect("materialized shell cDNA PCR product gel");
+    assert!(run.state_changed);
+    assert_eq!(
+        run.output["report"]["overall_status"].as_str(),
+        Some("multiple_products")
+    );
+    assert_eq!(
+        run.output["materialization"]["product_seq_ids"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        run.output["preferred_artifacts"][0]["artifact_kind"].as_str(),
+        Some("cdna_assay_product_gel")
+    );
+    assert_eq!(
+        run.output["preferred_artifacts"][0]["is_best_first_artifact"].as_bool(),
+        Some(true)
+    );
+    let svg = std::fs::read_to_string(gel_path).expect("product gel");
+    assert!(svg.contains("Serial Gel Preview"));
+    assert!(svg.contains("shell_cdna_products_TX_SHORT_p1_21bp"));
+    assert!(svg.contains("shell_cdna_products_TX_LONG_p1_41bp"));
 }
 
 fn write_shell_gzip_fasta_records(path: &Path, records: &[(&str, &str)]) {
@@ -18654,6 +18758,16 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
 
 #[test]
 fn execute_uniprot_projection_audit_commands() {
+    std::thread::Builder::new()
+        .name("uniprot-projection-audit-shell-test".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(execute_uniprot_projection_audit_commands_impl)
+        .expect("spawn UniProt projection audit shell test")
+        .join()
+        .expect("UniProt projection audit shell test");
+}
+
+fn execute_uniprot_projection_audit_commands_impl() {
     let td = tempdir().expect("tempdir");
     let swiss_path = td.path().join("toy_uniprot_audit.txt");
     let export_path = td.path().join("toy_uniprot_audit.json");

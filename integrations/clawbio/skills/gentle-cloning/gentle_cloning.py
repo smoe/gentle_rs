@@ -170,6 +170,10 @@ class Request:
     shared_qpcr_report_id: str | None = None
     output_path: str | None = None
     svg_path: str | None = None
+    materialize_products: bool | None = None
+    product_output_prefix: str | None = None
+    product_gel_svg_path: str | None = None
+    product_gel_ladders: list[str] | None = None
     residue_start_1based: int | None = None
     residue_end_1based: int | None = None
 
@@ -631,6 +635,22 @@ def _normalise_cdna_assay_test_request(request: Request) -> None:
         raise SkillError("map_coordinate_mode must be cdna or genomic_aligned")
     request.output_path = _normalise_optional_str(request.output_path, "output_path")
     request.svg_path = _normalise_optional_str(request.svg_path, "svg_path")
+    request.product_output_prefix = _normalise_optional_str(
+        request.product_output_prefix, "product_output_prefix"
+    )
+    request.product_gel_svg_path = _normalise_optional_str(
+        request.product_gel_svg_path, "product_gel_svg_path"
+    )
+    if request.materialize_products is not None and not isinstance(
+        request.materialize_products, bool
+    ):
+        raise SkillError("materialize_products must be true or false")
+    if request.product_gel_ladders is not None:
+        if not isinstance(request.product_gel_ladders, list) or not all(
+            isinstance(item, str) and item.strip() for item in request.product_gel_ladders
+        ):
+            raise SkillError("product_gel_ladders must be a list of non-empty strings")
+        request.product_gel_ladders = [item.strip() for item in request.product_gel_ladders]
     request.min_amplicon_bp = _coerce_optional_int(
         request.min_amplicon_bp, "min_amplicon_bp", minimum=1
     )
@@ -654,7 +674,7 @@ def _normalise_cdna_assay_test_request(request: Request) -> None:
     if request.expected_artifacts is None:
         expected = [
             path
-            for path in (request.output_path, request.svg_path)
+            for path in (request.output_path, request.svg_path, request.product_gel_svg_path)
             if isinstance(path, str) and path.strip()
         ]
         if expected:
@@ -806,6 +826,10 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         shared_qpcr_report_id=payload.get("shared_qpcr_report_id"),
         output_path=payload.get("output_path"),
         svg_path=payload.get("svg_path"),
+        materialize_products=payload.get("materialize_products"),
+        product_output_prefix=payload.get("product_output_prefix"),
+        product_gel_svg_path=payload.get("product_gel_svg_path"),
+        product_gel_ladders=payload.get("product_gel_ladders"),
         residue_start_1based=payload.get("residue_start_1based"),
         residue_end_1based=payload.get("residue_end_1based"),
     )
@@ -1125,6 +1149,14 @@ def _build_primer_mode_shell_line(request: Request) -> str:
             tokens.extend(["--path", request.output_path])
         if request.svg_path:
             tokens.extend(["--svg", request.svg_path])
+        if request.materialize_products:
+            tokens.append("--materialize-products")
+        if request.product_output_prefix:
+            tokens.extend(["--product-output-prefix", request.product_output_prefix])
+        if request.product_gel_svg_path:
+            tokens.extend(["--product-gel-svg", request.product_gel_svg_path])
+        for ladder in request.product_gel_ladders or []:
+            tokens.extend(["--product-gel-ladder", ladder])
     elif mode == "restriction-cloning-pcr-handoff":
         tokens = ["primers", "prepare-restriction-cloning", _request_json_arg(request)]
     elif mode == "restriction-cloning-pcr-handoff-seed":
@@ -2324,6 +2356,27 @@ def _summary_lines_from_primer_qpcr_payload(candidate: Any) -> list[str] | None:
                         line += f" {rationale}"
                     lines.append(line)
         return lines
+    if schema == "gentle.cdna_assay_test_command.v1":
+        report = candidate.get("cdna_assay_test_report") or candidate.get("report")
+        lines = _summary_lines_from_primer_qpcr_payload(report) or []
+        materialization = candidate.get("materialization")
+        if isinstance(materialization, dict):
+            product_count = materialization.get("product_count")
+            seq_ids = materialization.get("product_seq_ids")
+            seq_count = len(seq_ids) if isinstance(seq_ids, list) else 0
+            container_id = str(materialization.get("container_id") or "").strip()
+            gel_path = str(materialization.get("product_gel_svg_path") or "").strip()
+            if seq_count:
+                line = f"Materialized {seq_count} cDNA assay product sequence(s)"
+                if container_id:
+                    line += f" into product container '{container_id}'"
+                line += "."
+                lines.append(line)
+            elif product_count == 0:
+                lines.append("No product vial was created because the assay detected 0 products.")
+            if gel_path:
+                lines.append(f"Product gel SVG: {gel_path}")
+        return lines or None
     if schema == "gentle.cdna_assay_test_report.v1":
         assay_kind = str(candidate.get("assay_kind") or "cDNA assay").strip()
         status = str(candidate.get("overall_status") or candidate.get("status") or "unknown").strip()
@@ -2438,6 +2491,7 @@ def _extract_chat_summary_lines(stdout_json: Any) -> list[str] | None:
         "primer_design_report",
         "qpcr_design_report",
         "cdna_assay_test_report",
+        "report",
         "transcript_qpcr_panel",
     ):
         nested = stdout_json.get(key)

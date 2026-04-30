@@ -228,6 +228,9 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_seed_qpcr_tp53_splicing_specific_junction.json --output /tmp/gentle_tp53_qpcr_specific_seed
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_design_qpcr_taqman_tp53_operation.json --output /tmp/gentle_tp53_taqman_design
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_cdna_qpcr_taqman_test_demo_direct.json --output /tmp/gentle_cdna_taqman_test
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json --output /tmp/gentle_cdna_product_gel_workflow
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_cdna_pcr_products_gel_demo_direct.json --output /tmp/gentle_cdna_pcr_products_gel
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_cdna_qpcr_taqman_products_gel_demo_direct.json --output /tmp/gentle_cdna_qpcr_products_gel
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_reports_list.json --output /tmp/gentle_primer_reports
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_report_show_demo.json --output /tmp/gentle_primer_report_show
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_primer_report_export_demo.json --output /tmp/gentle_primer_report_export
@@ -270,6 +273,14 @@ Notes:
   direct cDNA qPCR assay testing without requiring callers to hand-write shell
   strings. The direct cDNA assay examples also declare transcript-map SVG
   artifacts so ClawBio can attach a PNG view of where the assay is functional.
+- `request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json`
+  demonstrates the opt-in product-materialization path for transcript-derived
+  cDNA PCR/qPCR assay tests: detected products become GENtle sequence entries,
+  are grouped into one vial/container, and are rendered as a pool-gel lane so
+  non-specific products appear as multiple bands. The direct product-gel
+  examples (`request_cdna_pcr_products_gel_demo_direct.json` and
+  `request_cdna_qpcr_taqman_products_gel_demo_direct.json`) are follow-on
+  routes for a state that already contains the demo locus.
 - `request_primer_reports_list.json`, `request_primer_report_show_demo.json`,
   `request_primer_report_export_demo.json`, `request_qpcr_reports_list.json`,
   `request_qpcr_report_show_demo.json`, and
@@ -1960,8 +1971,8 @@ Shared shell command:
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
     - `primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
-    - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
-    - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
+    - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
+    - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...`
     - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
     - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
     - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
@@ -2370,6 +2381,17 @@ Shared shell command:
       - `--svg OUTPUT.svg` writes the embedded transcript-map SVG as a
         ClawBio/OpenClaw-friendly graphical artifact; shell output also
         advertises it in `preferred_artifacts[]`
+      - transcript-derived `test-cdna-pcr` / `test-cdna-qpcr` remain
+        non-mutating by default; add `--materialize-products` to turn detected
+        products into deterministic linear sequence entries and one
+        singleton/pool container
+      - `--product-gel-svg OUTPUT.svg` implies product materialization and
+        renders the product container through the existing pool-gel renderer,
+        so non-specific cDNA PCR/qPCR products appear as multiple bands in one
+        lane; repeat `--product-gel-ladder NAME` to add ladder lanes
+      - when no products are detected, the assay still succeeds with
+        `not_detected`, writes no product vial/gel, and reports that outcome in
+        the materialization summary
     - Transcript qPCR panel notes
       (`primers transcript-qpcr-panel`):
       - consumes a stored shared-gene qPCR report and the zero-based source
