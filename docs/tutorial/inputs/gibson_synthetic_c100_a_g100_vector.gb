@@ -1,0 +1,27 @@
+LOCUS       GIBSON_SYNTHETIC_C100_A_G100 201 bp    DNA     circular SYN 22-MAR-2026
+DEFINITION  Synthetic circular Gibson teaching vector: C^100 A G^100.
+ACCESSION   GENTLE_GIBSON_SYNTH_C100AG100
+VERSION     GENTLE_GIBSON_SYNTH_C100AG100.1
+KEYWORDS    synthetic construct; Gibson tutorial input.
+SOURCE      synthetic DNA construct
+  ORGANISM  synthetic DNA construct
+            other sequences; artificial sequences.
+FEATURES             Location/Qualifiers
+     source          1..201
+                     /organism="synthetic DNA construct"
+                     /mol_type="other DNA"
+     misc_feature    1..100
+                     /label="polyC_left_arm"
+                     /note="Left synthetic homopolymer arm (100 C bases)"
+     misc_feature    101..101
+                     /label="central_separator_A"
+                     /note="Single-base separator; remove with defined opening 100..101 (0-based edges) to expose pure C and G flanks"
+     misc_feature    102..201
+                     /label="polyG_right_arm"
+                     /note="Right synthetic homopolymer arm (100 G bases)"
+ORIGIN
+        1 CCCCCCCCCC CCCCCCCCCC CCCCCCCCCC CCCCCCCCCC CCCCCCCCCC CCCCCCCCCC
+       61 CCCCCCCCCC CCCCCCCCCC CCCCCCCCCC CCCCCCCCCC AGGGGGGGGG GGGGGGGGGG
+      121 GGGGGGGGGG GGGGGGGGGG GGGGGGGGGG GGGGGGGGGG GGGGGGGGGG GGGGGGGGGG
+      181 GGGGGGGGGG GGGGGGGGGG G
+//

@@ -1,0 +1,1027 @@
+{
+  "schema": "clawbio.skill_intents.v1",
+  "skill": "gentle-cloning",
+  "aliases": [
+    "gentle",
+    "GENtle",
+    "gentle cloning",
+    "gentle-cloning",
+    "cloning"
+  ],
+  "routes": [
+    {
+      "intent_id": "telegram_guide_isoforms_gene",
+      "description": "Show the GENtle isoform and protein-gel guide section for a requested gene symbol.",
+      "trigger_terms": [
+        "isoform guide for",
+        "isoforms guide for",
+        "gentle isoform guide for",
+        "gentle isoforms guide for",
+        "show me the gentle isoform guide",
+        "show me the gentle isoforms guide",
+        "show me the gentle isoform guide for",
+        "show me the gentle isoforms guide for"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "gene_symbol": {
+              "required": true
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "shell",
+            "shell_line": "services guide --channel telegram --section isoforms --gene {gene_symbol}",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "skill_info",
+      "description": "Report GENtle ClawBio skill metadata without requiring a GENtle runtime.",
+      "trigger_terms": [
+        "skill info",
+        "skill metadata",
+        "gentle skill",
+        "gentle skill info",
+        "gentle schema"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_skill_info.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_overview",
+      "description": "Show the Telegram-compatible GENtle guide overview with text fallback navigation.",
+      "trigger_terms": [
+        "gentle guide",
+        "show guide",
+        "show me the gentle guide",
+        "what can gentle do",
+        "help me use gentle",
+        "continue guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_readiness",
+      "description": "Show the GENtle guide readiness section for installed data, references, and resources.",
+      "trigger_terms": [
+        "continue readiness",
+        "readiness guide",
+        "data readiness guide",
+        "gentle readiness guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_readiness.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_gene_context",
+      "description": "Show the GENtle guide gene-context section.",
+      "trigger_terms": [
+        "continue gene context",
+        "gene context guide",
+        "gene guide",
+        "locus guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_gene_context.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_tfbs",
+      "description": "Show the GENtle guide promoter and TFBS section.",
+      "trigger_terms": [
+        "continue tfbs",
+        "continue promoter",
+        "tfbs guide",
+        "promoter guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_tfbs.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_inline_dna",
+      "description": "Show the GENtle guide pasted-DNA inspection section.",
+      "trigger_terms": [
+        "continue pasted dna",
+        "continue inline dna",
+        "pasted dna guide",
+        "inline dna guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_inline_dna.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_cloning",
+      "description": "Show the GENtle guide cloning and vector section.",
+      "trigger_terms": [
+        "continue cloning",
+        "continue vectors",
+        "cloning guide",
+        "vector guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_cloning.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_isoforms",
+      "description": "Show the GENtle guide isoform and protein-gel section.",
+      "trigger_terms": [
+        "continue isoforms",
+        "isoform guide",
+        "isoforms guide",
+        "gentle isoform guide",
+        "gentle isoforms guide",
+        "protein gel guide",
+        "gel guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_isoforms.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "telegram_guide_follow_up",
+      "description": "Show the GENtle guide experimental follow-up section.",
+      "trigger_terms": [
+        "continue follow-up",
+        "continue follow up",
+        "follow-up guide",
+        "experimental follow-up guide",
+        "validation planning guide"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_telegram_guide_follow_up.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "capabilities",
+      "description": "Ask the installed GENtle runtime for its deterministic capability surface.",
+      "trigger_terms": [
+        "capabilities",
+        "available operations",
+        "what operations",
+        "what commands"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_capabilities.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "runtime_version",
+      "description": "Check the installed local ClawBio GENtle rewrite runtime version through the skill bundle.",
+      "trigger_terms": [
+        "version",
+        "runtime version",
+        "installed version",
+        "installed gentle",
+        "gentle runtime"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_runtime_version.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "services_status",
+      "description": "Check which GENtle services, references, helpers, and local resources are ready.",
+      "trigger_terms": [
+        "services status",
+        "service status",
+        "services",
+        "readiness",
+        "ready",
+        "local resources",
+        "resources are ready",
+        "rna structure resources",
+        "rnafold resource",
+        "viennarna resource",
+        "rnapkin resource"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_services_status.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "resources_status",
+      "description": "Check GENtle external resource and installed database readiness.",
+      "trigger_terms": [
+        "resources status",
+        "resource status",
+        "resources",
+        "databases",
+        "installed databases",
+        "jaspar",
+        "rebase",
+        "attract",
+        "rna structure resources",
+        "rna secondary structure resources",
+        "rnafold",
+        "viennarna",
+        "vienna rna",
+        "rnapkin",
+        "mfe"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_resources_status.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "protein_residue_genomic_coordinates",
+      "description": "Map one protein residue back to transcript-native genomic codon bases on a loaded locus.",
+      "trigger_terms": [
+        "protein residue coordinates",
+        "map residue to genome",
+        "protein to genome",
+        "residue to genome",
+        "genomic codon",
+        "codon coordinates",
+        "codon bases"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "seq_id": {
+              "required": true
+            },
+            "residue_start_1based": {
+              "required": true
+            },
+            "residue_end_1based": {
+              "required": false
+            },
+            "transcript_id": {
+              "required": false
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "protein-residue-genomic-coordinates",
+            "state_path": ".gentle_state.json",
+            "seq_id": "{seq_id}",
+            "transcript_id": "{transcript_id}",
+            "residue_start_1based": "{residue_start_1based}",
+            "residue_end_1based": "{residue_end_1based}",
+            "timeout_secs": 180
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "demo_isoform_protein_gel",
+      "description": "Run the canonical offline isoform protein molecular-weight gel demo using the bundled example locus.",
+      "trigger_terms": [
+        "protein gel demo",
+        "continue protein gel",
+        "isoform protein gel demo",
+        "molecular weight gel demo"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_isoform_protein_gel_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "demo_isoform_protein_2d_gel",
+      "description": "Run the canonical offline protein pI-vs-kDa 2D gel demo using the bundled example locus.",
+      "trigger_terms": [
+        "protein 2d gel demo",
+        "continue 2d gel",
+        "isoform protein 2d gel demo",
+        "isoelectric point demo",
+        "pi vs kda demo"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_isoform_protein_2d_gel_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "simple_pcr_primer_design",
+      "description": "Run the canonical offline simple PCR primer-design workflow with explicit core ROI, flank windows, amplicon limits, a PCR explanation SVG, and exported primer report.",
+      "trigger_terms": [
+        "simple pcr",
+        "simplest pcr",
+        "continue pcr",
+        "pcr primer design",
+        "design pcr primers",
+        "pcr constraints",
+        "selected region pcr"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_simple_pcr_primer_design_offline.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_preflight",
+      "description": "Check GENtle primer-design backend readiness, including the internal engine and optional Primer3/TaqMan-compatible design backend availability.",
+      "trigger_terms": [
+        "primer preflight",
+        "primer3 preflight",
+        "pcr backend status",
+        "qpcr backend status",
+        "taqman backend status",
+        "can gentle design primers"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_primers_preflight_auto.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_seed_from_feature",
+      "description": "Emit a non-mutating PCR/qPCR seed payload from one annotated feature so ClawBio can review or run the shared DesignPrimerPairs and DesignQpcrAssays operations.",
+      "trigger_terms": [
+        "seed primers from feature",
+        "seed pcr from feature",
+        "pcr seed from feature",
+        "primer seed feature",
+        "feature to pcr seed"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "primer-seed-from-feature",
+            "state_path": ".gentle_state.json",
+            "seq_id": "{seq_id}",
+            "source_feature_id": "{source_feature_id}"
+          },
+          "slots": {
+            "seq_id": {
+              "required": true,
+              "description": "GENtle source sequence id containing the selected feature"
+            },
+            "source_feature_id": {
+              "required": true,
+              "description": "Zero-based GENtle feature index to seed from"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_seed_from_splicing",
+      "description": "Emit a non-mutating PCR/qPCR seed payload from a splicing group, including shared pair-PCR and qPCR operation payloads.",
+      "trigger_terms": [
+        "seed primers from splicing",
+        "seed pcr from splicing",
+        "splicing to pcr seed",
+        "transcript pcr seed",
+        "primer seed splicing"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "primer-seed-from-splicing",
+            "state_path": ".gentle_state.json",
+            "seq_id": "{seq_id}",
+            "source_feature_id": "{source_feature_id}"
+          },
+          "slots": {
+            "seq_id": {
+              "required": true,
+              "description": "GENtle source sequence id containing transcript annotations"
+            },
+            "source_feature_id": {
+              "required": true,
+              "description": "Zero-based feature index selecting the splicing group"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_taqman_seed_from_feature",
+      "description": "Emit a probe-based qPCR/TaqMan seed payload from one annotated feature with GENtle's qPCR default constraints and protocol-cartoon metadata.",
+      "trigger_terms": [
+        "seed qpcr from feature",
+        "seed taqman from feature",
+        "feature to qpcr seed",
+        "feature to taqman assay",
+        "qpcr seed feature"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "qpcr-seed-from-feature",
+            "state_path": ".gentle_state.json",
+            "seq_id": "{seq_id}",
+            "source_feature_id": "{source_feature_id}"
+          },
+          "slots": {
+            "seq_id": {
+              "required": true,
+              "description": "GENtle source sequence id containing the selected feature"
+            },
+            "source_feature_id": {
+              "required": true,
+              "description": "Zero-based feature index to seed a probe-based qPCR assay from"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_taqman_seed_from_splicing",
+      "description": "Emit a transcript-aware probe-based qPCR/TaqMan seed payload from one splicing group, supporting shared-gene or transcript-distinguishing intent.",
+      "trigger_terms": [
+        "seed qpcr from splicing",
+        "seed taqman from splicing",
+        "shared transcript qpcr seed",
+        "transcript-aware qpcr seed",
+        "junction qpcr seed",
+        "exon junction taqman seed"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "qpcr-seed-from-splicing",
+            "state_path": ".gentle_state.json",
+            "seq_id": "{seq_id}",
+            "source_feature_id": "{source_feature_id}",
+            "qpcr_mode": "{qpcr_mode}",
+            "transcript_id": "{transcript_id}",
+            "specificity_evidence": "{specificity_evidence}"
+          },
+          "slots": {
+            "seq_id": {
+              "required": true,
+              "description": "GENtle source sequence id containing transcript annotations"
+            },
+            "source_feature_id": {
+              "required": true,
+              "description": "Zero-based feature index selecting the splicing group"
+            },
+            "qpcr_mode": {
+              "required": false,
+              "description": "shared_gene or distinguish_transcript; shared_gene is the usual default"
+            },
+            "transcript_id": {
+              "required": false,
+              "description": "Required when qpcr_mode is distinguish_transcript"
+            },
+            "specificity_evidence": {
+              "required": false,
+              "description": "junction_only, unique_exon_or_chain, or either_prefer_junction"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "pcr_primer_design_operation",
+      "description": "Run a supplied DesignPrimerPairs operation payload through GENtle's shared PCR primer-design command, optionally using Primer3.",
+      "trigger_terms": [
+        "run pcr primer design payload",
+        "design primers from json",
+        "design pcr primers from payload",
+        "execute designprimerpairs",
+        "primer design operation"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_design_pcr_primers_tp53_operation.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_taqman_design_operation",
+      "description": "Run a supplied DesignQpcrAssays or qPCR seed payload through GENtle's shared probe-based qPCR/TaqMan design command.",
+      "trigger_terms": [
+        "run qpcr design payload",
+        "run taqman design payload",
+        "design qpcr from json",
+        "design taqman assay",
+        "execute designqpcrassays",
+        "probe based qpcr design"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_design_qpcr_taqman_tp53_operation.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "transcript_qpcr_panel",
+      "description": "Build a transcript qPCR panel table from a stored shared-gene qPCR report, reusing the shared reverse primer/probe and proposing per-transcript characteristic forward primers when possible.",
+      "trigger_terms": [
+        "transcript qpcr panel",
+        "isoform qpcr panel",
+        "characteristic qpcr primers",
+        "transcript-specific qpcr primers",
+        "shared reverse probe qpcr",
+        "qpcr primer table",
+        "forward primers per transcript"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "transcript-qpcr-panel",
+            "seq_id": "{seq_id}",
+            "source_feature_id": "{source_feature_id}",
+            "shared_qpcr_report_id": "{shared_qpcr_report_id}",
+            "output_path": "{output_path}"
+          },
+          "slots": {
+            "seq_id": {
+              "required": true,
+              "description": "GENtle source sequence id containing the transcript annotations"
+            },
+            "source_feature_id": {
+              "required": true,
+              "description": "Zero-based source transcript/gene feature index for the splicing group"
+            },
+            "shared_qpcr_report_id": {
+              "required": true,
+              "description": "Stored shared-gene qPCR report id to reuse for shared primer/probe components"
+            },
+            "output_path": {
+              "required": false,
+              "description": "Optional JSON report output path"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "cdna_pcr_qpcr_assay_test",
+      "description": "Run the canonical offline cDNA PCR/qPCR assay-test workflow that checks supplied primers and a probe against transcript-derived cDNA templates.",
+      "trigger_terms": [
+        "test cdna pcr",
+        "test cdna qpcr",
+        "cdna pcr test",
+        "cdna qpcr test",
+        "test qpcr assay",
+        "qpcr assay test",
+        "cDNA PCR qPCR",
+        "transcript cdna assay"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_cdna_pcr_qpcr_assay_test_offline.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "cdna_pcr_qpcr_product_gel_nonspecific",
+      "description": "Run the offline cDNA PCR/qPCR assay-test workflow that materializes detected transcript-derived products into one vial/container and renders product-gel SVGs so non-specific products are visible as multiple bands.",
+      "trigger_terms": [
+        "show non-specific pcr products on a gel",
+        "show nonspecific pcr products on a gel",
+        "visualize non-specific pcr products",
+        "visualize nonspecific pcr products",
+        "pcr products gel",
+        "qpcr products gel",
+        "cdna product gel",
+        "show cdna pcr products on gel",
+        "show cdna qpcr products on gel",
+        "multiple pcr products gel"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "cdna_pcr_direct_test",
+      "description": "Test a supplied forward/reverse PCR primer pair directly against transcript-derived cDNA templates from one splicing group and return a transcript-map graphic, optionally on a genomic-aligned axis; product materialization/product-gel output is available when requested.",
+      "trigger_terms": [
+        "direct cdna pcr test",
+        "test these cdna pcr primers",
+        "check cdna pcr primers",
+        "validate rt-pcr primers",
+        "rt pcr primer test"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_cdna_pcr_test_demo_direct.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "cdna_qpcr_taqman_direct_test",
+      "description": "Test supplied qPCR/TaqMan forward, reverse, and probe oligos directly against transcript-derived cDNA templates from one splicing group and return a transcript-map graphic, optionally on a genomic-aligned axis; product materialization/product-gel output is available when requested.",
+      "trigger_terms": [
+        "direct cdna qpcr test",
+        "direct taqman test",
+        "test these taqman primers",
+        "test these qpcr primers and probe",
+        "validate cdna taqman assay",
+        "check taqman probe"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_cdna_qpcr_taqman_test_demo_direct.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_report_list",
+      "description": "List stored PCR primer-design reports from the active GENtle state.",
+      "trigger_terms": [
+        "list primer reports",
+        "list pcr primer reports",
+        "show available primer reports",
+        "primer reports"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_primer_reports_list.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_report_show",
+      "description": "Show one stored PCR primer-design report from the active GENtle state.",
+      "trigger_terms": [
+        "show primer report",
+        "show pcr primer report",
+        "inspect primer report",
+        "primer report details"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_primer_report_show_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "primer_report_export",
+      "description": "Export one stored PCR primer-design report to a bundle artifact.",
+      "trigger_terms": [
+        "export primer report",
+        "export pcr primer report",
+        "save primer report",
+        "primer report json"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_primer_report_export_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_report_list",
+      "description": "List stored qPCR/TaqMan design reports from the active GENtle state.",
+      "trigger_terms": [
+        "list qpcr reports",
+        "list taqman reports",
+        "show available qpcr reports",
+        "qpcr reports",
+        "taqman reports"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_qpcr_reports_list.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_report_show",
+      "description": "Show one stored qPCR/TaqMan design report from the active GENtle state.",
+      "trigger_terms": [
+        "show qpcr report",
+        "show taqman report",
+        "inspect qpcr report",
+        "taqman report details"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_qpcr_report_show_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "qpcr_report_export",
+      "description": "Export one stored qPCR/TaqMan design report to a bundle artifact.",
+      "trigger_terms": [
+        "export qpcr report",
+        "export taqman report",
+        "save qpcr report",
+        "taqman report json"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_qpcr_report_export_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "pcr_protocol_cartoon",
+      "description": "Render one PCR-family protocol cartoon, including pair-PCR, tailed PCR, overlap-extension PCR, or probe-based qPCR/TaqMan strips.",
+      "trigger_terms": [
+        "pcr protocol cartoon",
+        "render pcr cartoon",
+        "qpcr protocol cartoon",
+        "taqman protocol cartoon",
+        "show taqman graphic",
+        "probe qpcr graphic"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "pcr-protocol-cartoon",
+            "protocol_id": "{protocol_id}",
+            "output_path": "{output_path}",
+            "expected_artifacts": [
+              "{output_path}"
+            ]
+          },
+          "slots": {
+            "protocol_id": {
+              "required": true,
+              "description": "PCR protocol id, for example pcr.assay.pair, pcr.assay.pair.with_tail, pcr.oe.substitution, or pcr.assay.qpcr"
+            },
+            "output_path": {
+              "required": true,
+              "description": "SVG path to render and bundle"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "ensembl_gene_panel_protein_gel",
+      "description": "Render the guide-ready PATZ1/TP73/TP53/TP63/SP1/BACH2 Ensembl isoform molecular-weight gel.",
+      "trigger_terms": [
+        "gene panel protein gel",
+        "continue panel gel",
+        "multi gene protein gel",
+        "1d protein gel",
+        "molecular weight isoform panel",
+        "PATZ1 TP73 TP53 TP63 SP1 BACH2",
+        "PATZ1 TP73 TP53 TP63 SP1 BACH2 protein gel"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_gene_panel_isoform_protein_gel_ensembl.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "ensembl_gene_protein_2d_gel",
+      "description": "Render a protein pI-vs-kDa 2D gel for a requested Ensembl gene symbol.",
+      "trigger_terms": [
+        "2d protein gel",
+        "protein 2d gel",
+        "gene protein 2d gel",
+        "ensembl protein 2d gel",
+        "ensembl gene protein 2d gel",
+        "isoforms from ensembl",
+        "from ensembl"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "slots": {
+            "gene_symbol": {
+              "required": true
+            },
+            "species": {
+              "required": false,
+              "default": "homo_sapiens",
+              "aliases": {
+                "human": "homo_sapiens",
+                "homo sapiens": "homo_sapiens"
+              }
+            },
+            "source": {
+              "required": false,
+              "default": "ensembl",
+              "choices": [
+                "ensembl"
+              ]
+            }
+          },
+          "input_template": {
+            "schema": "gentle.clawbio_skill_request.v1",
+            "mode": "gene-protein-2d-gel",
+            "state_path": ".gentle_state.json",
+            "source": "{source}",
+            "species": "{species}",
+            "gene_symbol": "{gene_symbol}",
+            "ladders": [
+              "Protein Ladder 10-100 kDa"
+            ],
+            "timeout_secs": 600
+          }
+        }
+      ]
+    },
+    {
+      "intent_id": "demo_ensembl_gene_protein_2d_gel",
+      "description": "Run an online Ensembl gene protein pI-vs-kDa 2D gel example using the parameterized gene-protein-2d-gel request mode.",
+      "trigger_terms": [
+        "ensembl gene protein 2d gel demo",
+        "gene protein 2d gel demo",
+        "parameterized protein 2d gel demo"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_gene_protein_2d_gel_ensembl_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "demo_trypsin_digest_gel",
+      "description": "Run the canonical offline trypsin digest gel demo using the bundled example locus.",
+      "trigger_terms": [
+        "trypsin digest gel demo",
+        "protease digest demo",
+        "peptide gel demo"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_trypsin_digest_gel_demo.json"
+        }
+      ]
+    },
+    {
+      "intent_id": "explicit_demo",
+      "description": "Run the explicit GENtle ClawBio demo when the user asks for a demo.",
+      "trigger_terms": [
+        "gentle demo",
+        "cloning demo",
+        "continue gibson",
+        "demo",
+        "demonstration",
+        "example"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "demo": true
+        }
+      ]
+    }
+  ]
+}

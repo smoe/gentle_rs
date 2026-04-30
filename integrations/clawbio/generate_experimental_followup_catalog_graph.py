@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+"""Generate the ClawBio experimental follow-up catalog Mermaid graph."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import textwrap
+from pathlib import Path
+from typing import Any, Iterable
+
+
+CATALOG_SCHEMA = "gentle.clawbio_experimental_followup_request_catalog.v1"
+DEFAULT_CATALOG = "experimental_followup_request_catalog.json"
+DEFAULT_OUTPUT = "experimental_followup_catalog_graph.mmd"
+
+
+def _repo_local_default(name: str) -> Path:
+    return Path(__file__).resolve().parent / name
+
+
+def _stable_id(prefix: str, value: str) -> str:
+    digest = hashlib.sha1(value.encode("utf-8")).hexdigest()[:10]
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", value).strip("_").lower()
+    slug = slug[:28].strip("_") or "node"
+    return f"{prefix}_{slug}_{digest}"
+
+
+def _wrap_text(value: str, width: int = 42, max_lines: int = 3) -> str:
+    words = textwrap.wrap(value, width=width, break_long_words=False)
+    if len(words) > max_lines:
+        words = words[: max_lines - 1] + [words[max_lines - 1] + "..."]
+    return "<br/>".join(words) if words else value
+
+
+def _mermaid_label(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "<br/>")
+    )
+
+
+def _node(node_id: str, label: str) -> str:
+    return f'    {node_id}["{_mermaid_label(label)}"]'
+
+
+def _edge(source: str, target: str, label: str | None = None) -> str:
+    if label:
+        return f'  {source} -->|"{_mermaid_label(label)}"| {target}'
+    return f"  {source} --> {target}"
+
+
+def _first_seen(values: Iterable[str]) -> list[str]:
+    seen: dict[str, None] = {}
+    for value in values:
+        seen.setdefault(value, None)
+    return list(seen)
+
+
+def _load_catalog(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        catalog = json.load(handle)
+    if catalog.get("schema") != CATALOG_SCHEMA:
+        raise ValueError(
+            f"Unsupported catalog schema {catalog.get('schema')!r}; "
+            f"expected {CATALOG_SCHEMA!r}"
+        )
+    if not isinstance(catalog.get("intents"), list):
+        raise ValueError("Catalog must contain an intents array")
+    if not isinstance(catalog.get("decision_contexts", []), list):
+        raise ValueError("Catalog decision_contexts must be an array when present")
+    return catalog
+
+
+def _decision_context_label(context: dict[str, Any]) -> str:
+    context_id = context["context_id"]
+    title = context.get("title", context_id)
+    field_ids = [
+        field["field_id"]
+        for field in context.get("fields", [])
+        if isinstance(field, dict) and field.get("field_id")
+    ]
+    field_summary = ", ".join(field_ids[:4])
+    if len(field_ids) > 4:
+        field_summary += ", ..."
+    if field_summary:
+        return f"{_wrap_text(title)}<br/>{context_id}<br/>fields: {_wrap_text(field_summary, width=38)}"
+    return f"{_wrap_text(title)}<br/>{context_id}"
+
+
+def generate_mermaid(catalog: dict[str, Any]) -> str:
+    intents = catalog["intents"]
+    if not intents:
+        raise ValueError("Catalog must contain at least one intent")
+
+    decision_contexts = catalog.get("decision_contexts", [])
+    evidence_classes = _first_seen(
+        evidence
+        for intent in intents
+        for evidence in intent.get("evidence_classes", [])
+    )
+    request_paths = _first_seen(
+        request["path"]
+        for intent in intents
+        for request in intent.get("gentle_requests", [])
+    )
+    shell_commands = _first_seen(
+        command["shell_line"]
+        for intent in intents
+        for command in intent.get("gentle_shell_commands", [])
+    )
+    followup_families = _first_seen(
+        family
+        for intent in intents
+        for family in intent.get("followup_families", [])
+    )
+    confirmation_gates = _first_seen(
+        gate
+        for intent in intents
+        for gate in intent.get("confirmation_gates", [])
+    )
+
+    intent_ids = {
+        intent["intent_id"]: _stable_id("intent", intent["intent_id"])
+        for intent in intents
+    }
+    context_ids = {
+        context["context_id"]: _stable_id("context", context["context_id"])
+        for context in decision_contexts
+    }
+    evidence_ids = {
+        evidence: _stable_id("evidence", evidence) for evidence in evidence_classes
+    }
+    request_ids = {
+        path: _stable_id("request", path) for path in request_paths
+    }
+    command_ids = {
+        command: _stable_id("command", command) for command in shell_commands
+    }
+    family_ids = {
+        family: _stable_id("family", family) for family in followup_families
+    }
+    gate_ids = {
+        gate: _stable_id("gate", gate) for gate in confirmation_gates
+    }
+
+    artifact_node = "output_artifacts"
+    planning_node = "output_planning"
+    external_node = "external_evidence"
+    catalog_node = "catalog_source"
+
+    lines = [
+        "%% Generated by integrations/clawbio/generate_experimental_followup_catalog_graph.py; do not edit by hand.",
+        "%% Source: integrations/clawbio/experimental_followup_request_catalog.json",
+        "flowchart LR",
+        _node(
+            catalog_node,
+            "Request catalog<br/>intent routing source",
+        ),
+        _node(
+            external_node,
+            "External evidence<br/>predictors, omics, literature,<br/>clinical/reporting context",
+        ),
+        _node(
+            artifact_node,
+            "GENtle artifacts/reports<br/>SVG/PNG, BED, JSON, TSV,<br/>context bundles, cartoons",
+        ),
+        _node(
+            planning_node,
+            "Routine planning outputs<br/>time, cost, local fit,<br/>guardrails, missing materials",
+        ),
+        "",
+        '  subgraph INTENTS["Catalog intents (routing decisions)"]',
+    ]
+
+    for intent in intents:
+        intent_id = intent["intent_id"]
+        title = intent.get("title", intent_id)
+        lines.append(_node(intent_ids[intent_id], f"{_wrap_text(title)}<br/>{intent_id}"))
+    lines.append("  end")
+    lines.append("")
+
+    if decision_contexts:
+        lines.append(
+            '  subgraph CONTEXTS["Decision contexts (policy/filtering assumptions)"]'
+        )
+        for context in decision_contexts:
+            lines.append(
+                _node(
+                    context_ids[context["context_id"]],
+                    _decision_context_label(context),
+                )
+            )
+        lines.append("  end")
+        lines.append("")
+
+    lines.append('  subgraph EVIDENCE["Evidence classes (why a path is relevant)"]')
+    for evidence in evidence_classes:
+        lines.append(_node(evidence_ids[evidence], evidence))
+    lines.append("  end")
+    lines.append("")
+
+    lines.append('  subgraph REQUESTS["GENtle artifact/report request templates"]')
+    for path in request_paths:
+        label = Path(path).name
+        lines.append(_node(request_ids[path], _wrap_text(label, width=34)))
+    lines.append("  end")
+    lines.append("")
+
+    lines.append('  subgraph PLANNING["Routine/planning shell commands"]')
+    for command in shell_commands:
+        lines.append(_node(command_ids[command], _wrap_text(command, width=36)))
+    lines.append("  end")
+    lines.append("")
+
+    lines.append('  subgraph FOLLOWUPS["Follow-up candidate families"]')
+    for family in followup_families:
+        lines.append(_node(family_ids[family], family))
+    lines.append("  end")
+    lines.append("")
+
+    lines.append('  subgraph GATES["Confirmation gates"]')
+    for gate in confirmation_gates:
+        lines.append(_node(gate_ids[gate], gate))
+    lines.append("  end")
+    lines.append("")
+
+    for intent in intents:
+        intent_node = intent_ids[intent["intent_id"]]
+        lines.append(_edge(catalog_node, intent_node, "defines"))
+        if intent.get("external_evidence"):
+            lines.append(_edge(intent_node, external_node, "may use"))
+        for context_id in intent.get("decision_contexts", []):
+            if context_id not in context_ids:
+                raise ValueError(
+                    f"Intent {intent['intent_id']!r} references unknown "
+                    f"decision context {context_id!r}"
+                )
+            lines.append(_edge(intent_node, context_ids[context_id], "decides with"))
+            lines.append(_edge(context_ids[context_id], external_node, "summarizes"))
+        for evidence in intent.get("evidence_classes", []):
+            lines.append(_edge(intent_node, evidence_ids[evidence], "evidence"))
+        for request in intent.get("gentle_requests", []):
+            request_node = request_ids[request["path"]]
+            edge_label = "adapt" if request.get("requires_adaptation") else "reuse"
+            lines.append(_edge(intent_node, request_node, edge_label))
+            lines.append(_edge(request_node, artifact_node, "produces"))
+        for command in intent.get("gentle_shell_commands", []):
+            command_node = command_ids[command["shell_line"]]
+            lines.append(_edge(intent_node, command_node, "plans"))
+            lines.append(_edge(command_node, planning_node, "summarizes"))
+        for family in intent.get("followup_families", []):
+            lines.append(_edge(intent_node, family_ids[family], "candidate"))
+        for gate in intent.get("confirmation_gates", []):
+            lines.append(_edge(intent_node, gate_ids[gate], "ask before"))
+    lines.extend(
+        [
+            _edge(external_node, artifact_node, "contextualizes"),
+            _edge(artifact_node, planning_node, "informs"),
+            "",
+            "  classDef source fill:#fff8db,stroke:#8a6d1d,color:#2f2410;",
+            "  classDef intent fill:#e7f0ff,stroke:#2450a6,color:#10254d;",
+            "  classDef context fill:#fff4d6,stroke:#b7791f,color:#3f2500;",
+            "  classDef evidence fill:#eef7ee,stroke:#337a3e,color:#17391d;",
+            "  classDef request fill:#f7ecff,stroke:#7a3ea6,color:#33184b;",
+            "  classDef planning fill:#fff0e6,stroke:#b75d1a,color:#4b250c;",
+            "  classDef family fill:#e6fbff,stroke:#1f7a89,color:#0b3740;",
+            "  classDef gate fill:#ffecec,stroke:#a63b3b,color:#4b1717;",
+            "  classDef output fill:#f3f4f6,stroke:#4b5563,color:#111827;",
+            f"  class {catalog_node},{external_node} source;",
+            f"  class {','.join(intent_ids.values())} intent;",
+        ]
+    )
+    if context_ids:
+        lines.append(f"  class {','.join(context_ids.values())} context;")
+    if evidence_ids:
+        lines.append(f"  class {','.join(evidence_ids.values())} evidence;")
+    if request_ids:
+        lines.append(f"  class {','.join(request_ids.values())} request;")
+    if command_ids:
+        lines.append(f"  class {','.join(command_ids.values())} planning;")
+    if family_ids:
+        lines.append(f"  class {','.join(family_ids.values())} family;")
+    if gate_ids:
+        lines.append(f"  class {','.join(gate_ids.values())} gate;")
+    lines.extend(
+        [
+            f"  class {artifact_node},{planning_node} output;",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Generate a deterministic Mermaid graph from the ClawBio experimental follow-up request catalog."
+    )
+    parser.add_argument(
+        "--catalog",
+        type=Path,
+        default=_repo_local_default(DEFAULT_CATALOG),
+        help=f"Path to {DEFAULT_CATALOG}",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=_repo_local_default(DEFAULT_OUTPUT),
+        help=f"Path to write {DEFAULT_OUTPUT}",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Fail if the output file differs from generated content.",
+    )
+    args = parser.parse_args()
+
+    catalog = _load_catalog(args.catalog)
+    mermaid = generate_mermaid(catalog)
+
+    if args.check:
+        existing = args.output.read_text(encoding="utf-8")
+        if existing != mermaid:
+            raise SystemExit(
+                f"{args.output} is stale; rerun {Path(__file__).name}"
+            )
+        return 0
+
+    args.output.write_text(mermaid, encoding="utf-8")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

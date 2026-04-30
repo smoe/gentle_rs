@@ -1,0 +1,10 @@
+[package]
+name = "gentle-engine"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "Deterministic GENtle biology and workflow engine"
+
+[lib]
+name = "gentle_engine"
+path = "src/lib.rs"

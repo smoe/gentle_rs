@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GBSet>
+  <GBSeq>
+    <GBSeq_locus>TOY_MULTI_A</GBSeq_locus>
+    <GBSeq_length>24</GBSeq_length>
+    <GBSeq_moltype>DNA</GBSeq_moltype>
+    <GBSeq_topology>linear</GBSeq_topology>
+    <GBSeq_division>SYN</GBSeq_division>
+    <GBSeq_definition>Synthetic multi-record XML fixture A.</GBSeq_definition>
+    <GBSeq_primary-accession>TOYMULTIA</GBSeq_primary-accession>
+    <GBSeq_accession-version>TOYMULTIA.1</GBSeq_accession-version>
+    <GBSeq_sequence>atgcaaaaatgcaaaaatgcaaaa</GBSeq_sequence>
+    <GBSeq_feature-table>
+      <GBFeature>
+        <GBFeature_key>gene</GBFeature_key>
+        <GBFeature_intervals>
+          <GBInterval>
+            <GBInterval_from>1</GBInterval_from>
+            <GBInterval_to>4</GBInterval_to>
+          </GBInterval>
+          <GBInterval>
+            <GBInterval_from>9</GBInterval_from>
+            <GBInterval_to>12</GBInterval_to>
+          </GBInterval>
+        </GBFeature_intervals>
+        <GBFeature_quals>
+          <GBQualifier>
+            <GBQualifier_name>gene</GBQualifier_name>
+            <GBQualifier_value>multiA</GBQualifier_value>
+          </GBQualifier>
+          <GBQualifier>
+            <GBQualifier_name>pseudo</GBQualifier_name>
+          </GBQualifier>
+        </GBFeature_quals>
+      </GBFeature>
+    </GBSeq_feature-table>
+  </GBSeq>
+  <GBSeq>
+    <GBSeq_locus>TOY_MULTI_B</GBSeq_locus>
+    <GBSeq_length>24</GBSeq_length>
+    <GBSeq_moltype>DNA</GBSeq_moltype>
+    <GBSeq_topology>linear</GBSeq_topology>
+    <GBSeq_division>SYN</GBSeq_division>
+    <GBSeq_definition>Synthetic multi-record XML fixture B.</GBSeq_definition>
+    <GBSeq_primary-accession>TOYMULTIB</GBSeq_primary-accession>
+    <GBSeq_accession-version>TOYMULTIB.1</GBSeq_accession-version>
+    <GBSeq_sequence>ttttccccaaaaggggttttcccc</GBSeq_sequence>
+    <GBSeq_feature-table>
+      <GBFeature>
+        <GBFeature_key>misc_feature</GBFeature_key>
+        <GBFeature_location>complement(5..16)</GBFeature_location>
+        <GBFeature_quals>
+          <GBQualifier>
+            <GBQualifier_name>note</GBQualifier_name>
+            <GBQualifier_value>line one line two</GBQualifier_value>
+          </GBQualifier>
+        </GBFeature_quals>
+      </GBFeature>
+    </GBSeq_feature-table>
+  </GBSeq>
+</GBSet>

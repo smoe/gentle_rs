@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "pcr-protocol-cartoon",
+  "protocol_id": "pcr.assay.qpcr",
+  "output_path": "artifacts/qpcr.assay.protocol.svg",
+  "expected_artifacts": [
+    "artifacts/qpcr.assay.protocol.svg"
+  ],
+  "timeout_secs": 180
+}

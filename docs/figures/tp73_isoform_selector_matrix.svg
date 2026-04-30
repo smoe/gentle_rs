@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1555" height="900" viewBox="0 0 1555 900" role="img">
+<title>TP73 cDNA isoform-selector PCR matrix</title>
+<style>text{font-family:Avenir Next,Segoe UI,Arial,sans-serif}.title{font-size:25px;font-weight:800;fill:#0f172a}.sub{font-size:13px;fill:#475569}.hdr{font-size:12px;font-weight:800;fill:#0f172a}.small{font-size:10px;fill:#475569}.seq{font-size:9px;fill:#334155;font-family:Menlo,Consolas,monospace}.celltext{font-size:11px;font-weight:700;fill:#0f172a}.len{font-size:10px;fill:#334155}.none{fill:#f1f5f9;stroke:#cbd5e1}.single{fill:#dcfce7;stroke:#16a34a}.multi{fill:#fef3c7;stroke:#d97706}.fail{stroke:#dc2626;stroke-width:2}.warn{stroke:#f97316;stroke-width:1.4}.pass{stroke-width:1}</style>
+<rect x="0" y="0" width="1555" height="900" fill="#ffffff"/>
+<rect x="18" y="18" width="1519" height="864" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+<text class="title" x="36" y="55">TP73 cDNA isoform-selector PCR matrix</text>
+<text class="sub" x="36" y="78">Five 5-prime selector primers crossed with seven 3-prime splice/readout primers; products were tested with GENtle primers test-cdna-pcr on the bundled TP73 RefSeq locus.</text>
+<text class="sub" x="36" y="99">Readout logic: α=α/β + α/γ/ζ, β=α/β + β/ε, γ=γ/ε + α/γ/ζ, δ=δ, ε=γ/ε + β/ε, ζ=ζ + α/γ/ζ; η has no separate local RefSeq cDNA row here.</text>
+<text class="hdr" x="218" y="128">alpha/beta junction</text>
+<text class="small" x="218" y="145">77485..77633 -&gt; 78412..78550</text>
+<text class="seq" x="218" y="160">GAGCATCCCGGGGCCCAC</text>
+<text class="hdr" x="403" y="128">beta/epsilon junction</text>
+<text class="small" x="403" y="145">78412..78550 -&gt; 80232..83686</text>
+<text class="seq" x="403" y="160">CCAGGTCCTGACGAGGCTGG</text>
+<text class="hdr" x="588" y="128">gamma/epsilon junction</text>
+<text class="small" x="588" y="145">76812..76933 -&gt; 78412..78550</text>
+<text class="seq" x="588" y="160">ATCCCGGGGCGGCCTCTGTAG</text>
+<text class="hdr" x="773" y="128">delta junction</text>
+<text class="small" x="773" y="145">76812..76933 -&gt; 80232..83686</text>
+<text class="seq" x="773" y="160">CCAGGTCGGCCTCTGTAGGAGCT</text>
+<text class="hdr" x="958" y="128">zeta junction</text>
+<text class="small" x="958" y="145">76812..76933 -&gt; 78948..79041</text>
+<text class="seq" x="958" y="160">TCCTGTTAAAAAAGGCCTCTGTA</text>
+<text class="hdr" x="1143" y="128">alpha/gamma/zeta junction</text>
+<text class="small" x="1143" y="145">78948..79041 -&gt; 80232..83686</text>
+<text class="seq" x="1143" y="160">CCCCAGGTCCTCAATGGTCA</text>
+<text class="hdr" x="1328" y="128">common terminal exon</text>
+<text class="small" x="1328" y="145">common terminal exon</text>
+<text class="seq" x="1328" y="160">AGTCGTGGCCCTGCTTCAGGTCCT</text>
+<text class="hdr" x="36" y="145">5-prime selector</text>
+<text class="hdr" x="36" y="198">TA: TA / full N-terminus</text>
+<text class="seq" x="36" y="216">ACGGCTGCAGAGCGAGCTGC</text>
+<rect class="multi warn" x="215" y="183" width="175" height="84" rx="8"/>
+<text class="celltext" x="225" y="203">TAp73α, TAp73β</text>
+<text class="len" x="225" y="255">1402 bp; QC warning; gDNA low</text>
+<rect class="multi warn" x="400" y="183" width="175" height="84" rx="8"/>
+<text class="celltext" x="410" y="203">TAp73β, TAp73ε</text>
+<text class="len" x="410" y="255">1385,1534 bp; QC warning; gDNA low</text>
+<rect class="multi warn" x="585" y="183" width="175" height="84" rx="8"/>
+<text class="celltext" x="595" y="203">TAp73γ, TAp73ε</text>
+<text class="len" x="595" y="255">1249 bp; QC warning; gDNA low</text>
+<rect class="single fail" x="770" y="183" width="175" height="84" rx="8"/>
+<text class="celltext" x="780" y="203">TAp73δ</text>
+<text class="len" x="780" y="255">1246 bp; QC fail; gDNA low</text>
+<rect class="single warn" x="955" y="183" width="175" height="84" rx="8"/>
+<text class="celltext" x="965" y="203">TAp73ζ</text>
+<text class="len" x="965" y="255">1252 bp; QC warning; gDNA low</text>
+<rect class="multi warn" x="1140" y="183" width="175" height="84" rx="8"/>
+<text class="celltext" x="1150" y="203">TAp73α, TAp73γ, TAp73ζ</text>
+<text class="len" x="1150" y="255">1342,1481,1630 bp; QC warning; gDNA low</text>
+<rect class="multi warn" x="1325" y="183" width="175" height="84" rx="8"/>
+<text class="celltext" x="1335" y="203">TAp73α, TAp73β, TAp73γ,</text>
+<text class="celltext" x="1335" y="217">TAp73δ, TAp73ε, TAp73ζ</text>
+<text class="len" x="1335" y="255">1321,1415,1460,1554,1609,1703 bp; QC warning; gDNA low</text>
+<text class="hdr" x="36" y="296">X2: X2 alternative 5&#x27; cap</text>
+<text class="seq" x="36" y="314">AGGCTTAGCCAAGAGCGAGCTGC</text>
+<rect class="single pass" x="215" y="281" width="175" height="84" rx="8"/>
+<text class="celltext" x="225" y="301">X2-p73α</text>
+<text class="len" x="225" y="353">1405 bp; QC pass; gDNA low</text>
+<rect class="none warn" x="400" y="281" width="175" height="84" rx="8"/>
+<text class="celltext" x="410" y="309">no product</text>
+<rect class="none pass" x="585" y="281" width="175" height="84" rx="8"/>
+<text class="celltext" x="595" y="309">no product</text>
+<rect class="none fail" x="770" y="281" width="175" height="84" rx="8"/>
+<text class="celltext" x="780" y="309">no product</text>
+<rect class="none warn" x="955" y="281" width="175" height="84" rx="8"/>
+<text class="celltext" x="965" y="309">no product</text>
+<rect class="single pass" x="1140" y="281" width="175" height="84" rx="8"/>
+<text class="celltext" x="1150" y="301">X2-p73α</text>
+<text class="len" x="1150" y="353">1633 bp; QC pass; gDNA low</text>
+<rect class="single pass" x="1325" y="281" width="175" height="84" rx="8"/>
+<text class="celltext" x="1335" y="301">X2-p73α</text>
+<text class="len" x="1335" y="353">1706 bp; QC pass; gDNA low</text>
+<text class="hdr" x="36" y="394">X1: X1 alternative 5&#x27; cap</text>
+<text class="seq" x="36" y="412">AAATAACAGAGCGAGCTGCCCTCG</text>
+<rect class="single warn" x="215" y="379" width="175" height="84" rx="8"/>
+<text class="celltext" x="225" y="399">X1-p73α</text>
+<text class="len" x="225" y="451">1401 bp; QC warning; gDNA low</text>
+<rect class="none fail" x="400" y="379" width="175" height="84" rx="8"/>
+<text class="celltext" x="410" y="407">no product</text>
+<rect class="none warn" x="585" y="379" width="175" height="84" rx="8"/>
+<text class="celltext" x="595" y="407">no product</text>
+<rect class="none fail" x="770" y="379" width="175" height="84" rx="8"/>
+<text class="celltext" x="780" y="407">no product</text>
+<rect class="none warn" x="955" y="379" width="175" height="84" rx="8"/>
+<text class="celltext" x="965" y="407">no product</text>
+<rect class="single warn" x="1140" y="379" width="175" height="84" rx="8"/>
+<text class="celltext" x="1150" y="399">X1-p73α</text>
+<text class="len" x="1150" y="451">1629 bp; QC warning; gDNA low</text>
+<rect class="single warn" x="1325" y="379" width="175" height="84" rx="8"/>
+<text class="celltext" x="1335" y="399">X1-p73α</text>
+<text class="len" x="1335" y="451">1702 bp; QC warning; gDNA low</text>
+<text class="hdr" x="36" y="492">DN: DeltaN / internal promoter</text>
+<text class="seq" x="36" y="510">ACCTCGCCACGGCCCAGTTCAAT</text>
+<rect class="multi pass" x="215" y="477" width="175" height="84" rx="8"/>
+<text class="celltext" x="225" y="497">ΔNp73α, ΔNp73β</text>
+<text class="len" x="225" y="549">1184 bp; QC pass; gDNA low</text>
+<rect class="multi fail" x="400" y="477" width="175" height="84" rx="8"/>
+<text class="celltext" x="410" y="497">ΔNp73β, ΔNp73ε</text>
+<text class="len" x="410" y="549">1167,1316 bp; QC fail; gDNA low</text>
+<rect class="multi pass" x="585" y="477" width="175" height="84" rx="8"/>
+<text class="celltext" x="595" y="497">ΔNp73γ, ΔNp73ε</text>
+<text class="len" x="595" y="549">1031 bp; QC pass; gDNA low</text>
+<rect class="single warn" x="770" y="477" width="175" height="84" rx="8"/>
+<text class="celltext" x="780" y="497">ΔNp73δ</text>
+<text class="len" x="780" y="549">1028 bp; QC warning; gDNA low</text>
+<rect class="single warn" x="955" y="477" width="175" height="84" rx="8"/>
+<text class="celltext" x="965" y="497">ΔNp73ζ</text>
+<text class="len" x="965" y="549">1034 bp; QC warning; gDNA low</text>
+<rect class="multi pass" x="1140" y="477" width="175" height="84" rx="8"/>
+<text class="celltext" x="1150" y="497">ΔNp73α, ΔNp73γ, ΔNp73ζ</text>
+<text class="len" x="1150" y="549">1124,1263,1412 bp; QC pass; gDNA low</text>
+<rect class="multi pass" x="1325" y="477" width="175" height="84" rx="8"/>
+<text class="celltext" x="1335" y="497">ΔNp73α, ΔNp73β, ΔNp73γ,</text>
+<text class="celltext" x="1335" y="511">ΔNp73δ, ΔNp73ε, ΔNp73ζ</text>
+<text class="len" x="1335" y="549">1103,1197,1242,1336,1391,1485 bp; QC pass; gDNA low</text>
+<text class="hdr" x="36" y="590">V13: variant-13 5&#x27; exon</text>
+<text class="seq" x="36" y="608">CATCTGCAGGACAGGCCCAGTTC</text>
+<rect class="single pass" x="215" y="575" width="175" height="84" rx="8"/>
+<text class="celltext" x="225" y="595">V13-p73α</text>
+<text class="len" x="225" y="647">1187 bp; QC pass; gDNA low</text>
+<rect class="none fail" x="400" y="575" width="175" height="84" rx="8"/>
+<text class="celltext" x="410" y="603">no product</text>
+<rect class="none pass" x="585" y="575" width="175" height="84" rx="8"/>
+<text class="celltext" x="595" y="603">no product</text>
+<rect class="none warn" x="770" y="575" width="175" height="84" rx="8"/>
+<text class="celltext" x="780" y="603">no product</text>
+<rect class="none warn" x="955" y="575" width="175" height="84" rx="8"/>
+<text class="celltext" x="965" y="603">no product</text>
+<rect class="single pass" x="1140" y="575" width="175" height="84" rx="8"/>
+<text class="celltext" x="1150" y="595">V13-p73α</text>
+<text class="len" x="1150" y="647">1415 bp; QC pass; gDNA low</text>
+<rect class="single fail" x="1325" y="575" width="175" height="84" rx="8"/>
+<text class="celltext" x="1335" y="595">V13-p73α</text>
+<text class="len" x="1335" y="647">1488 bp; QC fail; gDNA low</text>
+<rect class="single pass" x="36" y="687" width="18" height="12" rx="3"/><text class="small" x="62" y="697">single product</text>
+<rect class="multi pass" x="170" y="687" width="18" height="12" rx="3"/><text class="small" x="196" y="697">multiple products; interpret by band size and companion readouts</text>
+<rect class="none pass" x="505" y="687" width="18" height="12" rx="3"/><text class="small" x="531" y="697">not detected</text>
+<rect fill="none" stroke="#dc2626" stroke-width="2" x="650" y="687" width="18" height="12" rx="3"/><text class="small" x="676" y="697">red border: oligo QC fail; orange border: QC warning</text>
+<text class="small" x="36" y="723">Full per-pair JSON/SVG/PNG maps are generated from the same reports. The SVG rows use cDNA templates derived from test_files/tp73.ncbi.gb feature 4 on TargetGroupTargetStrand.</text>
+</svg>

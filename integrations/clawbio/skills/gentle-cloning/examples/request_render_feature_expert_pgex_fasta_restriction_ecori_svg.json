@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "render-feature-expert-svg pgex_fasta restriction 944 --enzyme EcoRI --start 944 --end 949 artifacts/pgex_fasta.restriction.ecori.expert.svg",
+  "expected_artifacts": [
+    "artifacts/pgex_fasta.restriction.ecori.expert.svg"
+  ],
+  "timeout_secs": 180
+}

@@ -1,0 +1,18 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "tutorial_landscape_overview",
+  "title": "GENtle Tutorial Landscape Overview",
+  "catalog": {
+    "order": 10,
+    "path": "docs/tutorial/landscape_overview.md",
+    "type": "operational_reference",
+    "status": "manual/reference",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "contributors",
+      "cli_first",
+      "gui_first"
+    ],
+    "notes": "Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity."
+  }
+}

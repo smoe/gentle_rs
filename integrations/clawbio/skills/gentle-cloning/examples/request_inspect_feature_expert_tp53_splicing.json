@@ -1,0 +1,7 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "inspect-feature-expert tp53_panel_source splicing 2",
+  "timeout_secs": 180
+}

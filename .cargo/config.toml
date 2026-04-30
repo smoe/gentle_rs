@@ -1,0 +1,7 @@
+[build]
+# Keep build artifacts local to each checkout so parallel worktrees and rebases
+# do not contend over one shared mutable target tree.
+#
+# Contributors can still override with CARGO_TARGET_DIR if they need a custom
+# location for one-off runs.
+target-dir = "target"

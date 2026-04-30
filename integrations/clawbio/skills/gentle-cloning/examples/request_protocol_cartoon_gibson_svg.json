@@ -1,0 +1,9 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "protocol-cartoon render-svg gibson.two_fragment artifacts/gibson.two_fragment.protocol.svg",
+  "expected_artifacts": [
+    "artifacts/gibson.two_fragment.protocol.svg"
+  ],
+  "timeout_secs": 180
+}

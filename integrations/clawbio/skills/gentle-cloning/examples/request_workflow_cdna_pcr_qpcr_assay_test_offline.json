@@ -1,0 +1,13 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow_path": "docs/examples/workflows/cdna_pcr_qpcr_assay_test_offline.json",
+  "expected_artifacts": [
+    "artifacts/cdna_assay_demo.pcr_report.json",
+    "artifacts/cdna_assay_demo.pcr_transcript_map.svg",
+    "artifacts/cdna_assay_demo.qpcr_report.json",
+    "artifacts/cdna_assay_demo.qpcr_transcript_map.svg"
+  ],
+  "timeout_secs": 300
+}

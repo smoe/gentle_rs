@@ -1,0 +1,64 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow": {
+    "run_id": "clawbio_pgex_linear_tfbs_svg",
+    "ops": [
+      {
+        "AnnotateTfbs": {
+          "seq_id": "pgex_fasta",
+          "motifs": [
+            "SP1",
+            "CTCF",
+            "TATAAA"
+          ],
+          "min_llr_quantile": 0.95,
+          "clear_existing": true,
+          "max_hits": 200
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "show_tfbs",
+          "value": true
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "tfbs_display_use_llr_bits",
+          "value": false
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "tfbs_display_min_llr_quantile",
+          "value": 0.98
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "tfbs_display_use_true_log_odds_quantile",
+          "value": true
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "tfbs_display_min_true_log_odds_quantile",
+          "value": 0.98
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "pgex_fasta",
+          "mode": "Linear",
+          "path": "artifacts/pgex_fasta.linear.tfbs.svg"
+        }
+      }
+    ]
+  },
+  "expected_artifacts": [
+    "artifacts/pgex_fasta.linear.tfbs.svg"
+  ],
+  "timeout_secs": 300
+}

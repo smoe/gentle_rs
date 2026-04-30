@@ -1,0 +1,18 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "gibson_specialist_testing_gui",
+  "title": "Gibson Specialist Testing Tutorial",
+  "catalog": {
+    "order": 4,
+    "path": "docs/tutorial/gibson_specialist_testing_gui.md",
+    "type": "gui_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cloning_planning",
+      "contributors"
+    ],
+    "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity."
+  }
+}

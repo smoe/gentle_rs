@@ -1,0 +1,12 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "ensure_reference_prepared": {
+    "genome_id": "Human GRCh38 Ensembl 116",
+    "catalog_path": "assets/genomes.json",
+    "prepare_timeout_secs": 7200
+  },
+  "shell_line": "genomes extract-promoter \"Human GRCh38 Ensembl 116\" TERT --output-id grch38_tert_promoter --upstream-bp 1000 --downstream-bp 200",
+  "timeout_secs": 1200
+}

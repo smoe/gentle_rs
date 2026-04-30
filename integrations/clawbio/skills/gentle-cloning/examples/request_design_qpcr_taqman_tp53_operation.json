@@ -1,0 +1,54 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "qpcr-design",
+  "state_path": ".gentle_state.json",
+  "backend": "auto",
+  "request_json": {
+    "DesignQpcrAssays": {
+      "template": "tp53_panel_source",
+      "roi_start_0based": 240,
+      "roi_end_0based": 360,
+      "forward": {
+        "min_length": 18,
+        "max_length": 24,
+        "start_0based": 180,
+        "end_0based": 280,
+        "min_tm_c": 63.0,
+        "max_tm_c": 73.0,
+        "min_gc_fraction": 0.35,
+        "max_gc_fraction": 0.7,
+        "max_anneal_hits": 1
+      },
+      "reverse": {
+        "min_length": 18,
+        "max_length": 24,
+        "start_0based": 340,
+        "end_0based": 440,
+        "min_tm_c": 63.0,
+        "max_tm_c": 73.0,
+        "min_gc_fraction": 0.35,
+        "max_gc_fraction": 0.7,
+        "max_anneal_hits": 1
+      },
+      "probe": {
+        "min_length": 20,
+        "max_length": 30,
+        "min_tm_c": 71.0,
+        "max_tm_c": 80.0,
+        "min_gc_fraction": 0.35,
+        "max_gc_fraction": 0.75,
+        "max_anneal_hits": 1
+      },
+      "pair_constraints": {
+        "require_roi_flanking": true
+      },
+      "min_amplicon_bp": 80,
+      "max_amplicon_bp": 200,
+      "max_tm_delta_c": 3.0,
+      "max_probe_tm_delta_c": 10.0,
+      "max_assays": 25,
+      "report_id": "clawbio_tp53_taqman_demo"
+    }
+  },
+  "timeout_secs": 300
+}

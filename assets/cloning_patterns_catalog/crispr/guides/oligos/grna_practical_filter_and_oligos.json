@@ -1,0 +1,48 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "grna_practical_filter_and_oligos",
+  "description": "Apply practical guide filters and generate cloning oligos from a guide set.",
+  "details_url": "https://www.addgene.org/protocols/crispr/",
+  "parameters": [
+    {
+      "name": "guide_set_id",
+      "required": true
+    },
+    {
+      "name": "filtered_guide_set_id",
+      "default_value": "guides_pass",
+      "required": false
+    },
+    {
+      "name": "gc_min",
+      "default_value": "0.3",
+      "required": false
+    },
+    {
+      "name": "gc_max",
+      "default_value": "0.8",
+      "required": false
+    },
+    {
+      "name": "max_homopolymer_run",
+      "default_value": "4",
+      "required": false
+    },
+    {
+      "name": "avoid_u6_terminator_tttt",
+      "default_value": "true",
+      "required": false
+    },
+    {
+      "name": "template_id",
+      "default_value": "lenti_bsmbi_u6_default",
+      "required": false
+    },
+    {
+      "name": "oligo_set_id",
+      "default_value": "guides_oligos",
+      "required": false
+    }
+  ],
+  "script": "guides filter ${guide_set_id} --config '{\"gc_min\":${gc_min},\"gc_max\":${gc_max},\"max_homopolymer_run\":${max_homopolymer_run},\"avoid_u6_terminator_tttt\":${avoid_u6_terminator_tttt}}' --output-set ${filtered_guide_set_id}\nguides oligos-generate ${filtered_guide_set_id} ${template_id} --apply-5prime-g-extension --output-oligo-set ${oligo_set_id} --passed-only\nguides oligos-show ${oligo_set_id}"
+}

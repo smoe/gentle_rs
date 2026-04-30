@@ -1,0 +1,41 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "gibson_arrangements_baseline",
+  "title": "Gibson Arrangements Starter Project (offline)",
+  "summary": "Loads the deterministic pGEX destination and insert, then applies the canonical single-insert Gibson plan so the arrangement tutorial opens with singleton outputs and a stored three-lane arrangement already present.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/pGEX-3X.gb",
+    "docs/tutorial/inputs/gibson_insert_demo.fa"
+  ],
+  "tags": [
+    "tutorial",
+    "gibson",
+    "arrangements",
+    "gui",
+    "gel",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_gibson_arrangements_baseline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/pGEX-3X.gb",
+          "as_id": "gibson_destination_pgex"
+        }
+      },
+      {
+        "LoadFile": {
+          "path": "docs/tutorial/inputs/gibson_insert_demo.fa",
+          "as_id": "gibson_insert_demo"
+        }
+      },
+      {
+        "ApplyGibsonAssemblyPlan": {
+          "plan_json": "{\n  \"schema\": \"gentle.gibson_assembly_plan.v1\",\n  \"id\": \"gibson_single_insert_readme\",\n  \"title\": \"README Gibson single-insert example\",\n  \"summary\": \"Single-insert destination-first Gibson example using the tutorial pGEX destination and insert demo.\",\n  \"destination\": {\n    \"seq_id\": \"gibson_destination_pgex\",\n    \"topology_before_opening\": \"circular\",\n    \"opening\": {\n      \"mode\": \"defined_site\",\n      \"label\": \"SmaI\",\n      \"start_0based\": 941,\n      \"end_0based_exclusive\": 941,\n      \"left_end_id\": \"dest_left\",\n      \"right_end_id\": \"dest_right\",\n      \"uniqueness_requirement\": \"must_be_unambiguous\"\n    }\n  },\n  \"product\": {\n    \"topology\": \"circular\",\n    \"output_id_hint\": \"gibson_destination_pgex_with_gibson_insert_demo\"\n  },\n  \"fragments\": [\n    {\n      \"id\": \"insert_1\",\n      \"seq_id\": \"gibson_insert_demo\",\n      \"role\": \"insert\",\n      \"orientation\": \"forward\",\n      \"left_end_strategy\": {\n        \"mode\": \"primer_added_overlap\",\n        \"target_junction_id\": \"junction_left\"\n      },\n      \"right_end_strategy\": {\n        \"mode\": \"primer_added_overlap\",\n        \"target_junction_id\": \"junction_right\"\n      }\n    }\n  ],\n  \"assembly_order\": [\n    {\n      \"kind\": \"destination_end\",\n      \"id\": \"dest_left\"\n    },\n    {\n      \"kind\": \"fragment\",\n      \"id\": \"insert_1\"\n    },\n    {\n      \"kind\": \"destination_end\",\n      \"id\": \"dest_right\"\n    }\n  ],\n  \"junctions\": [\n    {\n      \"id\": \"junction_left\",\n      \"left_member\": {\n        \"kind\": \"destination_end\",\n        \"id\": \"dest_left\"\n      },\n      \"right_member\": {\n        \"kind\": \"fragment\",\n        \"id\": \"insert_1\"\n      },\n      \"required_overlap_bp\": 30,\n      \"overlap_partition\": {\n        \"left_member_bp\": 30,\n        \"right_member_bp\": 0\n      },\n      \"overlap_source\": \"derive_from_destination_left_flank\",\n      \"distinct_from\": [\n        \"junction_right\"\n      ]\n    },\n    {\n      \"id\": \"junction_right\",\n      \"left_member\": {\n        \"kind\": \"fragment\",\n        \"id\": \"insert_1\"\n      },\n      \"right_member\": {\n        \"kind\": \"destination_end\",\n        \"id\": \"dest_right\"\n      },\n      \"required_overlap_bp\": 30,\n      \"overlap_partition\": {\n        \"left_member_bp\": 0,\n        \"right_member_bp\": 30\n      },\n      \"overlap_source\": \"derive_from_destination_right_flank\",\n      \"distinct_from\": [\n        \"junction_left\"\n      ]\n    }\n  ],\n  \"validation_policy\": {\n    \"require_unambiguous_destination_opening\": true,\n    \"require_distinct_terminal_junctions\": true,\n    \"adjacency_overlap_mismatch\": \"error\",\n    \"design_targets\": {\n      \"overlap_bp_min\": 30,\n      \"overlap_bp_max\": 30,\n      \"minimum_overlap_tm_celsius\": 60.0,\n      \"priming_segment_tm_min_celsius\": 58.0,\n      \"priming_segment_tm_max_celsius\": 68.0,\n      \"priming_segment_min_length_bp\": 18,\n      \"priming_segment_max_length_bp\": 35,\n      \"max_anneal_hits\": 4\n    },\n    \"uniqueness_checks\": {\n      \"destination_context\": \"warn\",\n      \"participating_fragments\": \"warn\",\n      \"reference_contexts\": []\n    }\n  }\n}\n"
+        }
+      }
+    ]
+  }
+}

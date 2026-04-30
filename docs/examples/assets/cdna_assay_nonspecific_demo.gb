@@ -1,0 +1,28 @@
+LOCUS       CDNA_NONSPEC_DEMO       72 bp    DNA     linear   SYN 01-JAN-2026
+DEFINITION  Synthetic cDNA PCR/qPCR nonspecific product demo.
+ACCESSION   CDNA_NONSPEC_DEMO
+VERSION     CDNA_NONSPEC_DEMO.1
+KEYWORDS    synthetic; cDNA assay; PCR; qPCR.
+SOURCE      synthetic construct
+  ORGANISM  synthetic construct
+            other sequences; artificial sequences.
+FEATURES             Location/Qualifiers
+     source          1..72
+                     /organism="synthetic construct"
+                     /mol_type="genomic DNA"
+     gene            1..72
+                     /gene="NONSPEC"
+     mRNA            join(1..12,21..32)
+                     /gene="NONSPEC"
+                     /transcript_id="TX_SHORT"
+                     /label="short product transcript"
+                     /product="Synthetic short cDNA PCR product transcript"
+     mRNA            join(1..12,41..72)
+                     /gene="NONSPEC"
+                     /transcript_id="TX_LONG"
+                     /label="long product transcript"
+                     /product="Synthetic long cDNA PCR product transcript"
+ORIGIN
+        1 atgaaacccg ggaaaaaaaa cccaaatttg ggaaaaaaaa cccccccccc cccccccccc
+       61 cccccctttg gg
+//

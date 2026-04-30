@@ -1,0 +1,4773 @@
+{
+   "command_count": 373,
+   "commands": [
+      {
+         "aliases": [
+            "-h",
+            "--help"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "help",
+         "summary": "Show full command help catalog or help for one command path.",
+         "usage": "help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "capabilities",
+         "summary": "Inspect engine capability metadata.",
+         "usage": "capabilities"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "state-summary",
+         "summary": "Summarize loaded state (sequences, containers, metadata).",
+         "usage": "state-summary"
+      },
+      {
+         "aliases": [
+            "import-state"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "load-project",
+         "summary": "Load a project/state file into the current state.",
+         "usage": "load-project PATH"
+      },
+      {
+         "aliases": [
+            "export-state"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "save-project",
+         "summary": "Save current state to a project file.",
+         "usage": "save-project PATH"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "screenshot-window",
+         "summary": "Reserved screenshot adapter command (currently disabled by security policy).",
+         "usage": "screenshot-window OUTPUT.png"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderSequenceSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "render-svg",
+         "summary": "Render sequence map SVG.",
+         "usage": "render-svg SEQ_ID linear|circular OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderDotplotSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "render-dotplot-svg",
+         "summary": "Render stored dotplot payload as SVG (optional flexibility panel and display tuning).",
+         "usage": "render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "inspect-feature-expert",
+         "summary": "Inspect TFBS, restriction-site, splicing, isoform, or transcript/protein expert details as JSON.",
+         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | inspect-feature-expert SEQ_ID splicing FEATURE_ID | inspect-feature-expert SEQ_ID isoform PANEL_ID | inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... | inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]..."
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderFeatureExpertSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "render-feature-expert-svg",
+         "summary": "Render TFBS, restriction-site, splicing, isoform, or transcript/protein expert visualization as SVG.",
+         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg | render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg | render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg"
+      },
+      {
+         "aliases": [
+            "panels import"
+         ],
+         "engine_operations": [
+            "ImportIsoformPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "panels import-isoform",
+         "summary": "Import curated isoform-panel JSON for one sequence context.",
+         "usage": "panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]"
+      },
+      {
+         "aliases": [
+            "panels inspect"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "panels inspect-isoform",
+         "summary": "Inspect imported isoform architecture payload as expert-view JSON.",
+         "usage": "panels inspect-isoform SEQ_ID PANEL_ID"
+      },
+      {
+         "aliases": [
+            "panels render-svg"
+         ],
+         "engine_operations": [
+            "RenderIsoformArchitectureSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "panels render-isoform-svg",
+         "summary": "Render imported isoform architecture as publication-oriented SVG.",
+         "usage": "panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg"
+      },
+      {
+         "aliases": [
+            "panels validate"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "panels validate-isoform",
+         "summary": "Validate curated isoform-panel JSON and return a curator-oriented report.",
+         "usage": "panels validate-isoform PANEL_PATH [--panel-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderRnaStructureSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "render-rna-svg",
+         "summary": "Render RNA secondary structure SVG via RNAfold and rnapkin.",
+         "usage": "render-rna-svg SEQ_ID OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-info",
+         "summary": "Inspect RNAfold dot-bracket/MFE secondary-structure report.",
+         "usage": "rna-info SEQ_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderLineageSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "render-lineage-svg",
+         "summary": "Render lineage graph SVG.",
+         "usage": "render-lineage-svg OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "protocol-cartoon list",
+         "summary": "List built-in protocol-cartoon IDs.",
+         "usage": "protocol-cartoon list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderProtocolCartoonSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "protocol-cartoon render-svg",
+         "summary": "Render built-in protocol cartoon as SVG.",
+         "usage": "protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderProtocolCartoonTemplateSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "protocol-cartoon render-template-svg",
+         "summary": "Render protocol cartoon SVG from a template JSON file.",
+         "usage": "protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ValidateProtocolCartoonTemplate"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "protocol-cartoon template-validate",
+         "summary": "Validate one protocol cartoon template JSON file.",
+         "usage": "protocol-cartoon template-validate TEMPLATE.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderProtocolCartoonTemplateWithBindingsSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "protocol-cartoon render-with-bindings",
+         "summary": "Render protocol cartoon SVG from template + bindings JSON files.",
+         "usage": "protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportProtocolCartoonTemplateJson"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "protocol-cartoon template-export",
+         "summary": "Export canonical built-in protocol template JSON for editing.",
+         "usage": "protocol-cartoon template-export PROTOCOL_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gibson preview",
+         "summary": "Preview one destination-first Gibson plan and emit overlaps, primers, validation findings, and cartoon bindings.",
+         "usage": "gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ApplyGibsonAssemblyPlan"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gibson apply",
+         "summary": "Apply one destination-first Gibson plan and create primer/product sequence outputs.",
+         "usage": "gibson apply PLAN_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cache inspect",
+         "summary": "Inspect prepared reference/helper cache roots and report installs, orphaned remnants, and artifact groups.",
+         "usage": "cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cache clear",
+         "summary": "Conservatively clear derived cache artifacts or prepared installs within selected reference/helper cache roots.",
+         "usage": "cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderPoolGelSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "render-pool-gel-svg",
+         "summary": "Render serial gel SVG from sequence ids, containers, or an arrangement with optional explicit ladders.",
+         "usage": "render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "CreateArrangementSerial"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrange-serial",
+         "summary": "Create a reusable serial arrangement over stored lane containers.",
+         "usage": "arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetArrangementLadders"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrange-set-ladders",
+         "summary": "Persist one or two ladder names on an existing serial arrangement.",
+         "usage": "arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "CreateRackFromArrangement"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks create-from-arrangement",
+         "summary": "Create one deterministic physical rack draft from a stored arrangement.",
+         "usage": "racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PlaceArrangementOnRack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks place-arrangement",
+         "summary": "Append one arrangement as a contiguous block onto an existing saved rack.",
+         "usage": "racks place-arrangement ARR_ID --rack RACK_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MoveRackPlacement"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks move",
+         "summary": "Move one rack sample or one whole arrangement block using shift-neighbor semantics.",
+         "usage": "racks move RACK_ID --from A1 --to B1 [--block]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MoveRackSamples"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks move-samples",
+         "summary": "Move multiple selected rack samples together within one arrangement block using shared shift-neighbor semantics.",
+         "usage": "racks move-samples RACK_ID --from A1 [--from A2 ...] --to B1"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MoveRackArrangementBlocks"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks move-blocks",
+         "summary": "Move multiple selected arrangement blocks together using the shared shift-neighbor rack semantics.",
+         "usage": "racks move-blocks RACK_ID --arrangement ARR_ID [--arrangement ARR_ID ...] --to B1"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks show",
+         "summary": "Inspect one saved rack and its occupied coordinates as structured JSON.",
+         "usage": "racks show RACK_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackLabelsSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks labels-svg",
+         "summary": "Export a deterministic rack or arrangement-scoped label sheet as SVG.",
+         "usage": "racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackFabricationSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks fabrication-svg",
+         "summary": "Export one deterministic top-view fabrication/planning SVG for a saved rack.",
+         "usage": "racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackIsometricSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks isometric-svg",
+         "summary": "Export one deterministic pseudo-3D/isometric SVG for a saved rack.",
+         "usage": "racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackOpenScad"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks openscad",
+         "summary": "Export one deterministic parameterized OpenSCAD source file for a saved rack.",
+         "usage": "racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackCarrierLabelsSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks carrier-labels-svg",
+         "summary": "Export one carrier-matched front-strip/module-label SVG sheet for a saved rack using shared carrier-label presets.",
+         "usage": "racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRackSimulationJson"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks simulation-json",
+         "summary": "Export one machine-readable physical rack geometry/placement JSON for downstream simulation adapters.",
+         "usage": "racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetRackProfile"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks set-profile",
+         "summary": "Reflow one saved rack onto another built-in rack or plate profile.",
+         "usage": "racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ApplyRackTemplate"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks apply-template",
+         "summary": "Apply one shared rack-authoring template such as bench rows, plate columns, or plate edge avoidance.",
+         "usage": "racks apply-template RACK_ID bench_rows|plate_columns|plate_edge_avoidance"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetRackFillDirection"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks set-fill-direction",
+         "summary": "Reflow one saved rack under row-major or column-major fill order.",
+         "usage": "racks set-fill-direction RACK_ID row_major|column_major"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetRackProfileCustom"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks set-custom-profile",
+         "summary": "Reflow one saved rack onto a custom A1-style rows-by-columns geometry.",
+         "usage": "racks set-custom-profile RACK_ID ROWS COLUMNS"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetRackBlockedCoordinates"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "racks set-blocked",
+         "summary": "Persist or clear blocked rack coordinates and reflow occupied positions across the remaining available slots.",
+         "usage": "racks set-blocked RACK_ID COORD[,COORD...]...|--clear"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ladders list",
+         "summary": "Inspect built-in ladder catalogs.",
+         "usage": "ladders list [--molecule dna|rna] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportDnaLadders",
+            "ExportRnaLadders"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ladders export",
+         "summary": "Export ladder definitions as JSON.",
+         "usage": "ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]"
+      },
+      {
+         "aliases": [
+            "protease list"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "proteases list",
+         "summary": "Inspect the built-in protease catalog.",
+         "usage": "proteases list [--filter TEXT] [--output PATH]"
+      },
+      {
+         "aliases": [
+            "protease show"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "proteases show",
+         "summary": "Inspect one protease catalog entry by name or alias.",
+         "usage": "proteases show QUERY [--output PATH]"
+      },
+      {
+         "aliases": [
+            "protease digest"
+         ],
+         "engine_operations": [
+            "ProteaseDigestProteinSequence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "proteases digest",
+         "summary": "Predict and optionally materialize protease peptide products from a protein sequence.",
+         "usage": "proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]"
+      },
+      {
+         "aliases": [
+            "protease digest-gel-svg",
+            "proteases digest-gel",
+            "proteases gel-svg"
+         ],
+         "engine_operations": [
+            "RenderProteaseDigestGelSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "proteases digest-gel-svg",
+         "summary": "Render a protease peptide digest as a protein-gel SVG for graphical inspection.",
+         "usage": "proteases digest-gel-svg SEQ_ID PROTEASE[,PROTEASE...] OUTPUT.svg [--min-length-aa N] [--ladder NAME] [--ladders CSV]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportPool"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "export-pool",
+         "summary": "Export selected sequence IDs as a pool artifact.",
+         "usage": "export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportProcessRunBundle"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "export-run-bundle",
+         "summary": "Export deterministic process run bundle JSON for reproducibility/audit.",
+         "usage": "export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "import-pool",
+         "summary": "Import pool artifact members as project sequences.",
+         "usage": "import-pool INPUT.pool.gentle.json [PREFIX]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "agents list",
+         "summary": "List configured external/builtin agent systems from catalog.",
+         "usage": "agents list [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "agents ask",
+         "summary": "Send prompt to one agent system and optionally execute suggested shared-shell commands.",
+         "usage": "agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui intents",
+         "summary": "List available GUI intent targets and supported query arguments.",
+         "usage": "ui intents"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui open",
+         "summary": "Request opening a GUI target (prepared refs, dialogs, assistant views).",
+         "usage": "ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui focus",
+         "summary": "Request focusing an already-open GUI target.",
+         "usage": "ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui prepared-genomes",
+         "summary": "List prepared genomes/helpers for GUI intent disambiguation.",
+         "usage": "ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui latest-prepared",
+         "summary": "Resolve latest prepared genome/helper candidate by species query.",
+         "usage": "ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FetchGenBankAccession"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "genbank fetch",
+         "summary": "Fetch one GenBank accession via NCBI EFetch and import it as a sequence.",
+         "usage": "genbank fetch ACCESSION [--as-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FetchDbSnpRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "dbsnp fetch",
+         "summary": "Resolve one dbSNP rsID and extract an annotated genomic region from a prepared genome.",
+         "usage": "dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [
+            "variant annotate-promoter-windows"
+         ],
+         "engine_operations": [
+            "AnnotatePromoterWindows"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "variant annotate-promoters",
+         "summary": "Derive transcript-TSS-centered promoter windows and write them back as generated promoter features.",
+         "usage": "variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SummarizeVariantPromoterContext"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "variant promoter-context",
+         "summary": "Summarize whether one variant lies in promoter context, including chosen gene/transcript, signed TSS distance, and suggested assay family.",
+         "usage": "variant promoter-context SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SuggestPromoterReporterFragments"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "variant reporter-fragments",
+         "summary": "Rank deterministic promoter-reporter fragment candidates around one promoter-proximal variant.",
+         "usage": "variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializeVariantAllele"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "variant materialize-allele",
+         "summary": "Create one reference or alternate single-allele sequence from a promoter fragment carrying a single-nucleotide variant.",
+         "usage": "variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FetchUniprotSwissProt"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot fetch",
+         "summary": "Fetch one UniProt SWISS-PROT text entry by accession or ID.",
+         "usage": "uniprot fetch QUERY [--entry-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportUniprotSwissProt"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot import-swissprot",
+         "summary": "Import one local SWISS-PROT text record into project metadata.",
+         "usage": "uniprot import-swissprot PATH [--entry-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SummarizeTfbsRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot list",
+         "summary": "List stored UniProt entries in project metadata.",
+         "usage": "uniprot list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot show",
+         "summary": "Show one stored UniProt entry as structured JSON.",
+         "usage": "uniprot show ENTRY_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ProjectUniprotToGenome"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot map",
+         "summary": "Project UniProt feature intervals onto transcript/CDS coordinates in one sequence.",
+         "usage": "uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot projection-list",
+         "summary": "List stored UniProt-to-genome projection records.",
+         "usage": "uniprot projection-list [--seq SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot projection-show",
+         "summary": "Show one stored UniProt-to-genome projection record.",
+         "usage": "uniprot projection-show PROJECTION_ID"
+      },
+      {
+         "aliases": [
+            "uniprot feature-coding"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot feature-coding-dna",
+         "summary": "Query coding DNA and exon attribution for one mapped UniProt protein feature.",
+         "usage": "uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot resolve-ensembl-links",
+         "summary": "Resolve normalized UniProt-to-Ensembl transcript/protein links for one stored projection.",
+         "usage": "uniprot resolve-ensembl-links PROJECTION_ID [--transcript ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot transcript-accounting",
+         "summary": "Summarize exon/CDS nucleotide accounting and derived peptide length for one stored projection.",
+         "usage": "uniprot transcript-accounting PROJECTION_ID [--transcript ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot compare-ensembl-exons",
+         "summary": "Compare projected coding exons against imported Ensembl exon/CDS evidence.",
+         "usage": "uniprot compare-ensembl-exons PROJECTION_ID [--transcript ID] [--ensembl-entry ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot compare-ensembl-peptide",
+         "summary": "Compare GENtle-derived, UniProt, and optional Ensembl peptide evidence for one stored projection.",
+         "usage": "uniprot compare-ensembl-peptide PROJECTION_ID [--transcript ID] [--ensembl-entry ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AuditUniprotProjectionConsistency"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-projection",
+         "summary": "Run and persist the integrated UniProt/Ensembl projection audit plus local unsent maintainer-email draft.",
+         "usage": "uniprot audit-projection PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AuditUniprotProjectionParity"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-parity",
+         "summary": "Compare the direct integrated audit against the same result reconstructed from the public UniProt/Ensembl primitives.",
+         "usage": "uniprot audit-parity PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-list",
+         "summary": "List stored UniProt projection audit reports.",
+         "usage": "uniprot audit-list [--seq SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-show",
+         "summary": "Show one stored UniProt projection audit report.",
+         "usage": "uniprot audit-show REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-export",
+         "summary": "Export one stored UniProt projection audit report to JSON.",
+         "usage": "uniprot audit-export REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-parity-list",
+         "summary": "List stored UniProt audit parity reports.",
+         "usage": "uniprot audit-parity-list [--seq SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-parity-show",
+         "summary": "Show one stored UniProt audit parity report.",
+         "usage": "uniprot audit-parity-show REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "uniprot audit-parity-export",
+         "summary": "Export one stored UniProt audit parity report to JSON.",
+         "usage": "uniprot audit-parity-export REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FetchEnsemblGene"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-gene fetch",
+         "summary": "Fetch one Ensembl gene entry from Ensembl REST into project metadata.",
+         "usage": "ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-gene list",
+         "summary": "List stored Ensembl gene entries in project metadata.",
+         "usage": "ensembl-gene list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-gene show",
+         "summary": "Show one stored Ensembl gene entry as structured JSON.",
+         "usage": "ensembl-gene show ENTRY_ID"
+      },
+      {
+         "aliases": [
+            "ensembl-gene import-entry-sequence"
+         ],
+         "engine_operations": [
+            "ImportEnsemblGeneSequence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-gene import-sequence",
+         "summary": "Import one stored Ensembl gene entry as a first-class DNA sequence with transcript/exon/CDS annotation.",
+         "usage": "ensembl-gene import-sequence ENTRY_ID [--output-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FetchEnsemblRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-region fetch",
+         "summary": "Fetch one live Ensembl genomic region/ROI directly as an anchored DNA sequence.",
+         "usage": "ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FetchEnsemblProtein"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-protein fetch",
+         "summary": "Fetch one Ensembl protein/transcript-backed protein entry from Ensembl REST.",
+         "usage": "ensembl-protein fetch QUERY [--entry-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-protein list",
+         "summary": "List stored Ensembl protein entries in project metadata.",
+         "usage": "ensembl-protein list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-protein show",
+         "summary": "Show one stored Ensembl protein entry as structured JSON.",
+         "usage": "ensembl-protein show ENTRY_ID"
+      },
+      {
+         "aliases": [
+            "ensembl-protein import-entry-sequence"
+         ],
+         "engine_operations": [
+            "ImportEnsemblProteinSequence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ensembl-protein import-sequence",
+         "summary": "Import one stored Ensembl protein entry as a first-class protein sequence.",
+         "usage": "ensembl-protein import-sequence ENTRY_ID [--output-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources sync-rebase",
+         "summary": "Normalize REBASE source data into project resource JSON.",
+         "usage": "resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources sync-jaspar",
+         "summary": "Normalize JASPAR source data into project motif JSON.",
+         "usage": "resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources sync-ucsc-rmsk",
+         "summary": "Normalize a UCSC RepeatMasker rmsk table into a GENtle resource snapshot with repeat display/index metadata.",
+         "usage": "resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]"
+      },
+      {
+         "aliases": [
+            "resources index-ucsc-rmsk"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources prepare-ucsc-rmsk-index",
+         "summary": "Build a prepared per-assembly UCSC rmsk interval index sidecar from a complete resource snapshot.",
+         "usage": "resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]"
+      },
+      {
+         "aliases": [
+            "resources describe-ucsc-rmsk"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources suggest-ucsc-rmsk-index",
+         "summary": "Describe UCSC rmsk source URLs, columns, and recommended GENtle indexes without downloading the full table.",
+         "usage": "resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SyncJasparRemoteMetadata"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources sync-jaspar-remote-metadata",
+         "summary": "Refresh and persist reusable JASPAR remote metadata for one selected local motif subset.",
+         "usage": "resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SummarizeJasparEntries"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources summarize-jaspar",
+         "summary": "Present selected or all local JASPAR entries with max/min motif strings and deterministic random-background score summaries.",
+         "usage": "resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "BenchmarkJasparRegistry"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources benchmark-jaspar",
+         "summary": "Benchmark the full active local JASPAR registry over one deterministic random background and emit an export-ready drift snapshot.",
+         "usage": "resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ListJasparCatalog"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources list-jaspar",
+         "summary": "List local JASPAR entries with consensus/length fields and optional compact remote species metadata summaries for the returned subset.",
+         "usage": "resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectJasparEntry"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources inspect-jaspar",
+         "summary": "Inspect one local JASPAR entry with matrix/logo payloads, multiple score distributions, and optional remote species metadata.",
+         "usage": "resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes list",
+         "summary": "List/search reference catalog entries.",
+         "usage": "genomes list [--catalog PATH] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes ensembl-available",
+         "summary": "List Ensembl species directories that currently appear installable.",
+         "usage": "genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes install-ensembl",
+         "summary": "Resolve one current Ensembl candidate into a real catalog entry and prepare it immediately.",
+         "usage": "genomes install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes validate-catalog",
+         "summary": "Validate reference genome catalog entries.",
+         "usage": "genomes validate-catalog [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "genomes preview-ensembl-specs",
+         "summary": "Preview Ensembl URL/spec refreshes for genome catalog rows with template metadata without writing changes.",
+         "usage": "genomes preview-ensembl-specs [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes update-ensembl-specs",
+         "summary": "Refresh explicit pinned Ensembl URLs/specs for catalog rows with template metadata.",
+         "usage": "genomes update-ensembl-specs [--catalog PATH] [--output-catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes status",
+         "summary": "Inspect local availability and prep status for one genome.",
+         "usage": "genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes genes",
+         "summary": "List indexed genes from one reference genome.",
+         "usage": "genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PrepareReferenceGenome"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes prepare",
+         "summary": "Prepare/index one reference genome locally.",
+         "usage": "genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes remove-prepared",
+         "summary": "Delete one prepared genome install from cache without editing the catalog JSON.",
+         "usage": "genomes remove-prepared GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes remove-catalog-entry",
+         "summary": "Delete one genome row from a writable catalog JSON without touching prepared cache files.",
+         "usage": "genomes remove-catalog-entry GENOME_ID [--catalog PATH] [--output-catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes blast",
+         "summary": "Run BLAST query against one reference genome (quick flags plus optional JSON override object).",
+         "usage": "genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes blast-start",
+         "summary": "Start one async BLAST query against a prepared reference genome cache.",
+         "usage": "genomes blast-start GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes blast-status",
+         "summary": "Inspect async reference-genome BLAST job status and optional final report.",
+         "usage": "genomes blast-status JOB_ID [--with-report]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes blast-cancel",
+         "summary": "Request cooperative cancellation for one async reference-genome BLAST job.",
+         "usage": "genomes blast-cancel JOB_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes blast-list",
+         "summary": "List known async reference-genome BLAST jobs in the current process.",
+         "usage": "genomes blast-list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportBlastHitsTrack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes blast-track",
+         "summary": "BLAST query and import hits as features on target sequence (supports optional JSON override object).",
+         "usage": "genomes blast-track GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomeRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes extract-region",
+         "summary": "Extract genomic interval into a project sequence (default annotation_scope=core).",
+         "usage": "genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomeGene"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes extract-gene",
+         "summary": "Extract a named gene interval into a project sequence.",
+         "usage": "genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtendGenomeAnchor"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes extend-anchor",
+         "summary": "Extend anchored genomic sequence by 5' or 3'.",
+         "usage": "genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "VerifyGenomeAnchor"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes verify-anchor",
+         "summary": "Re-check one anchored sequence against its prepared genome coordinates.",
+         "usage": "genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers list",
+         "summary": "List/search helper catalog entries.",
+         "usage": "helpers list [--catalog PATH] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers vocabulary list",
+         "summary": "List/search resolved helper semantics vocabulary terms.",
+         "usage": "helpers vocabulary list [--vocabulary PATH] [--filter TEXT]"
+      },
+      {
+         "aliases": [
+            "helpers vocabulary validate"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers vocabulary doctor",
+         "summary": "Validate helper semantics vocabulary overlays and report provenance, duplicate terms, alias collisions, missing routine-hint targets, and routine-family diagnostics.",
+         "usage": "helpers vocabulary doctor [--vocabulary PATH] [--routine-catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers ensembl-available",
+         "summary": "List current Ensembl candidates under the helper-family command tree.",
+         "usage": "helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers install-ensembl",
+         "summary": "Resolve one current Ensembl candidate into a helper catalog entry and prepare it immediately.",
+         "usage": "helpers install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "hosts list",
+         "summary": "List/search structured host-profile catalog entries.",
+         "usage": "hosts list [--catalog PATH] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers validate-catalog",
+         "summary": "Validate helper genome catalog entries.",
+         "usage": "helpers validate-catalog [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "helpers preview-ensembl-specs",
+         "summary": "Preview Ensembl URL/spec refreshes for helper catalog rows with template metadata without writing changes.",
+         "usage": "helpers preview-ensembl-specs [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers update-ensembl-specs",
+         "summary": "Refresh explicit pinned Ensembl URLs/specs for helper catalog rows with template metadata.",
+         "usage": "helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers status",
+         "summary": "Inspect local availability and prep status for one helper genome.",
+         "usage": "helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers genes",
+         "summary": "List indexed genes from one helper genome.",
+         "usage": "helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PrepareReferenceGenome"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers prepare",
+         "summary": "Prepare/index one helper genome locally.",
+         "usage": "helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers remove-prepared",
+         "summary": "Delete one prepared helper install from cache without editing the catalog JSON.",
+         "usage": "helpers remove-prepared HELPER_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers remove-catalog-entry",
+         "summary": "Delete one helper row from a writable catalog JSON without touching prepared cache files.",
+         "usage": "helpers remove-catalog-entry HELPER_ID [--catalog PATH] [--output-catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers blast",
+         "summary": "Run BLAST query against one helper genome (quick flags plus optional JSON override object).",
+         "usage": "helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers blast-start",
+         "summary": "Start one async BLAST query against a prepared helper genome cache.",
+         "usage": "helpers blast-start HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers blast-status",
+         "summary": "Inspect async helper-genome BLAST job status and optional final report.",
+         "usage": "helpers blast-status JOB_ID [--with-report]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers blast-cancel",
+         "summary": "Request cooperative cancellation for one async helper-genome BLAST job.",
+         "usage": "helpers blast-cancel JOB_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers blast-list",
+         "summary": "List known async helper-genome BLAST jobs in the current process.",
+         "usage": "helpers blast-list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportBlastHitsTrack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers blast-track",
+         "summary": "BLAST query and import hits as features on target sequence (supports optional JSON override object).",
+         "usage": "helpers blast-track HELPER_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomeRegion"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers extract-region",
+         "summary": "Extract helper-genome interval into a project sequence (default annotation_scope=core).",
+         "usage": "helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomeGene"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers extract-gene",
+         "summary": "Extract helper-gene interval into a project sequence.",
+         "usage": "helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtendGenomeAnchor"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers extend-anchor",
+         "summary": "Extend anchored helper sequence by 5' or 3'.",
+         "usage": "helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "VerifyGenomeAnchor"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers verify-anchor",
+         "summary": "Re-check one anchored sequence against its prepared helper coordinates.",
+         "usage": "helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ListCutRunDatasets"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun list",
+         "summary": "List CUT&RUN datasets from the shared catalog family.",
+         "usage": "cutrun list [--catalog PATH] [--filter TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ShowCutRunDatasetStatus"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun status",
+         "summary": "Inspect prepared/local status for one CUT&RUN dataset.",
+         "usage": "cutrun status DATASET_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PrepareCutRunDataset"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun prepare",
+         "summary": "Materialize one CUT&RUN dataset's processed assets into the prepared cache.",
+         "usage": "cutrun prepare DATASET_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ProjectCutRunDataset"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun project",
+         "summary": "Project one prepared CUT&RUN dataset onto a genome-anchored sequence.",
+         "usage": "cutrun project SEQ_ID DATASET_ID [--no-peaks] [--no-signal] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InterpretCutRunReads"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun interpret",
+         "summary": "Interpret CUT&RUN FASTA/FASTQ reads or prepared dataset-backed raw reads against one anchored ROI and save a read report.",
+         "usage": "cutrun interpret SEQ_ID INPUT_R1 [INPUT_R2] [--dataset DATASET_ID] [--catalog PATH] [--cache-dir PATH] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ListCutRunReadReports"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun list-read-reports",
+         "summary": "List saved CUT&RUN ROI read reports, optionally filtered to one anchored sequence.",
+         "usage": "cutrun list-read-reports [SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ShowCutRunReadReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun show-read-report",
+         "summary": "Inspect one saved CUT&RUN ROI read report in full JSON form.",
+         "usage": "cutrun show-read-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportCutRunReadCoverage"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun export-coverage",
+         "summary": "Export per-base coverage, cut-site counts, or fragment spans from one saved CUT&RUN read report.",
+         "usage": "cutrun export-coverage REPORT_ID OUTPUT.tsv [--kind coverage|cut_sites|fragments]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectCutRunRegulatorySupport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "cutrun inspect-regulatory-support",
+         "summary": "Aggregate CUT&RUN ROI evidence into support windows, confirmed/unconfirmed TFBS rows, and motif-context summaries.",
+         "usage": "cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomeBedTrack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "tracks import-bed",
+         "summary": "Import BED features aligned to an anchored sequence.",
+         "usage": "tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomeBigWigTrack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "tracks import-bigwig",
+         "summary": "Import BigWig signal track aligned to an anchored sequence.",
+         "usage": "tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomeVcfTrack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "tracks import-vcf",
+         "summary": "Import VCF variants aligned to an anchored sequence.",
+         "usage": "tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "tracks tracked list",
+         "summary": "List tracked genome-track subscriptions.",
+         "usage": "tracks tracked list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "tracks tracked add",
+         "summary": "Add tracked genome-track subscription.",
+         "usage": "tracks tracked add PATH [--source auto|bed|bigwig|vcf] [--name NAME] [--min-score N] [--max-score N] [--clear-existing]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "tracks tracked remove",
+         "summary": "Remove one tracked genome-track subscription.",
+         "usage": "tracks tracked remove INDEX"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "tracks tracked clear",
+         "summary": "Remove all tracked genome-track subscriptions.",
+         "usage": "tracks tracked clear"
+      },
+      {
+         "aliases": [
+            "tracks tracked sync"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "tracks tracked apply",
+         "summary": "Apply tracked genome-track subscriptions to anchored sequences.",
+         "usage": "tracks tracked apply [--index N] [--only-new-anchors]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides list",
+         "summary": "List persisted guide sets.",
+         "usage": "guides list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides show",
+         "summary": "Page guides from one set.",
+         "usage": "guides show GUIDE_SET_ID [--limit N] [--offset N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "UpsertGuideSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides put",
+         "summary": "Create or replace one guide set from JSON input.",
+         "usage": "guides put GUIDE_SET_ID (--json JSON|@FILE|--file PATH)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DeleteGuideSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides delete",
+         "summary": "Delete one guide set.",
+         "usage": "guides delete GUIDE_SET_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FilterGuidesPractical"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides filter",
+         "summary": "Apply practical design-constraint filtering to one guide set.",
+         "usage": "guides filter GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides filter-show",
+         "summary": "Inspect persisted practical-filter report for one guide set.",
+         "usage": "guides filter-show GUIDE_SET_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "GenerateGuideOligos"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides oligos-generate",
+         "summary": "Generate guide oligo set from one guide set and template.",
+         "usage": "guides oligos-generate GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides oligos-list",
+         "summary": "List generated guide oligo sets.",
+         "usage": "guides oligos-list [--guide-set GUIDE_SET_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides oligos-show",
+         "summary": "Inspect one generated guide oligo set.",
+         "usage": "guides oligos-show OLIGO_SET_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportGuideOligos"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides oligos-export",
+         "summary": "Export generated guide oligos to csv/plate/fasta formats.",
+         "usage": "guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportGuideProtocolText"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "guides protocol-export",
+         "summary": "Export a human-readable guide oligo protocol text file.",
+         "usage": "guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DesignPrimerPairs"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers design",
+         "summary": "Generate and persist a ranked primer-pair report from a DesignPrimerPairs operation payload.",
+         "usage": "primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DesignQpcrAssays"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers design-qpcr",
+         "summary": "Generate and persist a ranked qPCR assay report from a DesignQpcrAssays operation payload.",
+         "usage": "primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "TestCdnaPcr"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers test-cdna-pcr",
+         "summary": "Test supplied PCR primers against transcript-derived cDNA templates for one splicing group and optionally export a transcript-map SVG.",
+         "usage": "primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "TestCdnaQpcr"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers test-cdna-qpcr",
+         "summary": "Test supplied qPCR primers and probe against transcript-derived cDNA templates for one splicing group and optionally export a transcript-map SVG.",
+         "usage": "primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+      },
+      {
+         "aliases": [
+            "primers screen-cdna-qpcr"
+         ],
+         "engine_operations": [
+            "TestCdnaQpcrFasta"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers test-cdna-qpcr-fasta",
+         "summary": "Screen supplied qPCR primers and probe across one or more external cDNA/ncRNA FASTA or FASTA.gz transcript catalogs and optionally export a transcript-map SVG.",
+         "usage": "primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PrepareRestrictionCloningPcrHandoff"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers prepare-restriction-cloning",
+         "summary": "Create a restriction-site cloning handoff from one persisted primer-pair report and a destination vector.",
+         "usage": "primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers seed-restriction-cloning-handoff",
+         "summary": "Build a validated restriction-cloning handoff request from a saved primer report and destination vector.",
+         "usage": "primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers restriction-cloning-vector-suggestions",
+         "summary": "Inspect MCS-first and unique-cutter restriction-enzyme suggestions for one destination vector.",
+         "usage": "primers restriction-cloning-vector-suggestions SEQ_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers list-restriction-cloning-handoffs",
+         "summary": "List persisted restriction-cloning PCR handoff reports.",
+         "usage": "primers list-restriction-cloning-handoffs"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers show-restriction-cloning-handoff",
+         "summary": "Inspect one persisted restriction-cloning PCR handoff report by report ID.",
+         "usage": "primers show-restriction-cloning-handoff REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers export-restriction-cloning-handoff",
+         "summary": "Write one persisted restriction-cloning PCR handoff report to JSON.",
+         "usage": "primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers preflight",
+         "summary": "Probe Primer3 backend reachability/version for the selected backend/executable settings.",
+         "usage": "primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers seed-from-feature",
+         "summary": "Resolve one feature ROI and emit seeded DesignPrimerPairs/DesignQpcrAssays operation payloads.",
+         "usage": "primers seed-from-feature SEQ_ID FEATURE_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers seed-from-splicing",
+         "summary": "Resolve one splicing-group ROI and emit seeded DesignPrimerPairs/DesignQpcrAssays operation payloads.",
+         "usage": "primers seed-from-splicing SEQ_ID FEATURE_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers list-reports",
+         "summary": "List persisted primer-design reports.",
+         "usage": "primers list-reports"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers show-report",
+         "summary": "Inspect one persisted primer-design report by report ID.",
+         "usage": "primers show-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers export-report",
+         "summary": "Write one persisted primer-design report to JSON.",
+         "usage": "primers export-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers list-qpcr-reports",
+         "summary": "List persisted qPCR assay design reports.",
+         "usage": "primers list-qpcr-reports"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers show-qpcr-report",
+         "summary": "Inspect one persisted qPCR assay report by report ID.",
+         "usage": "primers show-qpcr-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers export-qpcr-report",
+         "summary": "Write one persisted qPCR assay report to JSON.",
+         "usage": "primers export-qpcr-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "features tfbs-summary",
+         "summary": "Group TFBS hits by factor name within one focus window and compare them against a wider context window.",
+         "usage": "features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]"
+      },
+      {
+         "aliases": [
+            "features repeats-query"
+         ],
+         "engine_operations": [
+            "QueryRepeatAnnotations"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features repeat-query",
+         "summary": "Query UCSC rmsk repeat annotations by raw repeat labels or normalized aliases.",
+         "usage": "features repeat-query GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path FILE.json]"
+      },
+      {
+         "aliases": [
+            "features rmsk-overlaps"
+         ],
+         "engine_operations": [
+            "QueryRepeatOverlaps"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features repeat-overlaps",
+         "summary": "Project prepared UCSC rmsk intervals onto one genome-anchored sequence and report local overlap coordinates.",
+         "usage": "features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]"
+      },
+      {
+         "aliases": [
+            "features materialize-rmsk-repeats"
+         ],
+         "engine_operations": [
+            "MaterializeRepeatFeatures"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features materialize-repeats",
+         "summary": "Materialize prepared UCSC rmsk overlaps as ordinary generated repeat_region features on one genome-anchored sequence.",
+         "usage": "features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "BuildRepeatEnvironmentCohort"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features repeat-cohort",
+         "summary": "Build a repeat-locus cohort with repeat-centered or transcript-aware geometry windows.",
+         "usage": "features repeat-cohort GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--geometry repeat_midpoint|transcript_5utr_start|pol2_promoter_upstream|cds_stop_context] [--upstream-bp N] [--downstream-bp N] [--limit N] [--catalog PATH] [--cache DIR] [--path FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SummarizeWindowCohortTfbs"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "features window-cohort-tfbs",
+         "summary": "Summarize TFBS score tracks over windows stored in a repeat-environment cohort JSON.",
+         "usage": "features window-cohort-tfbs COHORT_JSON --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache DIR] [--path FILE.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderTfbsScoreTracksSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "features tfbs-score-tracks-svg",
+         "summary": "Render one stacked SVG plot of continuous TFBS/PSSM score tracks over a selected sequence span.",
+         "usage": "features tfbs-score-tracks-svg (SEQ_ID OUTPUT.svg|--sequence-text DNA --output OUTPUT.svg) --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--topology linear|circular] [--id-hint TEXT] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ComputeDotplot"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "dotplot compute",
+         "summary": "Compute and persist one dotplot payload for a query sequence span, optionally against a reference sequence span.",
+         "usage": "dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ComputeDotplotOverlay"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "dotplot overlay-compute",
+         "summary": "Compute and persist one shared-reference multi-query dotplot overlay payload from repeated JSON query specs.",
+         "usage": "dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "dotplot list",
+         "summary": "List persisted dotplot payload summaries.",
+         "usage": "dotplot list [SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "dotplot show",
+         "summary": "Inspect one persisted dotplot payload by ID.",
+         "usage": "dotplot show DOTPLOT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DeriveTranscriptSequences"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "transcripts derive",
+         "summary": "Derive transcript/cDNA sequences from mRNA or transcript features, optionally constrained by splicing scope.",
+         "usage": "transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]"
+      },
+      {
+         "aliases": [
+            "transcripts residue-coordinates",
+            "transcripts protein-residue-coordinates"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "transcripts residue-genomic-coordinates",
+         "summary": "Map transcript-native protein residue(s) back to genomic codon nucleotide coordinates.",
+         "usage": "transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END] [--transcript ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ComputeFlexibilityTrack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "flex compute",
+         "summary": "Compute and persist one promoter-flexibility track for a sequence span.",
+         "usage": "flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "flex list",
+         "summary": "List persisted flexibility track summaries.",
+         "usage": "flex list [SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "flex show",
+         "summary": "Inspect one persisted flexibility track payload by ID.",
+         "usage": "flex show TRACK_ID"
+      },
+      {
+         "aliases": [
+            "splicing_refs derive",
+            "splicingrefs derive"
+         ],
+         "engine_operations": [
+            "DeriveSplicingReferences"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "splicing-refs derive",
+         "summary": "Derive DNA-window, mRNA-isoform, and exon-reference sequences from one span.",
+         "usage": "splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AlignSequences"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "align compute",
+         "summary": "Compute one deterministic pairwise local/global sequence alignment report.",
+         "usage": "align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
+      },
+      {
+         "aliases": [
+            "seq_trace import",
+            "seqtrace import"
+         ],
+         "engine_operations": [
+            "ImportSequencingTrace"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-trace import",
+         "summary": "Import one ABI/AB1 or SCF trace into the shared sequencing-trace evidence store.",
+         "usage": "seq-trace import PATH [--trace-id ID] [--seq-id ID]"
+      },
+      {
+         "aliases": [
+            "seq_trace list",
+            "seqtrace list"
+         ],
+         "engine_operations": [
+            "ListSequencingTraces"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-trace list",
+         "summary": "List imported sequencing traces, optionally filtered by associated sequence id.",
+         "usage": "seq-trace list [SEQ_ID]"
+      },
+      {
+         "aliases": [
+            "seq_trace show",
+            "seqtrace show"
+         ],
+         "engine_operations": [
+            "ShowSequencingTrace"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-trace show",
+         "summary": "Inspect one persisted sequencing-trace evidence record by id.",
+         "usage": "seq-trace show TRACE_ID"
+      },
+      {
+         "aliases": [
+            "seq_confirm run",
+            "seqconfirm run"
+         ],
+         "engine_operations": [
+            "ConfirmConstructReads"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-confirm run",
+         "summary": "Run called-read and/or trace-aware construct confirmation against the expected sequence, optionally with baseline context for intended-edit classification.",
+         "usage": "seq-confirm run EXPECTED_SEQ_ID [--baseline BASELINE_SEQ_ID] [--reads ID[,ID...]] [--trace-id ID]... [--trace-ids ID[,ID...]] [--junction LEFT_END_0BASED]... [--junction-flank N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N] [--min-identity F] [--min-target-coverage F] [--allow-reverse-complement|--no-reverse-complement] [--report-id ID]"
+      },
+      {
+         "aliases": [
+            "seq_confirm list-reports",
+            "seqconfirm list-reports"
+         ],
+         "engine_operations": [
+            "ListSequencingConfirmationReports"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-confirm list-reports",
+         "summary": "List persisted sequencing-confirmation reports, optionally filtered by expected sequence id.",
+         "usage": "seq-confirm list-reports [EXPECTED_SEQ_ID]"
+      },
+      {
+         "aliases": [
+            "seq_confirm show-report",
+            "seqconfirm show-report"
+         ],
+         "engine_operations": [
+            "ShowSequencingConfirmationReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-confirm show-report",
+         "summary": "Inspect one persisted sequencing-confirmation report, including baseline context and per-variant rows when present.",
+         "usage": "seq-confirm show-report REPORT_ID"
+      },
+      {
+         "aliases": [
+            "seq_confirm export-report",
+            "seqconfirm export-report"
+         ],
+         "engine_operations": [
+            "ExportSequencingConfirmationReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-confirm export-report",
+         "summary": "Export one sequencing-confirmation report as pretty-printed JSON.",
+         "usage": "seq-confirm export-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [
+            "seq_confirm export-support-tsv",
+            "seqconfirm export-support-tsv"
+         ],
+         "engine_operations": [
+            "ExportSequencingConfirmationSupportTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-confirm export-support-tsv",
+         "summary": "Export one TSV row per sequencing-confirmation checkpoint target.",
+         "usage": "seq-confirm export-support-tsv REPORT_ID OUTPUT.tsv"
+      },
+      {
+         "aliases": [
+            "seq_primer suggest",
+            "seqprimer suggest"
+         ],
+         "engine_operations": [
+            "SuggestSequencingPrimers"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "seq-primer suggest",
+         "summary": "Suggest sequencing-primer overlay spans on the expected construct, annotate saved-report coverage, rank the best existing primer hit for each unresolved locus, and propose fresh primers when no good hit exists.",
+         "usage": "seq-primer suggest EXPECTED_SEQ_ID [--primers ID[,ID...]] [--confirmation-report REPORT_ID] [--min-3prime-anneal-bp N] [--predicted-read-length-bp N]"
+      },
+      {
+         "aliases": [
+            "reverse_translate run",
+            "reversetranslate run"
+         ],
+         "engine_operations": [
+            "ReverseTranslateProteinSequence"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reverse-translate run",
+         "summary": "Reverse-translate one protein sequence into a synthetic coding-DNA product with optional codon-speed and annealing-Tm steering.",
+         "usage": "reverse-translate run PROTEIN_SEQ_ID [--output-id ID] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N]"
+      },
+      {
+         "aliases": [
+            "reverse_translate list-reports",
+            "reversetranslate list-reports"
+         ],
+         "engine_operations": [
+            "ListReverseTranslationReports"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reverse-translate list-reports",
+         "summary": "List persisted reverse-translation reports, optionally filtered by source protein sequence id.",
+         "usage": "reverse-translate list-reports [PROTEIN_SEQ_ID]"
+      },
+      {
+         "aliases": [
+            "reverse_translate show-report",
+            "reversetranslate show-report"
+         ],
+         "engine_operations": [
+            "ShowReverseTranslationReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reverse-translate show-report",
+         "summary": "Inspect one persisted reverse-translation report, including codon-choice diagnostics and resolved translation-table metadata.",
+         "usage": "reverse-translate show-report REPORT_ID"
+      },
+      {
+         "aliases": [
+            "reverse_translate export-report",
+            "reversetranslate export-report"
+         ],
+         "engine_operations": [
+            "ExportReverseTranslationReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reverse-translate export-report",
+         "summary": "Export one reverse-translation report as pretty-printed JSON.",
+         "usage": "reverse-translate export-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InterpretRnaReads"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads interpret",
+         "summary": "Interpret RNA reads (Nanopore cDNA phase-1 profile) against splicing-derived transcript templates.",
+         "usage": "rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RunRnaReadBatchMap"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads batch-map",
+         "summary": "Run manifest-driven RNA-read interpretation, alignment refresh, gene-support, isoform, and concatemer summaries for one or more samples.",
+         "usage": "rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--transcript-fasta PATH]... [--transcript-index PATH]..."
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "AlignRnaReadReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads align-report",
+         "summary": "Run retained-hit alignment phase and refresh report mappings/support summaries.",
+         "usage": "rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads list-reports",
+         "summary": "List persisted RNA-read interpretation reports.",
+         "usage": "rna-reads list-reports [SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads show-report",
+         "summary": "Inspect one persisted RNA-read interpretation report by ID.",
+         "usage": "rna-reads show-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SummarizeRnaReadGeneSupport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads summarize-gene-support",
+         "summary": "Summarize aligned RNA-read support for one or more target genes from a saved report.",
+         "usage": "rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InspectRnaReadGeneSupport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads inspect-gene-support",
+         "summary": "Inspect the exact accepted and rejected target-gene RNA-read cohorts from a saved report.",
+         "usage": "rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads inspect-alignments",
+         "summary": "Inspect ranked aligned hits from one RNA-read report.",
+         "usage": "rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-report",
+         "summary": "Write one persisted RNA-read interpretation report to JSON.",
+         "usage": "rna-reads export-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadHitsFasta"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-hits-fasta",
+         "summary": "Export selected interpreted RNA-read hit sequences to FASTA.",
+         "usage": "rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadSampleSheet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-sample-sheet",
+         "summary": "Export RNA-read report cohort summaries to TSV sample sheet.",
+         "usage": "rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadExonPathsTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-paths-tsv",
+         "summary": "Export per-read exon-path rows from one RNA-read report.",
+         "usage": "rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadExonAbundanceTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-abundance-tsv",
+         "summary": "Export exon/junction abundance tables from one RNA-read report.",
+         "usage": "rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadScoreDensitySvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-score-density-svg",
+         "summary": "Export RNA-read seed-hit score-density chart to SVG.",
+         "usage": "rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadAlignmentsTsv"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-alignments-tsv",
+         "summary": "Export ranked RNA-read alignment rows to TSV.",
+         "usage": "rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadAlignmentDotplotSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-alignment-dotplot-svg",
+         "summary": "Export dotplot-style alignment scatter (coverage vs identity) to SVG.",
+         "usage": "rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates list",
+         "summary": "List persisted candidate sets.",
+         "usage": "candidates list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DeleteCandidateSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates delete",
+         "summary": "Delete one candidate set.",
+         "usage": "candidates delete SET_NAME"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "GenerateCandidateSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates generate",
+         "summary": "Generate a candidate window set over one sequence.",
+         "usage": "candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]"
+      },
+      {
+         "aliases": [
+            "candidates generate-between"
+         ],
+         "engine_operations": [
+            "GenerateCandidateSetBetweenAnchors"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates generate-between-anchors",
+         "summary": "Generate candidate windows constrained to the interval between two local sequence anchors.",
+         "usage": "candidates generate-between-anchors SET_NAME SEQ_ID --length N (--anchor-a-pos N | --anchor-a-json JSON) (--anchor-b-pos N | --anchor-b-json JSON) [--step N] [--limit N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates show",
+         "summary": "Page candidate rows from one set.",
+         "usage": "candidates show SET_NAME [--limit N] [--offset N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates metrics",
+         "summary": "List available metric names for one set.",
+         "usage": "candidates metrics SET_NAME"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ScoreCandidateSetExpression"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates score",
+         "summary": "Compute derived metric expression for a candidate set.",
+         "usage": "candidates score SET_NAME METRIC_NAME EXPRESSION"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ScoreCandidateSetDistance"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates score-distance",
+         "summary": "Compute nearest-feature distance metric for candidate set.",
+         "usage": "candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ScoreCandidateSetWeightedObjective"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates score-weighted",
+         "summary": "Compute weighted objective metric for candidate set.",
+         "usage": "candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "TopKCandidateSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates top-k",
+         "summary": "Select top-k candidates by metric with deterministic tie-break.",
+         "usage": "candidates top-k INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ParetoFrontierCandidateSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates pareto",
+         "summary": "Compute multi-objective Pareto frontier candidate set.",
+         "usage": "candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FilterCandidateSet"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates filter",
+         "summary": "Filter candidate set by metric bounds/quantiles.",
+         "usage": "candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "CandidateSetOp"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates set-op",
+         "summary": "Apply set algebra on candidate sets.",
+         "usage": "candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros run",
+         "summary": "Execute multi-statement workflow script.",
+         "usage": "macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros instance-list",
+         "summary": "List recorded macro-instance lineage rows.",
+         "usage": "macros instance-list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros instance-show",
+         "summary": "Show one recorded macro-instance lineage row.",
+         "usage": "macros instance-show MACRO_INSTANCE_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros template-list",
+         "summary": "List persisted workflow macro templates.",
+         "usage": "macros template-list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros template-show",
+         "summary": "Show one persisted workflow macro template.",
+         "usage": "macros template-show TEMPLATE_NAME"
+      },
+      {
+         "aliases": [
+            "macros template-upsert"
+         ],
+         "engine_operations": [
+            "UpsertWorkflowMacroTemplate"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros template-put",
+         "summary": "Create or update a persisted workflow macro template.",
+         "usage": "macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port PORT_ID:KIND[:one|many][:required|optional][:description]]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DeleteWorkflowMacroTemplate"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros template-delete",
+         "summary": "Delete one persisted workflow macro template.",
+         "usage": "macros template-delete TEMPLATE_NAME"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros template-import",
+         "summary": "Import workflow macro templates from a pattern file or directory tree.",
+         "usage": "macros template-import PATH"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros template-run",
+         "summary": "Run or validate one persisted workflow macro template with typed preflight and macro-instance lineage recording.",
+         "usage": "macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "routines list",
+         "summary": "List cloning routines from the typed routine catalog with optional filters.",
+         "usage": "routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "routines explain",
+         "summary": "Return a structured explanation for one cloning routine, including requirements, failure modes, and likely confusing alternatives.",
+         "usage": "routines explain ROUTINE_ID [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "routines compare",
+         "summary": "Compare two cloning routines with deterministic difference axes and shared/unique vocabulary tags.",
+         "usage": "routines compare ROUTINE_A ROUTINE_B [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning profile show",
+         "summary": "Show one planning profile scope or merged effective profile.",
+         "usage": "planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning profile set",
+         "summary": "Set one planning profile scope from JSON.",
+         "usage": "planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning profile clear",
+         "summary": "Clear one planning profile scope.",
+         "usage": "planning profile clear [--scope global|project_override|confirmed_agent_overlay]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning objective show",
+         "summary": "Show current planning objective weights and guardrails.",
+         "usage": "planning objective show"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning objective set",
+         "summary": "Set planning objective from JSON.",
+         "usage": "planning objective set JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning objective clear",
+         "summary": "Clear planning objective and restore engine defaults.",
+         "usage": "planning objective clear"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning suggestions list",
+         "summary": "List planning sync suggestions with optional status filter.",
+         "usage": "planning suggestions list [--status pending|accepted|rejected]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning suggestions accept",
+         "summary": "Accept one pending planning suggestion and apply its patches.",
+         "usage": "planning suggestions accept SUGGESTION_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning suggestions reject",
+         "summary": "Reject one pending planning suggestion.",
+         "usage": "planning suggestions reject SUGGESTION_ID [--reason TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning sync status",
+         "summary": "Show planning sync status metadata.",
+         "usage": "planning sync status"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning sync pull",
+         "summary": "Register inbound advisory planning patch as pending suggestion.",
+         "usage": "planning sync pull JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning sync push",
+         "summary": "Register outbound advisory planning patch as pending suggestion.",
+         "usage": "planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "GenerateCandidateSet",
+            "GenerateCandidateSetBetweenAnchors",
+            "ScoreCandidateSetExpression",
+            "ScoreCandidateSetDistance",
+            "ScoreCandidateSetWeightedObjective",
+            "TopKCandidateSet",
+            "ParetoFrontierCandidateSet",
+            "FilterCandidateSet",
+            "CandidateSetOp",
+            "DeleteCandidateSet",
+            "UpsertCandidateMacroTemplate",
+            "DeleteCandidateMacroTemplate"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates macro",
+         "summary": "Execute multi-statement candidate workflow script.",
+         "usage": "candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates template-list",
+         "summary": "List persisted candidate macro templates.",
+         "usage": "candidates template-list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates template-show",
+         "summary": "Show one persisted candidate macro template.",
+         "usage": "candidates template-show TEMPLATE_NAME"
+      },
+      {
+         "aliases": [
+            "candidates template-upsert"
+         ],
+         "engine_operations": [
+            "UpsertCandidateMacroTemplate"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates template-put",
+         "summary": "Create or update a persisted candidate macro template.",
+         "usage": "candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DeleteCandidateMacroTemplate"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates template-delete",
+         "summary": "Delete one persisted candidate macro template.",
+         "usage": "candidates template-delete TEMPLATE_NAME"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "candidates template-run",
+         "summary": "Run one persisted candidate macro template with bindings.",
+         "usage": "candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetParameter"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "set-param",
+         "summary": "Set engine/UI parameter via JSON value.",
+         "usage": "set-param NAME JSON_VALUE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "op",
+         "summary": "Apply one engine operation payload.",
+         "usage": "op <operation-json-or-@file>"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "workflow",
+         "summary": "Apply one engine workflow payload.",
+         "usage": "workflow <workflow-json-or-@file>"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "batch plan",
+         "summary": "Expand one manifest into per-row workflow files plus a local or Slurm runner script.",
+         "usage": "batch plan MANIFEST.tsv --template WORKFLOW.json [--out-dir DIR] [--id-column NAME] [--delimiter auto|tsv|csv] [--state-template STATE.json] [--state-mode none|shared|copy-per-row] [--command-prefix CMD] [--emit local|slurm] [--script PATH] [--offset N] [--limit N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "batch run",
+         "summary": "Run one manifest-expanded workflow template locally and sequentially against the current state.",
+         "usage": "batch run MANIFEST.tsv --template WORKFLOW.json [--id-column NAME] [--delimiter auto|tsv|csv] [--offset N] [--limit N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "apply_operation",
+         "summary": "Apply one engine operation to a state.",
+         "usage": "apply_operation(state, operation_table_or_json)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "apply_workflow",
+         "summary": "Apply a workflow (array of operations) to a state.",
+         "usage": "apply_workflow(state, workflow_table_or_json)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "ask_agent_system",
+         "summary": "Ask one configured agent system and optionally execute suggested commands.",
+         "usage": "ask_agent_system(state_or_null, system_id, prompt, [options])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "blast_helper_genome",
+         "summary": "Run BLAST against helper genome index.",
+         "usage": "blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "blast_reference_genome",
+         "summary": "Run BLAST against prepared reference genome index.",
+         "usage": "blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "capabilities",
+         "summary": "Return engine capability metadata.",
+         "usage": "capabilities()"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "Digest"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "digest",
+         "summary": "Apply Digest operation using comma-separated enzyme names.",
+         "usage": "digest(state, input, enzymes_csv, [output_prefix])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportDnaLadders"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "export_dna_ladders",
+         "summary": "Export DNA ladder definitions as JSON.",
+         "usage": "export_dna_ladders(path, [name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaLadders"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "export_rna_ladders",
+         "summary": "Export RNA ladder definitions as JSON.",
+         "usage": "export_rna_ladders(path, [name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtendGenomeAnchor"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "extend_genome_anchor",
+         "summary": "Apply ExtendGenomeAnchor operation.",
+         "usage": "extend_genome_anchor(state, seq_id, side_5p_or_3p, length_bp, [output_id], [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomeGene"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "extract_genome_gene",
+         "summary": "Apply ExtractGenomeGene operation.",
+         "usage": "extract_genome_gene(state, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features], [extract_mode], [promoter_upstream_bp])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomeRegion"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "extract_genome_region",
+         "summary": "Apply ExtractGenomeRegion operation.",
+         "usage": "extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomeBedTrack"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "import_genome_bed_track",
+         "summary": "Apply ImportGenomeBedTrack operation.",
+         "usage": "import_genome_bed_track(state, seq_id, path, [track_name], [min_score], [max_score], [clear_existing])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomeBigWigTrack"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "import_genome_bigwig_track",
+         "summary": "Apply ImportGenomeBigWigTrack operation.",
+         "usage": "import_genome_bigwig_track(state, seq_id, path, [track_name], [min_score], [max_score], [clear_existing])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomeVcfTrack"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "import_genome_vcf_track",
+         "summary": "Apply ImportGenomeVcfTrack operation.",
+         "usage": "import_genome_vcf_track(state, seq_id, path, [track_name], [min_score], [max_score], [clear_existing])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "import_pool",
+         "summary": "Import pool artifact members into state with optional ID prefix.",
+         "usage": "import_pool(state, input_pool_json, [prefix])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "inspect_dna_ladders",
+         "summary": "Inspect built-in DNA ladder catalog.",
+         "usage": "inspect_dna_ladders([name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "inspect_rna_ladders",
+         "summary": "Inspect built-in RNA ladder catalog.",
+         "usage": "inspect_rna_ladders([name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "is_reference_genome_prepared",
+         "summary": "Check whether a reference genome is prepared in cache.",
+         "usage": "is_reference_genome_prepared(genome_id, [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_agent_systems",
+         "summary": "List configured agent systems from catalog.",
+         "usage": "list_agent_systems([catalog_path])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_dna_ladders",
+         "summary": "Alias for inspect_dna_ladders.",
+         "usage": "list_dna_ladders([name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_reference_genome_genes",
+         "summary": "List indexed genes for a prepared reference genome.",
+         "usage": "list_reference_genome_genes(genome_id, [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_reference_genomes",
+         "summary": "List reference genomes from catalog.",
+         "usage": "list_reference_genomes([catalog_path])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_reference_catalog_entries",
+         "summary": "List structured reference catalog entries, optionally filtered.",
+         "usage": "list_reference_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_helper_catalog_entries",
+         "summary": "List structured helper catalog entries, including optional interpretation metadata.",
+         "usage": "list_helper_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_host_profile_catalog_entries",
+         "summary": "List structured host-profile catalog entries, optionally filtered.",
+         "usage": "list_host_profile_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_ensembl_installable_genomes",
+         "summary": "List current Ensembl candidates where both FASTA and GTF listings are present.",
+         "usage": "list_ensembl_installable_genomes([collection], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "list_rna_ladders",
+         "summary": "Alias for inspect_rna_ladders.",
+         "usage": "list_rna_ladders([name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "load_dna",
+         "summary": "Load DNA/GenBank/FASTA file into a DNAsequence object.",
+         "usage": "load_dna(path)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "load_project",
+         "summary": "Load a GENtle project JSON into a project state object.",
+         "usage": "load_project(path)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PrepareGenome"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "prepare_genome",
+         "summary": "Apply PrepareGenome operation.",
+         "usage": "prepare_genome(state, genome_id, [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderPoolGelSvg"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "render_pool_gel_svg",
+         "summary": "Apply RenderPoolGelSvg operation.",
+         "usage": "render_pool_gel_svg(state, ids_csv_or_array, output_svg, [ladders_csv_or_array])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "save_project",
+         "summary": "Save a project state object to a GENtle project JSON file.",
+         "usage": "save_project(state, path)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetParameter"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "set_parameter",
+         "summary": "Helper wrapper for Operation::SetParameter.",
+         "usage": "set_parameter(state, name, value)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetParameter"
+         ],
+         "interfaces": [
+            "js"
+         ],
+         "path": "set_vcf_display_filter",
+         "summary": "Convenience helper to set VCF display criteria via SetParameter operations.",
+         "usage": "set_vcf_display_filter(state, options)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "state_summary",
+         "summary": "Summarize sequences/containers/metadata in the provided state.",
+         "usage": "state_summary(state)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "sync_jaspar",
+         "summary": "Normalize JASPAR motif data into GENtle motif JSON.",
+         "usage": "sync_jaspar(input, [output])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "sync_rebase",
+         "summary": "Normalize REBASE source data into GENtle enzyme JSON.",
+         "usage": "sync_rebase(input, [output], [commercial_only])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "js"
+         ],
+         "path": "write_gb",
+         "summary": "Write a DNAsequence object to GenBank format.",
+         "usage": "write_gb(seq, path)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "apply_operation",
+         "summary": "Apply one engine operation to a state.",
+         "usage": "apply_operation(state, operation_table_or_json)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "apply_workflow",
+         "summary": "Apply a workflow (array of operations) to a state.",
+         "usage": "apply_workflow(state, workflow_table_or_json)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "ask_agent_system",
+         "summary": "Ask one configured agent system and optionally execute suggested commands.",
+         "usage": "ask_agent_system(state_or_nil, system_id, prompt, [catalog_path], [allow_auto_exec], [execute_all], [execute_indices], [include_state_summary])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "blast_helper_genome",
+         "summary": "Run BLAST against helper genome index.",
+         "usage": "blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "blast_reference_genome",
+         "summary": "Run BLAST against prepared reference genome index.",
+         "usage": "blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "capabilities",
+         "summary": "Return engine capability metadata.",
+         "usage": "capabilities()"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportDnaLadders"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "export_dna_ladders",
+         "summary": "Export DNA ladder definitions as JSON.",
+         "usage": "export_dna_ladders(output_json, [name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaLadders"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "export_rna_ladders",
+         "summary": "Export RNA ladder definitions as JSON.",
+         "usage": "export_rna_ladders(output_json, [name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtendGenomeAnchor"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "extend_genome_anchor",
+         "summary": "Apply ExtendGenomeAnchor operation.",
+         "usage": "extend_genome_anchor(state, seq_id, side_5p_or_3p, length_bp, [output_id], [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomeGene"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "extract_genome_gene",
+         "summary": "Apply ExtractGenomeGene operation.",
+         "usage": "extract_genome_gene(state, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features], [extract_mode], [promoter_upstream_bp])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomeRegion"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "extract_genome_region",
+         "summary": "Apply ExtractGenomeRegion operation.",
+         "usage": "extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomeBedTrack"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "import_genome_bed_track",
+         "summary": "Apply ImportGenomeBedTrack operation.",
+         "usage": "import_genome_bed_track(state, seq_id, path, [track_name], [min_score], [max_score], [clear_existing])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomeBigWigTrack"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "import_genome_bigwig_track",
+         "summary": "Apply ImportGenomeBigWigTrack operation.",
+         "usage": "import_genome_bigwig_track(state, seq_id, path, [track_name], [min_score], [max_score], [clear_existing])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportGenomeVcfTrack"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "import_genome_vcf_track",
+         "summary": "Apply ImportGenomeVcfTrack operation.",
+         "usage": "import_genome_vcf_track(state, seq_id, path, [track_name], [min_score], [max_score], [clear_existing])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "import_pool",
+         "summary": "Import pool artifact members into state with optional ID prefix.",
+         "usage": "import_pool(state, input_pool_json, [prefix])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "inspect_dna_ladders",
+         "summary": "Inspect built-in DNA ladder catalog.",
+         "usage": "inspect_dna_ladders([name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "inspect_rna_ladders",
+         "summary": "Inspect built-in RNA ladder catalog.",
+         "usage": "inspect_rna_ladders([name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "is_reference_genome_prepared",
+         "summary": "Check whether a reference genome is prepared in cache.",
+         "usage": "is_reference_genome_prepared(genome_id, [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_agent_systems",
+         "summary": "List configured agent systems from catalog.",
+         "usage": "list_agent_systems([catalog_path])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_dna_ladders",
+         "summary": "Alias for inspect_dna_ladders.",
+         "usage": "list_dna_ladders([name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_reference_genome_genes",
+         "summary": "List indexed genes for a prepared reference genome.",
+         "usage": "list_reference_genome_genes(genome_id, [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_reference_genomes",
+         "summary": "List reference genomes from catalog.",
+         "usage": "list_reference_genomes([catalog_path])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_reference_catalog_entries",
+         "summary": "List structured reference catalog entries, optionally filtered.",
+         "usage": "list_reference_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_helper_catalog_entries",
+         "summary": "List structured helper catalog entries, including optional interpretation metadata.",
+         "usage": "list_helper_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_host_profile_catalog_entries",
+         "summary": "List structured host-profile catalog entries, optionally filtered.",
+         "usage": "list_host_profile_catalog_entries([catalog_path], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_ensembl_installable_genomes",
+         "summary": "List current Ensembl candidates where both FASTA and GTF listings are present.",
+         "usage": "list_ensembl_installable_genomes([collection], [filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "list_rna_ladders",
+         "summary": "Alias for inspect_rna_ladders.",
+         "usage": "list_rna_ladders([name_filter])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "load_dna",
+         "summary": "Load DNA/GenBank/FASTA file into a DNAsequence object.",
+         "usage": "load_dna(filename)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "load_project",
+         "summary": "Load a GENtle project JSON into a project state table.",
+         "usage": "load_project(filename)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PrepareGenome"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "prepare_genome",
+         "summary": "Apply PrepareGenome operation.",
+         "usage": "prepare_genome(state, genome_id, [catalog_path], [cache_dir])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderPoolGelSvg"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "render_pool_gel_svg",
+         "summary": "Apply RenderPoolGelSvg operation.",
+         "usage": "render_pool_gel_svg(state, ids_csv, output_svg, [ladders_csv])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "save_project",
+         "summary": "Save a project state table to a GENtle project JSON file.",
+         "usage": "save_project(state, filename)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetParameter"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "set_parameter",
+         "summary": "Helper wrapper for Operation::SetParameter.",
+         "usage": "set_parameter(state, name, value)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "SetParameter"
+         ],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "set_vcf_display_filter",
+         "summary": "Convenience helper to set VCF display criteria via SetParameter operations.",
+         "usage": "set_vcf_display_filter(state, options)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "state_summary",
+         "summary": "Summarize sequences/containers/metadata in the provided state.",
+         "usage": "state_summary(state)"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "sync_jaspar",
+         "summary": "Normalize JASPAR motif data into GENtle motif JSON.",
+         "usage": "sync_jaspar(input, [output])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "sync_rebase",
+         "summary": "Normalize REBASE source data into GENtle enzyme JSON.",
+         "usage": "sync_rebase(input, [output], [commercial_only])"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "lua"
+         ],
+         "path": "write_gb",
+         "summary": "Write a DNAsequence object to GenBank format.",
+         "usage": "write_gb(seq, filename)"
+      }
+   ],
+   "description": "Structured shell/CLI command glossary for GENtle interfaces.",
+   "interfaces": [
+      "cli-direct",
+      "cli-shell",
+      "gui-shell",
+      "js",
+      "lua"
+   ],
+   "schema": "gentle.glossary.v1",
+   "source": "src/shell_docs.rs"
+}

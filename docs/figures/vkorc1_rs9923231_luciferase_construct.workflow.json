@@ -1,0 +1,78 @@
+{
+  "run_id": "figure_vkorc1_rs9923231_luciferase_construct",
+  "ops": [
+    {
+      "LoadFile": {
+        "path": "docs/figures/vkorc1_rs9923231_luciferase_construct.gb",
+        "as_id": "vkorc1_rs9923231_luciferase_construct"
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "SequencePanel",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "MapPanel",
+        "visible": true
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "Features",
+        "visible": true
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "GeneFeatures",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "MrnaFeatures",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "Tfbs",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "RestrictionEnzymes",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "GcContents",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "OpenReadingFrames",
+        "visible": false
+      }
+    },
+    {
+      "SetDisplayVisibility": {
+        "target": "MethylationSites",
+        "visible": false
+      }
+    },
+    {
+      "RenderSequenceSvg": {
+        "seq_id": "vkorc1_rs9923231_luciferase_construct",
+        "mode": "Circular",
+        "path": "docs/figures/vkorc1_rs9923231_luciferase_construct.svg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="300" viewBox="0 0 960 300">
+<rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
+<text x="56.0" y="22" font-family="monospace" font-size="14" fill="#111827">RNA-read seed-hit score density (log(1+count))</text>
+<text x="56.0" y="36" font-family="monospace" font-size="11" fill="#4b5563">report=cdna_srr32957124 | reads=8903578 seed-passed=1 aligned=1</text>
+<rect x="56.0" y="52.0" width="880.0" height="208.0" fill="none" stroke="#9ca3af" stroke-width="1"/>
+<rect x="56.60" y="52.00" width="20.80" height="208.00" fill="#10b981"/>
+<rect x="78.60" y="90.74" width="20.80" height="169.26" fill="#10b981"/>
+<rect x="100.60" y="114.73" width="20.80" height="145.27" fill="#10b981"/>
+<rect x="122.60" y="123.60" width="20.80" height="136.40" fill="#10b981"/>
+<rect x="144.60" y="129.43" width="20.80" height="130.57" fill="#10b981"/>
+<rect x="166.60" y="134.37" width="20.80" height="125.63" fill="#10b981"/>
+<rect x="188.60" y="138.50" width="20.80" height="121.50" fill="#10b981"/>
+<rect x="210.60" y="142.40" width="20.80" height="117.60" fill="#10b981"/>
+<rect x="232.60" y="145.59" width="20.80" height="114.41" fill="#10b981"/>
+<rect x="254.60" y="149.36" width="20.80" height="110.64" fill="#10b981"/>
+<rect x="276.60" y="151.83" width="20.80" height="108.17" fill="#10b981"/>
+<rect x="298.60" y="155.10" width="20.80" height="104.90" fill="#10b981"/>
+<rect x="320.60" y="158.23" width="20.80" height="101.77" fill="#10b981"/>
+<rect x="342.60" y="162.25" width="20.80" height="97.75" fill="#10b981"/>
+<rect x="364.60" y="166.21" width="20.80" height="93.79" fill="#10b981"/>
+<rect x="386.60" y="170.31" width="20.80" height="89.69" fill="#10b981"/>
+<rect x="408.60" y="172.92" width="20.80" height="87.08" fill="#10b981"/>
+<rect x="430.60" y="177.22" width="20.80" height="82.78" fill="#10b981"/>
+<rect x="452.60" y="180.23" width="20.80" height="79.77" fill="#10b981"/>
+<rect x="474.60" y="184.77" width="20.80" height="75.23" fill="#10b981"/>
+<rect x="496.60" y="184.24" width="20.80" height="75.76" fill="#10b981"/>
+<rect x="518.60" y="190.06" width="20.80" height="69.94" fill="#10b981"/>
+<rect x="540.60" y="193.90" width="20.80" height="66.10" fill="#10b981"/>
+<rect x="562.60" y="198.99" width="20.80" height="61.01" fill="#10b981"/>
+<rect x="584.60" y="199.36" width="20.80" height="60.64" fill="#10b981"/>
+<rect x="606.60" y="201.84" width="20.80" height="58.16" fill="#10b981"/>
+<rect x="628.60" y="207.44" width="20.80" height="52.56" fill="#10b981"/>
+<rect x="650.60" y="217.97" width="20.80" height="42.03" fill="#10b981"/>
+<rect x="672.60" y="216.97" width="20.80" height="43.03" fill="#10b981"/>
+<rect x="694.60" y="218.51" width="20.80" height="41.49" fill="#10b981"/>
+<rect x="716.60" y="219.64" width="20.80" height="40.36" fill="#10b981"/>
+<rect x="738.60" y="238.99" width="20.80" height="21.01" fill="#10b981"/>
+<rect x="760.60" y="238.99" width="20.80" height="21.01" fill="#10b981"/>
+<rect x="782.60" y="241.90" width="20.80" height="18.10" fill="#10b981"/>
+<rect x="804.60" y="245.66" width="20.80" height="14.34" fill="#10b981"/>
+<rect x="914.60" y="231.31" width="20.80" height="28.69" fill="#10b981"/>
+<line x1="56.0" y1="260.0" x2="936.0" y2="260.0" stroke="#6b7280" stroke-width="1"/>
+<line x1="320.00" y1="52.0" x2="320.00" y2="260.0" stroke="#dc2626" stroke-width="1"/>
+<text x="322.00" y="62.0" font-family="monospace" font-size="10" fill="#dc2626">0.30</text>
+<text x="56.0" y="274.0" font-family="monospace" font-size="10" fill="#6b7280">0.0</text>
+<text x="936.0" y="274.0" text-anchor="end" font-family="monospace" font-size="10" fill="#6b7280">1.0</text>
+<text x="56.0" y="292.0" font-family="monospace" font-size="10" fill="#4b5563">bins=40 max_count=8290438 total_scored=8903578</text>
+</svg>

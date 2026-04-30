@@ -1,0 +1,145 @@
+{
+  "Host Saccharomyces cerevisiae S288c Ensembl 113": {
+    "ncbi_taxonomy_id": 559292,
+    "description": "Yeast carrier host reference",
+    "genbank_accession": "GCF_000146045.2",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000146045.2/",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-113/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-113/gtf/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.113.gtf.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Host Escherichia coli K-12 MG1655 RefSeq ASM584v2": {
+    "ncbi_taxonomy_id": 562,
+    "description": "E. coli carrier host reference (RefSeq assembly)",
+    "genbank_accession": "GCF_000005845.2",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000005845.2/",
+    "sequence_remote": "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz",
+    "annotations_remote": "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.gff.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+
+  "Plasmid pUC19 (online)": {
+    "description": "High-copy E. coli cloning backbone (AmpR, MCS)",
+    "summary": "High-copy E. coli cloning vector for small insert cloning and blue/white screening.",
+    "genbank_accession": "L09137",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/L09137",
+    "cache_dir": "data/helper_genomes",
+    "aliases": ["pUC19"],
+    "tags": ["cloning", "high_copy", "ampicillin", "mcs", "blue_white_screening"],
+    "search_terms": ["lacZ alpha", "AmpR", "multi cloning site", "E. coli cloning vector"],
+    "helper_kind": "plasmid_vector",
+    "host_system": "Escherichia coli",
+    "semantics": {
+      "schema": "gentle.helper_semantics.v1",
+      "affordances": [
+        "bacterial_propagation",
+        "insert_cloning",
+        "ampicillin_selection",
+        "blue_white_screening"
+      ],
+      "constraints": [
+        "insert_design_should_respect_mcs_context"
+      ],
+      "components": [
+        {
+          "id": "pmb1_origin",
+          "kind": "origin",
+          "label": "pMB1/ColE1-like origin",
+          "tags": ["high_copy"]
+        },
+        {
+          "id": "bla",
+          "kind": "selectable_marker",
+          "label": "AmpR",
+          "tags": ["selection"],
+          "attributes": {
+            "agent": "ampicillin"
+          }
+        },
+        {
+          "id": "lacza_fragment",
+          "kind": "screening_marker",
+          "label": "lacZ alpha",
+          "tags": ["blue_white_screening"]
+        },
+        {
+          "id": "mcs",
+          "kind": "cloning_site",
+          "label": "MCS",
+          "tags": ["insert_cloning"],
+          "attributes": {
+            "context": "lacZ_alpha"
+          }
+        }
+      ],
+      "relationships": [
+        {
+          "subject": "mcs",
+          "predicate": "embedded_in",
+          "object": "lacza_fragment",
+          "note": "Insertion into the MCS disrupts lacZ alpha screening context."
+        }
+      ]
+    }
+  },
+  "Plasmid pUC18 (online)": {
+    "description": "High-copy E. coli cloning backbone (AmpR, MCS; reverse MCS orientation vs pUC19)",
+    "genbank_accession": "L09136",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/L09136",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Plasmid pUC118 (online)": {
+    "description": "High-copy E. coli cloning backbone related to pUC vectors (MCS/lacZ alpha context)",
+    "genbank_accession": "U07649.1",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/U07649.1",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Plasmid pUC119 (online)": {
+    "description": "High-copy E. coli cloning backbone related to pUC vectors (MCS/lacZ alpha context)",
+    "genbank_accession": "U07650.1",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/U07650.1",
+    "cache_dir": "data/helper_genomes"
+  },
+  "BAC vector pBeloBAC11 (online)": {
+    "description": "BAC cloning vector backbone pBeloBAC11",
+    "genbank_accession": "U51113.1",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/U51113.1",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Filamentous phage M13mp9 (online)": {
+    "description": "Filamentous phage cloning vector M13mp9",
+    "genbank_accession": "M77827.1",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/M77827.1",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Filamentous phage M13mp8 (online)": {
+    "description": "Filamentous phage cloning vector M13mp8",
+    "genbank_accession": "M77826.1",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/M77826.1",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Plasmid pBluescript II KS(+) (online)": {
+    "description": "pBluescript II KS(+) high-copy cloning backbone",
+    "genbank_accession": "X52327.1",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/X52327.1",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Plasmid pSIT (online)": {
+    "description": "pSIT plasmid helper vector",
+    "genbank_accession": "U17139.1",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/U17139.1",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Plasmid pBR322 (online)": {
+    "description": "Classical E. coli cloning backbone (AmpR/TetR)",
+    "genbank_accession": "J01749",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/J01749",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Reporter Promega Luciferase AY738222 (online)": {
+    "description": "Promega luciferase reporter backbone fetched from NCBI GenBank accession AY738222",
+    "genbank_accession": "AY738222",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/AY738222",
+    "cache_dir": "data/helper_genomes"
+  }
+}

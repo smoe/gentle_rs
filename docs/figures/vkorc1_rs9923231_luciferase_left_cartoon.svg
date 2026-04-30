@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="420" viewBox="0 0 760 420">
+  <defs>
+    <style>
+      text {
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        fill: #24313d;
+      }
+      .body {
+        font-size: 16px;
+        fill: #55626f;
+      }
+      .small {
+        font-size: 13px;
+        fill: #6b7884;
+      }
+      .axis {
+        stroke: #33424f;
+        stroke-width: 4;
+        stroke-linecap: round;
+      }
+      .transcript {
+        fill: #2e6fda;
+      }
+      .transcriptAlt {
+        fill: #8cb2f0;
+      }
+      .insert {
+        fill: #43aaa1;
+        fill-opacity: 0.88;
+      }
+      .insertLabel {
+        font-size: 16px;
+        font-weight: 700;
+        fill: #ffffff;
+      }
+      .muted {
+        fill: #d8dcdf;
+      }
+      .snp {
+        fill: #ef8f2f;
+        stroke: #b05b00;
+        stroke-width: 2;
+      }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="760" height="420" fill="#fffdf9"/>
+
+  <text x="36" y="34" class="small">Local GRCh38 view around rs9923231</text>
+
+  <path d="M108 98 H276 L294 110 L276 122 H108 Q96 122 96 110 Q96 98 108 98 Z" class="transcriptAlt"/>
+  <text x="196" y="78" class="body" text-anchor="middle">LOC124903680</text>
+
+  <line x1="36" y1="206" x2="722" y2="206" class="axis"/>
+  <text x="380" y="180" class="body" text-anchor="middle">Chromosome 16</text>
+  <text x="36" y="258" class="body">31,094,600</text>
+  <text x="586" y="258" class="body">31,096,600</text>
+
+  <line x1="360" y1="94" x2="360" y2="366" stroke="#8fa3b5" stroke-width="3" stroke-dasharray="8 7"/>
+  <text x="360" y="82" class="body" text-anchor="middle">VKORC1 TSS</text>
+
+  <line x1="584" y1="124" x2="584" y2="258" stroke="#ef8f2f" stroke-width="5"/>
+  <circle cx="584" cy="104" r="18" class="snp"/>
+  <text x="514" y="46" class="body">rs9923231</text>
+
+  <path d="M92 334 L110 320 H324 Q338 320 338 334 Q338 348 324 348 H110 Z" class="transcript"/>
+  <text x="214" y="341" font-size="18" font-weight="700" fill="#ffffff">VKORC1</text>
+
+  <rect x="360" y="310" width="246" height="48" rx="22" class="insert"/>
+  <text x="483" y="341" class="insertLabel" text-anchor="middle">source interval</text>
+  <rect x="614" y="322" width="22" height="24" rx="11" class="muted"/>
+
+  <text x="406" y="392" class="body">selected genomic coordinates</text>
+  <text x="470" y="414" class="body">keep 500 bp beyond rs9923231</text>
+</svg>

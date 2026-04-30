@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">GENtle system overview</title>
+  <desc id="desc">Schematic overview of GENtle showing interfaces and imported biological context feeding one shared deterministic engine and project state, which in turn powers cloning workflows, analysis, rendering, and provenance outputs.</desc>
+  <defs>
+    <linearGradient id="coreGlow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d7eef3"/>
+      <stop offset="100%" stop-color="#f7fbfc"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#20333a" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#55767d"/>
+    </marker>
+    <style>
+      text { font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif; fill: #17343a; }
+      .title { font-size: 38px; font-weight: 700; }
+      .subtitle { font-size: 18px; fill: #547177; }
+      .section-title { font-size: 15px; font-weight: 700; letter-spacing: 0.12em; fill: #6b878c; }
+      .card-title { font-size: 20px; font-weight: 700; }
+      .card-copy { font-size: 15px; fill: #35545b; }
+      .small { font-size: 14px; fill: #5d7a81; }
+      .pill { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; }
+      .container { fill: #ffffff; stroke: #d8e3e6; stroke-width: 2; filter: url(#shadow); }
+      .core-box { fill: url(#coreGlow); stroke: #90bcc6; stroke-width: 2; filter: url(#shadow); }
+      .mini-blue { fill: #e5f0ff; stroke: #b6cbed; stroke-width: 1.5; }
+      .mini-warm { fill: #fff3df; stroke: #e7c48e; stroke-width: 1.5; }
+      .mini-green { fill: #e8f6ea; stroke: #a9d2af; stroke-width: 1.5; }
+      .mini-coral { fill: #fff0ea; stroke: #ebb7a4; stroke-width: 1.5; }
+      .line { fill: none; stroke: #55767d; stroke-width: 4; marker-end: url(#arrow); stroke-linecap: round; }
+      .line-light { fill: none; stroke: #8aa8af; stroke-width: 3; marker-end: url(#arrow); stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="900" fill="#ffffff"/>
+
+  <text x="90" y="82" class="title">How GENtle Fits Together</text>
+  <text x="90" y="116" class="subtitle">One shared engine and one project state connect interactive cloning work, imported biological context, analysis, figures, and provenance.</text>
+
+  <g transform="translate(70 180)">
+    <rect class="container" x="0" y="0" width="300" height="252" rx="28"/>
+    <text x="30" y="42" class="section-title">INTERFACES</text>
+    <rect class="mini-blue" x="28" y="68" width="114" height="74" rx="18"/>
+    <rect class="mini-blue" x="158" y="68" width="114" height="74" rx="18"/>
+    <rect class="mini-blue" x="28" y="158" width="114" height="74" rx="18"/>
+    <rect class="mini-blue" x="158" y="158" width="114" height="74" rx="18"/>
+    <text x="53" y="111" class="card-title">GUI</text>
+    <text x="177" y="111" class="card-title">CLI</text>
+    <text x="43" y="201" class="card-title">JS / Lua</text>
+    <text x="183" y="194" class="card-title">MCP</text>
+    <text x="183" y="214" class="card-copy">AI tools</text>
+  </g>
+
+  <g transform="translate(70 470)">
+    <rect class="container" x="0" y="0" width="300" height="318" rx="28"/>
+    <text x="30" y="42" class="section-title">INPUTS AND CONTEXT</text>
+    <rect class="mini-warm" x="28" y="68" width="244" height="70" rx="16"/>
+    <rect class="mini-warm" x="28" y="150" width="244" height="70" rx="16"/>
+    <rect class="mini-warm" x="28" y="232" width="244" height="70" rx="16"/>
+    <text x="46" y="99" class="card-copy">Local sequences</text>
+    <text x="46" y="120" class="card-copy">and annotations</text>
+    <text x="46" y="181" class="card-copy">Prepared genomes, .BED / .VCF,</text>
+    <text x="46" y="202" class="card-copy">and BLAST targets</text>
+    <text x="46" y="263" class="card-copy">Curated panels, motifs,</text>
+    <text x="46" y="284" class="card-copy">and tracks</text>
+  </g>
+
+  <g transform="translate(430 150)">
+    <rect class="core-box" x="0" y="0" width="400" height="584" rx="34"/>
+    <text x="34" y="48" class="section-title">SHARED CORE</text>
+    <rect x="30" y="78" width="340" height="122" rx="24" fill="#0f5964"/>
+    <text x="56" y="122" class="card-title" fill="#ffffff">Deterministic engine</text>
+    <text x="56" y="149" class="card-copy" fill="#d8edf0">The same biological operations</text>
+    <text x="56" y="170" class="card-copy" fill="#d8edf0">run through one execution path.</text>
+
+    <rect x="30" y="220" width="340" height="132" rx="24" fill="#ffffff" stroke="#99c2cb" stroke-width="2"/>
+    <text x="56" y="270" class="card-title">Project state and lineage</text>
+    <text x="56" y="298" class="card-copy">Sequences, containers,</text>
+    <text x="56" y="319" class="card-copy">reports, and provenance</text>
+    <text x="56" y="340" class="card-copy">stay in one auditable model.</text>
+
+    <rect x="30" y="380" width="340" height="176" rx="24" fill="#ffffff" stroke="#99c2cb" stroke-width="2"/>
+    <text x="56" y="432" class="card-title">Shared renderers</text>
+    <text x="56" y="454" class="card-title">and exports</text>
+    <text x="56" y="482" class="card-copy">Protocol cartoons,</text>
+    <text x="56" y="503" class="card-copy">expert views, dotplots,</text>
+    <text x="56" y="524" class="card-copy">and structured outputs</text>
+    <text x="56" y="545" class="card-copy">reuse the same payloads.</text>
+  </g>
+
+  <g transform="translate(900 165)">
+    <rect class="container" x="0" y="0" width="336" height="520" rx="30"/>
+    <text x="28" y="42" class="section-title">CAPABILITIES</text>
+    <rect class="mini-green" x="24" y="72" width="288" height="90" rx="18"/>
+    <rect class="mini-green" x="24" y="180" width="288" height="90" rx="18"/>
+    <rect class="mini-green" x="24" y="288" width="288" height="90" rx="18"/>
+    <rect class="mini-green" x="24" y="396" width="288" height="90" rx="18"/>
+    <text x="46" y="108" class="card-title">Cloning workflows</text>
+    <text x="46" y="132" class="card-copy">Digest, ligation, Gibson, PCR</text>
+    <text x="46" y="216" class="card-title">Retrieval and projection</text>
+    <text x="46" y="240" class="card-copy">Genome slices, anchors, transcripts</text>
+    <text x="46" y="324" class="card-title">Design and</text>
+    <text x="46" y="346" class="card-title">validation</text>
+    <text x="46" y="370" class="card-copy">Primers, guides, qPCR, checks</text>
+    <text x="46" y="432" class="card-title">Analysis and</text>
+    <text x="46" y="454" class="card-title">expert views</text>
+    <text x="46" y="476" class="card-copy">Dotplots, mapping, isoform panels</text>
+  </g>
+
+  <g transform="translate(1280 205)">
+    <rect class="container" x="0" y="0" width="286" height="412" rx="30"/>
+    <text x="28" y="42" class="section-title">OUTPUTS</text>
+    <rect class="mini-coral" x="24" y="72" width="238" height="88" rx="18"/>
+    <rect class="mini-coral" x="24" y="176" width="238" height="88" rx="18"/>
+    <rect class="mini-coral" x="24" y="280" width="238" height="96" rx="18"/>
+    <text x="46" y="108" class="card-title">Interactive views</text>
+    <text x="46" y="132" class="card-copy">Windows, maps, figures</text>
+    <text x="46" y="212" class="card-title">Structured outputs</text>
+    <text x="46" y="236" class="card-copy">JSON reports, exports</text>
+    <text x="46" y="316" class="card-title">Provenance</text>
+    <text x="46" y="340" class="card-copy">Lineage and replayable</text>
+    <text x="46" y="361" class="card-copy">state</text>
+  </g>
+
+  <path class="line" d="M 370 289 L 428 289"/>
+  <path class="line" d="M 370 618 L 428 618"/>
+  <path class="line" d="M 830 420 L 898 420"/>
+  <path class="line" d="M 1236 420 L 1278 420"/>
+  <path class="line-light" d="M 630 502 L 630 530"/>
+
+  <text x="448" y="756" class="small">Imported references and curated resources contribute to the same project state used by the GUI, CLI, scripting interfaces, and AI tools.</text>
+  <text x="448" y="782" class="small">That shared state can then be rendered as bench-facing cloning workflows, broader computational biology analyses, and auditable provenance outputs.</text>
+</svg>

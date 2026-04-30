@@ -1,0 +1,7 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow_path": "docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json",
+  "timeout_secs": 240
+}

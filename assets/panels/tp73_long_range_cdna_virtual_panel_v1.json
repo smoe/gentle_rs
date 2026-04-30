@@ -1,0 +1,1135 @@
+{
+  "schema": "gentle.local_tp73_long_range_cdna_panel.v1",
+  "panel_id": "tp73_long_range_cdna_virtual_panel_v1",
+  "gene_symbol": "TP73",
+  "molecule": "cDNA",
+  "sequence_count": 30,
+  "source": "Local TP73 long-range cDNA selector panel generated from bundled TP73 RefSeq-style cDNA templates plus virtual 5'/3' recombinations.",
+  "source_fixture": "test_files/tp73.ncbi.gb",
+  "sequence_fasta": {
+    "path": "assets/panels/tp73_long_range_cdna_virtual_panel_v1.fasta",
+    "sha256": "bb8af43725ed8e49ded9c9323c13d6118f599c3b950c06c176d38736c24d612c"
+  },
+  "construction_rule": {
+    "kind": "prefix_suffix_recombination",
+    "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC",
+    "description": "Each virtual sequence joins a 5' isoform-class prefix to an observed 3' class suffix at the first shared TP73 coding anchor."
+  },
+  "curation": {
+    "source_kind": "local_lab_hypothesis",
+    "source_label": "TP73 5-prime by 3-prime cDNA long-range PCR exploration panel",
+    "evidence": [
+      "Existing public RefSeq-like TP73 cDNA templates cover TA and DeltaN crossed with alpha through zeta.",
+      "Ex2, Ex3, and V13 public templates in the bundled annotation are alpha-only; non-alpha combinations are represented here as explicit virtual hypotheses rather than treated as absent.",
+      "Primer-product sizes are exact matches on the virtual cDNA sequence panel."
+    ],
+    "limitations": [
+      "Expression is not implied by a virtual sequence.",
+      "Eta and rarer 3' forms are not synthesized here because no local sequence template was present in the bundled TP73 cDNA set."
+    ]
+  },
+  "five_prime_classes": [
+    {
+      "key": "ta",
+      "label": "TAp73",
+      "source_seq_id": "tp73_tx__f5__nm_005427_4",
+      "selector_primer": {
+        "name": "TP73-5p-TA-F",
+        "role": "forward_primer",
+        "sequence": "ACGGCTGCAGAGCGAGCTGC",
+        "length_bp": 20,
+        "gc_fraction": 0.7,
+        "tm_wallace_c": 68.0,
+        "tm_gc_rule_c": 60.0
+      }
+    },
+    {
+      "key": "x2",
+      "label": "Ex2-p73",
+      "source_seq_id": "tp73_tx__f21__xm_047429524_1",
+      "selector_primer": {
+        "name": "TP73-5p-Ex2-F",
+        "role": "forward_primer",
+        "sequence": "AGGCTTAGCCAAGAGCGAGCTGC",
+        "length_bp": 23,
+        "gc_fraction": 0.6087,
+        "tm_wallace_c": 74.0,
+        "tm_gc_rule_c": 60.6
+      }
+    },
+    {
+      "key": "x1",
+      "label": "Ex3-p73",
+      "source_seq_id": "tp73_tx__f24__xm_047429521_1",
+      "selector_primer": {
+        "name": "TP73-5p-Ex3-F",
+        "role": "forward_primer",
+        "sequence": "AAATAACAGAGCGAGCTGCCCTCG",
+        "length_bp": 24,
+        "gc_fraction": 0.5417,
+        "tm_wallace_c": 74.0,
+        "tm_gc_rule_c": 59.1
+      }
+    },
+    {
+      "key": "dn",
+      "label": "DeltaN-p73",
+      "source_seq_id": "tp73_tx__f99__nm_001126240_3",
+      "selector_primer": {
+        "name": "TP73-5p-DeltaN-F",
+        "role": "forward_primer",
+        "sequence": "ACCTCGCCACGGCCCAGTTCAAT",
+        "length_bp": 23,
+        "gc_fraction": 0.6087,
+        "tm_wallace_c": 74.0,
+        "tm_gc_rule_c": 60.6
+      }
+    },
+    {
+      "key": "v13",
+      "label": "V13-p73",
+      "source_seq_id": "tp73_tx__f111__nm_001204192_2",
+      "selector_primer": {
+        "name": "TP73-5p-V13-F",
+        "role": "forward_primer",
+        "sequence": "CATCTGCAGGACAGGCCCAGTTC",
+        "length_bp": 23,
+        "gc_fraction": 0.6087,
+        "tm_wallace_c": 74.0,
+        "tm_gc_rule_c": 60.6
+      }
+    }
+  ],
+  "three_prime_classes": [
+    {
+      "key": "alpha",
+      "label": "alpha",
+      "source_seq_id": "tp73_tx__f5__nm_005427_4"
+    },
+    {
+      "key": "beta",
+      "label": "beta",
+      "source_seq_id": "tp73_tx__f6__nm_001204184_2"
+    },
+    {
+      "key": "gamma",
+      "label": "gamma",
+      "source_seq_id": "tp73_tx__f7__nm_001204185_2"
+    },
+    {
+      "key": "delta",
+      "label": "delta",
+      "source_seq_id": "tp73_tx__f10__nm_001204186_2"
+    },
+    {
+      "key": "epsilon",
+      "label": "epsilon",
+      "source_seq_id": "tp73_tx__f8__nm_001204187_2"
+    },
+    {
+      "key": "zeta",
+      "label": "zeta",
+      "source_seq_id": "tp73_tx__f9__nm_001204188_2"
+    }
+  ],
+  "reverse_readouts": [
+    {
+      "key": "agz",
+      "label": "alpha/gamma/zeta",
+      "resolved_classes": [
+        "alpha",
+        "gamma",
+        "zeta"
+      ],
+      "note": "One reverse primer resolves alpha, gamma, and zeta by long-range cDNA product size.",
+      "selector_primer": {
+        "name": "TP73-3p-alpha-gamma-zeta-R",
+        "role": "reverse_primer",
+        "sequence": "CCCCAGGTCCTCAATGGTCA",
+        "length_bp": 20,
+        "gc_fraction": 0.6,
+        "tm_wallace_c": 64.0,
+        "tm_gc_rule_c": 55.9
+      }
+    },
+    {
+      "key": "be",
+      "label": "beta/epsilon",
+      "resolved_classes": [
+        "beta",
+        "epsilon"
+      ],
+      "note": "One reverse primer resolves beta and epsilon by long-range cDNA product size.",
+      "selector_primer": {
+        "name": "TP73-3p-beta-epsilon-R",
+        "role": "reverse_primer",
+        "sequence": "CCAGGTCCTGACGAGGCTGG",
+        "length_bp": 20,
+        "gc_fraction": 0.7,
+        "tm_wallace_c": 68.0,
+        "tm_gc_rule_c": 60.0
+      }
+    },
+    {
+      "key": "delta",
+      "label": "delta",
+      "resolved_classes": [
+        "delta"
+      ],
+      "note": "Improved delta-specific junction primer replacing the older high-GC delta readout.",
+      "selector_primer": {
+        "name": "TP73-3p-delta-R2",
+        "role": "reverse_primer",
+        "sequence": "GTCGGCCTCTGTAGGAGCTGCTG",
+        "length_bp": 23,
+        "gc_fraction": 0.6522,
+        "tm_wallace_c": 76.0,
+        "tm_gc_rule_c": 62.4
+      }
+    }
+  ],
+  "specificity_findings": {
+    "class_specific_kmers_after_anchor": {
+      "alpha": {
+        "min_unique_kmer_length_bp": null,
+        "note": "No exact class-unique k-mer of 8-24 bp was found after the shared anchor."
+      },
+      "beta": {
+        "min_unique_kmer_length_bp": null,
+        "note": "No exact class-unique k-mer of 8-24 bp was found after the shared anchor."
+      },
+      "gamma": {
+        "min_unique_kmer_length_bp": null,
+        "note": "No exact class-unique k-mer of 8-24 bp was found after the shared anchor."
+      },
+      "delta": {
+        "min_unique_kmer_length_bp": 8,
+        "start_0based": 996,
+        "kmer": "AGGCCGAC"
+      },
+      "epsilon": {
+        "min_unique_kmer_length_bp": null,
+        "note": "No exact class-unique k-mer of 8-24 bp was found after the shared anchor."
+      },
+      "zeta": {
+        "min_unique_kmer_length_bp": 8,
+        "start_0based": 994,
+        "kmer": "AGAGGCCT"
+      }
+    },
+    "interpretation": "Alpha, beta, gamma, and epsilon are not supported by single exact class-unique reverse primers in this local suffix set; the selected panel distinguishes them by readout lane plus gel-resolved product size."
+  },
+  "variants": [
+    {
+      "variant_id": "tp73_lr_ta_alpha",
+      "display_name": "TAp73-alpha",
+      "five_prime_class": "ta",
+      "three_prime_class": "alpha",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_005427.4",
+      "sequence_length_bp": 5192,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f5__nm_005427_4",
+        "three_prime_suffix_source": "tp73_tx__f5__nm_005427_4",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_ta_beta",
+      "display_name": "TAp73-beta",
+      "five_prime_class": "ta",
+      "three_prime_class": "beta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204184.2",
+      "sequence_length_bp": 5098,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f5__nm_005427_4",
+        "three_prime_suffix_source": "tp73_tx__f6__nm_001204184_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_ta_gamma",
+      "display_name": "TAp73-gamma",
+      "five_prime_class": "ta",
+      "three_prime_class": "gamma",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204185.2",
+      "sequence_length_bp": 5043,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f5__nm_005427_4",
+        "three_prime_suffix_source": "tp73_tx__f7__nm_001204185_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_ta_delta",
+      "display_name": "TAp73-delta",
+      "five_prime_class": "ta",
+      "three_prime_class": "delta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204186.2",
+      "sequence_length_bp": 4810,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f5__nm_005427_4",
+        "three_prime_suffix_source": "tp73_tx__f10__nm_001204186_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_ta_epsilon",
+      "display_name": "TAp73-epsilon",
+      "five_prime_class": "ta",
+      "three_prime_class": "epsilon",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204187.2",
+      "sequence_length_bp": 4949,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f5__nm_005427_4",
+        "three_prime_suffix_source": "tp73_tx__f8__nm_001204187_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_ta_zeta",
+      "display_name": "TAp73-zeta",
+      "five_prime_class": "ta",
+      "three_prime_class": "zeta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204188.2",
+      "sequence_length_bp": 4904,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f5__nm_005427_4",
+        "three_prime_suffix_source": "tp73_tx__f9__nm_001204188_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x2_alpha",
+      "display_name": "Ex2-p73-alpha",
+      "five_prime_class": "x2",
+      "three_prime_class": "alpha",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "XM_047429524.1",
+      "sequence_length_bp": 5154,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f21__xm_047429524_1",
+        "three_prime_suffix_source": "tp73_tx__f5__nm_005427_4",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x2_beta",
+      "display_name": "Ex2-p73-beta",
+      "five_prime_class": "x2",
+      "three_prime_class": "beta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 5060,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f21__xm_047429524_1",
+        "three_prime_suffix_source": "tp73_tx__f6__nm_001204184_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x2_gamma",
+      "display_name": "Ex2-p73-gamma",
+      "five_prime_class": "x2",
+      "three_prime_class": "gamma",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 5005,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f21__xm_047429524_1",
+        "three_prime_suffix_source": "tp73_tx__f7__nm_001204185_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x2_delta",
+      "display_name": "Ex2-p73-delta",
+      "five_prime_class": "x2",
+      "three_prime_class": "delta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4772,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f21__xm_047429524_1",
+        "three_prime_suffix_source": "tp73_tx__f10__nm_001204186_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x2_epsilon",
+      "display_name": "Ex2-p73-epsilon",
+      "five_prime_class": "x2",
+      "three_prime_class": "epsilon",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4911,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f21__xm_047429524_1",
+        "three_prime_suffix_source": "tp73_tx__f8__nm_001204187_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x2_zeta",
+      "display_name": "Ex2-p73-zeta",
+      "five_prime_class": "x2",
+      "three_prime_class": "zeta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4866,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f21__xm_047429524_1",
+        "three_prime_suffix_source": "tp73_tx__f9__nm_001204188_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x1_alpha",
+      "display_name": "Ex3-p73-alpha",
+      "five_prime_class": "x1",
+      "three_prime_class": "alpha",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "XM_047429521.1",
+      "sequence_length_bp": 5137,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f24__xm_047429521_1",
+        "three_prime_suffix_source": "tp73_tx__f5__nm_005427_4",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x1_beta",
+      "display_name": "Ex3-p73-beta",
+      "five_prime_class": "x1",
+      "three_prime_class": "beta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 5043,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f24__xm_047429521_1",
+        "three_prime_suffix_source": "tp73_tx__f6__nm_001204184_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x1_gamma",
+      "display_name": "Ex3-p73-gamma",
+      "five_prime_class": "x1",
+      "three_prime_class": "gamma",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4988,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f24__xm_047429521_1",
+        "three_prime_suffix_source": "tp73_tx__f7__nm_001204185_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x1_delta",
+      "display_name": "Ex3-p73-delta",
+      "five_prime_class": "x1",
+      "three_prime_class": "delta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4755,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f24__xm_047429521_1",
+        "three_prime_suffix_source": "tp73_tx__f10__nm_001204186_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x1_epsilon",
+      "display_name": "Ex3-p73-epsilon",
+      "five_prime_class": "x1",
+      "three_prime_class": "epsilon",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4894,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f24__xm_047429521_1",
+        "three_prime_suffix_source": "tp73_tx__f8__nm_001204187_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_x1_zeta",
+      "display_name": "Ex3-p73-zeta",
+      "five_prime_class": "x1",
+      "three_prime_class": "zeta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4849,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f24__xm_047429521_1",
+        "three_prime_suffix_source": "tp73_tx__f9__nm_001204188_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_dn_alpha",
+      "display_name": "DeltaN-p73-alpha",
+      "five_prime_class": "dn",
+      "three_prime_class": "alpha",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001126240.3",
+      "sequence_length_bp": 5120,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f99__nm_001126240_3",
+        "three_prime_suffix_source": "tp73_tx__f5__nm_005427_4",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_dn_beta",
+      "display_name": "DeltaN-p73-beta",
+      "five_prime_class": "dn",
+      "three_prime_class": "beta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001126241.3",
+      "sequence_length_bp": 5026,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f99__nm_001126240_3",
+        "three_prime_suffix_source": "tp73_tx__f6__nm_001204184_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_dn_gamma",
+      "display_name": "DeltaN-p73-gamma",
+      "five_prime_class": "dn",
+      "three_prime_class": "gamma",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001126242.3",
+      "sequence_length_bp": 4971,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f99__nm_001126240_3",
+        "three_prime_suffix_source": "tp73_tx__f7__nm_001204185_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_dn_delta",
+      "display_name": "DeltaN-p73-delta",
+      "five_prime_class": "dn",
+      "three_prime_class": "delta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204189.2",
+      "sequence_length_bp": 4738,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f99__nm_001126240_3",
+        "three_prime_suffix_source": "tp73_tx__f10__nm_001204186_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_dn_epsilon",
+      "display_name": "DeltaN-p73-epsilon",
+      "five_prime_class": "dn",
+      "three_prime_class": "epsilon",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204190.2",
+      "sequence_length_bp": 4877,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f99__nm_001126240_3",
+        "three_prime_suffix_source": "tp73_tx__f8__nm_001204187_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_dn_zeta",
+      "display_name": "DeltaN-p73-zeta",
+      "five_prime_class": "dn",
+      "three_prime_class": "zeta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204191.2",
+      "sequence_length_bp": 4832,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f99__nm_001126240_3",
+        "three_prime_suffix_source": "tp73_tx__f9__nm_001204188_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_v13_alpha",
+      "display_name": "V13-p73-alpha",
+      "five_prime_class": "v13",
+      "three_prime_class": "alpha",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204192.2",
+      "sequence_length_bp": 4953,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f111__nm_001204192_2",
+        "three_prime_suffix_source": "tp73_tx__f5__nm_005427_4",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_v13_beta",
+      "display_name": "V13-p73-beta",
+      "five_prime_class": "v13",
+      "three_prime_class": "beta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4859,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f111__nm_001204192_2",
+        "three_prime_suffix_source": "tp73_tx__f6__nm_001204184_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_v13_gamma",
+      "display_name": "V13-p73-gamma",
+      "five_prime_class": "v13",
+      "three_prime_class": "gamma",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4804,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f111__nm_001204192_2",
+        "three_prime_suffix_source": "tp73_tx__f7__nm_001204185_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_v13_delta",
+      "display_name": "V13-p73-delta",
+      "five_prime_class": "v13",
+      "three_prime_class": "delta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4571,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f111__nm_001204192_2",
+        "three_prime_suffix_source": "tp73_tx__f10__nm_001204186_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_v13_epsilon",
+      "display_name": "V13-p73-epsilon",
+      "five_prime_class": "v13",
+      "three_prime_class": "epsilon",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4710,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f111__nm_001204192_2",
+        "three_prime_suffix_source": "tp73_tx__f8__nm_001204187_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    },
+    {
+      "variant_id": "tp73_lr_v13_zeta",
+      "display_name": "V13-p73-zeta",
+      "five_prime_class": "v13",
+      "three_prime_class": "zeta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "sequence_length_bp": 4665,
+      "construction": {
+        "five_prime_prefix_source": "tp73_tx__f111__nm_001204192_2",
+        "three_prime_suffix_source": "tp73_tx__f9__nm_001204188_2",
+        "anchor_sequence": "AATCTGCTGAGCAGCACCATGGACCAGATGAGCAGC"
+      }
+    }
+  ],
+  "primer_products": [
+    {
+      "lane": "ta+agz",
+      "five_prime_class": "ta",
+      "five_prime_label": "TAp73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "alpha",
+      "variant_id": "tp73_lr_ta_alpha",
+      "display_name": "TAp73-alpha",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_005427.4",
+      "amplicon_length_bp": 1630,
+      "forward_start_0based": 116,
+      "reverse_target_start_0based": 1726,
+      "reverse_target_end_0based_exclusive": 1746
+    },
+    {
+      "lane": "ta+agz",
+      "five_prime_class": "ta",
+      "five_prime_label": "TAp73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "gamma",
+      "variant_id": "tp73_lr_ta_gamma",
+      "display_name": "TAp73-gamma",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204185.2",
+      "amplicon_length_bp": 1481,
+      "forward_start_0based": 116,
+      "reverse_target_start_0based": 1577,
+      "reverse_target_end_0based_exclusive": 1597
+    },
+    {
+      "lane": "ta+agz",
+      "five_prime_class": "ta",
+      "five_prime_label": "TAp73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "zeta",
+      "variant_id": "tp73_lr_ta_zeta",
+      "display_name": "TAp73-zeta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204188.2",
+      "amplicon_length_bp": 1342,
+      "forward_start_0based": 116,
+      "reverse_target_start_0based": 1438,
+      "reverse_target_end_0based_exclusive": 1458
+    },
+    {
+      "lane": "ta+be",
+      "five_prime_class": "ta",
+      "five_prime_label": "TAp73",
+      "reverse_readout": "be",
+      "reverse_label": "beta/epsilon",
+      "three_prime_class": "beta",
+      "variant_id": "tp73_lr_ta_beta",
+      "display_name": "TAp73-beta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204184.2",
+      "amplicon_length_bp": 1534,
+      "forward_start_0based": 116,
+      "reverse_target_start_0based": 1630,
+      "reverse_target_end_0based_exclusive": 1650
+    },
+    {
+      "lane": "ta+be",
+      "five_prime_class": "ta",
+      "five_prime_label": "TAp73",
+      "reverse_readout": "be",
+      "reverse_label": "beta/epsilon",
+      "three_prime_class": "epsilon",
+      "variant_id": "tp73_lr_ta_epsilon",
+      "display_name": "TAp73-epsilon",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204187.2",
+      "amplicon_length_bp": 1385,
+      "forward_start_0based": 116,
+      "reverse_target_start_0based": 1481,
+      "reverse_target_end_0based_exclusive": 1501
+    },
+    {
+      "lane": "ta+delta",
+      "five_prime_class": "ta",
+      "five_prime_label": "TAp73",
+      "reverse_readout": "delta",
+      "reverse_label": "delta",
+      "three_prime_class": "delta",
+      "variant_id": "tp73_lr_ta_delta",
+      "display_name": "TAp73-delta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204186.2",
+      "amplicon_length_bp": 1242,
+      "forward_start_0based": 116,
+      "reverse_target_start_0based": 1335,
+      "reverse_target_end_0based_exclusive": 1358
+    },
+    {
+      "lane": "x2+agz",
+      "five_prime_class": "x2",
+      "five_prime_label": "Ex2-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "alpha",
+      "variant_id": "tp73_lr_x2_alpha",
+      "display_name": "Ex2-p73-alpha",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "XM_047429524.1",
+      "amplicon_length_bp": 1633,
+      "forward_start_0based": 75,
+      "reverse_target_start_0based": 1688,
+      "reverse_target_end_0based_exclusive": 1708
+    },
+    {
+      "lane": "x2+agz",
+      "five_prime_class": "x2",
+      "five_prime_label": "Ex2-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "gamma",
+      "variant_id": "tp73_lr_x2_gamma",
+      "display_name": "Ex2-p73-gamma",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1484,
+      "forward_start_0based": 75,
+      "reverse_target_start_0based": 1539,
+      "reverse_target_end_0based_exclusive": 1559
+    },
+    {
+      "lane": "x2+agz",
+      "five_prime_class": "x2",
+      "five_prime_label": "Ex2-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "zeta",
+      "variant_id": "tp73_lr_x2_zeta",
+      "display_name": "Ex2-p73-zeta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1345,
+      "forward_start_0based": 75,
+      "reverse_target_start_0based": 1400,
+      "reverse_target_end_0based_exclusive": 1420
+    },
+    {
+      "lane": "x2+be",
+      "five_prime_class": "x2",
+      "five_prime_label": "Ex2-p73",
+      "reverse_readout": "be",
+      "reverse_label": "beta/epsilon",
+      "three_prime_class": "beta",
+      "variant_id": "tp73_lr_x2_beta",
+      "display_name": "Ex2-p73-beta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1537,
+      "forward_start_0based": 75,
+      "reverse_target_start_0based": 1592,
+      "reverse_target_end_0based_exclusive": 1612
+    },
+    {
+      "lane": "x2+be",
+      "five_prime_class": "x2",
+      "five_prime_label": "Ex2-p73",
+      "reverse_readout": "be",
+      "reverse_label": "beta/epsilon",
+      "three_prime_class": "epsilon",
+      "variant_id": "tp73_lr_x2_epsilon",
+      "display_name": "Ex2-p73-epsilon",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1388,
+      "forward_start_0based": 75,
+      "reverse_target_start_0based": 1443,
+      "reverse_target_end_0based_exclusive": 1463
+    },
+    {
+      "lane": "x2+delta",
+      "five_prime_class": "x2",
+      "five_prime_label": "Ex2-p73",
+      "reverse_readout": "delta",
+      "reverse_label": "delta",
+      "three_prime_class": "delta",
+      "variant_id": "tp73_lr_x2_delta",
+      "display_name": "Ex2-p73-delta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1245,
+      "forward_start_0based": 75,
+      "reverse_target_start_0based": 1297,
+      "reverse_target_end_0based_exclusive": 1320
+    },
+    {
+      "lane": "x1+agz",
+      "five_prime_class": "x1",
+      "five_prime_label": "Ex3-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "alpha",
+      "variant_id": "tp73_lr_x1_alpha",
+      "display_name": "Ex3-p73-alpha",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "XM_047429521.1",
+      "amplicon_length_bp": 1629,
+      "forward_start_0based": 62,
+      "reverse_target_start_0based": 1671,
+      "reverse_target_end_0based_exclusive": 1691
+    },
+    {
+      "lane": "x1+agz",
+      "five_prime_class": "x1",
+      "five_prime_label": "Ex3-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "gamma",
+      "variant_id": "tp73_lr_x1_gamma",
+      "display_name": "Ex3-p73-gamma",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1480,
+      "forward_start_0based": 62,
+      "reverse_target_start_0based": 1522,
+      "reverse_target_end_0based_exclusive": 1542
+    },
+    {
+      "lane": "x1+agz",
+      "five_prime_class": "x1",
+      "five_prime_label": "Ex3-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "zeta",
+      "variant_id": "tp73_lr_x1_zeta",
+      "display_name": "Ex3-p73-zeta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1341,
+      "forward_start_0based": 62,
+      "reverse_target_start_0based": 1383,
+      "reverse_target_end_0based_exclusive": 1403
+    },
+    {
+      "lane": "x1+be",
+      "five_prime_class": "x1",
+      "five_prime_label": "Ex3-p73",
+      "reverse_readout": "be",
+      "reverse_label": "beta/epsilon",
+      "three_prime_class": "beta",
+      "variant_id": "tp73_lr_x1_beta",
+      "display_name": "Ex3-p73-beta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1533,
+      "forward_start_0based": 62,
+      "reverse_target_start_0based": 1575,
+      "reverse_target_end_0based_exclusive": 1595
+    },
+    {
+      "lane": "x1+be",
+      "five_prime_class": "x1",
+      "five_prime_label": "Ex3-p73",
+      "reverse_readout": "be",
+      "reverse_label": "beta/epsilon",
+      "three_prime_class": "epsilon",
+      "variant_id": "tp73_lr_x1_epsilon",
+      "display_name": "Ex3-p73-epsilon",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1384,
+      "forward_start_0based": 62,
+      "reverse_target_start_0based": 1426,
+      "reverse_target_end_0based_exclusive": 1446
+    },
+    {
+      "lane": "x1+delta",
+      "five_prime_class": "x1",
+      "five_prime_label": "Ex3-p73",
+      "reverse_readout": "delta",
+      "reverse_label": "delta",
+      "three_prime_class": "delta",
+      "variant_id": "tp73_lr_x1_delta",
+      "display_name": "Ex3-p73-delta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1241,
+      "forward_start_0based": 62,
+      "reverse_target_start_0based": 1280,
+      "reverse_target_end_0based_exclusive": 1303
+    },
+    {
+      "lane": "dn+agz",
+      "five_prime_class": "dn",
+      "five_prime_label": "DeltaN-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "alpha",
+      "variant_id": "tp73_lr_dn_alpha",
+      "display_name": "DeltaN-p73-alpha",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001126240.3",
+      "amplicon_length_bp": 1412,
+      "forward_start_0based": 262,
+      "reverse_target_start_0based": 1654,
+      "reverse_target_end_0based_exclusive": 1674
+    },
+    {
+      "lane": "dn+agz",
+      "five_prime_class": "dn",
+      "five_prime_label": "DeltaN-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "gamma",
+      "variant_id": "tp73_lr_dn_gamma",
+      "display_name": "DeltaN-p73-gamma",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001126242.3",
+      "amplicon_length_bp": 1263,
+      "forward_start_0based": 262,
+      "reverse_target_start_0based": 1505,
+      "reverse_target_end_0based_exclusive": 1525
+    },
+    {
+      "lane": "dn+agz",
+      "five_prime_class": "dn",
+      "five_prime_label": "DeltaN-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "zeta",
+      "variant_id": "tp73_lr_dn_zeta",
+      "display_name": "DeltaN-p73-zeta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204191.2",
+      "amplicon_length_bp": 1124,
+      "forward_start_0based": 262,
+      "reverse_target_start_0based": 1366,
+      "reverse_target_end_0based_exclusive": 1386
+    },
+    {
+      "lane": "dn+be",
+      "five_prime_class": "dn",
+      "five_prime_label": "DeltaN-p73",
+      "reverse_readout": "be",
+      "reverse_label": "beta/epsilon",
+      "three_prime_class": "beta",
+      "variant_id": "tp73_lr_dn_beta",
+      "display_name": "DeltaN-p73-beta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001126241.3",
+      "amplicon_length_bp": 1316,
+      "forward_start_0based": 262,
+      "reverse_target_start_0based": 1558,
+      "reverse_target_end_0based_exclusive": 1578
+    },
+    {
+      "lane": "dn+be",
+      "five_prime_class": "dn",
+      "five_prime_label": "DeltaN-p73",
+      "reverse_readout": "be",
+      "reverse_label": "beta/epsilon",
+      "three_prime_class": "epsilon",
+      "variant_id": "tp73_lr_dn_epsilon",
+      "display_name": "DeltaN-p73-epsilon",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204190.2",
+      "amplicon_length_bp": 1167,
+      "forward_start_0based": 262,
+      "reverse_target_start_0based": 1409,
+      "reverse_target_end_0based_exclusive": 1429
+    },
+    {
+      "lane": "dn+delta",
+      "five_prime_class": "dn",
+      "five_prime_label": "DeltaN-p73",
+      "reverse_readout": "delta",
+      "reverse_label": "delta",
+      "three_prime_class": "delta",
+      "variant_id": "tp73_lr_dn_delta",
+      "display_name": "DeltaN-p73-delta",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204189.2",
+      "amplicon_length_bp": 1024,
+      "forward_start_0based": 262,
+      "reverse_target_start_0based": 1263,
+      "reverse_target_end_0based_exclusive": 1286
+    },
+    {
+      "lane": "v13+agz",
+      "five_prime_class": "v13",
+      "five_prime_label": "V13-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "alpha",
+      "variant_id": "tp73_lr_v13_alpha",
+      "display_name": "V13-p73-alpha",
+      "source_status": "public_refseq_observed",
+      "observed_accession": "NM_001204192.2",
+      "amplicon_length_bp": 1415,
+      "forward_start_0based": 92,
+      "reverse_target_start_0based": 1487,
+      "reverse_target_end_0based_exclusive": 1507
+    },
+    {
+      "lane": "v13+agz",
+      "five_prime_class": "v13",
+      "five_prime_label": "V13-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "gamma",
+      "variant_id": "tp73_lr_v13_gamma",
+      "display_name": "V13-p73-gamma",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1266,
+      "forward_start_0based": 92,
+      "reverse_target_start_0based": 1338,
+      "reverse_target_end_0based_exclusive": 1358
+    },
+    {
+      "lane": "v13+agz",
+      "five_prime_class": "v13",
+      "five_prime_label": "V13-p73",
+      "reverse_readout": "agz",
+      "reverse_label": "alpha/gamma/zeta",
+      "three_prime_class": "zeta",
+      "variant_id": "tp73_lr_v13_zeta",
+      "display_name": "V13-p73-zeta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1127,
+      "forward_start_0based": 92,
+      "reverse_target_start_0based": 1199,
+      "reverse_target_end_0based_exclusive": 1219
+    },
+    {
+      "lane": "v13+be",
+      "five_prime_class": "v13",
+      "five_prime_label": "V13-p73",
+      "reverse_readout": "be",
+      "reverse_label": "beta/epsilon",
+      "three_prime_class": "beta",
+      "variant_id": "tp73_lr_v13_beta",
+      "display_name": "V13-p73-beta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1319,
+      "forward_start_0based": 92,
+      "reverse_target_start_0based": 1391,
+      "reverse_target_end_0based_exclusive": 1411
+    },
+    {
+      "lane": "v13+be",
+      "five_prime_class": "v13",
+      "five_prime_label": "V13-p73",
+      "reverse_readout": "be",
+      "reverse_label": "beta/epsilon",
+      "three_prime_class": "epsilon",
+      "variant_id": "tp73_lr_v13_epsilon",
+      "display_name": "V13-p73-epsilon",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1170,
+      "forward_start_0based": 92,
+      "reverse_target_start_0based": 1242,
+      "reverse_target_end_0based_exclusive": 1262
+    },
+    {
+      "lane": "v13+delta",
+      "five_prime_class": "v13",
+      "five_prime_label": "V13-p73",
+      "reverse_readout": "delta",
+      "reverse_label": "delta",
+      "three_prime_class": "delta",
+      "variant_id": "tp73_lr_v13_delta",
+      "display_name": "V13-p73-delta",
+      "source_status": "virtual_local_hypothesis",
+      "observed_accession": null,
+      "amplicon_length_bp": 1027,
+      "forward_start_0based": 92,
+      "reverse_target_start_0based": 1096,
+      "reverse_target_end_0based_exclusive": 1119
+    }
+  ],
+  "reverse_transcriptase_obstacle_summary": {
+    "method": "RNALfold -L 150 --noLP -T 50 over full virtual cDNA sequences",
+    "rnalfold_executable": "/opt/homebrew/bin/RNALfold",
+    "interpretation": "This is an RNA-structure obstacle proxy, not an empirically calibrated reverse-transcriptase processivity score.",
+    "higher_risk_five_prime_classes": [
+      "ta"
+    ],
+    "conclusion": "TA 5-prime variants form the only higher-risk subset in this virtual panel; 3-prime class does not materially change the reverse-transcription obstacle proxy."
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "op",
+  "state_path": ".gentle_state.json",
+  "operation": {
+    "ExportSequenceContextBundle": {
+      "seq_id": "rs9923231_vkorc1",
+      "mode": "linear",
+      "viewport_start_0based": 2400,
+      "viewport_end_0based_exclusive": 3501,
+      "coordinate_mode": "genomic",
+      "include_feature_bed": true,
+      "include_text_summary": true,
+      "include_restriction_sites": false,
+      "restriction_enzymes": [],
+      "output_dir": "artifacts/rs9923231_vkorc1.context_bundle"
+    }
+  },
+  "expected_artifacts": [
+    "artifacts/rs9923231_vkorc1.context_bundle/bundle.json",
+    "artifacts/rs9923231_vkorc1.context_bundle/context.svg",
+    "artifacts/rs9923231_vkorc1.context_bundle/context_summary.json",
+    "artifacts/rs9923231_vkorc1.context_bundle/context_summary.txt",
+    "artifacts/rs9923231_vkorc1.context_bundle/context_features.bed"
+  ],
+  "timeout_secs": 300
+}

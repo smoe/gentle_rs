@@ -1,0 +1,9 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "services handoff --scope clawbio --output artifacts/service_handoff.json",
+  "expected_artifacts": [
+    "artifacts/service_handoff.json"
+  ],
+  "timeout_secs": 180
+}

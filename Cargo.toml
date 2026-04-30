@@ -1,20 +1,38 @@
 [package]
-name = "gentle"
-authors = ["Magnus Manske <magnusmanske@googlemail.com>"]
+name = "GENtle"
+authors = ["Magnus Manske <magnusmanske@googlemail.com>", "Steffen Möller <moeller@debian.org>"]
 description = "GENtle"
-keywords = ["plasmid", "vector", "primer", "biology", "pcr"]
+keywords = ["plasmid", "vector", "primer", "biology", "pcr", "cloning"]
 categories = ["science", "science::bioinformatics"]
-repository = "https://github.com/magnusmanske/gentle_rs/"
+repository = "https://github.com/smoe/gentle_rs/"
 readme = "README.md"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 default-run = "gentle"
 build = "build.rs"
+
+[workspace]
+resolver = "3"
+members = [
+    "crates/gentle-protocol",
+    "crates/gentle-engine",
+    "crates/gentle-render",
+    "crates/gentle-shell",
+    "crates/gentle-gui",
+]
+exclude = ["packages/snapgene-reader"]
+
+[workspace.package]
+version = "0.1.0-internal.6"
+edition = "2024"
 
 [package.metadata.bundle]
 identifier = "com.example.gentle"
 icon = ["assets/icon.icns"]  # Path to your .icns file
-resources = ["assets/"]      # Additional resources if needed
+resources = ["assets/", "docs/", "Credits.rtf"]      # Additional resources if needed
+
+[package.metadata.bundle.windows]
+icon = ["assets/icon.ico"]
 
 
 [[bin]]
@@ -24,30 +42,60 @@ path = "src/bin/gentle.rs"
 [[bin]]
 name = "gentle_lua"
 path = "src/bin/gentle_lua.rs"
+required-features = ["lua-interface"]
 
 [[bin]]
 name = "gentle_js"
 path = "src/bin/gentle_js.rs"
+required-features = ["js-interface"]
+
+[[bin]]
+name = "gentle_cli"
+path = "src/bin/gentle_cli.rs"
+
+[[bin]]
+name = "gentle_examples_docs"
+path = "src/bin/gentle_examples_docs.rs"
+
+[[bin]]
+name = "gentle_mcp"
+path = "src/bin/gentle_mcp.rs"
 
 [lib]
 name = "gentle"
 
+[features]
+default = []
+screenshot-capture = []
+snapshot-tests = ["gentle-render/snapshot-tests"]
+js-interface = [
+    "dep:deno_core",
+    "dep:deno_error",
+    "dep:rustyline",
+    "dep:icu_calendar",
+    "dep:icu_locale",
+]
+lua-interface = ["dep:mlua", "dep:rustyline"]
+script-interfaces = ["js-interface", "lua-interface"]
+
 [dependencies]
+gentle-gui = { path = "crates/gentle-gui" }
+gentle-protocol = { path = "crates/gentle-protocol" }
+gentle-render = { path = "crates/gentle-render" }
+gentle-shell = { path = "crates/gentle-shell" }
+snapgene-reader = { path = "packages/snapgene-reader", features = ["gb-io"] }
 serde = { version = "^1", features = ["derive"] }
 serde_json = "^1"
 serde_with = "*"
-bio = "^1"
-lazy_static = "^1"
+quick-xml = { version = "0.37", features = ["serialize"] }
+bio = "*"
 csv = "^1"
 itertools = "*"
-# gb-io = "*" # Until nom-7 is merged and published
-gb-io = { git = "https://github.com/dlesl/gb-io", branch = "nom-7", features = [
-	"serde",
-] }
+gb-io = { version = "0.9.0", features = ["serde"] }
 svg = "*"
 rayon = "*"
 anyhow = "*"
-eframe = { version = "*", features = [
+eframe = { version = "0.34.1", features = [
 	"accesskit",
 	"default_fonts",
 	"glow",
@@ -56,23 +104,48 @@ eframe = { version = "*", features = [
 	"x11",
 	"persistence",
 ] }
-egui_extras = { version = "*", features = ["all_loaders"] }
-egui-file-dialog = "*" #  For file dialogs.
-copypasta = "*" # For clipboard things not in egui
+egui_extras = { version = "0.34.1", features = ["all_loaders"] }
+egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
 image = { version = "*", features = ["jpeg", "png"] }
+resvg = "0.45.1"
 rfd = "*"
 reqwest = { version = "*", features = ["blocking", "json"] }
 tempfile = "*"
-winres = "0.1"
 flate2 = "1.0"
+memchr = "2"
+regex = "^1"
+pulldown-cmark = "0.12.2"
+sha1 = "0.10"
 
-# For cli
-rustyline = "*"
-mlua = { version = "*", features = ["lua54", "vendored", "serialize"] }
-deno_core = "*"
+# For feature-gated JS/Lua shells
+rustyline = { version = "*", optional = true }
+mlua = { version = "*", optional = true, features = ["lua54", "vendored", "serialize"] }
+# Keep the JS shell on a Deno/Temporal stack that is known to compile together.
+# `temporal_rs 0.1.2` expects the ICU 2.1 API; without these explicit pins,
+# cargo can legally float the transitive ICU crates to 2.2.x and break CI.
+deno_core = { version = "=0.387.0", optional = true }
+deno_error = { version = "=0.7.3", optional = true }
+icu_calendar = { version = "=2.1.1", optional = true, default-features = false }
+icu_locale = { version = "=2.1.1", optional = true }
 
-#[build-dependencies]
-#winresource = "*" # For Windows app icon
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5.2"
+objc2-foundation = "0.2.2"
+objc2-app-kit = { version = "0.2.2", features = ["NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSWindow"] }
+
+[build-dependencies]
+winres = "0.1"
+
+[profile.dev]
+# Favor faster local iteration for the large GUI crate. Keep line-table debug
+# info for stack traces, but avoid generating full dependency debuginfo on
+# every edit/relink.
+debug = 1
+incremental = true
+codegen-units = 256
+
+[profile.dev.package."*"]
+debug = 0
 
 [profile.release]
 opt-level = 3
@@ -80,3 +153,13 @@ lto = 'fat'
 panic = 'abort'
 codegen-units = 1
 strip = true
+
+[profile.release-fast]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+opt-level = 2
+
+[patch.crates-io]
+egui_commonmark = { path = "vendor/egui_commonmark" }
+egui_commonmark_backend = { path = "vendor/egui_commonmark_backend" }

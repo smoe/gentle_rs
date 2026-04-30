@@ -1,0 +1,29 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "gateway_bp_lr_two_step",
+  "description": "Gateway two-step BP+LR baseline with deterministic intermediate IDs.",
+  "details_url": "https://www.thermofisher.com/us/en/home/life-science/cloning/gateway-cloning.html",
+  "parameters": [
+    { "name": "donor_seq_id", "required": true },
+    { "name": "entry_vector_seq_id", "required": true },
+    { "name": "destination_vector_seq_id", "required": true },
+    { "name": "gateway_phase", "default_value": "bp_lr", "required": false },
+    { "name": "att_tokens", "default_value": "attB,attP,attL,attR", "required": false },
+    { "name": "bp_prefix", "default_value": "gateway_bp_step", "required": false },
+    { "name": "lr_prefix", "default_value": "gateway_lr_step", "required": false },
+    { "name": "output_id", "default_value": "gateway_bp_lr_product", "required": false }
+  ],
+  "input_ports": [
+    { "port_id": "donor_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Donor insert sequence for BP stage." },
+    { "port_id": "entry_vector_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Entry vector sequence for BP stage." },
+    { "port_id": "destination_vector_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Destination vector sequence for LR stage." },
+    { "port_id": "gateway_phase", "kind": "string", "required": true, "cardinality": "one", "description": "Gateway phase token (bp|lr|bp_lr)." },
+    { "port_id": "att_tokens", "kind": "string", "required": true, "cardinality": "many", "description": "Comma-separated Gateway att-site token list for preflight checks." }
+  ],
+  "output_ports": [
+    { "port_id": "bp_prefix", "kind": "sequence", "required": false, "cardinality": "many", "description": "BP-stage preview output namespace prefix." },
+    { "port_id": "lr_prefix", "kind": "sequence", "required": false, "cardinality": "many", "description": "LR-stage preview output namespace prefix." },
+    { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one", "description": "Deterministic final Gateway BP+LR output sequence ID." }
+  ],
+  "script": "op {\"Ligation\":{\"inputs\":[\"${donor_seq_id}\",\"${entry_vector_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Blunt\",\"output_prefix\":\"${bp_prefix}\",\"unique\":false}}\nop {\"Ligation\":{\"inputs\":[\"${bp_prefix}_1\",\"${destination_vector_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Blunt\",\"output_prefix\":\"${lr_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${lr_prefix}_1\",\"output_id\":\"${output_id}\"}}"
+}

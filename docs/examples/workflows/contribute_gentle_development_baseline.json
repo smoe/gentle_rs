@@ -1,0 +1,38 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "contribute_gentle_development_baseline",
+  "title": "Contribution baseline workflow",
+  "summary": "Minimal deterministic workflow used by the contributor tutorial chapter.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/pGEX_3X.fa"
+  ],
+  "tags": [
+    "development",
+    "contribution",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_contribute_gentle_development_baseline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/pGEX_3X.fa",
+          "as_id": "contrib_seed"
+        }
+      },
+      {
+        "Branch": {
+          "input": "contrib_seed",
+          "output_id": "contrib_branch"
+        }
+      },
+      {
+        "ReverseComplement": {
+          "input": "contrib_branch",
+          "output_id": "contrib_branch_rc"
+        }
+      }
+    ]
+  }
+}

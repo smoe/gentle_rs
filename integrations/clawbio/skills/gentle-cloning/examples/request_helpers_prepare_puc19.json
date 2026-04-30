@@ -1,0 +1,6 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "helpers prepare \"Plasmid pUC19 (online)\" --timeout-secs 1800",
+  "timeout_secs": 2100
+}

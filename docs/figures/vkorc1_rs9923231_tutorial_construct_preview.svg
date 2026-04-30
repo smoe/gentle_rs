@@ -1,0 +1,293 @@
+<svg height="700" viewBox="0 0 1200 700" width="1200" xmlns="http://www.w3.org/2000/svg">
+<text fill="#111111" font-family="monospace" font-size="18" x="20" y="34">
+&lt;no name&gt;
+</text>
+<text fill="#444444" font-family="monospace" font-size="14" x="20" y="54">
+5331 bp
+</text>
+<circle cx="672" cy="364" fill="none" r="231.00002" stroke="#000000" stroke-width="2"/>
+<line stroke="#8a7500" stroke-width="6" x1="672" x2="691.5573" y1="197.67998" y2="198.83385"/>
+<line stroke="#827d00" stroke-width="6" x1="691.5573" x2="710.8433" y1="198.83385" y2="202.27942"/>
+<line stroke="#827d00" stroke-width="6" x1="710.8433" x2="729.59033" y1="202.27942" y2="207.9689"/>
+<line stroke="#708f00" stroke-width="6" x1="729.59033" x2="747.53827" y1="207.9689" y2="215.82335"/>
+<line stroke="#857a00" stroke-width="6" x1="747.53827" x2="764.4381" y1="215.82335" y2="225.73378"/>
+<line stroke="#708f00" stroke-width="6" x1="764.4381" x2="780.0553" y1="225.73378" y2="237.56268"/>
+<line stroke="#7f8000" stroke-width="6" x1="780.0553" x2="794.1733" y1="237.56268" y2="251.14594"/>
+<line stroke="#827d00" stroke-width="6" x1="794.1733" x2="806.59607" y1="251.14594" y2="266.29504"/>
+<line stroke="#a65900" stroke-width="6" x1="806.59607" x2="817.15125" y1="266.29504" y2="282.79987"/>
+<line stroke="#7d8200" stroke-width="6" x1="817.15125" x2="825.69244" y1="282.79987" y2="300.4313"/>
+<line stroke="#7d8200" stroke-width="6" x1="825.69244" x2="832.1012" y1="300.4313" y2="318.94482"/>
+<line stroke="#6b9400" stroke-width="6" x1="832.1012" x2="836.2884" y1="318.94482" y2="338.08347"/>
+<line stroke="#639c00" stroke-width="6" x1="836.2884" x2="838.19617" y1="338.08347" y2="357.5817"/>
+<line stroke="#738c00" stroke-width="6" x1="838.19617" x2="837.79785" y1="357.5817" y2="377.169"/>
+<line stroke="#708f00" stroke-width="6" x1="837.79785" x2="835.0991" y1="377.169" y2="396.5736"/>
+<line stroke="#738c00" stroke-width="6" x1="835.0991" x2="830.13727" y1="396.5736" y2="415.5262"/>
+<line stroke="#8a7500" stroke-width="6" x1="830.13727" x2="822.98126" y1="415.5262" y2="433.7639"/>
+<line stroke="#708f00" stroke-width="6" x1="822.98126" x2="813.7304" y1="433.7639" y2="451.03354"/>
+<line stroke="#5ca300" stroke-width="6" x1="813.7304" x2="802.513" y1="451.03354" y2="467.0956"/>
+<line stroke="#699600" stroke-width="6" x1="802.513" x2="789.4847" y1="467.0956" y2="481.72723"/>
+<line stroke="#877800" stroke-width="6" x1="789.4847" x2="774.82623" y1="481.72723" y2="494.72534"/>
+<line stroke="#57a800" stroke-width="6" x1="774.82623" x2="758.741" y1="494.72534" y2="505.9096"/>
+<line stroke="#619e00" stroke-width="6" x1="758.741" x2="741.45233" y1="505.9096" y2="515.1249"/>
+<line stroke="#699600" stroke-width="6" x1="741.45233" x2="723.19995" y1="515.1249" y2="522.2432"/>
+<line stroke="#5ea100" stroke-width="6" x1="723.19995" x2="704.2371" y1="522.2432" y2="527.1659"/>
+<line stroke="#669900" stroke-width="6" x1="704.2371" x2="684.827" y1="527.1659" y2="529.82465"/>
+<line stroke="#5ca300" stroke-width="6" x1="684.827" x2="665.23895" y1="529.82465" y2="530.18256"/>
+<line stroke="#669900" stroke-width="6" x1="665.23895" x2="645.7446" y1="530.18256" y2="528.2346"/>
+<line stroke="#7d8200" stroke-width="6" x1="645.7446" x2="626.6147" y1="528.2346" y2="524.0079"/>
+<line stroke="#b24d00" stroke-width="6" x1="626.6147" x2="608.11444" y1="524.0079" y2="517.56104"/>
+<line stroke="#a35c00" stroke-width="6" x1="608.11444" x2="590.5006" y1="517.56104" y2="508.98346"/>
+<line stroke="#669900" stroke-width="6" x1="590.5006" x2="574.01764" y1="508.98346" y2="498.39423"/>
+<line stroke="#5ea100" stroke-width="6" x1="574.01764" x2="558.89417" y1="498.39423" y2="485.94025"/>
+<line stroke="#827d00" stroke-width="6" x1="558.89417" x2="545.3401" y1="485.94025" y2="471.7943"/>
+<line stroke="#708f00" stroke-width="6" x1="545.3401" x2="533.5434" y1="471.7943" y2="456.1527"/>
+<line stroke="#669900" stroke-width="6" x1="533.5434" x2="523.6679" y1="456.1527" y2="439.23254"/>
+<line stroke="#699600" stroke-width="6" x1="523.6679" x2="515.85046" y1="439.23254" y2="421.26837"/>
+<line stroke="#738c00" stroke-width="6" x1="515.85046" x2="510.19965" y1="421.26837" y2="402.50974"/>
+<line stroke="#7d8200" stroke-width="6" x1="510.19965" x2="506.79385" y1="402.50974" y2="383.2166"/>
+<line stroke="#877800" stroke-width="6" x1="506.79385" x2="505.68033" y1="383.2166" y2="363.657"/>
+<line stroke="#996600" stroke-width="6" x1="505.68033" x2="506.8745" y1="363.657" y2="344.10202"/>
+<line stroke="#ad5200" stroke-width="6" x1="506.8745" x2="510.35986" y1="344.10202" y2="324.8232"/>
+<line stroke="#738c00" stroke-width="6" x1="510.35986" x2="516.088" y1="324.8232" y2="306.08795"/>
+<line stroke="#639c00" stroke-width="6" x1="516.088" x2="523.9795" y1="306.08795" y2="288.15625"/>
+<line stroke="#708f00" stroke-width="6" x1="523.9795" x2="533.92474" y1="288.15625" y2="271.27692"/>
+<line stroke="#738c00" stroke-width="6" x1="533.92474" x2="545.7858" y1="271.27692" y2="255.68411"/>
+<line stroke="#827d00" stroke-width="6" x1="545.7858" x2="559.3982" y1="255.68411" y2="241.59421"/>
+<line stroke="#857a00" stroke-width="6" x1="559.3982" x2="574.5729" y1="241.59421" y2="229.20273"/>
+<line stroke="#6b9400" stroke-width="6" x1="574.5729" x2="591.0994" y1="229.20273" y2="218.68158"/>
+<line stroke="#8a7500" stroke-width="6" x1="591.0994" x2="608.7484" y1="218.68158" y2="210.17676"/>
+<line stroke="#946b00" stroke-width="6" x1="608.7484" x2="627.27515" y1="210.17676" y2="203.80626"/>
+<line stroke="#a65900" stroke-width="6" x1="627.27515" x2="646.42236" y1="203.80626" y2="199.65848"/>
+<line stroke="#9e6100" stroke-width="6" x1="646.42236" x2="665.92456" y1="199.65848" y2="197.79099"/>
+<line stroke="#847b00" stroke-width="6" x1="665.92456" x2="672" y1="197.79099" y2="197.67998"/>
+<line stroke="#808080" stroke-width="1" x1="829.39056" x2="852.99915" y1="194.91653" y2="169.55402"/>
+<line stroke="#808080" stroke-width="1" x1="852.99915" x2="868.7382" y1="169.55402" y2="169.55402"/>
+<text dominant-baseline="middle" fill="#00008b" font-family="monospace" font-size="9" text-anchor="start" x="873.45996" y="169.55402">
+636 BamHI
+</text>
+<line stroke="#808080" stroke-width="1" x1="850.96686" x2="877.8119" y1="217.94566" y2="196.0375"/>
+<line stroke="#808080" stroke-width="1" x1="877.8119" x2="895.7086" y1="196.0375" y2="196.0375"/>
+<text dominant-baseline="middle" fill="#00008b" font-family="monospace" font-size="9" text-anchor="start" x="901.0776" y="196.0375">
+752 XbaI
+</text>
+<line stroke="#808080" stroke-width="1" x1="894.5096" x2="927.88605" y1="301.9477" y2="292.63986"/>
+<line stroke="#808080" stroke-width="1" x1="927.88605" x2="950.13696" y1="292.63986" y2="292.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="956.81226" y="292.63986">
+1102 SthI
+</text>
+<line stroke="#808080" stroke-width="1" x1="894.5826" x2="927.97" y1="302.21" y2="292.9415"/>
+<line stroke="#808080" stroke-width="1" x1="927.97" x2="950.2283" y1="292.9415" y2="303.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="956.9057" y="303.63986">
+1103 Asp718
+</text>
+<line stroke="#808080" stroke-width="1" x1="894.8714" x2="928.3021" y1="303.26" y2="294.14902"/>
+<line stroke="#808080" stroke-width="1" x1="928.3021" x2="950.58923" y1="294.14902" y2="314.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="957.2754" y="314.63986">
+1107 KpnI
+</text>
+<line stroke="#808080" stroke-width="1" x1="895.29535" x2="928.7897" y1="304.83762" y2="295.96326"/>
+<line stroke="#808080" stroke-width="1" x1="928.7897" x2="951.11926" y1="295.96326" y2="325.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="957.8181" y="325.63986">
+1113 SstI
+</text>
+<line stroke="#808080" stroke-width="1" x1="895.3649" x2="928.8697" y1="305.10083" y2="296.26596"/>
+<line stroke="#808080" stroke-width="1" x1="928.8697" x2="951.2062" y1="296.26596" y2="336.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="957.9071" y="336.63986">
+1114 SacI
+</text>
+<line stroke="#808080" stroke-width="1" x1="895.5032" x2="929.0286" y1="305.62753" y2="296.87164"/>
+<line stroke="#808080" stroke-width="1" x1="929.0286" x2="951.3789" y1="296.87164" y2="347.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="958.08405" y="347.63986">
+1116 NheI
+</text>
+<line stroke="#808080" stroke-width="1" x1="895.84326" x2="929.4198" y1="306.94562" y2="298.38748"/>
+<line stroke="#808080" stroke-width="1" x1="929.4198" x2="951.8041" y1="298.38748" y2="358.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="958.5194" y="358.63986">
+1121 AbrI, BluI, CcrI, PaeR7, PanI, Sau3239, SexI, SlaI, XpaI
+</text>
+<line stroke="#808080" stroke-width="1" x1="895.91034" x2="929.49695" y1="307.20953" y2="298.69095"/>
+<line stroke="#808080" stroke-width="1" x1="929.49695" x2="951.88794" y1="298.69095" y2="369.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="958.6052" y="369.63986">
+1122 XhoI
+</text>
+<line stroke="#808080" stroke-width="1" x1="896.0436" x2="929.65015" y1="307.73746" y2="299.2981"/>
+<line stroke="#808080" stroke-width="1" x1="929.65015" x2="952.0545" y1="299.2981" y2="380.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="958.7758" y="380.63986">
+1124 SciI
+</text>
+<line stroke="#808080" stroke-width="1" x1="896.43585" x2="930.10126" y1="309.32324" y2="301.1217"/>
+<line stroke="#808080" stroke-width="1" x1="930.10126" x2="952.54486" y1="301.1217" y2="391.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="959.27795" y="391.63986">
+1130 CeqI, Eco32, NsiCI
+</text>
+<line stroke="#808080" stroke-width="1" x1="896.43585" x2="930.10126" y1="309.32324" y2="301.1217"/>
+<line stroke="#808080" stroke-width="1" x1="930.10126" x2="952.54486" y1="301.1217" y2="402.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="959.27795" y="402.63986">
+1130 EcoRV
+</text>
+<line stroke="#808080" stroke-width="1" x1="896.69116" x2="930.3948" y1="310.38193" y2="302.33923"/>
+<line stroke="#808080" stroke-width="1" x1="930.3948" x2="952.8639" y1="302.33923" y2="413.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="959.6047" y="413.63986">
+1134 NspMACI
+</text>
+<line stroke="#808080" stroke-width="1" x1="896.75415" x2="930.4673" y1="310.6468" y2="302.6438"/>
+<line stroke="#808080" stroke-width="1" x1="930.4673" x2="952.94275" y1="302.6438" y2="424.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="959.6853" y="424.63986">
+1135 BglII
+</text>
+<line stroke="#808080" stroke-width="1" x1="897.83545" x2="931.7107" y1="315.4266" y2="308.1406"/>
+<line stroke="#808080" stroke-width="1" x1="931.7107" x2="954.2943" y1="308.1406" y2="435.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="961.06934" y="435.63986">
+1153 BstFI, Eco8, EcoVIII, HsuI
+</text>
+<line stroke="#808080" stroke-width="1" x1="897.8925" x2="931.77637" y1="315.6928" y2="308.44675"/>
+<line stroke="#808080" stroke-width="1" x1="931.77637" x2="954.3656" y1="308.44675" y2="446.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="961.1424" y="446.63986">
+1154 HindIII
+</text>
+<line stroke="#808080" stroke-width="1" x1="899.6001" x2="933.7401" y1="324.51303" y2="318.59"/>
+<line stroke="#808080" stroke-width="1" x1="933.7401" x2="956.5001" y1="318.59" y2="457.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="963.3281" y="457.63986">
+1187 NcoI
+</text>
+<line stroke="#808080" stroke-width="1" x1="900.9271" x2="935.26624" y1="333.12314" y2="328.4916"/>
+<line stroke="#808080" stroke-width="1" x1="935.26624" x2="958.15894" y1="328.4916" y2="468.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="965.02673" y="468.63986">
+1219 ApaI
+</text>
+<line stroke="#808080" stroke-width="1" x1="901.62115" x2="936.06433" y1="338.7982" y2="335.0179"/>
+<line stroke="#808080" stroke-width="1" x1="936.06433" x2="959.0265" y1="335.0179" y2="479.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="965.91504" y="479.63986">
+1240 BbvII
+</text>
+<line stroke="#808080" stroke-width="1" x1="902.21985" x2="936.75287" y1="345.03128" y2="342.18597"/>
+<line stroke="#808080" stroke-width="1" x1="936.75287" x2="959.7749" y1="342.18597" y2="490.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="966.68146" y="490.63986">
+1263 BavI, Cfr6I
+</text>
+<line stroke="#808080" stroke-width="1" x1="902.21985" x2="936.75287" y1="345.03128" y2="342.18597"/>
+<line stroke="#808080" stroke-width="1" x1="936.75287" x2="959.7749" y1="342.18597" y2="501.63986"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="966.68146" y="501.63986">
+1263 PvuII
+</text>
+<line stroke="#808080" stroke-width="1" x1="833.0396" x2="857.19556" y1="529.61176" y2="554.4535"/>
+<line stroke="#808080" stroke-width="1" x1="857.19556" x2="873.2995" y1="554.4535" y2="554.4535"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="878.13074" y="554.4535">
+2011 AosI, AviII, FdiII, MstI
+</text>
+<line stroke="#808080" stroke-width="1" x1="833.0396" x2="857.19556" y1="529.61176" y2="554.4535"/>
+<line stroke="#808080" stroke-width="1" x1="857.19556" x2="873.2995" y1="554.4535" y2="565.4535"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="878.13074" y="565.4535">
+2011 FspI
+</text>
+<line stroke="#808080" stroke-width="1" x1="807.2051" x2="827.48584" y1="551.29816" y2="579.3929"/>
+<line stroke="#808080" stroke-width="1" x1="827.48584" x2="841.00635" y1="579.3929" y2="579.3929"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="845.0625" y="579.3929">
+2135 NdaI, NunII
+</text>
+<line stroke="#808080" stroke-width="1" x1="806.98425" x2="827.2319" y1="551.45734" y2="579.5759"/>
+<line stroke="#808080" stroke-width="1" x1="827.2319" x2="840.73035" y1="579.5759" y2="590.3929"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="844.77985" y="590.3929">
+2136 NarI
+</text>
+<line stroke="#808080" stroke-width="1" x1="806.099" x2="826.21387" y1="552.0917" y2="580.3054"/>
+<line stroke="#808080" stroke-width="1" x1="826.21387" x2="839.6238" y1="580.3054" y2="601.3929"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="843.6467" y="601.3929">
+2140 BbeI
+</text>
+<line stroke="#808080" stroke-width="1" x1="806.542" x2="826.7233" y1="551.775" y2="579.9413"/>
+<line stroke="#808080" stroke-width="1" x1="826.7233" x2="840.1775" y1="579.9413" y2="612.3929"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="844.21375" y="612.3929">
+2138 Eco78
+</text>
+<line stroke="#808080" stroke-width="1" x1="801.85364" x2="821.3317" y1="555.04724" y2="583.7043"/>
+<line stroke="#808080" stroke-width="1" x1="821.3317" x2="834.3171" y1="583.7043" y2="623.3929"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="start" x="838.21265" y="623.3929">
+2159 HphI
+</text>
+<line stroke="#808080" stroke-width="1" x1="623.227" x2="615.9111" y1="589.79236" y2="623.66125"/>
+<line stroke="#808080" stroke-width="1" x1="615.9111" x2="611.03375" y1="623.66125" y2="623.66125"/>
+<text dominant-baseline="middle" fill="#00008b" font-family="monospace" font-size="9" text-anchor="end" x="609.57056" y="623.66125">
+XbaI 2846
+</text>
+<line stroke="#808080" stroke-width="1" x1="602.96436" x2="592.609" y1="584.44293" y2="617.5094"/>
+<line stroke="#808080" stroke-width="1" x1="592.609" x2="585.70544" y1="617.5094" y2="612.66125"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="583.6344" y="612.66125">
+BsmI 2923
+</text>
+<line stroke="#808080" stroke-width="1" x1="556.9128" x2="539.6497" y1="564.2897" y2="594.3331"/>
+<line stroke="#808080" stroke-width="1" x1="539.6497" x2="528.141" y1="594.3331" y2="594.3331"/>
+<text dominant-baseline="middle" fill="#00008b" font-family="monospace" font-size="9" text-anchor="end" x="524.68835" y="594.3331">
+BamHI 3108
+</text>
+<line stroke="#808080" stroke-width="1" x1="555.73456" x2="538.29474" y1="563.608" y2="593.5492"/>
+<line stroke="#808080" stroke-width="1" x1="538.29474" x2="526.6682" y1="593.5492" y2="583.3331"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="523.18024" y="583.3331">
+HgiCIII, HgiDII, NopI, XciI 3113
+</text>
+<line stroke="#808080" stroke-width="1" x1="555.4993" x2="538.02423" y1="563.4708" y2="593.3914"/>
+<line stroke="#808080" stroke-width="1" x1="538.02423" x2="526.37415" y1="593.3914" y2="572.3331"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="522.87915" y="572.3331">
+SalI 3114
+</text>
+<line stroke="#808080" stroke-width="1" x1="457.3612" x2="425.1654" y1="449.38852" y2="462.1968"/>
+<line stroke="#808080" stroke-width="1" x1="425.1654" x2="403.7015" y1="462.1968" y2="462.1968"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="397.26236" y="462.1968">
+SnoI, VneI 3677
+</text>
+<line stroke="#808080" stroke-width="1" x1="457.26074" x2="425.0498" y1="449.13544" y2="461.90576"/>
+<line stroke="#808080" stroke-width="1" x1="425.0498" x2="403.5759" y1="461.90576" y2="451.1968"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="397.13373" y="451.1968">
+ApaLI 3678
+</text>
+<line stroke="#808080" stroke-width="1" x1="446.45477" x2="412.623" y1="314.09653" y2="306.61102"/>
+<line stroke="#808080" stroke-width="1" x1="412.623" x2="390.06845" y1="306.61102" y2="306.61102"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="383.30212" y="306.61102">
+NotI 4183
+</text>
+<line stroke="#808080" stroke-width="1" x1="447.95642" x2="414.34985" y1="307.7375" y2="299.2981"/>
+<line stroke="#808080" stroke-width="1" x1="414.34985" x2="391.9455" y1="299.2981" y2="295.61102"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="385.22418" y="295.61102">
+AliAJI, Bsp63I, BspBI, CflI, CfrA4I, Pma44I, SalPI, SflI, YenI 4207
+</text>
+<line stroke="#808080" stroke-width="1" x1="448.0229" x2="414.4263" y1="307.47342" y2="298.99445"/>
+<line stroke="#808080" stroke-width="1" x1="414.4263" x2="392.0286" y1="298.99445" y2="284.61102"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="385.30927" y="284.61102">
+PstI 4208
+</text>
+<line stroke="#808080" stroke-width="1" x1="506.62567" x2="481.81952" y1="202.7166" y2="178.5241"/>
+<line stroke="#808080" stroke-width="1" x1="481.81952" x2="465.28204" y1="178.5241" y2="178.5241"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="460.32083" y="178.5241">
+EclJI, NblI, RshI, RspI, XorII 4654
+</text>
+<line stroke="#808080" stroke-width="1" x1="506.8159" x2="482.03827" y1="202.52177" y2="178.30003"/>
+<line stroke="#808080" stroke-width="1" x1="482.03827" x2="465.51984" y1="178.30003" y2="167.5241"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="460.56433" y="167.5241">
+PvuI 4655
+</text>
+<line stroke="#808080" stroke-width="1" x1="511.25342" x2="487.14142" y1="198.10382" y2="173.21939"/>
+<line stroke="#808080" stroke-width="1" x1="487.14142" x2="471.06677" y1="173.21939" y2="156.5241"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="466.2444" y="156.5241">
+CscI, GalI, GceGLI, GceI, NgoPIII, PaeAI, SstII 4678
+</text>
+<line stroke="#808080" stroke-width="1" x1="511.4491" x2="487.36646" y1="197.91444" y2="173.00162"/>
+<line stroke="#808080" stroke-width="1" x1="487.36646" x2="471.31134" y1="173.00162" y2="145.5241"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="466.4948" y="145.5241">
+SacII 4679
+</text>
+<line stroke="#808080" stroke-width="1" x1="535.8034" x2="515.3739" y1="177.4216" y2="149.43483"/>
+<line stroke="#808080" stroke-width="1" x1="515.3739" x2="501.75427" y1="149.43483" y2="134.5241"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="497.66837" y="134.5241">
+XcaI 4796
+</text>
+<line stroke="#808080" stroke-width="1" x1="600.50055" x2="589.77563" y1="144.34381" y2="111.395386"/>
+<line stroke="#808080" stroke-width="1" x1="589.77563" x2="582.62573" y1="111.395386" y2="111.395386"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="580.4807" y="111.395386">
+FokI 5064
+</text>
+<line stroke="#808080" stroke-width="1" x1="613.8251" x2="605.0989" y1="140.44534" y2="106.91214"/>
+<line stroke="#808080" stroke-width="1" x1="605.0989" x2="599.2814" y1="106.91214" y2="100.395386"/>
+<text dominant-baseline="middle" fill="#8b0000" font-family="monospace" font-size="9" text-anchor="end" x="597.53613" y="100.395386">
+SpeI 5115
+</text>
+</svg>

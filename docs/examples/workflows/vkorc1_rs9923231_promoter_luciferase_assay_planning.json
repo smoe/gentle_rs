@@ -1,0 +1,248 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "vkorc1_rs9923231_promoter_luciferase_assay_planning",
+  "title": "VKORC1 rs9923231 promoter-SNP-to-luciferase handoff (offline, promoter-aware baseline)",
+  "summary": "Starts from dbSNP-guided VKORC1 locus retrieval, derives promoter windows and variant-promoter context, suggests the reporter fragment deterministically, materializes matched reference/alternate inserts, loads a pinned local mammalian luciferase backbone, and exports promoter-context plus paired construct maps for a human-cell reporter-design handoff.",
+  "test_mode": "skip",
+  "required_files": [
+    "assets/genomes.json",
+    "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb"
+  ],
+  "tags": [
+    "tutorial",
+    "vkorc1",
+    "rs9923231",
+    "warfarin",
+    "promoter",
+    "luciferase",
+    "gui",
+    "parity",
+    "offline",
+    "clawbio"
+  ],
+  "workflow": {
+    "run_id": "example_vkorc1_rs9923231_promoter_luciferase_assay_planning",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "FetchDbSnpRegion": {
+          "rs_id": "rs9923231",
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "flank_bp": 3000,
+          "output_id": "vkorc1_rs9923231_context",
+          "annotation_scope": "full",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "AnnotatePromoterWindows": {
+          "input": "vkorc1_rs9923231_context",
+          "gene_label": "VKORC1",
+          "upstream_bp": 1000,
+          "downstream_bp": 200,
+          "collapse_mode": "transcript"
+        }
+      },
+      {
+        "SummarizeVariantPromoterContext": {
+          "input": "vkorc1_rs9923231_context",
+          "variant_label_or_id": "rs9923231",
+          "gene_label": "VKORC1",
+          "promoter_upstream_bp": 1000,
+          "promoter_downstream_bp": 200,
+          "tfbs_focus_half_window_bp": 100,
+          "path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/variant_promoter_context.json"
+        }
+      },
+      {
+        "SuggestPromoterReporterFragments": {
+          "input": "vkorc1_rs9923231_context",
+          "variant_label_or_id": "rs9923231",
+          "gene_label": "VKORC1",
+          "retain_downstream_from_tss_bp": 200,
+          "retain_upstream_beyond_variant_bp": 500,
+          "max_candidates": 5,
+          "path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/promoter_reporter_candidates.json"
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "SequencePanel",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "MapPanel",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "Features",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "GeneFeatures",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "MrnaFeatures",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "Tfbs",
+          "visible": true
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "RestrictionEnzymes",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "GcContents",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "OpenReadingFrames",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "MethylationSites",
+          "visible": false
+        }
+      },
+      {
+        "SetLinearViewport": {
+          "start_bp": 2113,
+          "span_bp": 1388
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "vkorc1_rs9923231_context",
+          "mode": "Linear",
+          "path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg"
+        }
+      },
+      {
+        "ExtractRegion": {
+          "input": "vkorc1_rs9923231_context",
+          "from": 2412,
+          "to": 3501,
+          "output_id": "vkorc1_rs9923231_promoter_fragment"
+        }
+      },
+      {
+        "MaterializeVariantAllele": {
+          "input": "vkorc1_rs9923231_promoter_fragment",
+          "variant_label_or_id": "rs9923231",
+          "allele": "reference",
+          "output_id": "vkorc1_rs9923231_promoter_reference"
+        }
+      },
+      {
+        "MaterializeVariantAllele": {
+          "input": "vkorc1_rs9923231_promoter_fragment",
+          "variant_label_or_id": "rs9923231",
+          "allele": "alternate",
+          "output_id": "vkorc1_rs9923231_promoter_alternate"
+        }
+      },
+      {
+        "LoadFile": {
+          "path": "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb",
+          "as_id": "gentle_mammalian_luciferase_backbone_v1"
+        }
+      },
+      {
+        "Ligation": {
+          "inputs": [
+            "vkorc1_rs9923231_promoter_reference",
+            "gentle_mammalian_luciferase_backbone_v1"
+          ],
+          "circularize_if_possible": false,
+          "protocol": "Blunt",
+          "output_prefix": "vkorc1_rs9923231_reporter_reference_assembly",
+          "unique": false
+        }
+      },
+      {
+        "Branch": {
+          "input": "vkorc1_rs9923231_reporter_reference_assembly_1",
+          "output_id": "vkorc1_rs9923231_reporter_reference"
+        }
+      },
+      {
+        "Ligation": {
+          "inputs": [
+            "vkorc1_rs9923231_promoter_alternate",
+            "gentle_mammalian_luciferase_backbone_v1"
+          ],
+          "circularize_if_possible": false,
+          "protocol": "Blunt",
+          "output_prefix": "vkorc1_rs9923231_reporter_alternate_assembly",
+          "unique": false
+        }
+      },
+      {
+        "Branch": {
+          "input": "vkorc1_rs9923231_reporter_alternate_assembly_1",
+          "output_id": "vkorc1_rs9923231_reporter_alternate"
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "GeneFeatures",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "MrnaFeatures",
+          "visible": false
+        }
+      },
+      {
+        "SetDisplayVisibility": {
+          "target": "Tfbs",
+          "visible": false
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "vkorc1_rs9923231_reporter_reference",
+          "mode": "Circular",
+          "path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_reference.svg"
+        }
+      },
+      {
+        "RenderSequenceSvg": {
+          "seq_id": "vkorc1_rs9923231_reporter_alternate",
+          "mode": "Circular",
+          "path": "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg"
+        }
+      }
+    ]
+  }
+}

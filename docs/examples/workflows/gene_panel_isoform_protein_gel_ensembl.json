@@ -1,0 +1,290 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "gene_panel_isoform_protein_gel_ensembl",
+  "title": "Gene-panel isoform protein gel from Ensembl (online)",
+  "summary": "Fetches PATZ1, TP73, TP53, TP63, SP1, and BACH2 from Ensembl, derives protein-coding transcript products, and renders one 1D protein molecular-weight gel with one column per gene and protein ladders at the sides.",
+  "test_mode": "online",
+  "required_files": [],
+  "tags": [
+    "ensembl",
+    "protein",
+    "isoform",
+    "gel",
+    "gene-panel",
+    "online",
+    "clawbio"
+  ],
+  "workflow": {
+    "run_id": "example_gene_panel_isoform_protein_gel_ensembl",
+    "ops": [
+      {
+        "FetchEnsemblGene": {
+          "query": "PATZ1",
+          "species": "homo_sapiens",
+          "entry_id": "patz1_ensembl_gene"
+        }
+      },
+      {
+        "ImportEnsemblGeneSequence": {
+          "entry_id": "patz1_ensembl_gene",
+          "output_id": "patz1_ensembl_locus"
+        }
+      },
+      {
+        "DeriveProteinSequences": {
+          "seq_id": "patz1_ensembl_locus",
+          "feature_query": {
+            "seq_id": "patz1_ensembl_locus",
+            "include_source": false,
+            "include_qualifiers": false,
+            "kind_in": [
+              "mRNA"
+            ],
+            "kind_not_in": [],
+            "range_relation": "overlap",
+            "strand": "any",
+            "qualifier_filters": [
+              {
+                "key": "biotype",
+                "value_contains": "protein_coding",
+                "value_regex": "^protein_coding$",
+                "case_sensitive": true
+              }
+            ],
+            "sort_by": "feature_id",
+            "descending": false,
+            "offset": 0
+          },
+          "output_prefix": "patz1_ensembl_protein",
+          "report_id": "patz1_ensembl_protein_gel"
+        }
+      },
+      {
+        "FetchEnsemblGene": {
+          "query": "TP73",
+          "species": "homo_sapiens",
+          "entry_id": "tp73_ensembl_gene"
+        }
+      },
+      {
+        "ImportEnsemblGeneSequence": {
+          "entry_id": "tp73_ensembl_gene",
+          "output_id": "tp73_ensembl_locus"
+        }
+      },
+      {
+        "DeriveProteinSequences": {
+          "seq_id": "tp73_ensembl_locus",
+          "feature_query": {
+            "seq_id": "tp73_ensembl_locus",
+            "include_source": false,
+            "include_qualifiers": false,
+            "kind_in": [
+              "mRNA"
+            ],
+            "kind_not_in": [],
+            "range_relation": "overlap",
+            "strand": "any",
+            "qualifier_filters": [
+              {
+                "key": "biotype",
+                "value_contains": "protein_coding",
+                "value_regex": "^protein_coding$",
+                "case_sensitive": true
+              }
+            ],
+            "sort_by": "feature_id",
+            "descending": false,
+            "offset": 0
+          },
+          "output_prefix": "tp73_ensembl_protein",
+          "report_id": "tp73_ensembl_protein_gel"
+        }
+      },
+      {
+        "FetchEnsemblGene": {
+          "query": "TP53",
+          "species": "homo_sapiens",
+          "entry_id": "tp53_ensembl_gene"
+        }
+      },
+      {
+        "ImportEnsemblGeneSequence": {
+          "entry_id": "tp53_ensembl_gene",
+          "output_id": "tp53_ensembl_locus"
+        }
+      },
+      {
+        "DeriveProteinSequences": {
+          "seq_id": "tp53_ensembl_locus",
+          "feature_query": {
+            "seq_id": "tp53_ensembl_locus",
+            "include_source": false,
+            "include_qualifiers": false,
+            "kind_in": [
+              "mRNA"
+            ],
+            "kind_not_in": [],
+            "range_relation": "overlap",
+            "strand": "any",
+            "qualifier_filters": [
+              {
+                "key": "biotype",
+                "value_contains": "protein_coding",
+                "value_regex": "^protein_coding$",
+                "case_sensitive": true
+              }
+            ],
+            "sort_by": "feature_id",
+            "descending": false,
+            "offset": 0
+          },
+          "output_prefix": "tp53_ensembl_protein",
+          "report_id": "tp53_ensembl_protein_gel"
+        }
+      },
+      {
+        "FetchEnsemblGene": {
+          "query": "TP63",
+          "species": "homo_sapiens",
+          "entry_id": "tp63_ensembl_gene"
+        }
+      },
+      {
+        "ImportEnsemblGeneSequence": {
+          "entry_id": "tp63_ensembl_gene",
+          "output_id": "tp63_ensembl_locus"
+        }
+      },
+      {
+        "DeriveProteinSequences": {
+          "seq_id": "tp63_ensembl_locus",
+          "feature_query": {
+            "seq_id": "tp63_ensembl_locus",
+            "include_source": false,
+            "include_qualifiers": false,
+            "kind_in": [
+              "mRNA"
+            ],
+            "kind_not_in": [],
+            "range_relation": "overlap",
+            "strand": "any",
+            "qualifier_filters": [
+              {
+                "key": "biotype",
+                "value_contains": "protein_coding",
+                "value_regex": "^protein_coding$",
+                "case_sensitive": true
+              }
+            ],
+            "sort_by": "feature_id",
+            "descending": false,
+            "offset": 0
+          },
+          "output_prefix": "tp63_ensembl_protein",
+          "report_id": "tp63_ensembl_protein_gel"
+        }
+      },
+      {
+        "FetchEnsemblGene": {
+          "query": "SP1",
+          "species": "homo_sapiens",
+          "entry_id": "sp1_ensembl_gene"
+        }
+      },
+      {
+        "ImportEnsemblGeneSequence": {
+          "entry_id": "sp1_ensembl_gene",
+          "output_id": "sp1_ensembl_locus"
+        }
+      },
+      {
+        "DeriveProteinSequences": {
+          "seq_id": "sp1_ensembl_locus",
+          "feature_query": {
+            "seq_id": "sp1_ensembl_locus",
+            "include_source": false,
+            "include_qualifiers": false,
+            "kind_in": [
+              "mRNA"
+            ],
+            "kind_not_in": [],
+            "range_relation": "overlap",
+            "strand": "any",
+            "qualifier_filters": [
+              {
+                "key": "biotype",
+                "value_contains": "protein_coding",
+                "value_regex": "^protein_coding$",
+                "case_sensitive": true
+              }
+            ],
+            "sort_by": "feature_id",
+            "descending": false,
+            "offset": 0
+          },
+          "output_prefix": "sp1_ensembl_protein",
+          "report_id": "sp1_ensembl_protein_gel"
+        }
+      },
+      {
+        "FetchEnsemblGene": {
+          "query": "BACH2",
+          "species": "homo_sapiens",
+          "entry_id": "bach2_ensembl_gene"
+        }
+      },
+      {
+        "ImportEnsemblGeneSequence": {
+          "entry_id": "bach2_ensembl_gene",
+          "output_id": "bach2_ensembl_locus"
+        }
+      },
+      {
+        "DeriveProteinSequences": {
+          "seq_id": "bach2_ensembl_locus",
+          "feature_query": {
+            "seq_id": "bach2_ensembl_locus",
+            "include_source": false,
+            "include_qualifiers": false,
+            "kind_in": [
+              "mRNA"
+            ],
+            "kind_not_in": [],
+            "range_relation": "overlap",
+            "strand": "any",
+            "qualifier_filters": [
+              {
+                "key": "biotype",
+                "value_contains": "protein_coding",
+                "value_regex": "^protein_coding$",
+                "case_sensitive": true
+              }
+            ],
+            "sort_by": "feature_id",
+            "descending": false,
+            "offset": 0
+          },
+          "output_prefix": "bach2_ensembl_protein",
+          "report_id": "bach2_ensembl_protein_gel"
+        }
+      },
+      {
+        "RenderProteinGelReportsSvg": {
+          "report_ids": [
+            "patz1_ensembl_protein_gel",
+            "tp73_ensembl_protein_gel",
+            "tp53_ensembl_protein_gel",
+            "tp63_ensembl_protein_gel",
+            "sp1_ensembl_protein_gel",
+            "bach2_ensembl_protein_gel"
+          ],
+          "path": "exports/gene_panel_isoform_protein_gel.svg",
+          "ladders": [
+            "Protein Ladder 10-250 kDa"
+          ]
+        }
+      }
+    ]
+  }
+}

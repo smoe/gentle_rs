@@ -1,0 +1,106 @@
+{
+  "schema": "gentle.host_profile_catalog.v1",
+  "profiles": [
+    {
+      "profile_id": "ecoli_k12_restriction_positive",
+      "species": "Escherichia coli",
+      "strain": "K-12 restriction-positive background",
+      "aliases": [
+        "E. coli K-12",
+        "E. coli K"
+      ],
+      "genotype_tags": [
+        "hsdR+",
+        "hsdM+",
+        "hsdS+",
+        "dam+",
+        "dcm+"
+      ],
+      "phenotype_tags": [
+        "type_i_restriction_barrier",
+        "methylation_competent",
+        "propagation_host_review_needed_for_host_transitions"
+      ],
+      "notes": [
+        "Starter generic record for K-derived restriction-positive propagation hosts.",
+        "Use when reviewing transfers into strains that retain active hsdRMS restriction rather than a fully specified vendor genotype."
+      ],
+      "source_notes": [
+        "Hand-curated starter profile bundled with GENtle. Review against the exact strain card before wet-lab use."
+      ]
+    },
+    {
+      "profile_id": "ecoli_dh5alpha",
+      "species": "Escherichia coli",
+      "strain": "DH5alpha",
+      "aliases": [
+        "DH5α"
+      ],
+      "genotype_tags": [
+        "recA1",
+        "endA1",
+        "hsdR17",
+        "deoR",
+        "relA1"
+      ],
+      "phenotype_tags": [
+        "cloning_host",
+        "high_transformation_efficiency",
+        "restriction_minus_methylation_plus",
+        "reduced_endonuclease_activity",
+        "large_insert_friendly"
+      ],
+      "notes": [
+        "Starter cloning-host profile focused on common propagation traits already discussed in GENtle construct reasoning.",
+        "The deoR mutation is often associated with better uptake of larger DNA molecules in routine cloning practice."
+      ],
+      "source_notes": [
+        "Hand-curated starter profile bundled with GENtle. Confirm the exact supplier genotype before relying on host-route decisions."
+      ]
+    },
+    {
+      "profile_id": "ecoli_jm109",
+      "species": "Escherichia coli",
+      "strain": "JM109",
+      "aliases": [],
+      "genotype_tags": [
+        "recA1",
+        "endA1",
+        "hsdR17",
+        "relA1"
+      ],
+      "phenotype_tags": [
+        "cloning_host",
+        "restriction_minus_methylation_plus",
+        "reduced_endonuclease_activity"
+      ],
+      "notes": [
+        "Starter record for a common K-12-derived propagation host used in routine cloning."
+      ],
+      "source_notes": [
+        "Hand-curated starter profile bundled with GENtle. Review against the exact strain documentation before wet-lab use."
+      ]
+    },
+    {
+      "profile_id": "ecoli_enda_tona_generic",
+      "species": "Escherichia coli",
+      "strain": "Generic endA- tonA- lab propagation host",
+      "aliases": [],
+      "genotype_tags": [
+        "endA-",
+        "tonA-"
+      ],
+      "phenotype_tags": [
+        "reduced_endonuclease_activity",
+        "improved_plasmid_prep_quality",
+        "phage_t1_t5_resistant"
+      ],
+      "notes": [
+        "Generic inspectable record for host-selection discussions where DNA-prep quality or phage resistance matters more than the exact named strain."
+      ],
+      "source_notes": [
+        "Synthetic starter profile bundled with GENtle so host-trait reasoning can stay inspectable even before a richer strain catalog lands."
+      ]
+    }
+  ]
+}

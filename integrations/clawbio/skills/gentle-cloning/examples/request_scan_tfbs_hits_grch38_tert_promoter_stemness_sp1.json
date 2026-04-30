@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "features tfbs-scan grch38_tert_promoter --motif stemness --motif SP1 --min-llr-quantile 0.95 --max-hits 100 --path artifacts/grch38_tert_promoter.stemness_sp1.tfbs_scan.json",
+  "expected_artifacts": [
+    "artifacts/grch38_tert_promoter.stemness_sp1.tfbs_scan.json"
+  ],
+  "timeout_secs": 180
+}

@@ -1,0 +1,224 @@
+{
+  "schema": "gentle.isoform_panel_resource.v1",
+  "panel_id": "tp73_isoforms_v1",
+  "gene_symbol": "TP73",
+  "transcript_geometry_mode": "exon",
+  "assembly": "GRCh38",
+  "source": "Local TP73 isoform curation seed layered on top of bundled RefSeq-style TP73 annotation",
+  "notes": "This panel is intentionally transcript/exon-chain centric. It records local TP73 isoform nomenclature and 5'/3' class structure for assay design, without treating public RefSeq/GenBank coverage as complete evidence for disease-associated isoforms. Protein-domain landmarks are deferred until a reviewed TP73 domain model is added.",
+  "curation": {
+    "source_kind": "lab_curated",
+    "source_label": "GENtle local TP73 isoform curation seed",
+    "evidence": [
+      "TP73 cDNA isoform-selector PCR work in this repository",
+      "local lab knowledge that Ex2/Ex3 TP73 variants are experimentally observed even when public healthy-tissue datasets underrepresent them"
+    ],
+    "validation_tags": [
+      "primer_supported",
+      "local_annotation_seed",
+      "public_annotation_incomplete_for_disease_context"
+    ],
+    "public_database_status": "Public records are useful anchors but are not treated as exhaustive for disease-associated TP73 transcript structure.",
+    "notes": [
+      "Expression is not implied by inclusion in this panel.",
+      "Use cDNA PCR/qPCR products and Sanger or sequencing confirmation to validate sample-specific expression."
+    ]
+  },
+  "isoforms": [
+    {
+      "isoform_id": "tp73_ta_alpha",
+      "label": "TAp73α",
+      "transcript_ids": ["NM_005427.4"],
+      "transactivation_class": "TA",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["TA 5' class; α 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_ex2_alpha",
+      "label": "Ex2-p73α",
+      "transcript_ids": ["XM_047429524.1"],
+      "transactivation_class": "Ex2",
+      "curation": {
+        "source_kind": "lab_curated",
+        "source_label": "Local Ex2 TP73 variant annotation",
+        "evidence": ["Ex2-starting 5' class; α 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported", "lab_discovered_ex2_ex3_context"],
+        "public_database_status": "predicted_public_record_present_but_public_database_coverage_is_not_treated_as_complete"
+      }
+    },
+    {
+      "isoform_id": "tp73_ex3_alpha",
+      "label": "Ex3-p73α",
+      "transcript_ids": ["XM_047429521.1"],
+      "transactivation_class": "Ex3",
+      "curation": {
+        "source_kind": "lab_curated",
+        "source_label": "Local Ex3 TP73 variant annotation",
+        "evidence": ["Ex3-starting 5' class; α 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported", "lab_discovered_ex2_ex3_context"],
+        "public_database_status": "predicted_public_record_present_but_public_database_coverage_is_not_treated_as_complete"
+      }
+    },
+    {
+      "isoform_id": "tp73_delta_n_alpha",
+      "label": "ΔNp73α",
+      "transcript_ids": ["NM_001126240.3"],
+      "transactivation_class": "ΔN",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["ΔN 5' class; α 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_v13_alpha",
+      "label": "V13-p73α",
+      "transcript_ids": ["NM_001204192.2"],
+      "transactivation_class": "V13",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["V13 5' class; α 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_ta_beta",
+      "label": "TAp73β",
+      "transcript_ids": ["NM_001204184.2"],
+      "transactivation_class": "TA",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["TA 5' class; β 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_delta_n_beta",
+      "label": "ΔNp73β",
+      "transcript_ids": ["NM_001126241.3"],
+      "transactivation_class": "ΔN",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["ΔN 5' class; β 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_ta_gamma",
+      "label": "TAp73γ",
+      "transcript_ids": ["NM_001204185.2"],
+      "transactivation_class": "TA",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["TA 5' class; γ 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_delta_n_gamma",
+      "label": "ΔNp73γ",
+      "transcript_ids": ["NM_001126242.3"],
+      "transactivation_class": "ΔN",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["ΔN 5' class; γ 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_ta_delta",
+      "label": "TAp73δ",
+      "transcript_ids": ["NM_001204186.2"],
+      "transactivation_class": "TA",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["TA 5' class; δ 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_delta_n_delta",
+      "label": "ΔNp73δ",
+      "transcript_ids": ["NM_001204189.2"],
+      "transactivation_class": "ΔN",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["ΔN 5' class; δ 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_ta_epsilon",
+      "label": "TAp73ε",
+      "transcript_ids": ["NM_001204187.2"],
+      "transactivation_class": "TA",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["TA 5' class; ε 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_delta_n_epsilon",
+      "label": "ΔNp73ε",
+      "transcript_ids": ["NM_001204190.2"],
+      "transactivation_class": "ΔN",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["ΔN 5' class; ε 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_ta_zeta",
+      "label": "TAp73ζ",
+      "transcript_ids": ["NM_001204188.2"],
+      "transactivation_class": "TA",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["TA 5' class; ζ 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    },
+    {
+      "isoform_id": "tp73_delta_n_zeta",
+      "label": "ΔNp73ζ",
+      "transcript_ids": ["NM_001204191.2"],
+      "transactivation_class": "ΔN",
+      "curation": {
+        "source_kind": "mixed",
+        "source_label": "RefSeq accession with local isoform-class label",
+        "evidence": ["ΔN 5' class; ζ 3' class in local cDNA selector matrix"],
+        "validation_tags": ["primer_supported"],
+        "public_database_status": "public_refseq_record_available"
+      }
+    }
+  ]
+}

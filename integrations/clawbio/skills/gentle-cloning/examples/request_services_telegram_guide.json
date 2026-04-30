@@ -1,0 +1,6 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "services guide --channel telegram",
+  "timeout_secs": 180
+}

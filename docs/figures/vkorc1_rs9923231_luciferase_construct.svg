@@ -1,0 +1,46 @@
+<svg height="700" viewBox="0 0 1200 700" width="1200" xmlns="http://www.w3.org/2000/svg">
+<text fill="#111111" font-family="monospace" font-size="18" x="20" y="34">
+VKRSLUC1
+</text>
+<text fill="#444444" font-family="monospace" font-size="14" x="20" y="54">
+4952 bp
+</text>
+<circle cx="672" cy="364" fill="none" r="231.00002" stroke="#000000" stroke-width="2"/>
+<path d="M 672.000 107.831 A 256.169 256.169 0 0 1 859.459 538.591" fill="none" stroke="#43aaa1" stroke-width="6"/>
+<line x1="925" x2="998" y1="420" y2="420" stroke="#43aaa1" stroke-linecap="round" stroke-width="3"/>
+<text fill="#43aaa1" font-family="Helvetica Neue, Arial, sans-serif" font-size="30" font-weight="700" text-anchor="start" x="1012" y="428">
+Insert
+</text>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="926.9931" y="252.83934">
+VKORC1 promoter insert
+</text>
+<line data-gentle-role="variation-marker-line" stroke="#e17f0f" stroke-width="2.5" x1="782.07764" x2="798.47217" y1="176.82974" y2="148.95332"/>
+<circle cx="798.47217" cy="148.95332" data-gentle-role="variation-marker-dot" fill="#ffffff" r="4" stroke="#e17f0f" stroke-width="2"/>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="809.62494" y="129.98976">
+rs9923231
+</text>
+<path d="M 859.955 539.053 A 256.847 256.847 0 0 1 425.919 437.584" fill="none" stroke="#cc1f1f" stroke-width="6"/>
+<path d="M859.9548,539.05286 L867.2725,545.8683 L862.771,550.6949" data-gentle-role="transcription-start-arrow-shaft" fill="none" stroke="#cc1f1f" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+<path d="M861.5433,552.0112 L869.38116,549.47205 L863.5269,544.01965 z" data-gentle-role="transcription-start-arrow" fill="#cc1f1f" stroke="none"/>
+<line x1="610" x2="610" y1="612" y2="640" stroke="#cc1f1f" stroke-linecap="round" stroke-width="3"/>
+<text fill="#cc1f1f" font-family="Helvetica Neue, Arial, sans-serif" font-size="30" font-weight="700" text-anchor="middle" x="610" y="666">
+Luciferase
+</text>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="608.5225" y="635.526">
+luc2
+</text>
+<path d="M 418.122 432.257 A 262.893 262.893 0 0 1 410.974 395.281" fill="none" stroke="#6e6e6e" stroke-width="6"/>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="392.31952" y="418.2498">
+SV40 polyA
+</text>
+<path d="M 470.064 370.408 A 202.038 202.038 0 0 1 573.358 187.679" fill="none" stroke="#cc1f1f" stroke-width="6"/>
+<path d="M573.3584,187.6791 L568.4761,178.95197 L562.71814,182.17784" data-gentle-role="transcription-start-arrow-shaft" fill="none" stroke="#cc1f1f" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+<path d="M561.1478,183.05762 L565.47626,176.04764 L569.38214,183.02933 z" data-gentle-role="transcription-start-arrow" fill="#cc1f1f" stroke="none"/>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="515.2145" y="275.5021">
+bla
+</text>
+<path d="M 567.576 123.628 A 262.074 262.074 0 0 1 671.667 101.926" fill="none" stroke="#6e6e6e" stroke-width="6"/>
+<text fill="#111111" font-family="monospace" font-size="12" text-anchor="middle" x="614.01917" y="85.90564">
+ColE1 ori
+</text>
+</svg>

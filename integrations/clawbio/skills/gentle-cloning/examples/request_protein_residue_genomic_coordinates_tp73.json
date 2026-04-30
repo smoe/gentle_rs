@@ -1,0 +1,9 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "protein-residue-genomic-coordinates",
+  "state_path": ".gentle_state.json",
+  "seq_id": "tp73.ncbi",
+  "transcript_id": "NM_005427.4",
+  "residue_start_1based": 5,
+  "timeout_secs": 180
+}

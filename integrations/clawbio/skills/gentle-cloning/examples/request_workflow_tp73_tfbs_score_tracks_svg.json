@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow_path": "integrations/clawbio/skills/gentle-cloning/examples/workflows/tp73_tfbs_score_tracks_svg.workflow.json",
+  "expected_artifacts": [
+    "artifacts/tp73_upstream_tfbs_score_tracks.svg"
+  ],
+  "timeout_secs": 300
+}

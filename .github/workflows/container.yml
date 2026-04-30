@@ -1,0 +1,159 @@
+name: Build and Publish Container Image
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  container-build-check:
+    name: Container Build Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build CLI container image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: |
+            DEBIAN_SUITE=forky
+          target: runtime-cli
+          platforms: linux/amd64
+          push: false
+          provenance: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:build-check-cli
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build GUI container image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: |
+            DEBIAN_SUITE=forky
+          target: runtime-gui
+          platforms: linux/amd64
+          push: false
+          provenance: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:build-check-gui
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  container-publish:
+    name: Publish GHCR Image
+    runs-on: ubuntu-latest
+    needs: container-build-check
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for CLI image
+        id: meta-cli
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=cli
+            type=raw,value=${{ github.ref_name }}-cli
+          labels: |
+            org.opencontainers.image.title=GENtle
+            org.opencontainers.image.description=GENtle Debian-first headless CLI/MCP container image
+            org.opencontainers.image.vendor=GENtle project
+
+      - name: Extract metadata (tags, labels) for GUI image
+        id: meta-gui
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=gui
+            type=raw,value=${{ github.ref_name }}-gui
+            type=raw,value=${{ github.ref_name }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=GENtle
+            org.opencontainers.image.description=GENtle Debian-first GUI/CLI/MCP container image
+            org.opencontainers.image.vendor=GENtle project
+
+      - name: Build and push CLI Docker image
+        id: push-cli
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: |
+            DEBIAN_SUITE=forky
+          target: runtime-cli
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.meta-cli.outputs.tags }}
+          labels: ${{ steps.meta-cli.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push GUI Docker image
+        id: push-gui
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: |
+            DEBIAN_SUITE=forky
+          target: runtime-gui
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.meta-gui.outputs.tags }}
+          labels: ${{ steps.meta-gui.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate CLI artifact attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push-cli.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate GUI artifact attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push-gui.outputs.digest }}
+          push-to-registry: true

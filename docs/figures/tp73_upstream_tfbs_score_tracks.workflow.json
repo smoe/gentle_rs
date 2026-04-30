@@ -1,0 +1,29 @@
+{
+  "run_id": "readme_tp73_upstream_tfbs_score_tracks",
+  "ops": [
+    {
+      "LoadFile": {
+        "path": "test_files/tp73.ncbi.gb",
+        "as_id": "tp73_context"
+      }
+    },
+    {
+      "RenderTfbsScoreTracksSvg": {
+        "seq_id": "tp73_context",
+        "motifs": [
+          "TP53",
+          "TP63",
+          "TP73",
+          "PATZ1",
+          "SP1",
+          "BACH2",
+          "REST"
+        ],
+        "start_0based": 15564,
+        "end_0based_exclusive": 16764,
+        "clip_negative": false,
+        "path": "docs/figures/tp73_upstream_tfbs_score_tracks.svg"
+      }
+    }
+  ]
+}

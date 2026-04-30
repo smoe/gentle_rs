@@ -4,8 +4,15 @@
 <dict>
     <key>CFBundleName</key>
     <string>GENtle</string>
+    <key>CFBundleDisplayName</key>
+    <string>GENtle</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Cross-platform DNA cloning workbench</string>
     <key>CFBundleIconFile</key>
     <string>icon</string>
 </dict>
 </plist>
-

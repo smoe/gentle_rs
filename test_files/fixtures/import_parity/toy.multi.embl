@@ -1,0 +1,28 @@
+ID   TOY_MULTI_A; SV 1; linear; genomic DNA; STD; SYN; 24 BP.
+XX
+AC   TOYMULTIA;
+XX
+DE   Synthetic multi-record EMBL fixture A.
+XX
+FH   Key             Location/Qualifiers
+FH
+FT   gene            join(1..4,
+FT                   9..12)
+FT                   /gene="multiA"
+SQ   Sequence 24 BP; 12 A; 0 C; 6 G; 6 T; 0 other;
+     atgcaaaa atgcaaaa atgcaaaa                                               24
+//
+ID   TOY_MULTI_B; SV 1; linear; genomic DNA; STD; SYN; 24 BP.
+XX
+AC   TOYMULTIB;
+XX
+DE   Synthetic multi-record EMBL fixture B.
+XX
+FH   Key             Location/Qualifiers
+FH
+FT   misc_feature    complement(5..16)
+FT                   /note="line one"
+FT                   "line two"
+SQ   Sequence 24 BP; 4 A; 8 C; 4 G; 8 T; 0 other;
+     ttttcccc aaaagggg ttttcccc                                               24
+//

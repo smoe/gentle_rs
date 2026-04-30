@@ -1,0 +1,51 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "guides_filter_and_generate_oligos",
+  "title": "Guide practical filtering and oligo generation",
+  "generated_chapter": {
+    "order": 5,
+    "example_id": "guides_filter_and_generate_oligos",
+    "tier": "core",
+    "summary": "Apply practical guide constraints and produce cloning-ready oligo candidates.",
+    "narrative": "For CRISPR-style cloning, guide quality control is where many downstream failures are prevented. This routine demonstrates how to encode practical constraints directly in operations, then generate oligos from the passed candidates.",
+    "use_cases": [
+      "You need a transparent guide filtering step before oligo ordering.",
+      "You want to document why specific guides were excluded.",
+      "You need deterministic oligo generation from a reusable guide set."
+    ],
+    "gui_steps": [
+      "Open the guides workflow controls in GENtle and create/import a guide set for a target region.",
+      "Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance).",
+      "Generate oligos from passed guides and inspect the resulting oligo set IDs."
+    ],
+    "learning_objectives": [
+      "Create and filter guide sets through explicit engine operations.",
+      "Generate oligo records from filtered guide candidates.",
+      "Connect guide workflows to the same deterministic operation model used for cloning steps."
+    ],
+    "concepts": [
+      "deterministic_workflows",
+      "guide_design_pipeline"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "FilterGuidesPractical.config.gc_min / gc_max",
+        "where_used": "operation 2",
+        "why_it_matters": "GC bounds trade off stability and synthesis/efficiency behavior.",
+        "how_to_derive": "Start with literature-typical bounds (e.g., 0.3-0.7) and tighten per assay constraints."
+      },
+      {
+        "parameter": "GenerateGuideOligos.template_id",
+        "where_used": "operation 3",
+        "why_it_matters": "Template controls overhang/adaptor context for your cloning backbone.",
+        "how_to_derive": "Select the template matching your vector and cloning strategy."
+      }
+    ],
+    "follow_up_commands": [],
+    "retain_outputs": [],
+    "checkpoints": [
+      "Guide set and passed guide set are present in metadata.",
+      "Oligo set generation succeeds for passed guides."
+    ]
+  }
+}

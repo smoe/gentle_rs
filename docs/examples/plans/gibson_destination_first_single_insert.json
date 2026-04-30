@@ -1,0 +1,176 @@
+{
+  "schema": "gentle.gibson_assembly_plan.v1",
+  "id": "gibson_destination_first_single_insert",
+  "title": "Destination-first Gibson assembly plan (single insert)",
+  "summary": "Opens a destination vector at a defined site, derives left and right terminal junctions from that opening, and adapts one insert through primer-added overlaps when needed.",
+  "destination": {
+    "seq_id": "destination_vector",
+    "topology_before_opening": "circular",
+    "opening": {
+      "mode": "defined_site",
+      "label": "vector insertion window",
+      "start_0based": 120,
+      "end_0based_exclusive": 126,
+      "left_end_id": "dest_left",
+      "right_end_id": "dest_right",
+      "uniqueness_requirement": "must_be_unambiguous"
+    }
+  },
+  "product": {
+    "topology": "circular",
+    "output_id_hint": "destination_with_insert_x"
+  },
+  "fragments": [
+    {
+      "id": "insert_x",
+      "seq_id": "insert_x_amplicon",
+      "role": "insert",
+      "orientation": "forward",
+      "left_end_strategy": {
+        "mode": "primer_added_overlap",
+        "target_junction_id": "junction_left"
+      },
+      "right_end_strategy": {
+        "mode": "primer_added_overlap",
+        "target_junction_id": "junction_right"
+      }
+    }
+  ],
+  "assembly_order": [
+    {
+      "kind": "destination_end",
+      "id": "dest_left"
+    },
+    {
+      "kind": "fragment",
+      "id": "insert_x"
+    },
+    {
+      "kind": "destination_end",
+      "id": "dest_right"
+    }
+  ],
+  "junctions": [
+    {
+      "id": "junction_left",
+      "left_member": {
+        "kind": "destination_end",
+        "id": "dest_left"
+      },
+      "right_member": {
+        "kind": "fragment",
+        "id": "insert_x"
+      },
+      "required_overlap_bp": 30,
+      "overlap_partition": {
+        "left_member_bp": 30,
+        "right_member_bp": 0
+      },
+      "overlap_source": "derive_from_destination_left_flank",
+      "distinct_from": [
+        "junction_right"
+      ]
+    },
+    {
+      "id": "junction_right",
+      "left_member": {
+        "kind": "fragment",
+        "id": "insert_x"
+      },
+      "right_member": {
+        "kind": "destination_end",
+        "id": "dest_right"
+      },
+      "required_overlap_bp": 30,
+      "overlap_partition": {
+        "left_member_bp": 0,
+        "right_member_bp": 30
+      },
+      "overlap_source": "derive_from_destination_right_flank",
+      "distinct_from": [
+        "junction_left"
+      ]
+    }
+  ],
+  "validation_policy": {
+    "require_unambiguous_destination_opening": true,
+    "require_distinct_terminal_junctions": true,
+    "adjacency_overlap_mismatch": "error",
+    "design_targets": {
+      "overlap_bp_min": 20,
+      "overlap_bp_max": 40,
+      "minimum_overlap_tm_celsius": 60.0,
+      "priming_segment_tm_min_celsius": 58.0,
+      "priming_segment_tm_max_celsius": 68.0,
+      "priming_segment_min_length_bp": 18,
+      "priming_segment_max_length_bp": 35,
+      "max_anneal_hits": 1
+    },
+    "uniqueness_checks": {
+      "destination_context": "warn",
+      "participating_fragments": "warn",
+      "reference_contexts": [
+        {
+          "reference_id": "host_genome",
+          "severity": "warn"
+        }
+      ]
+    }
+  },
+  "derived_design": {
+    "junction_overlaps": [
+      {
+        "junction_id": "junction_left",
+        "sequence": null,
+        "sequence_source_note": "Derived from the destination left flank at planning time."
+      },
+      {
+        "junction_id": "junction_right",
+        "sequence": null,
+        "sequence_source_note": "Derived from the destination right flank at planning time."
+      }
+    ],
+    "primer_design_suggestions": [
+      {
+        "fragment_id": "insert_x",
+        "primer": "forward",
+        "pcr_reaction_id": "amplify_insert_x",
+        "adds_junction_id": "junction_left",
+        "overlap_5prime": {
+          "mode": "junction_overlap",
+          "length_bp": 30,
+          "sequence": null,
+          "source_note": "Use the destination left flank as the 5' non-priming overlap segment."
+        },
+        "priming_3prime": {
+          "template_seq_id": "insert_x_amplicon",
+          "orientation": "forward",
+          "source_note": "Choose the gene-specific 3' priming segment from the insert template to satisfy PCR priming criteria."
+        }
+      },
+      {
+        "fragment_id": "insert_x",
+        "primer": "reverse",
+        "pcr_reaction_id": "amplify_insert_x",
+        "adds_junction_id": "junction_right",
+        "overlap_5prime": {
+          "mode": "junction_overlap",
+          "length_bp": 30,
+          "sequence": null,
+          "source_note": "Use the reverse complement of the destination right flank as the 5' non-priming overlap segment."
+        },
+        "priming_3prime": {
+          "template_seq_id": "insert_x_amplicon",
+          "orientation": "reverse_complement",
+          "source_note": "Choose the gene-specific 3' priming segment from the insert template on the reverse-complement strand."
+        }
+      }
+    ],
+    "notes": [
+      "Primer design should begin from the in silico assembled product so the destination-derived junctions are explicit before overlaps are assigned.",
+      "This single-insert example chooses terminal overlaps entirely from the destination-vector side of each junction.",
+      "If insert termini already satisfy the required overlaps, end strategies may switch from primer_added_overlap to native_overlap.",
+      "Future multi-fragment plans extend assembly_order and add one junction record per adjacent fragment pair."
+    ]
+  }
+}

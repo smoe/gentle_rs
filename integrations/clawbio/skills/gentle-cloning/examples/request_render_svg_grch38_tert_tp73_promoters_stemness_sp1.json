@@ -1,0 +1,14 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "ensure_reference_prepared": {
+    "genome_id": "Human GRCh38 Ensembl 116",
+    "catalog_path": "assets/genomes.json",
+    "prepare_timeout_secs": 7200
+  },
+  "shell_line": "genomes promoter-tfbs-svg \"Human GRCh38 Ensembl 116\" --gene TERT --gene TP73 --motif stemness --motif SP1 --upstream-bp 1000 --downstream-bp 200 --score-kind llr_background_tail_log10 artifacts/grch38_tert_tp73_promoters.stemness_sp1.svg",
+  "expected_artifacts": [
+    "artifacts/grch38_tert_tp73_promoters.stemness_sp1.svg"
+  ],
+  "timeout_secs": 1800
+}

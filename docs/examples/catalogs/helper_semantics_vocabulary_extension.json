@@ -1,0 +1,31 @@
+{
+  "schema": "gentle.helper_semantics_vocabulary.v1",
+  "terms": [
+    {
+      "axis": "component_kind",
+      "value": "solubility_tag",
+      "label": "Solubility tag",
+      "description": "Coding sequence fused to a protein product to improve soluble expression or folding.",
+      "aliases": ["mbp_tag", "nusA_tag", "thioredoxin_tag"],
+      "routine_hints": [
+        {
+          "family": "gibson",
+          "rationale": "Project vocabulary term component_kind:solubility_tag marks a frame-sensitive coding fusion and should favor scar-aware overlap assembly.",
+          "source_terms": ["component_kind:solubility_tag"]
+        },
+        {
+          "family": "nebuilder_hifi",
+          "rationale": "Project vocabulary term component_kind:solubility_tag marks a frame-sensitive coding fusion and should favor scar-aware overlap assembly.",
+          "source_terms": ["component_kind:solubility_tag"]
+        }
+      ]
+    },
+    {
+      "axis": "offered_function",
+      "value": "periplasmic_export",
+      "label": "Periplasmic export",
+      "description": "Helper construct includes a secretion or sorting signal intended to direct an expressed product to the bacterial periplasm.",
+      "aliases": ["pelb_export", "ompA_export", "bacterial_signal_peptide"]
+    }
+  ]
+}

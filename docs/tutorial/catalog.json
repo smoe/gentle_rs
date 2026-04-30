@@ -1,0 +1,254 @@
+{
+  "schema": "gentle.tutorial_catalog.v1",
+  "description": "Canonical human/machine-readable discovery catalog for GENtle tutorials. Source units generate both this discovery catalog and the executable tutorial runtime manifest.",
+  "entry_page": "docs/tutorial/README.md",
+  "generated_runtime": {
+    "manifest_path": "docs/tutorial/manifest.json",
+    "manifest_schema": "gentle.tutorial_manifest.v1",
+    "generated_readme": "docs/tutorial/generated/README.md",
+    "generation_report": "docs/tutorial/generated/report.json"
+  },
+  "entries": [
+    {
+      "id": "generated_hub",
+      "title": "GENtle Tutorial (Generated)",
+      "path": "docs/tutorial/generated/README.md",
+      "type": "executable_collection",
+      "status": "generated+checked",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "new_users",
+        "cli_first",
+        "contributors"
+      ],
+      "notes": "Generated from docs/tutorial/sources plus executable workflows; validated by tutorial-check."
+    },
+    {
+      "id": "vkorc1_warfarin_promoter_luciferase_gui",
+      "title": "VKORC1 / rs9923231 PGx Alert -> Mammalian Luciferase Reporter (GUI Tutorial with Matching CLI Commands)",
+      "path": "docs/tutorial/vkorc1_warfarin_promoter_luciferase_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cloning_planning",
+        "pharmacogenomics"
+      ],
+      "notes": "Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping."
+    },
+    {
+      "id": "tp73_cdna_genomic_dotplot_gui",
+      "title": "Retrieve a cDNA and Compare It Against the Genomic Sequence (Dotplot Tutorial)",
+      "path": "docs/tutorial/two_sequence_dotplot_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "visual_learning"
+      ],
+      "notes": "Screenshot-backed manual tutorial for cDNA-vs-genomic comparison."
+    },
+    {
+      "id": "gibson_specialist_testing_gui",
+      "title": "Gibson Specialist Testing Tutorial",
+      "path": "docs/tutorial/gibson_specialist_testing_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cloning_planning",
+        "contributors"
+      ],
+      "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity."
+    },
+    {
+      "id": "gibson_arrangements_gui",
+      "title": "Gibson Arrangements Tutorial",
+      "path": "docs/tutorial/gibson_arrangements_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cloning_planning",
+        "contributors"
+      ],
+      "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export."
+    },
+    {
+      "id": "gibson_physical_rack_gui",
+      "title": "Gibson Physical Rack Tutorial",
+      "path": "docs/tutorial/gibson_physical_rack_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cloning_planning",
+        "contributors"
+      ],
+      "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export."
+    },
+    {
+      "id": "sequencing_confirmation_trace_cli",
+      "title": "Confirm a Construct from an Imported Sequencing Trace (CLI Tutorial)",
+      "path": "docs/tutorial/sequencing_confirmation_trace_cli.md",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "Hands-on local walkthrough for seq-trace import, trace-aware seq-confirm run, and shared report export."
+    },
+    {
+      "id": "sequencing_confirmation_gui",
+      "title": "Inspect an Imported Sequencing Trace and Confirm a Construct (GUI Tutorial)",
+      "path": "docs/tutorial/sequencing_confirmation_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen."
+    },
+    {
+      "id": "rna_read_batch_gene_support_cli",
+      "title": "Batch-Compare cDNA FASTA.GZ Samples for One Target Gene (CLI Tutorial)",
+      "path": "docs/tutorial/rna_read_batch_gene_support_cli.md",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet."
+    },
+    {
+      "id": "tutorial_landscape_overview",
+      "title": "GENtle Tutorial Landscape Overview",
+      "path": "docs/tutorial/landscape_overview.md",
+      "type": "operational_reference",
+      "status": "manual/reference",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "contributors",
+        "cli_first",
+        "gui_first"
+      ],
+      "notes": "Graphical overview of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity."
+    },
+    {
+      "id": "agent_interfaces",
+      "title": "GENtle Agent Interfaces Tutorial",
+      "path": "docs/agent_interfaces_tutorial.md",
+      "type": "operational_reference",
+      "status": "manual/reference",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "agent_users",
+        "cli_first",
+        "mcp_users",
+        "contributors"
+      ],
+      "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
+    },
+    {
+      "id": "simple_pcr_selection_gui",
+      "title": "Simple PCR From a Selected Core Region",
+      "path": "docs/tutorial/simple_pcr_selection_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "new_users",
+        "primer_design"
+      ],
+      "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length."
+    },
+    {
+      "id": "protein_transcript_native_expert_gui",
+      "title": "Transcript-Native Protein Expert Sanity Check",
+      "path": "docs/tutorial/protein_transcript_native_expert_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "Local-first manual check for transcript-native Protein Expert opening, provenance visibility, and derived-only SVG export."
+    },
+    {
+      "id": "protein_reverse_translation_gui",
+      "title": "Reverse Translate an Imported Protein and Audit the Result",
+      "path": "docs/tutorial/protein_reverse_translation_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "contributors"
+      ],
+      "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen."
+    },
+    {
+      "id": "vkorc1_variant_followup_expert_gui",
+      "title": "Promoter Design for VKORC1 / rs9923231",
+      "path": "docs/tutorial/vkorc1_variant_followup_expert_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cloning_planning",
+        "pharmacogenomics"
+      ],
+      "notes": "Shortest GUI path for the current ClawBio-facing story: start from the dbSNP marker, drive the dedicated Promoter design window, and export one portable promoter-reporter handoff bundle."
+    },
+    {
+      "id": "tp73_uniprot_projection_audit_cli",
+      "title": "Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)",
+      "path": "docs/tutorial/tp73_uniprot_projection_audit_cli.md",
+      "type": "cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "sequence_analysis",
+        "agent_users",
+        "contributors"
+      ],
+      "notes": "CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft."
+    },
+    {
+      "id": "qpcr_exon_junctions_gui",
+      "title": "qPCR Across Exon Junctions",
+      "path": "docs/tutorial/qpcr_exon_junctions_gui.md",
+      "type": "gui_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "sequence_analysis",
+        "primer_design",
+        "contributors"
+      ],
+      "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands."
+    }
+  ]
+}

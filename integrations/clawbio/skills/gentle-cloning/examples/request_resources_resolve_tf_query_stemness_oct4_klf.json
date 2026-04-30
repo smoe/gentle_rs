@@ -1,0 +1,9 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "resources resolve-tf-query stemness OCT4 \"KLF family\" --output artifacts/tf_query_resolution.stemness_oct4_klf.json",
+  "expected_artifacts": [
+    "artifacts/tf_query_resolution.stemness_oct4_klf.json"
+  ],
+  "timeout_secs": 180
+}

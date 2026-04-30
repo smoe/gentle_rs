@@ -1,0 +1,25 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "nebuilder_multi_fragment_overlap",
+  "description": "NEBuilder HiFi multi-fragment overlap baseline (three fragments).",
+  "details_url": "https://www.neb.com/en-us/products/e2621-nebuilder-hifi-dna-assembly-master-mix",
+  "parameters": [
+    { "name": "left_seq_id", "required": true },
+    { "name": "middle_seq_id", "required": true },
+    { "name": "right_seq_id", "required": true },
+    { "name": "overlap_bp", "default_value": "20", "required": false },
+    { "name": "assembly_prefix", "default_value": "nebuilder_multi", "required": false },
+    { "name": "output_id", "default_value": "nebuilder_multi_product", "required": false }
+  ],
+  "input_ports": [
+    { "port_id": "left_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Left fragment sequence ID." },
+    { "port_id": "middle_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Middle fragment sequence ID." },
+    { "port_id": "right_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Right fragment sequence ID." },
+    { "port_id": "overlap_bp", "kind": "number", "required": true, "cardinality": "one", "description": "Overlap length used for adjacent fragment checks." }
+  ],
+  "output_ports": [
+    { "port_id": "assembly_prefix", "kind": "sequence", "required": false, "cardinality": "many", "description": "NEBuilder multi-fragment output namespace prefix." },
+    { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one", "description": "Deterministic NEBuilder multi-fragment output ID." }
+  ],
+  "script": "op {\"Ligation\":{\"inputs\":[\"${left_seq_id}\",\"${middle_seq_id}\",\"${right_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Blunt\",\"output_prefix\":\"${assembly_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${assembly_prefix}_1\",\"output_id\":\"${output_id}\"}}"
+}

@@ -1,0 +1,49 @@
+<svg height="412" style="background:#ffffff" viewBox="0 0 960 412" width="960" xmlns="http://www.w3.org/2000/svg">
+<text fill="#202020" font-family="Helvetica, Arial, sans-serif" font-size="24" x="24" y="34">
+GENtle Lineage (DALG)
+</text>
+<line stroke="#8a8a8a" stroke-width="1.2" x1="120" x2="340" y1="120" y2="120"/>
+<line stroke="#8a8a8a" stroke-width="1.2" x1="120" x2="340" y1="230" y2="120"/>
+<line stroke="#8a8a8a" stroke-width="1.2" x1="340" x2="560" y1="120" y2="120"/>
+<line stroke="#8a8a8a" stroke-width="1.2" x1="340" x2="560" y1="120" y2="230"/>
+<line stroke="#8a8a8a" stroke-width="1.2" x1="340" x2="560" y1="120" y2="340"/>
+<circle cx="120" cy="120" fill="#5a8cd2" r="16" stroke="#3b6aaa" stroke-width="1"/>
+<text fill="#101010" font-family="Helvetica, Arial, sans-serif" font-size="12" x="144" y="118">
+XXU13852
+</text>
+<text fill="#222222" font-family="Helvetica, Arial, sans-serif" font-size="10" x="144" y="132">
+gibson_destination_pgex (4952 bp, circular)
+</text>
+<circle cx="120" cy="230" fill="#5a8cd2" r="16" stroke="#3b6aaa" stroke-width="1"/>
+<text fill="#101010" font-family="Helvetica, Arial, sans-serif" font-size="12" x="144" y="228">
+gibson_insert_demo
+</text>
+<text fill="#222222" font-family="Helvetica, Arial, sans-serif" font-size="10" x="144" y="242">
+gibson_insert_demo (314 bp, linear)
+</text>
+<rect fill="#3e8e7c" height="30" rx="4" stroke="#2d6f61" stroke-width="1" width="74" x="303" y="105"/>
+<text dominant-baseline="middle" fill="#ffffff" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle" x="340" y="120">
+Gibson cloning
+</text>
+<circle cx="560" cy="120" fill="#5a8cd2" r="16" stroke="#3b6aaa" stroke-width="1"/>
+<text fill="#101010" font-family="Helvetica, Arial, sans-serif" font-size="12" x="584" y="118">
+Gibson left primer for fragment 'gibson_insert_demo'
+</text>
+<text fill="#222222" font-family="Helvetica, Arial, sans-serif" font-size="10" x="584" y="132">
+insert_1_left_insert_primer (58 bp, linear)
+</text>
+<circle cx="560" cy="230" fill="#5a8cd2" r="16" stroke="#3b6aaa" stroke-width="1"/>
+<text fill="#101010" font-family="Helvetica, Arial, sans-serif" font-size="12" x="584" y="228">
+Gibson right primer for fragment 'gibson_insert_demo'
+</text>
+<text fill="#222222" font-family="Helvetica, Arial, sans-serif" font-size="10" x="584" y="242">
+insert_1_right_insert_primer (58 bp, linear)
+</text>
+<circle cx="560" cy="340" fill="#5a8cd2" r="16" stroke="#3b6aaa" stroke-width="1"/>
+<text fill="#101010" font-family="Helvetica, Arial, sans-serif" font-size="12" x="584" y="338">
+Gibson assembled product: gibson_destination_pgex + gibson_insert_demo
+</text>
+<text fill="#222222" font-family="Helvetica, Arial, sans-serif" font-size="10" x="584" y="352">
+gibson_destination_pgex_with_gibson_insert_demo (5266 bp, circular)
+</text>
+</svg>

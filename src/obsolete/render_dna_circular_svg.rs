@@ -1,3 +1,5 @@
+//! Legacy circular DNA SVG renderer retained as obsolete reference code.
+
 // THIS FILE IS CURRENTLY NOT IN USE
 
 use gb_io::seq::Feature;
@@ -109,7 +111,7 @@ impl RenderCircularMapSVG {
 
         let mut label_text = String::new();
         for k in ["gene", "product", "standard_name", "protein_id"] {
-            label_text = match feature.qualifier_values(k.into()).next() {
+            label_text = match feature.qualifier_values(k).next() {
                 Some(s) => s.to_owned(),
                 None => continue,
             };

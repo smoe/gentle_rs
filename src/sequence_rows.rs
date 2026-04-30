@@ -1,3 +1,5 @@
+//! Sequence-row abstraction shared by specialized row renderers.
+
 use crate::{
     dna_display::DnaDisplay, sequence_rows_blank::RowBlank, sequence_rows_dna::RowDna,
     sequence_rows_restriction_enzymes::RowRestrictionEnzymes,
@@ -18,27 +20,29 @@ pub enum SequenceRow {
 impl SequenceRow {
     pub fn compute_line_height(&mut self, size: &Vec2) {
         match self {
-            Self::Separator(ref mut row) => {
+            Self::Separator(row) => {
                 row.compute_line_height(size);
             }
-            Self::Dna(ref mut row) => {
+            Self::Dna(row) => {
                 row.compute_line_height(size);
             }
-            Self::RestrictionEnzymes(ref mut row) => {
+            Self::RestrictionEnzymes(row) => {
                 row.compute_line_height(size);
             }
-            _ => {
-                todo!();
+            Self::AminoAcids => {
+                // Deferred by architecture contract:
+                // docs/architecture.md -> "Amino-acid translation row contract (deferred)".
             }
+            Self::Features | Self::Proteases => {}
         }
     }
 
     #[inline(always)]
     pub fn line_height(&self) -> f32 {
         match self {
-            Self::Separator(ref row) => row.line_height(),
-            Self::Dna(ref row) => row.line_height(),
-            Self::RestrictionEnzymes(ref row) => row.line_height(),
+            Self::Separator(row) => row.line_height(),
+            Self::Dna(row) => row.line_height(),
+            Self::RestrictionEnzymes(row) => row.line_height(),
             _ => 0.0,
         }
     }
@@ -46,9 +50,9 @@ impl SequenceRow {
     #[inline(always)]
     pub fn blocks(&self) -> usize {
         match self {
-            Self::Separator(ref row) => row.blocks(),
-            Self::Dna(ref row) => row.blocks(),
-            Self::RestrictionEnzymes(ref row) => row.blocks(),
+            Self::Separator(row) => row.blocks(),
+            Self::Dna(row) => row.blocks(),
+            Self::RestrictionEnzymes(row) => row.blocks(),
             _ => 0,
         }
     }
@@ -65,15 +69,17 @@ impl SequenceRow {
             Self::Separator(_row) => {
                 // Ignore
             }
-            Self::Dna(ref mut row) => {
+            Self::Dna(row) => {
                 row.layout(block_offset, block_height, area);
             }
-            Self::RestrictionEnzymes(ref mut row) => {
+            Self::RestrictionEnzymes(row) => {
                 row.layout(block_offset, block_height, area);
             }
-            _ => {
-                todo!();
+            Self::AminoAcids => {
+                // Deferred by architecture contract:
+                // docs/architecture.md -> "Amino-acid translation row contract (deferred)".
             }
+            Self::Features | Self::Proteases => {}
         }
     }
 
@@ -88,9 +94,37 @@ impl SequenceRow {
             Self::RestrictionEnzymes(row) => {
                 row.render(row_num, block_num, painter, rect);
             }
-            _ => {
-                todo!();
+            Self::AminoAcids => {
+                // Deferred by architecture contract:
+                // docs/architecture.md -> "Amino-acid translation row contract (deferred)".
             }
+            Self::Features | Self::Proteases => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SequenceRow;
+    use crate::dna_display::DnaDisplay;
+    use eframe::egui::{Pos2, Rect, Vec2};
+    use std::sync::{Arc, RwLock};
+
+    #[test]
+    fn amino_acid_row_path_is_deferred_noop() {
+        let mut row = SequenceRow::AminoAcids;
+        row.compute_line_height(&Vec2::new(8.0, 12.0));
+        assert_eq!(row.line_height(), 0.0);
+        assert_eq!(row.blocks(), 0);
+        let display = Arc::new(RwLock::new(DnaDisplay::default()));
+        row.layout(
+            &display,
+            0,
+            24.0,
+            0.0,
+            &Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(240.0, 80.0)),
+        );
+        assert_eq!(row.line_height(), 0.0);
+        assert_eq!(row.blocks(), 0);
     }
 }

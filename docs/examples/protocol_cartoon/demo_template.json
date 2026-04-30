@@ -1,0 +1,139 @@
+{
+  "schema": "gentle.protocol_cartoon_template.v1",
+  "id": "demo.cut_sticky_ligate",
+  "title": "GENtle Protocol Cartoon: Cut -> Sticky -> Ligate",
+  "summary": "Minimal template demonstrating defaults plus explicit sticky-end event",
+  "defaults": {
+    "event_caption": "Protocol event snapshot",
+    "feature_length_bp": 150,
+    "palette": [
+      "#0f5d75",
+      "#1aa3a1",
+      "#e3b230",
+      "#4b7f52"
+    ]
+  },
+  "events": [
+    {
+      "id": "context",
+      "title": "Context",
+      "molecules": [
+        {
+          "id": "fragment_a",
+          "label": "Fragment A",
+          "features": [
+            {
+              "id": "a_backbone",
+              "label": "Backbone",
+              "length_bp": 1000
+            },
+            {
+              "id": "a_site",
+              "label": "Cut site",
+              "length_bp": 20
+            }
+          ]
+        },
+        {
+          "id": "fragment_b",
+          "label": "Fragment B",
+          "features": [
+            {
+              "id": "b_site",
+              "label": "Cut site",
+              "length_bp": 20
+            },
+            {
+              "id": "b_insert",
+              "label": "Insert",
+              "length_bp": 700
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sticky",
+      "title": "Sticky Ends",
+      "action": "Cut",
+      "caption": "Restriction cut creates compatible sticky ends.",
+      "molecules": [
+        {
+          "id": "fragment_a_sticky",
+          "label": "A sticky",
+          "left_end": "Blunt",
+          "right_end": {
+            "Sticky": {
+              "polarity": "ThreePrime",
+              "nt": 8
+            }
+          },
+          "features": [
+            {
+              "id": "a_backbone",
+              "label": "Backbone",
+              "length_bp": 1000
+            },
+            {
+              "id": "a_overhang",
+              "label": "Overhang",
+              "length_bp": 20
+            }
+          ]
+        },
+        {
+          "id": "fragment_b_sticky",
+          "label": "B sticky",
+          "left_end": {
+            "Sticky": {
+              "polarity": "FivePrime",
+              "nt": 8
+            }
+          },
+          "right_end": "Blunt",
+          "features": [
+            {
+              "id": "b_overhang",
+              "label": "Overhang",
+              "length_bp": 20
+            },
+            {
+              "id": "b_insert",
+              "label": "Insert",
+              "length_bp": 700
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ligation",
+      "title": "Ligate",
+      "action": "Ligate",
+      "caption": "Annealed overhangs are sealed into final molecule.",
+      "molecules": [
+        {
+          "id": "product",
+          "label": "Ligated product",
+          "features": [
+            {
+              "id": "backbone",
+              "label": "Backbone",
+              "length_bp": 1000
+            },
+            {
+              "id": "junction",
+              "label": "Junction",
+              "length_bp": 20
+            },
+            {
+              "id": "insert",
+              "label": "Insert",
+              "length_bp": 700
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,13 +1,62 @@
+//! Shared DNA rendering entry points.
+
 use crate::{
-    dna_display::DnaDisplay, dna_sequence::DNAsequence, render_dna_circular::RenderDnaCircular,
+    dna_display::{DnaDisplay, TfbsDisplayCriteria, VcfDisplayCriteria},
+    dna_sequence::DNAsequence,
+    render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
+    repeat_features::{is_repeat_feature, repeat_feature_display},
+    restriction_enzyme::RestrictionEnzymeKey,
 };
-use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Widget};
+use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Vec2, Widget};
 use gb_io::seq::Feature;
 use std::{
+    collections::BTreeSet,
     fmt::Debug,
+    panic::{AssertUnwindSafe, catch_unwind},
+    path::Path,
     sync::{Arc, RwLock},
 };
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RestrictionEnzymePosition {
+    pub area: Rect,
+    pub hit_areas: Vec<Rect>,
+    pub key: RestrictionEnzymeKey,
+}
+
+impl RestrictionEnzymePosition {
+    pub fn new(area: Rect, key: RestrictionEnzymeKey) -> Self {
+        Self {
+            area,
+            hit_areas: vec![area],
+            key,
+        }
+    }
+
+    pub fn with_hit_areas(area: Rect, key: RestrictionEnzymeKey, hit_areas: Vec<Rect>) -> Self {
+        let hit_areas = if hit_areas.is_empty() {
+            vec![area]
+        } else {
+            hit_areas
+        };
+        Self {
+            area,
+            hit_areas,
+            key,
+        }
+    }
+
+    pub fn key(&self) -> &RestrictionEnzymeKey {
+        &self.key
+    }
+    pub fn area(&self) -> Rect {
+        self.area
+    }
+    pub fn contains(&self, pos: egui::Pos2) -> bool {
+        self.hit_areas.iter().any(|rect| rect.contains(pos))
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum RenderDna {
@@ -17,19 +66,12 @@ pub enum RenderDna {
 
 impl RenderDna {
     pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
-        let is_circular = dna.read().unwrap().is_circular();
+        let is_circular = dna.read().map(|d| d.is_circular()).unwrap_or(true);
         match is_circular {
             true => {
                 RenderDna::Circular(Arc::new(RwLock::new(RenderDnaCircular::new(dna, display))))
             }
             false => RenderDna::Linear(Arc::new(RwLock::new(RenderDnaLinear::new(dna, display)))),
-        }
-    }
-
-    fn area(&self) -> Rect {
-        match self {
-            RenderDna::Circular(renderer) => renderer.read().unwrap().area().to_owned(),
-            RenderDna::Linear(renderer) => renderer.read().unwrap().area().to_owned(),
         }
     }
 
@@ -42,47 +84,216 @@ impl RenderDna {
 
     pub fn on_click(&self, pointer_state: PointerState) {
         match self {
-            RenderDna::Circular(renderer) => renderer.write().unwrap().on_click(pointer_state),
-            RenderDna::Linear(renderer) => renderer.write().unwrap().on_click(pointer_state),
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_click(pointer_state);
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_click(pointer_state);
+                }
+            }
         }
     }
 
     pub fn on_hover(&self, pointer_state: PointerState) {
         match self {
-            RenderDna::Circular(renderer) => renderer.write().unwrap().on_hover(pointer_state),
-            RenderDna::Linear(renderer) => renderer.write().unwrap().on_hover(pointer_state),
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_hover(pointer_state);
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_hover(pointer_state);
+                }
+            }
         }
     }
 
     pub fn on_double_click(&self, pointer_state: PointerState) {
         match self {
             RenderDna::Circular(renderer) => {
-                renderer.write().unwrap().on_double_click(pointer_state)
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_double_click(pointer_state);
+                }
             }
-            RenderDna::Linear(renderer) => renderer.write().unwrap().on_double_click(pointer_state),
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_double_click(pointer_state);
+                }
+            }
         }
     }
 
     pub fn get_selected_feature_id(&self) -> Option<usize> {
         match self {
-            RenderDna::Circular(renderer) => renderer.read().unwrap().selected_feature_number(),
-            RenderDna::Linear(renderer) => renderer.read().unwrap().selected_feature_number(),
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_feature_number()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_feature_number()),
+        }
+    }
+
+    pub fn get_selected_restriction_site(&self) -> Option<RestrictionEnzymePosition> {
+        match self {
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_restriction_enzyme()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_restriction_enzyme()),
+        }
+    }
+
+    pub fn get_selected_reasoning_evidence_id(&self) -> Option<String> {
+        match self {
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_reasoning_evidence_id()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_reasoning_evidence_id()),
+        }
+    }
+
+    pub fn get_hovered_feature_id(&self) -> Option<usize> {
+        match self {
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_feature_number()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_feature_number()),
+        }
+    }
+
+    pub fn get_hovered_reasoning_evidence_id(&self) -> Option<String> {
+        match self {
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_reasoning_evidence_id()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_reasoning_evidence_id()),
         }
     }
 
     pub fn select_feature(&self, feature_number: Option<usize>) {
         match self {
             RenderDna::Circular(renderer) => {
-                renderer.write().unwrap().select_feature(feature_number)
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_feature(feature_number);
+                    renderer.select_restriction_enzyme(None);
+                    if feature_number.is_some() {
+                        renderer.select_reasoning_evidence(None);
+                    }
+                }
             }
-            RenderDna::Linear(renderer) => renderer.write().unwrap().select_feature(feature_number),
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_feature(feature_number);
+                    renderer.select_restriction_enzyme(None);
+                    if feature_number.is_some() {
+                        renderer.select_reasoning_evidence(None);
+                    }
+                }
+            }
         }
     }
 
-    fn render(&self, ui: &mut egui::Ui) {
+    pub fn set_linear_external_labeled_feature_numbers(&self, feature_numbers: BTreeSet<usize>) {
+        if let RenderDna::Linear(renderer) = self {
+            if let Ok(mut renderer) = renderer.write() {
+                renderer.set_external_labeled_feature_numbers(feature_numbers);
+            }
+        }
+    }
+
+    pub fn select_restriction_site(&self, site: Option<RestrictionEnzymePosition>) {
         match self {
-            RenderDna::Circular(renderer) => renderer.write().unwrap().render(ui),
-            RenderDna::Linear(renderer) => renderer.write().unwrap().render(ui),
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_restriction_enzyme(site.clone());
+                    renderer.select_feature(None);
+                    if site.is_some() {
+                        renderer.select_reasoning_evidence(None);
+                    }
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_restriction_enzyme(site);
+                    renderer.select_feature(None);
+                    if renderer.selected_restriction_enzyme().is_some() {
+                        renderer.select_reasoning_evidence(None);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn select_reasoning_evidence(&self, evidence_id: Option<String>) {
+        match self {
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_reasoning_evidence(evidence_id);
+                    if renderer.selected_reasoning_evidence_id().is_some() {
+                        renderer.select_feature(None);
+                        renderer.select_restriction_enzyme(None);
+                    }
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_reasoning_evidence(evidence_id);
+                    if renderer.selected_reasoning_evidence_id().is_some() {
+                        renderer.select_feature(None);
+                        renderer.select_restriction_enzyme(None);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn linear_visible_vertical_bounds(&self) -> Option<(f32, f32, f32, f32)> {
+        let RenderDna::Linear(renderer) = self else {
+            return None;
+        };
+        let renderer = renderer.read().ok()?;
+        let (content_top, content_bottom) = renderer.visible_feature_bounds_y()?;
+        let area = renderer.area();
+        Some((area.top(), area.bottom(), content_top, content_bottom))
+    }
+
+    fn render(&self, ui: &mut egui::Ui, area: Rect) {
+        let result = catch_unwind(AssertUnwindSafe(|| match self {
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.render(ui, area);
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.render(ui, area);
+                }
+            }
+        }));
+        if result.is_err() {
+            eprintln!("W RenderDna: recovered from panic while rendering map");
         }
     }
 
@@ -93,20 +304,596 @@ impl RenderDna {
         )
     }
 
+    pub fn is_variation_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() == "VARIATION"
+    }
+
     pub fn feature_color(feature: &Feature) -> Color32 {
+        if Self::is_vcf_track_feature(feature) {
+            let class = Self::vcf_variant_class(feature)
+                .unwrap_or_else(|| "OTHER".to_string())
+                .to_ascii_uppercase();
+            return match class.as_str() {
+                "SNP" => Color32::from_rgb(225, 127, 15),
+                "INS" => Color32::from_rgb(35, 140, 100),
+                "DEL" => Color32::from_rgb(180, 45, 45),
+                "SV" => Color32::from_rgb(90, 90, 30),
+                _ => Color32::from_rgb(90, 90, 90),
+            };
+        }
+        if Self::is_mcs_feature(feature) {
+            return Color32::from_rgb(0, 136, 156);
+        }
+        if let Some(repeat) = repeat_feature_display(feature) {
+            let (r, g, b) = repeat.class.color_rgb();
+            return Color32::from_rgb(r, g, b);
+        }
+        if Self::is_regulatory_feature(feature) {
+            if let Some(reg_class) = Self::regulatory_class(feature) {
+                if reg_class.contains("silencer") || reg_class.contains("repressor") {
+                    return Color32::from_rgb(190, 50, 50);
+                }
+                if reg_class.contains("enhancer") || reg_class.contains("activator") {
+                    return Color32::from_rgb(45, 150, 65);
+                }
+            }
+        }
         match feature.kind.to_string().to_ascii_uppercase().as_str() {
             "CDS" => Color32::RED,
             "GENE" => Color32::BLUE,
+            "MRNA" => Color32::from_rgb(180, 100, 10),
+            "PROMOTER" => {
+                if feature.qualifier_values("gentle_generated").any(|value| {
+                    value
+                        .trim()
+                        .eq_ignore_ascii_case("annotate_promoter_windows")
+                }) {
+                    Color32::from_rgb(0, 146, 170)
+                } else {
+                    Color32::from_rgb(55, 132, 86)
+                }
+            }
+            "VARIATION" => Color32::from_rgb(225, 127, 15),
+            "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => Color32::from_rgb(35, 120, 35),
+            "TRACK" => Color32::from_rgb(85, 85, 85),
             _ => Color32::GRAY,
         }
     }
 
-    pub fn feature_name(feature: &Feature) -> String {
-        let mut label_text = match feature.location.find_bounds() {
-            Ok((from, to)) => format!("{from}..{to}"),
-            Err(_) => String::new(),
+    pub fn is_cds_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() == "CDS"
+    }
+
+    pub fn is_gene_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() == "GENE"
+    }
+
+    pub fn is_mrna_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() == "MRNA"
+    }
+
+    pub fn is_contextual_transcript_feature(feature: &Feature) -> bool {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        let transcript_like = matches!(kind.as_str(), "MRNA" | "EXON" | "CDS");
+        if !transcript_like {
+            return false;
+        }
+        if Self::feature_has_qualifier_value(
+            feature,
+            "gentle_context_layer",
+            "contextual_transcript",
+        ) {
+            return true;
+        }
+        if Self::feature_has_qualifier_value(
+            feature,
+            "gentle_generated",
+            "genome_annotation_projection",
+        ) {
+            return true;
+        }
+        // Backward-compatible heuristic for older projects created before
+        // contextual transcript qualifiers were introduced.
+        if kind == "MRNA"
+            && Self::feature_has_qualifier(feature, "chromosome")
+            && Self::feature_has_qualifier(feature, "genomic_start_1based")
+            && Self::feature_has_qualifier(feature, "genomic_end_1based")
+            && !Self::feature_has_qualifier(feature, "synthetic_origin")
+        {
+            return true;
+        }
+        false
+    }
+
+    pub fn feature_passes_kind_filter(
+        feature: &Feature,
+        show_cds_features: bool,
+        show_gene_features: bool,
+        show_mrna_features: bool,
+    ) -> bool {
+        if Self::is_cds_feature(feature) && !show_cds_features {
+            return false;
+        }
+        if Self::is_gene_feature(feature) && !show_gene_features {
+            return false;
+        }
+        if Self::is_mrna_feature(feature) && !show_mrna_features {
+            return false;
+        }
+        true
+    }
+
+    pub fn is_tfbs_feature(feature: &Feature) -> bool {
+        matches!(
+            feature.kind.to_string().to_ascii_uppercase().as_str(),
+            "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND"
+        )
+    }
+
+    pub fn is_track_feature(feature: &Feature) -> bool {
+        feature.qualifier_values("gentle_generated").any(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "genome_bed_track" | "genome_bigwig_track" | "genome_vcf_track" | "blast_hit_track"
+            )
+        })
+    }
+
+    pub fn is_vcf_track_feature(feature: &Feature) -> bool {
+        feature
+            .qualifier_values("gentle_generated")
+            .any(|value| value.trim().eq_ignore_ascii_case("genome_vcf_track"))
+    }
+
+    fn has_regulatory_hint(feature: &Feature) -> bool {
+        for key in [
+            "regulatory_class",
+            "regulation",
+            "function",
+            "note",
+            "label",
+        ] {
+            for value in feature.qualifier_values(key) {
+                let lower = value.to_ascii_lowercase();
+                if lower.contains("regulatory")
+                    || lower.contains("enhancer")
+                    || lower.contains("promoter")
+                    || lower.contains("silencer")
+                    || lower.contains("insulator")
+                    || lower.contains("atac")
+                    || lower.contains("chip")
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn is_regulatory_feature(feature: &Feature) -> bool {
+        if Self::is_repeat_feature(feature) {
+            return false;
+        }
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        Self::is_tfbs_feature(feature)
+            || kind.contains("REGULATORY")
+            || (kind == "MISC_FEATURE" && Self::has_regulatory_hint(feature))
+            || Self::is_track_feature(feature)
+    }
+
+    fn text_mentions_mcs(text: &str) -> bool {
+        let lower = text.trim().to_ascii_lowercase();
+        lower.contains("multiple cloning site")
+            || lower == "mcs"
+            || lower.contains(" mcs ")
+            || lower.starts_with("mcs ")
+            || lower.ends_with(" mcs")
+            || lower.contains("(mcs)")
+    }
+
+    fn compact_mcs_label(text: &str) -> String {
+        let short = text.split(|c| c == ';' || c == '\n').next().unwrap_or(text);
+        let normalized = short.split_whitespace().collect::<Vec<_>>().join(" ");
+        let normalized = normalized.trim();
+        if normalized.is_empty() {
+            "MCS".to_string()
+        } else {
+            normalized.to_string()
+        }
+    }
+
+    fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
+        feature
+            .qualifier_values(key)
+            .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+            .map(|value| value.trim().to_string())
+            .find(|value| !value.is_empty())
+    }
+
+    fn feature_has_qualifier(feature: &Feature, key: &str) -> bool {
+        feature
+            .qualifier_values(key)
+            .map(|value| value.trim())
+            .any(|value| !value.is_empty())
+    }
+
+    fn feature_has_qualifier_value(feature: &Feature, key: &str, expected: &str) -> bool {
+        feature
+            .qualifier_values(key)
+            .any(|value| value.trim().eq_ignore_ascii_case(expected))
+    }
+
+    fn regulatory_class(feature: &Feature) -> Option<String> {
+        Self::feature_qualifier_text(feature, "regulatory_class").map(|v| v.to_ascii_lowercase())
+    }
+
+    fn first_nonempty_qualifier(feature: &Feature, keys: &[&str]) -> Option<String> {
+        for key in keys {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    pub fn is_mcs_feature(feature: &Feature) -> bool {
+        if Self::feature_has_qualifier_value(feature, "gentle_generated", "helper_mcs") {
+            return true;
+        }
+        if Self::feature_has_qualifier(feature, "mcs_expected_sites")
+            || Self::feature_has_qualifier(feature, "mcs_preset")
+        {
+            return true;
+        }
+        if !feature
+            .kind
+            .to_string()
+            .eq_ignore_ascii_case("misc_feature")
+        {
+            return false;
+        }
+        ["label", "note", "gene", "name", "standard_name"]
+            .into_iter()
+            .filter_map(|key| Self::feature_qualifier_text(feature, key))
+            .any(|value| Self::text_mentions_mcs(&value))
+    }
+
+    pub fn tfbs_group_label(feature: &Feature) -> Option<String> {
+        if !Self::is_tfbs_feature(feature) {
+            return None;
+        }
+        let tf_id = Self::feature_qualifier_text(feature, "tf_id");
+        let tf_name = Self::first_nonempty_qualifier(
+            feature,
+            &["bound_moiety", "standard_name", "gene", "name"],
+        );
+        match (tf_name, tf_id) {
+            (Some(name), Some(id)) => {
+                if name.eq_ignore_ascii_case(&id) {
+                    Some(name)
+                } else {
+                    Some(format!("{name} ({id})"))
+                }
+            }
+            (Some(name), None) => Some(name),
+            (None, Some(id)) => Some(id),
+            (None, None) => {
+                let fallback = Self::feature_name(feature);
+                if fallback.trim().is_empty() {
+                    Some("TFBS".to_string())
+                } else {
+                    Some(fallback)
+                }
+            }
+        }
+    }
+
+    pub fn is_restriction_site_feature(feature: &Feature) -> bool {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        if kind == "RESTRICTION_SITE" || kind.contains("RESTRICTION") {
+            return true;
+        }
+        for key in [
+            "enzyme",
+            "restriction_enzyme",
+            "enzyme_name",
+            "rebase_enzyme",
+        ] {
+            if feature.qualifier_values(key).next().is_some() {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn restriction_site_group_label(feature: &Feature) -> Option<String> {
+        if !Self::is_restriction_site_feature(feature) {
+            return None;
+        }
+        Self::first_nonempty_qualifier(
+            feature,
+            &[
+                "enzyme",
+                "restriction_enzyme",
+                "enzyme_name",
+                "rebase_enzyme",
+                "label",
+                "name",
+            ],
+        )
+        .or_else(|| {
+            let fallback = Self::feature_name(feature);
+            if fallback.trim().is_empty() {
+                Some("Restriction site".to_string())
+            } else {
+                Some(fallback)
+            }
+        })
+    }
+
+    pub fn is_repeat_feature(feature: &Feature) -> bool {
+        is_repeat_feature(feature)
+    }
+
+    pub fn repeat_group_label(feature: &Feature) -> Option<String> {
+        repeat_feature_display(feature).map(|repeat| repeat.group_label())
+    }
+
+    pub fn track_group_label(feature: &Feature) -> Option<String> {
+        if !Self::is_track_feature(feature) {
+            return None;
+        }
+        let source = Self::feature_qualifier_text(feature, "gentle_track_source");
+        let file_name = Self::feature_qualifier_text(feature, "gentle_track_file").and_then(|v| {
+            Path::new(v.trim())
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+        });
+        let track_name = Self::first_nonempty_qualifier(feature, &["gentle_track_name", "name"]);
+        let label = Self::feature_qualifier_text(feature, "label");
+
+        match (source, file_name, track_name, label) {
+            (Some(source), Some(file_name), Some(track_name), _) => {
+                Some(format!("{source}: {file_name} ({track_name})"))
+            }
+            (Some(source), Some(file_name), None, _) => Some(format!("{source}: {file_name}")),
+            (Some(source), None, Some(track_name), _) => Some(format!("{source}: {track_name}")),
+            (None, Some(file_name), Some(track_name), _) => {
+                Some(format!("{file_name} ({track_name})"))
+            }
+            (None, Some(file_name), None, _) => Some(file_name),
+            (_, _, Some(track_name), _) => Some(track_name),
+            (_, _, None, Some(label)) => Some(label),
+            _ => Some("Unnamed track".to_string()),
+        }
+    }
+
+    pub fn vcf_variant_class(feature: &Feature) -> Option<String> {
+        if !Self::is_vcf_track_feature(feature) {
+            return None;
+        }
+        Self::feature_qualifier_text(feature, "vcf_variant_class").or_else(|| {
+            let reference = Self::feature_qualifier_text(feature, "vcf_ref")?;
+            let alt = Self::feature_qualifier_text(feature, "vcf_alt")?;
+            let ref_len = reference.trim().len().max(1);
+            let alt_trimmed = alt.trim();
+            if alt_trimmed.starts_with('<')
+                || alt_trimmed.ends_with('>')
+                || alt_trimmed.contains('[')
+                || alt_trimmed.contains(']')
+                || alt_trimmed == "*"
+            {
+                return Some("SV".to_string());
+            }
+            let alt_len = alt_trimmed.len().max(1);
+            if ref_len == 1 && alt_len == 1 {
+                Some("SNP".to_string())
+            } else if alt_len > ref_len {
+                Some("INS".to_string())
+            } else if alt_len < ref_len {
+                Some("DEL".to_string())
+            } else {
+                Some("OTHER".to_string())
+            }
+        })
+    }
+
+    fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
+        feature
+            .qualifier_values(key)
+            .next()
+            .and_then(|v| v.trim().parse::<f64>().ok())
+    }
+
+    pub fn vcf_feature_passes_display_filter(
+        feature: &Feature,
+        criteria: &VcfDisplayCriteria,
+    ) -> bool {
+        if !Self::is_vcf_track_feature(feature) {
+            return true;
+        }
+        let class = Self::vcf_variant_class(feature)
+            .unwrap_or_else(|| "OTHER".to_string())
+            .to_ascii_uppercase();
+        let class_ok = match class.as_str() {
+            "SNP" => criteria.show_snp,
+            "INS" => criteria.show_ins,
+            "DEL" => criteria.show_del,
+            "SV" => criteria.show_sv,
+            _ => criteria.show_other,
         };
+        if !class_ok {
+            return false;
+        }
+        if criteria.pass_only {
+            let filter = Self::feature_qualifier_text(feature, "vcf_filter")
+                .unwrap_or_else(|| String::new())
+                .trim()
+                .to_ascii_uppercase();
+            if filter != "PASS" {
+                return false;
+            }
+        }
+        if criteria.use_min_qual || criteria.use_max_qual {
+            let qual = Self::feature_qualifier_f64(feature, "vcf_qual")
+                .or_else(|| Self::feature_qualifier_f64(feature, "score"));
+            let Some(qual) = qual else {
+                return false;
+            };
+            if criteria.use_min_qual && qual < criteria.min_qual {
+                return false;
+            }
+            if criteria.use_max_qual && qual > criteria.max_qual {
+                return false;
+            }
+        }
+        if !criteria.required_info_keys.is_empty() {
+            let info = Self::feature_qualifier_text(feature, "vcf_info").unwrap_or_default();
+            let info_keys = info
+                .split(';')
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(|entry| {
+                    entry
+                        .split_once('=')
+                        .map(|(key, _)| key.trim().to_ascii_uppercase())
+                        .unwrap_or_else(|| entry.to_ascii_uppercase())
+                })
+                .collect::<std::collections::HashSet<_>>();
+            if criteria
+                .required_info_keys
+                .iter()
+                .map(|key| key.trim().to_ascii_uppercase())
+                .any(|key| !info_keys.contains(&key))
+            {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn tfbs_feature_passes_display_filter(
+        feature: &Feature,
+        criteria: TfbsDisplayCriteria,
+    ) -> bool {
+        if !Self::is_tfbs_feature(feature) {
+            return true;
+        }
+        if criteria.use_llr_bits {
+            let Some(value) = Self::feature_qualifier_f64(feature, "llr_bits") else {
+                return false;
+            };
+            if value < criteria.min_llr_bits {
+                return false;
+            }
+        }
+        if criteria.use_llr_quantile {
+            let Some(value) = Self::feature_qualifier_f64(feature, "llr_quantile") else {
+                return false;
+            };
+            if value < criteria.min_llr_quantile {
+                return false;
+            }
+        }
+        if criteria.use_true_log_odds_bits {
+            let value = Self::feature_qualifier_f64(feature, "true_log_odds_bits")
+                .or_else(|| Self::feature_qualifier_f64(feature, "log_odds_ratio_bits"));
+            let Some(value) = value else {
+                return false;
+            };
+            if value < criteria.min_true_log_odds_bits {
+                return false;
+            }
+        }
+        if criteria.use_true_log_odds_quantile {
+            let value = Self::feature_qualifier_f64(feature, "true_log_odds_quantile")
+                .or_else(|| Self::feature_qualifier_f64(feature, "log_odds_ratio_quantile"));
+            let Some(value) = value else {
+                return false;
+            };
+            if value < criteria.min_true_log_odds_quantile {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn is_source_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() == "SOURCE"
+    }
+
+    pub fn feature_name(feature: &Feature) -> String {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        if let Some(repeat) = repeat_feature_display(feature) {
+            return repeat.display_label();
+        }
+        if Self::is_regulatory_feature(feature) {
+            if let Some(reg_class) = Self::feature_qualifier_text(feature, "regulatory_class") {
+                let note = Self::feature_qualifier_text(feature, "note");
+                return if let Some(note) = note {
+                    format!("{reg_class}: {note}")
+                } else {
+                    reg_class
+                };
+            }
+        }
+        if Self::is_mcs_feature(feature) {
+            for key in ["label", "standard_name", "name", "gene", "note"] {
+                if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                    if Self::text_mentions_mcs(&value) {
+                        return Self::compact_mcs_label(&value);
+                    }
+                }
+            }
+            if let Some(value) = Self::first_nonempty_qualifier(
+                feature,
+                &["label", "standard_name", "name", "gene", "note"],
+            ) {
+                return Self::compact_mcs_label(&value);
+            }
+            return "MCS".to_string();
+        }
+        if kind == "MRNA" {
+            if let Some(name) = Self::first_nonempty_qualifier(
+                feature,
+                &[
+                    "transcript_id",
+                    "standard_name",
+                    "product",
+                    "label",
+                    "name",
+                    "gene",
+                    "locus_tag",
+                ],
+            ) {
+                return name;
+            }
+        }
+        if kind == "GENE" {
+            if let Some(name) = Self::first_nonempty_qualifier(
+                feature,
+                &[
+                    "gene",
+                    "locus_tag",
+                    "gene_synonym",
+                    "label",
+                    "name",
+                    "standard_name",
+                ],
+            ) {
+                return name;
+            }
+        }
+        if Self::is_tfbs_feature(feature) {
+            if let Some(name) = Self::first_nonempty_qualifier(
+                feature,
+                &["bound_moiety", "standard_name", "name", "tf_id", "label"],
+            ) {
+                return name;
+            }
+        }
         for k in [
+            "label",
             "name",
             "standard_name",
             "gene",
@@ -115,19 +902,322 @@ impl RenderDna {
             "region_name",
             "bound_moiety",
         ] {
-            label_text = match feature.qualifier_values(k.into()).next() {
+            let label_text = match feature.qualifier_values(k).next() {
                 Some(s) => s.to_owned(),
                 None => continue,
             };
-            break;
+            if !label_text.trim().is_empty() {
+                return label_text;
+            }
         }
-        label_text
+
+        match feature.location.find_bounds() {
+            Ok((from, to)) => format!("{from}..{to}"),
+            Err(_) => String::new(),
+        }
+    }
+
+    pub fn feature_detail_lines(feature: &Feature) -> Vec<String> {
+        let mut lines = Vec::new();
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        let keys = if Self::is_repeat_feature(feature) {
+            vec![
+                "repName",
+                "repClass",
+                "repFamily",
+                "rmsk_name",
+                "rmsk_class",
+                "rmsk_family",
+                "repeat_name",
+                "repeat_class",
+                "repeat_family",
+                "rpt_type",
+                "rpt_family",
+                "mobile_element_type",
+                "label",
+                "name",
+                "note",
+                "score",
+                "milliDiv",
+                "milliDel",
+                "milliIns",
+                "db_xref",
+            ]
+        } else if Self::is_regulatory_feature(feature) {
+            vec![
+                "regulatory_class",
+                "standard_name",
+                "function",
+                "note",
+                "experiment",
+                "db_xref",
+            ]
+        } else if kind == "MRNA" {
+            vec![
+                "transcript_id",
+                "product",
+                "gene",
+                "gene_synonym",
+                "locus_tag",
+                "note",
+                "function",
+                "experiment",
+                "db_xref",
+            ]
+        } else if kind == "GENE" {
+            vec![
+                "gene",
+                "gene_synonym",
+                "locus_tag",
+                "standard_name",
+                "mcs_expected_sites",
+                "note",
+                "function",
+                "experiment",
+                "db_xref",
+            ]
+        } else {
+            vec![
+                "label",
+                "product",
+                "gene",
+                "mcs_expected_sites",
+                "note",
+                "experiment",
+                "db_xref",
+            ]
+        };
+        for key in keys {
+            for value in feature.qualifier_values(key) {
+                let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+                let normalized = normalized.trim();
+                if !normalized.is_empty() {
+                    lines.push(format!("{key}: {normalized}"));
+                }
+            }
+        }
+        lines
+    }
+
+    pub fn feature_max_view_span_bp(
+        feature: &Feature,
+        regulatory_max_view_span_bp: usize,
+    ) -> usize {
+        if Self::is_source_feature(feature) {
+            return 0;
+        }
+        if Self::is_repeat_feature(feature) {
+            return 250_000;
+        }
+        if Self::is_regulatory_feature(feature) {
+            return regulatory_max_view_span_bp;
+        }
+        match feature.kind.to_string().to_ascii_uppercase().as_str() {
+            "CDS" | "GENE" | "MRNA" => 2_000_000,
+            "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => 200_000,
+            "TRACK" => 250_000,
+            "RESTRICTION_SITE" => 100_000,
+            _ => 500_000,
+        }
+    }
+
+    pub fn feature_visible_for_view_span(
+        feature: &Feature,
+        view_span_bp: usize,
+        regulatory_max_view_span_bp: usize,
+    ) -> bool {
+        let max_span = Self::feature_max_view_span_bp(feature, regulatory_max_view_span_bp);
+        max_span == 0 || view_span_bp <= max_span
+    }
+
+    pub fn feature_range_text(feature: &Feature) -> String {
+        let Ok((from, to_exclusive)) = feature.location.find_bounds() else {
+            return String::new();
+        };
+        if from < 0 || to_exclusive < 0 {
+            return String::new();
+        }
+        let len = to_exclusive.saturating_sub(from);
+        let start_1based = from.saturating_add(1);
+        format!("{start_1based}..{to_exclusive} ({len} bp)")
     }
 }
 
 impl Widget for RenderDna {
     fn ui(self, ui: &mut Ui) -> Response {
-        self.render(ui);
-        ui.allocate_response(self.area().size(), Sense::click())
+        let available = ui.available_size_before_wrap();
+        let clip = ui.clip_rect();
+        let fallback_width = clip.width().max(1.0);
+        let fallback_height = clip.height().max(1.0);
+        let mut width = if available.x.is_finite() {
+            available.x
+        } else {
+            fallback_width
+        };
+        let mut height = if available.y.is_finite() {
+            available.y
+        } else {
+            fallback_height
+        };
+        if width <= 0.0 {
+            width = fallback_width;
+        }
+        if height <= 0.0 {
+            height = fallback_height;
+        }
+        if !width.is_finite() {
+            width = fallback_width;
+        }
+        if !height.is_finite() {
+            height = fallback_height;
+        }
+        let safe_size = Vec2::new(width.max(1.0), height.max(1.0));
+        let (rect, response) = ui.allocate_exact_size(safe_size, Sense::click_and_drag());
+        self.render(ui, rect);
+        response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RenderDna;
+    use eframe::egui::Color32;
+    use gb_io::seq::{Feature, Location};
+
+    fn make_feature(kind: &str, qualifiers: &[(&str, &str)]) -> Feature {
+        Feature {
+            kind: kind.to_string().into(),
+            location: Location::simple_range(0, 10),
+            qualifiers: qualifiers
+                .iter()
+                .map(|(k, v)| ((*k).to_string().into(), Some((*v).to_string())))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn contextual_transcript_feature_detects_qualifier_tags() {
+        let feature = make_feature(
+            "mRNA",
+            &[
+                ("gentle_generated", "genome_annotation_projection"),
+                ("gentle_context_layer", "contextual_transcript"),
+            ],
+        );
+        assert!(RenderDna::is_contextual_transcript_feature(&feature));
+    }
+
+    #[test]
+    fn contextual_transcript_feature_detects_legacy_projected_mrna_shape() {
+        let feature = make_feature(
+            "mRNA",
+            &[
+                ("chromosome", "1"),
+                ("genomic_start_1based", "100"),
+                ("genomic_end_1based", "200"),
+            ],
+        );
+        assert!(RenderDna::is_contextual_transcript_feature(&feature));
+    }
+
+    #[test]
+    fn contextual_transcript_feature_skips_synthetic_intrinsic_transcript() {
+        let feature = make_feature(
+            "mRNA",
+            &[
+                ("chromosome", "1"),
+                ("genomic_start_1based", "100"),
+                ("genomic_end_1based", "200"),
+                ("synthetic_origin", "mrna_transcript_derived"),
+            ],
+        );
+        assert!(!RenderDna::is_contextual_transcript_feature(&feature));
+    }
+
+    #[test]
+    fn mcs_feature_detection_requires_explicit_mcs_hints() {
+        let helper_feature = make_feature("misc_feature", &[("gentle_generated", "helper_mcs")]);
+        assert!(RenderDna::is_mcs_feature(&helper_feature));
+
+        let text_hint_feature = make_feature(
+            "misc_feature",
+            &[(
+                "note",
+                "Multiple Cloning Site (MCS); contains BamHI and EcoR I",
+            )],
+        );
+        assert!(RenderDna::is_mcs_feature(&text_hint_feature));
+
+        let gene_named_mcs = make_feature("gene", &[("gene", "MCS")]);
+        assert!(!RenderDna::is_mcs_feature(&gene_named_mcs));
+    }
+
+    #[test]
+    fn mcs_feature_name_prefers_compact_mcs_label() {
+        let feature = make_feature(
+            "misc_feature",
+            &[(
+                "note",
+                "Multiple Cloning Site (MCS); contains BamHI and EcoR I",
+            )],
+        );
+        assert_eq!(
+            RenderDna::feature_name(&feature),
+            "Multiple Cloning Site (MCS)"
+        );
+        assert_eq!(
+            RenderDna::feature_color(&feature),
+            Color32::from_rgb(0, 136, 156)
+        );
+    }
+
+    #[test]
+    fn variation_feature_uses_snp_accent_color() {
+        let feature = make_feature("variation", &[("gentle_generated", "dbsnp_variant_marker")]);
+        assert_eq!(
+            RenderDna::feature_color(&feature),
+            Color32::from_rgb(225, 127, 15)
+        );
+    }
+
+    #[test]
+    fn variation_feature_detection_is_kind_based() {
+        let feature = make_feature("variation", &[("label", "rs9923231")]);
+        assert!(RenderDna::is_variation_feature(&feature));
+    }
+
+    #[test]
+    fn tfbs_feature_name_prefers_bound_moiety() {
+        let feature = make_feature(
+            "TFBS",
+            &[
+                ("label", "TFBS MA0079.5"),
+                ("tf_id", "MA0079.5"),
+                ("bound_moiety", "SP1"),
+            ],
+        );
+        assert_eq!(RenderDna::feature_name(&feature), "SP1");
+    }
+
+    #[test]
+    fn repeatmasker_feature_name_group_and_color_reflect_repeat_class() {
+        let feature = make_feature(
+            "repeat_region",
+            &[
+                ("repName", "AluY"),
+                ("repClass", "SINE"),
+                ("repFamily", "Alu"),
+            ],
+        );
+
+        assert_eq!(RenderDna::feature_name(&feature), "AluY (SINE / Alu)");
+        assert_eq!(
+            RenderDna::repeat_group_label(&feature).as_deref(),
+            Some("SINE / Alu")
+        );
+        assert_eq!(
+            RenderDna::feature_color(&feature),
+            Color32::from_rgb(14, 116, 144)
+        );
     }
 }

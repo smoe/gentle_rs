@@ -1,0 +1,21 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "cdna-qpcr-test",
+  "state_path": ".gentle_state.json",
+  "seq_id": "cdna_assay_demo",
+  "source_feature_id": 2,
+  "forward_primer": "AAACCC",
+  "reverse_primer": "CCCAAA",
+  "probe": "GGGCCC",
+  "transcript_id": "TX1",
+  "map_coordinate_mode": "genomic_aligned",
+  "min_amplicon_bp": 20,
+  "max_amplicon_bp": 200,
+  "output_path": "artifacts/cdna_assay_demo.direct_taqman_report.json",
+  "svg_path": "artifacts/cdna_assay_demo.direct_taqman_transcript_map.svg",
+  "expected_artifacts": [
+    "artifacts/cdna_assay_demo.direct_taqman_report.json",
+    "artifacts/cdna_assay_demo.direct_taqman_transcript_map.svg"
+  ],
+  "timeout_secs": 180
+}

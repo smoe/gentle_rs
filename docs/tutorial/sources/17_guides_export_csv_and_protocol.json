@@ -1,0 +1,54 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "guides_export_csv_and_protocol",
+  "title": "Guide oligo export (CSV + protocol)",
+  "generated_chapter": {
+    "order": 7,
+    "example_id": "guides_export_csv_and_protocol",
+    "tier": "advanced",
+    "summary": "Export representative machine-readable and human-readable artifacts.",
+    "narrative": "Operational work is only useful if outputs can be shared with collaborators and ordering pipelines. This routine keeps one representative CSV and one protocol text file so the tutorial remains readable while still proving export behavior.",
+    "use_cases": [
+      "You need oligo tables for ordering and a protocol summary for bench execution.",
+      "You want reproducible artifacts tied to explicit operation history.",
+      "You need a concise output bundle for review without committing redundant files."
+    ],
+    "gui_steps": [
+      "Open the guide/oligo export controls after guide generation.",
+      "Export one CSV table and one protocol text file to verify both machine and human output forms.",
+      "Inspect the exported files and confirm they match current guide/oligo set IDs."
+    ],
+    "learning_objectives": [
+      "Export guide outputs in machine-readable and human-readable forms.",
+      "Understand selective artifact retention for tutorial readability.",
+      "Map retained artifacts back to the operation chain that produced them."
+    ],
+    "concepts": [
+      "guide_design_pipeline",
+      "artifact_exports"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "ExportGuideOligos.format",
+        "where_used": "operation 3",
+        "why_it_matters": "Format must match the receiving workflow (spreadsheet import, plate workflow, or FASTA).",
+        "how_to_derive": "Pick `csv_table` for review/order sheets, `plate_csv` for plate automation, `fasta` for sequence-oriented tools."
+      },
+      {
+        "parameter": "ExportGuideProtocolText.include_qc_checklist",
+        "where_used": "operation 4",
+        "why_it_matters": "Controls whether QC reminders are embedded in the generated protocol text.",
+        "how_to_derive": "Enable for handoff to wet-lab execution; disable only for compact machine-only summaries."
+      }
+    ],
+    "follow_up_commands": [],
+    "retain_outputs": [
+      "exports/demo_guides.csv",
+      "exports/demo_guides.protocol.txt"
+    ],
+    "checkpoints": [
+      "CSV export file exists and contains guide rows.",
+      "Protocol text export exists and contains checklist content."
+    ]
+  }
+}

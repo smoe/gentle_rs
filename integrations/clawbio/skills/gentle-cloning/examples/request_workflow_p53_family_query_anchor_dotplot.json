@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow_path": "docs/figures/p53_family_query_anchor_dotplot.workflow.json",
+  "expected_artifacts": [
+    "docs/figures/p53_family_query_anchor_dotplot.svg"
+  ],
+  "timeout_secs": 300
+}

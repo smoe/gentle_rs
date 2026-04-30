@@ -1,0 +1,6901 @@
+# GENtle Engine Protocol (Draft v1)
+
+This document defines the draft machine-facing protocol for operating GENtle
+through a shared core engine.
+
+Goal:
+
+- GUI, CLI, JavaScript, Lua, and Python wrappers call the same core routines.
+- AI tools can run deterministic cloning workflows with reproducible logs.
+
+## Design principles
+
+- Protocol-first: versioned JSON request/response shapes
+- Capability negotiation: clients discover supported operations and formats
+- Deterministic operation log: each operation emits a stable op id and result
+- Structured errors: machine-parseable error code + message
+
+## Capabilities
+
+`gentle_cli capabilities` returns:
+
+- `protocol_version`
+- `supported_operations`
+- `supported_export_formats`
+- `deterministic_operation_log`
+
+## Protocol-first workflow examples
+
+Canonical, adapter-independent examples are defined in:
+
+- `docs/examples/workflows/*.json`
+- schema: `gentle.workflow_example.v1`
+
+Each example includes:
+
+- metadata (`id`, `title`, `summary`)
+- test policy (`test_mode`: `always|online|skip`)
+- required local files (`required_files`)
+- canonical `workflow` payload
+
+Adapter snippets (CLI/shared shell/JavaScript/Lua) are generated on demand from
+those canonical files:
+
+```bash
+cargo run --bin gentle_examples_docs -- generate
+```
+
+Validation only:
+
+```bash
+cargo run --bin gentle_examples_docs -- --check
+```
+
+Tutorial manifest + generated outputs:
+
+- discovery catalog: `docs/tutorial/catalog.json`
+- discovery schema: `gentle.tutorial_catalog.v1`
+- shared tutorial source units:
+  - `docs/tutorial/sources/catalog_meta.json`
+  - `docs/tutorial/sources/*.json`
+- source-unit schemas:
+  - `gentle.tutorial_catalog_meta.v1`
+  - `gentle.tutorial_source.v2`
+- generated runtime manifest: `docs/tutorial/manifest.json`
+- runtime manifest schema: `gentle.tutorial_manifest.v1`
+- committed generated outputs: `docs/tutorial/generated/`
+
+Catalog/manifest split:
+
+- `docs/tutorial/catalog.json` is the canonical discovery layer for all
+  tutorials, including hand-written walkthroughs and agent/reference guides.
+- `docs/tutorial/sources/` is the authoring layer for both the discovery
+  catalog and the executable tutorial runtime manifest.
+- `docs/tutorial/manifest.json` is a generated runtime contract used for
+  chapter output and tutorial runtime checks.
+- GUI help/tutorial discovery may consume the catalog directly for curated
+  ordering and metadata, while executable tutorial project materialization still
+  resolves through the manifest/workflow example path.
+
+Generate/check tutorial outputs:
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-generate
+cargo run --bin gentle_examples_docs -- tutorial-check
+cargo run --bin gentle_examples_docs -- tutorial-catalog-generate
+cargo run --bin gentle_examples_docs -- tutorial-catalog-check
+cargo run --bin gentle_examples_docs -- tutorial-manifest-generate
+cargo run --bin gentle_examples_docs -- tutorial-manifest-check
+```
+
+## TFBS region summary contract
+
+GENtle now exposes a portable grouped TFBS summary contract for comparing one
+focus window against a wider context window on the same sequence.
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]'
+```
+
+First-class operation route:
+
+```json
+{"SummarizeTfbsRegion":{"seq_id":"SEQ_ID","focus_start_0based":2900,"focus_end_0based_exclusive":3100,"context_start_0based":0,"context_end_0based_exclusive":6001,"min_focus_occurrences":1,"min_context_occurrences":0,"limit":25}}
+```
+
+Portable schema:
+
+- `gentle.tfbs_region_summary.v1`
+
+Request fields:
+
+- `seq_id`
+- `focus_start_0based`
+- `focus_end_0based_exclusive`
+- optional `context_start_0based`
+- optional `context_end_0based_exclusive`
+- `min_focus_occurrences`
+- `min_context_occurrences`
+- optional `limit`
+
+Result fields:
+
+- sequence/focus/context bounds and widths
+- total TFBS hit counts in the focus and context spans
+- grouped rows keyed by TF name with:
+  - `motif_ids`
+  - `focus_occurrences`
+  - `context_occurrences`
+  - `outside_focus_occurrences`
+  - focus/context/outside densities per kb
+  - focus-vs-context and focus-vs-outside density ratios
+
+Grouping policy:
+
+- prefer `bound_moiety`
+- otherwise `standard_name`
+- otherwise `gene`
+- otherwise `name`
+- otherwise `tf_id`
+
+## TFBS score-track contract
+
+GENtle also exposes a portable continuous TFBS/PSSM score-track contract for one
+selected sequence span.
+
+Boundary note:
+
+- This is GENtle's generic DNA motif-statistics surface today.
+- It is the right contract for:
+  - local JASPAR/TF motif scoring
+  - score-track figures and JSON reports over one DNA span
+  - deterministic motif benchmark/report flows such as
+    `SummarizeJasparEntries`
+- It is intentionally distinct from splice-aware ATtRACT/RBP evidence:
+  - TFBS/PSSM score tracks describe score landscapes over one selected DNA span
+  - ATtRACT evidence describes transcript-aware splice-region hits with exon /
+    donor flank / acceptor flank / intron classification
+- If future ATtRACT PWM scoring reuses PSSM-like math, that reuse should live
+  in a lower shared helper layer while keeping the adapter-facing contracts
+  distinct.
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]'
+```
+
+```bash
+gentle_cli shell 'features tfbs-score-tracks-svg --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]'
+gentle_cli shell 'features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--signal-source max_strands|forward_only|reverse_only] [--allow-negative]'
+```
+
+First-class operation routes:
+
+```json
+{"SummarizeTfbsScoreTracks":{"target":{"kind":"seq_id","seq_id":"SEQ_ID","span_start_0based":15564,"span_end_0based_exclusive":16764},"motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"score_kind":"llr_background_tail_log10","clip_negative":false}}
+```
+
+```json
+{"RenderTfbsScoreTracksSvg":{"target":{"kind":"inline_sequence","sequence_text":"ACGTACGTACGT","topology":"linear","id_hint":"inline_promoter","span_start_0based":0,"span_end_0based_exclusive":12},"motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"score_kind":"llr_background_tail_log10","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks.svg"}}
+```
+
+```json
+{"RenderTfbsScoreTrackCorrelationSvg":{"seq_id":"SEQ_ID","motifs":["TP53","TP63","TP73","PATZ1","SP1","BACH2","REST"],"start_0based":15564,"end_0based_exclusive":16764,"score_kind":"llr_background_tail_log10","correlation_metric":"spearman","correlation_signal_source":"forward_only","clip_negative":false,"path":"docs/figures/tp73_upstream_tfbs_score_tracks_correlation.svg"}}
+```
+
+Portable schema:
+
+- `gentle.tfbs_score_tracks.v1`
+
+Behavior notes:
+
+- `SummarizeTfbsScoreTracks` returns the structured per-position forward/reverse
+  score arrays over a `SequenceScanTarget`, so the same report path works for
+  stored `seq_id` spans and inline ASCII DNA.
+- motif tokens in `motifs[]` resolve through the same shared TF-query layer:
+  - exact motif ids / TF names
+  - aliases such as `OCT4`
+  - built-in functional groups such as `Yamanaka factors` / `stemness`
+  - family-like queries such as `KLF family`
+- when the shell command omits an explicit range, the full selected
+  `SequenceScanTarget` span is used.
+- when the target is a stored `seq_id`, the same shared report can also carry
+  `overlay_tracks[]` for imported genome-track evidence already materialized on
+  that sequence (for example projected BED / CUT&RUN peak intervals):
+  - `source_kind`
+  - `track_name`
+  - `display_label`
+  - optional `source_file_name`
+  - `interval_count`
+  - optional `max_score`
+  - `intervals[]` with clipped local `start_0based`, `end_0based_exclusive`,
+    optional `label`, optional numeric `score`, and optional `strand`
+  These overlays reuse the same deterministic report/renderer path instead of
+  forcing GUI-only evidence lanes.
+- the same shared report also carries correlation sidecars:
+  - `correlation_summary` remains the default `max_strands` summary for
+    compatibility
+  - `correlation_summaries[]` can carry:
+    - `max_strands`
+    - `forward_only`
+    - `reverse_only`
+  Each summary records:
+  - `signal_source`
+  - `smoothing_method`
+  - `smoothing_window_bp`
+  - `pair_count`
+  - `rows[]` with `left_tf_id`, optional `left_tf_name`, `right_tf_id`,
+    optional `right_tf_name`, `overlap_window_count`, `raw_pearson`,
+    `smoothed_pearson`, `raw_spearman`, `smoothed_spearman`, and optional
+    `signed_primary_peak_offset_bp`
+- the same report now also carries one explicit
+  `cross_strand_correlation_summary` for the correlation-export overview:
+  - `pair_count`
+  - `smoothing_method`
+  - `smoothing_window_bp`
+  - `rows[]` keyed by one TF pair
+  - each row carries `cells[]` in deterministic `F-F`, `F-R`, `R-F`, `R-R`
+    order with the same raw/smoothed Pearson/Spearman fields plus one optional
+    strand-specific peak offset
+  - the shared SVG export now uses that overview when
+    `correlation_signal_source=max_strands`, but it renders the result as one
+    strand-expanded all-vs-all matrix:
+    - every motif appears twice on each axis, ordered `F` then `R`
+    - each TF-pair therefore reads naturally as one adjacent 2x2 block
+      (`F-F / F-R / R-F / R-R`)
+    - no prior `max(forward, reverse)` aggregation is used for those block
+      values
+- each returned track now also carries one `directional_summary` describing how
+  its own forward and reverse curves travel together over the selected span:
+  - optional `forward_primary_peak_position_0based`
+  - optional `reverse_primary_peak_position_0based`
+  - optional `signed_primary_peak_offset_bp`
+  - `raw_pearson`
+  - `smoothed_pearson`
+  - `raw_spearman`
+  - `smoothed_spearman`
+- `score_kind` selects which per-window value is exported:
+  - `llr_bits`
+  - `llr_quantile`
+  - `llr_background_quantile`
+  - `llr_background_tail_log10`
+  - `true_log_odds_bits`
+  - `true_log_odds_quantile`
+  - `true_log_odds_background_quantile`
+  - `true_log_odds_background_tail_log10`
+- the background-normalized score kinds suppress everything below the `0.95`
+  modeled random-background quantile, so the plot can focus on the unusual
+  tail instead of the visually noisy body of the background
+- each returned track now also carries a deterministic normalization reference
+  computed from two shared sources:
+  - a larger deterministic random sample (`100000 bp`) used for summary
+    moments such as `mean_score`, `stddev_score`, and `positive_fraction`
+  - a quantized IID random-DNA window model used for upper-tail calibration,
+    theoretical bounds, and the non-saturating background percentile/tail
+    views
+  with the same underlying score family and the same clipping semantics as the
+  exported track itself:
+  - `chance_model`
+  - `mean_score`
+  - `stddev_score`
+  - `p95_score`
+  - `p99_score`
+  - `positive_fraction`
+  - `observed_peak_empirical_quantile`
+  - `observed_peak_modeled_quantile`
+  - `observed_peak_modeled_tail_probability`
+  - `observed_peak_modeled_tail_log10`
+  - `observed_peak_delta_from_p95`
+  - `observed_peak_delta_from_p99`
+  - `theoretical_min_score`
+  - `theoretical_max_score`
+- each returned track now also carries up to three highlighted motif windows
+  (`top_peaks`) chosen from local maxima on the rendered strands:
+  - windows at or above the deterministic random-background `p99` threshold are
+    preferred
+  - if none cross that threshold, the single best local peak is still kept as a
+    fallback anchor
+  - each peak records start/end, strand, score, empirical quantile, and
+    `delta_from_p99`
+- each returned track now also carries a compact `motif_logo_columns` payload
+  with the same per-position base counts/fractions/information-content fields
+  used by the JASPAR expert, so static renderers and specialist surfaces can
+  reuse one shared motif/logo payload without doing adapter-only motif lookups
+- `RenderTfbsScoreTracksSvg` reuses the same shared report payload and writes a
+  deterministic stacked SVG figure suitable for GUI/CLI/agent/README parity.
+- `RenderTfbsScoreTrackCorrelationSvg` reuses that exact same report and writes
+  a second deterministic SVG view:
+  - left panel: smoothed selected-metric heatmap
+  - right panel: raw selected-metric heatmap
+  - footer: top synchronized pairs with signed primary-peak offsets
+  - `correlation_metric` accepts `pearson` or `spearman`
+  - `signal_source` accepts:
+    - `max_strands` for the current orientation-agnostic neighborhood view
+    - `forward_only`
+    - `reverse_only`
+  - `spearman` is often the safer interpretation mode when promoter score
+    tracks are clearly non-normal or contain many tied values from clipping
+- the SVG figure now prints score-family-aware normalization labels per motif:
+  - raw bit views keep the compact `p99 / Δp99 / bg+` summary
+  - background-normalized views instead show `theory max / peak q / -log10 tail`
+    so a visually busy tail plot still carries its calibration context
+- The shared report labels the source span through `target_kind`,
+  `target_label`, `source_sequence_length_bp`, and `scan_topology` so adapter
+  surfaces do not need live GUI state to explain what was scored.
+- The shared report also carries transcription-start markers for covered or
+  directly adjacent starts, and the SVG renderer shows them as short hooked
+  arrows so strand direction survives figure-oriented exports; the TSS label
+  now also carries a small outline box so it survives README/downsampled
+  figure use better.
+- `SummarizeTfbsScoreTracks`, `RenderTfbsScoreTracksSvg`, and
+  `RenderTfbsScoreTrackCorrelationSvg` now also emit `OperationProgress::Tfbs`
+  events with `task_kind=score_tracks`, `stage_label`, and `stage_percent` so
+  GUI/agent callers can show progress while deterministic background
+  calibration and target scanning are still running.
+  Those progress callbacks are now also honored cooperatively for
+  `SummarizeTfbsScoreTracks`, so returning `false` can cancel a long-running
+  score-track job during background calibration or target scanning.
+- `clip_negative=true` is the default presentation mode for promoter-design
+  inspection on the bit-based score kinds because it suppresses negative-only
+  windows and leaves only positive support.
+- `clip_negative=false` keeps the full continuous score landscape, which is
+  useful for figure/report contexts where one wants to show that only some
+  factors cross into positive support while the others remain below zero.
+
+## Multi-gene promoter TFBS contract
+
+GENtle now also exposes one promoter-aligned multi-gene TFBS comparison report
+for cases where users want one shared upstream figure across several genes
+instead of repeating a single-gene promoter workflow manually.
+
+Current shared-shell routes:
+
+```bash
+gentle_cli shell 'genomes promoter-tfbs-summary GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]'
+gentle_cli shell 'genomes promoter-tfbs-svg GENOME_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] OUTPUT.svg'
+```
+
+First-class operation routes:
+
+```json
+{"SummarizeMultiGenePromoterTfbs":{"genome_id":"Human GRCh38 Ensembl 116","genes":[{"gene_query":"TERT"},{"gene_query":"TP73"}],"motifs":["Yamanaka factors","SP1"],"upstream_bp":1000,"downstream_bp":200,"score_kind":"llr_background_tail_log10","clip_negative":true,"path":"artifacts/tert_tp73_promoter_tfbs.summary.json"}}
+```
+
+```json
+{"RenderMultiGenePromoterTfbsSvg":{"genome_id":"Human GRCh38 Ensembl 116","genes":[{"gene_query":"TERT"},{"gene_query":"TP73"}],"motifs":["Yamanaka factors","SP1"],"upstream_bp":1000,"downstream_bp":200,"score_kind":"llr_background_tail_log10","clip_negative":true,"path":"artifacts/tert_tp73_promoter_tfbs.svg"}}
+```
+
+Portable schema:
+
+- `gentle.multi_gene_promoter_tfbs.v1`
+
+Behavior notes:
+
+- each `genes[]` entry uses the same shared TF-query and promoter-resolution
+  machinery as the single-gene promoter route, including exact/fuzzy gene
+  selection and optional transcript pinning
+- shorthand shell gene tokens support:
+  - `QUERY`
+  - `QUERY::OCCURRENCE`
+  - `QUERY@TRANSCRIPT_ID`
+  - `QUERY#DISPLAY_LABEL`
+  - combinations such as `QUERY::2@ENST...#short_label`
+- every returned `genes[]` row carries:
+  - resolved gene/transcript identifiers
+  - promoter genomic interval
+  - transcript TSS position
+  - one nested `gentle.tfbs_score_tracks.v1` report
+- minus-strand promoters are reverse-complemented before scoring, and
+  `sequence_orientation="transcription_aligned"` makes that explicit so
+  upstream/downstream comparisons stay meaningful across mixed-strand genes
+- `summary_rows[]` flatten one per-gene/per-factor comparison table with:
+  - `max_score`
+  - `peak_position_0based`
+  - `peak_position_promoter_relative_bp`
+  - `peak_genomic_position_1based`
+  - `positive_fraction`
+- the SVG export renders one small-multiples promoter panel per gene with a
+  shared promoter-relative axis convention and explicit TSS markers
+
+## TFBS score-track similarity contract
+
+GENtle now also exposes one anchor-vs-candidate TFBS score-track similarity
+report for the same selected DNA span.
+
+First-class operation route:
+
+```json
+{"SummarizeTfbsTrackSimilarity":{"target":{"kind":"seq_id","seq_id":"SEQ_ID","span_start_0based":15564,"span_end_0based_exclusive":16764},"anchor_motif":"TP73","candidate_motifs":["ALL"],"ranking_metric":"smoothed_spearman","score_kind":"llr_background_tail_log10","clip_negative":true,"species_filters":["Homo sapiens"],"include_remote_metadata":true,"limit":25}}
+```
+
+Portable schema:
+
+- `gentle.tfbs_track_similarity.v1`
+
+Behavior notes:
+
+- the report ranks candidate motifs against one selected anchor motif using the
+  same displayed score-track vectors already used by the continuous TFBS score
+  track route
+- initial ranking metrics are:
+  - `raw_pearson`
+  - `smoothed_pearson`
+  - `raw_spearman`
+  - `smoothed_spearman`
+- rows retain the full metric family plus signed primary-peak offset so
+  adapters can later re-sort without recomputing biology
+- `candidate_motifs=["ALL"]` or `["*"]` expands to the full local JASPAR
+  registry
+- otherwise `anchor_motif` and every `candidate_motifs[]` token resolve
+  through the same shared TF-query layer used by score tracks and JASPAR
+  summaries, so aliases/groups/family-like queries expand deterministically
+- optional `species_filters[]` currently use the persisted local
+  `jaspar.remote_metadata.json` snapshot rather than live network refresh:
+  motifs without cached metadata are skipped when such a filter is active
+- remote metadata remains additive:
+  - the ranking can run without it
+  - `include_remote_metadata=true` adds compact per-row summaries when cached
+    rows exist locally
+- unlike the pairwise synchrony heatmap, this route sorts by the selected
+  metric itself rather than its absolute value because the intent is “most
+  similarly scoring”, not “most strongly related in either direction”
+
+## Promoter Evidence Matrix Contract
+
+GENtle now exposes a conservative promoter-region evidence ledger for one
+sequence/locus. This is deliberately not a final biological verdict; it records
+promoter candidates and evidence items in a versioned structure that can later
+carry orthology, co-regulation, anti-co-regulation, and CUT&RUN evidence.
+
+Shared-shell route:
+
+```bash
+gentle_cli shell 'features promoter-evidence-matrix SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]'
+```
+
+First-class operation route:
+
+```json
+{"SummarizePromoterEvidenceMatrix":{"input":"SEQ_ID","gene_label":"TP73","promoter_upstream_bp":1000,"promoter_downstream_bp":200,"include_feature_overlaps":true,"path":"tp73_promoter_evidence.json"}}
+```
+
+Portable schema:
+
+- `gentle.promoter_evidence_matrix.v1`
+
+Behavior notes:
+
+- transcript-derived promoter windows reuse the same strand-aware TSS geometry
+  and exact-span collapse as Alternative Promoter Comparison
+- existing DNA-level `promoter` annotations are merged into the same candidate
+  row when their span matches a transcript-derived promoter window
+- evidence rows are string-kind based so unknown future evidence can be
+  preserved by older adapters
+- current evidence kinds include:
+  - `promoter_geometry`
+  - `transcript_support`
+  - `promoter_annotation`
+  - `tfbs_annotation`
+  - `variant_overlap`
+  - `repeat_context`
+  - `enhancer_overlap`
+  - `terminator_overlap`
+  - `external_interval_overlap`
+  - `cutrun_peak_overlap` when projected interval metadata identifies CUT&RUN
+- the current `ranking_mode` is only deterministic display ordering:
+  transcript support first, then evidence count, then coordinates and label
+- richer scoring is expected to be additive and method/provenance-tagged rather
+  than replacing the evidence ledger
+
+## TF query resolution contract
+
+GENtle also exposes one lightweight TF-query resolution report so CLI, GUI,
+and ClawBio/OpenClaw users can audit what a natural-language transcription
+factor query will map to before running TFBS/JASPAR analysis.
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources resolve-tf-query "Yamanaka factors" OCT4 "KLF family" --output tf_queries.json'
+```
+
+First-class operation route:
+
+```json
+{"ResolveTfQueries":{"queries":["Yamanaka factors","OCT4","KLF family"],"path":"tf_queries.json"}}
+```
+
+Portable schema:
+
+- `gentle.tf_query_resolution.v1`
+
+Behavior notes:
+
+- each query row reports:
+  - the original query string
+  - whether it matched exactly, by alias, as a built-in group, or by a
+    family-like local-registry expansion
+  - the expanded motif ids/names GENtle will actually use downstream
+- this is the intended bridge between user-facing names such as
+  `Yamanaka factors`, `stemness`, or `OCT4` and the concrete local motif
+  registry rows that power:
+  - `SummarizeJasparEntries`
+  - `SummarizeTfbsScoreTracks`
+  - `SummarizeTfbsTrackSimilarity`
+  - `ScanTfbsHits`
+
+## Stateless sequence-scan contract
+
+Implemented additive contract:
+
+- shared non-mutating sequence-inspection routes can accept either:
+  - a stored project sequence, or
+  - inline ASCII DNA text without first materializing a project-state record
+- intended consumers:
+  - GUI selection-first actions (`current selection`, `visible span`,
+    `whole sequence`)
+  - CLI/shared shell
+  - JS/Lua/Python wrappers
+  - MCP/agent wrappers including ClawBio/OpenClaw-style low-latency helpers
+
+Implemented shared operand shape:
+
+- `SequenceScanTarget`
+- stored-sequence form:
+
+```json
+{
+  "kind": "seq_id",
+  "seq_id": "tp73_region",
+  "span_start_0based": 700,
+  "span_end_0based_exclusive": 1200
+}
+```
+
+- inline-sequence form:
+
+```json
+{
+  "kind": "inline_sequence",
+  "sequence_text": "ACGTACGTACGT",
+  "topology": "linear",
+  "id_hint": "inline_tp73_window",
+  "span_start_0based": 0,
+  "span_end_0based_exclusive": 12
+}
+```
+
+Semantics:
+
+- inline `sequence_text` is normalized through the same parsing path used for
+  in-memory DNA sequences
+- `topology` matters for full-span scans where circular wrap-around changes hit
+  detection
+- span fields remain local to the supplied operand:
+  - for `seq_id`, local sequence coordinates on the stored record
+  - for inline text, coordinates on the submitted text after normalization
+- inspection remains non-mutating unless the caller explicitly chooses a second
+  promote/export/materialize step
+
+Implemented first-class operation on top of that operand:
+
+- `FindRestrictionSites { target, enzymes?, max_sites_per_enzyme?, include_cut_geometry?, path? }`
+  - purpose:
+    - non-mutating REBASE-backed scan for recognition sites and cleavage
+      geometry directly on one operand
+  - result schema:
+    - `gentle.restriction_site_scan.v1`
+  - report fields:
+    - `target_kind`
+    - `target_label`
+    - `source_sequence_length_bp`
+    - `scan_start_0based`
+    - `scan_end_0based_exclusive`
+    - `scan_length_bp`
+    - `scan_topology`
+    - `enzyme_filters`
+    - `enzymes_scanned`
+    - `matched_site_count`
+    - `skipped_enzyme_names_due_to_max_sites`
+    - `rows[]`
+  - row fields:
+    - `enzyme_name`
+    - `recognition_sequence`
+    - local scan coordinates:
+      - `recognition_start_0based`
+      - `recognition_end_0based_exclusive`
+    - source-sequence coordinates:
+      - `source_recognition_start_0based`
+      - `source_recognition_end_0based_exclusive`
+    - optional cut geometry:
+      - `forward_cut_0based`
+      - `reverse_cut_0based`
+      - `opening_start_0based`
+      - `opening_end_0based_exclusive`
+      - source-space equivalents for the same cut/opening positions
+    - `end_geometry`
+  - `enzymes=[]` means:
+    - use the current shared preferred restriction-enzyme list
+    - if that list is empty, fall back to the default preferred enzyme set
+- `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
+  - purpose:
+    - non-mutating thresholded JASPAR/IUPAC hit scan directly on one operand
+      without creating `TFBS` features by default
+  - result schema:
+    - `gentle.tfbs_hit_scan.v1`
+  - report fields:
+    - `target_kind`
+    - `target_label`
+    - `source_sequence_length_bp`
+    - `scan_start_0based`
+    - `scan_end_0based_exclusive`
+    - `scan_length_bp`
+    - `scan_topology`
+    - `motifs_requested`
+    - `motifs_scanned`
+    - `default_min_llr_bits`
+    - `default_min_llr_quantile`
+    - `per_tf_thresholds`
+    - `max_hits`
+    - `truncated_at_max_hits`
+    - `matched_hit_count`
+    - `rows[]`
+  - row fields:
+    - `tf_id`
+    - `tf_name`
+    - `motif_consensus_iupac`
+    - `motif_length_bp`
+    - local scan coordinates:
+      - `match_start_0based`
+      - `match_end_0based_exclusive`
+    - source-sequence coordinates:
+      - `source_match_start_0based`
+      - `source_match_end_0based_exclusive`
+    - `wraps_origin`
+    - `forward_strand`
+    - `matched_sequence`
+    - `llr_bits`
+    - `llr_quantile`
+    - `true_log_odds_bits`
+    - `true_log_odds_quantile`
+  - threshold semantics:
+    - `min_llr_bits` and `min_llr_quantile` provide default gates across all
+      motifs
+    - `per_tf_thresholds[]` can override those defaults by token, resolved TF
+      id, or resolved TF name
+    - `motifs=["ALL"]` or `motifs=["*"]` expands to the full local motif
+      registry before scanning
+
+Implemented follow-up:
+
+- `SummarizeTfbsScoreTracks` and `RenderTfbsScoreTracksSvg` now accept the same
+  `SequenceScanTarget` operand used by stateless restriction-site and TFBS-hit
+  scans
+
+UX parity expectations:
+
+- GUI:
+  - DNA-window actions can now call the shared restriction-site scan for:
+    - current selection
+    - current visible span
+    - whole active sequence
+- CLI/shared shell:
+  - one command family accepts either stored `SEQ_ID` or inline
+    `--sequence-text`
+- testing:
+  - deterministic parity tests compare inline-target results against stored
+    `seq_id` results for the same sequence/span
+
+## JASPAR entry presentation contract
+
+GENtle also exposes a portable JASPAR-entry presentation contract that answers
+three practical questions for one local motif snapshot:
+
+- what sequence should maximize this motif score,
+- what sequence should minimize it,
+- and what score range should one expect on one deterministic random DNA
+  background.
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources summarize-jaspar --motif SP1 --motif REST --random-length 10000 --seed 123 --output jaspar.summary.json'
+```
+
+First-class operation route:
+
+```json
+{"SummarizeJasparEntries":{"motifs":["SP1","REST"],"random_sequence_length_bp":10000,"random_seed":123,"path":"jaspar.summary.json"}}
+```
+
+Portable schema:
+
+- `gentle.jaspar_entry_presentation.v1`
+
+Behavior notes:
+
+- When `motifs` is omitted or empty, GENtle summarizes every entry currently
+  visible through the active local JASPAR registry.
+- `motifs[]` accepts the same query forms described above for
+  `ResolveTfQueries`, so callers can use aliases, built-in groups, or
+  family-like queries instead of only exact motif ids.
+- `maximizing_sequence` and `minimizing_sequence` are derived column-wise from
+  the same local matrix/consensus information GENtle already uses for TFBS
+  scoring; they are not hand-curated examples.
+- The background distribution uses one deterministic pseudorandom
+  `uniform_acgt_lcg` DNA sequence so shell/CLI/agent runs are reproducible.
+- Per-entry output includes:
+  - local entry identity (`motif_id`, optional `motif_name`,
+    `consensus_iupac`)
+  - motif length
+  - maximizing/minimizing sequences
+  - their exact `llr_bits` and `true_log_odds_bits`
+  - their empirical quantiles against the same random-background distribution
+  - min/max/mean/stddev plus `p01/p05/p25/p50/p75/p95/p99` summaries for both
+    bit-based score families
+
+## JASPAR registry benchmark contract
+
+GENtle also exposes one routine registry-wide JASPAR benchmark artifact for
+drift/regression work.
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources benchmark-jaspar --random-length 10000 --seed 123 --output data/resources/jaspar.registry_benchmark.json'
+```
+
+First-class operation route:
+
+```json
+{"BenchmarkJasparRegistry":{"random_sequence_length_bp":10000,"random_seed":123,"path":"data/resources/jaspar.registry_benchmark.json"}}
+```
+
+Portable schema:
+
+- `gentle.jaspar_registry_benchmark.v1`
+
+Behavior notes:
+
+- this route always benchmarks the full active local JASPAR registry
+- it reuses the same deterministic internal math as
+  `SummarizeJasparEntries`, rather than introducing a separate
+  benchmark-only scoring path
+- the report includes:
+  - all per-entry presentation rows
+  - aggregate score-family summaries for `llr_bits` and
+    `true_log_odds_bits`
+  - top motifs by maximum score
+  - top motifs by positive random-background hit rate
+- the intended artifact is a cached/exportable JSON snapshot suitable for
+  future scoring-drift comparisons
+
+## JASPAR catalog contract
+
+GENtle also exposes a lighter-weight portable JASPAR catalog report for
+registry browsing without having to compute full per-entry score
+distributions:
+
+- the active local JASPAR snapshot remains the source of truth for which motif
+  entries exist
+- each catalog row includes:
+  - motif id
+  - optional TF name
+  - consensus IUPAC sequence
+  - motif length
+  - and optionally a compact remote metadata summary
+- when remote enrichment is requested, GENtle adds compact collection/class/
+  family/tax-group fields plus species-count previews for only the returned
+  subset instead of requiring every consumer to hand-roll JASPAR REST lookups
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources list-jaspar --filter TP --limit 50 --output jaspar.catalog.json'
+```
+
+First-class operation route:
+
+```json
+{"ListJasparCatalog":{"filter":"TP","limit":50,"include_remote_metadata":false,"path":"jaspar.catalog.json"}}
+```
+
+Portable schema:
+
+- `gentle.jaspar_catalog.v1`
+
+Behavior notes:
+
+- when remote metadata is requested for the catalog, GENtle first reuses any
+  persisted JASPAR remote-metadata snapshot rows that already exist locally
+- explicit refresh is a separate operation so GUI/CLI/agent consumers can
+  choose between:
+  - cache-first registry browsing
+  - and deliberate network refresh/persistence for selected subsets
+
+## JASPAR remote-metadata snapshot contract
+
+GENtle also exposes one persisted reusable JASPAR remote-metadata snapshot so
+species/collection/class/family assignments can survive across sessions instead
+of living only in one GUI/app run:
+
+- the local motif snapshot still governs which entries exist
+- the remote snapshot is an additive enrichment keyed by motif id
+- each persisted row stores:
+  - motif id / optional TF name
+  - consensus IUPAC sequence
+  - motif length
+  - full remote metadata payload
+  - and one compact derived summary for catalog/list views
+- the default runtime snapshot path is:
+  - `data/resources/jaspar.remote_metadata.json`
+- `resources status` surfaces this snapshot separately from the local motif
+  registry status so operators can tell whether cached species metadata exists,
+  is valid, and how many persisted rows it currently holds
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources sync-jaspar-remote-metadata --filter TP --limit 50 --output jaspar.remote_metadata.json'
+```
+
+First-class operation route:
+
+```json
+{"SyncJasparRemoteMetadata":{"filter":"TP","limit":50,"path":"jaspar.remote_metadata.json"}}
+```
+
+Portable schema:
+
+- `gentle.jaspar_remote_metadata_snapshot.v1`
+
+## UCSC rmsk resource contract
+
+GENtle now treats the UCSC RepeatMasker `rmsk` table as a portable external
+resource rather than a GUI-only track import convention.
+
+Current shared-shell routes:
+
+```bash
+gentle_cli shell 'resources sync-ucsc-rmsk https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/rmsk.txt.gz data/resources/ucsc.rmsk.hg38.json --assembly hg38'
+gentle_cli shell 'resources prepare-ucsc-rmsk-index data/resources/ucsc.rmsk.hg38.json data/resources/ucsc.rmsk.hg38.interval-index.json'
+gentle_cli shell 'resources suggest-ucsc-rmsk-index --assembly hg38 --output rmsk.indexing.json'
+```
+
+Portable schemas:
+
+- `gentle.ucsc_rmsk_resource.v1`
+- `gentle.ucsc_rmsk_interval_index.v1`
+- `gentle.ucsc_rmsk_descriptor.v1`
+
+Behavior notes:
+
+- the normalized snapshot preserves the UCSC 17-column `rmsk` table:
+  `bin`, `swScore`, `milliDiv`, `milliDel`, `milliIns`, `genoName`,
+  `genoStart`, `genoEnd`, `genoLeft`, `strand`, `repName`, `repClass`,
+  `repFamily`, `repStart`, `repEnd`, `repLeft`, `id`
+- genomic coordinates remain UCSC 0-based half-open in the resource; callers
+  convert to GENtle feature coordinates only when materializing display
+  features
+- snapshots include source URLs, field specs, and index recommendations so
+  future GUI/CLI/projectors can inspect the resource without hard-coding UCSC
+  table details
+- `resources status` reports the default hg38 runtime snapshot path
+  `data/resources/ucsc.rmsk.hg38.json`, validation state, row count when
+  available, and the same index recommendations
+- `resources prepare-ucsc-rmsk-index` builds the prepared interval sidecar at
+  `data/resources/ucsc.rmsk.<assembly>.interval-index.json` by default; it
+  refuses truncated snapshots so fixtures cannot accidentally masquerade as a
+  full assembly index
+- `--limit N` creates a deliberately truncated snapshot for fixtures/smoke
+  checks and marks `truncated=true`
+
+Indexing guidance:
+
+- primary: build a per-assembly interval index keyed by
+  `(genoName, bin, genoStart, genoEnd)` so genome-region/gene extraction can
+  project only overlapping repeats; GENtle's prepared sidecar stores intervals
+  grouped by chromosome and sorted by `(start,end,row_offset)` for deterministic
+  overlap queries
+- secondary: keep class/family partitions keyed by normalized
+  `(repClass, repFamily, repName)` for display filtering, feature-tree
+  grouping, and legends
+- optional expert lookup: add a `repName -> row offsets` dictionary for queries
+  such as `AluY` or `L1PA2`
+- optional display-quality sidecar: store `swScore`, `milliDiv`, `milliDel`,
+  and `milliIns` columnar by row offset so divergence/quality shading can be
+  added without changing the interval index
+
+## RNA structure executable resources
+
+`resources status` and `services status` also expose the executable resources
+used by RNA secondary-structure rendering so ClawBio and other automation
+layers can distinguish missing tools from missing biological data snapshots.
+
+Resource fields:
+
+- `vienna_rna`
+  - display name: `ViennaRNA RNAfold`
+  - resolves `GENTLE_RNAFOLD_BIN`, then `RNAfold` on `PATH`
+  - version probe: `RNAfold --version`
+  - used to compute dot-bracket structure and MFE
+- `rnapkin`
+  - display name: `rnapkin RNA structure renderer`
+  - resolves `GENTLE_RNAPKIN_BIN`, then `rnapkin` on `PATH`
+  - version probe: `rnapkin --version`, falling back to `rnapkin -V`
+  - used to render RNAfold structure input as SVG/PNG
+
+Each executable resource reports `support_status`, `available`,
+`resolved_executable`, `version_command`, optional `version_output`, optional
+`error`, and explanatory `notes[]`. In service handoff/readiness views these
+appear as `external_tool:*` rows rather than as normalized data-snapshot rows.
+
+## JASPAR expert contract
+
+GENtle also exposes a portable single-entry JASPAR expert contract for the
+GUI, shell/CLI, and agent surfaces when they need a richer inspection view than
+the registry-wide summary:
+
+- which local entries are available is still governed by the active local
+  JASPAR snapshot
+- one selected entry can be expanded into:
+  - its count matrix
+  - a simple sequence-logo payload derived from per-column base frequencies and
+    information content
+  - multiple score-family distributions (`llr_bits`, `true_log_odds_bits`)
+  - optional remote JASPAR metadata such as assigned species, collection, tax
+    group, class, and family
+
+Current shared-shell route:
+
+```bash
+gentle_cli shell 'resources inspect-jaspar SP1 --random-length 10000 --seed 123 --fetch-remote --output jaspar.expert.json'
+```
+
+First-class operation route:
+
+```json
+{"InspectJasparEntry":{"motif":"SP1","random_sequence_length_bp":10000,"random_seed":123,"include_remote_metadata":true,"refresh_remote_metadata":true,"path":"jaspar.expert.json"}}
+```
+
+Portable schema:
+
+- `gentle.jaspar_entry_expert.v1`
+
+Behavior notes:
+
+- remote metadata enrichment is optional and best-effort; the expert still
+  works from the local registry when offline or when the REST request fails
+- when remote metadata is requested, the expert first reuses any matching row
+  already persisted in `jaspar.remote_metadata.json` before falling back to a
+  live refresh
+- score panels include compact histogram bins so GUI/agent consumers can show
+  actual distribution shape instead of only percentiles
+- count-matrix and logo payloads come from the same local matrix counts GENtle
+  uses for motif scoring, rather than a separate presentation-only transform
+
+## Draft design resources
+
+### `gentle.gibson_assembly_plan.v1`
+
+Purpose:
+
+- describe one Gibson cloning project in a destination-first way,
+- separate user-specified plan inputs from derived design consequences,
+- provide one canonical JSON artifact that future routines, primer design, and
+  protocol-cartoon rendering can all read from.
+
+Status:
+
+- destination-first single-insert and ordered multi-insert plans are now
+  consumed by the shared Gibson preview/apply path (`gibson preview ...`,
+  `gibson apply`, and the `Patterns -> Gibson...` specialist window)
+- current limit:
+  - multi-insert execution currently assumes a defined destination opening
+  - `existing_termini` remains the single-fragment handoff path for now
+
+Canonical examples:
+
+- `docs/examples/plans/gibson_destination_first_single_insert.json`
+- `docs/examples/plans/gibson_destination_first_multi_insert.json`
+
+Top-level structure:
+
+- `schema`, `id`, `title`, `summary`
+- `destination`
+  - destination molecule (`seq_id`, prior topology)
+  - explicit opening definition (`mode`, label, resulting left/right ends)
+- `product`
+  - intended output topology and output-id hint
+- `fragments[]`
+  - participating inserts or non-destination fragments
+  - orientation plus per-end adaptation strategy
+  - optional source-coordinate hints for deterministic ordering
+- `assembly_order[]`
+  - explicit left-to-right order of destination ends and inserts
+  - supports future multi-fragment Gibson plans without changing the model
+- `junctions[]`
+  - one record per adjacent join
+  - required overlap length
+  - explicit overlap partition across the left/right adjacent members
+  - whether overlap is derived from destination context or user-specified
+  - explicit `distinct_from` constraints for terminal junctions
+- `validation_policy`
+  - hard requirements:
+    - unique/unambiguous destination opening
+    - distinct terminal junctions
+    - adjacency-consistent overlaps
+  - advisory checks:
+    - overlap-length design range
+    - fragment-count-aware overlap targets
+    - overlap Tm
+    - destination/fragment/reference uniqueness heuristics
+  - optional design request:
+    - `desired_unique_restriction_site_enzyme_name`
+      asks the shared preview/apply path to try introducing one new unique
+      REBASE cutter site on one terminal overlap if the assembled product can
+      still remain uniquely cut there
+- `derived_design`
+  - derived overlap sequences
+  - primer design suggestions
+  - advisory notes and validation outcomes
+
+Current draft value vocabulary:
+
+- `destination.topology_before_opening`
+  - `linear`
+  - `circular`
+- `destination.opening.mode`
+  - `existing_termini`
+    - use the current termini of an already-linear destination sequence
+  - `defined_site`
+    - a user-selected opening site/window on an existing destination molecule
+  - reserved future values:
+    - `restriction_digest`
+    - `pcr_linearization`
+    - `inverse_pcr`
+- `destination.opening.uniqueness_requirement`
+  - `must_be_unambiguous`
+    - opening ambiguity is a hard validation error
+  - `advisory_only`
+    - ambiguity is surfaced, but not automatically fatal
+- `product.topology`
+  - `linear`
+  - `circular`
+- `fragments[].role`
+  - `insert`
+  - reserved future values:
+    - `backbone_fragment`
+    - `bridge_fragment`
+- `fragments[].orientation`
+  - `forward`
+  - `reverse`
+- `fragments[].source_span_1based`
+  - optional source-coordinate hint for plans that preserve source order
+  - shape:
+    - `source_seq_id`
+    - `start`
+    - `end`
+- `fragments[].left_end_strategy.mode` / `right_end_strategy.mode`
+  - `native_overlap`
+    - fragment terminus is already expected to satisfy the required overlap
+  - `primer_added_overlap`
+    - overlap is expected to be introduced via a primer tail
+    - this is the current draft bucket for overlap-extension / primer-stitching
+      style adaptation
+  - reserved future values:
+    - `synthetic_terminal_sequence`
+    - `library_defined_overlap`
+- `assembly_order[].kind`
+  - `destination_end`
+  - `fragment`
+- `junctions[].overlap_source`
+  - `derive_from_destination_left_flank`
+  - `derive_from_destination_right_flank`
+  - `derive_from_adjacent_fragment_ends`
+  - `designed_bridge_sequence`
+    - internal junction overlap chosen as a synthetic bridge/adaptor sequence
+  - reserved future value:
+    - `user_specified_sequence`
+- `junctions[].overlap_partition`
+  - explicit contribution of the overlap region from the adjacent members
+  - shape:
+    - `left_member_bp`
+    - `right_member_bp`
+  - invariant:
+    - `left_member_bp + right_member_bp == required_overlap_bp`
+  - examples:
+    - left-member only overlap: `30 + 0`
+    - right-member only overlap: `0 + 30`
+    - split overlap: `20 + 20`
+- `validation_policy.adjacency_overlap_mismatch`
+  - `error`
+  - `warn`
+- `validation_policy.uniqueness_checks.*`
+  - `off`
+  - `warn`
+  - `error`
+- `validation_policy.reference_contexts[].severity`
+  - `warn`
+  - `error`
+
+Input-vs-derived boundary in the draft model:
+
+- Intended user/planner inputs:
+  - `destination`
+  - `product`
+  - `fragments`
+  - `assembly_order`
+  - `junctions[].required_overlap_bp`
+  - `junctions[].overlap_partition`
+  - `junctions[].distinct_from`
+  - `validation_policy`
+- Intended normalized/derived outputs:
+  - `derived_design.junction_overlaps`
+  - `derived_design.primer_design_suggestions`
+  - `derived_design.notes`
+- Transition fields that may begin as user hints and later become resolved
+  values:
+  - `junctions[].overlap_source`
+  - fragment end strategies (`native_overlap` vs `primer_added_overlap`)
+
+Interpretation:
+
+- Gibson plans are modeled as explicit assembly junctions around an opened
+  destination, not merely as an unordered bag of fragments.
+- The destination opening defines two terminal junctions, and therefore two
+  required overlap regions.
+- Inserts may already satisfy those terminal overlaps or may require primer-tail
+  adaptation.
+- The overlap at one junction should be treated as a selection around the
+  in-silico junction, not merely as one scalar length:
+  - it may come entirely from the left member
+  - entirely from the right member
+  - or be split across both members
+- For plans that preserve an existing source order, fragment ordering should
+  follow ascending bp coordinates (low bp positions first) unless an explicit
+  alternative order is requested.
+- For multi-fragment plans, internal fragment-fragment junctions may be created
+  through primer-added bridge overlaps rather than relying on pre-existing
+  native overlap.
+- Uniqueness is best treated in layers:
+  - destination opening uniqueness: hard validation
+  - left/right terminal overlap distinctness: hard validation
+  - destination/fragment/genome uniqueness heuristics: advisory checks
+
+Design intent:
+
+- make the same JSON artifact useful for:
+  - preflight Gibson validation
+  - primer design derivation
+  - workflow/macro instantiation
+  - factual protocol-cartoon generation
+  - reproducible AI-facing project context
+
+Practical overlap heuristics (draft defaults):
+
+- single-insert / two-fragment style assemblies often fit comfortably in the
+  20-40 bp range
+- multi-fragment assemblies should usually move toward longer overlaps
+- a practical starting rule for the draft model is:
+  - 1-2 assembled fragments: 20-40 bp overlaps
+  - 3-5 assembled fragments: 40 bp overlaps
+  - 6+ assembled fragments: 50-100 bp overlaps
+- internal multi-fragment junctions introduced by primer-added bridge overlaps
+  should follow the same fragment-count-aware guidance rather than being treated
+  as exempt from overlap design heuristics
+
+Primer design conventions (draft):
+
+- Gibson primer suggestions should be modeled as two-part primers:
+  - `overlap_5prime`
+    - non-priming 5' overlap segment used for assembly of adjacent fragments
+  - `priming_3prime`
+    - gene-specific 3' priming segment used for PCR amplification from the
+      source template
+- Primer design should start from an in silico assembled product/junction view,
+  then work backward to fragment-specific PCR primers.
+- Overlap choice is best treated as Tm-aware rather than length-only:
+  - simple PCR-fragment-into-vector assemblies may use shorter overlaps when
+    overlap Tm is already adequate
+  - more complex or multi-fragment assemblies often justify longer overlaps
+- The overlap region may lie entirely within one adjacent member or be split
+  across the two members around a junction.
+- Two primers that implement the same overlap sequence can still belong to
+  different PCR reactions, because each primes a different template fragment.
+
+Assembly setup heuristics (draft advisory layer):
+
+- linearized destination can be prepared by PCR amplification or by restriction
+  digestion
+- PCR cleanup is not always required, but carryover should stay modest
+  relative to the final assembly reaction volume
+- column purification is especially worth recommending for:
+  - assemblies of three or more PCR fragments
+  - assemblies involving fragments longer than ~5 kb
+- direct vector + insert assemblies often benefit from insert concentration
+  above vector concentration
+- multi-fragment vector assemblies should generally move toward equimolar
+  fragment usage
+- some constructs may validate in silico but still perform poorly because of
+  biological burden or instability in the propagation host
+  (for example repeats or toxic products)
+
+Planning implication:
+
+- these factors should usually surface as `derived_design` advisories or future
+  execution/setup guidance, not as hard failures in the core Gibson junction
+  model
+
+### `gentle.gibson_assembly_preview.v1`
+
+Purpose:
+
+- provide one deterministic, non-mutating preview response for the current
+  Gibson specialist flow,
+- keep GUI, shared shell, and direct CLI on the same overlap/primer/cartoon
+  derivation path.
+
+Current shared entry points:
+
+- `gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]`
+- `gibson apply PLAN_JSON_OR_@FILE`
+- GUI specialist window: `Patterns -> Gibson...`
+
+Top-level structure:
+
+- `schema`, `plan_id`, `title`, `summary`
+- `can_execute`
+- `destination`
+  - resolved opening mode/span or cutpoint and actual topology
+- `fragments[]`
+  - resolved ordered insert rows (fragment id, template seq id, orientation,
+    length)
+- `insert`
+  - compatibility mirror of the first insert row for older single-insert
+    consumers
+- `resolved_junctions[]`
+  - overlap bp, left/right member contributions, overlap Tm, resolved overlap
+    sequence, source note
+- `primer_suggestions[]`
+  - full primer sequence plus explicit `overlap_5prime` and
+    `priming_3prime` segments
+- `warnings[]`, `errors[]`, `notes[]`
+  - includes the shared Tₘ-model note used by GUI/CLI so the assumptions stay
+    visible to the user
+  - notes also carry explicit design-review guidance that separates:
+    - overlap-side success/failure
+    - PCR 3' priming-side success/failure
+    so adapters can explain when the current blocker is priming rather than
+    Gibson overlap derivation
+- `suggested_design_adjustments[]`
+  - optional structured next-step relaxations when overlap derivation already
+    succeeds and the remaining blocker is only the 3' priming window
+  - current v1 targets:
+    - increasing `priming_segment_max_length_bp`
+    - lowering `priming_segment_tm_min_celsius`
+  - intended for adapters to offer deterministic “apply and rerun preview”
+    actions without parsing prose notes
+- `unique_restriction_site`
+  - optional structured outcome for a requested
+    `validation_policy.desired_unique_restriction_site_enzyme_name`
+  - reports whether the requested site was:
+    - already unique in the assembled product
+    - newly engineered on one terminal overlap
+  - carries the enzyme name, terminal side/junction, engineered overlap
+    sequence, motif offset, mutation count, and user-facing message so adapters
+    do not have to infer this from notes/error prose
+- `cartoon`
+  - built-in protocol id plus template bindings for single-insert flows
+  - multi-insert previews may instead carry one fully resolved
+    `ProtocolCartoonSpec` directly
+  - intended to stay mechanism-first:
+    - show resolved fragment flow and achieved homology/overlap relationships
+    - preserve strand-specific 5' chew-back / exposed-tail geometry rather
+      than flattening the mechanism to duplex-only blocks
+    - avoid drawing full primer objects or low-level PCR parameterization inside
+      the cartoon itself
+    - keep primer sequences, priming segments, Tm assumptions, and related PCR
+      details in adjacent textual/review payloads instead
+- `routine_handoff`
+  - best-effort Routine Assistant handoff metadata for existing execution paths
+
+Current v1 scope and limits:
+
+- one or more insert fragments in an explicit ordered chain
+- destination-first order:
+  `destination_left -> insert_1 -> ... -> insert_n -> destination_right`
+- the shared preview derives `n + 1` explicit Gibson junctions for `n` inserts
+- terminal overlaps are derived from destination context; internal junctions
+  are normalized from the adjacent fragment ends / partition rules
+- user influence over PCR design stays high-level and Gibson-specific:
+  overlap bp range, minimum overlap Tm, priming-segment Tm window, and
+  priming-segment length window
+- current execution limitation:
+  - multi-insert apply currently requires `destination.opening.mode=defined_site`
+  - `existing_termini` remains the single-fragment path used by the current
+    Routine Assistant handoff
+- current unique-site engineering limitation:
+  - only the single-insert `defined_site` path is supported
+  - only palindromic cutter recognition sequences are currently handled
+  - overlap windows must be non-wrapping in the displayed destination sequence
+- current Tₘ fields use the shared GENtle Thermo Fisher-style modified
+  Allawi/SantaLucia nearest-neighbor estimate with fixed assumptions:
+  - exact complement
+  - Allawi/SantaLucia 1997 Watson-Crick nearest-neighbor table and terminal
+    initiation terms
+  - 215 mM effective monovalent salt term, matching the Thermo Fisher
+    high-fidelity calculator path
+  - 500 nM primer concentration
+  - Thermo Fisher high-fidelity empirical adjustment
+  - no mismatch/dangling-end/Mg correction
+  - fallback to the simple 2/4 estimate for ambiguous or very short sequences
+- generic PCR/qPCR request editing is intentionally out of scope for this
+  specialist flow
+- mutating execution now exists as engine operation
+  `ApplyGibsonAssemblyPlan`:
+  - consumes the same plan JSON
+  - creates deterministic sequence outputs for:
+    - left insert primer
+    - right insert primer
+    - assembled product
+  - creates one shared serial arrangement for downstream gel review:
+    - original destination vector
+    - ordered insert lane(s)
+    - assembled product
+    - recommended DNA ladders carried with the arrangement for flanking export
+  - transfers destination and insert features onto the assembled product
+    deterministically through the shared engine path
+  - destination features intersecting the consumed opening are now projected
+    when a truthful rewrite is available:
+    - one-sided overlaps are trimmed to the surviving product span
+    - simple spanning features can survive as multipart remnants
+    - MCS-like annotations are projected to the edited locus and revalidated
+      against actual restriction-enzyme sites on the assembled product
+  - the MCS cross-check is product-aware:
+    - `mcs_expected_sites` is rewritten to the currently unique cutter set for
+      that annotated region on the assembled product
+    - `mcs_expected_sites_original`, `mcs_region_sites`,
+      `mcs_nonunique_sites`, `mcs_gained_unique_sites`, and
+      `mcs_lost_or_nonunique_sites` preserve the cross-check result
+    - insert-derived sequence may introduce new sites, and those new sites are
+      considered during the same validation pass
+  - records one operation-log row so GUI lineage/CLI state replay can reopen
+    the specialist from the saved plan without silently re-running it
+
+Normalization/derivation phases:
+
+1. Resolve the destination opening into explicit `dest_left` / `dest_right`
+   terminal context.
+   - for cutter-derived openings, the resolved coordinates represent the actual
+     cleavage window between the recessed termini rather than the whole
+     recognition span
+   - equal start/end is therefore valid and means a blunt cutpoint
+2. Normalize `assembly_order[]` into one adjacency chain.
+   - when fragments carry compatible `source_span_1based` hints for one source
+     context, default normalization should preserve ascending bp order
+3. Materialize one `junction` per adjacent pair in that chain.
+4. Derive required overlap sequences from destination flanks and/or adjacent
+   fragment termini.
+   - respect the junction-specific overlap partition when choosing the final
+     overlap sequence around that adjacency
+   - internal multi-fragment junctions may instead use designed bridge
+     sequences introduced by primer-added overlaps
+5. Detect whether each fragment end already satisfies its required overlap or
+   requires adaptation (for example primer-added tails).
+6. Run hard validation and advisory design checks.
+7. Expose derived overlaps, primer design suggestions, and cartoon-ready event
+   semantics through `derived_design`.
+8. Attach reaction/setup advisories (cleanup, stoichiometry, host-risk notes)
+   without conflating them with the hard overlap/junction logic.
+
+Current invariants for the draft model:
+
+- `assembly_order[]` defines the intended adjacency order explicitly.
+- `junctions[]` should cover every adjacent pair in `assembly_order[]`.
+- terminal junctions are the ones adjacent to the opened destination ends.
+- `junctions[].overlap_partition.left_member_bp +
+   junctions[].overlap_partition.right_member_bp` should equal
+  `junctions[].required_overlap_bp`.
+- terminal junction distinctness is a hard validation rule for opened
+  destination-vector Gibson plans.
+- when source-order hints are present and no contrary manual order is given,
+  low bp positions should precede high bp positions in normalization.
+- destination-opening uniqueness is a hard validation rule.
+- broader destination/fragment/genome uniqueness checks are advisory unless a
+  stricter policy is requested.
+- `derived_design` may contain unresolved/null sequences at pure planning time;
+  this allows the same schema to exist before sequence extraction or primer
+  design has been run.
+- `junctions[].distinct_from` is currently intended primarily for terminal
+  destination-defined junctions, not as a requirement that every internal
+  fragment-fragment junction be globally unique.
+- `native_overlap` is an expectation about the fragment terminus; it still
+  requires sequence confirmation in validation/derivation.
+- `designed_bridge_sequence` should be treated as a designed internal overlap,
+  suitable for primer-stitching style workflows; GENtle should validate it for
+  distinctness/design heuristics rather than treating it as biologically
+  privileged just because it was user-supplied.
+
+### `gentle.prepared_cache_inspection.v1`
+
+Purpose:
+
+- provide one deterministic, non-mutating inspection payload for prepared
+  reference/helper cache roots,
+- let GUI, shared shell, and direct CLI report exactly what GENtle created
+  locally before any deletion happens.
+
+Current shared entry points:
+
+- `cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]`
+- GUI specialist window: `Genome -> Clear Caches...`
+- `Prepared References... -> Clear Caches...`
+
+Top-level structure:
+
+- `schema`, `cache_roots[]`
+- `entries[]`
+- `entry_count`, `total_size_bytes`, `total_file_count`
+
+Entry structure:
+
+- `entry_id`
+- `classification`
+  - `prepared_install`
+  - `orphaned_remnant`
+- `cache_root`, `path`
+- `artifact_stats[]`
+  - `group`
+    - `cached_sources`
+    - `derived_indexes`
+    - `blast_db`
+  - `total_size_bytes`
+  - `file_count`
+- `total_size_bytes`, `file_count`
+
+Inspection rules:
+
+- inspection stays rooted in the selected cache roots only
+- default roots are adapter-facing conventions:
+  - references: `data/genomes`
+  - helpers: `data/helper_genomes`
+- orphaned remnants are inspectable even when they are not backed by a
+  manifest
+- catalog JSON, project state files, MCP/runtime files, backdrop/runtime
+  caches, and developer build artifacts are out of scope
+
+### `gentle.prepared_cache_cleanup.v1`
+
+Purpose:
+
+- provide one deterministic cleanup result payload for conservative prepared
+  cache deletion workflows,
+- keep partial rebuild/reindex cleanup and full prepared-install deletion on
+  the same shared contract across GUI/CLI/shell.
+
+Current shared entry points:
+
+- `cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache ...`
+- GUI specialist window: `Genome -> Clear Caches...`
+
+Top-level structure:
+
+- `schema`, `mode`, `cache_roots[]`
+- `selected_prepared_ids[]`
+- `selected_prepared_paths[]`
+- `include_orphaned_remnants`
+- `results[]`
+- `entry_count`, `removed_item_count`, `removed_bytes`, `removed_file_count`
+
+Per-entry result structure:
+
+- `entry_id`
+- `classification`
+  - `prepared_install`
+  - `orphaned_remnant`
+- `cache_root`, `path`
+- `removed`
+- `removed_artifact_groups[]`
+- `removed_bytes`, `removed_file_count`
+- `skipped_reason?`
+
+Cleanup modes:
+
+- `blast_db_only`
+  - remove only BLAST DB sidecars for selected manifest-backed installs
+- `derived_indexes_only`
+  - remove BLAST DB sidecars plus `sequence.fa.fai` and `genes.json`
+  - cached sources and manifests remain so reindex-from-cached-files still
+    works
+- `selected_prepared_installs`
+  - remove only explicitly selected prepared installs
+  - optional `include_orphaned_remnants` also removes orphaned remnants under
+    the same selected roots
+- `all_prepared_in_cache`
+  - remove all prepared installs under the selected roots
+  - optional `include_orphaned_remnants` extends that deletion to orphaned
+    remnants
+
+Cleanup rules:
+
+- `blast_db_only` and `derived_indexes_only` apply only to manifest-backed
+  prepared installs
+- selective cleanup modes accept either `selected_prepared_ids[]` or
+  `selected_prepared_paths[]`
+- `selected_prepared_paths[]` are the precise selector when duplicate prepared
+  ids exist across multiple selected cache roots
+- orphaned remnants can only be deleted through the full-delete modes
+- cleanup never scans the whole workspace; it only touches the selected roots
+- cleanup does not treat catalog JSON, `.gentle_state.json`, MCP/runtime files,
+  backdrop/runtime caches, or `target/` as cache
+
+## Core entities
+
+### ProjectState
+
+```json
+{
+  "sequences": {"seq_id": "DNAsequence object"},
+  "metadata": {"any": "json"},
+  "display": {"ui_visibility_tfbs_and_linear_viewport_state": "..."},
+  "lineage": {"nodes": {}, "edges": []},
+  "parameters": {"max_fragments_per_container": 80000},
+  "container_state": {
+    "containers": {},
+    "arrangements": {},
+    "racks": {},
+    "seq_to_latest_container": {}
+  }
+}
+```
+
+Semantic interpretation:
+
+- In GUI terms, a project window represents a wet-lab container context.
+- A container may map to multiple candidate sequences/fragments.
+- Explicit container objects are first-class state (`container_state`) and are
+  indexed from sequence ids via `seq_to_latest_container`.
+- Containers now also record `declared_contents_exclusive`:
+  - `true` (default): the declared members are intended to be the full known
+    contents of a clean vial/tube
+  - `false`: the declared members are measured/known constituents of a more
+    complex sample, and additional unlisted molecules may also be present
+- Arrangements stay the semantic experiment-order layer.
+- Racks are the linked physical placement layer and may host one or more
+  arrangements without changing arrangement identity.
+
+### Rack placement entities
+
+- `RackProfileKind`
+  - built-in physical carriers:
+    - `small_tube_4x6`
+    - `plate_96`
+    - `plate_384`
+  - persisted custom snapshots use:
+    - `custom`
+- `RackProfileSnapshot`
+  - persisted row/column/fill-direction/blocked-slot snapshot used by one saved rack
+  - `fill_direction`
+    - `row_major`
+    - `column_major`
+  - `blocked_coordinates[]`
+    - normalized A1-style coordinate list
+- `Rack`
+  - one saved physical rack/plate draft
+- `RackPlacementEntry`
+  - one occupied A1-style coordinate on that rack
+  - points back to:
+    - `arrangement_id`
+    - arrangement-local `order_index`
+    - one `occupant`
+- `RackOccupant`
+  - `container`
+  - `ladder_reference`
+
+Rack-placement invariants:
+
+- rack placement consumes arrangement order instead of duplicating experiment
+  meaning in a second free-form list
+- default placement is deterministic:
+  - choose the smallest fitting built-in profile
+  - fill row-major
+  - use A1-style coordinates
+- saved rack snapshots may then refine physical layout with:
+  - `fill_direction = row_major|column_major`
+  - `blocked_coordinates[]`
+- A1-style row labels continue beyond `Z` as `AA`, `AB`, ...
+- moving one sample or arrangement block is shift-neighbor by default; it
+  preserves occupied order instead of creating arbitrary holes
+
+### `gentle.rack_state.v1`
+
+Purpose:
+
+- provide one deterministic inspection payload for saved rack state
+- keep GUI rack view and CLI/shell inspection on one shared state contract
+
+Current shared entry point:
+
+- `racks show RACK_ID`
+
+Top-level structure:
+
+- `schema`
+- `rack`
+- `placements[]`
+
+Placement payload:
+
+- `coordinate`
+- `arrangement_id`
+- `order_index`
+- `role_label`
+- `occupant`
+  - `kind = container`
+    - `container_id`
+    - `container_name?`
+    - `seq_id?`
+  - `kind = ladder_reference`
+    - `ladder_name`
+  - `kind = empty`
+
+### Operation
+
+Current draft operations:
+
+- `LoadFile { path, as_id? }`
+- `SaveFile { seq_id, path, format }`
+- `RenderSequenceSvg { seq_id, mode, path }`
+  - linear exports honor the current stored linear viewport in `display`
+    (`linear_view_start_bp` / `linear_view_span_bp`) when that viewport is a
+    proper subsequence crop
+  - single-base `variation` features render as baseline markers in linear SVG
+    output rather than as generic detached feature blocks
+  - linear exports now also mark transcription starts/directions for
+    strand-bearing `gene`/`mRNA`/`CDS`/`promoter` features and suppress
+    unlabeled fallback coordinate text that would otherwise clutter
+    figure-oriented exports
+  - linear exports also prefer gene-style labels over accession-only transcript
+    ids when possible and compact nearby repeated non-gene labels
+  - direction-bearing `mRNA`/`promoter` bars render with arrowed ends, and the
+    linear TSS cue uses a short hooked arrow so direction survives
+    figure-oriented contexts
+  - circular exports now use a transparent canvas and render single-base
+    `variation` features as explicit radial markers on the DNA ring
+  - circular exports also mark transcription starts for strand-bearing
+    `gene`/`mRNA`/`CDS`/`promoter` features with a short arrow shaft plus
+    direction arrowhead
+  - circular exports also use a slightly larger ring and larger label fonts so
+    figure-oriented construct maps stay readable when embedded in docs
+  - `repeat_region` / `mobile_element` features carrying RepeatMasker/UCSC
+    `rmsk`-style qualifiers (`repName`, `repClass`, `repFamily`, or
+    `rmsk_*` / `repeat_*` / `rpt_*` aliases) use shared repeat subtype labels
+    and colors across GUI maps, feature-tree grouping/filtering, and SVG
+    export
+- `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain?, overlay_x_axis_mode? }`
+- `RenderFeatureExpertSvg { seq_id, target, path }`
+  - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
+  - splicing SVG includes explicit junction-support counts, frequency-encoded transcript-vs-exon matrix coloring, predicted exon->exon transition matrix support coloring, exon `len%3` (genomic-length modulo 3) cues, and CDS flank phase edge coloring (`0/1/2`) when transcript `cds_ranges_1based` are available
+- `SummarizeTfbsScoreTracks { target, motifs, score_kind, clip_negative, path? }`
+  - non-mutating continuous motif-score export for Promoter design and headless
+    ClawBio/OpenClaw-style inspection
+  - accepts the shared `SequenceScanTarget` operand so the same summary path
+    works for stored `seq_id` spans and inline ASCII DNA
+  - returns schema `gentle.tfbs_score_tracks.v1`
+  - reports per-position forward and reverse score tracks for each requested
+    TF/PSSM token across one shared span
+  - `score_kind` accepts `llr_bits`, `llr_quantile`,
+    `llr_background_quantile`, `llr_background_tail_log10`,
+    `true_log_odds_bits`, `true_log_odds_quantile`,
+    `true_log_odds_background_quantile`, or
+    `true_log_odds_background_tail_log10`
+  - `clip_negative=true` clamps negative scores to `0.0` for the bit-based
+    kinds, which is the intended display mode for promoter-design plots when
+    only positive support should be shown
+  - the background-normalized kinds convert raw motif scores into modeled
+    percentile or `-log10(tail)` views against a quantized IID random-DNA
+    window model and zero out everything below the `0.95`
+    random-background quantile
+  - each returned track also carries a deterministic background-normalization
+    block that now combines a larger deterministic random sample with
+    theoretical motif-score bounds and modeled tail calibration, so the score
+    tracks no longer flatten onto the old finite-sample `1.0` ceiling
+  - the same report now also carries one pairwise correlation sidecar:
+    - exact raw Pearson correlation over the displayed per-position signal
+    - smoothed Pearson correlation over the same signal after centered boxcar
+      smoothing (`25 bp`)
+    - exact raw Spearman correlation over the same displayed signal
+    - smoothed Spearman correlation over the same centered-boxcar signal
+    - and a signed primary-peak offset so “are the strongest windows actually
+      co-localized?” is explicit instead of guessed from the traces alone
+  - the report’s TSS markers now also fall back to promoter-slice provenance
+    when the selected sequence was derived through
+    `ExtractGenomePromoterSlice`/`extract-promoter` with
+    `annotation_scope=none`, so exported promoter plots can still carry one
+    explicit transcription-start marker even without imported feature rows
+  - `path` writes the same structured JSON report to disk for reuse outside the
+    current adapter session
+- `RenderTfbsScoreTracksSvg { target, motifs, score_kind, clip_negative, path }`
+  - shared stacked SVG renderer for the same TFBS score-track payload
+  - accepts the same `SequenceScanTarget` operand as
+    `SummarizeTfbsScoreTracks`
+  - writes a deterministic figure suitable for GUI/CLI/agent/README parity
+  - reuses the `gentle.tfbs_score_tracks.v1` summary contract internally and
+    also returns that report in `OpResult.tfbs_score_tracks`
+  - the figure includes the same score-family-aware normalization context used
+    by the JSON payload, surfaced either as `p99 / Δp99 / bg+` or as
+    `theory max / peak q / -log10 tail`
+  - stacked track labels now render as `TF name (JASPAR id)` when both are
+    known, which avoids ambiguity for motifs whose names are also valid IUPAC
+    strings (for example `MYC`)
+  - TSS markers now render as one vertical dashed line with one top-level
+    kinked arrow/label per position so the whole stacked figure reads as one
+    shared DNA span instead of unrelated per-row ornaments
+- `ScanTfbsHits { target, motifs, min_llr_bits?, min_llr_quantile?, per_tf_thresholds?, max_hits?, path? }`
+  - non-mutating thresholded TFBS/JASPAR hit scan over either stored `seq_id`
+    input or inline ASCII DNA through `SequenceScanTarget`
+  - returns schema `gentle.tfbs_hit_scan.v1`
+  - intended as the shared low-latency inspection path for CLI/shell/agents and
+    future GUI selection-first actions before a caller explicitly chooses to
+    materialize `TFBS` features
+  - `path` writes the same structured JSON report to disk for reuse outside the
+    current adapter session
+- `RenderIsoformArchitectureSvg { seq_id, panel_id, path }`
+- `RenderRnaStructureSvg { seq_id, path }`
+- `RenderLineageSvg { path }`
+- `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id?, conditions? }`
+- `RenderProteinGelSvg { report_id, path, ladders? }`
+- `RenderProteinGelReportsSvg { report_ids[], path, ladders? }`
+- `RenderProteaseDigestGelSvg { seq_id?, report_id?, transcript_id?, proteases[], path, min_length_aa?, ladders? }`
+- `RenderProtein2dGelSvg { report_id, path, ladders? }`
+- `CreateArrangementSerial { container_ids, arrangement_id?, name?, ladders? }`
+- `SetArrangementLadders { arrangement_id, ladders? }`
+- `SetContainerDeclaredContentsExclusive { container_id, exclusive }`
+- `CreateRackFromArrangement { arrangement_id, rack_id?, name?, profile? }`
+- `PlaceArrangementOnRack { arrangement_id, rack_id }`
+- `MoveRackPlacement { rack_id, from_coordinate, to_coordinate, move_block? }`
+- `MoveRackSamples { rack_id, from_coordinates[], to_coordinate }`
+- `MoveRackArrangementBlocks { rack_id, arrangement_ids[], to_coordinate }`
+- `SetRackProfile { rack_id, profile }`
+- `ApplyRackTemplate { rack_id, template }`
+- `SetRackFillDirection { rack_id, fill_direction }`
+- `SetRackProfileCustom { rack_id, rows, columns }`
+- `SetRackBlockedCoordinates { rack_id, blocked_coordinates }`
+- `ExportRackLabelsSvg { rack_id, path, arrangement_id?, preset }`
+- `ExportRackFabricationSvg { rack_id, path, template }`
+- `ExportRackIsometricSvg { rack_id, path, template }`
+- `ExportRackOpenScad { rack_id, path, template }`
+- `ExportRackCarrierLabelsSvg { rack_id, path, arrangement_id?, template, preset }`
+- `ExportRackSimulationJson { rack_id, path, template }`
+- `RenderProtocolCartoonSvg { protocol, path }`
+- `RenderProtocolCartoonTemplateSvg { template_path, path }`
+- `ValidateProtocolCartoonTemplate { template_path }`
+- `RenderProtocolCartoonTemplateWithBindingsSvg { template_path, bindings_path, path }`
+- `ExportProtocolCartoonTemplateJson { protocol, path }`
+- `ExportDnaLadders { path, name_filter? }`
+- `ExportRnaLadders { path, name_filter? }`
+- `ExportPool { inputs, path, pool_id?, human_id? }`
+- `ExportProcessRunBundle { path, run_id? }`
+- `Digest { input, enzymes, output_prefix? }`
+- `Ligation { inputs, circularize_if_possible, protocol, output_id?, output_prefix?, unique? }`
+- `MergeContainers { inputs, output_prefix? }`
+- `Pcr { template, forward_primer, reverse_primer, output_id?, unique? }`
+- `PcrAdvanced { template, forward_primer, reverse_primer, output_id?, unique? }`
+- `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
+- `DesignPrimerPairs { ... }` (implemented baseline)
+- `ExportPrimerDesignReport { report_id, path }`
+- `PcrOverlapExtensionMutagenesis { ... }` (implemented baseline; insertion/deletion/replacement overlap-extension flow)
+- `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
+- `TestCdnaPcr { seq_id, source_feature_id, forward_primer, reverse_primer, transcript_id?, transcript_order?, transcript_map_coordinate_mode?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }` (implemented baseline; transcript-derived cDNA assay test with opt-in product materialization/gel)
+- `TestCdnaQpcr { seq_id, source_feature_id, forward_primer, reverse_primer, probe, transcript_id?, transcript_order?, transcript_map_coordinate_mode?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path?, materialize_products?, product_output_prefix?, product_gel_svg_path?, product_gel_ladders? }` (implemented baseline; transcript-derived cDNA assay test with internal probe and opt-in product materialization/gel)
+- `BuildTranscriptQpcrPanel { seq_id, source_feature_id, shared_qpcr_report_id, path? }` (implemented baseline; shared qPCR components plus transcript-characteristic forward-primer table)
+- `TestCdnaQpcrFasta { cdna_fasta_paths[], forward_primer, reverse_primer, probe, transcript_id?, min_amplicon_bp?, max_amplicon_bp?, max_mismatches?, require_3prime_exact_bases?, path?, svg_path? }` (implemented baseline; cDNA/ncRNA FASTA/FASTA.gz screen with internal probe)
+- `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
+- `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
+- `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }` (implemented baseline; emits derived DNA window + mRNA isoforms + exon-reference sequence)
+- `AlignSequences { query_seq_id, target_seq_id, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }` (implemented baseline; returns structured pairwise local/global report in `OpResult.sequence_alignment`)
+- `ImportSequencingTrace { path, trace_id?, seq_id? }` (implemented baseline; imports one ABI/AB1 or SCF evidence file into the shared sequencing-trace store without mutating construct sequences)
+- `ListSequencingTraces { seq_id? }`
+- `ShowSequencingTrace { trace_id }`
+- `ConfirmConstructReads { expected_seq_id, baseline_seq_id?, read_seq_ids?, trace_ids?, targets?, alignment_mode?, match_score?, mismatch_score?, gap_open?, gap_extend?, min_identity_fraction?, min_target_coverage_fraction?, allow_reverse_complement?, report_id? }` (implemented baseline; accepts already-loaded read sequences and/or imported sequencing traces as evidence inputs into one shared confirmation report, with optional baseline context for intended-edit vs reversion classification)
+- `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA phase-1 seed-filter pass; `multi_gene_sparse` expands local transcript-template indexing, while ROI capture remains planned)
+- `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }` (Nanopore cDNA phase-2 retained-hit alignment pass; updates mapping/MSA/abundance report fields and re-ranks retained hits by alignment-aware retention rank)
+- `ListRnaReadReports { seq_id? }`
+- `ShowRnaReadReport { report_id }`
+- `ExportRnaReadReport { report_id, path }`
+- `ExportRnaReadHitsFasta { report_id, path, selection, selected_record_indices?, subset_spec? }`
+- `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, gene_ids?, complete_rule?, append? }`
+- `ExportRnaReadTargetQuality { report_id, path, gene_ids, complete_rule? }`
+- `ExportRnaReadExonPathsTsv { report_id, path, selection, selected_record_indices?, subset_spec? }`
+- `ExportRnaReadExonAbundanceTsv { report_id, path, selection, selected_record_indices?, subset_spec? }`
+- `ExportRnaReadScoreDensitySvg { report_id, path, scale, variant }`
+- `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices?, subset_spec? }`
+- `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
+- `ExtractRegion { input, from, to, output_id? }`
+- `PrepareGenome { genome_id, catalog_path?, cache_dir?, timeout_seconds? }`
+- `ExtractGenomeRegion { genome_id, chromosome, start_1based, end_1based, output_id?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
+  - `annotation_scope` accepts `none|core|full` and defaults to `core` when omitted.
+  - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
+  - legacy `include_genomic_annotation` is still accepted (`true` -> `core`, `false` -> `none`) for compatibility.
+  - operation results include `genome_annotation_projection` telemetry (requested/effective scope, feature counts, fallback metadata).
+  - for helper genome IDs containing `pUC18`/`pUC19`, the engine applies a deterministic fallback MCS `misc_feature` annotation when source annotation does not already include an MCS feature and exactly one canonical MCS motif is found.
+  - source-derived and fallback MCS features expose `mcs_expected_sites` with REBASE-normalized enzyme names when recognizable.
+- `ExtractGenomeGene { genome_id, gene_query, occurrence?, output_id?, extract_mode?, promoter_upstream_bp?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
+  - `annotation_scope` accepts `none|core|full` and defaults to `core` when omitted.
+  - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
+  - legacy `include_genomic_annotation` is still accepted (`true` -> `core`, `false` -> `none`) for compatibility.
+  - operation results include `genome_annotation_projection` telemetry (requested/effective scope, feature counts, fallback metadata).
+  - for helper genome IDs containing `pUC18`/`pUC19`, the same deterministic MCS fallback annotation behavior applies when an MCS feature is missing; non-unique motif matches are warned and skipped.
+- `ExtractGenomePromoterSlice { genome_id, gene_query, occurrence?, transcript_id?, output_id?, upstream_bp?, downstream_bp?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
+  - derives one unclipped promoter slice directly from transcript TSS geometry instead of requiring a separate gene extraction + TSS recovery + region extraction chain.
+  - when `transcript_id` is omitted, the engine deterministically chooses the outermost 5' transcript for the matched gene and warns when multiple transcript candidates exist.
+  - `upstream_bp` and `downstream_bp` default to the shared promoter-window baseline (`1000` upstream, `200` into the transcribed area).
+  - `annotation_scope` accepts `none|core|full` and defaults to `core` when omitted.
+  - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
+  - legacy `include_genomic_annotation` is still accepted (`true` -> `core`, `false` -> `none`) for compatibility.
+  - provenance rows record `gene_query`, `occurrence`, `transcript_id`,
+    `tss_1based`, and both promoter flank lengths so GUI/CLI/agents can audit
+    how the slice was derived and later recover an explicit TSS marker even
+    when feature projection was intentionally disabled.
+- `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
+- `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
+- `ListCutRunDatasets { filter?, catalog_path? }`
+- `ShowCutRunDatasetStatus { dataset_id, catalog_path?, cache_dir? }`
+- `PrepareCutRunDataset { dataset_id, catalog_path?, cache_dir? }`
+- `ProjectCutRunDataset { seq_id, dataset_id, include_peaks?, include_signal?, clear_existing?, catalog_path?, cache_dir? }`
+- `InterpretCutRunReads { seq_id, input_r1_path?, input_r2_path?, dataset_id?, catalog_path?, cache_dir?, input_format?, read_layout?, roi_flank_bp?, seed_filter?, align_config?, deduplicate_fragments?, report_id?, checkpoint_path?, checkpoint_every_reads? }`
+- `ListCutRunReadReports { seq_id? }`
+- `ShowCutRunReadReport { report_id }`
+- `ExportCutRunReadCoverage { report_id, path, kind? }`
+  - V1 is processed-evidence-first and currently reuses the shared anchored
+    `ImportGenomeBedTrack` / `ImportGenomeBigWigTrack` projection behavior.
+  - prepared CUT&RUN datasets now also expose one shared lifecycle contract:
+    - `resource_key = "cutrun_dataset:<DATASET_ID>"`
+    - `lifecycle_status = missing|running|ready|failed|cancelled|stale`
+    - `current_activity` carries the persisted lease/heartbeat marker when a
+      dataset prepare is active or when the last attempt ended as
+      `failed|cancelled|stale`
+  - duplicate `PrepareCutRunDataset` callers now reuse one active dataset
+    prepare lease instead of materializing the same dataset twice in parallel.
+  - V2 is ROI-first and interprets either ad hoc `FASTA`/`FASTQ` inputs or
+    prepared catalog-linked raw reads against one selected genome-anchored
+    region plus deterministic flanks.
+  - paired-end interpretation is first-class: mates are paired by normalized
+    read id, concordant pairs emit fragment spans, and orphan/single-ended
+    observations are retained as explicit report rows instead of being dropped.
+  - when `dataset_id` is provided, the engine resolves `reads_r1` / `reads_r2`
+    from the prepared CUT&RUN manifest and infers the raw-read format from the
+    prepared file names.
+  - `ExportCutRunReadCoverage` writes TSV summaries for one saved read report:
+    `coverage`, `cut_sites`, or `fragments`.
+  - `InspectCutRunRegulatorySupport` is the first shared V3 reasoning surface:
+    - it accepts one anchored `seq_id` plus repeated prepared `dataset_ids`
+      and/or saved `read_report_ids`
+    - strong support windows can be derived from saved V2 read reports alone,
+      from prepared signal-only evidence, or from prepared peak evidence
+    - theoretical TFBS rows are split into `confirmed` vs `unconfirmed`
+    - motif-absent strong windows are reported separately and classified as
+      `context_supported_by_other_motifs` or `motif_poor_supported`
+    - if the assayed target factor cannot be resolved to a local motif, strong
+      support windows are still reported through context-only motif reasoning
+      instead of being dropped
+    - motif-context scans intentionally use a high-confidence
+      `motif_context_min_llr_quantile` of `0.95` by default, and resolved
+      target motifs are excluded from the "other motifs" context list
+    - recurring motif summaries are emitted for motifs found inside supported
+      windows and in their neighbor flanks
+  - default catalog: `assets/cutrun.json`; default prepared-cache root:
+    `data/cutrun`; environment override: `GENTLE_CUTRUN_CACHE_DIR`.
+  - `ProjectCutRunDataset` requires a genome-anchored sequence and rejects
+    incompatible `supported_reference_genome_ids`.
+  - status/projection payload schemas:
+    `gentle.cutrun_dataset_list.v1`,
+    `gentle.cutrun_prepared_manifest.v1`,
+    `gentle.cutrun_dataset_status.v1`,
+    `gentle.cutrun_dataset_projection.v1`,
+    `gentle.cutrun_read_report.v1`,
+    `gentle.cutrun_read_reports.v1`,
+    `gentle.cutrun_read_coverage_export.v1`,
+    `gentle.cutrun_regulatory_support.v1`.
+
+Catalog-backed reference/helper discovery notes:
+
+- shared shell/CLI discovery commands `genomes list` and `helpers list` accept
+  optional `--catalog PATH` and `--filter TEXT`
+- `PATH` may point to either one JSON catalog file or a directory of top-level
+  `*.json` fragments; directory fragments are merged deterministically by sorted
+  filename and duplicate entry ids fail fast
+- when `catalog_path` is omitted, the engine now resolves a deterministic
+  discovery chain in this order:
+  - built-in catalog file plus optional built-in fragment directory
+  - system overlay file/directory under `/etc/gentle/catalogs/`
+  - user overlay file/directory under `$XDG_CONFIG_HOME/gentle/catalogs/` or
+    `~/.config/gentle/catalogs/`
+  - project overlay file/directory under `PROJECT_ROOT/.gentle/catalogs/`
+- the root locations for built-in/system/project discovery may be overridden in
+  controlled environments via `GENTLE_ASSET_ROOT`,
+  `GENTLE_SYSTEM_CONFIG_ROOT`, and `GENTLE_PROJECT_ROOT`
+- adapters that need to preserve "use default discovery" intent through
+  persisted operation/provenance records may emit
+  `gentle://catalog/reference/default` or
+  `gentle://catalog/helper/default`
+- list results now include both the stable entry id array and richer `entries`
+  metadata rows so frontends, agents, and ClawBio integrations can search and
+  display the same catalog facts without re-encoding them
+- helper/reference catalog entries may now carry typed discovery metadata such
+  as `summary`, `aliases`, `tags`, `search_terms`, `species`, `helper_kind`,
+  `host_system`, `procurement`, and optional structured `semantics`
+- helper semantics vocabulary overlays are discovered separately from helper
+  sequence catalogs so teams can extend normalized meaning without editing
+  GENtle source:
+  - built-in `assets/helper_semantics_vocabulary.json` plus optional
+    `assets/helper_semantics_vocabulary.d/*.json`
+  - system/user/project overlays at
+    `catalogs/helper_semantics_vocabulary.json` and
+    `catalogs/helper_semantics_vocabulary.d/*.json` under the same roots used
+    for catalog discovery
+  - vocabulary fragments use schema
+    `gentle.helper_semantics_vocabulary.v1` and `terms[]` records with
+    `axis`, canonical `value`, optional `label`, optional `description`,
+    `aliases[]`, and optional `routine_hints[]`
+- shared shell/CLI inspection command
+  `helpers vocabulary list [--vocabulary PATH] [--filter TEXT]` returns the
+  resolved vocabulary terms with deterministic source/provenance fields; MCP,
+  JS, and Lua expose the same list through dedicated helpers so agents can
+  inspect vocabulary facts before relying on helper interpretation output
+- shared shell/CLI validation command
+  `helpers vocabulary doctor [--vocabulary PATH] [--routine-catalog PATH]`
+  returns `gentle.helper_semantics_vocabulary_doctor.v1` with source ordering,
+  parsed fragment SHA-1 digests, duplicate canonical-term warnings, alias
+  collision errors, malformed routine-hint diagnostics including missing
+  `source_terms` targets, and unknown routine-family warnings marked as local
+  extensions rather than authoritative catalog failures
+- helper-list/status routes may now also expose an engine-owned normalized
+  `interpretation` record derived from those helper fields:
+  - `helper_id`
+  - `description`, `summary`, `aliases`
+  - `helper_kinds`, `host_systems`
+  - `offered_functions`, `constraints`
+  - `procurement_channels`, `local_variant_unpublished`
+  - ontology-friendly `normalized_terms[]` with `axis`, normalized `value`,
+    optional source-spelling `label`, derivation `source`, and optional
+    vocabulary enrichment fields `vocabulary_label`,
+    `vocabulary_description`, `vocabulary_source`
+  - direct `routine_hints[]` with routine `family`, deterministic `rationale`,
+    and `source_terms`, so planning/routine-ranking/MCP/ClawBio consumers do
+    not need to re-derive first-order helper compatibility from prose
+  - deterministic `components[]` and `relationships[]`
+- that metadata is intended to stay compatible with the emerging
+  reasoning/constraint engine and with later ontology-backed helper/vector
+  descriptions rather than forcing a future rewrite of catalog records
+
+Sequencing-trace evidence notes:
+
+- raw traces are stored separately from `SequencingConfirmationReport`
+  payloads; importing a trace does not run confirmation and does not mutate any
+  sequence entry
+- `ImportSequencingTrace` currently auto-detects:
+  - ABIF/AB1 via `ABIF` magic bytes
+  - SCF via `.scf` magic bytes
+- stored `SequencingTraceRecord` payloads preserve:
+  - file-supplied called bases
+  - called-base confidence arrays when available
+  - peak locations when available
+  - raw per-channel intensity arrays when available
+  - compact per-channel trace-length summaries
+  - optional clip window metadata when present in the source file
+  - optional sample/run/machine metadata when present in the source file
+- trace-aware confirmation now reuses the same `SequencingConfirmationReport`
+  model:
+  - `ConfirmConstructReads` accepts `trace_ids` in addition to `read_seq_ids`
+  - `ConfirmConstructReads` accepts optional `baseline_seq_id` so the expected
+    construct remains primary truth while baseline context can distinguish
+    intended edits from reference reversions
+  - per-evidence rows expose evidence kind plus optional `trace_id`
+  - target support/contradiction ids may now refer to imported trace ids when
+    traces provide the relevant evidence
+  - report payloads now include:
+    - `baseline_seq_id?`
+    - per-target `expected_bases?` / `baseline_bases?` for expected-edit loci
+    - `variants[]` rows with observed allele, evidence id, confidence summary,
+      peak center, and classification:
+      `expected_match|intended_edit_confirmed|reference_reversion|unexpected_difference|low_confidence_or_ambiguous|insufficient_evidence`
+  - persisted confirmation reports now project as lineage analysis artifacts in
+    both the GUI lineage workspace and shared `RenderLineageSvg` export:
+    nodes are keyed by `report_id`, attach to the expected construct plus
+    optional baseline/reference sequence, and reopen the sequencing-confirmation
+    specialist on that stored report in GUI adapters
+- `SuggestSequencingPrimers { expected_seq_id, primer_seq_ids[], confirmation_report_id?, min_3prime_anneal_bp, predicted_read_length_bp }`
+  - non-mutating helper for sequencing-confirmation review and primer coverage
+    planning
+  - `primer_seq_ids[]` may be empty when `confirmation_report_id` is present:
+    that mode proposes fresh sequencing primers for unresolved loci using the
+    expected construct plus the saved report context
+  - returns `SequencingPrimerOverlayReport` with per-hit orientation, anneal
+    span, predicted read span, optional coverage annotations against a
+    persisted sequencing-confirmation report, per-problem guidance rows naming
+    the best existing primer hit for unresolved targets or variant loci, and
+    `proposals[]` rows for fresh primer candidates when no good existing hit is
+    available
+- `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
+  - optional `blast_provenance` payload preserves invocation context
+    (`genome_id`, `query_label`, `query_length`, `max_hits`, `task`,
+    `blastn_executable`, `blast_db_prefix`, raw `command[]`, `command_line`,
+    `catalog_path?`, `cache_dir?`, `options_override_json?`,
+    `effective_options_json?`) for sequence-history/audit views.
+- `SelectCandidate { input, criterion, output_id? }`
+- `ImportIsoformPanel { seq_id, panel_path, panel_id?, strict }`
+- `ImportUniprotSwissProt { path, entry_id? }`
+- `FetchUniprotSwissProt { query, entry_id? }`
+- `ImportUniprotEntrySequence { entry_id, output_id? }`
+  - imports one first-class protein sequence plus projected UniProt feature
+    annotations into regular project sequence state.
+- `FetchEnsemblProtein { query, entry_id? }`
+  - fetches one Ensembl transcript/protein-backed protein entry from Ensembl
+    REST and persists it in `gentle.ensembl_protein_entries.v1`.
+- `ImportEnsemblProteinSequence { entry_id, output_id? }`
+  - imports one stored Ensembl protein entry as a first-class protein sequence
+    with imported Ensembl protein-feature annotations.
+- `FetchEnsemblGene { query, species?, entry_id? }`
+  - fetches one Ensembl gene entry from Ensembl REST and persists it in
+    `gentle.ensembl_gene_entries.v1`.
+- `FetchEnsemblRegion { species, chromosome, start_1based, end_1based, strand?, output_id?, coord_system_version? }`
+  - fetches one arbitrary Ensembl REST genomic region/ROI directly as a
+    first-class DNA sequence without requiring a prepared local reference.
+  - `strand` defaults to `+`; `-` requests the reverse-strand sequence from
+    Ensembl and records `anchor_strand = "-"` in genome-extraction provenance.
+  - the imported sequence gets a top-level `source` feature with organism,
+    chromosome, genomic bounds, strand, REST source URL, and
+    `synthetic_origin=ensembl_region_fetch`.
+  - provenance is recorded under the same
+    `gentle.provenance.genome_extractions[]` surface used by prepared
+    reference extraction, with `sequence_source_type=ensembl_rest_region` and
+    no local catalog/cache requirement.
+- `ImportEnsemblGeneSequence { entry_id, output_id? }`
+  - imports one stored Ensembl gene entry as a first-class DNA sequence with a
+    top-level imported `gene` feature and Ensembl provenance qualifiers
+  - when the stored Ensembl lookup was fetched with expanded transcript
+    content, the import also materializes deterministic `mRNA`, `exon`, and
+    `CDS` features with Ensembl transcript/protein identifiers, display names,
+    biotype flags, canonical/Gencode-primary flags, and translation lengths.
+    Negative-strand Ensembl genes are mapped into Ensembl's gene-oriented
+    sequence coordinates so same-strand transcript/CDS features derive proteins
+    without an extra reverse-complement step.
+- `FetchGenBankAccession { accession, as_id? }`
+- `FetchDbSnpRegion { rs_id, genome_id, flank_bp?, output_id?, annotation_scope?, max_annotation_features?, catalog_path?, cache_dir? }`
+- `DeriveProteinSequences { seq_id, feature_ids[], feature_query?, scope?, output_prefix?, report_id? }`
+  - this operation is self-sufficient and transcript-first: it does not depend
+    on UniProt or any other external protein evidence source to decide what
+    protein products exist
+  - `protein` and `peptide` molecule labels are treated as one first-class
+    protein family for shared import/export handling
+  - also persists one `gentle.protein_derivation_report.v1` artifact keyed by
+    stable `report_id` with stored `seq_id`, derived protein sequence ids, and
+    `op_id` / `run_id` provenance for lineage/reopen paths
+- `ReverseTranslateProteinSequence { seq_id, output_id?, speed_profile?, speed_mark?, translation_table?, target_anneal_tm_c?, anneal_window_bp? }`
+- `ProjectUniprotToGenome { seq_id, entry_id, projection_id?, transcript_id? }`
+  - persists one `gentle.uniprot_genome_projection.v1` artifact with stable
+    `projection_id`, upstream `seq_id`/`entry_id`, and stored `op_id` /
+    `run_id` provenance for lineage/reopen paths
+- `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
+- `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
+- `DeleteCandidateSet { set_name }`
+- `UpsertGuideSet { guide_set_id, guides[] }`
+- `DeleteGuideSet { guide_set_id }`
+- `FilterGuidesPractical { guide_set_id, config?, output_guide_set_id? }`
+- `GenerateGuideOligos { guide_set_id, template_id, apply_5prime_g_extension?, output_oligo_set_id?, passed_only? }`
+- `ExportGuideOligos { guide_set_id, oligo_set_id?, format: csv_table|plate_csv|fasta, path, plate_format? }`
+- `ExportGuideProtocolText { guide_set_id, oligo_set_id?, path, include_qc_checklist? }`
+- `ScoreCandidateSetExpression { set_name, metric, expression }`
+- `ScoreCandidateSetDistance { set_name, metric, feature_kinds[], feature_label_regex?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation? }`
+- `FilterCandidateSet { input_set, output_set, metric, min?, max?, min_quantile?, max_quantile? }`
+- `CandidateSetOp { op: union|intersect|subtract, left_set, right_set, output_set }`
+- `ScoreCandidateSetWeightedObjective { set_name, metric, objectives[], normalize_metrics? }`
+- `TopKCandidateSet { input_set, output_set, metric, k, direction?, tie_break? }`
+- `ParetoFrontierCandidateSet { input_set, output_set, objectives[], max_candidates?, tie_break? }`
+- `UpsertWorkflowMacroTemplate { name, description?, details_url?, parameters[], script }`
+- `DeleteWorkflowMacroTemplate { name }`
+- `UpsertCandidateMacroTemplate { name, description?, details_url?, parameters[], script }`
+- `DeleteCandidateMacroTemplate { name }`
+- `FilterByMolecularWeight { inputs, min_bp, max_bp, error, unique, output_prefix? }`
+- `FilterByDesignConstraints { inputs, gc_min?, gc_max?, max_homopolymer_run?, reject_ambiguous_bases?, avoid_u6_terminator_tttt?, forbidden_motifs?, unique, output_prefix? }`
+- `Reverse { input, output_id? }`
+- `Complement { input, output_id? }`
+- `ReverseComplement { input, output_id? }`
+- `Branch { input, output_id? }`
+- `SetDisplayVisibility { target, visible }`
+- `SetLinearViewport { start_bp, span_bp }`
+- `AnnotatePromoterWindows { input, gene_label?, transcript_id?, upstream_bp=1000, downstream_bp=200, collapse_mode=transcript|gene }`
+  - derives strand-aware promoter windows from transcript TSS geometry
+  - writes them back as ordinary `promoter` features with explicit generated
+    qualifiers (`generated_by`, `promoter_source`, `gene`, `transcript_id`,
+    `transcript_count`, `transcript_ids`, `upstream_bp`, `downstream_bp`)
+  - exact duplicate promoter spans that differ only by downstream splice
+    variation are collapsed at write-back time; the shared feature label keeps
+    one promoter symbol and annotates how many transcripts contributed
+  - generated promoter windows render distinctly from imported promoter
+    features
+- `SummarizeVariantPromoterContext { input, variant_label_or_id?, gene_label?, transcript_id?, promoter_upstream_bp=1000, promoter_downstream_bp=200, tfbs_focus_half_window_bp=100, path? }`
+  - emits portable record schema `gentle.variant_promoter_context.v1`
+  - reports chosen gene/transcript, promoter overlap, signed TSS distance,
+    transcript ambiguity status, overlapping evidence rows, effect tags, and
+    suggested assay ids
+  - reuses TFBS summary logic for the `variant ± half_window` neighborhood when
+    TFBS features are already present
+- `SummarizeAlternativePromoterComparison { input, gene_label?, transcript_id?, promoter_upstream_bp=1000, promoter_downstream_bp=200, path? }`
+  - emits portable record schema `gentle.alternative_promoter_comparison.v1`
+  - groups transcript-derived promoter windows by exact DNA span so alternative
+    promoter usage can be compared without stacking redundant downstream splice
+    variation
+  - each grouped row retains transcript-count / transcript-id provenance plus a
+    representative transcript/TSS for GUI retargeting back into Promoter design
+  - warnings make the transcript-level to DNA-level collapse explicit when
+    several transcript TSS interpretations reduce to one genomic promoter span
+- `SuggestPromoterReporterFragments { input, variant_label_or_id?, gene_label?, transcript_id?, retain_downstream_from_tss_bp=200, retain_upstream_beyond_variant_bp=500, max_candidates=5, path? }`
+  - emits portable record schema `gentle.promoter_reporter_candidates.v1`
+  - ranks transcript-aware, strand-aware promoter fragment candidates and marks
+    one deterministic default recommendation
+- `MaterializeVariantAllele { input, variant_label_or_id?, allele=reference|alternate, output_id? }`
+  - phase-1 scope is single-nucleotide variants only
+  - rejects indels, multi-allelic variants, or variants without explicit
+    ref/alt qualifiers
+  - preserves the variant feature on the derived output while marking the
+    materialized allele
+- `SetTopology { seq_id, circular }`
+- `RecomputeFeatures { seq_id }`
+- `SetParameter { name, value }` (purely in-silico project parameter change)
+
+Isoform-panel operation semantics (current):
+
+- `ImportIsoformPanel` loads curated panel resources with schema
+  `gentle.isoform_panel_resource.v1` and binds them to one sequence context.
+- `strict=true` enforces hard failure when panel transcript mapping fails;
+  `strict=false` records warnings and keeps partial mappings.
+- `RenderIsoformArchitectureSvg` emits a deterministic multi-mode architecture
+  SVG derived from the same expert payload used by GUI/shell inspection.
+  - the top panel remains coordinate-true, preserving genomic exon positions
+    and introns
+  - when CDS ranges are available for mapped transcripts, the top panel uses
+    dual coding (faint full transcript exons + colored CDS blocks)
+  - the lower panel now adds a compressed transcript/product coupling view:
+    exon-chain transcript geometry, shared CDS colors, and isoform-local
+    protein axes
+  - shared CDS/exon colors are assigned by genomic exon family/position rather
+    than by within-lane segment order, so overlapping versions of the same
+    locus exon retain one color across different transcripts and proteoforms
+  - lower protein rails no longer force one shared amino-acid axis; instead
+    each isoform gets a local product axis while still staying linked back to
+    the genomic panel through the colored CDS segments above
+- `gentle.isoform_panel_resource.v1` supports optional protein reference-span
+  hints per isoform:
+  - `reference_start_aa` (1-based inclusive)
+  - `reference_end_aa` (1-based inclusive)
+  - when present, protein lanes clip domains within this span and project them
+    onto the isoform-local product axis (useful for TP53 N-terminus/C-terminus
+    class overlays and truncated proteoforms).
+- `gentle.isoform_panel_resource.v1` also supports panel-level transcript
+  geometry mode:
+  - `transcript_geometry_mode: exon|cds` (default `exon`)
+  - `cds` renders top-panel lanes from transcript CDS segments when available,
+    falling back to exon geometry per transcript if CDS metadata is missing.
+- `gentle.isoform_panel_resource.v1` can now carry structured local curation
+  metadata at panel and isoform level:
+  - `curation.source_kind`: `public_database`, `lab_curated`,
+    `literature_curated`, `vendor_curated`, or `mixed`
+  - `curation.source_label`, `curation.evidence[]`,
+    `curation.validation_tags[]`, `curation.public_database_status`, and
+    `curation.notes[]`
+  - validation reports expose the panel `curation_source_kind` and
+    `curated_isoform_count`, and per-isoform validation rows expose
+    `curation_source_kind` plus `validation_tags[]`, so downstream
+    GUI/CLI/ClawBio routes can distinguish local knowledge from public
+    accession anchors instead of flattening both into one free-text source
+    string.
+
+`LoadFile` import detection semantics (current):
+
+- deterministic probe order: `SnapGene -> GenBank -> EMBL -> FASTA -> XML`
+- SnapGene `.dna` files are supported for sequence/topology/features/basic
+  notes import through the shared loader
+- XML scope: `GBSet/GBSeq` and `INSDSet/INSDSeq` are supported
+- other unsupported XML dialects return explicit schema/dialect diagnostics
+
+`ExtendGenomeAnchor` side semantics:
+
+- `side` accepts `five_prime` or `three_prime`.
+- Direction is contextual to anchor strand.
+- On anchor strand `-`, `five_prime` increases physical genomic position.
+- If the anchor genome id is not prepared exactly, the engine can auto-resolve
+  to one compatible prepared assembly-family entry (for example `GRCh38.p14`
+  -> `Human GRCh38 Ensembl 116`).
+- If multiple compatible prepared entries exist, extension fails with a
+  deterministic options list so caller/GUI can choose explicitly.
+- `prepared_genome_id` can be passed explicitly to force a specific prepared
+  cache and bypass compatibility auto-selection.
+
+`VerifyGenomeAnchor` semantics:
+
+- Re-checks one anchored sequence against the selected prepared genome cache at
+  recorded coordinates/strand.
+- Writes one new provenance entry with `operation = VerifyGenomeAnchor` and
+  `anchor_verified = true|false`.
+- Returns an in-place state change (`changed_seq_ids`) for the same sequence id
+  so GUI/CLI can refresh verification badges/status lines deterministically.
+
+Local `SequenceAnchor` semantics (distinct from genome provenance anchoring):
+
+- `SequenceAnchor` currently supports:
+  - `Position { zero_based }`
+  - `FeatureBoundary { feature_kind?, feature_label?, boundary, occurrence? }`
+- `boundary` accepts `Start`, `End`, or `Middle`.
+- This anchor model resolves in-sequence positions and is used for
+  in-silico extraction/scoring workflows (`ExtractAnchoredRegion`,
+  `GenerateCandidateSetBetweenAnchors`).
+
+Adapter utility contracts (current, non-engine operations):
+
+For narrative/operator guidance on when to use CLI, MCP, Agent Assistant, or an
+external coding agent runtime, see:
+
+- `docs/agent_interfaces_tutorial.md`
+
+- `help [COMMAND ...] [--format text|json|markdown] [--interface ...]`
+  - backed by structured glossary source `docs/glossary.json`
+  - `--format text` renders human-readable help
+  - `--format json` renders machine-readable help catalog/topic payload
+  - `--format markdown` renders documentation-ready markdown
+  - `--interface` accepts: `all|cli-direct|cli-shell|gui-shell|js|lua|mcp`
+    (`mcp` currently aliases to shared shell command docs)
+- shared-shell isoform panel routes:
+  - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
+  - `panels inspect-isoform SEQ_ID PANEL_ID`
+  - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`
+  - `panels validate-isoform PANEL_PATH [--panel-id ID]`
+- shared-shell UniProt routes:
+  - `uniprot fetch QUERY [--entry-id ID]`
+  - `uniprot import-swissprot PATH [--entry-id ID]`
+  - `uniprot list`
+  - `uniprot show ENTRY_ID`
+  - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
+  - `uniprot projection-list [--seq SEQ_ID]`
+  - `uniprot projection-show PROJECTION_ID`
+  - `uniprot feature-coding-dna PROJECTION_ID FEATURE_QUERY [--transcript ID] [--mode genomic_as_encoded|translation_speed_optimized|both] [--speed-profile human|mouse|yeast|ecoli]`
+  - `uniprot resolve-ensembl-links PROJECTION_ID [--transcript ID]`
+  - `uniprot transcript-accounting PROJECTION_ID [--transcript ID]`
+  - `uniprot compare-ensembl-exons PROJECTION_ID [--transcript ID] [--ensembl-entry ID]`
+  - `uniprot compare-ensembl-peptide PROJECTION_ID [--transcript ID] [--ensembl-entry ID]`
+  - `uniprot audit-projection PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]`
+  - `uniprot audit-parity PROJECTION_ID [--transcript ID] [--ensembl-entry ID] [--report-id ID]`
+  - `uniprot audit-list|show|export ...`
+  - `uniprot audit-parity-list|show|export ...`
+- shared-shell Ensembl protein routes:
+  - `ensembl-protein fetch QUERY [--entry-id ID]`
+  - `ensembl-protein list`
+  - `ensembl-protein show ENTRY_ID`
+  - `ensembl-protein import-sequence ENTRY_ID [--output-id ID]`
+- shared-shell protease catalog routes:
+  - `proteases list [--filter TEXT] [--output PATH]`
+  - `proteases show QUERY [--output PATH]`
+  - `proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]`
+  - `proteases digest-gel-svg SEQ_ID PROTEASE[,PROTEASE...] OUTPUT.svg [--min-length-aa N] [--ladder NAME] [--ladders CSV]`
+  - semantics:
+    - exposes the built-in protease catalog as deterministic JSON
+    - search spans names, aliases, cleavage-pattern notation, specificity, and
+      curated biotech-facing application tags
+    - `ProteaseDigestProteinSequence` is the canonical engine operation for
+      cleavage prediction/materialization on first-class protein or peptide
+      sequences
+    - `RenderProteaseDigestGelSvg` is the graphical companion for digest
+      reports and keeps the same source-neutral report payload while producing
+      an SVG suitable for ClawBio PNG rasterization
+    - digest reports use `gentle.protease_digest_report.v1` and retain
+      source-protein, transcript, derivation-mode, and translation-table
+      provenance when present on transcript-derived proteins
+    - peptide products are materialized as first-class `peptide` sequences
+      unless the shell caller passes `--predict-only`
+- shared-shell Ensembl gene routes:
+  - `ensembl-gene fetch QUERY [--species NAME] [--entry-id ID]`
+  - `ensembl-gene list`
+  - `ensembl-gene show ENTRY_ID`
+  - `ensembl-gene import-sequence ENTRY_ID [--output-id ID]`
+- shared-shell Ensembl region route:
+  - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
+  - equivalent compact form:
+    `ensembl-region fetch SPECIES CHR:START..END[:STRAND] [--output-id ID]`
+- shared feature-expert route now also accepts transcript-first protein
+  comparison with optional stored external evidence plus persisted UniProt
+  projections as direct targets:
+  - `inspect-feature-expert SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]...`
+  - `render-feature-expert-svg SEQ_ID protein-comparison [--transcript TRANSCRIPT_ID] [--ensembl-entry ENTRY_ID] [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg`
+  - semantics:
+    - derive transcript CDS/protein products directly from the current sequence
+      state
+    - do not require any stored UniProt projection or other external protein
+      evidence
+    - optional `--transcript` narrows the compare window to one transcript id
+      while preserving the same source-neutral payload shape used by
+      external-opinion-backed protein experts
+    - optional `--ensembl-entry` resolves one persisted
+      `gentle.ensembl_protein_entries.v1` record and layers its protein
+      sequence/features onto the same transcript-first compare payload as an
+      external protein opinion
+    - optional `--feature-key` / `--feature-key-not` filters apply equally to
+      transcript-first derived views with external protein opinions, so noisy
+      imported Ensembl feature classes can be trimmed without changing the
+      product geometry
+  - `inspect-feature-expert SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]...`
+  - `render-feature-expert-svg SEQ_ID uniprot-projection PROJECTION_ID [--feature-key KEY]... [--feature-key-not KEY]... OUTPUT.svg`
+  - semantics:
+    - resolve one persisted `gentle.uniprot_genome_projections.v1` record
+    - build a shared `IsoformArchitectureView`
+    - transcript-native CDS/protein derivation is authoritative for transcript
+      and product geometry
+    - the persisted UniProt projection is consumed as one optional external
+      protein opinion layered onto that transcript-native product model
+    - each transcript/protein lane pair now clips to that transcript's mapped
+      amino-acid coverage and projected feature spans, so truncated isoforms do
+      not inherit full-length reference domains they do not encode
+    - rendered expert SVGs now preserve both:
+      - true genomic exon/intron position in the top panel
+      - transcript/product geometry in a lower panel whose transcript columns
+        are shared by genomic exon family while the protein rails stay
+        isoform-local
+      so skipped-exon proteoform differences become readable without throwing
+      away locus context
+    - if transcript features lack explicit `cds_ranges_1based`, the shared
+      projection path now prefers compatible `CDS` features before falling back
+      to whole-exon spans
+    - `FeatureExpertTarget::UniprotProjection` now carries a shared
+      `ProteinFeatureFilter { include_feature_keys[], exclude_feature_keys[] }`
+    - default filtering hides UniProt `CONFLICT` features unless the caller
+      explicitly re-includes them
+    - topology/membrane-style UniProt features (`SIGNAL`, `TRANSIT`,
+      `TOPO_DOM`, `TRANSMEM`, `INTRAMEM`) render in a dedicated lower band
+      beneath the protein rail instead of competing with the standard domain
+      label overlay
+    - per-transcript compare status is now source-neutral:
+      - `derived_only`
+      - `consistent_with_external_opinion`
+      - `low_confidence_external_opinion`
+      - `no_transcript_cds`
+      - `external_opinion_only`
+    - inside the engine, external protein evidence now enters the Protein
+      Expert through one source-neutral adapter boundary before view assembly,
+      so future sources can reuse the same transcript-first comparison payload
+      instead of forking the renderer/GUI contract
+    - this comparison model is intentionally not UniProt-specific:
+      Ensembl protein entries now populate the same fields through the same
+      adapter boundary, and future providers should continue to reuse that
+      transcript-first contract rather than replacing transcript-native
+      translation
+    - the same persisted projection now also appears in GUI lineage as one
+      analysis artifact node linked from the source sequence and reopenable
+      through the protein expert
+- Protein residue genomic coordinate query semantics:
+  - shared engine operation:
+    `QueryProteinResidueGenomicCoordinates { seq_id, transcript_id?, residue_start_1based, residue_end_1based }`
+  - shared-shell/CLI shorthand:
+    `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END]`
+  - both routes resolve to one
+    `gentle.protein_residue_genomic_coordinates.v1` report
+  - optional `--transcript ID` narrows the query by transcript id, label, or
+    `n-N` feature id
+  - when executed as an engine operation, the report is exposed in
+    `OpResult.protein_residue_genomic_coordinates`
+  - each match reports the amino-acid residue, coding-orientation codon,
+    per-base 1-based genomic positions, exon ordinals, reverse-strand coding
+    order, and whether the codon crosses an exon junction
+  - `transcript_feature_id` follows the same zero-based source-feature indexing
+    used by adjacent transcript/projection reports so GUI/CLI reopen paths can
+    reuse it directly
+  - the query is transcript-native: it uses the same CDS resolution and
+    translation-table selection as derived transcript/protein products, and it
+    does not require UniProt or Ensembl protein evidence
+- UniProt feature-coding DNA query semantics:
+  - resolves one persisted `gentle.uniprot_genome_projection.v1` record
+  - matches `FEATURE_QUERY` case-insensitively against mapped UniProt feature
+    key/note text
+  - returns one `gentle.uniprot_feature_coding_dna_query.v1` report
+  - each transcript match includes:
+    - `genomic_coding_dna`: spliced coding-strand DNA exactly as encoded in the
+      current genome sequence
+    - `translation_speed_optimized_dna`: optional preferred-codon alternative
+      using the selected or inferred `TranslationSpeedProfile`
+    - `exon_spans[]` and `exon_pairs[]` so GUI/CLI can report the exon or exon
+      pair carrying the feature
+  - exon ordinals follow transcript order, not raw genomic left-to-right
+    position; reverse-strand transcript exon 1 is the transcript 5' exon
+- shared-shell GenBank route:
+  - `genbank fetch ACCESSION [--as-id ID]`
+- shared-shell dbSNP route:
+  - `dbsnp fetch RS_ID GENOME_ID [--flank-bp N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--catalog PATH] [--cache-dir PATH]`
+- shared-shell protocol-cartoon routes:
+  - `protocol-cartoon list`
+  - `protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg`
+  - `protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg`
+  - `protocol-cartoon template-validate TEMPLATE.json`
+  - `protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg`
+  - `protocol-cartoon template-export PROTOCOL_ID OUTPUT.json`
+  - command surface is intentionally canonical: protocol-cartoon routes do not
+    expose extra alias names
+
+- Python adapter wrapper (`integrations/python/gentle_py`):
+  - thin subprocess-based wrapper over `gentle_cli`
+  - deterministic methods:
+    - `capabilities()`
+    - `state_summary()`
+    - `op(operation)`
+    - `workflow(workflow|workflow_path)`
+    - `shell(line, expect_json=False)`
+    - `render_dotplot_svg(seq_id, dotplot_id, output_svg, ...)`
+  - raises structured `GentleCliError` with:
+    - `code` (best-effort extracted stable code token)
+    - `command`, `exit_code`, `stdout`, `stderr`
+  - executable resolution order:
+    1. constructor `cli_cmd`
+    2. `GENTLE_CLI_CMD`
+    3. `gentle_cli` on `PATH`
+    4. repository fallback `cargo run --quiet --bin gentle_cli --`
+
+- `gentle_mcp` (stdio MCP adapter, expanded UI-intent parity baseline)
+  - MCP role:
+    - request/response transport for tool execution (`tools/call`)
+    - standardized capability discovery/negotiation (`tools/list`,
+      `capabilities`, `help`)
+  - current tools:
+    - `capabilities`
+    - `state_summary`
+    - `op` (apply one `Operation`; requires explicit `confirm=true`)
+    - `workflow` (apply one `Workflow`; requires explicit `confirm=true`)
+    - `help`
+    - `reference_catalog_entries` (shared `genomes list` catalog contract)
+    - `helper_catalog_entries` (shared `helpers list` catalog contract)
+    - `host_profile_catalog_entries` (shared `hosts list` catalog contract)
+    - `ensembl_installable_genomes` (shared Ensembl discovery contract for currently installable candidates)
+    - `construct_reasoning_graphs` (shared `construct-reasoning list-graphs` inspection contract)
+    - `construct_reasoning_graph` (shared `construct-reasoning show-graph` inspection contract)
+    - `helper_interpretation` (direct helper-construct interpretation lookup)
+    - `ui_intents` (shared `ui intents` catalog)
+    - `ui_intent` (shared `ui open|focus ...` resolution path)
+    - `ui_prepared_genomes` (shared `ui prepared-genomes ...` query path)
+    - `ui_latest_prepared` (shared `ui latest-prepared ...` query path)
+  - successful mutating calls (`op`, `workflow`) persist state to the resolved
+    `state_path`
+  - UI-intent tools route through the shared shell parser/executor
+    (`parse_shell_tokens` + `execute_shell_command_with_options`) and are
+    required to remain non-mutating (`state_changed = false`)
+  - tool handlers are adapter wrappers over existing deterministic engine/shell
+    contracts (no MCP-only biology logic branch)
+  - stdio framing/validation hardening:
+    - `Content-Length` is required, duplicate headers are rejected
+    - maximum accepted frame size is `8 MiB`
+    - parsed JSON nesting depth is capped at `96`
+    - `tools/call` params are strict (`name`, optional `arguments` only)
+    - `tools/call.arguments` must be a JSON object
+
+MCP query/introspection tool contracts (current):
+
+- `agent_systems`
+  - arguments:
+    - optional: `catalog_path`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `agents list [--catalog ...]`
+
+- `agent_preflight`
+  - arguments:
+    - required: `system_id`
+    - optional: `catalog_path`, `live`, `base_url`, `model`, `timeout_secs`,
+      `connect_timeout_secs`, `read_timeout_secs`, `max_retries`,
+      `max_response_bytes`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `agents preflight ...`
+    - `live=true` routes through shared shell as `agents preflight --live`
+      and includes the optional `live_probe` object
+
+- `agent_models`
+  - arguments:
+    - required: `system_id`
+    - optional: `catalog_path`, `base_url`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `agents discover-models ...`
+
+- `agent_plan`
+  - arguments:
+    - required: `system_id`, `prompt`
+    - optional: `state_path`, `catalog_path`, `base_url`, `model`,
+      `timeout_secs`, `connect_timeout_secs`, `read_timeout_secs`,
+      `max_retries`, `max_response_bytes`, `include_state_summary`,
+      `max_candidates`, `allow_mutating_candidates`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `agents plan ...`
+
+- `agent_execute_plan`
+  - arguments:
+    - required: `candidate_id`
+    - one of: `plan` or `plan_path`
+    - optional: `state_path`, `confirm`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `agents execute-plan ...`
+
+- `reference_catalog_entries`
+  - arguments:
+    - optional: `catalog_path`, `filter`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `genomes list [--catalog ...] [--filter ...]`
+  - result:
+    - `catalog_path`, `filter`, `genome_count`, `genomes[]`, `entries[]`
+
+- `helper_catalog_entries`
+  - arguments:
+    - optional: `catalog_path`, `filter`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `helpers list [--catalog ...] [--filter ...]`
+  - result:
+    - `catalog_path`, `filter`, `genome_count`, `genomes[]`, `entries[]`
+    - helper `entries[]` may carry normalized `interpretation` records
+
+- `helper_semantics_vocabulary`
+  - arguments:
+    - optional: `vocabulary_path`, `filter`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `helpers vocabulary list [--vocabulary ...] [--filter ...]`
+  - result:
+    - `vocabulary_path`, `filter`, `term_count`, `terms[]`
+    - each term carries `axis`, canonical `value`, optional `label`,
+      optional `description`, `aliases[]`, `routine_hints[]`, and `source`
+
+- `host_profile_catalog_entries`
+  - arguments:
+    - optional: `catalog_path`, `filter`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `hosts list [--catalog ...] [--filter ...]`
+  - result:
+    - `catalog_path`, `filter`, `profile_count`, `profile_ids[]`, `entries[]`
+
+- `construct_reasoning_graphs`
+  - arguments:
+    - optional: `state_path`, `seq_id`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `construct-reasoning list-graphs [SEQ_ID]`
+  - result:
+    - graph summary list payload with shared summary rows for stored graphs
+
+- `construct_reasoning_graph`
+  - arguments:
+    - required: `graph_id`
+    - optional: `state_path`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `construct-reasoning show-graph GRAPH_ID`
+  - result:
+    - full portable graph payload plus the compact shared summary block used by
+      CLI/GUI adapter-facing inspection surfaces
+
+- `construct_reasoning_set_annotation_status`
+  - arguments:
+    - required: `graph_id`, `annotation_id`, `editable_status`
+    - optional: `state_path`
+  - behavior:
+    - runs the same mutating shared shell command as
+      `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID STATUS`
+    - persists the updated project state when the command changes it
+  - result:
+    - updated graph payload
+    - updated `annotation_candidate`
+    - same compact shared summary block used by `construct_reasoning_graph`
+
+- `construct_reasoning_write_annotation`
+  - arguments:
+    - required: `graph_id`, `annotation_id`
+    - optional: `state_path`
+  - behavior:
+    - runs the same mutating shared shell command as
+      `construct-reasoning write-annotation GRAPH_ID ANNOTATION_ID`
+    - materializes one accepted or locked generated annotation candidate as an
+      ordinary sequence feature when it is eligible
+    - persists the updated project state when the command changes it
+  - result:
+    - refreshed graph payload
+    - refreshed or already-backed `annotation_candidate`
+    - `writeback` report in `gentle.annotation_candidate_writeback.v1` shape
+    - same compact shared summary block used by `construct_reasoning_graph`
+
+- `ensembl_installable_genomes`
+  - arguments:
+    - optional: `collection`, `filter`
+  - behavior:
+    - returns the same Ensembl discovery report used by GUI/CLI/JS/Lua for
+      answering which genomes currently look installable because both FASTA and
+      GTF species-directory listings are present
+  - result:
+    - `collection_filter`, `availability_basis`,
+      `collection_latest_releases{}`, `candidates[]`, `warnings[]`
+
+Shell/engine quick-install contracts:
+
+- `genomes install-ensembl SPECIES_DIR ...`
+- `helpers install-ensembl SPECIES_DIR ...`
+  - behavior:
+    - resolve current Ensembl FASTA/GTF files for one species directory
+    - derive or accept an explicit target `genome_id`
+    - write a real catalog entry before preparation starts
+    - choose between two safe write modes:
+      - `full_catalog`: update one writable JSON catalog file in place or as a standalone copy
+      - `overlay_entry`: write only the new entry into an overlay fragment/file so default discovery does not duplicate built-in ids
+    - run the existing prepare pipeline after the catalog write succeeds
+  - result:
+    - `preview.collection`, `preview.species_dir`, `preview.display_name`
+    - `preview.file_stem`, `preview.release`
+    - `preview.genome_id`
+    - `preview.output_catalog_path`
+    - `preview.catalog_write_mode`
+    - `preview.catalog_entry_action`
+    - `preview.sequence_remote`, `preview.annotations_remote`
+    - `prepare_report`
+
+- `helper_interpretation`
+  - arguments:
+    - required: `helper_id` (id or alias)
+    - optional: `catalog_path`
+  - behavior:
+    - resolves one helper entry through the shared catalog/alias lookup logic
+      and returns the normalized helper-construct interpretation if semantics
+      are available
+  - result:
+    - `query`
+    - `catalog_path`
+    - `interpretation` (`null` when the entry exists but carries no structured
+      helper semantics)
+
+- `ui_intents`
+  - arguments:
+    - `state_path?` (optional; accepted for interface symmetry)
+  - behavior:
+    - executes shared shell command: `ui intents`
+  - result:
+    - structured payload schema: `gentle.ui_intents.v1`
+    - includes stable `targets`, `target_details`, `target_metadata`,
+      `commands`, and deterministic notes
+    - `target_details[]` now carries per-target discoverability metadata:
+      `title`, `detail`, `keywords`, `menu_path`, supported `actions`, and
+      stable `optional_arguments`
+    - `target_metadata[]` is retained as a compatibility alias for older
+      command-catalog clients that consumed only title/detail/keyword/action
+      records
+
+- `ui_intent`
+  - arguments:
+    - required: `action` (`open|focus`), `target`
+    - optional: `state_path`, `genome_id`, `helpers`, `catalog_path`,
+      `cache_dir`, `filter`, `species`, `latest`
+  - current stable targets:
+    - `prepared-references`
+    - `prepare-reference-genome`
+    - `retrieve-genome-sequence`
+    - `blast-genome-sequence`
+    - `import-genome-track`
+    - `pcr-design`
+    - `sequencing-confirmation`
+    - `agent-assistant`
+    - `prepare-helper-genome`
+    - `retrieve-helper-sequence`
+    - `blast-helper-sequence`
+  - behavior:
+    - executes shared shell command:
+      - `ui open TARGET ...` or `ui focus TARGET ...`
+    - for `target = prepared-references`, optional query flags can resolve
+      `selected_genome_id` deterministically through the same helper path used
+      by shared shell/CLI
+    - parser guardrails are preserved:
+      - query flags (`--helpers`, `--catalog`, `--cache-dir`, `--filter`,
+        `--species`, `--latest`) are rejected for non-`prepared-references`
+        targets
+  - result:
+    - structured payload schema: `gentle.ui_intent.v1`
+    - fields include `ui_intent`, `selected_genome_id`, optional
+      `prepared_query`, `applied=false`, and deterministic `message`
+
+- `ui_prepared_genomes`
+  - arguments:
+    - optional: `state_path`, `helpers`, `catalog_path`, `cache_dir`, `filter`,
+      `species`, `latest`
+  - behavior:
+    - executes shared shell command: `ui prepared-genomes ...`
+  - result:
+    - structured payload schema: `gentle.ui_prepared_genomes.v1`
+    - includes `prepared_count`, sorted `genomes[]`, and `selected_genome_id`
+
+- `ui_latest_prepared`
+  - arguments:
+    - required: `species`
+    - optional: `state_path`, `helpers`, `catalog_path`, `cache_dir`
+  - behavior:
+    - executes shared shell command: `ui latest-prepared SPECIES ...`
+  - result:
+    - structured payload schema: `gentle.ui_latest_prepared.v1`
+    - includes `selected_genome_id` and nested `prepared_query` payload
+
+MCP UI-intent JSON-RPC example (abbreviated):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "tools/call",
+  "params": {
+    "name": "ui_intent",
+    "arguments": {
+      "action": "open",
+      "target": "prepared-references",
+      "catalog_path": "assets/genomes.json",
+      "species": "human",
+      "latest": true
+    }
+  }
+}
+```
+
+Result envelope shape:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "result": {
+    "isError": false,
+    "structuredContent": {
+      "schema": "gentle.ui_intent.v1",
+      "selected_genome_id": "Human GRCh38 Ensembl 116",
+      "applied": false
+    }
+  }
+}
+```
+
+Adapter-equivalence guarantee for UI-intent tools:
+
+- deterministic parity tests compare MCP UI-intent tool outputs with direct
+  shared shell `ui ...` command outputs for:
+  - intent catalog (`ui_intents`)
+  - prepared query (`ui_prepared_genomes`)
+  - latest helper (`ui_latest_prepared`)
+  - open/focus intent resolution (`ui_intent`)
+
+- `macros run/instance-list/instance-show/template-list/template-show/template-put/template-delete/template-import/template-run`
+  - shared-shell macro adapter family for full operation/workflow scripting
+  - template persistence is backed by engine operations
+    `UpsertWorkflowMacroTemplate`/`DeleteWorkflowMacroTemplate`
+  - `template-put` supports optional typed port contracts:
+    - `--input-port PORT_ID:KIND[:one|many][:required|optional][:description]`
+    - `--output-port PORT_ID:KIND[:one|many][:required|optional][:description]`
+  - `template-import PATH` accepts:
+    - one pack JSON file (`gentle.cloning_patterns.v1`)
+    - one single-template JSON file (`gentle.cloning_pattern_template.v1`)
+    - one directory tree (recursive `*.json` import; files must use one of the
+      schemas above)
+  - imports are transactional; if one template fails validation, no imported
+    template changes are kept
+  - expanded scripts can execute `op ...` and `workflow ...` statements and
+    optionally roll back via `--transactional`
+  - `template-run` supports non-mutating preflight mode via `--validate-only`
+  - template-run responses now include a preflight payload
+    (`gentle.macro_template_preflight.v1`) with warnings/errors and typed
+    input/output port validation rows (`contract_source` indicates whether
+    checks came from template metadata or routine catalog)
+  - preflight includes cross-port semantic checks (alias/collision checks,
+    input sequence/container consistency, and sequence-anchor semantics when
+    sequence context is unambiguous)
+  - routine-family semantic checks are now supported:
+    - Gibson routines validate adjacent fragment overlap compatibility against
+      configured overlap length before execution
+    - Restriction routines validate enzyme-name resolution, duplicate-enzyme
+      misuse, enzyme-site presence across bound input sequences, and common
+      digest parameter sanity (`left_fragment`/`right_fragment`,
+      `extract_from`/`extract_to`)
+  - mutating `macros run` / `macros template-run` executions always persist one
+    lineage macro-instance record (`ok`/`failed`/`cancelled`)
+  - successful runs return `macro_instance_id`; failed runs include
+    `macro_instance_id=...` in error messages
+  - `macros instance-list` and `macros instance-show` expose persisted lineage
+    macro-instance records as first-class introspection contracts
+
+- `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]`
+  - shared-shell/CLI routine catalog discovery surface
+  - default catalog path: `assets/cloning_routines.json`
+  - typed catalog schema: `gentle.cloning_routines.v1`
+  - response schema: `gentle.cloning_routines_list.v1`
+  - filters are case-insensitive; query performs substring match across
+    routine id/title/family/status/template/tags/summary plus explainability
+    metadata fields
+  - when `--seq-id` is supplied, planning estimates also consume the active
+    construct-reasoning graph for that sequence so variant-derived assay
+    suggestions can bias routine-family ranking deterministically
+- `routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]`
+  - shared-shell/CLI routine explainability surface
+  - response schema: `gentle.cloning_routine_explain.v1`
+  - returns one routine definition plus normalized explanation payload
+    (purpose/mechanism/requires/contraindications/disambiguation/failure modes)
+    and resolved confusing alternatives
+  - when `--seq-id` is supplied, the response also includes the
+    sequence-aware `routine_preference_context` plus a planning estimate for
+    that routine, so explain-stage inspection stays aligned with list/compare
+    ranking for the same construct-reasoning graph
+- `routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]`
+  - shared-shell/CLI deterministic routine comparison surface
+  - response schema: `gentle.cloning_routine_compare.v1`
+  - returns both routine definitions plus comparison payload:
+    shared/unique tags, cross-reference status, aligned difference-matrix rows,
+    and merged disambiguation questions
+  - includes planning-aware estimate rows in comparison payload:
+    - `estimated_time_hours`
+    - `estimated_cost`
+    - `local_fit_score`
+    - `composite_meta_score`
+  - `--seq-id` applies the same active-sequence construct-reasoning context
+    used by `routines list`, so compare-stage estimates stay aligned with
+    variant-driven assay preferences
+
+- Planning meta-layer contracts (shared shell/CLI, engine-owned):
+  - profile schema: `gentle.planning_profile.v1`
+  - objective schema: `gentle.planning_objective.v1`
+  - estimate schema: `gentle.planning_estimate.v1`
+  - suggestion schema: `gentle.planning_suggestion.v1`
+  - sync-status schema: `gentle.planning_sync_status.v1`
+  - merge precedence for effective profile:
+    - `global_profile -> confirmed_agent_overlay -> project_override`
+  - purchasing latency heuristic in v1:
+    - each missing required material class adds default
+      `procurement_business_days_default` (default `10`) to estimate
+      (Monday-Friday business-day model; no holiday calendar yet)
+    - business-day delays are converted to `estimated_time_hours` with a
+      deterministic weekend-aware factor (`24h * 7/5` per business day)
+  - schema compatibility rule:
+    - profile/objective payloads with mismatched schema ids are rejected
+      (`InvalidInput`) instead of silently coerced
+- `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
+  - inspect one planning profile scope or merged effective profile
+- `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`
+  - set/replace selected planning profile scope
+- `planning profile clear [--scope global|project_override|confirmed_agent_overlay]`
+  - clear selected planning profile scope
+- `planning objective show`
+  - inspect current planning objective
+  - objective may now also carry:
+    - optional `helper_profile_id`
+    - optional `preferred_routine_families[]`
+  - when present, routine-ranking routes synthesize helper-aware
+    `routine_preference_context` and apply a transparent family-alignment bonus
+  - the same synthesized context is now also reused by routine-decision traces
+    and engine-owned macro-template suggestions so planner-facing adapters do
+    not need their own helper-specific heuristics
+- `planning objective set JSON_OR_@FILE`
+  - set/replace planning objective
+- `planning objective clear`
+  - clear planning objective (engine defaults apply)
+- `planning suggestions list [--status pending|accepted|rejected]`
+  - list pending/resolved planning sync suggestions
+- `planning suggestions accept SUGGESTION_ID`
+  - accept suggestion and apply patch into confirmed overlay/objective
+- `planning suggestions reject SUGGESTION_ID [--reason TEXT]`
+  - reject suggestion with optional reason
+- `planning sync status`
+  - inspect planning sync lifecycle metadata
+- `planning sync pull JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]`
+  - register inbound advisory suggestion as pending
+- `planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]`
+  - register outbound advisory suggestion as pending
+  - payload for `planning sync pull|push`:
+    - optional `profile_patch` (`gentle.planning_profile.v1`)
+    - optional `objective_patch` (`gentle.planning_objective.v1`)
+    - optional `message`
+  - activation policy remains explicit user action (`accept`/`reject`);
+    no auto-apply in v1
+
+- `screenshot-window OUTPUT.png`
+  - currently disabled by security policy
+  - returns deterministic disabled message from shared shell/CLI/GUI command
+    paths
+  - kept as reserved adapter contract for future re-enable after explicit
+    endpoint-security approval
+
+- `agents list [--catalog PATH]`
+  - Lists configured agent systems from catalog JSON.
+  - Default catalog: `assets/agent_systems.json`.
+
+- `agents preflight SYSTEM_ID [--live] [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]`
+  - Returns read-only transport/runtime metadata as `gentle.agent_preflight.v1`.
+  - Default behavior is config-only for CLI/MCP compatibility.
+  - `--live` adds a non-generating model-discovery probe for
+    `native_openai` and `native_openai_compat`.
+  - `live_probe` fields:
+    - `enabled`
+    - `attempted_endpoints`
+    - `selected_endpoint`
+    - `reachable`
+    - `auth_ok`
+    - `model_list_ok`
+    - `selected_model_seen`
+    - `status_class`:
+      `ok | missing_key | auth_failed | quota_or_billing | model_missing | endpoint_unreachable | unsupported_transport | provider_error`
+    - `message`
+    - `provider_error_code`
+  - Endpoint policy:
+    - OpenAI: `GET /models` with bearer auth
+    - OpenAI-compatible: `/models`, then `/v1/models` fallback when the base
+      URL is not already `/v1`
+    - no chat/completion/responses request is made
+    - quota/billing is reported only when that provider error appears during
+      the model-list probe
+
+- `agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]`
+  - Returns discovered model ids as `gentle.agent_models.v1`.
+
+- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+  - Invokes one configured agent system via catalog transport.
+  - `--base-url` applies a per-request runtime base URL override for native
+    transports (`native_openai`, `native_openai_compat`).
+  - `--model` applies a per-request runtime model override for native
+    transports (`native_openai`, `native_openai_compat`).
+  - `--timeout-secs` applies a per-request timeout override for stdio/native
+    transports (maps to `GENTLE_AGENT_TIMEOUT_SECS`).
+  - `--connect-timeout-secs` applies a per-request HTTP connect timeout override
+    for native transports (maps to `GENTLE_AGENT_CONNECT_TIMEOUT_SECS`).
+  - `--read-timeout-secs` applies a per-request read timeout override for
+    stdio/native transports (maps to `GENTLE_AGENT_READ_TIMEOUT_SECS`).
+  - `--max-retries` applies a per-request transient retry budget override
+    (maps to `GENTLE_AGENT_MAX_RETRIES`; `0` disables retries).
+  - `--max-response-bytes` applies a per-request response body/output cap
+    override (maps to `GENTLE_AGENT_MAX_RESPONSE_BYTES`).
+  - `--no-state-summary` suppresses project context injection.
+  - Suggested-command execution is per-suggestion only (no global always-execute).
+
+- `agents plan SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--no-state-summary] [--no-mutating-candidates]`
+  - Accepts prose but returns typed `gentle.agent_plan_result.v1` candidates.
+  - `shell` candidates compile to shared shell commands.
+  - `op`, `workflow`, and `ui_intent` are first-class plan payload kinds on the
+    stored JSON boundary.
+
+- `agents execute-plan PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]`
+  - Executes one stored planner candidate and returns
+    `gentle.agent_execution_result.v1`.
+  - Candidate execution never silently re-plans.
+  - Nested `agents ask` / `agents plan` / `agents execute-plan` shell payloads
+    are rejected.
+
+Machine-facing planner schemas:
+
+- `gentle.agent_plan_request.v1`
+  - fields:
+    - `schema`
+    - `system_id`
+    - `prompt`
+    - optional `state_summary`
+    - optional `max_candidates`
+    - optional `allow_mutating_candidates`
+- `gentle.agent_plan_result.v1`
+  - fields:
+    - `schema`
+    - `assistant_message`
+    - `questions[]`
+    - `candidates[]`
+  - candidate fields:
+    - `candidate_id`
+    - `title`
+    - `rationale`
+    - `kind = shell | op | workflow | ui_intent`
+    - `mutating`
+    - `requires_confirmation`
+    - `execution_mode = ask | auto`
+    - exactly one payload field:
+      - `shell_command`
+      - `operation`
+      - `workflow`
+      - `ui_intent`
+- `gentle.agent_execution_result.v1`
+  - fields:
+    - `schema`
+    - `candidate_id`
+    - `title`
+    - `kind`
+    - `mutating`
+    - `requires_confirmation`
+    - `confirmed`
+    - `state_changed`
+    - `output`
+
+Agent bridge catalog schema (`gentle.agent_systems.v1`):
+
+```json
+{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {
+      "id": "openai_gpt5_stdio",
+      "label": "OpenAI GPT-5 (stdio bridge)",
+      "description": "Optional human-readable description",
+      "transport": "external_json_stdio",
+      "command": ["openai-agent-bridge", "--model", "gpt-5"],
+      "env": {},
+      "working_dir": null
+    },
+    {
+      "id": "openai_gpt5_native",
+      "label": "OpenAI GPT-5 (native HTTP)",
+      "transport": "native_openai",
+      "model": "gpt-5",
+      "base_url": "https://api.openai.com/v1",
+      "env": {}
+    }
+  ]
+}
+```
+
+Transport notes:
+
+- `builtin_echo`: offline/demo transport.
+- `external_json_stdio`: requires local bridge executable from `command[0]`.
+- `native_openai`: built-in OpenAI HTTP adapter; requires `OPENAI_API_KEY`
+  (environment or system-level `env` override in catalog entry).
+- `native_openai_compat`: built-in OpenAI-compatible local HTTP adapter
+  (`/chat/completions`), intended for local services such as Jan/Msty/Ollama
+  when they expose an OpenAI-compatible endpoint. API key is optional.
+- `GENTLE_AGENT_BASE_URL` (or CLI `--base-url`) overrides catalog `base_url`
+  per request for `native_openai` and `native_openai_compat`.
+- `GENTLE_AGENT_MODEL` (or CLI `--model`) overrides catalog `model` per request
+  for `native_openai` and `native_openai_compat`.
+- `GENTLE_AGENT_TIMEOUT_SECS` (or CLI `--timeout-secs`) overrides request
+  timeout per attempt for agent transports.
+- `GENTLE_AGENT_CONNECT_TIMEOUT_SECS` (or CLI `--connect-timeout-secs`)
+  overrides HTTP connect timeout for native transports.
+- `GENTLE_AGENT_READ_TIMEOUT_SECS` (or CLI `--read-timeout-secs`) overrides
+  read timeout for stdio/native transports.
+- `GENTLE_AGENT_MAX_RETRIES` (or CLI `--max-retries`) overrides transient retry
+  count (`0` disables retries).
+- `GENTLE_AGENT_MAX_RESPONSE_BYTES` (or CLI `--max-response-bytes`) overrides
+  response-size cap per attempt (stdout/stderr or HTTP body).
+- `native_openai_compat` requires a concrete model name; value `unspecified`
+  is treated as missing and the request is rejected until a model is provided.
+- `native_openai_compat` does not silently switch host/port; it uses catalog
+  `base_url` or explicit `GENTLE_AGENT_BASE_URL`.
+
+Agent request payload schema (`gentle.agent_request.v1`):
+
+```json
+{
+  "schema": "gentle.agent_request.v1",
+  "system_id": "openai_gpt5_stdio",
+  "prompt": "User request text",
+  "sent_at_unix_ms": 1768860000000,
+  "state_summary": {}
+}
+```
+
+Agent response payload schema (`gentle.agent_response.v1`):
+
+```json
+{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "Text response",
+  "questions": ["Optional follow-up question"],
+  "suggested_commands": [
+    {
+      "title": "Optional short label",
+      "rationale": "Optional reason",
+      "command": "state-summary",
+      "execution": "ask"
+    }
+  ]
+}
+```
+
+Agent execution intent semantics:
+
+- `chat`: explain/ask only, never executed as shell command.
+- `ask`: executable suggestion requiring explicit user confirmation.
+- `auto`: executable suggestion eligible for automatic execution only when
+  caller enables `--allow-auto-exec`.
+
+Agent schema/compatibility policy:
+
+- `schema` is mandatory for catalog/request/response JSON objects.
+- Supported major versions (current): `gentle.agent_systems.v1`,
+  `gentle.agent_request.v1`, `gentle.agent_response.v1`.
+- Future incompatible major versions (for example `.v2`) are rejected with a
+  deterministic schema-unsupported error.
+- Response validation is strict for canonical fields:
+  - top-level allowed: `schema`, `assistant_message`, `questions`,
+    `suggested_commands` plus extension keys prefixed with `x_` or `x-`
+  - `suggested_commands[]` allowed: `title`, `rationale`, `command`,
+    `execution` plus extension keys prefixed with `x_` or `x-`
+  - unsupported canonical fields (for example `commands`, `mode`) are rejected
+
+Execution safety rules:
+
+- There is no global always-execute mode.
+- Execution is per suggestion:
+  - explicit run (`--execute-index`, `--execute-all`, GUI row `Run`)
+  - optional auto-run only for `execution = auto` + `--allow-auto-exec`
+- Recursive `agents ask` execution from suggested commands is blocked.
+
+Failure-handling policy for external adapters:
+
+- Adapter invocations use bounded retry with exponential backoff for transient
+  failures.
+- OpenAI `429` with `insufficient_quota` is treated as non-transient (no retry)
+  and returned with the original API error body plus billing/usage guidance.
+- Missing/unreachable adapter binaries fail gracefully with deterministic
+  adapter-unavailable errors.
+- CLI/shell errors are stable and prefixed for scripting, e.g.:
+  - `AGENT_INVALID_INPUT`
+  - `AGENT_SCHEMA_VALIDATION`
+  - `AGENT_SCHEMA_UNSUPPORTED`
+  - `AGENT_ADAPTER_UNAVAILABLE`
+  - `AGENT_ADAPTER_TRANSIENT`
+  - `AGENT_ADAPTER_FAILED`
+  - `AGENT_RESPONSE_PARSE`
+  - `AGENT_RESPONSE_VALIDATION`
+
+ClawBio/OpenClaw integration scaffold schemas:
+
+- integration path:
+  `integrations/clawbio/skills/gentle-cloning/`
+- included helper launchers:
+  - `gentle_local_checkout_cli.sh` for local editable GENtle checkouts
+  - `gentle_apptainer_cli.sh` for Apptainer/Singularity-backed `:cli` images
+- wrapper request schema: `gentle.clawbio_skill_request.v1`
+  - `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|gene-protein-2d-gel|agent-plan|agent-execute-plan|raw`
+  - optional: `state_path`, `timeout_secs`
+  - optional: `expected_artifacts[]`
+    - wrapper-declared output files to copy into the ClawBio output bundle
+      after command execution
+    - relative paths resolve from the actual execution working directory
+    - declared `.svg` paths remain the internal render/provenance source, but
+      the wrapper now also rasterizes them into messenger-ready PNG artifacts
+      in the output bundle at fixed deterministic scale `2.0`
+    - text-bearing SVG rasterization requires at least one font face visible
+      to `resvg`; `svg-png` reports `font_face_count` and fails early if an
+      SVG contains text but no fonts are available. Headless deployments can
+      install system fonts or set `GENTLE_SVG_FONT_FILE` /
+      `GENTLE_SVG_FONT_DIR`.
+  - mode-specific:
+    - `skill-info`: reports ClawBio skill/catalog metadata without invoking
+      `gentle_cli`
+    - `shell`: `shell_line`
+    - `op`: `operation` (JSON object/string)
+    - `workflow`: `workflow` or `workflow_path`
+      - relative `workflow_path` resolves via current working directory, then
+        `GENTLE_REPO_ROOT`, then the local GENtle repo containing the scaffold
+        when discoverable
+    - `gene-protein-2d-gel`: `gene_symbol`, optional `species` (default
+      `homo_sapiens`), optional `source` (currently `ensembl`), and optional
+      `ladders[]`; the wrapper builds a deterministic workflow that fetches
+      the expanded Ensembl gene record, imports transcript/exon/CDS features,
+      derives protein-coding mRNA products, renders a 2D pI-vs-kDa SVG, and
+      promotes the declared SVG into the PNG-first artifact bundle
+    - `agent-plan`: `system_id`, `prompt`, optional planner/runtime overrides
+      such as `catalog_path`, `base_url`, `model`, `max_candidates`,
+      `include_state_summary`, and `allow_mutating_candidates`
+    - `agent-execute-plan`: `plan` or `plan_path`, `candidate_id`, optional
+      `confirm`
+    - `raw`: `raw_args[]`
+- wrapper result schema: `gentle.clawbio_skill_result.v1`
+  - `status`: `ok|command_failed|timeout|failed|degraded_demo`
+  - includes resolver details, executed command, exit code, stdout/stderr, and
+    generated artifact paths
+  - `stdout_json` is populated when the wrapped `gentle_cli` stdout parses as
+    JSON
+  - `chat_summary_lines[]` is populated when `stdout_json.schema` is
+    `gentle.sequence_context_view.v1`, so ClawBio/OpenClaw can relay the
+    compact sequence-context summary before attaching larger SVG/BED artifacts
+  - when no domain-specific summary is available but a command completed with
+    parseable output, the wrapper synthesizes a short execution summary so
+    chat renderers still show the command and output shape instead of only
+    report section headings
+  - `artifacts.collected[]` may enumerate declared output files copied into the
+    wrapper bundle with `declared_path`, `bundle_path`, `source_path`,
+    `copied_path`, and optional `derived_from`
+  - figure-oriented `preferred_artifacts[]` now points at PNG bundle outputs
+    rather than SVG paths
+    - single-figure runs promote one rasterized `generated/...png`
+    - multi-figure runs promote one best-first
+      `generated/clawbio_storyboard.png`
+    - original SVGs may still remain in the bundle as provenance/supporting
+      artifacts, but messenger-facing consumers should prefer the PNG outputs
+  - `artifact_summary` may carry
+    `gentle.clawbio_artifact_bundle_summary.v1` with:
+    - `best_first_artifact`
+    - `preferred_artifact_count`
+    - `displayable_artifact_count`
+    - `collected_artifact_count`
+    - `continuation_action_count`
+    - short `summary_lines[]` suitable for chat/report previews
+  - browser/OpenClaw inline image display remains a later ClawBio-side task;
+    this phase is limited to PNG-first bundle production inside `gentle_rs`
+  - wrapper `agent-plan` / `agent-execute-plan` modes intentionally share the
+    typed GENtle planner boundary instead of routing machine consumers through
+    the chat-oriented `agents ask` UX
+- service handoff payload: `gentle.service_handoff.v1`
+  - produced by `services handoff [--scope NAME] [--output PATH]`
+  - embeds the normal `gentle.service_readiness.v1` status as
+    `service_readiness`
+  - adds chat-gateway decision fields:
+    - `readiness[]` with `resource_key`, `display_name`, `resource_kind`,
+      `prepared`, `lifecycle_status`, and short status text
+    - `suggested_actions[]` with deterministic GENtle shell commands that are
+      safe to offer next
+    - `running_actions[]` with refresh/status commands for already-active
+      shared prepares
+    - `blocked_actions[]` for useful but not immediately executable setup,
+      such as ATtRACT sync before a local ZIP path is known
+    - `preferred_demo_actions[]` for low-friction demo commands that can be
+      shown by ClawBio without inventing route logic
+    - `status_overview` with lifecycle counts, an overall
+      `ready|setup_needed|setup_running|attention_needed` state, and one
+      recommended next action for compact chat handoff
+    - `environment_hints[]` for deployment variables such as
+      `GENTLE_CLI_CMD`, `GENTLE_REPO_ROOT`, `GENTLE_REFERENCE_CACHE_DIR`,
+      `GENTLE_HELPER_CACHE_DIR`, and `GENTLE_CUTRUN_CACHE_DIR`
+  - the ClawBio wrapper normalizes `stdout_json.suggested_actions[]`,
+    `stdout_json.preferred_demo_actions[]`, and
+    `stdout_json.blocked_actions[]` into top-level `result.json` fields,
+    adding nested `gentle.clawbio_skill_request.v1` payloads where an action is
+    executable so conversational confirmation/execution does not need to parse
+    the raw GENtle payload
+  - `skill-info` now also reports `ui_intent_support` metadata describing how
+    the wrapper surfaces shared UI-intent discovery through `capabilities`
+  - `capabilities` now performs a best-effort auxiliary `ui intents` probe
+    through the same resolved runtime
+    - on success, `result.json.ui_intent_catalog` carries the shared
+      `gentle.ui_intents.v1` payload and `suggested_actions[]` gains
+      `kind = ui_intent` entries with structured `ui_intent` metadata plus
+      executable `ui open TARGET` shell requests
+    - on failure or older runtimes, `result.json.ui_intent_catalog_error`
+      captures the non-fatal probe failure while the main `capabilities`
+      request still succeeds
+- Telegram guide payload: `gentle.telegram_guide.v1`
+  - produced by
+    `services guide --channel telegram [--section SECTION] [--gene SYMBOL]`
+  - intended for bench-user chat orientation, while
+    `services handoff --scope clawbio` remains the operator/setup route
+  - fields:
+    - `summary_lines[]` with a compact introduction and optional gene prompt
+    - `readiness_summary_lines[]` copied from the current service-readiness
+      view
+    - `menu_sections[]` for the available guide chapters
+    - `suggested_actions[]` as lightweight navigation links
+    - `blocked_actions[]` copied from GENtle-owned setup/readiness state
+  - guide navigation uses normal action records with
+    `kind = guide_section`, `requires_confirmation = false`, and a `shell_line`
+    that invokes another guide section such as
+    `services guide --channel telegram --section tfbs --gene TP73`
+  - when `--gene` is omitted, gene-aware sections use deterministic defaults
+    such as `TERT`/`TP73` for promoter-TFBS, `TP73` for gene context, and
+    `TP73`/`TP53` for isoform demos
+- reproducibility outputs:
+  - `report.md`
+  - `result.json`
+  - `reproducibility/commands.sh`
+  - `reproducibility/environment.yml`
+  - `reproducibility/checksums.sha256`
+- included bootstrap example requests:
+  - `request_services_status.json`
+  - `request_services_telegram_guide.json`
+  - `request_services_handoff.json`
+  - `request_genomes_list_human.json`
+  - `request_genomes_status_grch38.json`
+  - `request_genomes_prepare_grch38.json`
+  - `request_helpers_status_puc19.json`
+  - `request_helpers_prepare_puc19.json`
+- included follow-on example requests:
+  - `request_genomes_extract_gene_tp53.json`
+  - `request_helpers_blast_puc19_short.json`
+  - `request_workflow_vkorc1_planning.json`
+  - `request_protocol_cartoon_gibson_svg.json`
+    - declares `expected_artifacts[]` so the generated SVG is copied into the
+      output bundle under `generated/...` and rasterized into the PNG-first
+      ClawBio contract
+  - `request_cdna_pcr_test_demo_direct.json`,
+    `request_cdna_qpcr_taqman_test_demo_direct.json`, and
+    `request_workflow_cdna_pcr_qpcr_assay_test_offline.json`
+    - declare cDNA assay transcript-map SVG artifacts generated by
+      `--svg` / `svg_path`, so ClawBio can show where PCR/qPCR products are
+      functional across the tested transcript set
+  - `request_workflow_cdna_pcr_qpcr_product_gel_nonspecific_offline.json`,
+    `request_cdna_pcr_products_gel_demo_direct.json`, and
+    `request_cdna_qpcr_taqman_products_gel_demo_direct.json`
+    - request product materialization / `product_gel_svg_path`, so detected
+      cDNA PCR/qPCR products are promoted into GENtle sequences, grouped into
+      one vial/container, and exported as product-gel SVG artifacts for
+      ClawBio-first display
+
+Planned operation refinements:
+
+- `MergeContainers { inputs, output_prefix? }`
+  - Explicitly models wet-lab mixing of multiple tubes/pools.
+- Protocol-based ligation:
+  - `Ligation { input_container, protocol, output_container?, ... }`
+  - `protocol` determines allowed end joins.
+  - Initial protocol values:
+    - `sticky`
+    - `blunt`
+  - Future protocol values may include established ligation workflows
+    represented as named presets.
+
+Current parameter support:
+
+- `max_fragments_per_container` (default `80000`)
+  - limits digest fragment output per operation
+  - also serves as ligation product-count limit guard
+- `require_verified_genome_anchor_for_extension` (default `false`)
+  - when `true`, `ExtendGenomeAnchor` requires anchor provenance with
+    `anchor_verified=true`
+  - anchors with `anchor_verified=false` or missing verification status are
+    rejected in strict mode
+  - alias parameters accepted: `strict_genome_anchor_verification`,
+    `strict_anchor_verification`
+- `genome_anchor_prepared_fallback_policy` (default `single_compatible`)
+  - controls how `ExtendGenomeAnchor` / `VerifyGenomeAnchor` resolve anchor
+    genome ids when exact prepared cache id is not present.
+  - accepted values:
+    - `off` (no compatibility fallback; must match exact prepared id)
+    - `single_compatible` (auto-fallback only when one compatible prepared
+      cache exists)
+    - `always_explicit` (never auto-fallback; require explicit selection even
+      when only one compatible prepared cache exists)
+  - alias parameters accepted: `genome_anchor_fallback_mode`,
+    `genome_anchor_prepared_mode`
+- primer-design backend controls:
+  - `primer_design_backend` (default `auto`)
+    - accepted values: `auto`, `internal`, `primer3`
+    - `auto` tries Primer3 and falls back deterministically to internal scoring
+      with explicit warning + fallback reason in report metadata
+  - `primer3_executable` (default `"primer3_core"`)
+    - executable path/name used when backend is `primer3` or `auto`
+    - alias parameters accepted: `primer3_backend_executable`, `primer3_path`
+- `feature_details_font_size` (default `9.0`, range `8.0..24.0`)
+  - controls GUI font size for the feature tree entries and feature range details
+- `regulatory_feature_max_view_span_bp` (default `50000`, range `>= 0`)
+  - hides regulatory feature overlays in linear view when current view span
+    exceeds this threshold (`0` disables regulatory overlays)
+- `gc_content_bin_size_bp` (default `100`, range `>= 1`)
+  - controls GC-content aggregation bin size for linear/circular rendering and
+    SVG export
+- Linear DNA-letter routing parameters:
+  - `linear_sequence_letter_layout_mode` (default `AutoAdaptive`)
+    - supported canonical modes:
+      - `auto|adaptive|auto_adaptive`
+      - `standard|standard_linear`
+      - `helical|continuous_helical`
+      - `condensed_10_row|condensed`
+    - auto mode uses deterministic viewport-density tiers:
+      - `<= 1.5x`: standard
+      - `<= 2x`: helical (if compressed letters enabled)
+      - `<= 10x`: condensed-10 (if compressed letters enabled)
+      - `> 10x`: `OFF`
+  - `linear_sequence_helical_letters_enabled` (default `true`)
+    - applies to auto mode only (allows/disallows compressed auto tiers)
+  - `linear_sequence_helical_phase_offset_bp` (range `0..9`)
+    - seam offset used by helical/condensed row mapping
+  - reverse/helical strand geometry controls:
+    - `linear_show_double_strand_bases` / `linear_show_reverse_strand_bases`
+      (bool alias pair; controls reverse-strand letter visibility)
+    - `linear_helical_parallel_strands` (default `true`)
+      - `true`: forward/reverse helical slant stays parallel
+      - `false`: forward/reverse helical slant is mirrored (cross-over look)
+    - `reverse_strand_visual_opacity` (range `0.2..1.0`, default `0.55`)
+      - shared reverse-strand emphasis in linear map and sequence panel
+- Legacy linear-letter threshold knobs are compatibility-only and return
+  deterministic deprecated no-op messages (no routing effect):
+  - `linear_sequence_base_text_max_view_span_bp`
+  - `linear_sequence_helical_max_view_span_bp`
+  - `linear_sequence_condensed_max_view_span_bp`
+- VCF display filter parameters (shared GUI/SVG state):
+  - `vcf_display_show_snp`
+  - `vcf_display_show_ins`
+  - `vcf_display_show_del`
+  - `vcf_display_show_sv`
+  - `vcf_display_show_other`
+  - `vcf_display_pass_only`
+  - `vcf_display_use_min_qual`
+  - `vcf_display_min_qual`
+  - `vcf_display_use_max_qual`
+  - `vcf_display_max_qual`
+  - `vcf_display_required_info_keys` (CSV string or string array)
+- TFBS display filter parameters (shared GUI/SVG state):
+  - `show_tfbs`
+  - `tfbs_display_use_llr_bits`
+  - `tfbs_display_min_llr_bits`
+  - `tfbs_display_use_llr_quantile`
+  - `tfbs_display_min_llr_quantile`
+  - `tfbs_display_use_true_log_odds_bits`
+  - `tfbs_display_min_true_log_odds_bits`
+  - `tfbs_display_use_true_log_odds_quantile`
+  - `tfbs_display_min_true_log_odds_quantile`
+- Repeat display parameter (shared GUI/SVG state):
+  - `show_repeat_features`
+  - equivalent visibility target: `SetDisplayVisibility { target: "RepeatFeatures", visible }`
+- Restriction-enzyme display parameters (shared GUI/SVG state):
+  - `show_restriction_enzymes`
+  - `show_restriction_enzyme_sites` (bool alias)
+  - `restriction_enzyme_display_mode`
+  - `restriction_display_mode` (string alias)
+    - supported values:
+      - `preferred_only`
+      - `preferred_and_unique`
+      - `unique_only`
+      - `all_in_view`
+  - `preferred_restriction_enzymes`
+  - `preferred_restriction_enzymes_csv` (CSV alias)
+  - `restriction_preferred_enzymes` (CSV/string-array alias)
+    - accepts either a CSV string or a string array
+- BLAST options-layer parameters:
+  - `blast_options_override` (JSON object or `null`)
+    - project-level BLAST option layer merged before per-command request JSON
+    - supports the same keys as request JSON (`task`, `max_hits`, `thresholds`)
+  - `blast_options_defaults_path` (string path or `null`)
+    - optional defaults-file path used ahead of project/request layers
+    - if unset, engine falls back to `assets/blast_defaults.json`
+
+Current ligation protocol behavior:
+
+- `protocol` is mandatory.
+- If `protocol = Blunt`, ligation enumerates ordered input pairs with blunt-end
+  compatibility checks.
+- If `protocol = Sticky`, ligation enumerates ordered input pairs with sticky-end
+  overhang compatibility checks.
+- `unique = true` requires exactly one product.
+
+`FilterByMolecularWeight` semantics:
+
+- Applies a bp-range filter across provided input sequence ids.
+- Effective accepted range is expanded by `error`:
+  - `effective_min = floor(min_bp * (1 - error))`
+  - `effective_max = ceil(max_bp * (1 + error))`
+- `unique = true` requires exactly one match, otherwise the operation fails.
+
+`FilterByDesignConstraints` semantics:
+
+- Applies practical design-constraint filters across provided input sequence ids.
+- Optional GC bounds:
+  - `gc_min` and/or `gc_max` (fractional range `0.0..1.0`)
+  - when both are provided, `gc_min <= gc_max` is required
+- Optional homopolymer cap:
+  - `max_homopolymer_run >= 1`
+  - rejects candidates with a longer A/C/G/T run
+- `reject_ambiguous_bases` (default `true`):
+  - rejects sequences containing non-ACGT letters
+- `avoid_u6_terminator_tttt` (default `true`):
+  - rejects sequences containing `TTTT`
+- Optional `forbidden_motifs`:
+  - IUPAC motifs; reject when motif appears on either strand
+- `unique = true` requires exactly one match, otherwise the operation fails.
+
+Guide-design semantics:
+
+- Guide sets persist in `ProjectState.metadata["guide_design"]`
+  (`schema = gentle.guide_design.v1`) and include:
+  - guide sets
+  - practical-filter reports
+  - oligo sets
+  - audit log entries for guide operations/exports
+- `UpsertGuideSet`:
+  - normalizes guide fields and validates required properties
+  - sorts by rank (then guide id) and rejects duplicate `guide_id` within one set
+- `FilterGuidesPractical`:
+  - applies deterministic practical filters over one guide set
+  - supports GC bounds, global/per-base homopolymer limits, ambiguous-base
+    rejection, U6 `TTTT` avoidance, dinucleotide repeat cap, forbidden motifs,
+    and required 5' base checks
+  - can emit a passed-only output guide set (`output_guide_set_id`)
+  - always persists a structured per-guide report with reasons/warnings/metrics
+- `GenerateGuideOligos`:
+  - generates forward/reverse oligos using a named template
+  - supports optional 5' G extension and passed-only mode
+  - persists generated oligo records in named oligo sets
+- `ExportGuideOligos`:
+  - exports an oligo set as `csv_table`, `plate_csv` (96/384), or `fasta`
+  - records export actions in the guide-design audit log
+- `ExportGuideProtocolText`:
+  - exports a deterministic human-readable protocol text artifact
+  - optional QC checklist can be included/excluded
+
+Candidate-set semantics:
+
+- `GenerateCandidateSet` creates a persisted candidate window set over one source
+  sequence and computes baseline metrics for each candidate.
+- `GenerateCandidateSetBetweenAnchors` creates a persisted candidate window set
+  constrained to the in-sequence interval between two local anchors.
+- `ScoreCandidateSetExpression` computes a derived metric from an arithmetic
+  expression over existing metrics.
+- `ScoreCandidateSetDistance` computes feature-distance metrics against filtered
+  feature targets.
+- `FilterCandidateSet` keeps/drops candidates by absolute bounds and/or quantile
+  bounds for a named metric.
+- `CandidateSetOp` supports set algebra (`union`, `intersect`, `subtract`) over
+  candidate identity (`seq_id`, `start_0based`, `end_0based`).
+- `ScoreCandidateSetWeightedObjective` computes one metric from weighted
+  objective terms (`maximize`/`minimize` per term, optional normalization).
+- `TopKCandidateSet` selects an explicit top-k subset for one metric with a
+  deterministic tie-break policy.
+- `ParetoFrontierCandidateSet` keeps non-dominated candidates for multiple
+  objectives (`maximize`/`minimize` per objective), with optional tie-break
+  truncation.
+- Workflow macro templates are persisted in project metadata:
+  - `UpsertWorkflowMacroTemplate` stores/replaces named templates
+  - `DeleteWorkflowMacroTemplate` removes templates
+  - each template now carries `template_schema`
+    (`gentle.cloning_macro_template.v1`) so cloning-operation macro intent is
+    explicit at engine level
+  - optional `details_url` can link to external protocol/reference material
+  - optional typed `input_ports`/`output_ports` can be persisted directly in
+    template metadata (same port shape as routine catalog ports)
+  - template expansion/binding is exposed through adapter command surfaces
+    (`macros template-*`, including `macros template-import PATH`)
+  - expanded scripts run through shared shell execution (`macros run`) and can
+    orchestrate full cloning operations via `op ...` or `workflow ...` payloads
+  - shipped starter assets:
+    - legacy pack: `assets/cloning_patterns.json` (`gentle.cloning_patterns.v1`)
+    - hierarchical catalog: `assets/cloning_patterns_catalog/**/*.json`
+      (`gentle.cloning_pattern_template.v1`, one template per file)
+    - Gibson baseline template:
+      `assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json`
+    - Restriction baseline template:
+      `assets/cloning_patterns_catalog/restriction/digest_ligation/digest_ligate_extract_sticky.json`
+- Typed cloning-routine catalog baseline:
+  - manifest: `assets/cloning_routines.json`
+  - schema: `gentle.cloning_routines.v1`
+  - typed routine metadata fields include routine family/status/tags, linked
+    template name/path, and typed input/output port declarations
+  - includes Gibson + restriction family baselines:
+    - `gibson.two_fragment_overlap_preview`
+    - `restriction.digest_ligate_extract_sticky`
+  - adapter discovery surface:
+    `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]`
+  - explainability and comparison surfaces:
+    - `routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]`
+    - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]`
+- Macro-instance lineage baseline:
+  - mutating `macros run` / `macros template-run` append one
+    `LineageMacroInstance` record in project lineage state for success and
+    failure pathways
+  - records include deterministic `macro_instance_id`, optional
+    `routine_id/template_name`, typed bound inputs/outputs, emitted `op_id`s,
+    status, and optional `status_message`
+  - lineage graph + lineage SVG consume these records as macro box nodes with
+    explicit input/output edges where sequence/container references resolve
+- Candidate macro templates are persisted in project metadata:
+  - `UpsertCandidateMacroTemplate` stores/replaces named templates
+  - `DeleteCandidateMacroTemplate` removes templates
+  - optional `details_url` can link to external protocol/reference material
+  - template expansion/binding is exposed through adapter command surfaces
+    (`candidates template-*`)
+- Between-anchor generation augments baseline metrics with anchor-aware fields
+  (`distance_to_anchor_a_bp`, `distance_to_anchor_b_bp`,
+  `distance_to_nearest_anchor_bp`, interval span metadata).
+
+Feature-distance geometry controls (candidate generation and distance scoring):
+
+- `feature_geometry_mode` (optional, default `feature_span`):
+  - `feature_span`: one interval per feature using whole-feature bounds
+  - `feature_parts`: one interval per explicit location part (ignores intronic
+    gaps for multipart features)
+  - `feature_boundaries`: boundary points of explicit location parts
+- `feature_boundary_mode` (optional, default `any`):
+  - `any`, `five_prime`, `three_prime`, `start`, `end`
+  - only meaningful when `feature_geometry_mode = feature_boundaries`
+- `feature_strand_relation` (optional, default `any`):
+  - `any`, `same`, `opposite`
+  - current engine interpretation is sequence-forward relative
+    (`same = '+'`, `opposite = '-'` feature strand)
+- Directed-boundary interpretation:
+  - on `+` strand: `five_prime = start`, `three_prime = end`
+  - on `-` strand: `five_prime = end`, `three_prime = start`
+  - for unknown strand, `five_prime`/`three_prime` conservatively include both
+    boundaries.
+
+`RenderPoolGelSvg` semantics:
+
+- Accepts explicit `inputs` (sequence ids) and an output `path`.
+- Optional `container_ids` renders one lane per referenced stored container.
+- Optional `arrangement_id` renders one lane per stored serial-arrangement lane.
+- Optional `conditions` carries one shared gel-run profile for the whole render:
+  - `agarose_percent`
+  - `buffer_model` (`tae` / `tbe`)
+  - `topology_aware`
+- Computes pool migration from sequence bp length plus one deterministic
+  heuristic condition model:
+  - agarose/buffer reshape the shared migration curve
+  - topology-aware mode distinguishes:
+    - generic `circular`
+    - `supercoiled`
+    - `relaxed circular`
+    - `nicked/open circular`
+    - `linear`
+  - when sequence names/definitions/comments carry explicit circular-form hints,
+    those richer forms are used; otherwise circular sequences fall back to the
+    generic `circular` model
+- Computes sample-band brightness from estimated DNA mass proxy, not only
+  multiplicity.
+- Applies one deterministic co-migration grouping threshold so nearby fragments
+  that would plausibly collapse into one readout are exported as one merged
+  band annotation instead of several visually indistinguishable bars.
+- Chooses one or two ladders to span pool range:
+  - from explicit `ladders` list when provided
+  - otherwise from saved arrangement ladders when `arrangement_id` is present
+    and the arrangement stores a ladder choice
+  - otherwise from built-in ladder catalog (auto mode)
+- Renders ladder lanes plus pooled band lanes as SVG artifact.
+- The SVG also includes a compact fragment table for non-ladder lanes:
+  - observed apparent size
+  - actual bp
+  - topology-form hint
+  - estimated mass proxy
+  - merged-band annotation when several fragments co-migrate
+  - source fragment labels
+- When serial lanes carry interpretable roles such as `vector`, `insert_*`, and
+  `product`, the right-hand detail panel also adds `Comparison hints` for:
+  - insert vs fine ladder sizing
+  - vector vs product size-shift reading
+  - simple product-minus-vector vs summed-insert consistency checks
+  - role badges under the lane labels so generic container names still read as
+    `VECTOR`, `INSERT`, or `PRODUCT`
+- When merged bands are present, the right-hand detail panel also adds a short
+  `Merged-band notes` block that explains observed band position vs the
+  underlying actual source-size span.
+
+`RenderProteinGelSvg` semantics:
+
+- Accepts one persisted `ProteinDerivationReport` id plus an output `path`.
+- Reuses the first-class protein sequence entries already created by
+  `DeriveProteinSequences`; it does not re-derive proteins from DNA at render
+  time.
+- Computes molecular weight from amino-acid sequence content and plots bands
+  on a log-scaled kDa axis.
+- Chooses one or two protein ladders deterministically, or honors the explicit
+  `ladders` override when provided.
+- Renders one lane per derived protein plus the selected ladder lane(s), using
+  the derived protein `product` qualifier as the visible label when available
+  and keeping transcript/protein accessions in the detail text. A provenance
+  panel records the source report and selection summary.
+- This is the canonical protein-gel route for transcript-native demos such as
+  the TP73 isoform workflow; `RenderPoolGelSvg` remains DNA/bp-based.
+
+`RenderProteinGelReportsSvg` semantics:
+
+- Accepts two or more persisted `ProteinDerivationReport` ids plus an output
+  SVG `path`; one report is also accepted for deterministic scripting parity.
+- Reuses the same first-class protein sequence entries as `RenderProteinGelSvg`
+  and never re-derives proteins at render time.
+- Renders one gel column per report/gene and one band per derived isoform
+  product inside that column, with ladder lanes placed at the side(s) by the
+  shared protein-ladder resolver.
+- This is the canonical multi-gene 1D protein-gel route for ClawBio guide
+  figures such as PATZ1/TP73/TP53/TP63/SP1/BACH2 isoform molecular-weight
+  comparisons.
+
+`RenderProteaseDigestGelSvg` semantics:
+
+- Accepts either one first-class protein/peptide `seq_id`, or one
+  `ProteinDerivationReport` `report_id` plus an optional `transcript_id` for
+  selecting the derived protein row, one or more protease names or aliases, and
+  an output SVG `path`.
+- The `report_id` path is preferred inside workflows that derive proteins
+  immediately before rendering, because it follows the actual sequence id
+  created in the current state even when prior runs forced a uniqueness suffix.
+- Uses the same built-in protease catalog and cleavage matcher as
+  `ProteaseDigestProteinSequence`, but runs in prediction-only mode and does
+  not materialize peptide sequences.
+- Returns the same `gentle.protease_digest_report.v1` in `OpResult` while also
+  rendering one protein-gel lane per retained peptide product.
+- `min_length_aa` filters short peptides before rendering; `ladders` can
+  request deterministic protein ladder overlays.
+- This is the ClawBio/OpenClaw-friendly graphical insight path for protease
+  digestion because declared SVG artifacts are rasterized by the wrapper into
+  PNG-first messenger outputs.
+
+`RenderProtein2dGelSvg` semantics:
+
+- Accepts one persisted `ProteinDerivationReport` id plus an output `path`.
+- Reuses the same first-class protein sequence entries created by
+  `DeriveProteinSequences`; it does not re-derive proteins at render time.
+- Estimates isoelectric point from amino-acid composition using the shared
+  deterministic Henderson-Hasselbalch model in `AminoAcids`.
+- Places one protein spot per derived protein on a 2D gel with pI on the
+  X axis and log-scaled molecular weight on the Y axis.
+- Uses the same deterministic ladder-selection logic for Y-axis references as
+  the 1D protein-gel renderer, or honors the explicit `ladders` override.
+- Renders plot-internal pI and molecular-weight axis labels plus ladder-derived
+  kDa tick labels so messenger PNG previews remain interpretable without
+  relying on surrounding report text.
+- Renders derived protein `product` labels when available, keeps transcript /
+  protein accessions in the spot details, labels spots directly in the plot,
+  and records the source report plus transcript-selection summary in the
+  provenance panel.
+- This is the canonical 2D protein-gel route for transcript-native spot-map
+  demos and for ClawBio's parameterized Ensembl `gene-protein-2d-gel` request
+  mode; `RenderProteinGelSvg` remains the 1D lane-based route and
+  `RenderPoolGelSvg` remains DNA/bp-based.
+
+`CreateArrangementSerial` semantics:
+
+- Persists an ordered serial-lane setup over stored containers.
+- Optional `ladders` can store one symmetric ladder or one left/right ladder
+  pair for later gel preview/export reuse.
+- Also materializes one default physical rack draft:
+  - choose the smallest built-in rack/plate profile that fits the arrangement
+    payload plus ladder-reference positions
+  - place the arrangement block row-major in that rack
+  - link the arrangement back to the resulting `default_rack_id`
+
+`SetArrangementLadders` semantics:
+
+- Mutates an existing serial arrangement in place.
+- `ladders = null` clears back to shared engine auto ladder selection.
+- one ladder name means the same ladder is used on both sides during
+  arrangement-based gel preview/export.
+- two ladder names mean explicit left/right ladder selection.
+
+`SetContainerDeclaredContentsExclusive` semantics:
+
+- Mutates one persisted container’s `declared_contents_exclusive` flag.
+- `exclusive = true` means the listed members are intended to be the full known
+  contents of the vial/tube.
+- `exclusive = false` means the listed members are known/measured constituents
+  of a more complex sample that may also contain unlisted molecules.
+
+`CreateRackFromArrangement` semantics:
+
+- Creates one new physical rack/plate draft from one stored arrangement.
+- Optional `profile` overrides the default smallest-fitting profile choice.
+- If `profile` is omitted, the engine chooses in this order:
+  - `small_tube_4x6`
+  - `plate_96`
+  - `plate_384`
+- Placement is row-major and preserves arrangement order.
+- Ladder-bearing arrangements reserve left/right ladder-reference positions in
+  the same contiguous block.
+
+`PlaceArrangementOnRack` semantics:
+
+- Places one arrangement onto an existing rack as one contiguous block at the
+  next free region in fill order.
+- Existing rack occupants stay in order; the appended arrangement does not
+  reorder earlier blocks.
+- Shared racks are therefore possible without losing arrangement identity.
+
+`MoveRackPlacement` semantics:
+
+- Moves one occupied rack coordinate within one saved rack.
+- `move_block=false` means move one sample within its arrangement block and
+  shift neighboring occupied positions to preserve order.
+- `move_block=true` means move the whole arrangement block and shift later
+  occupied blocks in fill order.
+- The operation is order-preserving by design; it does not treat arbitrary
+  holes as the primary editing model.
+
+`MoveRackSamples` semantics:
+
+- Moves two or more selected samples together within one saved rack.
+- `from_coordinates[]` must all resolve to occupied positions from the same
+  arrangement block.
+- The shared engine normalizes the selected samples against the rack's current
+  occupied order; it preserves that rack order even if the request lists the
+  source coordinates differently.
+- The selected samples move as one contiguous combined group within that same
+  arrangement block.
+- Neighboring occupied positions shift in fill order to keep the block
+  contiguous.
+- This is the shared engine contract behind rack-editor sample multi-select
+  moves.
+
+`MoveRackArrangementBlocks` semantics:
+
+- Moves two or more selected arrangement blocks together within one saved rack.
+- `arrangement_ids` are normalized against the rack's current occupied order;
+  the shared engine preserves the rack-ordering of selected blocks even if the
+  request lists them in another order.
+- The selected blocks move as one contiguous combined group.
+- Later occupied blocks shift in fill order to keep the rack contiguous.
+- This is the shared engine contract behind rack-editor multi-select moves.
+
+`SetRackProfile` semantics:
+
+- Reprojects one saved rack onto another built-in profile.
+- Existing arrangement order is preserved while coordinates are reflowed under
+  the target profile geometry.
+- Existing fill direction is preserved.
+- Existing blocked coordinates are preserved when still in-bounds for the new
+  geometry; out-of-bounds blocked coordinates are dropped deterministically.
+
+`ApplyRackTemplate` semantics:
+
+- Applies one engine-owned quick-authoring template on top of an existing rack
+  snapshot.
+- Built-in templates:
+  - `bench_rows`
+    - `fill_direction = row_major`
+    - `blocked_coordinates = []`
+  - `plate_columns`
+    - `fill_direction = column_major`
+    - `blocked_coordinates = []`
+  - `plate_edge_avoidance`
+    - `fill_direction = column_major`
+    - `blocked_coordinates = outer perimeter of the current profile`
+- Existing arrangement order is preserved while occupied coordinates are
+  reflowed onto the resulting available slots.
+- `plate_edge_avoidance` requires at least a `3 x 3` profile so an interior
+  region remains after blocking the perimeter.
+
+`SetRackFillDirection` semantics:
+
+- Reprojects one saved rack onto the same geometry with a different fill order.
+- Supported values:
+  - `row_major`
+  - `column_major`
+- Existing arrangement order is preserved while occupied coordinates are
+  reassigned under the new fill order.
+
+`SetRackProfileCustom` semantics:
+
+- Reprojects one saved rack onto one custom A1-style geometry.
+- `rows` and `columns` are persisted directly in the rack profile snapshot.
+- Existing fill direction is preserved.
+- Existing blocked coordinates are preserved when still in-bounds for the new
+  geometry; out-of-bounds blocked coordinates are dropped deterministically.
+- Existing arrangement order is preserved while coordinates are reflowed under
+  the custom geometry.
+- A1-style row labels continue beyond `Z` as `AA`, `AB`, ...
+
+`SetRackBlockedCoordinates` semantics:
+
+- Persists one normalized blocked/reserved coordinate set on the rack profile.
+- Blocked coordinates are excluded from placement capacity and fill-order
+  reflow.
+- Existing arrangement order is preserved while occupied coordinates are
+  reassigned onto the remaining available positions.
+- Duplicate blocked coordinates are removed deterministically.
+
+`ExportRackLabelsSvg` semantics:
+
+- Writes one deterministic SVG label sheet for a saved rack.
+- Optional `arrangement_id` restricts output to labels belonging to one
+  arrangement block on that rack.
+- `preset` is engine-owned and defaults to `compact_cards`.
+- Built-in presets:
+  - `compact_cards`
+  - `print_a4`
+  - `wide_cards`
+- The sheet now carries one scope header:
+  - rack title
+  - arrangement scope when requested
+  - preset id
+- Individual cards prioritize printable lane identity over verbose provenance:
+  - rack id + coordinate
+  - role
+  - ladder name or sequence id / pool summary
+  - bp length/topology when sequence-backed
+  - container id as a final compact provenance hint when space remains
+- Verbose arrangement/origin text is intentionally not repeated on every card;
+  it lives in the shared sheet header instead so compact-card exports remain
+  printable.
+
+`ExportRackFabricationSvg` semantics:
+
+- Writes one deterministic top-view fabrication/planning SVG for a saved rack.
+- Uses one engine-owned physical carrier template layered on the current saved
+  rack snapshot rather than inventing a second placement model.
+- Current built-in physical templates:
+  - `storage_pcr_tube_rack`
+  - `pipetting_pcr_tube_rack`
+- The export consumes:
+  - rack geometry (`rows`, `columns`, blocked coordinates)
+  - saved rack occupancy and arrangement ids for visual planning markers
+- Intended downstream uses:
+  - fabrication sketching
+  - bench planning
+  - future simulation adapters
+
+`ExportRackIsometricSvg` semantics:
+
+- Writes one deterministic pseudo-3D/isometric SVG for a saved rack.
+- Uses the same engine-owned physical carrier template family as
+  `ExportRackFabricationSvg` and `ExportRackOpenScad`.
+- Consumes the same linked rack snapshot:
+  - rows / columns / blocked coordinates
+  - occupied placements
+  - arrangement ids and colors
+- Intended downstream uses:
+  - README / documentation hero figures
+  - bench-facing communication assets
+  - presentation-ready rack review without leaving the shared engine path
+
+`ExportRackOpenScad` semantics:
+
+- Writes one deterministic parameterized OpenSCAD source file for a saved rack.
+- Uses the same engine-owned physical carrier template family as
+  `ExportRackFabricationSvg`.
+- Current OpenSCAD export intentionally favors geometry over embedded text:
+  - tube openings
+  - outer carrier body
+  - front label-strip recess
+- Printable labels/front strips remain separate shared exports rather than
+  being baked permanently into the 3D geometry in this first baseline.
+
+`ExportRackCarrierLabelsSvg` semantics:
+
+- Writes one deterministic carrier-matched SVG sheet for a saved rack.
+- Uses the same engine-owned physical carrier template family as
+  `ExportRackFabricationSvg` and `ExportRackOpenScad`.
+- Supports optional arrangement scoping:
+  - whole-rack export when `arrangement_id` is omitted
+  - one arrangement/module export when `arrangement_id` is provided
+- Built-in presets:
+  - `front_strip_and_cards`
+  - `front_strip_only`
+  - `module_cards_only`
+- Current baseline can emit:
+  - one front-strip label sized from the selected physical template
+  - one module card per arrangement in scope
+
+`ExportRackSimulationJson` semantics:
+
+- Writes one deterministic machine-readable JSON export for downstream
+  simulation adapters.
+- Uses the same engine-owned physical carrier template family as the physical
+  SVG/OpenSCAD exports.
+- Current baseline includes:
+  - rack/profile metadata
+  - selected physical template geometry
+  - arrangement block summaries
+  - one slot record per physical coordinate with:
+    - row/column/coordinate
+    - fill ordinal
+    - blocked status
+    - physical center in mm
+    - occupant/arrangement metadata when occupied
+
+`RenderDotplotSvg` semantics:
+
+- Inputs:
+  - `seq_id` (owner sequence id for the stored dotplot payload)
+  - `dotplot_id` (stored payload id from `ComputeDotplot` or `ComputeDotplotOverlay`)
+  - `path` (output SVG)
+  - optional `flex_track_id` (adds flexibility panel in same SVG)
+  - optional `display_density_threshold` and `display_intensity_gain` (display tuning)
+  - optional `overlay_x_axis_mode` for overlay payloads:
+    `percent_length | left_aligned_bp | right_aligned_bp | shared_exon_anchor | query_anchor_bp`
+  - optional `overlay_anchor_exon` for anchored overlay exports
+    (`{ start_1based, end_1based }`)
+- Ownership checks:
+  - dotplot payload must belong to `seq_id`
+  - optional flexibility track must also belong to `seq_id`
+- Output:
+  - deterministic SVG dotplot artifact; operation is non-mutating
+  - pairwise, annotated self, and overlay payloads render a genome-context side
+    rail beside the reference/genomic y-axis when `reference_annotation`
+    intervals are present; supported intervals include exon and materialized
+    RepeatMasker/UCSC repeat context
+  - overlay payloads render all stored `query_series` with a legend;
+    `overlay_x_axis_mode` chooses whether transcript queries are shown as
+    normalized percent length, as left/right aligned base-pair coordinates, as
+    shared-exon-anchored coordinates, or as explicit per-query-anchor
+    coordinates.
+  - `shared_exon_anchor` filters the overlay down to series that contain the
+    selected reference exon and shifts each supporting transcript so the exon
+    start lands at the maximal observed transcript-local start for that exon.
+  - `query_anchor_bp` filters the overlay down to series carrying stored
+    `query_anchor_0based` values and shifts each supporting query so the anchor
+    base lands at the maximal observed anchor position across the drawn series.
+  - flexibility panel is suppressed there because the overlay does not expose
+    one shared query-axis coordinate system.
+
+`DeriveTranscriptSequences` semantics:
+
+- Inputs:
+  - `seq_id`
+  - optional `feature_ids[]`
+  - optional splicing `scope`
+  - optional `output_prefix`
+- Behavior:
+  - derives one spliced transcript/cDNA sequence per admitted
+    `mRNA`/`transcript` feature (or per transcript admitted by the selected
+    splicing scope).
+  - preserves transcript provenance on the derived sequence through synthetic
+    local `mRNA` and `exon` features.
+  - when coding context is available, also derives a synthetic local `CDS`
+    feature and attached protein-translation qualifiers on the derived
+    transcript sequence.
+  - CDS/protein derivation now resolves from, in order:
+    - explicit transcript `cds_ranges_1based`
+    - matching source `CDS` features that fit within the transcript exons
+    - optional `/codon_start` or `phase`
+    - optional `/transl_table`
+    - source/transcript/CDS `organism` and `organelle` context
+  - translation-table resolution is deterministic:
+    - explicit `/transl_table` on CDS, transcript, or source wins
+    - plastid/chloroplast-like organelles default to NCBI table `11`
+    - vertebrate mitochondrial context (currently human and mouse) defaults to
+      NCBI table `2`
+    - common invertebrate mitochondrial context (currently fruit-fly and
+      nematode matching) defaults to NCBI table `5`
+    - yeast mitochondrial context defaults to NCBI table `3`
+    - *Escherichia coli* source context defaults to NCBI table `11`
+    - unresolved mitochondrial context without explicit `/transl_table` still
+      falls back to table `1` and emits an explicit warning
+  - the derived transcript still keeps translation qualifiers locally, and
+    `DeriveProteinSequences` can then materialize the corresponding peptides as
+    first-class protein sequence entries.
+- Derived feature qualifiers:
+  - derived `mRNA` may now include:
+    - `cds_ranges_1based`
+    - `protein_length_aa`
+    - `translation_table`
+    - `translation_table_label`
+    - `translation_table_source`
+    - `translation_context_organism`
+    - `translation_context_organelle`
+    - `translation_speed_profile_hint`
+    - `translation_speed_profile_source`
+    - `translation_speed_reference_species`
+    - `derived_protein_translation`
+  - derived synthetic `CDS` may now include:
+    - `translation`
+    - `codon_start`
+    - `transl_table`
+    - `translation_table_label`
+    - `translation_table_source`
+    - `protein_length_aa`
+    - `terminal_stop_trimmed`
+    - `translation_speed_profile_hint`
+    - `translation_speed_profile_source`
+    - `translation_speed_reference_species`
+    - zero or more `translation_warning` qualifiers
+- Translation-speed preparation:
+  - transcript derivation now records a normalized
+    `translation_speed_profile_hint` when the source organism resolves to one
+    of the initial target species:
+    - `human`
+    - `mouse`
+    - `yeast`
+    - `ecoli`
+  - provenance is now explicit through:
+    - `translation_speed_profile_source`
+    - `translation_speed_reference_species`
+  - the bundled `mouse` speed profile now uses a dedicated mouse reference
+    column (`Mus musculus domesticus`) instead of the earlier rat proxy
+- Output:
+  - additive sequence creation through regular `OpResult.created_seq_ids`
+  - deterministic messages/warnings about CDS absence, translation-table
+    fallback, partial codons, ambiguous codons, or internal stops.
+
+`DeriveProteinSequences` semantics:
+
+- Inputs:
+  - `seq_id`
+  - optional `feature_ids[]`
+  - optional splicing `scope`
+  - optional `output_prefix`
+- Behavior:
+  - derives one first-class protein sequence per selected/admitted transcript
+  - transcript-native translation is the authoritative product derivation path;
+    it does not consult UniProt or other external protein sources
+  - `protein` and `peptide` molecule labels are treated as the same first-class
+    protein family in shared FASTA/import/export handling
+  - uses annotated CDS translation when available
+  - if CDS annotation is absent, falls back deterministically to:
+    - an inferred ATG-start ORF on the derived transcript
+    - otherwise the longest stop-free reading-frame segment
+  - emits one full-span local `Protein` feature on the derived peptide with:
+    - transcript/source provenance
+    - derivation mode (`annotated_cds`, `inferred_orf`, `heuristic_longest_frame`)
+    - translation-table context
+    - organism/organelle context when available
+    - optional `translation_speed_profile_hint`
+    - optional `translation_speed_profile_source`
+    - optional `translation_speed_reference_species`
+- Output:
+  - additive sequence creation through regular `OpResult.created_seq_ids`
+  - persists one transcript-native protein-derivation report with stable
+    `report_id`, created protein sequence ids, and stored `op_id` / `run_id`
+    provenance for lineage/reopen flows
+  - deterministic warnings when CDS annotation is missing or heuristic
+    inference had to be used
+  - when `feature_query` is supplied, the engine deterministically admits only
+    the matched transcript features before translation and stores that query on
+    the persisted report so later protein-gel exports can reopen the same
+    selection without guessing
+
+`ReverseTranslateProteinSequence` semantics:
+
+- Inputs:
+  - `seq_id` (must resolve to a protein sequence)
+  - optional `output_id`
+  - optional `speed_profile`:
+    - `human`
+    - `mouse`
+    - `yeast`
+    - `ecoli`
+  - optional `speed_mark`:
+    - `fast`
+    - `slow`
+  - optional `translation_table`
+  - optional `target_anneal_tm_c`
+  - optional `anneal_window_bp`
+- Behavior:
+  - generates one synthetic coding DNA sequence for the selected protein
+  - codon choice is deterministic and translation-table-aware
+  - translation-table resolution is deterministic in this order:
+    - explicit request
+    - existing protein feature translation qualifiers
+    - organism/organelle context inferred from attached features
+  - `speed_mark=fast` biases toward preferred codons for the selected/bundled
+    species profile
+  - `speed_mark=slow` biases away from the preferred codon when synonymous
+    choices exist
+  - optional `target_anneal_tm_c` applies a lightweight local suffix Tm
+    heuristic over `anneal_window_bp` windows to mildly steer codon choice; it
+    is advisory rather than a full sequence optimizer
+- Output:
+  - additive sequence creation through regular `OpResult.created_seq_ids`
+  - persisted reverse-translation report metadata under
+    `reverse_translation_reports`:
+    - stable `report_id`
+    - `op_id` / `run_id`
+    - source protein sequence id
+    - created coding-sequence id
+    - effective translation table / label / source
+    - optional organism/organelle context
+    - resolved speed profile / source / reference species
+    - optional speed mark and annealing-Tm steering inputs
+    - codon-choice diagnostics:
+      - `preferred_synonymous_choice_count`
+      - `alternative_synonymous_choice_count`
+      - `fallback_unknown_codon_count`
+      - `gc_fraction`
+      - `realized_anneal_tm_c`
+    - warnings captured during codon selection / qualifier synthesis
+  - `OpResult.reverse_translation_report` now carries the same resolved
+    provenance in one portable record:
+    - created coding-sequence id
+    - protein length / coding length
+    - translation table / label / source
+    - optional organism/organelle context
+    - requested/resolved translation-speed profile
+    - speed-profile source / reference species
+    - optional speed mark
+    - optional annealing-target heuristic settings
+    - warnings
+  - shared shell / direct CLI inspection route:
+    - `reverse-translate run PROTEIN_SEQ_ID ...`
+    - `reverse-translate list-reports [PROTEIN_SEQ_ID]`
+    - `reverse-translate show-report REPORT_ID`
+    - `reverse-translate export-report REPORT_ID OUTPUT.json`
+  - one full-span synthetic local `CDS` feature with:
+    - protein provenance
+    - translation table/label
+    - translation table source
+    - optional translation context organism/organelle qualifiers
+    - optional speed profile/source/mark qualifiers
+    - optional speed reference-species qualifier
+    - optional annealing-target qualifiers
+    - zero or more `reverse_translation_warning` qualifiers
+
+`RenderProtocolCartoonSvg` semantics:
+
+- Inputs:
+  - `protocol` (built-in ids now include `gibson.two_fragment`,
+    `gibson.single_insert_dual_junction`, `pcr.assay.pair`,
+    `pcr.assay.pair.no_product`, `pcr.assay.pair.with_tail`, and
+    `pcr.assay.qpcr`)
+  - `path` (output SVG)
+- Behavior:
+  - renders a deterministic protocol-cartoon strip through one engine route,
+    independent of GUI/CLI entry point.
+  - emits canonical conceptual step order for the requested protocol as an
+    ordered event-sequence model.
+  - template representation baseline is now available in engine internals:
+    - schema id: `gentle.protocol_cartoon_template.v1`
+    - sparse template rows (event/molecule/feature) are resolved with
+      deterministic defaults into render-ready specs.
+    - built-in protocol families should now be composed from shared internal
+      figure building blocks (feature spans, strand-specific tails, linear
+      molecule rows, event rows) rather than ad-hoc per-protocol struct
+      literals; this keeps future PCR/Gibson growth on one composition model
+  - internal model used by renderer:
+    - event -> molecules -> feature fragments
+    - molecule topology supports `linear|circular`
+    - linear molecules may carry end styles
+      (`NotShown`, `Continuation`, `Blunt`, or
+      `Sticky { polarity: FivePrime|ThreePrime, nt }`)
+    - feature fragments can optionally render different top-strand and
+      bottom-strand colors and lengths, plus strand-specific nicks after a
+      segment boundary; this is useful for annealed overlaps, exonuclease
+      chew-back cartoons with single-stranded tails, and polymerase-filled
+      intermediates that still require ligase
+  - malformed protocol cartoon specs fail validation and render deterministic
+    invalid-spec SVG diagnostics instead of panicking.
+- Output:
+  - deterministic SVG artifact; operation is non-mutating.
+
+`RenderProtocolCartoonTemplateSvg` semantics:
+
+- Inputs:
+  - `template_path` (JSON file path, schema `gentle.protocol_cartoon_template.v1`)
+  - `path` (output SVG)
+- Behavior:
+  - reads template JSON from disk and parses it deterministically.
+  - resolves sparse event/molecule/feature rows using deterministic defaults
+    (action/caption/topology/end styles/feature length/palette).
+  - validates resolved cartoon semantics before rendering.
+- Output:
+  - deterministic SVG artifact; operation is non-mutating.
+
+`ValidateProtocolCartoonTemplate` semantics:
+
+- Inputs:
+  - `template_path` (JSON file path, schema `gentle.protocol_cartoon_template.v1`)
+- Behavior:
+  - reads and parses template JSON deterministically.
+  - resolves sparse defaults and validates resolved cartoon semantics.
+  - emits validation diagnostics through operation result messages; no SVG is
+    written.
+- Output:
+  - non-mutating validation result suitable for pre-render checks in CLI/GUI
+    flows.
+
+`RenderProtocolCartoonTemplateWithBindingsSvg` semantics:
+
+- Inputs:
+  - `template_path` (JSON file path, schema `gentle.protocol_cartoon_template.v1`)
+  - `bindings_path` (JSON file path, schema
+    `gentle.protocol_cartoon_template_bindings.v1`)
+  - `path` (output SVG)
+- Behavior:
+  - loads template and binding payloads.
+  - applies deterministic ID-targeted overrides (defaults, event, molecule,
+    feature) and then resolves the bound template.
+  - validates resolved semantics before SVG rendering.
+- Output:
+  - deterministic SVG artifact; operation is non-mutating.
+
+`ExportProtocolCartoonTemplateJson` semantics:
+
+- Inputs:
+  - `protocol` (built-in protocol cartoon id, for example `gibson.two_fragment`
+    or `pcr.assay.pair` / `pcr.assay.pair.with_tail` / `pcr.assay.qpcr`)
+  - `path` (output JSON file)
+- Behavior:
+  - materializes the canonical built-in template
+    (`gentle.protocol_cartoon_template.v1`) for the requested protocol.
+  - writes deterministic pretty JSON suitable for user editing/tweaking.
+- Output:
+  - deterministic JSON artifact; operation is non-mutating.
+
+`ExportProcessRunBundle` semantics:
+
+- Exports a deterministic JSON run bundle artifact (`gentle.process_run_bundle.v1`)
+  for reproducibility/audit.
+- Inputs:
+  - `path` (required): output JSON file
+  - `run_id` (optional): when set, only operation-log rows for that `run_id`
+    are exported; when omitted, all operation-log rows are exported.
+- Payload sections:
+  - `inputs`:
+    - per-operation extracted input references
+      (`sequence_ids`, `container_ids`, `arrangement_ids`, candidate/guide sets,
+      genome ids, file inputs)
+    - aggregated referenced ids and inferred `root_sequence_ids`
+  - `parameter_overrides`:
+    - chronological `SetParameter` overrides with `op_id`, `record_index`,
+      parameter `name`, and exact JSON `value`
+  - `decision_traces`:
+    - optional routine-assistant trace rows
+      (`gentle.routine_decision_trace.v1`) captured in project metadata and
+      exported for routine-selection reproducibility (`trace_id`, selected
+      routine/alternatives, disambiguation questions/answers, binding snapshot,
+      helper-aware `routine_preference_context`, candidate planning-score
+      snapshots, suggested macro templates, ordered `preflight_history`,
+      canonical `preflight_snapshot`, execution outcome, export events)
+  - `operation_log`:
+    - selected immutable operation records (`run_id`, operation payload, result)
+  - `outputs`:
+    - created/changed sequence ids
+    - final sequence summaries for affected ids
+    - container/arrangement ids created by selected operations
+    - file artifact paths produced by selected operations
+  - `parameter_snapshot`:
+    - full current engine parameter snapshot at export time.
+  - `construct_reasoning`:
+    - portable construct-reasoning payload for ClawBio/OpenClaw and other
+      agent-facing consumers
+    - `seq_ids_considered`: deterministic union of referenced plus
+      created/changed sequence ids from the exported run slice
+    - `summaries`: compact per-sequence reasoning summaries
+      (objective, fact/decision coverage, host/helper/medium context,
+      interpreted growth signals, supported selection rules, and warning lines)
+    - `graphs`: the selected stored `gentle.construct_reasoning_graph.v1`
+      payloads themselves for full offline inspection
+- Failure modes:
+  - empty `path` => `InvalidInput`
+  - unknown filtered `run_id` (no selected rows) => `NotFound`
+
+Construct reasoning graph foundation (implemented first slice):
+
+- Shared portable records now exist for:
+  - `gentle.construct_objective.v1`
+  - `gentle.design_evidence.v1`
+  - `gentle.design_fact.v1`
+  - `gentle.design_decision_node.v1`
+  - `gentle.construct_candidate.v1`
+  - `gentle.construct_reasoning_graph.v1`
+  - `gentle.construct_reasoning_store.v1`
+  - `gentle.host_profile_catalog.v1`
+- Current engine-backed scope:
+  - project metadata key: `construct_reasoning`
+  - objective upsert/store round-trip
+  - construct-candidate schema now also reserves additive
+    `protein_to_dna_handoff` detail for ranked DNA handoff suggestions,
+    including:
+    - strategy (`transcript_native_reuse`, `feature_coding_dna`,
+      `reverse_translated_synthetic`)
+    - source protein sequence id plus source artifact references
+    - optional transcript/projection/Ensembl/feature-query context
+    - amino-acid coverage summary
+    - preserved / relaxed constraints
+    - translation-table / speed-profile / speed-mark summary
+    - provenance-oriented score, warnings, and next-step recommendations
+  - construct-objective schema now reserves additive host/helper context
+    fields:
+    - `propagation_host_profile_id`
+    - `expression_host_profile_id`
+    - `host_route[]`
+    - `medium_conditions[]`
+    - `helper_profile_id`
+    - `required_host_traits[]`
+    - `forbidden_host_traits[]`
+  - design-evidence schema now also reserves additive non-sequence context
+    fields:
+    - `scope`
+    - `host_profile_id`
+    - `host_route_step_id`
+    - `helper_profile_id`
+    - `medium_condition_id`
+  - deterministic read-only graph build from:
+    - construct-objective context such as selected propagation/expression host
+      profiles, helper profile, host-route steps, medium conditions, and
+      required/forbidden host traits
+    - existing sequence facts: restriction sites plus sequence-feature spans
+      such as exon/CDS/gene/transcript/UTR/promoter/TFBS/variant when present
+  - deterministic hard-rule fact/decision population for:
+    - propagation-host context
+    - expression-host context
+    - host-transition status
+    - host-route restriction/methylation review from:
+      - explicit route-step trait text such as `hsdR- M+`, `dam+`, `dcm+`,
+        `hsdR+`, or `MDRS+`
+      - deterministic sequence motif tallies for Dam, Dcm, and EcoK-like
+        target sites
+    - adapter/linker restriction-capture review from:
+      - explicit construct-objective capture plans that record:
+        - capture restriction enzyme
+        - minimal vs MCS-like adapter style
+        - whether blunt insert ends are required
+      - optional insert-methylation protection intent
+      - optional extra retrieval-site enzymes on longer adapters
+      - deterministic internal-site tallies for every named adapter motif
+        (capture site plus extra retrieval-site enzymes) on the insert
+        sequence
+      - review flags when:
+        - the capture enzyme cannot be resolved from the active catalog
+        - any named adapter motif already occurs on the insert without
+          protection
+        - all named adapter motifs already occur on the insert, so the adapter
+          may contribute little retrieval discrimination
+        - insert methylation is requested and therefore still requires
+          enzyme-specific methylation-sensitivity review before assuming only
+          newly ligated adapter sites will cut
+    - growth/condition context from structured medium-condition interpretation
+      (for example nutrient omission, antibiotic selection agent, heat shock,
+      and temperature signals)
+    - helper/MCS context
+    - variant-effect context derived from overlap of mapped variant markers
+      against promoter/enhancer/TFBS/CDS/exon/UTR/splice evidence already in
+      the graph
+      - per-variant summaries now keep transcript-level ambiguity explicit via
+        `transcript_context_status` and `transcript_effect_summaries[]`
+        instead of flattening multi-transcript consequences away
+    - variant-assay context that maps the same deterministic overlap rules onto
+      first assay-family suggestions such as:
+      - promoter/regulatory reporter follow-up
+      - allele-paired coding-expression comparison
+      - minigene splice follow-up
+      - UTR reporter / translation comparison
+    - selection/complementation context built from engine-owned
+      selection/complementation rules, currently seeded with:
+      - the proline-rescue baseline (`proA`/`proB`-style annotated construct
+        features plus proline-style medium conditions)
+      - helper-backed selectable-marker context from normalized helper-profile
+        interpretation (for example helper semantics such as `AmpR` /
+        `ampicillin_selection`)
+  - active-sequence graph refresh helper that reuses the existing graph/objective
+    identity when rebuilding deterministic evidence after sequence changes
+  - JSON export helper for one stored graph
+  - protein-to-DNA handoff reasoning helper (`BuildProteinToDnaHandoffReasoning`)
+    that persists inside the same construct-reasoning graph/store instead of
+    creating a separate report family:
+    - transcript-native CDS reuse when the selected protein is backed by a
+      stored project-native derivation report
+    - mapped feature-coding DNA when a stored UniProt projection plus feature
+      query can recover coding DNA for the selected protein context
+    - reverse-translated synthetic fallback when no stronger DNA provenance is
+      available or intentionally selected
+    - ranking metadata now surfaces in graph summaries through:
+      - `contains_protein_to_dna_handoff`
+      - `protein_to_dna_handoff_candidate_count`
+      - `protein_to_dna_source_protein_seq_ids[]`
+  - host-profile catalog loading/list projection from the shared starter JSON
+    catalog (`assets/host_profiles.json`) with filter matching across ids,
+    aliases, genotype/phenotype tags, notes, and source notes
+  - graph-backed annotation-candidate layer:
+    - `gentle.annotation_candidate.v1`
+    - one portable record per annotation-grade/supporting sequence interval
+    - carries support links from one visible span back to the facts/decisions
+      it contributes to
+    - editable `draft|accepted|rejected|locked` status now persists on the
+      candidate itself so reviewed annotation state survives graph refresh
+  - graph-backed annotation-summary layer:
+    - `gentle.annotation_candidate_summary.v1`
+    - one portable collapsed summary per overlapping annotation-candidate
+      cluster/signature on a sequence
+    - carries grouped annotation ids, transcript-context/effect-tag summaries,
+      support labels, and review-status summary so genomic views can stay calm
+      without hiding the reasoning lineage
+    - intended as the shared summary surface for future similarity-analysis
+      annotations as well, instead of creating a second adapter-local collapse
+      path
+  - annotation-candidate write-back report:
+    - `gentle.annotation_candidate_writeback.v1`
+    - reports whether one accepted/locked generated candidate created a new
+      ordinary sequence feature or was already backed by one
+- Current GUI-backed scope:
+  - sequence-window `Reasoning` display toggle
+  - read-only linear DNA-map overlay that auto-refreshes from the engine-owned
+    graph and now paints only annotation-grade/supporting sequence spans
+    directly on-sequence:
+    - generated or inferred annotation-like spans (for example promoter windows)
+    - cDNA-confirmed exon/splice/CDS/transcript spans
+    - sequence intervals explicitly referenced by stored facts or decisions
+    - raw low-level evidence such as unrestricted restriction-site spam stays
+      in the graph/inspector and is no longer drawn by default just because it
+      exists as `sequence_span` evidence
+  - GUI-side hover/selection inspection for one evidence span at a time
+    - selected spans now surface their annotation-candidate source kind,
+      supporting fact/decision labels, and collapsed annotation-summary context
+      when available
+  - side-panel construct-reasoning inspector section for non-sequence facts and
+    decision steps (host/helper/host-route restriction-methylation/medium/
+    growth/selection context) without pretending they are coordinate spans
+  - side-panel `Annotation summaries` section for graph-backed collapsed
+    annotation rows that keep overlapping candidates readable on long loci
+  - side-panel `Annotation candidates` section for graph-backed candidate
+    annotations that now support shared-engine accept/reject/draft curation
+    instead of only read-only inspection
+    - accepted or locked generated candidates now also expose a shared-engine
+      `Write Back` action that materializes them as ordinary sequence features
+  - shared shell/CLI mutation route:
+    - `construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked`
+    - updates the persisted graph in place and returns the updated candidate
+      plus the same compact summary block exposed by
+      `construct-reasoning show-graph`
+    - `construct-reasoning write-annotation GRAPH_ID ANNOTATION_ID`
+    - writes back one accepted or locked generated candidate as a feature,
+      refreshes the graph, and returns the `gentle.annotation_candidate_writeback.v1`
+      report alongside the refreshed candidate and summary block
+  - Planning-window `Host Profile Browser` backed by the same shared catalog so
+    host/strain traits can be inspected without reparsing raw JSON
+  - GUI-only role/class visibility filters layered on top of the same shared
+    engine-owned graph payload (no adapter-local graph recomputation)
+  - ClawBio/OpenClaw-facing run-bundle export integration:
+    - deterministic per-sequence summary rows for concise agent consumption
+      including additive variant effect tags and suggested assay-family ids
+    - embedded stored reasoning graphs for full offline inspection/replay
+  - planning/routine handoff now also consumes the same graph:
+    - `routine_preference_context` records can carry
+      `construct_reasoning_seq_id`,
+      `construct_strategy_derived_preferred_routine_families`,
+      `variant_effect_tags`,
+      `variant_suggested_assay_ids`, and
+      `variant_derived_preferred_routine_families`
+    - `routines list` / `routines compare` planning estimates and GUI Routine
+      Assistant traces can therefore explain when adapter/linker capture or
+      variant-derived assay context boosted one routine family over another
+  - sequence-complexity / similarity / mobile-element reasoning baseline:
+    - generated `repeat_region` spans for:
+      - low-complexity windows
+      - homopolymer / tandem-repeat segments
+      - direct-repeat clusters
+      - inverted-repeat clusters
+    - generated `mobile_element` spans for cautious `Alu-like SINE candidate`
+      calls
+    - fact/decision layer now includes:
+      - `sequence_complexity_context`
+      - `repeat_architecture_context`
+      - `mobile_element_context`
+      - `similarity_operational_risk_context`
+      - `pcr_operational_risk_context`
+      - `nanopore_operational_risk_context`
+      - `mapping_operational_risk_context`
+      - `cloning_stability_context`
+    - current intent is inspectable structural context and operational review,
+      not final repeat-family taxonomy; curated repeat catalogs can refine the
+      same graph later without changing the adapter contract shape
+- Current evidence-class rules:
+  - restriction sites => `hard_fact`
+  - dbSNP / VCF-generated variant markers => `hard_fact`
+  - exon/splice annotations with explicit cDNA-style qualifier hints =>
+    `hard_fact`
+  - imported/derived sequence annotations => `reliable_annotation`
+  - TFBS-style annotations => `soft_hypothesis`
+- Current evidence-scope behavior:
+  - graph builds now emit both:
+    - `sequence_span` evidence for mapped restriction/annotation features
+    - non-sequence construct-objective context evidence
+      (`host_profile`, `host_transition`, `medium_condition`,
+      `helper_profile`, `whole_construct`) when the objective carries those
+      fields
+  - GUI DNA overlays intentionally keep rendering only `sequence_span`
+    evidence; non-sequence evidence stays in the portable graph payload rather
+    than being faked as coordinate spans
+- Not in this slice yet:
+  - construct-candidate ranking
+  - curated host/helper profile catalog loading and biological compatibility
+    scoring against those catalogs
+  - editable reasoning/decision GUI surfaces beyond the current read-only span
+    overlay plus inspector summary
+
+Protocol-cartoon family growth direction (planned):
+
+- Gibson specialist work now validates the abstraction-first protocol-cartoon
+  strategy:
+  - one protocol family should be expressed as a canonical
+    `gentle.protocol_cartoon_template.v1` template plus deterministic bindings
+  - the renderer should grow a shared collection of reusable figure building
+    blocks that protocol families compose, instead of embedding protocol-
+    specific drawing code in each built-in cartoon
+  - protocol growth in count/shape (for example multi-fragment Gibson) should
+    prefer repeated events, repeated molecules, and binding-level overrides
+    rather than renderer-specific special cases
+- Implemented baseline:
+  - built-in Gibson cartoons now compose from shared internal building blocks
+    for duplex spans, strand-specific tails, linear molecule rows, and event
+    rows
+  - this is intentionally still mechanism-first: Gibson cartoons describe
+    fragment flow and achieved homology relationships, not full primer objects
+    or low-level PCR parameter details
+- PCR-assay cartoons should follow the same rule. The shared renderer should
+  remain chemistry-agnostic and continue to render only ordered events,
+  molecules, and features; PCR-specific meaning belongs in template structure
+  and bindings, not in new PCR-only drawing primitives.
+- PCR cartoon purpose:
+  - explain assay intent and artifact flow, not every thermocycler sub-step
+  - stay aligned with engine-owned operations, reports, and lineage-visible
+    artifacts
+  - keep lower-level primer sequences/thermocycler details in adjacent textual
+    reports or inspectors rather than the cartoon itself
+- Canonical PCR assay scene vocabulary should stay stable across modalities:
+  - source template/context event
+  - target/ROI event (selected span, feature-derived span, or queued region)
+  - assay setup event (forward/reverse pair and optional probe or staged
+    inner/outer sets may be named, but do not need literal primer glyphs)
+  - amplification event
+  - product/artifact event (amplicon, extracted copy, report, export, or
+    explicit no-accepted-pairs outcome)
+- Implemented PCR baseline in the `pcr.assay.*` family:
+  - `pcr.assay.pair`: base strip with one selected ROI, one assay-setup lane,
+    one amplification step, one amplicon/report outcome, and explicit forward/
+    reverse primer glyphs with 5'/3' orientation
+  - `pcr.assay.pair.no_product`: same family with an explicit report-only
+    terminal state when no accepted primer pair yields a product
+  - `pcr.assay.pair.with_tail`: insertion-first strip with requested extension
+    sequences + insertion anchors, anchor-adjacent primer windows, and carried-
+    through inserted terminal tails in the final amplicon
+  - `pcr.oe.substitution`: six-step overlap-extension substitution strip with
+    primer set `a`..`f`, first-step product haplotypes (`AB`/`CD`/`EF`),
+    strand-specific anneal-gap geometry, and polymerase fill
+- Implemented qPCR baseline in the same `pcr.assay.*` family:
+  - `pcr.assay.qpcr`: same base strip enriched with one internal probe window
+    plus explicit forward/reverse primer glyphs, a retained probe marker, and
+    one quantitative readout terminal state
+- Planned PCR modality adaptation should continue through the same
+  `pcr.assay.*` protocol-cartoon family:
+  - nested PCR: same family with two amplification stages (outer -> inner)
+    instead of one, reusing the same event vocabulary
+  - inverse PCR: same family with circular-template bindings and outward-facing
+    primer semantics
+  - batch/multiplex/tiling: repeated assay groups or repeated output lanes in
+    bindings, not new renderer semantics per assay count
+  - empty/failure outcomes: report/artifact nodes can render without product
+    nodes when no accepted assay is produced
+- Recommended rollout order:
+  - extend the shipped PCR/qPCR baseline to queued batch PCR without changing
+    renderer semantics
+  - add nested, inverse, long-range, and multiplex variants as further
+    template/binding expansions
+- Naming/design rule:
+  - do not introduce one built-in protocol id per assay count or minor UI view
+  - prefer one stable protocol family with bindings that carry assay modality,
+    stage count, molecule presence, and repeated-lane structure
+  - keep generated explanatory strips exportable through the existing
+    `protocol-cartoon ...` routes
+
+RNA secondary-structure semantics:
+
+- Inspection API:
+  - `GentleEngine::inspect_rna_structure(seq_id)`
+  - Runs `RNAfold --noPS` on the normalized RNA sequence and returns a structured text report (`stdout`/`stderr`, dot-bracket `structure`, optional `mfe_kcal_per_mol`, and command metadata).
+- Export operation:
+  - `RenderRnaStructureSvg { seq_id, path }`
+  - Runs `RNAfold --noPS`, writes a temporary two-line `sequence` + dot-bracket input file, then runs `rnapkin -o <path> <input>`.
+  - Expects SVG/PNG output according to the extension accepted by `rnapkin`; current operation naming remains SVG-oriented for existing callers.
+- Input constraints:
+  - accepted only for single-stranded RNA (`molecule_type` `RNA` or `ssRNA`)
+  - empty sequence is rejected
+- Runtime dependency:
+  - external `RNAfold` and `rnapkin` executables are required for rendering
+  - executable path resolution order for folding:
+    1. env var `GENTLE_RNAFOLD_BIN`
+    2. fallback executable name `RNAfold` in `PATH`
+  - executable path resolution order for drawing:
+    1. env var `GENTLE_RNAPKIN_BIN`
+    2. fallback executable name `rnapkin` in `PATH`
+
+DNA ladder catalog semantics:
+
+- Inspection API:
+  - `GentleEngine::inspect_dna_ladders(name_filter?)`
+  - Returns structured ladder metadata:
+    - `schema` (`gentle.dna_ladders.v1`)
+    - `ladder_count`
+    - `ladders[]` (`name`, `loading_hint`, `min_bp`, `max_bp`, `band_count`, `bands`)
+- Export operation:
+  - `ExportDnaLadders { path, name_filter? }`
+  - Writes the same structured payload to JSON at `path`.
+  - Optional `name_filter` applies case-insensitive name matching before export.
+
+RNA ladder catalog semantics:
+
+- Inspection API:
+  - `GentleEngine::inspect_rna_ladders(name_filter?)`
+  - Returns structured ladder metadata:
+    - `schema` (`gentle.rna_ladders.v1`)
+    - `ladder_count`
+    - `ladders[]` (`name`, `loading_hint`, `min_nt`, `max_nt`, `band_count`, `bands`)
+- Export operation:
+  - `ExportRnaLadders { path, name_filter? }`
+  - Writes the same structured payload to JSON at `path`.
+  - Optional `name_filter` applies case-insensitive name matching before export.
+
+Historical screenshot artifact contract (currently disabled):
+
+- Guardrail:
+  - command is currently rejected by security policy even when
+    `--allow-screenshots` is provided.
+- Command surface:
+  - direct CLI: `gentle_cli screenshot-window OUTPUT.png`
+  - shared shell (CLI and GUI shell panel): `screenshot-window OUTPUT.png`
+- Scope and safety:
+  - captures only the active/topmost GENtle window
+  - window lookup is native AppKit in-process (no AppleScript automation path)
+  - command is primarily intended for GUI shell contexts with an active window
+  - rejects full-desktop capture and non-GENtle targets
+  - rejects request if no eligible active GENtle window is available
+  - current backend support is macOS (`screencapture`); non-macOS returns
+    unsupported
+- Output:
+  - writes an image file at caller-provided `OUTPUT` path (custom filename
+    supported)
+  - recommended default image format is inferred from extension (e.g. `.png`)
+- Result payload shape:
+
+```json
+{
+  "schema": "gentle.screenshot.v1",
+  "path": "docs/images/gui-main.png",
+  "window_title": "GENtle - pGEX-3X",
+  "captured_at_unix_ms": 1768860000000,
+  "pixel_width": 1680,
+  "pixel_height": 1020,
+  "backend": "macos.screencapture"
+}
+```
+
+Operation progress/cancellation semantics:
+
+- `apply_with_progress` and workflow progress callbacks receive
+  `OperationProgress` updates.
+- Callback return value:
+  - `true`: continue
+  - `false`: request cancellation
+- Current event families:
+  - `PrimerDesign`
+  - `Tfbs`
+  - `GenomePrepare`
+  - `GenomeTrackImport`
+  - `DbSnpFetch`
+  - `PrimerDesign`
+  - `RnaReadInterpret`
+- Current cancellation support:
+  - internal pair-PCR/qPCR design now emits staged `PrimerDesign` snapshots
+    (`candidate_enumeration`, `pair_evaluation`, `probe_evaluation`,
+    `complete`) with candidate/evaluation counters, but does not yet expose
+    cooperative cancellation
+  - genome preparation supports cooperative cancellation plus optional
+    `timeout_seconds` timeboxing and reports deterministic cancellation/timeout
+    outcomes.
+  - shared reference/helper prepare is now duplicate-safe at the semantic
+    target level:
+    - one target may actively prepare at a time
+    - duplicate callers reuse the active run and observe `lifecycle_status =
+      "running"` instead of starting redundant work
+    - stale heartbeat markers are converted into `lifecycle_status = "stale"`
+      and can then be retried safely
+  - genome-track imports support cooperative cancellation and return partial
+    import warnings.
+  - dbSNP fetch currently emits staged progress events (`validate_input`,
+    `inspect_prepared_genome`, `contact_server`, `wait_response`,
+    `parse_response`, `resolve_placement`, `extract_region`,
+    `attach_variant_marker`) but does not yet expose cooperative cancellation.
+  - primer/qPCR design now emits machine-readable progress snapshots for
+    candidate-generation and search stages:
+    - `forward_candidates`
+    - `reverse_candidates`
+    - `pair_search`
+    - `pair_search_complete`
+    - qPCR-only: `probe_candidates`, `assay_search`,
+      `assay_search_complete`
+    - Primer3-backed routes emit coarse backend stages:
+      `primer3_run` and optional `fallback_to_internal`
+    Each `PrimerDesignProgress` row carries backend request/use,
+    ROI bounds, candidate counts, pair-evaluation limits, accepted
+    pair/assay counts, and a `done` flag so agent/CLI consumers can detect
+    stalled or overly broad searches without parsing GUI state.
+  - RNA-read interpretation uses cooperative callback checks while emitting
+    periodic progress snapshots (including seed-confirmation histogram bins).
+
+`Pcr` semantics (current):
+
+- Exact primer matching on linear templates.
+- Enumerates all valid amplicons formed by forward-primer matches and downstream
+  reverse-primer binding matches.
+- `unique = true` requires exactly one amplicon; otherwise fails.
+- `output_id` may only be used when exactly one amplicon is produced.
+
+`PcrAdvanced` semantics:
+
+- Primer spec fields:
+  - `sequence` (full primer, 5'->3')
+  - `anneal_len` (3' suffix length used for template binding)
+  - `max_mismatches` (allowed mismatches within anneal part)
+  - `require_3prime_exact_bases` (hard exact-match requirement at primer 3' end)
+  - `library_mode` (`Enumerate` or `Sample`) for degenerate/IUPAC primers
+  - `max_variants` cap for primer-library expansion
+  - `sample_seed` deterministic seed when `library_mode = Sample`
+- Supports 5' tails and mismatch-mediated mutagenesis.
+- Supports degenerate/randomized synthetic primers via IUPAC codes.
+- Product is constructed from:
+  - full forward primer sequence
+  - template interior between forward and reverse anneal windows
+  - reverse-complement of full reverse primer sequence
+
+`PcrMutagenesis` semantics:
+
+- Builds on `PcrAdvanced` primer behavior.
+- Accepts explicit SNP intents:
+  - `zero_based_position`
+  - `reference`
+  - `alternate`
+- Validates reference bases against the template.
+- Filters amplicons to those that introduce requested SNPs.
+- `require_all_mutations` (default `true`) controls whether all or at least one
+  mutation must be introduced.
+
+`DesignPrimerPairs` contract (implemented baseline):
+
+- Purpose:
+  - propose ranked forward/reverse primer pairs for one linear template under
+    explicit constraints
+  - provide deterministic, machine-readable reports that can be consumed by
+    GUI/CLI/scripting/agents
+- Operation payload:
+
+```json
+{
+  "DesignPrimerPairs": {
+    "template": "seq_id",
+    "roi_start_0based": 1000,
+    "roi_end_0based": 1600,
+    "forward": {
+      "min_length": 20,
+      "max_length": 30,
+      "location_0based": null,
+      "start_0based": null,
+      "end_0based": null,
+      "min_tm_c": 55.0,
+      "max_tm_c": 68.0,
+      "min_gc_fraction": 0.35,
+      "max_gc_fraction": 0.70,
+      "max_anneal_hits": 1,
+      "non_annealing_5prime_tail": null,
+      "fixed_5prime": null,
+      "fixed_3prime": null,
+      "required_motifs": [],
+      "forbidden_motifs": [],
+      "locked_positions": []
+    },
+    "reverse": {
+      "min_length": 20,
+      "max_length": 30,
+      "location_0based": null,
+      "start_0based": null,
+      "end_0based": null,
+      "min_tm_c": 55.0,
+      "max_tm_c": 68.0,
+      "min_gc_fraction": 0.35,
+      "max_gc_fraction": 0.70,
+      "max_anneal_hits": 1,
+      "non_annealing_5prime_tail": null,
+      "fixed_5prime": null,
+      "fixed_3prime": null,
+      "required_motifs": [],
+      "forbidden_motifs": [],
+      "locked_positions": []
+    },
+    "pair_constraints": {
+      "require_roi_flanking": false,
+      "required_amplicon_motifs": [],
+      "forbidden_amplicon_motifs": [],
+      "fixed_amplicon_start_0based": null,
+      "fixed_amplicon_end_0based_exclusive": null
+    },
+    "min_amplicon_bp": 120,
+    "max_amplicon_bp": 1200,
+    "max_tm_delta_c": 2.0,
+    "max_pairs": 200,
+    "report_id": "tp73_roi_primers_v1"
+  }
+}
+```
+
+- `max_tm_delta_c`, `max_pairs`, `report_id`, and `pair_constraints` are optional in current
+  implementation:
+  - `max_tm_delta_c` default: `2.0`
+  - `max_pairs` default: `200`
+  - `report_id` default: auto-generated deterministic-safe id stem
+  - `pair_constraints` default:
+    `{"require_roi_flanking":false,"required_amplicon_motifs":[],"forbidden_amplicon_motifs":[],"fixed_amplicon_start_0based":null,"fixed_amplicon_end_0based_exclusive":null}`
+- Side constraints (`forward`, `reverse`, and qPCR `probe`) accept optional
+  sequence-level filters:
+  - `non_annealing_5prime_tail` (added to the final oligo but excluded from
+    anneal Tm/GC/hit calculations)
+  - `fixed_5prime`, `fixed_3prime`
+  - `required_motifs[]`, `forbidden_motifs[]`
+  - `locked_positions[]` entries (`offset_0based`, single IUPAC `base`)
+- Built-in primer-ranking heuristics (internal and Primer3 pair-ranking stage):
+  - preferred primer length window: `20..30 bp` (outside window is penalized)
+  - 3' GC clamp preference (`G/C` at terminal 3' base)
+  - secondary-structure risk penalty (homopolymer and self-complementary runs)
+  - primer-dimer risk penalty (global and 3'-anchored complementary runs)
+
+- Report schema:
+  - `gentle.primer_design_report.v1`
+  - deterministic ordering by score then tie-break fields
+  - backend metadata block:
+    - `backend.requested` (`auto|internal|primer3`)
+    - `backend.used` (`internal|primer3`)
+    - optional `backend.fallback_reason`
+    - optional `backend.primer3_executable`
+    - optional `backend.primer3_version`
+  - each pair includes:
+    - forward/reverse primer sequence and genomic binding window
+    - per-primer diagnostics:
+      - `length_bp`
+      - `anneal_length_bp`
+      - `non_annealing_5prime_tail_bp`
+      - `three_prime_base`
+      - `three_prime_gc_clamp`
+      - `longest_homopolymer_run_bp`
+      - `self_complementary_run_bp`
+    - estimated `tm_c` and `gc_fraction` for annealing segment only
+    - anneal-hit counts per side
+    - amplicon start/end/length
+    - pair dimer diagnostics:
+      - `primer_pair_complementary_run_bp`
+      - `primer_pair_3prime_complementary_run_bp`
+    - rule-pass flags and aggregate score
+  - optional rejection summary buckets (for explainability):
+    - out-of-window
+    - GC/Tm out of bounds
+    - non-unique anneal
+    - primer sequence-constraint failure
+    - pair constraint failure
+    - amplicon-size or ROI-coverage failure
+  - mutating artifact materialization per accepted pair:
+    - one forward-primer sequence (`..._fwd`)
+    - one reverse-primer sequence (`..._rev`)
+    - one predicted amplicon sequence (`..._amplicon`) built from:
+      full forward primer + template interior + reverse-primer reverse-complement
+      (including non-annealing 5' tails)
+    - one per-pair pool container containing all three artifacts
+  - optional insertion-anchored context:
+    - `insertion_context` (present when `DesignInsertionPrimerPairs` is used)
+    - records requested forward/reverse anchor positions, extension sequences,
+      window constraints, shift budget, and per-pair compensation rows
+      (`forward_anchor_shift_bp`, `reverse_anchor_shift_bp`,
+      compensation segments, and compensated primer/tail strings)
+
+`ExportPrimerDesignReport` contract:
+
+- Purpose:
+  - write a persisted `gentle.primer_design_report.v1` record to JSON so
+    wrappers such as ClawBio can attach the ranked primer-pair report as a
+    deterministic artifact.
+- Operation payload:
+  - `report_id`: existing primer-design report id.
+  - `path`: JSON output path.
+- This is the preferred workflow-owned export step after `DesignPrimerPairs`
+  when a chat adapter needs a shareable report rather than only stdout.
+
+`AssessPrimerPairSpecificity` contract (implemented local BLAST baseline):
+
+- Purpose:
+  - confirm one saved or explicit primer pair against a prepared local
+    reference-genome BLAST database
+  - provide Primer-BLAST-like specificity evidence without remote NCBI
+    submission or GUI-only state
+- Operation payload:
+
+```json
+{
+  "AssessPrimerPairSpecificity": {
+    "primer_report_id": "tp73_roi_primers_v1",
+    "pair_rank": 1,
+    "target_genome_id": "GRCh38.p14",
+    "policy": {
+      "specificity_check": "report_only",
+      "max_target_amplicon_bp": 4000,
+      "min_primer_coverage_fraction": 0.8,
+      "max_3prime_mismatches": 0,
+      "three_prime_window_bp": 5,
+      "min_total_mismatches_to_unintended_target": 2,
+      "allow_same_gene_splice_variants": false,
+      "max_hits_per_primer": 500
+    },
+    "path": "tp73_pair1_specificity.json"
+  }
+}
+```
+
+- Explicit primers are accepted instead of `primer_report_id`:
+  - `forward_primer`: forward oligo/annealing sequence
+  - `reverse_primer`: reverse oligo/annealing sequence
+- For saved `PrimerDesignReport` pairs, the recorded
+  `non_annealing_5prime_tail_bp` is removed before BLAST. Full oligos and tails
+  remain in report provenance.
+- Target scope in v1:
+  - prepared reference genomes only
+  - runs through GENtle's existing BLAST index/preflight machinery
+  - local `blastn-short` is used, with `max_hits_per_primer` bounding each
+    primer query
+- Report schema:
+  - `gentle.primer_specificity_report.v1`
+  - includes BLAST binary preflight, per-primer BLAST invocation provenance,
+    input primers, policy, warnings, primer hits, candidate amplicons, and a
+    summary badge
+  - primer hits report identity, coverage, total mismatches, exact 3' terminal
+    mismatch count where prepared subject sequence can be fetched, strand, and
+    1-based subject coordinates
+  - candidate amplicons include forward/reverse products plus Primer-BLAST-style
+    forward/forward and reverse/reverse warning products
+  - intended products are resolved by saved-report amplicon length when
+    available, otherwise by a unique compatible forward/reverse product
+  - unintended compatible products fail when their combined mismatches remain
+    below `min_total_mismatches_to_unintended_target`
+- Additive policy vocabulary reserved for design-time parity:
+  - `specificity_check = none|report_only|require_pass`
+  - `specificity_target_genome_id`
+  - `allow_same_gene_splice_variants`
+  - mask booleans: `avoid_known_variants`, `avoid_rmsk_repeats`,
+    `avoid_low_complexity`
+  - transcript-aware policy enums:
+    `exon_junction_policy = no_preference|must_span|must_not_span` and
+    `intron_separation_policy = no_preference|must_separate_by_intron`
+  - current v1 stores/report-routes these knobs, while hard design-time
+    rejection by genome-wide specificity and binding-site masks remains a
+    follow-up.
+
+Simple PCR constraint handoff:
+
+- ClawBio should treat a simple PCR request as four explicit constraints before
+  calling `DesignPrimerPairs`:
+  - template sequence id or retrieval workflow,
+  - core ROI that must be inside the amplicon,
+  - allowed forward/reverse flank windows,
+  - min/max amplicon and primer/Tm/GC limits.
+- For the smallest safe default, first extract a compact context around the
+  core ROI, then express the flank windows in that extracted template. This
+  keeps internal search bounded and avoids accidental whole-locus primer scans.
+- Canonical offline example:
+  `docs/examples/workflows/simple_pcr_primer_design_offline.json`.
+- The example also exports `artifacts/simple_pcr_demo_primers.protocol.svg`
+  with `RenderProtocolCartoonSvg { protocol: "pcr.assay.pair", ... }`, so chat
+  adapters can show the user how the core ROI, primer windows, primers, and
+  final amplicon relate before exposing the JSON primer report.
+
+`DesignInsertionPrimerPairs` contract (implemented MVP):
+
+- Purpose:
+  - insertion-first wrapper around deterministic pair-primer design when the
+    user already knows insert extensions and requested insertion anchors.
+- Operation payload shape:
+
+```json
+{
+  "DesignInsertionPrimerPairs": {
+    "template": "seq_id",
+    "insertion": {
+      "requested_forward_3prime_end_0based_exclusive": 620,
+      "requested_reverse_3prime_start_0based": 700,
+      "forward_extension_5prime": "GAATTC",
+      "reverse_extension_5prime": "CTCGAG",
+      "forward_window_start_0based": 560,
+      "forward_window_end_0based_exclusive": 650,
+      "reverse_window_start_0based": 660,
+      "reverse_window_end_0based_exclusive": 760,
+      "max_anchor_shift_bp": 12
+    },
+    "forward": {
+      "min_length": 20,
+      "max_length": 30
+    },
+    "reverse": {
+      "min_length": 20,
+      "max_length": 30
+    },
+    "pair_constraints": {
+      "require_roi_flanking": false
+    },
+    "min_amplicon_bp": 120,
+    "max_amplicon_bp": 1200,
+    "max_tm_delta_c": 2.0,
+    "max_pairs": 200,
+    "report_id": "tp73_insert_v1"
+  }
+}
+```
+
+- MVP behavior:
+  - the insertion block is normalized first (IUPAC extension validation +
+    anchor/window bounds checks)
+  - forward/reverse primer windows are enforced from insertion windows
+  - forward/reverse non-annealing tails are set from insertion extensions
+  - primer design backend selection remains identical to `DesignPrimerPairs`
+    (`auto|internal|primer3`)
+  - resulting report is the same primer-report schema with populated
+    `insertion_context` rows for shift/compensation inspection
+  - no dedicated GUI form yet; operation is available through `op`/workflow
+    payloads.
+
+`PrepareRestrictionCloningPcrHandoff` contract (implemented v1):
+
+- Purpose:
+  - take one persisted `DesignPrimerPairs` result pair and turn it into a
+    cloning-aware handoff with restriction-site tails matched against a chosen
+    destination vector
+  - keep core primer proposal/ranking unchanged while creating new extended
+    primer artifacts and one restriction-ready amplicon artifact for downstream
+    digest/ligation staging
+- Operation payload shape:
+
+```json
+{
+  "PrepareRestrictionCloningPcrHandoff": {
+    "template": "seq_id",
+    "primer_report_id": "tp73_pairs_v1",
+    "pair_index": 0,
+    "destination_vector_seq_id": "pgl3_mcs",
+    "mode": "directed_pair",
+    "forward_enzyme": "EcoRI",
+    "reverse_enzyme": "HindIII",
+    "forward_leader_5prime": "GC",
+    "reverse_leader_5prime": "AT"
+  }
+}
+```
+
+- Baseline behavior:
+  - validates that `primer_report_id` belongs to `template` and that
+    `pair_index` exists in the persisted report
+  - derives:
+    - extended forward primer =
+      `forward_leader_5prime + forward restriction site + original forward primer`
+    - extended reverse primer =
+      `reverse_leader_5prime + reverse restriction site + original reverse primer`
+    - predicted tailed amplicon from the full extended primer sequences
+  - preserves annealing Tm/GC/hit semantics from the original annealing segment
+    while recomputing full-oligo secondary-structure and pair-dimer heuristics
+    as advisory diagnostics
+  - blocking compatibility checks:
+    - vector site absent or non-unique
+    - tailed amplicon site counts imply internal collisions instead of only
+      terminally added restriction sites
+    - directed-pair order disagrees with vector MCS order
+      (`mcs_expected_sites`) or, if absent, unique-cut order by cut position
+  - successful runs materialize graph-visible artifacts:
+    - one extended forward primer sequence
+    - one extended reverse primer sequence
+    - one predicted tailed amplicon sequence
+    - one per-handoff pool container
+  - successful runs also persist structured downstream hints:
+    - one staged `Workflow` containing the runnable `PcrAdvanced` + insert
+      digest + vector digest steps
+    - one `PcrAdvanced` operation payload using the full tailed oligos with
+      preserved `anneal_len`
+    - one insert `Digest` payload
+    - one vector `Digest` payload
+    - one ligation JSON snippet placeholder
+- Report schema:
+  - `gentle.restriction_cloning_pcr_handoff.v1`
+  - key fields include:
+    - `template`, `primer_report_id`, `pair_index`, `pair_rank`
+    - `destination_vector_seq_id`
+    - `mode`, selected enzymes, optional leaders
+    - original and extended primer records
+    - created artifact ids
+    - tailed amplicon length plus 5'/3' sequence previews
+    - extended pair dimer diagnostics
+    - `compatibility` summary with vector-site counts, insert-site counts,
+      cut positions, blocking errors, and warnings
+    - `workflow_hints` with suggested downstream operation payloads, including
+      one staged pre-ligation workflow and the remaining ligation placeholder
+
+`PcrOverlapExtensionMutagenesis` contract (implemented baseline):
+
+- Purpose:
+  - deterministic overlap-extension insertion/deletion/replacement mutagenesis
+    planning + staged product materialization in the main operation graph.
+- Operation payload shape:
+
+```json
+{
+  "PcrOverlapExtensionMutagenesis": {
+    "template": "seq_id",
+    "edit_start_0based": 620,
+    "edit_end_0based_exclusive": 640,
+    "insert_sequence": "GGTACC",
+    "constraints": {
+      "overlap_bp": 24,
+      "outer_forward": {
+        "min_length": 20,
+        "max_length": 30
+      },
+      "outer_reverse": {
+        "min_length": 20,
+        "max_length": 30
+      },
+      "inner_forward": {
+        "min_length": 18,
+        "max_length": 28
+      },
+      "inner_reverse": {
+        "min_length": 18,
+        "max_length": 28
+      }
+    },
+    "output_prefix": "tp73_oe_mut"
+  }
+}
+```
+
+- Baseline behavior:
+  - `edit_start_0based..edit_end_0based_exclusive` defines the replaced region
+    on the original template.
+    - insertion: `edit_start == edit_end` and `insert_sequence` non-empty
+    - deletion: `insert_sequence` empty and `edit_end > edit_start`
+    - replacement: both deletion and insertion are non-empty
+  - inner primers are chosen upstream/downstream of the edit and receive dynamic
+    5' overlap tails derived from the mutant sequence so stage-1 products share
+    one explicit overlap segment (minimum `overlap_bp`).
+  - outer primers amplify both stage-1 fragments and the stage-2 final mutant
+    amplicon.
+  - operation materializes graph-visible artifacts:
+    - primers: `..._outer_fwd`, `..._outer_rev`, `..._inner_fwd`, `..._inner_rev`
+    - stage-1 products: `..._stage1_left`, `..._stage1_right`
+    - final stage-2 mutant: `..._mutant`
+    - three per-stage pool containers (left, right, final)
+  - operation warnings include deterministic candidate-search limit notices when
+    the combinatorial search budget is exhausted.
+  - insertion/replacement runs now also emit
+    `OpResult.protocol_cartoon_preview` for built-in protocol
+    `pcr.oe.substitution`, including deterministic
+    `flank_bp`/`overlap_bp`/`insert_bp` geometry and bound template overrides
+    (`gentle.protocol_cartoon_template_bindings.v1`) for adapter rendering.
+
+`DesignQpcrAssays` contract (implemented baseline):
+
+- Purpose:
+  - propose ranked qPCR assays with three oligos (forward primer, reverse
+    primer, internal probe) for one linear template.
+- Operation payload shape:
+  - same core fields as `DesignPrimerPairs` plus:
+    - `probe` (`PrimerDesignSideConstraint`)
+    - `max_probe_tm_delta_c` (probe Tm distance to mean primer Tm)
+    - `max_assays` (result cap)
+    - optional `transcript_targeting`
+      - `source_feature_id`
+      - `mode = shared_gene | distinguish_transcript`
+      - `transcript_id` required for `distinguish_transcript`
+      - optional
+        `specificity_evidence = junction_only | unique_exon_or_chain | either_prefer_junction`
+  - `pair_constraints` is supported identically to `DesignPrimerPairs` and
+    applies to forward/reverse pair proposal before probe selection.
+- Current baseline behavior:
+  - forward/reverse pair generation follows the same backend routing as
+    `DesignPrimerPairs` (`auto|internal|primer3` for pair proposal).
+  - probe selection is deterministic, constrained to amplicon interior, and
+    reuses the same side sequence-constraint fields (`fixed_5prime`,
+    `fixed_3prime`, motifs, locked positions).
+  - probe Tm gating is enforced via `max_probe_tm_delta_c`; ranking now
+    prefers probe-based qPCR layouts where the probe Tm is about 7.5 C above
+    the forward/reverse primer mean when such candidates are available.
+  - when `transcript_targeting` is present, qPCR design first derives
+    transcript-local exon/junction ROIs from the selected splicing group on
+    `TargetGroupTargetStrand` and only then reuses the normal qPCR backend
+    logic on those transcript templates.
+  - `shared_gene` mode prefers assays whose amplicon context is shared across
+    all transcripts in the selected gene/group and records an explicit fallback
+    summary if only a largest supported subset is assayable.
+  - `distinguish_transcript` mode supports three evidence policies:
+    - `junction_only`
+      - requires at least one primer spanning a transcript-unique exon-exon
+        junction
+    - `unique_exon_or_chain`
+      - allows transcript discrimination through a primer placed on a
+        transcript-unique exon or exon-chain context
+    - `either_prefer_junction`
+      - prefers a junction-spanning distinguishing primer when available
+      - otherwise falls back to a transcript-unique exon/exon-chain assay
+  - transcript-distinguishing modes fail explicitly when the requested evidence
+    type cannot be satisfied.
+- Report schema:
+  - `gentle.qpcr_design_report.v1`
+  - includes ranked `assays[]` with forward/reverse/probe oligos, amplicon
+    window, and rule flags.
+  - when transcript-aware targeting is active, persisted reports also include:
+    - report-level `transcript_targeting`
+    - report-level `transcript_targeting_result`
+      - chosen mode/transcript
+      - requested transcript label when available
+      - transcript count considered
+      - selected support count/fraction
+      - realized specificity evidence when transcript-distinguishing mode was
+        requested
+      - whether shared-mode fallback was used
+      - deterministic warnings
+    - per-assay `transcript_context`
+      - design transcript id/label
+      - support count/fraction and supported transcript ids
+      - mapped source exon ranges for forward/reverse/probe/amplicon
+      - covered junction labels
+      - whether each oligo spans a junction
+      - genomic-DNA carryover risk based on junction oligos/probes, the mapped
+        genomic equivalent of the cDNA amplicon, and the configured max amplicon
+        window
+      - realized specificity evidence
+      - whether the assay satisfies the requested targeting intent
+  - includes `best_assay_probe_placement` and `best_assay_summary` so
+    shell/CLI/GUI reopen flows can inspect one compact persisted explanation of
+    the current top retained assay without re-deriving it locally.
+  - includes qPCR rejection summary with pair-level and probe-level counters.
+
+`TestCdnaPcr` / `TestCdnaQpcr` / `TestCdnaQpcrFasta` contract (implemented baseline):
+
+- Purpose:
+  - test already-chosen PCR/qPCR oligos against transcript-derived cDNA
+    templates for one annotated splicing group.
+  - use the same transcript-native cDNA derivation path as transcript-aware
+    qPCR design, so assay testing is independent of external protein or
+    transcript evidence services.
+  - optionally screen supplied cDNA/ncRNA FASTA or FASTA.gz transcript catalogs
+    with the same primer/probe/product rules, for example complete Ensembl
+    `cdna.all.fa.gz` plus `ncrna.fa.gz` files.
+- Operation payload shape:
+  - `seq_id`
+  - `source_feature_id`
+    - existing zero-based GENtle feature id used to resolve the transcript/gene
+      splicing group
+    - used only by `TestCdnaPcr` and `TestCdnaQpcr`
+  - `cdna_fasta_paths[]`
+    - one or more transcript FASTA/FASTA.gz files for `TestCdnaQpcrFasta`
+    - records are streamed directly from disk and may include large Ensembl
+      cDNA/ncRNA catalogs
+  - `forward_primer`
+  - `reverse_primer`
+  - `probe` for `TestCdnaQpcr` and `TestCdnaQpcrFasta`
+  - optional `transcript_id`
+    - limits testing to one derived transcript template when supplied
+  - optional `transcript_order`
+    - transcript-derived tests only; controls report/map row order
+  - optional `transcript_map_coordinate_mode`
+    - transcript-derived tests only; `cdna` keeps the existing transcript-local
+      cDNA axes, while `genomic_aligned` draws the map on the shared
+      source/genomic axis
+  - optional `min_amplicon_bp` / `max_amplicon_bp`
+  - optional `max_mismatches`
+    - defaults to `0`
+  - optional `require_3prime_exact_bases`
+    - enforced for forward/reverse primer hits
+  - optional `path`
+    - writes the same report JSON returned in the operation result
+  - optional `svg_path`
+    - writes the report-owned transcript-map SVG to a separate file for
+      ClawBio/OpenClaw artifact collection or direct CLI review
+  - optional `materialize_products`
+    - default `false`; when true, detected transcript-derived cDNA products are
+      created as linear GENtle sequence entries and grouped into one
+      singleton/pool product container
+  - optional `product_output_prefix`
+    - deterministic prefix for materialized product sequence ids
+  - optional `product_gel_svg_path`
+    - writes a pool-gel SVG for the materialized product container; supplying
+      this path implies product materialization even when
+      `materialize_products` is omitted
+  - optional `product_gel_ladders`
+    - ladder names passed to the shared DNA pool-gel renderer
+- Current baseline behavior:
+  - templates are derived from the selected splicing group on
+    `TargetGroupTargetStrand`.
+  - forward primer hits are searched on the transcript-derived cDNA strand.
+  - reverse primer hits are searched as reverse-complement binding sites.
+  - qPCR probes are accepted on either cDNA orientation, but must fall inside
+    the primer-bounded amplicon interior.
+  - matching is IUPAC-aware and exact by default, with optional mismatch
+    tolerance and deterministic 3' exactness gating for primers.
+  - UTR/noncoding transcript bases are not guessed from genomic context; only
+    derived cDNA templates from the selected transcript features are tested.
+  - FASTA screens preserve Ensembl-style record ids from the first header token,
+    accept `.gz` input, and can take multiple files in one run.
+  - FASTA screens count every scanned record in `transcript_count` but, unless
+    `transcript_id` is supplied, report only detected transcript rows to avoid
+    huge reports for complete transcript catalogs.
+  - transcript-derived PCR/qPCR tests remain non-mutating by default. When
+    product materialization is requested, each detected cDNA product becomes a
+    derived linear DNA sequence, all products from the assay are grouped into
+    one product container, and multiple nonspecific products are represented as
+    one pool lane in the existing `RenderPoolGelSvg` renderer.
+  - if no products are detected, materialization does not fail the assay; it
+    creates no product sequence/container and reports why no product gel was
+    written.
+  - every report includes `transcript_map` with schema
+    `gentle.cdna_assay_transcript_map.v1`; the embedded SVG draws each shown
+    transcript on its own cDNA coordinate axis, with amplicons, symbolic
+    forward/reverse primer hits, probe hits, group/source exon labels (`E1`,
+    `E2`, ...) ordered by transcript strand, source-exon identity
+    colors/patterns, and exon-junction ticks overlaid where products are
+    functional; requested forward/reverse primer and probe sequences are shown
+    once in the legend, forward primer glyphs are one-sided above the cDNA
+    axis, reverse primer glyphs are one-sided below it, probe glyphs are
+    one-sided on the detected probe-binding strand, crowded transcript sets
+    auto-wrap into columns, and SVG tooltips retain the transcript-local exon
+    ordinal when it differs from the group label.
+  - `transcript_map.column_count` and `transcript_map.rows_per_column` describe
+    the selected SVG layout so adapters can size previews without parsing the
+    SVG.
+  - `transcript_order` is included at report level and in `transcript_map`.
+    It defaults to `transcript_id`; transcript-derived tests may request
+    `genomic_first_exon`, `genomic_last_exon`, or `antisense_first_exon`.
+  - `transcript_map_coordinate_mode` is included at report level, and
+    `transcript_map.coordinate_mode` repeats the realized map axis. The default
+    is `cdna`; `genomic_aligned` SVGs use shared source/genomic coordinates for
+    exon blocks, primer/probe glyphs, and amplicon source spans.
+- Report schema:
+  - `gentle.cdna_assay_test_report.v1`
+  - report-level fields include assay kind, source sequence/feature, group
+    label, strand, requested transcript id, primers/probe, construct-length
+    summary, genomic-DNA carryover risk summary, oligo QC,
+    mismatch/size settings, transcript/product counts, overall status, and
+    warnings.
+  - `construct_lengths` records forward/reverse/probe oligo lengths plus the
+    distinct detected amplicon construct lengths, including min/max when any
+    product is found.
+  - `oligo_qc` uses schema `gentle.oligo_qc_report.v1` and performs a
+    deterministic exact reverse-complement run screen over supplied oligos:
+    per-oligo self-complementary and 3'-self runs, pairwise oligo
+    complementarity, and primer-side 3' extension-risk warnings. This is a
+    portable first-pass QC layer, not a thermodynamic replacement for Primer3 /
+    wet-lab assay validation.
+  - `oligo_qc.method_reference` records that the vocabulary follows Primer3's
+    public `SELF_ANY` / `SELF_END` and `COMPL_ANY` / `COMPL_END` distinction,
+    while the implementation remains independent GENtle Rust code with no
+    vendored or translated Primer3 source.
+  - report-level fields include assay kind, template source kind, source
+    paths, source sequence/feature, group label, strand, requested transcript
+    id, primers/probe, mismatch/size settings, transcript/product counts,
+    overall status, and warnings.
+  - `transcript_map` includes `artifact_id`,
+    `media_type = image/svg+xml`, canvas dimensions, row/omission counts,
+    product count, a compact summary, and the SVG text. FASTA reports use the
+    same detected-row rule for the figure unless `transcript_id` requests one
+    specific record.
+  - per-transcript rows include transcript feature id, transcript id/label,
+    optional source path, strand, cDNA length, status, transcript-local exon
+    segments when source mapping is available, primer/probe hits, and products.
+    Transcript-derived rows prefer transcript/product descriptions over bare
+    gene symbols for `transcript_label`, so graphical maps can distinguish
+    isoform biology instead of repeating the group label.
+  - primer/probe hit rows include local cDNA coordinates, binding sequence,
+    binding orientation, mismatch count, mapped source ranges, covered junction
+    labels, and whether the hit spans a junction.
+  - product rows include local cDNA amplicon coordinates/length, hit indices,
+    optional probe hit indices, mapped source ranges, covered junction labels,
+    whether the product spans a junction, the genomic-equivalent span/length
+    when source mapping is available, and a per-product genomic-DNA carryover
+    risk rationale.
+- Optional materialization schema:
+  - `gentle.cdna_assay_product_materialization.v1`
+  - fields include assay kind, source sequence/feature, group label, detected
+    product count, materialized product sequence ids, product container id/kind,
+    optional product gel SVG path, output prefix, and warnings.
+
+Primer-design shell command family (implemented):
+
+- Shared-shell family:
+  - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
+  - `primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME ...]`
+  - `primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]`
+  - `primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]`
+  - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE`
+  - `primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]`
+  - `primers restriction-cloning-vector-suggestions SEQ_ID`
+  - `primers list-restriction-cloning-handoffs`
+  - `primers show-restriction-cloning-handoff REPORT_ID`
+  - `primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json`
+  - `primers seed-from-feature SEQ_ID FEATURE_ID`
+  - `primers seed-from-splicing SEQ_ID FEATURE_ID`
+  - `primers seed-qpcr-from-feature SEQ_ID FEATURE_ID`
+  - `primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID] [--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction]`
+  - `primers list-reports`
+  - `primers show-report REPORT_ID`
+  - `primers export-report REPORT_ID OUTPUT.json`
+  - `primers list-qpcr-reports`
+  - `primers show-qpcr-report REPORT_ID`
+  - `primers export-qpcr-report REPORT_ID OUTPUT.json`
+- `primers design` expects an operation payload whose root variant is
+  `{"DesignPrimerPairs": {...}}`.
+- `primers design-qpcr` accepts either:
+  - an operation payload whose root variant is `{"DesignQpcrAssays": {...}}`
+  - a full `gentle.qpcr_seed_request.v1` payload carrying one runnable
+    `operation.DesignQpcrAssays`
+- `primers test-cdna-pcr` and `primers test-cdna-qpcr` are non-mutating assay
+  checks over transcript-derived cDNA templates and return
+  `gentle.cdna_assay_test_report.v1`; `--path` persists that same report and
+  `--svg` writes the embedded transcript-map SVG. `--transcript-order` controls
+  transcript-map/report row order for transcript-derived tests only.
+  `--map-coordinate-mode` selects the map axis: `cdna` keeps each transcript on
+  its own cDNA-length axis, while `genomic_aligned` draws exon blocks,
+  primer/probe glyphs, and amplicon source spans on the shared source/genomic
+  coordinate range so common primer loci line up across isoforms. The returned
+  report carries `transcript_map_coordinate_mode`, and the embedded
+  `transcript_map` carries `coordinate_mode`; in genomic-aligned SVGs dashed
+  product bridges mark spliced products whose source ranges skip genomic
+  sequence while amplicon labels remain cDNA lengths. Shell output includes
+  `preferred_artifacts[]` when `--svg` is supplied so ClawBio can promote the
+  same map through its PNG-first artifact bundle.
+- Supplying `--materialize-products` or `--product-gel-svg` to
+  `primers test-cdna-pcr` / `primers test-cdna-qpcr` switches the command from
+  report-only to state-changing: detected products are materialized as derived
+  DNA sequences, grouped into a product container, and optionally rendered as a
+  gel. Shell output then includes `materialization` plus gel-first
+  `preferred_artifacts[]` so ClawBio can show nonspecific products as bands
+  before the transcript map.
+- `primers transcript-qpcr-panel` is a non-mutating table/report helper for
+  transcript-targeted qPCR panels. It consumes a stored shared-gene qPCR report,
+  reuses that assay's shared reverse primer and probe, and emits
+  `gentle.transcript_qpcr_panel.v1` with shared oligo records plus one
+  transcript row per admitted cDNA template. Rows prefer a transcript-specific
+  exon-junction forward primer when possible, allow a single-exon/exon-chain
+  characteristic forward primer when that is the valid/efficient evidence, and
+  emit deterministic `not_found` rows when no single forward primer can
+  distinguish the transcript while retaining the shared reverse/probe product.
+  All source positions are machine-readable as local 0-based/exclusive ranges
+  plus 1-based/inclusive display ranges; genomic 1-based/inclusive ranges and
+  reference strand labels are included when a genome anchor is available.
+- `primers preflight` returns `gentle.primer3_preflight.v1` with the requested
+  backend plus configured-executable token, default-fallback marker, effective
+  executable, resolved path, working directory, and reachability/version/error
+  diagnostics.
+- `primers prepare-restriction-cloning` expects an operation payload whose root
+  variant is `{"PrepareRestrictionCloningPcrHandoff": {...}}`.
+- `primers seed-restriction-cloning-handoff` is non-mutating and returns a
+  validated `PrepareRestrictionCloningPcrHandoff` payload plus the
+  recommendation context used to select or validate the enzyme pair.
+- `primers restriction-cloning-vector-suggestions` is non-mutating and returns
+  the same MCS-first / unique-cutter suggestion ordering the GUI PCR Designer
+  uses for the selected destination vector.
+- restriction-cloning saved-report helpers mirror the existing primer/qPCR
+  lifecycle:
+  - list stored handoff summaries
+  - inspect one persisted handoff report by id
+  - export one persisted handoff report to JSON
+- `primers seed-from-feature` and `primers seed-from-splicing` are
+  non-mutating helper commands that resolve an ROI and emit seeded operation
+  payloads for both pair-PCR and qPCR design.
+- `primers seed-qpcr-from-feature` and `primers seed-qpcr-from-splicing` are
+  qPCR-only non-mutating helper commands that resolve an ROI and emit one
+  seeded `DesignQpcrAssays` payload plus the built-in qPCR protocol-cartoon id
+  (`pcr.assay.qpcr`) for shell/CLI/ClawBio promotion.
+- qPCR-only seed helpers default to probe-based/TaqMan-like constraints:
+  - primer length 18-24 bp
+  - primer Tm 63-73 C with pair delta <= 3 C
+  - probe length 20-30 bp
+  - probe Tm 71-80 C, intended to land roughly 5-10 C above the primer mean
+  - amplicon range 80-200 bp
+- `primers seed-qpcr-from-splicing` additionally supports transcript-aware
+  seeding:
+  - `--mode shared_gene|distinguish_transcript`
+  - `--transcript-id ID` when distinguishing one transcript from competing
+    isoforms in the same gene/group
+  - `--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction`
+    when `--mode distinguish_transcript`
+- those qPCR-only seed helpers now also emit a deterministic `rationale`
+  payload so agent callers can explain why the ROI was chosen and reuse
+  GENtle's expected default assay limits without reverse-engineering them from
+  the operation body.
+- the qPCR designer can now use the same seeded report geometry to drive an
+  in-window preview summary, so the shared shell payload and the GUI stay on
+  one deterministic qPCR setup story.
+- `primers design` and `primers show-report` additionally include
+  `simple_pcr_pairs`, a derived helper array that summarizes each accepted pair
+  in simple-PCR terms:
+  - amplicon coordinates/length
+  - left/right distance from the core ROI
+  - left/right overlap into the core ROI
+  - `left_to_core_label` / `right_to_core_label`
+  - `flanks_core_cleanly`
+  - `tm_delta_c` and score
+- Response schemas:
+  - `gentle.primer_seed_request.v1`
+  - `gentle.qpcr_seed_request.v1`
+  - `gentle.primer_design_report.v1`
+  - `gentle.primer_design_report_list.v1`
+  - `gentle.qpcr_design_report.v1`
+  - `gentle.qpcr_design_report_list.v1`
+  - `gentle.restriction_cloning_pcr_handoff.v1`
+  - `gentle.restriction_cloning_pcr_handoff_seed.v1`
+  - `gentle.restriction_cloning_vector_enzyme_suggestions.v1`
+- `gentle.primer_seed_request.v1` payload fields:
+  - `template`
+  - `source` (`kind=feature|splicing`, `feature_id`, and splicing metadata when available)
+  - `roi_start_0based`
+  - `roi_end_0based_exclusive`
+  - `operations.design_primer_pairs` (`{"DesignPrimerPairs": ...}`)
+  - `operations.design_qpcr_assays` (`{"DesignQpcrAssays": ...}`)
+- `gentle.qpcr_seed_request.v1` payload fields:
+  - `template`
+  - `source` (`kind=feature|splicing`, `feature_id`, and splicing metadata when available)
+  - `roi_start_0based`
+  - `roi_end_0based_exclusive`
+  - `rationale`
+    - `summary`
+    - `why_this_roi`
+    - `recommended_defaults`
+      - `min_amplicon_bp`
+      - `max_amplicon_bp`
+      - `max_tm_delta_c`
+      - `max_probe_tm_delta_c`
+      - `primer_tm_c`
+      - `probe_tm_c`
+      - `probe_tm_offset_target_c`
+      - `max_assays`
+  - `operation` (`{"DesignQpcrAssays": ...}`)
+    - splicing-seeded qPCR requests may include
+      `transcript_targeting.source_feature_id`,
+      `transcript_targeting.mode`, optional
+      `transcript_targeting.transcript_id`, and optional
+      `transcript_targeting.specificity_evidence`
+  - `protocol_cartoon`
+    - `protocol` (`pcr.assay.qpcr`)
+    - `summary`
+    - `default_output_svg`
+- `gentle.restriction_cloning_vector_enzyme_suggestions.v1` payload fields:
+  - `suggestions.seq_id`
+  - `suggestions.selected_mcs[]` (preferred MCS-annotated cutters that are
+    currently unique/usable)
+  - `suggestions.other_unique[]` (other unique cutters on the vector)
+  - `suggestions.missing_mcs[]` (annotated MCS cutters that were named but are
+    not currently uniquely usable on the vector)
+  - `suggestions.recommended_single_site[]`
+    (`enzyme`, `cut_position_0based`)
+  - `suggestions.recommended_directed_pairs[]`
+    (`order_source`, `forward_enzyme`, `reverse_enzyme`,
+    `forward_cut_position_0based`, `reverse_cut_position_0based`)
+- `gentle.restriction_cloning_pcr_handoff_seed.v1` payload fields:
+  - `primer_report_id`
+  - `template`
+  - `destination_vector_seq_id`
+  - `pair_index`, `pair_rank`
+  - `selected_pair`
+  - `selected_pair_core_geometry`
+  - `mode`
+  - `forward_enzyme`, `reverse_enzyme`
+  - `forward_leader_5prime`, `reverse_leader_5prime`
+  - `selection_source`
+  - optional `suggestion_order_source`
+  - `vector_suggestions`
+  - `operation` (`{"PrepareRestrictionCloningPcrHandoff": ...}`)
+
+Feature-query shell contract (implemented):
+
+- Shared-shell command:
+  - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
+- Execution semantics:
+  - non-mutating engine inspection over one sequence’s feature table
+  - deterministic filter pipeline:
+    kind include/exclude, optional range relation (`overlap|within|contains`),
+    strand filter, label contains/regex, qualifier filters, and length bounds
+  - deterministic ordering by requested sort key with stable tie-breaks +
+    pagination (`offset`/`limit`)
+- Response schema:
+  - `gentle.sequence_feature_query_result.v1`
+  - fields include:
+    - `seq_id`, `sequence_length_bp`, `total_feature_count`
+    - `matched_count`, `returned_count`, `offset`, `limit`
+    - normalized `query`
+    - `rows[]` with `feature_id`, `kind`, `start_0based`,
+      `end_0based_exclusive`, `length_bp`, `strand`, `label`, `labels[]`, and
+      optional qualifier maps when requested (`--include-qualifiers`)
+
+Feature BED export contract (implemented):
+
+- Shared-shell command:
+  - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
+- Raw/shared operation:
+  - `{"ExportFeaturesBed":{"query":{"seq_id":"tp53_region","kind_in":["gene","mRNA","exon","CDS"]},"path":"artifacts/tp53_region.features.bed","coordinate_mode":"auto","include_restriction_sites":false,"restriction_enzymes":[]}}`
+- Execution semantics:
+  - non-mutating export built on the same feature-query filter contract used by
+    `features query`
+  - when `--limit` / `query.limit` is omitted, the exporter writes all matching
+    rows instead of defaulting to the paged query window
+  - `coordinate_mode=auto` prefers genomic BED coordinates whenever a feature
+    carries `chromosome`, `genomic_start_1based`, and `genomic_end_1based`;
+    otherwise the row falls back to local `SEQ_ID` coordinates
+  - `include_restriction_sites=true` appends deterministic REBASE-derived
+    `restriction_site` rows, filtered by the same range/strand/label/qualifier
+    options; `restriction_enzymes[]` narrows those rows to selected enzymes
+  - TFBS/JASPAR annotations remain ordinary feature rows, so `kind_in=["TFBS"]`
+    exports the current binding-site table after `AnnotateTfbs`
+
+Restriction-site scan contract (implemented):
+
+- Shared-shell commands:
+  - `features restriction-scan SEQ_ID [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
+  - `features restriction-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]`
+- Raw/shared operation:
+  - `{"FindRestrictionSites":{"target":{"kind":"seq_id","seq_id":"tp53_region","span_start_0based":700,"span_end_0based_exclusive":1200},"enzymes":["EcoRI","SmaI"],"include_cut_geometry":true}}`
+- Execution semantics:
+  - non-mutating scan backed by the same shared REBASE enzyme catalog used by
+    other restriction-aware flows
+  - accepts either stored `seq_id` targets or inline ASCII DNA text through one
+    contract
+  - when `enzymes[]` is omitted, the shared preferred restriction-enzyme list
+    is used, with fallback to the default preferred set
+  - the report includes both local scan coordinates and source-sequence
+    coordinates so selection/visible-span calls stay easy to interpret
+- TFBS/JASPAR scan contract (implemented):
+  - Shared-shell commands:
+    - `features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
+    - `features tfbs-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]`
+  - Raw/shared operation:
+    - `{"ScanTfbsHits":{"target":{"kind":"seq_id","seq_id":"tp53_region","span_start_0based":700,"span_end_0based_exclusive":1200},"motifs":["SP1","TP73"],"min_llr_quantile":0.95,"max_hits":50}}`
+  - Execution semantics:
+    - non-mutating PWM scan backed by the same shared local motif registry and
+      IUPAC scoring helpers used by `AnnotateTfbs`,
+      `SummarizeTfbsScoreTracks`, and JASPAR presentation/expert routes
+    - accepts either stored `seq_id` targets or inline ASCII DNA text through
+      one contract
+    - returns both local scan coordinates and source-sequence coordinates so
+      selection/visible-span calls remain interpretable without materializing a
+      new sequence record
+    - full-span circular targets also mark origin-crossing rows with
+      `wraps_origin=true`; those rows report modulo-local end coordinates while
+      keeping the full wrapped `matched_sequence`
+    - `max_hits` caps the total retained row count across the whole scan in
+      deterministic motif order and sets `truncated_at_max_hits=true` when
+      later hits are skipped
+
+Repeat-environment cohort contract (implemented baseline):
+
+- Shared-shell commands:
+  - `features repeat-query GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path FILE.json]`
+  - `features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]`
+  - `features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]`
+  - `features repeat-cohort GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--geometry repeat_midpoint|transcript_5utr_start|pol2_promoter_upstream|cds_stop_context] [--upstream-bp N] [--downstream-bp N] [--limit N] [--catalog PATH] [--cache DIR] [--path FILE.json]`
+  - `features window-cohort-tfbs COHORT_JSON --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache DIR] [--path FILE.json]`
+- Raw/shared operations:
+  - `{"QueryRepeatAnnotations":{"genome_id":"Human GRCh38 Ensembl 116","rmsk_path":"data/rmsk.txt.gz","filter":{"normalized_alias":"LINE/L1"},"limit":100}}`
+  - `{"QueryRepeatOverlaps":{"seq_id":"grch38_tp53","rmsk_index_path":"data/resources/ucsc.rmsk.hg38.interval-index.json","start_0based":0,"end_0based_exclusive":5000,"limit":100}}`
+  - `{"MaterializeRepeatFeatures":{"seq_id":"grch38_tp53","rmsk_index_path":"data/resources/ucsc.rmsk.hg38.interval-index.json","max_features":1000,"clear_existing":true}}`
+  - `{"BuildRepeatEnvironmentCohort":{"genome_id":"Human GRCh38 Ensembl 116","rmsk_path":"data/rmsk.txt.gz","filter":{"normalized_alias":"LINE/L1"},"geometry_mode":"pol2_promoter_upstream","upstream_bp":2000,"downstream_bp":2000,"limit":50}}`
+  - `{"SummarizeWindowCohortTfbs":{"cohort":{...},"motifs":["SP1","TP73"],"score_kind":"llr_background_tail_log10","clip_negative":true}}`
+- Execution semantics:
+  - `QueryRepeatAnnotations` parses UCSC `rmsk.txt` / `rmsk.txt.gz` rows and
+    preserves deterministic repeat identity fields: `repName`, `repClass`,
+    `repFamily`, strand, chromosome, 1-based genomic span, and optional
+    score/divergence fields.
+  - Repeat filters accept raw class/family/name values plus normalized aliases
+    such as `LINE/L1`, `SINE/Alu`, and `LTR/ERV`; malformed rows are counted
+    and skipped instead of aborting the whole deterministic query.
+  - `QueryRepeatOverlaps` requires a sequence with genome-extraction anchor
+    provenance. It projects prepared-index intervals into local sequence
+    coordinates, clips optional local query ranges, flips local strand on
+    reverse anchors, and returns `gentle.sequence_repeat_overlap.v1`.
+  - `MaterializeRepeatFeatures` uses the same projection service and writes
+    ordinary `repeat_region` features with `gentle_generated=ucsc_rmsk`,
+    `rmsk_*`, `repeat_*`, and original `repName`/`repClass`/`repFamily`
+    qualifiers. By default it clears prior generated UCSC-rmsk features before
+    writing; `--append` keeps existing generated rows and skips duplicates by
+    stable annotation id. The report schema is
+    `gentle.repeat_feature_materialization.v1`.
+  - `BuildRepeatEnvironmentCohort` creates one row per selected repeat locus,
+    then projects transcript/gene context when a prepared genome catalog is
+    available. The report stores all geometry windows, the selected geometry,
+    and explicit missing-reason strings for unavailable 5'UTR/TSS/CDS-stop
+    contexts.
+  - Supported geometry modes are `repeat_midpoint`,
+    `transcript_5utr_start`, `pol2_promoter_upstream`, and
+    `cds_stop_context`. The default flank on each side is 2000 bp.
+  - `SummarizeWindowCohortTfbs` consumes the stored cohort window records and
+    scores the selected windows with the same TFBS score-track machinery used
+    by promoter and inline-DNA analyses; minus-strand windows are
+    reverse-complemented before scoring so cohort rows stay strand-oriented.
+  - RNA-read evidence fields are part of the cohort row shape but remain
+    annotation/ranking extension points in this baseline; repeat selection is
+    never hard-filtered by RNA evidence.
+- Response/report schemas:
+  - `gentle.repeat_annotation_query.v1`
+  - `gentle.repeat_environment_cohort.v1`
+  - `gentle.window_cohort_tfbs.v1`
+- File format:
+  - BED6 core columns:
+    `chrom`, `chromStart`, `chromEnd`, `name`, `score`, `strand`
+  - deterministic extra columns:
+    `kind`, `row_id`, `coordinate_source`, `qualifiers_json`
+- Response/report schema:
+  - `gentle.sequence_feature_bed_export.v1`
+  - fields include:
+    - `seq_id`, `path`, `coordinate_mode`
+    - `matched_sequence_feature_count`, `matched_restriction_site_count`,
+      `matched_row_count`
+    - `exportable_row_count`, `exported_row_count`
+    - `local_coordinate_row_count`, `genomic_coordinate_row_count`
+    - `skipped_missing_genomic_coordinates`
+    - `bed_columns[]`
+
+Sequence-context view summary contract (implemented baseline):
+
+- Raw/shared operation:
+  - `{"InspectSequenceContextView":{"seq_id":"rs9923231_16_31093368_31099368","mode":"linear","viewport_start_0based":2400,"viewport_end_0based_exclusive":3501,"include_visible_classes":["gene","mrna","variation","tfbs"],"coordinate_mode":"genomic","limit":20}}`
+- Execution semantics:
+  - non-mutating compact summary for one DNA-sequence-view context
+  - reuses the shared feature-query pipeline instead of inventing a second
+    frontend-only inspection path
+  - defaults to the current stored linear viewport when no explicit viewport is
+    supplied and the engine display state already carries one
+  - defaults to the currently enabled visible feature classes when
+    `include_visible_classes[]` is omitted
+  - surfaces a short chat-friendly/text-friendly summary alongside a compact
+    feature table so callers like ClawBio can answer first and attach larger
+    SVG/BED artifacts second
+- Response/report schema:
+  - `gentle.sequence_context_view.v1`
+  - fields include:
+    - `seq_id`, `sequence_length_bp`
+    - `mode`, `coordinate_mode`
+    - `viewport_start_0based`, `viewport_end_0based_exclusive`,
+      `viewport_span_bp`
+    - optional `genome_anchor` plus optional genomic viewport bounds when the
+      sequence is genome-anchored
+    - `visible_classes[]` with class ids, feature-kind coverage, counts, and
+      prominent labels
+    - `matched_feature_count`, `returned_feature_count`, `limit`
+    - `rows[]` with local bounds, label metadata, and optional genomic feature
+      coordinates when qualifiers or anchor geometry make them available
+    - `summary_lines[]` for compact relay into chat/report layers
+
+Sequence-context bundle export contract (implemented baseline):
+
+- Raw/shared operation:
+  - `{"ExportSequenceContextBundle":{"seq_id":"rs9923231_16_31093368_31099368","mode":"linear","viewport_start_0based":2400,"viewport_end_0based_exclusive":3501,"coordinate_mode":"genomic","include_feature_bed":true,"include_text_summary":true,"include_restriction_sites":false,"restriction_enzymes":[],"output_dir":"artifacts/rs9923231.context_bundle"}}`
+- Execution semantics:
+  - non-mutating artifact export for one DNA-sequence-view context
+  - writes one deterministic output directory containing:
+    - `context.svg`
+    - `context_summary.json`
+    - optional `context_summary.txt`
+    - optional `context_features.bed`
+    - `bundle.json` manifest
+  - reuses the same shared `InspectSequenceContextView` report for the compact
+    summary component instead of inventing a second export-only summary format
+  - reuses the existing `ExportFeaturesBed` path for the BED companion when
+    `include_feature_bed=true`
+  - defaults to current display-visible classes for the BED feature query, so
+    the coordinate-bearing table tracks the same viewer focus as the summary
+- Response/report schema:
+  - `gentle.sequence_context_bundle.v1`
+  - fields include:
+    - `seq_id`, `output_dir`
+    - `svg_path`, `summary_json_path`, optional `summary_text_path`,
+      optional `feature_bed_path`, `bundle_json_path`
+    - `include_text_summary`, `include_feature_bed`,
+      `include_restriction_sites`, `restriction_enzymes[]`
+    - `artifacts[]` with deterministic presentation metadata:
+      `artifact_id`, `path`, `media_type`, `artifact_kind`, `caption`,
+      `recommended_use`, `presentation_rank`, `is_best_first_artifact`
+    - `best_first_artifact_id`, `best_first_artifact_path`
+    - embedded `sequence_context_view`
+    - optional embedded `feature_bed_export`
+
+Dotplot + flexibility operation contract (implemented baseline):
+
+- Dotplot operation:
+  - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }`
+  - `ComputeDotplotOverlay { owner_seq_id, reference_seq_id, reference_span_start_0based?, reference_span_end_0based?, queries[], word_size, step_bp, max_mismatches?, tile_bp?, store_as? }`
+  - `mode`: `self_forward | self_reverse_complement | pair_forward | pair_reverse_complement`
+  - pair modes require `reference_seq_id` and use the optional
+    `reference_span_start_0based` / `reference_span_end_0based` for the
+    y/reference axis.
+  - `ComputeDotplotOverlay` is reference-centered and requires at least one
+    query spec; each query uses `pair_forward` or `pair_reverse_complement`
+    against the same reference span
+  - stores payload schema `gentle.dotplot_view.v3`
+  - payload includes:
+    - `owner_seq_id`
+    - shared reference span + seed parameters
+    - sparse match points (`points[]`)
+    - per-query-bin reference-distribution boxplot summary
+      (`boxplot_bin_count`, `boxplot_bins[]` with
+      `min/q1/median/q3/max + hit_count`)
+    - `query_series[]` for multi-query overlays
+      - each series may also carry optional `query_anchor_0based` +
+        `query_anchor_label` values for curated cross-family/domain-anchored
+        rendering with `query_anchor_bp`
+    - optional `reference_annotation` genome-context side rail for pairwise,
+      annotated self, and overlay dotplot payloads
+      - intervals carry `kind`, `label`, optional `strand`, `lane`,
+        optional `color_rgb`, and optional human-readable `detail`
+      - exon intervals are not filtered to one selected gene; sense and
+        antisense exons remain separate so opposite-strand context survives
+      - materialized RepeatMasker/UCSC `rmsk` repeat annotations
+        (`repeat_region` / `mobile_element` features with repeat qualifiers)
+        are represented as repeat intervals
+      - dotplot computation/rendering does not perform live repeat-index
+        queries; repeat context must already be present as sequence features
+    - optional `query_series[].transcript_feature_id` when overlays originate
+      from locus transcript lanes
+    - optional `overlay_anchor_exons[]` carrying precomputed shared-exon anchor
+      metadata for `shared_exon_anchor` rendering/export
+  - guardrails:
+    - `word_size >= 1`
+    - `step_bp >= 1`
+    - query/reference spans must satisfy `0 <= start < end <= sequence_len`
+    - pair-evaluation safety limit is enforced for latency protection
+    - point count is capped with deterministic truncation warning
+- Flexibility operation:
+  - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }`
+  - `model`: `at_richness | at_skew`
+  - stores payload schema `gentle.flexibility_track.v1`
+  - guardrails:
+    - `bin_bp >= 1`
+    - same span validation contract as dotplot
+    - optional smoothing uses deterministic moving-average bins
+- Metadata persistence:
+  - metadata key: `dotplot_analysis`
+  - store schema: `gentle.dotplot_analysis_store.v1`
+  - both dotplots and flexibility tracks are persisted under this key
+- Shared-shell command family:
+  - `dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
+  - `dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
+    - convenience wrapper over `ComputeDotplotOverlay`
+    - if `--reference-seq` is omitted, adapters default the shared reference to
+      `OWNER_SEQ_ID`
+    - each `--query-spec` must deserialize into one `DotplotOverlayQuerySpec`
+  - `dotplot list [SEQ_ID]`
+  - `dotplot show DOTPLOT_ID`
+  - `dotplot render-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]`
+  - `render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]` (alias)
+  - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
+  - `flex list [SEQ_ID]`
+  - `flex show TRACK_ID`
+
+Splicing-reference derivation + pairwise alignment operation contract (implemented baseline):
+
+- Splicing-reference derivation operation:
+  - `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }`
+  - emits multiple derived sequence outputs from one genomic window:
+    - DNA window (`..._dna`)
+    - one mRNA sequence per transcript lane (`..._mrna_*`, transcript orientation, `T->U`)
+    - exon-consecutive artificial reference sequence (`..._exon_reference`)
+  - shared splicing expert payloads now also carry splice-boundary motif
+    annotations per intron boundary:
+    - donor/acceptor dinucleotide (`motif_2bp`)
+    - paired intron signature (`paired_motif_signature`, for example `GT-AG`)
+    - paired boundary position (`partner_position_1based`)
+    - high-level motif class / annotation
+      (`gt_ag_major_canonical`, `gc_ag_major_noncanonical`,
+      `at_ac_minor_u12_like`, `at_ag_minor_u12_like`,
+      `other_noncanonical`)
+  - shared splicing expert payloads also carry conservative intron-signal
+    heuristics per intron:
+    - donor/acceptor positions and intron length
+    - best branchpoint-like adenine in the usual 18-40 nt acceptor-proximal
+      window (`branchpoint_position_1based`, `branchpoint_motif`,
+      `branchpoint_score`, `branchpoint_annotation`)
+    - best acceptor-proximal polypyrimidine-rich tract
+      (`polypyrimidine_start_1based`, `polypyrimidine_end_1based`,
+      `polypyrimidine_fraction`, `polypyrimidine_annotation`)
+    - these are intentionally framed as heuristics, not a splice predictor
+  - if `seed_feature_id` is omitted, engine selects one overlapping mRNA feature deterministically from the requested span
+  - default `scope`: `target_group_target_strand`
+- ATtRACT splice-aware evidence inspection:
+  - normalized runtime motif snapshot schema:
+    - `gentle.attract_motifs.v1`
+    - records one deterministic ATtRACT motif row per normalized
+      `ATtRACT_db.txt` entry, including:
+      - `pwm_row_count`
+      - `consensus_only_row_count`
+      - optional `snapshot_fingerprint` on the snapshot wrapper so runtime and
+        session-loaded resources can be identified by content, not just by item
+        count
+      - `entry_id`
+      - `matrix_id`
+      - `gene_name`
+      - `organism`
+      - `motif_iupac`
+      - optional `pfm` rows (`a`, `c`, `g`, `t`) when a `pwm.txt` block could
+        be mapped to the row’s `matrix_id`
+      - optional provenance fields such as `experiment`, `family`, `domain`,
+        `pubmed_id`, and `quality_score`
+      - `model_kind` (`consensus_iupac` or `pwm_counts`)
+      - `pwm_present` so downstream consumers can distinguish “PWM existed in
+        the archive” from “this particular row still fell back to
+        consensus/IUPAC”
+  - inspection payload schema:
+    - `gentle.attract_splicing_evidence.v1`
+    - `AttractSplicingEvidenceSettings`
+      - `scope`
+      - `transcript_strand_only`
+      - `boundary_flank_bp`
+      - optional `requested_organism`
+      - `allow_species_fallback`
+      - `minimum_quality_score`
+      - `minimum_match_quantile`
+      - `pwm_mapping_policy`:
+        - `strict_same_length` (default)
+        - `windowed_submatrix`
+      - `compare_alternate_policy`
+    - `AttractSpeciesMatchMode`:
+      - `exact_organism`
+      - `fallback_all_compatible`
+    - `AttractRegionClass`:
+      - `exon_body`
+      - `donor_flank`
+      - `acceptor_flank`
+      - `intron_body`
+    - summary rows:
+      - grouped by factor / organism / matrix id
+      - include strongest match score, its score kind/quantile, motif-quality
+        maximum, hit count, region-class counts, PWM provenance counts
+        (`exact_length_pwm_hits`, `windowed_pwm_hits`, `consensus_only_hits`),
+        and supporting transcript ids
+    - hit rows:
+      - transcript identity/strand
+      - factor / organism / matrix id / motif
+      - region class
+      - genomic coordinates
+      - local coordinates within the scanned exon/intron window
+      - matched sequence
+      - `match_score`
+      - `match_score_kind`
+      - optional `match_score_quantile`
+      - motif `quality_score`
+      - exact-species flag
+      - PWM provenance:
+        - `pwm_mapping_status`
+        - `mapping_policy_used`
+        - optional `pfm_subwindow_start_1based`
+        - optional `pfm_subwindow_end_1based`
+    - provenance:
+      - active ATtRACT source label
+      - active resource item count
+      - active resource PWM-backed row count
+      - active resource consensus-only row count
+      - optional `active_resource_fingerprint`
+      - optional `alternate_policy_summary`
+      - requested/resolved organism
+      - species-match mode
+      - scan warnings
+    - aggregate hit counters:
+      - `pwm_scored_hit_count`
+      - `exact_length_pwm_hit_count`
+      - `windowed_pwm_hit_count`
+      - `consensus_hit_count`
+  - current v1 scan semantics:
+    - transcript-strand aware by default
+    - scans exon bodies and intron bodies from the selected splicing group
+    - promotes hits to `donor_flank` / `acceptor_flank` when they fall within
+      `boundary_flank_bp` of the corresponding splice boundary
+    - exact-organism match is preferred; broader fallback is explicit and
+      recorded in the payload
+    - normalized consensus/IUPAC matching remains the conservative candidate
+      gate
+    - under `strict_same_length`, only rows whose motif length exactly matches
+      the linked PWM width use PWM `llr_bits` ranking
+    - under `windowed_submatrix`, rows whose linked PWM is longer than the
+      motif may reuse one unique consensus-compatible PWM subwindow; those hits
+      are labeled as `llr_bits_windowed` with the chosen subwindow range
+    - rows without a mapped PWM block continue to use deterministic
+      consensus/IUPAC exact matching only
+    - interpretation guidance:
+
+Splicing-expert composition note:
+
+- the GUI now also combines `SplicingExpertView.intron_signals` with an
+  already-cached `gentle.attract_splicing_evidence.v1` payload to produce one
+  intron-centered regulatory interpretation table:
+  - branchpoint-like / polypyrimidine heuristics stay visible as conservative
+    splice-mechanistic context
+  - cached RBP hits are summarized per intron as donor-flank, acceptor-flank,
+    and intron-body support counts
+  - no extra biology is recomputed in the GUI; the view is a deterministic
+    composition of existing shared payloads
+      - `strict_same_length` is the canonical conservative mode
+      - `windowed_submatrix` is an engine-supported GENtle heuristic, not an
+        ATtRACT-published mapping rule
+      - `compare_alternate_policy` is intended to help reviewers quantify how
+        much that heuristic changes the evidence before switching the active
+        mapping mode
+  - contract boundary:
+    - this is an RBP/splicing interpretation payload, not the generic
+      TFBS/PSSM score-track payload
+    - future PWM/PSSM-backed ATtRACT scoring should reuse shared motif math
+      under the engine without collapsing these higher-level payloads into one
+      another
+- Pairwise alignment operation:
+  - `AlignSequences { query_seq_id, target_seq_id, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }`
+  - `mode`: `global | local` (default `global`)
+  - scoring defaults: `match=2`, `mismatch=-3`, `gap_open=-5`, `gap_extend=-1`
+  - returns structured payload `sequence_alignment` with spans, score, coverage, identity, and CIGAR-like compact operations string
+  - non-mutating operation (no sequence/container state mutation)
+- Shared-shell command family:
+  - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
+  - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
+  - `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--pwm-mapping strict_same_length|windowed_submatrix] [--compare-policies] [--all-transcripts] [--no-fallback]`
+
+RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
+
+- Operations:
+  - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }`
+  - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }`
+  - `SummarizeRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, path? }`
+  - `InspectRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, cohort_filter?, path? }`
+  - `RunRnaReadBatchMap { manifest_path, seq_id, seed_feature_id, gene_ids[], out_dir, profile?, input_format?, scope?, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter?, align_config?, report_mode?, align_selection?, complete_rule?, concatemer_settings?, concatemer_limit?, continue_on_error? }`
+  - persisted RNA-read reports are regular computational artifacts:
+    - stored reports now carry `report_id`, `op_id`, and `run_id`
+    - `ListRnaReadReports` surfaces the same `op_id` / `run_id` linkage in
+      summary rows
+    - GUI lineage projects persisted reports as analysis nodes and can reopen
+      the `RNA-read Mapping` workspace directly on the selected report
+  - `seed_feature_id` may reference an `mRNA`, `transcript`, `ncRNA`,
+    `misc_RNA`, `exon`, `gene`, or `CDS` feature; transcript-template
+    admission then follows the selected splicing-scope rules around that seed.
+  - implemented profile: `nanopore_cdna_v1`
+  - implemented input format: `fasta` (`.fa/.fasta`, optional `.fa.gz/.fasta.gz`; `.sra` must be converted externally in phase-1)
+  - default seed/filter constants:
+    - `kmer_len=10`
+    - `seed_stride_bp=1`
+    - `min_seed_hit_fraction=0.30` (bootstrap default; future SNR calibration track can override policy)
+    - `min_weighted_seed_hit_fraction=0.05`
+    - `min_unique_matched_kmers=12`
+    - `min_chain_consistency_fraction=0.40`
+    - `max_median_transcript_gap=4.0`
+    - `min_confirmed_exon_transitions=1`
+    - `min_transition_support_fraction=0.05`
+    - weighted-hit definition:
+      - `weighted_hit_fraction = sum(1 / occurrence_count(seed_bits)) / tested_kmers`
+      - `occurrence_count` is measured inside the active scoped seed index
+    - seed pass gate:
+      - `raw_hit_fraction >= min_seed_hit_fraction`
+      - `AND weighted_hit_fraction >= min_weighted_seed_hit_fraction`
+      - `AND unique_matched_kmers >= min(min_unique_matched_kmers, tested_kmers)`
+      - `AND chain_consistency_fraction >= min_chain_consistency_fraction`
+      - `AND median_transcript_gap <= max_median_transcript_gap`
+      - `AND confirmed_transitions >= min_confirmed_exon_transitions`
+      - `AND confirmed_transition_fraction >= min_transition_support_fraction`
+  - phase-1 seed-span behavior:
+    - full-read hashing is always used for every read
+    - seed-start density is controlled by `seed_stride_bp`
+    - default density is one start per base (`seed_stride_bp=1`)
+  - sparse-origin behavior:
+    - `origin_mode` accepts `single_gene|multi_gene_sparse` (default
+      `single_gene`)
+    - `target_gene_ids[]` and `roi_seed_capture_enabled` are persisted in the
+      report payload for deterministic follow-up runs
+    - `multi_gene_sparse` expands local transcript-template indexing with
+      transcripts matched from `target_gene_ids[]`
+    - `roi_seed_capture_enabled=true` is currently a deterministic no-op with
+      explicit warning in report `warnings[]` until the ROI capture layer is
+      implemented
+  - report compaction and resume behavior:
+    - `report_mode=full` keeps retained top hits exactly as ranked
+    - `report_mode=seed_passed_only` keeps a smaller retained subset for later
+      inspection/alignment:
+      - retained hits that passed the composite seed gate
+      - retained hits at or above raw `min hit`
+      - counters still remain based on the full stream
+    - `checkpoint_path` + `checkpoint_every_reads` writes deterministic JSON
+      snapshots (`gentle.rna_read_interpret_checkpoint.v1`) during streaming
+    - `resume_from_checkpoint=true` resumes from the checkpoint snapshot and
+      fast-forwards already-processed records deterministically
+  - phase-2 alignment behavior:
+    - `AlignRnaReadReport` loads a persisted report and reprocesses a selected
+      retained subset (`all|seed_passed|aligned`)
+    - phase-2 progress events now emit once per selected retained row
+      (`update_every_reads=1`) so adapters can show visible row-by-row advance
+    - GUI/shared-shell default selection is `seed_passed`
+    - optional `selected_record_indices[]` (0-based stored `record_index`)
+      overrides the selection preset and aligns only the explicit subset
+    - `selection=all` remains available when you deliberately want the broader
+      rescued-retained working set to receive round-2 similarity/coverage
+      scores
+    - `selection=aligned` means rerun phase 2 only on retained rows that
+      already have a stored mapping from an earlier phase-2 pass
+    - if `selection=seed_passed` matches no retained hits and no explicit
+      record indices were supplied, the engine falls back to retained rows at
+      or above raw `min hit`, and if that is still empty, to the highest
+      phase-1 score retained row
+    - aligner configuration uses `align_config_override` when supplied,
+      otherwise the report-stored `align_config`
+    - mapping backend uses `bio::alignment::pairwise::banded` with
+      `align_band_bp` as band width (`w`) and transcript-seed `kmer_len` as
+      seed length (`k`), plus deterministic dense fallback when the banded
+      solver yields no mapping
+    - phase-2 pairwise alignment evaluates both query orientations for every
+      retained row (stored query plus reverse complement) and keeps the
+      best-scoring deterministic candidate, preferring semiglobal over local
+      and non-reversed over reversed only as later tie-breakers
+    - selected retained rows are pairwise aligned regardless of whether their
+      recomputed composite seed-pass flag remains true; the seed-pass result is
+      still recomputed and stored independently for later inspection
+  - native batch-map behavior:
+    - manifest v1 is TSV and requires `sample_id` plus either `input_path` or
+      `sra_accession`
+    - `input_path` rows currently accept FASTA only (`.fa`, `.fasta`,
+      `.fa.gz`, `.fasta.gz`) and run the same engine `InterpretRnaReads` plus
+      `AlignRnaReadReport` paths as manual single-sample workflows
+    - rows with only `sra_accession` are not fetched in v1; the batch report
+      marks them `needs_preparation` and writes `sra_preparation_plan.tsv` plus
+      `sra_preparation_commands.sh`
+    - default batch settings are `report_mode=full`, `align_selection=all`,
+      `complete_rule=near`, `max_secondary_mappings=5`, and
+      `continue_on_error=true`
+    - if `origin_mode` is omitted, one requested gene uses `single_gene` and
+      multiple requested/target genes use `multi_gene_sparse`
+    - `RunRnaReadBatchMap` writes one bundle under `out_dir`:
+      `batch_report.json`, `batch_summary.tsv`, `sample_sheet.tsv`,
+      `isoform_support.tsv`, `concatemer_partner_summary.tsv`, optional SRA
+      preparation files, and per-sample gene-support / concatemer JSON
+    - `batch_summary.tsv` is the sample-level dashboard substrate; it includes
+      status/error/warning fields, read counts/fractions, origin-class counts,
+      requested/matched/missing genes, accepted-target and other-gene metrics,
+      complete-near/strict/exact counts, concatemer suspicion counts, and JSON
+      artifact paths
+    - `isoform_support.tsv` aggregates accepted target reads by resolved
+      transcript/isoform, including fragment/complete counts, mean length,
+      mean identity/coverage, and exon/exon-pair/direct-transition support
+      JSON columns
+    - `concatemer_partner_summary.tsv` aggregates conservative suspicion
+      evidence for recurring partner genes/transcripts; target-plus-partner
+      rows remain evidence, not proof of a chimera
+    - updated report fields include:
+      - per-hit mapping fields (`best_mapping`, `secondary_mappings`)
+      - per-hit `msa_eligible` and `msa_eligibility_reason`
+      - aggregate `read_count_aligned` and `retained_count_msa_eligible`
+      - refreshed seed/path diagnostics
+        (`transition_support_rows`, `isoform_support_rows`)
+      - refreshed mapped support rows
+        (`exon_support_frequencies`, `junction_support_frequencies`,
+        `mapped_isoform_support_rows`)
+      - mapped exon/junction support is derived from aligned transcript-template
+        offsets first and falls back to coarse genomic-span overlap only for
+        legacy mappings that do not carry template offsets
+      - deterministic retained-hit re-ranking by alignment-aware retention rank
+  - alignment inspection behavior:
+    - `rna-reads inspect-alignments` accepts coarse `selection` plus a
+      structured subset contract:
+      - `effect_filter = all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only`
+      - `sort_key = rank|identity|coverage|score`
+      - `search = free-text match over read ids, transcript ids/labels,
+        effect labels, and `#record_index` labels`
+      - `selected_record_indices[]` provides the explicit subset for
+        `selected_only`
+      - `score_density_variant = all_scored|composite_seed_gate|retained_replay_current_controls`
+      - optional `score_density_seed_filter_override` carries the current
+        seed-gate controls when an adapter requests retained-only replay under
+        current controls
+      - `score_bin_index` + `score_bin_count` provide a formal
+        score-density-bin subset for reproducible histogram-driven inspection
+        within that chosen histogram population
+    - inspection payload now includes:
+      - `aligned_count`: aligned rows admitted by coarse `selection`
+      - `subset_match_count`: aligned rows matching the structured subset
+        before `limit`
+      - `row_count`: returned rows after `limit`
+      - `subset_spec`: normalized structured subset object echoed back in the
+        response for deterministic replay
+    - row `rank` remains the original alignment-aware retention rank even when
+      subset sorting reorders the returned rows
+  - fragment/concatemer suspicion audit behavior:
+    - `InspectRnaReadConcatemers` is a non-mutating saved-report audit aimed at
+      diagnosing whether retained cDNA reads look more like fragment fusions
+      than coherent full transcript molecules
+    - output schema:
+      - `gentle.rna_read_concatemer_inspection.v1`
+    - settings:
+      - `internal_homopolymer_min_bp`
+      - `end_margin_bp`
+      - `max_primary_query_coverage_fraction`
+      - `min_secondary_identity_fraction`
+      - `max_secondary_query_overlap_fraction`
+      - `adapter_fasta_path`
+      - `adapter_min_match_bp`
+      - `fragment_min_bp`
+      - `fragment_max_parts`
+      - `fragment_min_identity_fraction`
+      - `fragment_min_query_coverage_fraction`
+      - `transcript_fasta_paths[]`
+      - `transcript_index_paths[]`
+    - current evidence signals:
+      - low primary `query_coverage_fraction`
+      - internal poly(A) run away from both read ends
+      - internal poly(T) run away from both read ends
+      - disjoint secondary mappings with limited query overlap
+      - phase-1 local-block / partial-origin classification
+      - optional internal adapter-like matches sourced from an external FASTA
+      - optional iterative fragment decomposition over the admitted
+        transcript-template set, with per-read distinct-gene/group counts
+    - row payload now also includes:
+      - `internal_adapter_hit_count`
+      - `top_internal_adapter_label`
+      - `top_internal_adapter_match_bp`
+      - `fragment_origin_gene_count`
+      - `fragment_origin_gene_ids[]`
+      - `adapter_hits[]`
+      - `fragment_origins[]`
+    - top-level payload now also includes:
+      - `internal_adapter_match_count`
+      - `multi_gene_fragment_count`
+    - current severity semantics are intentionally conservative:
+      - `strong` requires at least one disjoint secondary mapping plus another
+        signal
+      - `moderate` requires at least two non-background signals
+      - `weak` indicates only one current signal
+    - adapters should treat the payload as a suspicion-ranking surface rather
+      than as a definitive chimera caller
+    - if the source report was aligned with `max_secondary_mappings = 0`, the
+      payload includes a warning that the disjoint-secondary branch of the
+      audit was unavailable
+  - reusable external transcript-catalog index behavior:
+    - schema:
+      - `gentle.rna_read_transcript_catalog_index.v1`
+    - built by the shared-shell command:
+      - `rna-reads build-transcript-index OUTPUT.json --transcript-fasta PATH [--transcript-fasta PATH ...] [--kmer-len N]`
+    - payload fields:
+      - `schema`
+      - `generated_at_unix_ms`
+      - `seed_kmer_len`
+      - `source_paths[]`
+      - `transcript_count`
+      - `gene_count`
+      - `warnings[]`
+      - `templates[]`
+    - each template row preserves:
+      - `transcript_id`
+      - `transcript_label`
+      - `gene_id`
+      - `strand`
+      - `sequence`
+      - precomputed `kmer_positions`
+    - `InspectRnaReadConcatemers` can reuse one or more prepared indexes via
+      `transcript_index_paths[]`
+    - current scope:
+      - this is a reusable prepared transcript-catalog layer for repeated
+        concatemer audits
+      - it is not yet a heavier fully joined global inverted seed index across
+        all external catalogs
+  - on-demand pairwise-alignment detail behavior:
+    - the engine can reconstruct the exact phase-2 read-vs-transcript-template
+      alignment for one retained row from the saved report plus admitted
+      transcript-template set
+    - detail payload schema:
+      - `gentle.rna_read_alignment_detail.v1`
+    - payload includes:
+      - selected retained row id (`record_index`, `header_id`)
+      - transcript/template target identity
+      - phase-2 `alignment_mode`
+      - alignment backend (`banded` or `dense_fallback`)
+      - aligned query/template spans, full template length, score, identity,
+        query coverage, transcript-template coverage, and CIGAR
+      - aligned `query / relation / target` text rows for manual inspection of
+        low-complexity or partial confirmations
+  - exact-subset export behavior:
+    - `ExportRnaReadHitsFasta`, `ExportRnaReadExonPathsTsv`,
+      `ExportRnaReadExonAbundanceTsv`, and `ExportRnaReadAlignmentsTsv` accept
+      optional `selected_record_indices[]`
+    - when present, the explicit 0-based stored `record_index` subset
+      overrides the coarse `selection` preset
+    - these exports also accept optional `subset_spec`, a human-readable formal
+      description such as `filter=... | sort=... | search=...`; when provided,
+      the exported artifact records both the explicit `record_index` subset and
+      the subset definition that produced it
+    - intended for exporting the exact contributor reads surfaced by mapped
+      `Audit` actions in the GUI
+  - target-gene cohort summary behavior:
+    - `SummarizeRnaReadGeneSupport` is non-mutating and consumes one persisted
+      aligned RNA-read report
+    - required `gene_ids[]` are normalized/deduplicated and matched
+      case-insensitively against the same splicing group-label logic already
+      used for transcript grouping
+    - output schema:
+      - `gentle.rna_read_gene_support_summary.v1`
+    - base cohort:
+      - retained rows with `best_mapping` present
+      - optionally intersected with explicit `selected_record_indices[]`
+    - accepted target cohort:
+      - base-cohort rows whose `best_mapping.transcript_feature_id` resolves to
+        one of the requested matched genes/groups
+    - complete/fragment split:
+      - `complete_rule = near|strict|exact` controls which accepted rows land
+        in the `complete` cohort
+      - `fragment` is the remaining accepted-target cohort
+      - summary still reports nested `complete_strict_count` and
+        `complete_exact_count` regardless of the chosen `complete_rule`
+    - support attribution is derived from phase-2 mapped support, not phase-1
+      `exon_path`
+    - per-cohort output blocks:
+      - `all_target`
+      - `fragments`
+      - `complete`
+    - each block includes:
+      - `read_count`
+      - `exon_support[]`
+      - `exon_pair_support[]`
+      - `direct_transition_support[]`
+    - top-level distribution sidecars also summarize target-fragment quality:
+      - `evaluated_read_lengths`
+        - read-length distribution over the aligned/evaluable base cohort used
+          for gene-support classification
+      - `accepted_target_read_lengths`
+        - total read-length distribution for accepted target-positive reads
+      - `accepted_target_fragment_lengths`
+        - aligned query-span distribution for the accepted target fragments
+      - `accepted_target_query_coverage`
+        - fraction-of-read-covered distribution for those accepted target
+          fragments (`query_coverage_fraction`)
+      - each length summary carries:
+        - `sample_count`
+        - `mean_length_bp`
+        - `min_length_bp`
+        - `q25_length_bp`
+        - `median_length_bp`
+        - `q75_length_bp`
+        - `max_length_bp`
+        - `p95_length_bp`
+        - exact `length_counts[]`
+      - each fraction summary carries:
+        - `sample_count`
+        - `mean_fraction`
+        - `median_fraction`
+        - `p95_fraction`
+        - exact `bin_counts[]`
+    - row semantics:
+      - `exon_support[]`: each exon counted at most once per read
+      - `exon_pair_support[]`: every ordered exon_i -> exon_j pair observed in
+        the mapped exon order once per read, including skipped pairs like
+        `1->3`
+      - `direct_transition_support[]`: neighboring exon steps only, so
+        `1->2` is counted but skipped pairs like `1->3` are not
+      - all support fractions are normalized by the enclosing cohort size
+      - exon and pair rows carry deterministic gene-level exon ordinals plus
+        genomic coordinates for auditability
+    - when `path` / shell `--output` is provided, the exact same JSON payload
+      returned to the caller is also written to disk
+    - subordinate-artifact provenance fields:
+      - `generated_at_unix_ms`
+      - summary op `op_id` / `run_id`
+      - source RNA-read report `generated_at_unix_ms` / `op_id` / `run_id`
+  - target-gene cohort audit behavior:
+    - `InspectRnaReadGeneSupport` is non-mutating and shares the same
+      requested-gene matching, selected-record restriction, accepted-target
+      logic, and `complete_rule` classification used by
+      `SummarizeRnaReadGeneSupport`
+    - output schema:
+      - `gentle.rna_read_gene_support_audit.v1`
+    - evaluation universe:
+      - all selected saved-report rows after `selected_record_indices[]`
+        filtering, including unaligned retained rows
+    - grouped top-level subset handles:
+      - `accepted_target_record_indices[]`
+      - `fragment_record_indices[]`
+      - `complete_record_indices[]`
+      - `complete_strict_record_indices[]`
+      - `complete_exact_record_indices[]`
+    - row status values:
+      - `unaligned`
+      - `aligned_other_gene`
+      - `accepted_fragment`
+      - `accepted_complete`
+    - row payload includes:
+      - `record_index`, `header_id`
+      - resolved `gene_id` when available
+      - aligned transcript identity (`transcript_feature_id`,
+        `transcript_id`, `transcript_label`)
+      - machine-readable `status_reason`
+      - `full_length_exact`, `full_length_near`, `full_length_strict`, and
+        derived `full_length_class`
+      - `mapped_exon_ordinals[]`
+      - ordered `exon_pairs[]`
+      - ordered `direct_transition_pairs[]`
+      - phase-2 `score`, `identity_fraction`, `query_coverage_fraction`
+      - `passed_seed_filter` as provenance only
+    - `cohort_filter = all|accepted|fragment|complete|rejected` limits the
+      returned `rows[]` set without changing the grouped top-level subset
+      arrays
+    - when `path` / shell `--output` is provided, the exact same JSON payload
+      returned to the caller is also written to disk
+    - subordinate-artifact provenance fields:
+      - `generated_at_unix_ms`
+      - audit op `op_id` / `run_id`
+      - source RNA-read report `generated_at_unix_ms` / `op_id` / `run_id`
+- Report persistence:
+  - report schema: `gentle.rna_read_report.v1`
+  - metadata store schema: `gentle.rna_read_reports.v1`
+  - metadata key: `rna_read_reports`
+  - `rna-reads list-reports` summary rows include sparse-origin request
+    provenance:
+    - `origin_mode`
+    - `target_gene_count`
+    - `roi_seed_capture_enabled`
+  - report payload now includes per-report:
+    - `exon_support_frequencies[]`
+    - `junction_support_frequencies[]`
+    - `score_density_bins[]` (`all_scored` phase-1 histogram)
+    - `seed_pass_score_density_bins[]` (`composite_seed_gate` histogram)
+    - exact read-length histograms (`length_bp -> count`) for
+      deterministic subset auditing:
+      - `read_length_counts_all`
+      - `read_length_counts_seed_passed`
+      - `read_length_counts_aligned`
+      - `read_length_counts_full_length_exact`
+      - `read_length_counts_full_length_near`
+      - `read_length_counts_full_length_strict`
+      - checkpoint snapshots mirror these vectors so resume/restart keeps
+        histogram accumulation deterministic
+    - storage/streaming controls:
+      - `report_mode` (`full` or `seed_passed_only`)
+      - `checkpoint_path` / `checkpoint_every_reads`
+      - `resumed_from_checkpoint`
+    - request provenance fields:
+      - `origin_mode`
+      - `target_gene_ids[]`
+      - `roi_seed_capture_enabled`
+    - `origin_class_counts` (running/final deterministic class tallies)
+  - per-hit payload now includes:
+    - `origin_class`
+    - `origin_reason`
+    - `origin_confidence`
+    - `strand_confidence`
+    - `origin_candidates[]` (selected/plus/minus/seed-chain candidate hints)
+    - `best_mapping.alignment_mode` (`semiglobal` preferred, with deterministic
+      local fallback when quality is better)
+    - `best_mapping.query_reverse_complemented` (whether phase-2 had to
+      reverse-complement the stored read to fit the chosen transcript-template
+      mapping)
+  - alignment inspection payload schema:
+    - `gentle.rna_read_alignment_inspection.v1`
+    - produced by non-mutating shared-shell inspection command
+      `rna-reads inspect-alignments`
+    - each row now carries:
+      - phase-1 transcript-assignment fields
+        (`phase1_primary_transcript_id`, `seed_chain_transcript_id`,
+        `exon_path_transcript_id`, `exon_path`,
+        `exon_transitions_confirmed/total`, `selected_strand`,
+        `reverse_complement_applied`)
+      - phase-2 best-mapping fields
+        (`transcript_id`, `transcript_label`, `strand`, `alignment_mode`,
+        `target_start_1based`, `target_end_1based`, `target_length_bp`,
+        `identity_fraction`, `query_coverage_fraction`,
+        `target_coverage_fraction`, `score`, `secondary_mapping_count`)
+      - full-length classification flags (derived deterministically from
+        transcript-template coverage and current alignment threshold):
+        - `full_length_exact` (`100%` template coverage)
+        - `full_length_near` (`>=95%` template coverage)
+        - `full_length_strict`
+          (`near` + both template ends within `15 bp` + identity above
+          active alignment threshold)
+      - deterministic comparison field `alignment_effect`
+        (`confirmed_assignment`, `reassigned_transcript`,
+        `aligned_without_phase1_assignment`)
+      - mapped-support attribution arrays for the best mapping
+        (`mapped_exon_support[]`, `mapped_junction_support[]`)
+    - top-level payload now also carries:
+      - `aligned_count`
+      - `subset_match_count`
+      - `row_count`
+      - `limit`
+      - normalized `subset_spec`
+        (`effect_filter`, `sort_key`, `search`,
+        `selected_record_indices[]`, `score_density_variant`,
+        `score_bin_index`, `score_bin_count`)
+- Sample-sheet export:
+  - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, gene_ids?, complete_rule?, append? }`
+  - export schema: `gentle.rna_read_sample_sheet_export.v1`
+  - output: TSV with run/read metrics, sparse-origin request provenance
+    (`report_mode`, `origin_mode`, `target_gene_count`,
+    `target_gene_ids_json`, `roi_seed_capture_enabled`), JSON-serialized
+    exon/junction frequency columns, and `origin_class_counts_json` for
+    cohort-level downstream analysis.
+  - additional per-report columns include `mean_read_length_bp`; when one or
+    more `gene_ids[]` are requested the same row also carries
+    accepted-target counts/fractions, fragment vs complete counts,
+    `gene_support_mean_assigned_read_length_bp`, and JSON-serialized
+    exon / exon-pair / direct-transition support tables for the requested gene
+    cohort.
+- Target-quality comparison export:
+  - operation:
+    `ExportRnaReadTargetQuality { report_id, path, gene_ids, complete_rule? }`
+  - comparison bundle schema:
+    `gentle.rna_read_target_quality_comparison_bundle.v1`
+  - operation result schema:
+    `gentle.rna_read_target_quality_export.v1`
+  - entry semantics:
+    - each exported entry stores:
+      - `gentle_version`
+      - source report/profile/scope/origin metadata
+      - requested/matched/missing gene ids
+      - the all-read length distribution used for context
+      - the full shared `RnaReadGeneSupportSummary` target-quality payload
+    - entries are keyed deterministically so repeated exports with the same
+      source report + target + settings replace their prior slot instead of
+      duplicating it
+  - path behavior:
+    - `.json` writes the comparison bundle directly
+    - if a `.json` file already exists and is:
+      - an existing comparison bundle: merge/append into it
+      - a legacy single `RnaReadGeneSupportSummary`: wrap it into a new bundle
+        and append the new entry
+    - `.svg` writes a rendered comparison figure plus a same-basename
+      `.bundle.json` sidecar bundle
+    - if the requested SVG path already exists without a reusable GENtle
+      sidecar bundle, the export preserves that file and writes a sibling
+      `*_compare.svg` plus sidecar instead of overwriting
+- Shared-shell command family:
+  - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+  - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--transcript-fasta PATH]... [--transcript-index PATH]...`
+  - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+  - `rna-reads list-reports [SEQ_ID]`
+  - `rna-reads show-report REPORT_ID`
+  - `rna-reads show-alignment REPORT_ID RECORD_INDEX`
+  - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
+  - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
+  - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
+  - `rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]...`
+  - `rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]`
+  - `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
+  - `rna-reads export-report REPORT_ID OUTPUT.json`
+  - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
+  - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--gene GENE_ID]... [--complete-rule near|strict|exact] [--append]`
+  - `rna-reads export-target-quality REPORT_ID OUTPUT.{svg|json} --gene GENE_ID [--gene GENE_ID ...] [--complete-rule near|strict|exact]`
+  - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
+  - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]`
+  - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
+  - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]`
+  - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
+  - shell output convenience fields:
+    - `rna-reads list-reports` includes `summary_rows[]` with concise
+      human-readable provenance lines (`mode`, `origin`, target count,
+      ROI-capture flag, read counters)
+    - `rna-reads show-report` includes `summary` with the same provenance
+      framing for one report
+    - `rna-reads show-alignment` returns a `gentle.rna_read_alignment_display.v1`
+      wrapper with:
+      - `report_id`
+      - exact saved `record_index`
+      - `alignment` = the portable `RnaReadAlignmentDisplay` detail record used
+        by the GUI `Show alignment` pane
+    - `rna-reads summarize-gene-support` returns the full
+      `gentle.rna_read_gene_support_summary.v1` payload directly, including
+      `requested_gene_ids`, `matched_gene_ids`, `missing_gene_ids`,
+      selected-record echo fields, target-fragment quality distributions,
+      per-cohort support tables, and both the summary op plus source-report
+      provenance ids/timestamps
+    - `rna-reads inspect-gene-support` returns the full
+      `gentle.rna_read_gene_support_audit.v1` payload directly, including
+      grouped cohort record-index arrays plus row-level `status`,
+      `status_reason`, full-length fields, mapped exon/junction audit data,
+      and both the audit op plus source-report provenance ids/timestamps
+    - `rna-reads batch-map` returns the full
+      `gentle.rna_read_batch_map_report.v1` payload and writes the durable
+      bundle files listed above; successful FASTA rows also persist ordinary
+      RNA-read reports in engine state under deterministic `rna_batch_*`
+      report ids unless a manifest `report_id` column overrides them
+    - `rna-reads inspect-alignments` returns aligned rows ranked by
+      alignment-aware retention score (mapping + seed metrics), plus a
+      structured `subset_spec` payload (`effect_filter`, `sort_key`, `search`,
+      `selected_record_indices`, `score_density_variant`, `score_bin_index`,
+      `score_bin_count`) and
+      `subset_match_count`
+    - `rna-reads inspect-concatemers` returns the full
+      `gentle.rna_read_concatemer_inspection.v1` payload directly, including
+      machine-readable signal counts, the normalized thresholds used for the
+      audit, ranked suspicious rows, per-read adapter hits and fragment-origin
+      explanations, repeated non-primary partner-gene/transcript summaries
+      across the suspicious cohort, explicit `selected_record_indices` /
+      `subset_match_count` provenance for exact subset reruns, and warning
+      text when secondary-mapping evidence was unavailable
+    - repeated `--transcript-fasta` arguments append multiple transcript
+      catalogs to one audit run; the serialized settings now preserve those as
+      `transcript_fasta_paths[]`, while legacy single-path payloads still
+      deserialize via `transcript_fasta_path`
+    - `fragment_max_parts = 0` is now a supported "signals only" mode for the
+      concatemer audit:
+      - it disables fragment decomposition entirely
+      - adapter/homopolymer/disjoint-secondary/phase-1 signals still run
+      - intended use: first-pass triage before a narrower transcriptome-backed
+        rerun on selected `record_index` values
+    - `rna-reads build-transcript-index` returns the full
+      `gentle.rna_read_transcript_catalog_index.v1` payload directly and also
+      writes the same JSON to the requested output path
+    - `rna-reads materialize-hits` returns a
+      `gentle.rna_read_hit_materialization.v1` wrapper with:
+      - the mutating `result` (`OpResult`) from
+        `MaterializeRnaReadHitSequences`
+      - `created_sequence_count`
+      - `created_sequences[]` with per-sequence `seq_id`, `name`, and
+        `length_bp`
+    - `rna-reads export-target-quality` returns the full
+      `gentle.rna_read_target_quality_export.v1` payload directly, including
+      `requested_path`, `written_path`, optional `bundle_path`, `entry_count`,
+      and append/reuse flags so adapters can tell whether the export extended
+      an existing comparison artifact or started a fresh one
+- Alignment-detail inspection:
+  - shared shell:
+    `rna-reads show-alignment REPORT_ID RECORD_INDEX`
+  - output:
+    - exact saved-report pairwise alignment detail for one retained read
+    - non-mutating; intended for cluster/headless review of the same
+      read-vs-template evidence the GUI exposes under `Show alignment`
+- Alignment-TSV export:
+  - operation:
+    `ExportRnaReadAlignmentsTsv { report_id, path, selection, limit?, selected_record_indices?, subset_spec? }`
+  - export schema: `gentle.rna_read_alignment_tsv_export.v1`
+  - output: ranked alignment rows as TSV with:
+    - leading `#` metadata lines for report provenance (`selection`, `limit`,
+      `selected_record_indices`, `subset_spec`, `profile`, `scope`, `origin_mode`)
+    - seed-screen sampling/gating context (`k`, `seed_stride_bp`,
+      overlap/order-density wording, seed thresholds)
+    - alignment config summary (`min_identity_fraction`,
+      `max_secondary_mappings`)
+    - phase-1 transcript/path diagnostics
+    - phase-2 mapping metrics
+    - `alignment_effect`
+    - compact mapped exon/junction attribution columns
+    - optional top-`N` truncation via `limit`
+- Score-density SVG export:
+  - `rna-reads export-score-density-svg` writes the same report summary used by
+    the GUI plus seed-screen provenance in the SVG header:
+    - `variant = all_scored|composite_seed_gate|retained_replay_current_controls`
+    - `profile`, `report_mode`, `scope`, `origin_mode`
+    - seed-filter summary with `k`, `seed_stride_bp`, thresholds, and
+      overlap/order-density wording
+    - optional `replay_seed_filter` summary when the export uses retained-only
+      replay under current controls
+    - whether bins were stored in the report or derived from retained hits
+- Alignment-dotplot export:
+  - operation:
+    `ExportRnaReadAlignmentDotplotSvg { report_id, path, selection, max_points }`
+  - export schema: `gentle.rna_read_alignment_dotplot_svg_export.v1`
+  - output: SVG scatter of query coverage vs identity for aligned hits with
+    score-colored points and report-config threshold guide.
+- Read-sequence materialization:
+  - shared shell:
+    `rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]`
+  - operation:
+    `MaterializeRnaReadHitSequences { report_id, selection, selected_record_indices?, output_prefix? }`
+  - output:
+    - creates one ordinary project sequence per selected retained RNA-read hit
+    - exact `selected_record_indices` takes precedence over coarse `selection`
+    - intended for downstream dotplots/manual inspection of saved-report
+      outliers without re-reading the FASTA input
+- `rna-reads export-hits-fasta` header extensions:
+  - optional `selected_record_indices[]` overrides the coarse selection preset
+    for exact saved-report subset export
+  - optional `subset_spec` records the formal subset definition that produced
+    that explicit `record_index` subset
+  - `exon_path_tx=<transcript_id|none>`
+  - `exon_path=<ordinal_path|none>` using `:` for hash-confirmed adjacent
+    exon transitions and `-` for unconfirmed adjacency
+  - `exon_transitions=<confirmed>/<total>`
+  - `rc_applied=<true|false>` (automatic cDNA poly-T reverse-complement
+    normalization marker)
+  - `origin_class=<...>` plus `origin_conf=<...>` and `strand_conf=<...>`
+- `rna-reads export-exon-paths-tsv` and `rna-reads export-exon-abundance-tsv`
+  now begin with the same `#` report/seed-screen provenance block used by the
+  alignment TSV export, minus alignment-only fields; optional `subset_spec`
+  records the formal subset definition alongside `selected_record_indices`
+- cDNA/direct-RNA normalization controls in `seed_filter`:
+  - `cdna_poly_t_flip_enabled` (default `true`)
+  - `poly_t_prefix_min_bp` (default `18`): minimum T support used by the
+    tolerant 5' poly-T-head detector (minor interruptions in the head are
+    accepted)
+- Scope/strand semantics for `InterpretRnaReads`:
+  - `all_overlapping_any_strand`: all overlapping transcripts on any strand,
+    including antisense/opposite-strand genes relative to the selected target
+    gene/group
+  - `target_group_any_strand`: target-group transcripts only, any annotated
+    strand allowed
+  - `all_overlapping_target_strand`: all overlapping transcripts on the
+    selected target gene/group's annotated strand only
+  - `target_group_target_strand`: target-group transcripts on the selected
+    target gene/group's annotated strand only
+  - scoring note:
+    any-strand modes score against the union of admitted target-gene-strand and
+    antisense/opposite-strand templates; target-gene-strand modes exclude
+    antisense/opposite-strand templates.
+  - seed-index note:
+    indexed seeds include annotated exon-body and exon-exon transition k-mers
+    for admitted transcripts.
+
+Async BLAST shell contract (agent/MCP-ready baseline):
+
+- Shared-shell families (both `genomes` and `helpers` scopes):
+  - `blast-start GENOME_ID QUERY_SEQUENCE ...`
+  - `blast-status JOB_ID [--with-report]`
+  - `blast-cancel JOB_ID`
+  - `blast-list`
+- Deterministic job payload schemas:
+  - `gentle.blast_async_start.v1`
+  - `gentle.blast_async_status.v1`
+  - `gentle.blast_async_cancel.v1`
+  - `gentle.blast_async_list.v1`
+- External-binary preflight payload:
+  - `blast-start` responses now include `binary_preflight` with schema
+    `gentle.blast_external_binary_preflight.v1`.
+  - payload includes deterministic `blastn` and `makeblastdb` probe rows with:
+    `found`, `version`, `executable`, and resolved `path` diagnostics.
+  - equivalent preflight payload is also emitted by synchronous shared-shell
+    routes `prepare`, `blast`, and `blast-track`.
+- Job status contract:
+  - `job_id` stable per process
+  - non-terminal states: `queued | running`
+  - terminal states: `completed | failed | cancelled`
+  - scheduler metadata:
+    - `max_concurrent_jobs`
+    - `running_jobs`
+    - `queued_jobs`
+    - `queue_position` (present while state is `queued`)
+  - optional final `report` on `blast-status --with-report`
+- Durability/restart semantics:
+  - BLAST async status snapshots are persisted in project metadata as
+    `blast_async_jobs` (`gentle.blast_async_job_store.v1`).
+  - On restart/reload, recovered jobs that were previously non-terminal but no
+    longer have an active worker context are normalized deterministically:
+    - `cancel_requested=true` -> `cancelled`
+    - otherwise -> `failed` with explicit restart/reload interruption reason.
+  - `blast-start`, `blast-status`, `blast-cancel`, and `blast-list` may mark
+    shell state as changed when they persist updated async job snapshots.
+- Scheduler policy:
+  - async BLAST jobs are executed by a bounded FIFO scheduler (queue + worker slots)
+  - default concurrency uses host CPU parallelism
+  - optional override via environment variable
+    `GENTLE_BLAST_ASYNC_MAX_CONCURRENT` (clamped to `1..256`)
+- `gentle_mcp` exposes equivalent tool routes:
+  - `blast_async_start`
+  - `blast_async_status`
+  - `blast_async_cancel`
+  - `blast_async_list`
+
+### Workflow
+
+```json
+{
+  "run_id": "string",
+  "ops": ["Operation", "Operation", "..."]
+}
+```
+
+Notes:
+
+- Splicing Expert `Nanopore cDNA interpretation` uses this same workflow shape
+  when you click `Copy Workflow JSON`.
+- `Prepare Workflow Op` in the same panel writes `run_id`/`ops` into the GUI
+  workflow runner so the exact `InterpretRnaReads` payload can be rerun through
+  the generic workflow path.
+
+### OpResult
+
+```json
+{
+  "op_id": "op-1",
+  "created_seq_ids": ["..."],
+  "changed_seq_ids": ["..."],
+  "warnings": ["..."],
+  "messages": ["..."],
+  "genome_annotation_projection": null,
+  "sequence_alignment": null
+}
+```
+
+### Error
+
+```json
+{
+  "code": "InvalidInput|NotFound|Unsupported|Io|Internal",
+  "message": "human-readable explanation"
+}
+```
+
+## State model
+
+`gentle_cli` persists engine state in JSON (`.gentle_state.json` by default).
+
+This supports:
+
+- resumable multi-step workflows
+- external inspection
+- reproducibility and audit trails
+
+## Recommended AI-agent flow
+
+1. Query `capabilities`
+2. Import or initialize state
+3. Apply one operation at a time, checking warnings/errors
+4. Save/export artifacts
+5. Optionally export final state for handoff
+
+## Planned next additions
+
+- richer sequence-editing and annotation operation set
+- ligation protocol presets with sticky/blunt compatibility derivation
+- render/view model endpoint for frontend-independent graphical representation
+- schema publication for strict client-side validation
+- CRISPR guide-design next phase:
+  - off-target search/ranking contracts
+  - on-target efficacy model integration hooks
+  - guide-design macro/template expansion into deterministic `Workflow` JSON
+  - see draft: `docs/rna_guides_spec.md`

@@ -1,8 +1,10 @@
+//! DNA base-row renderer implementation.
+
 use crate::{
     dna_display::DnaDisplay, dna_sequence::DNAsequence, iupac_code::IupacCode,
     render_sequence::RenderSequence,
 };
-use eframe::egui::{Align2, Color32, Painter, Pos2, Rect, Stroke, Vec2};
+use eframe::egui::{Align2, Color32, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone, Debug)]
@@ -54,7 +56,27 @@ impl RowDna {
 
     #[inline(always)]
     fn seq_len(&self) -> usize {
-        self.dna.read().unwrap().len()
+        self.dna.read().map(|d| d.len()).unwrap_or(0)
+    }
+
+    fn window(&self) -> (usize, usize) {
+        let Ok(dna) = self.dna.read() else {
+            return (0, 0);
+        };
+        let seq_len = dna.len();
+        if seq_len == 0 {
+            return (0, 0);
+        }
+        let sequence_panel_limit_bp = self
+            .display
+            .read()
+            .map(|display| display.sequence_panel_max_text_length_bp())
+            .unwrap_or(200_000);
+        if sequence_panel_limit_bp == 0 {
+            (0, seq_len)
+        } else {
+            (0, seq_len.min(sequence_panel_limit_bp))
+        }
     }
 
     pub fn layout(&mut self, block_offset: f32, block_height: f32, area: &Rect) {
@@ -66,11 +88,20 @@ impl RowDna {
             (block_width / (self.char_width * (self.batch_bases + 1) as f32)) as usize;
         let batches_per_line = batches_per_line.max(1);
         self.bases_per_line = batches_per_line * self.batch_bases;
-        self.blocks = (self.seq_len() + self.bases_per_line - 1) / self.bases_per_line;
+        let (_, span) = self.window();
+        self.blocks = if span == 0 {
+            0
+        } else {
+            (span + self.bases_per_line - 1) / self.bases_per_line
+        };
     }
 
     pub fn render(&self, _row_num: usize, block_num: usize, painter: &Painter, rect: &Rect) {
-        let seq_offset = block_num * self.bases_per_line;
+        let (window_start, window_span) = self.window();
+        if window_span == 0 || block_num >= self.blocks {
+            return;
+        }
+        let seq_offset = window_start + block_num * self.bases_per_line;
         let pos = Pos2 {
             x: rect.left() + self.number_offset,
             y: rect.top() + self.block_offset,
@@ -84,14 +115,21 @@ impl RowDna {
                 Color32::BLACK,
             );
         }
-        let selection = self.display.read().unwrap().selection();
-        let seq_end = (seq_offset + self.bases_per_line).min(self.seq_len());
-        if let Some(seq) = self
-            .dna
+        let selection = self.display.read().ok().and_then(|d| d.selection());
+        let reverse_strand_opacity = self
+            .display
             .read()
-            .unwrap()
-            .get_inclusive_range_safe(seq_offset..=seq_end)
-        {
+            .map(|display| display.reverse_strand_visual_opacity())
+            .unwrap_or(0.55);
+        let window_end_exclusive = window_start.saturating_add(window_span).min(self.seq_len());
+        let seq_end_exclusive = (seq_offset + self.bases_per_line).min(window_end_exclusive);
+        if seq_end_exclusive <= seq_offset {
+            return;
+        }
+        let seq = self.dna.read().ok().and_then(|dna| {
+            dna.get_inclusive_range_safe(seq_offset..=seq_end_exclusive.saturating_sub(1))
+        });
+        if let Some(seq) = seq {
             let y = rect.top() + self.block_offset;
             let mut x = pos.x + self.char_width * 2.0;
             seq.iter().enumerate().for_each(|(offset, base)| {
@@ -120,6 +158,7 @@ impl RowDna {
                                 0.0,
                                 Color32::LIGHT_GRAY,
                                 Stroke::NONE,
+                                StrokeKind::Inside,
                             );
                         }
                     }
@@ -131,7 +170,7 @@ impl RowDna {
                     base,
                     RenderSequence::font(),
                     if self.show_reverse_complement {
-                        Color32::DARK_GRAY
+                        Color32::DARK_GRAY.gamma_multiply(reverse_strand_opacity)
                     } else {
                         Color32::BLACK
                     },
@@ -148,6 +187,21 @@ impl RowDna {
     #[inline(always)]
     pub fn blocks(&self) -> usize {
         self.blocks
+    }
+
+    pub fn block_for_position(&self, position: usize) -> Option<usize> {
+        if self.bases_per_line == 0 || self.blocks == 0 {
+            return None;
+        }
+        let (window_start, window_span) = self.window();
+        if window_span == 0 {
+            return None;
+        }
+        let window_end_exclusive = window_start.saturating_add(window_span);
+        if position < window_start || position >= window_end_exclusive {
+            return None;
+        }
+        Some((position - window_start) / self.bases_per_line)
     }
 
     pub fn compute_line_height(&mut self, size: &Vec2) {
@@ -190,5 +244,53 @@ mod tests {
                 panic!("Expected Dna row");
             }
         }
+    }
+
+    #[test]
+    fn linear_sequence_text_window_is_not_limited_to_linear_map_viewport() {
+        let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
+        {
+            let mut display = dna_display.write().expect("display lock");
+            display.set_linear_viewport(420, 120);
+        }
+        let dna = Arc::new(RwLock::new(
+            DNAsequence::from_sequence(&"A".repeat(5_000)).expect("sequence"),
+        ));
+        let row = RowDna::new(dna, dna_display);
+        let (start, span) = row.window();
+        assert_eq!(start, 0);
+        assert_eq!(span, 5_000);
+    }
+
+    #[test]
+    fn sequence_text_window_respects_configured_panel_limit() {
+        let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
+        {
+            let mut display = dna_display.write().expect("display lock");
+            display.set_sequence_panel_max_text_length_bp(2_000);
+        }
+        let dna = Arc::new(RwLock::new(
+            DNAsequence::from_sequence(&"A".repeat(5_000)).expect("sequence"),
+        ));
+        let row = RowDna::new(dna, dna_display);
+        let (start, span) = row.window();
+        assert_eq!(start, 0);
+        assert_eq!(span, 2_000);
+    }
+
+    #[test]
+    fn sequence_text_window_limit_zero_means_unlimited() {
+        let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
+        {
+            let mut display = dna_display.write().expect("display lock");
+            display.set_sequence_panel_max_text_length_bp(0);
+        }
+        let dna = Arc::new(RwLock::new(
+            DNAsequence::from_sequence(&"A".repeat(5_000)).expect("sequence"),
+        ));
+        let row = RowDna::new(dna, dna_display);
+        let (start, span) = row.window();
+        assert_eq!(start, 0);
+        assert_eq!(span, 5_000);
     }
 }

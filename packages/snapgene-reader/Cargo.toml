@@ -1,0 +1,24 @@
+[package]
+name = "snapgene-reader"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Read SnapGene .dna files into reusable Rust data structures"
+repository = "https://github.com/smoe/gentle_rs/"
+readme = "README.md"
+keywords = ["snapgene", "dna", "plasmid", "bioinformatics", "parser"]
+categories = ["science", "parser-implementations"]
+
+[lib]
+name = "snapgene_reader"
+path = "src/lib.rs"
+
+[features]
+default = []
+gb-io = ["dep:gb-io"]
+
+[dependencies]
+quick-xml = "0.37"
+thiserror = "2"
+gb-io = { version = "0.9.0", optional = true }
+

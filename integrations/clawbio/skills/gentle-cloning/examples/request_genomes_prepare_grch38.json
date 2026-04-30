@@ -1,0 +1,6 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "shell_line": "genomes prepare \"Human GRCh38 Ensembl 116\" --timeout-secs 7200",
+  "timeout_secs": 7500
+}

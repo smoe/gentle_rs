@@ -1,0 +1,11 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "qpcr-seed-from-splicing",
+  "state_path": ".gentle_state.json",
+  "seq_id": "tp53_panel_source",
+  "source_feature_id": 2,
+  "qpcr_mode": "distinguish_transcript",
+  "transcript_id": "ENST00000269305.9",
+  "specificity_evidence": "junction_only",
+  "timeout_secs": 180
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "dbsnp fetch rs9923231 \"Human GRCh38 Ensembl 116\" --flank-bp 3000 --output-id rs9923231_vkorc1 --annotation-scope core",
+  "timeout_secs": 900
+}

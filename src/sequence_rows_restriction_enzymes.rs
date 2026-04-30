@@ -1,3 +1,5 @@
+//! Restriction-enzyme sequence-row renderer implementation.
+
 use crate::{dna_display::DnaDisplay, dna_sequence::DNAsequence};
 use eframe::egui::{Align2, FontFamily, FontId, Painter, Pos2, Rect, Stroke, Vec2};
 use std::sync::{Arc, RwLock};
@@ -40,7 +42,27 @@ impl RowRestrictionEnzymes {
 
     #[inline(always)]
     fn seq_len(&self) -> usize {
-        self.dna.read().unwrap().len()
+        self.dna.read().map(|d| d.len()).unwrap_or(0)
+    }
+
+    fn window(&self) -> (usize, usize) {
+        let Ok(dna) = self.dna.read() else {
+            return (0, 0);
+        };
+        let seq_len = dna.len();
+        if seq_len == 0 {
+            return (0, 0);
+        }
+        let sequence_panel_limit_bp = self
+            .display
+            .read()
+            .map(|display| display.sequence_panel_max_text_length_bp())
+            .unwrap_or(200_000);
+        if sequence_panel_limit_bp == 0 {
+            (0, seq_len)
+        } else {
+            (0, seq_len.min(sequence_panel_limit_bp))
+        }
     }
 
     pub fn layout(&mut self, block_offset: f32, block_height: f32, area: &Rect) {
@@ -52,39 +74,55 @@ impl RowRestrictionEnzymes {
             (block_width / (self.char_width * (self.batch_bases + 1) as f32)) as usize;
         let batches_per_line = batches_per_line.max(1);
         self.bases_per_line = batches_per_line * self.batch_bases;
-        self.blocks = (self.seq_len() + self.bases_per_line - 1) / self.bases_per_line;
+        let (_, span) = self.window();
+        self.blocks = if span == 0 {
+            0
+        } else {
+            (span + self.bases_per_line - 1) / self.bases_per_line
+        };
     }
 
     pub fn render(&self, _row_num: usize, block_num: usize, painter: &Painter, rect: &Rect) {
-        let seq_offset = block_num * self.bases_per_line;
+        let (window_start, window_span) = self.window();
+        if window_span == 0 || block_num >= self.blocks {
+            return;
+        }
+        let seq_offset = window_start + block_num * self.bases_per_line;
         let pos = Pos2 {
             x: rect.left() + self.number_offset,
             y: rect.top() + self.block_offset,
         };
-        let seq_end = (seq_offset + self.bases_per_line).min(self.seq_len());
-        if let Some(seq) = self
-            .dna
-            .read()
-            .unwrap()
-            .get_inclusive_range_safe(seq_offset..=seq_end)
-        {
+        let window_end_exclusive = window_start.saturating_add(window_span).min(self.seq_len());
+        let seq_end_exclusive = (seq_offset + self.bases_per_line).min(window_end_exclusive);
+        if seq_end_exclusive <= seq_offset {
+            return;
+        }
+        let seq = self.dna.read().ok().and_then(|dna| {
+            dna.get_inclusive_range_safe(seq_offset..=seq_end_exclusive.saturating_sub(1))
+        });
+        if let Some(seq) = seq {
+            let groups = self
+                .dna
+                .read()
+                .map(|dna| dna.restriction_enzyme_groups().clone())
+                .unwrap_or_default();
             let y = rect.top() + self.block_offset;
             let mut x = pos.x + self.char_width * 2.0;
             seq.iter().enumerate().for_each(|(offset, _base)| {
-                self.dna
-                    .read()
-                    .unwrap()
-                    .restriction_enzyme_groups()
+                groups
                     .iter()
                     .filter(|(re, _label)| re.from() <= (seq_offset + offset) as isize)
                     .filter(|(re, _label)| re.to() >= (seq_offset + offset) as isize)
                     .for_each(|(re, label)| {
                         let pos = (seq_offset + offset) as isize;
                         let y = y + re.number_of_cuts() as f32 - 1.0;
-                        let color = DnaDisplay::restriction_enzyme_group_color(re.number_of_cuts());
+                        let label_color =
+                            DnaDisplay::restriction_enzyme_group_color(re.number_of_cuts());
+                        let cut_color =
+                            DnaDisplay::restriction_enzyme_geometry_color(re.cut_geometry());
                         painter.line_segment(
                             [Pos2::new(x - self.char_width, y), Pos2::new(x, y)],
-                            Stroke::new(1.0, color.to_owned()),
+                            Stroke::new(1.0, label_color),
                         );
                         if pos == re.to() {
                             painter.text(
@@ -95,19 +133,19 @@ impl RowRestrictionEnzymes {
                                     size: 9.0,
                                     family: FontFamily::Proportional,
                                 },
-                                color.to_owned(),
+                                label_color,
                             );
                         }
                         if pos == re.pos() {
                             painter.line_segment(
                                 [Pos2::new(x, y - self.line_height / 2.0), Pos2::new(x, y)],
-                                Stroke::new(1.0, color.to_owned()),
+                                Stroke::new(1.0, cut_color),
                             );
                         }
-                        if pos == re.pos() + re.cut_size() {
+                        if pos == re.mate_pos() {
                             painter.line_segment(
                                 [Pos2::new(x, y + self.line_height / 2.0), Pos2::new(x, y)],
-                                Stroke::new(1.0, color.to_owned()),
+                                Stroke::new(1.0, cut_color),
                             );
                         }
                     });
@@ -130,7 +168,12 @@ impl RowRestrictionEnzymes {
     }
 
     pub fn line_height(&self) -> f32 {
-        if self.display.read().unwrap().show_reverse_complement() {
+        if self
+            .display
+            .read()
+            .map(|d| d.show_reverse_complement())
+            .unwrap_or(false)
+        {
             self.line_height / 2.0
         } else {
             0.0

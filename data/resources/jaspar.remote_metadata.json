@@ -1,0 +1,45 @@
+{
+  "rows": [
+    {
+      "consensus_iupac": "GCCACCAGGGGGCGC",
+      "motif_id": "MA0139.2",
+      "motif_length_bp": 15,
+      "motif_name": "CTCF",
+      "remote_metadata": {
+        "collection": "CORE",
+        "source_url": "synthetic",
+        "species_assignments": [
+          {
+            "common_name": "synthetic species",
+            "scientific_name": "Synthetic species",
+            "tax_id": "0"
+          }
+        ],
+        "tax_group": "synthetic",
+        "tf_class": "synthetic",
+        "tf_family": "synthetic"
+      }
+    },
+    {
+      "consensus_iupac": "GGGGCGGGG",
+      "motif_id": "MA0079.5",
+      "motif_length_bp": 9,
+      "motif_name": "SP1",
+      "remote_metadata": {
+        "collection": "CORE",
+        "source_url": "synthetic",
+        "species_assignments": [
+          {
+            "common_name": "synthetic species",
+            "scientific_name": "Synthetic species",
+            "tax_id": "0"
+          }
+        ],
+        "tax_group": "synthetic",
+        "tf_class": "synthetic",
+        "tf_family": "synthetic"
+      }
+    }
+  ],
+  "schema": "gentle.jaspar_remote_metadata_snapshot.v1"
+}

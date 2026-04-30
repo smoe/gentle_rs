@@ -1,0 +1,355 @@
+{
+  "schema": "gentle.tutorial_generation_report.v1",
+  "manifest": "docs/tutorial/manifest.json",
+  "source_examples": "docs/examples/workflows",
+  "chapter_count": 19,
+  "online_enabled": false,
+  "generated_files": [
+    "README.md",
+    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
+    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md",
+    "chapters/03_load_and_digest_pgex.md",
+    "chapters/04_gibson_two_fragment_overlap_preview.md",
+    "chapters/05_guides_filter_and_generate_oligos.md",
+    "chapters/06_digest_ligation_extract_region_minimal.md",
+    "chapters/07_guides_export_csv_and_protocol.md",
+    "chapters/08_contribute_to_gentle_development.md",
+    "chapters/09_prepare_reference_genome_online.md",
+    "chapters/10_tp53_isoform_architecture_online.md",
+    "chapters/11_tp63_anchor_extension_online.md",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md",
+    "chapters/13_pcr_selection_batch_primer_pairs_offline.md",
+    "chapters/14_tp73_cdna_genomic_dotplot_online.md",
+    "chapters/15_gibson_specialist_testing_baseline.md",
+    "chapters/16_gibson_arrangements_baseline.md",
+    "chapters/17_tp53_uniprot_projection_online.md",
+    "chapters/18_simple_pcr_selection_gui.md",
+    "chapters/19_tp73_uniprot_projection_audit_cli.md",
+    "report.json"
+  ],
+  "file_checksums": {
+    "README.md": "8ddac9d02014b275a4cb000db033d5e25050d217",
+    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
+    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "8cb42f3f7e5550581d3e3e3c3821252091f8a1ef",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "7194c1b9d72d6bb455d79054133d1c9124d78f2e",
+    "chapters/03_load_and_digest_pgex.md": "25090e5db3cc174d45305a558fb52aad4a2ace84",
+    "chapters/04_gibson_two_fragment_overlap_preview.md": "8cdd87ec2ddacd2fc684d53a4295efd36a45b93d",
+    "chapters/05_guides_filter_and_generate_oligos.md": "6e27c2390c091205eec38e9d12fb768a1a6d9dc4",
+    "chapters/06_digest_ligation_extract_region_minimal.md": "e44ff379c7ba39047f5d470273fa2764a59ae05d",
+    "chapters/07_guides_export_csv_and_protocol.md": "09e248bac0add9cc3842fccb5ea3baf47387d999",
+    "chapters/08_contribute_to_gentle_development.md": "3a1de2cf4ea023000cd5c24541277aca31a235d5",
+    "chapters/09_prepare_reference_genome_online.md": "017855fe766fd040d3d03398ce7aed19cf545888",
+    "chapters/10_tp53_isoform_architecture_online.md": "f7fc5d93d7c252becd36d3f07637f74c530194b0",
+    "chapters/11_tp63_anchor_extension_online.md": "dd511f9c0a9cd71a48dbc3314ad6b730fa38f550",
+    "chapters/12_tp53_multi_gene_sparse_mapping_online.md": "1838afaf7204015643acd9f56a51f393ce33c89e",
+    "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "63cb61a92a28c445ce5810f6f2a186ee0216f4d5",
+    "chapters/14_tp73_cdna_genomic_dotplot_online.md": "ac2afd635828d8e2e6bbb0e4ef57c22cc440004b",
+    "chapters/15_gibson_specialist_testing_baseline.md": "d2e3b339ca0493f7845a8064d4d4e5a3d4dfd10d",
+    "chapters/16_gibson_arrangements_baseline.md": "ba68817abab9d8768ebed547a7a2af16447f3e06",
+    "chapters/17_tp53_uniprot_projection_online.md": "c29e64d3b686bc26c10dfa5aab0e1d8c140d74ed",
+    "chapters/18_simple_pcr_selection_gui.md": "4ddcd3e977a30d98729265305aa27b196d677733",
+    "chapters/19_tp73_uniprot_projection_audit_cli.md": "60eb489b9d04feeaf510ac112495c9691ae49828"
+  },
+  "chapters": [
+    {
+      "id": "load_branch_reverse_complement_pgex_fasta",
+      "order": 1,
+      "title": "Load FASTA, branch, and reverse-complement",
+      "tier": "core",
+      "example_id": "load_branch_reverse_complement_pgex_fasta",
+      "example_source": "docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "find_and_extend_genomic_target_local_catalog",
+      "order": 2,
+      "title": "Find and extend the right genomic target (local catalog)",
+      "tier": "core",
+      "example_id": "prepare_extract_extend_localproject_gene",
+      "example_source": "docs/examples/workflows/prepare_extract_extend_localproject_gene.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage",
+        "genome_catalog_targeting"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "load_and_digest_pgex",
+      "order": 3,
+      "title": "Load pGEX and digest with BamHI/EcoRI",
+      "tier": "core",
+      "example_id": "load_and_digest_pgex",
+      "example_source": "docs/examples/workflows/load_and_digest_pgex.json",
+      "concepts": [
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "gibson_two_fragment_overlap_preview",
+      "order": 4,
+      "title": "Gibson two-fragment overlap planning baseline",
+      "tier": "core",
+      "example_id": "gibson_two_fragment_overlap_preview",
+      "example_source": "docs/examples/workflows/gibson_two_fragment_overlap_preview.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "guides_filter_and_generate_oligos",
+      "order": 5,
+      "title": "Guide practical filtering and oligo generation",
+      "tier": "core",
+      "example_id": "guides_filter_and_generate_oligos",
+      "example_source": "docs/examples/workflows/guides_filter_and_generate_oligos.json",
+      "concepts": [
+        "deterministic_workflows",
+        "guide_design_pipeline"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "digest_ligation_extract_region_minimal",
+      "order": 6,
+      "title": "Digest -> Ligation -> ExtractRegion minimal slice",
+      "tier": "core",
+      "example_id": "digest_ligation_extract_region_minimal",
+      "example_source": "docs/examples/workflows/digest_ligation_extract_region_minimal.json",
+      "concepts": [
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "guides_export_csv_and_protocol",
+      "order": 7,
+      "title": "Guide oligo export (CSV + protocol)",
+      "tier": "advanced",
+      "example_id": "guides_export_csv_and_protocol",
+      "example_source": "docs/examples/workflows/guides_export_csv_and_protocol.json",
+      "concepts": [
+        "guide_design_pipeline",
+        "artifact_exports"
+      ],
+      "executed": true,
+      "retained_artifacts": [
+        "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
+        "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt"
+      ]
+    },
+    {
+      "id": "contribute_to_gentle_development",
+      "order": 8,
+      "title": "Contribute to GENtle development",
+      "tier": "advanced",
+      "example_id": "contribute_gentle_development_baseline",
+      "example_source": "docs/examples/workflows/contribute_gentle_development_baseline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "tutorial_drift_checks",
+        "contribution_loop"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "prepare_reference_genome_online",
+      "order": 9,
+      "title": "Prepare a reference genome cache (online)",
+      "tier": "online",
+      "example_id": "prepare_reference_genome_online",
+      "example_source": "docs/examples/workflows/prepare_reference_genome_online.json",
+      "concepts": [
+        "deterministic_workflows",
+        "online_opt_in",
+        "genome_catalog_targeting"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp53_isoform_architecture_online",
+      "order": 10,
+      "title": "TP53 isoform architecture expert panel (online)",
+      "tier": "online",
+      "example_id": "tp53_isoform_architecture_online",
+      "example_source": "docs/examples/workflows/tp53_isoform_architecture_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "isoform_architecture_panels",
+        "online_opt_in",
+        "artifact_exports"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp63_anchor_extension_online",
+      "order": 11,
+      "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
+      "tier": "online",
+      "example_id": "tp63_extend_anchor_online",
+      "example_source": "docs/examples/workflows/tp63_extend_anchor_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "sequence_lineage",
+        "online_opt_in"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp53_multi_gene_sparse_mapping_online",
+      "order": 12,
+      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "tier": "online",
+      "example_id": "tp53_multi_gene_sparse_mapping_online",
+      "example_source": "docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
+        "online_opt_in"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "pcr_selection_batch_primer_pairs_offline",
+      "order": 13,
+      "title": "Selection-first PCR batch primer design (offline)",
+      "tier": "core",
+      "example_id": "pcr_selection_batch_primer_pairs_offline",
+      "example_source": "docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp73_cdna_genomic_dotplot_online",
+      "order": 14,
+      "title": "Compare TP73 cDNA against TP73 genomic context via dotplot (online)",
+      "tier": "online",
+      "example_id": "tp73_cdna_genomic_dotplot_online",
+      "example_source": "docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage",
+        "genome_catalog_targeting",
+        "online_opt_in"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "gibson_specialist_testing_baseline",
+      "order": 15,
+      "title": "Gibson Specialist Starter Project (offline)",
+      "tier": "core",
+      "example_id": "gibson_specialist_testing_baseline",
+      "example_source": "docs/examples/workflows/gibson_specialist_testing_baseline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "gibson_arrangements_baseline",
+      "order": 16,
+      "title": "Gibson Arrangements Starter Project (offline)",
+      "tier": "core",
+      "example_id": "gibson_arrangements_baseline",
+      "example_source": "docs/examples/workflows/gibson_arrangements_baseline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp53_uniprot_projection_online",
+      "order": 17,
+      "title": "TP53 UniProt domain mapping and feature-coding DNA query (online)",
+      "tier": "online",
+      "example_id": "tp53_uniprot_projection_online",
+      "example_source": "docs/examples/workflows/tp53_uniprot_projection_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "uniprot_projection_mapping",
+        "feature_coding_dna_attribution",
+        "expert_view_parity",
+        "online_opt_in",
+        "artifact_exports"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "simple_pcr_selection_gui",
+      "order": 18,
+      "title": "Simple PCR From a Selected Core Region",
+      "tier": "core",
+      "example_id": "simple_pcr_selection_gui",
+      "example_source": "docs/examples/workflows/simple_pcr_selection_gui.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp73_uniprot_projection_audit_cli",
+      "order": 19,
+      "title": "Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)",
+      "tier": "online",
+      "example_id": "tp73_uniprot_projection_audit_online",
+      "example_source": "docs/examples/workflows/tp73_uniprot_projection_audit_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "uniprot_projection_mapping",
+        "feature_coding_dna_attribution",
+        "expert_view_parity",
+        "online_opt_in",
+        "artifact_exports"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    }
+  ]
+}

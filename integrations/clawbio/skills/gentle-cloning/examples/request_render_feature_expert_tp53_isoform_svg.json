@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "render-feature-expert-svg grch38_tp53 isoform tp53_isoforms_v1 artifacts/tp53_isoforms_v1.expert.svg",
+  "expected_artifacts": [
+    "artifacts/tp53_isoforms_v1.expert.svg"
+  ],
+  "timeout_secs": 180
+}

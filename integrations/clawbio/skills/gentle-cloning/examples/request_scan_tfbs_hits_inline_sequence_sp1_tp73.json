@@ -1,0 +1,27 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "op",
+  "operation": {
+    "ScanTfbsHits": {
+      "target": {
+        "kind": "inline_sequence",
+        "sequence_text": "GGGCGGGGCGCATGTGTAACAGGGGCGGGGC",
+        "topology": "linear",
+        "id_hint": "inline_sp1_tp73_window",
+        "span_start_0based": 0,
+        "span_end_0based_exclusive": 32
+      },
+      "motifs": [
+        "SP1",
+        "TP73"
+      ],
+      "min_llr_quantile": 0.95,
+      "max_hits": 50,
+      "path": "artifacts/inline_sp1_tp73.tfbs_scan.json"
+    }
+  },
+  "expected_artifacts": [
+    "artifacts/inline_sp1_tp73.tfbs_scan.json"
+  ],
+  "timeout_secs": 180
+}

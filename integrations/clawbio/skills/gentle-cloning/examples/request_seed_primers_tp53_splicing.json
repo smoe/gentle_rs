@@ -1,0 +1,8 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "primer-seed-from-splicing",
+  "state_path": ".gentle_state.json",
+  "seq_id": "tp53_panel_source",
+  "source_feature_id": 2,
+  "timeout_secs": 180
+}

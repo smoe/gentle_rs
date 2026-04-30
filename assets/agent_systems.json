@@ -1,0 +1,63 @@
+{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {
+      "id": "builtin_echo",
+      "label": "Built-in Echo (demo)",
+      "description": "Offline demo system that echoes the prompt and can parse 'auto:'/'ask:' demo command lines.",
+      "transport": "builtin_echo"
+    },
+    {
+      "id": "custom_json_stdio",
+      "label": "Custom JSON stdio agent",
+      "description": "Template entry for an external agent process. The process receives JSON on stdin and should return JSON/text on stdout.",
+      "transport": "external_json_stdio",
+      "command": [
+        "agent-json-bridge"
+      ]
+    },
+    {
+      "id": "openai_gpt5_stdio",
+      "label": "OpenAI GPT-5 (stdio bridge)",
+      "description": "OpenAI-backed agent bridge over JSON stdio. Requires an external adapter executable and OPENAI_API_KEY in the environment.",
+      "transport": "external_json_stdio",
+      "command": [
+        "openai-agent-bridge",
+        "--model",
+        "gpt-5"
+      ]
+    },
+    {
+      "id": "openai_gpt5_native",
+      "label": "OpenAI GPT-5 (native HTTP)",
+      "description": "Direct OpenAI API integration without external bridge binary. Requires OPENAI_API_KEY in environment (or in this system's env map).",
+      "transport": "native_openai",
+      "model": "gpt-5",
+      "base_url": "https://api.openai.com/v1"
+    },
+    {
+      "id": "local_llama_compat",
+      "label": "Local Llama (OpenAI-compatible)",
+      "description": "Template for local OpenAI-compatible Llama services (e.g. Ollama/Jan/Msty gateway). Keep model as 'unspecified' and select from discovered models, or set a concrete model override. API key is optional.",
+      "transport": "native_openai_compat",
+      "model": "unspecified",
+      "base_url": "http://127.0.0.1:11434/v1"
+    },
+    {
+      "id": "jan_local_compat_template",
+      "label": "Jan Local (template)",
+      "description": "Template for Jan OpenAI-compatible local endpoint. Keep model as 'unspecified' and pick from discovered models or provide an explicit override.",
+      "transport": "native_openai_compat",
+      "model": "unspecified",
+      "base_url": "http://127.0.0.1:1337/v1"
+    },
+    {
+      "id": "msty_local_compat_template",
+      "label": "Msty Local (template)",
+      "description": "Template for Msty OpenAI-compatible local endpoint. Keep model as 'unspecified' and pick from discovered models or provide an explicit override.",
+      "transport": "native_openai_compat",
+      "model": "unspecified",
+      "base_url": "http://localhost:11964"
+    }
+  ]
+}

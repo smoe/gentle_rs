@@ -1,0 +1,10 @@
+target
+.git
+.github
+.gentle_state.json
+.DS_Store
+paper
+test_files
+data
+*.pyc
+__pycache__

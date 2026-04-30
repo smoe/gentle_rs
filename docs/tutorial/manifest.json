@@ -1,0 +1,1270 @@
+{
+  "schema": "gentle.tutorial_manifest.v1",
+  "description": "Generated executable tutorial runtime manifest for GENtle. Used by `tutorial-generate` / `tutorial-check` and the GUI `Open Tutorial Project...` flow to map source-backed chapters onto canonical workflow examples.",
+  "concepts": [
+    {
+      "id": "shared_engine_contract",
+      "name": "Shared Engine Contract",
+      "description": "GUI, CLI, shell, and scripting interfaces execute the same operation semantics."
+    },
+    {
+      "id": "deterministic_workflows",
+      "name": "Deterministic Workflows",
+      "description": "Operation chains should produce stable IDs and comparable outputs across repeated runs."
+    },
+    {
+      "id": "sequence_lineage",
+      "name": "Sequence Lineage",
+      "description": "Derived sequences are explicit products linked to upstream inputs and operations."
+    },
+    {
+      "id": "genome_catalog_targeting",
+      "name": "Genome Catalog Targeting",
+      "description": "Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context."
+    },
+    {
+      "id": "guide_design_pipeline",
+      "name": "Guide Design Pipeline",
+      "description": "Guide sets can be created, filtered, expanded to oligos, and exported with protocol context."
+    },
+    {
+      "id": "artifact_exports",
+      "name": "Artifact Exports",
+      "description": "Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing."
+    },
+    {
+      "id": "tutorial_drift_checks",
+      "name": "Tutorial Drift Checks",
+      "description": "Tutorial content is generated from executable examples and verified in automated checks."
+    },
+    {
+      "id": "contribution_loop",
+      "name": "Contribution Loop",
+      "description": "Contributions should couple code edits with docs updates and deterministic tests."
+    },
+    {
+      "id": "online_opt_in",
+      "name": "Online Opt-in Execution",
+      "description": "Network-dependent chapters remain explicit opt-in and do not break offline default CI."
+    },
+    {
+      "id": "isoform_architecture_panels",
+      "name": "Isoform Architecture Panels",
+      "description": "Curated transcript/protein architecture overlays can be imported and rendered as deterministic expert-view SVG outputs."
+    },
+    {
+      "id": "uniprot_projection_mapping",
+      "name": "UniProt Projection Mapping",
+      "description": "Reviewed UniProt protein annotations can be projected onto transcript/CDS geometry and reopened as one persisted expert-view artifact."
+    },
+    {
+      "id": "feature_coding_dna_attribution",
+      "name": "Feature Coding-DNA Attribution",
+      "description": "A persisted UniProt projection can be queried for the exact coding DNA, exon attribution, and splice-junction exon pairs that encode one mapped protein feature."
+    },
+    {
+      "id": "expert_view_parity",
+      "name": "Expert View Parity",
+      "description": "The same expert-view payloads should be inspectable and renderable from GUI, CLI, and other adapters without frontend-only projection logic."
+    }
+  ],
+  "chapters": [
+    {
+      "id": "load_branch_reverse_complement_pgex_fasta",
+      "order": 1,
+      "title": "Load FASTA, branch, and reverse-complement",
+      "example_id": "load_branch_reverse_complement_pgex_fasta",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Start with a simple cloning-prep routine to learn product IDs and sequence lineage.",
+      "narrative": "In real cloning projects, the first question is often whether a sequence in hand is represented correctly and whether you can derive alternative views without losing provenance. This routine is the smallest possible example of that practice: load one sequence, create an explicit branch, and generate the reverse complement as a separate product.",
+      "use_cases": [
+        "You received a FASTA plasmid or amplicon sequence and want a reproducible project starting point.",
+        "You need a reverse-complemented working copy but want to preserve the original sequence identity.",
+        "You are onboarding to GENtle and need to understand how derived IDs are created and reused."
+      ],
+      "gui_steps": [
+        "Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.",
+        "In the DNA window, create a branch copy from the loaded sequence (Branch action).",
+        "Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views."
+      ],
+      "learning_objectives": [
+        "Run one canonical workflow from source JSON and interpret the result IDs.",
+        "Understand that branch and reverse-complement operations create explicit derivative sequences.",
+        "Recognize the shared-engine contract across GUI, CLI, and shell entry points."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "LoadFile.path",
+          "where_used": "operation 1",
+          "why_it_matters": "Defines the exact source sequence. Wrong file path means a different biological starting point.",
+          "how_to_derive": "Use the file you just loaded in the GUI for this routine (`test_files/pGEX_3X.fa`).",
+          "omit_when": ""
+        },
+        {
+          "parameter": "Branch.output_id / ReverseComplement.output_id",
+          "where_used": "operations 2 and 3",
+          "why_it_matters": "Stable IDs make downstream commands unambiguous.",
+          "how_to_derive": "Pick short descriptive IDs tied to intent (e.g., branch copy vs reverse-complement product).",
+          "omit_when": "You can omit IDs only when you accept auto-generated names."
+        }
+      ],
+      "follow_up_commands": [],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Workflow executes without warnings or errors.",
+        "Derived sequence IDs include a branch and reverse-complement product."
+      ]
+    },
+    {
+      "id": "find_and_extend_genomic_target_local_catalog",
+      "order": 2,
+      "title": "Find and extend the right genomic target (local catalog)",
+      "example_id": "prepare_extract_extend_localproject_gene",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Use assets/genomes.json + annotation-driven gene targeting, then extend the anchored sequence directly in the DNA window.",
+      "narrative": "Many investigations start with \"which exact genomic interval should I look at\" rather than \"which cloning operation should I run\". This chapter introduces the practical sequence-selection loop: choose a prepared genome from `assets/genomes.json`, narrow candidates with annotation-backed gene filtering, extract the target interval, and then widen context with 5'/3' anchor extension as needed for promoter/splice/regulatory interpretation. The same workflow also clarifies where GenBank/EMBL imports fit: exported GenBank/EMBL records are loadable directly, and GenBank entries carrying NCBI `ACCESSION ... REGION:` metadata can be mapped to genome coordinates and extended by the same anchor controls.",
+      "use_cases": [
+        "You need to start from a biologically relevant gene locus instead of an arbitrary coordinate slice.",
+        "You imported a GenBank/EMBL record and want to recover surrounding genomic context around that entry.",
+        "You need to add upstream/downstream bases iteratively while preserving deterministic provenance."
+      ],
+      "gui_steps": [
+        "Open `File -> Prepare Reference Genome...`, set catalog to `assets/genomes.json`, choose `LocalProject`, and prepare it.",
+        "Open `File -> Retrieve Genome Sequence...`, use `Gene filter` (regex) to narrow annotation hits, pick one gene match, and extract it.",
+        "In the resulting DNA window, use the `Extend 5'` / `Extend 3'` anchor controls (next to `Genome anchor`) to add flanking context."
+      ],
+      "learning_objectives": [
+        "Understand that `assets/genomes.json` defines selectable genome sources for preparation/retrieval.",
+        "Use annotation-backed gene filtering to find target regions reproducibly.",
+        "Extend anchored sequences in GUI/CLI without losing provenance or sequence lineage."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage",
+        "genome_catalog_targeting"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "PrepareGenome.genome_id / catalog_path / cache_dir",
+          "where_used": "operation 1",
+          "why_it_matters": "These fields define which reference source is prepared and where deterministic cache/index files are written.",
+          "how_to_derive": "Start with `assets/genomes.json`; use `LocalProject` for offline walkthroughs, then switch to your organism/build.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "Retrieve dialog Gene filter (regex) and Top matches",
+          "where_used": "GUI extraction step",
+          "why_it_matters": "Filtering keeps candidate lists interpretable on large annotations and avoids selecting the wrong locus.",
+          "how_to_derive": "Use exact regex (`^GENE$`) when known; broaden (`^GENE_PREFIX`) when exploring families.",
+          "omit_when": "Only omit filtering for tiny local annotations where the candidate list is already small."
+        },
+        {
+          "parameter": "ExtendGenomeAnchor.side / length_bp / output_id",
+          "where_used": "operation 3 and DNA-window anchor controls",
+          "why_it_matters": "Defines which biological flank is added and by how much; output IDs keep downstream comparisons clear.",
+          "how_to_derive": "Choose `5p` for upstream-context questions and `3p` for downstream-context questions; start with 200-2000 bp and iterate.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- genomes list --catalog assets/genomes.json",
+        "cargo run --bin gentle_cli -- genomes genes LocalProject --catalog assets/genomes.json --cache-dir data/genomes --filter '^etp' --limit 20",
+        "cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 500 --output-id local_etpc_ext5_more --catalog assets/genomes.json --cache-dir data/genomes"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "PrepareGenome succeeds for `LocalProject` without network access.",
+        "ExtractGenomeGene produces `local_etpc` from annotation-backed lookup.",
+        "ExtendGenomeAnchor produces `local_etpc_ext5` with widened genomic interval provenance."
+      ]
+    },
+    {
+      "id": "load_and_digest_pgex",
+      "order": 3,
+      "title": "Load pGEX and digest with BamHI/EcoRI",
+      "example_id": "load_and_digest_pgex",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Introduce restriction digest planning and deterministic fragment products.",
+      "narrative": "Restriction digest is a core molecular cloning routine used for vector linearization, insert release, and diagnostic fragment checks. This chapter focuses on how digest parameters map to reproducible fragment sets that can later feed ligation or analysis steps.",
+      "use_cases": [
+        "You want to verify expected restriction fragments before ordering primers or designing ligations.",
+        "You need a reproducible digest baseline to compare against wet-lab gel expectations.",
+        "You plan to reuse fragment IDs in later operations."
+      ],
+      "gui_steps": [
+        "Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.",
+        "Run Digest from the DNA window using enzymes `BamHI` and `EcoRI`.",
+        "Review created fragment entries and confirm they are stored as independent sequence products."
+      ],
+      "learning_objectives": [
+        "Execute digest operations and inspect created fragment IDs.",
+        "Reason about multi-product lineage from one parent sequence.",
+        "Identify why stable IDs matter for follow-up ligation/extraction steps."
+      ],
+      "concepts": [
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "Digest.enzymes",
+          "where_used": "operation 2",
+          "why_it_matters": "The enzyme set determines cut positions and resulting fragment repertoire.",
+          "how_to_derive": "Choose enzymes based on cloning strategy (diagnostic digest vs insert release vs vector opening).",
+          "omit_when": ""
+        },
+        {
+          "parameter": "Digest.output_prefix",
+          "where_used": "operation 2",
+          "why_it_matters": "Controls deterministic fragment ID namespace.",
+          "how_to_derive": "Use a short routine-specific prefix (e.g., `frag`, `d`, `eco_bam`).",
+          "omit_when": "Omit only if auto-generated IDs are acceptable for ad hoc inspection."
+        }
+      ],
+      "follow_up_commands": [],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Digest operation completes and creates fragment sequence IDs.",
+        "Fragment IDs are deterministic across repeated runs."
+      ]
+    },
+    {
+      "id": "gibson_two_fragment_overlap_preview",
+      "order": 4,
+      "title": "Gibson two-fragment overlap planning baseline",
+      "example_id": "gibson_two_fragment_overlap_preview",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Use the built-in Gibson routine baseline to validate overlap assumptions and generate deterministic preview assemblies.",
+      "narrative": "Gibson assembly in practice depends on overlap design quality. This chapter anchors that design logic in GENtle through one repeatable workflow: build two overlapping fragments, run Gibson-specific preflight checks on overlap compatibility, and produce forward-order preview sequences for review and communication.",
+      "use_cases": [
+        "You want reproducible documentation of intended Gibson fragment order and overlap assumptions.",
+        "You need fast preflight feedback before primer ordering or wet-lab execution.",
+        "You want one routine that can be explained to collaborators through GUI + shell parity."
+      ],
+      "gui_steps": [
+        "Load `test_files/pGEX_3X.fa` and create two overlapping fragments (`gibson_left`, `gibson_right`) using region extraction.",
+        "Open `Patterns -> Routine catalog`, locate `Gibson Two-Fragment Overlap Preview`, and import it.",
+        "Run from `Shell`: `macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only`, then execute without `--validate-only`."
+      ],
+      "learning_objectives": [
+        "Understand where Gibson overlap assumptions are checked in shared-shell preflight.",
+        "Interpret overlap mismatch diagnostics before state mutation.",
+        "Use deterministic output IDs for clear cloning communication."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "left_seq_id / right_seq_id",
+          "where_used": "template preflight + run",
+          "why_it_matters": "Order defines the expected assembled product direction and adjacent overlap checks.",
+          "how_to_derive": "Choose fragment IDs in intended 5'->3' assembly order.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "overlap_bp",
+          "where_used": "Gibson family preflight check",
+          "why_it_matters": "Controls suffix/prefix overlap length validation between adjacent fragments.",
+          "how_to_derive": "Use planned primer-homology length (commonly 15-40 bp for many Gibson workflows).",
+          "omit_when": ""
+        },
+        {
+          "parameter": "assembly_prefix / output_id",
+          "where_used": "template run output naming",
+          "why_it_matters": "Stable IDs make review/export/communication unambiguous.",
+          "how_to_derive": "Use project-specific names (for example `tp73_gibson_round1`).",
+          "omit_when": "Omit only when default IDs are acceptable for exploratory runs."
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json'",
+        "cargo run --bin gentle_cli -- shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only'",
+        "cargo run --bin gentle_cli -- shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --transactional'"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Validate-only run returns `can_execute=true` for matching overlap fragments.",
+        "Mismatch overlap inputs return explicit Gibson overlap diagnostics.",
+        "Mutating run creates deterministic preview outputs (`${assembly_prefix}_*` and `${output_id}`)."
+      ]
+    },
+    {
+      "id": "guides_filter_and_generate_oligos",
+      "order": 5,
+      "title": "Guide practical filtering and oligo generation",
+      "example_id": "guides_filter_and_generate_oligos",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Apply practical guide constraints and produce cloning-ready oligo candidates.",
+      "narrative": "For CRISPR-style cloning, guide quality control is where many downstream failures are prevented. This routine demonstrates how to encode practical constraints directly in operations, then generate oligos from the passed candidates.",
+      "use_cases": [
+        "You need a transparent guide filtering step before oligo ordering.",
+        "You want to document why specific guides were excluded.",
+        "You need deterministic oligo generation from a reusable guide set."
+      ],
+      "gui_steps": [
+        "Open the guides workflow controls in GENtle and create/import a guide set for a target region.",
+        "Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance).",
+        "Generate oligos from passed guides and inspect the resulting oligo set IDs."
+      ],
+      "learning_objectives": [
+        "Create and filter guide sets through explicit engine operations.",
+        "Generate oligo records from filtered guide candidates.",
+        "Connect guide workflows to the same deterministic operation model used for cloning steps."
+      ],
+      "concepts": [
+        "deterministic_workflows",
+        "guide_design_pipeline"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "FilterGuidesPractical.config.gc_min / gc_max",
+          "where_used": "operation 2",
+          "why_it_matters": "GC bounds trade off stability and synthesis/efficiency behavior.",
+          "how_to_derive": "Start with literature-typical bounds (e.g., 0.3-0.7) and tighten per assay constraints.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "GenerateGuideOligos.template_id",
+          "where_used": "operation 3",
+          "why_it_matters": "Template controls overhang/adaptor context for your cloning backbone.",
+          "how_to_derive": "Select the template matching your vector and cloning strategy.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Guide set and passed guide set are present in metadata.",
+        "Oligo set generation succeeds for passed guides."
+      ]
+    },
+    {
+      "id": "digest_ligation_extract_region_minimal",
+      "order": 6,
+      "title": "Digest -> Ligation -> ExtractRegion minimal slice",
+      "example_id": "digest_ligation_extract_region_minimal",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Run a full mini-loop from fragment production to assembled product extraction.",
+      "narrative": "This chapter models a compact molecular cloning routine in one chain: digest source material, produce a ligation product, and extract a target segment for subsequent validation or design. It is the smallest end-to-end routine that still reflects real bench-side reasoning.",
+      "use_cases": [
+        "You want to test whether your planned digest/ligation sequence is internally consistent.",
+        "You need a deterministic extracted segment for primer design or annotation checks.",
+        "You want a regression slice that exercises core cloning operations together."
+      ],
+      "gui_steps": [
+        "Start from the loaded FASTA/plasmid sequence in the GUI.",
+        "Run digest with selected enzymes and inspect available products.",
+        "Run ligation with the intended inputs, then extract a focused region from the ligation result."
+      ],
+      "learning_objectives": [
+        "Execute a minimal end-to-end cloning chain.",
+        "Track how intermediate IDs are consumed by downstream operations.",
+        "Use ExtractRegion output as a stable hand-off point for later analyses."
+      ],
+      "concepts": [
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "Ligation.protocol",
+          "where_used": "operation 3",
+          "why_it_matters": "Protocol controls compatibility logic (e.g., blunt vs sticky behavior).",
+          "how_to_derive": "Choose based on end chemistry produced by upstream digest products.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "ExtractRegion.from / to",
+          "where_used": "operation 4",
+          "why_it_matters": "Defines the exact segment handed to downstream interpretation.",
+          "how_to_derive": "Derive boundaries from feature coordinates or expected amplicon/design window.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Digest creates at least two fragments for ligation input.",
+        "Ligation creates deterministic output IDs.",
+        "ExtractRegion creates `lig_extract`."
+      ]
+    },
+    {
+      "id": "guides_export_csv_and_protocol",
+      "order": 7,
+      "title": "Guide oligo export (CSV + protocol)",
+      "example_id": "guides_export_csv_and_protocol",
+      "tier": "advanced",
+      "guide_path": null,
+      "summary": "Export representative machine-readable and human-readable artifacts.",
+      "narrative": "Operational work is only useful if outputs can be shared with collaborators and ordering pipelines. This routine keeps one representative CSV and one protocol text file so the tutorial remains readable while still proving export behavior.",
+      "use_cases": [
+        "You need oligo tables for ordering and a protocol summary for bench execution.",
+        "You want reproducible artifacts tied to explicit operation history.",
+        "You need a concise output bundle for review without committing redundant files."
+      ],
+      "gui_steps": [
+        "Open the guide/oligo export controls after guide generation.",
+        "Export one CSV table and one protocol text file to verify both machine and human output forms.",
+        "Inspect the exported files and confirm they match current guide/oligo set IDs."
+      ],
+      "learning_objectives": [
+        "Export guide outputs in machine-readable and human-readable forms.",
+        "Understand selective artifact retention for tutorial readability.",
+        "Map retained artifacts back to the operation chain that produced them."
+      ],
+      "concepts": [
+        "guide_design_pipeline",
+        "artifact_exports"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "ExportGuideOligos.format",
+          "where_used": "operation 3",
+          "why_it_matters": "Format must match the receiving workflow (spreadsheet import, plate workflow, or FASTA).",
+          "how_to_derive": "Pick `csv_table` for review/order sheets, `plate_csv` for plate automation, `fasta` for sequence-oriented tools.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "ExportGuideProtocolText.include_qc_checklist",
+          "where_used": "operation 4",
+          "why_it_matters": "Controls whether QC reminders are embedded in the generated protocol text.",
+          "how_to_derive": "Enable for handoff to wet-lab execution; disable only for compact machine-only summaries.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [],
+      "retain_outputs": [
+        "exports/demo_guides.csv",
+        "exports/demo_guides.protocol.txt"
+      ],
+      "checkpoints": [
+        "CSV export file exists and contains guide rows.",
+        "Protocol text export exists and contains checklist content."
+      ]
+    },
+    {
+      "id": "contribute_to_gentle_development",
+      "order": 8,
+      "title": "Contribute to GENtle development",
+      "example_id": "contribute_gentle_development_baseline",
+      "tier": "advanced",
+      "guide_path": null,
+      "summary": "Executable contributor onboarding from baseline run to test/documentation checks.",
+      "narrative": "Contributing effectively requires keeping biological behavior, command contracts, and docs in sync. This chapter provides a concrete contributor routine: run a baseline operation chain, then validate examples, tutorial generation, and tests before opening a change request.",
+      "use_cases": [
+        "You want to submit a feature or fix without breaking cross-interface behavior.",
+        "You need to verify that tutorial/docs stay synchronized with executable workflows.",
+        "You want a deterministic pre-PR checklist for local validation."
+      ],
+      "gui_steps": [
+        "Run the baseline sequence routine in the GUI and inspect resulting lineage entries.",
+        "Locate the same routine as a canonical workflow JSON example in `docs/examples/workflows`.",
+        "Use this mapping to validate that your planned code change affects shared engine behavior, not only one interface."
+      ],
+      "learning_objectives": [
+        "Understand the expected contributor loop from change to verification.",
+        "Use tutorial and example checks to prevent documentation drift.",
+        "Identify the minimum validation commands expected before handoff or PR."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "tutorial_drift_checks",
+        "contribution_loop"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "Workflow file path @docs/examples/workflows/...",
+          "where_used": "command equivalent",
+          "why_it_matters": "Ensures you are validating the same canonical routine used by docs/tests.",
+          "how_to_derive": "Select the chapter's `example_id` and open the matching JSON file under `docs/examples/workflows`.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo check -q",
+        "cargo test -q workflow_examples -- --test-threads=1",
+        "cargo run --bin gentle_examples_docs -- --check",
+        "cargo run --bin gentle_examples_docs -- tutorial-check",
+        "cargo run --bin gentle_cli -- capabilities"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Baseline contribution workflow executes without failures.",
+        "Contributor validation commands pass in a clean environment.",
+        "Tutorial-generated content remains synchronized with source manifests/examples."
+      ]
+    },
+    {
+      "id": "prepare_reference_genome_online",
+      "order": 9,
+      "title": "Prepare a reference genome cache (online)",
+      "example_id": "prepare_reference_genome_online",
+      "tier": "online",
+      "guide_path": null,
+      "summary": "Document network-dependent preparation without destabilizing offline default checks.",
+      "narrative": "Reference-genome preparation is crucial for genome-anchored cloning interpretation, but it depends on online resources and local tool setup. This chapter keeps that path explicit and opt-in so default tutorial checks remain robust.",
+      "use_cases": [
+        "You need genome-anchored extraction around gene/promoter context.",
+        "You want to prepare local cache/index assets for repeated anchor operations.",
+        "You need to understand which routines are intentionally online-only in CI defaults."
+      ],
+      "gui_steps": [
+        "Open prepared-reference controls from the GUI menus.",
+        "Select the target genome and start preparation with explicit cache settings.",
+        "Confirm prepared status in the GUI before attempting extraction workflows."
+      ],
+      "learning_objectives": [
+        "Recognize which tutorial flows require network access and external tools.",
+        "Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.",
+        "Preserve offline CI reliability while still documenting online capabilities."
+      ],
+      "concepts": [
+        "deterministic_workflows",
+        "online_opt_in",
+        "genome_catalog_targeting"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "PrepareGenome.genome_id",
+          "where_used": "operation 1",
+          "why_it_matters": "Selects the exact reference build and annotation set.",
+          "how_to_derive": "Choose the genome build matching your experimental system and downstream coordinate system.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "PrepareGenome.catalog_path / cache_dir",
+          "where_used": "operation 1",
+          "why_it_matters": "Controls source catalog and local cache destination.",
+          "how_to_derive": "Use repository defaults unless your environment requires custom catalogs or cache locations.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_examples_docs -- tutorial-generate"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Genome preparation runs only when GENTLE_TEST_ONLINE is enabled.",
+        "Offline generation still emits the chapter with execution status noted."
+      ]
+    },
+    {
+      "id": "tp53_isoform_architecture_online",
+      "order": 10,
+      "title": "TP53 isoform architecture expert panel (online)",
+      "example_id": "tp53_isoform_architecture_online",
+      "tier": "online",
+      "guide_path": null,
+      "summary": "Build a TP53 locus project and export Figure-1-style transcript/protein isoform architecture from one deterministic engine route.",
+      "narrative": "This chapter demonstrates a publication-oriented use case: derive TP53 from a prepared GRCh38 reference, import a curated isoform panel, and render transcript/protein architecture from the same expert-view payload used by GUI and shell interfaces. The focus is parity and provenance, not manual figure drawing.",
+      "use_cases": [
+        "You want transcript and protein isoform architecture from one sequence context with explicit panel provenance.",
+        "You need a deterministic SVG baseline for Figure-1-style TP53 isoform presentation.",
+        "You want to preserve the exact panel import and rendering operations in sequence history."
+      ],
+      "gui_steps": [
+        "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`.",
+        "Open DNA window `Engine Ops -> Isoform architecture panels`, import `assets/panels/tp53_isoforms_v1.json`.",
+        "Open `Isoform Expert` and export SVG from the same panel context."
+      ],
+      "learning_objectives": [
+        "Execute an end-to-end isoform-panel workflow using shared engine operations.",
+        "Understand how curated panel JSON joins genome-derived transcripts without GUI-only logic.",
+        "Export deterministic architecture SVG suitable for downstream figure styling."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "isoform_architecture_panels",
+        "online_opt_in",
+        "artifact_exports"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "ImportIsoformPanel.panel_path / panel_id / strict",
+          "where_used": "operation 3",
+          "why_it_matters": "Defines which curated panel is loaded and whether transcript mapping mismatches should fail hard.",
+          "how_to_derive": "Use `assets/panels/tp53_isoforms_v1.json` and keep `strict=false` for exploratory mapping; switch to `strict=true` when curation is locked.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "RenderIsoformArchitectureSvg.path",
+          "where_used": "operation 4",
+          "why_it_matters": "Controls deterministic export location used for tutorial artifact retention and figure review.",
+          "how_to_derive": "Use a stable project-relative path such as `exports/tp53_isoform_architecture.svg`.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'",
+        "cargo run --bin gentle_cli -- save-project tp53_isoform_architecture.project.gentle.json"
+      ],
+      "retain_outputs": [
+        "exports/tp53_isoform_architecture.svg"
+      ],
+      "checkpoints": [
+        "Panel import reports mapped transcript lanes and any unresolved transcript warnings.",
+        "Isoform architecture SVG export succeeds with deterministic lane ordering.",
+        "Saved project contains TP53 sequence plus imported panel metadata for replay."
+      ]
+    },
+    {
+      "id": "tp63_anchor_extension_online",
+      "order": 11,
+      "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
+      "example_id": "tp63_extend_anchor_online",
+      "tier": "online",
+      "guide_path": null,
+      "summary": "Prepare Human GRCh38, inspect TP63 genomic coordinates, extract TP63, and extend the anchored sequence by 2000 bp on each side.",
+      "narrative": "This chapter focuses on day-to-day genome-anchored sequence inspection: identify TP63 in GRCh38, verify coordinates before extraction, and then widen the visible anchored region directly in the DNA sequence window. The key point is that extension remains deterministic and provenance-preserving, whether triggered in the GUI or via shell/CLI operations.",
+      "use_cases": [
+        "You want to inspect promoter-proximal and downstream context around TP63 without manually typing coordinates.",
+        "You need to confirm annotated TP63 coordinates before creating an anchored sequence.",
+        "You want a reproducible +/-2 kb extension workflow that can be replayed by GUI and CLI users."
+      ],
+      "gui_steps": [
+        "Open `File -> Prepare Reference Genome...` and prepare `Human GRCh38 Ensembl 116` from `assets/genomes.json`.",
+        "Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.",
+        "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence."
+      ],
+      "learning_objectives": [
+        "Use annotation-backed gene retrieval to inspect coordinates before extracting a sequence.",
+        "Apply anchored-region extension from the DNA sequence viewer without losing genome-anchor provenance.",
+        "Map GUI actions to equivalent deterministic `ExtendGenomeAnchor` operations."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "sequence_lineage",
+        "online_opt_in"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "ExtractGenomeGene.gene_query / occurrence",
+          "where_used": "operation 2 and Retrieve Genome Sequence dialog",
+          "why_it_matters": "Controls which TP63 transcript/gene match is selected when multiple annotation entries exist.",
+          "how_to_derive": "Start with `gene_query=TP63` and `occurrence=1`; inspect coordinate listing first and adjust occurrence only if you need a non-primary hit.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "ExtendGenomeAnchor.side / length_bp",
+          "where_used": "operations 3 and 4 + DNA window Extend controls",
+          "why_it_matters": "Defines biological flank direction and exact context length added around the anchored region.",
+          "how_to_derive": "Use `five_prime,2000` then `three_prime,2000` for symmetric +/-2 kb context expansion.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^TP63$\" --limit 20",
+        "cargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP63 --occurrence 1 --output-id grch38_tp63 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63 5p 2000 --output-id grch38_tp63_ext5_2kb --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63_ext5_2kb 3p 2000 --output-id grch38_tp63_ext5_ext3_2kb --catalog assets/genomes.json --cache-dir data/genomes"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "TP63 coordinate candidates are visible before extraction in Retrieve Genome Sequence workflows.",
+        "ExtractGenomeGene produces `grch38_tp63` as anchored sequence context.",
+        "Sequential 5'/3' extension by 2000 bp yields `grch38_tp63_ext5_ext3_2kb` with preserved anchor provenance."
+      ]
+    },
+    {
+      "id": "tp53_multi_gene_sparse_mapping_online",
+      "order": 12,
+      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "example_id": "tp53_multi_gene_sparse_mapping_online",
+      "tier": "online",
+      "guide_path": null,
+      "summary": "Prepare GRCh38, extract TP53, then map RNA reads with origin_mode=multi_gene_sparse against TP53-family targets.",
+      "narrative": "This chapter extends the TP53 genome-targeting path toward read-origin mapping in one deterministic route. After extracting the TP53 locus from GRCh38, you run `InterpretRnaReads` with `multi_gene_sparse` so the index can include additional target genes (for example TP53/TP63/TP73) in one run. The goal is to keep genome anchoring and multi-gene interpretation in the same reproducible workflow contract.",
+      "use_cases": [
+        "You want one TP53-based run that can contrast seed support across TP53-family targets.",
+        "You need a reproducible baseline for comparing single-gene vs multi-gene sparse indexing behavior.",
+        "You want GUI and CLI routes to produce the same multi-gene request payload."
+      ],
+      "gui_steps": [
+        "Prepare `Human GRCh38 Ensembl 116` and extract `TP53` into `grch38_tp53`.",
+        "Open Splicing Expert for a TP53 transcript, set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
+        "Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section."
+      ],
+      "learning_objectives": [
+        "Map one gene locus from reference genome preparation through read-interpretation in a single operation chain.",
+        "Understand what `multi_gene_sparse` changes at runtime (expanded local transcript-template indexing).",
+        "Interpret deterministic report provenance for `origin_mode`, target-gene set, and planned ROI capture flag."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "genome_catalog_targeting",
+        "online_opt_in"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "InterpretRnaReads.seed_feature_id",
+          "where_used": "operation 3",
+          "why_it_matters": "Defines which feature seeds the splicing view and baseline transcript scope for sparse expansion.",
+          "how_to_derive": "In GUI this is implicit from the selected transcript. For direct workflow/CLI editing, inspect TP53 feature indices first and set the correct mRNA feature id.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "InterpretRnaReads.origin_mode / target_gene_ids",
+          "where_used": "operation 3",
+          "why_it_matters": "Controls whether indexing stays baseline (`single_gene`) or is expanded with matched target-gene transcripts (`multi_gene_sparse`).",
+          "how_to_derive": "Use TP53-family IDs (`TP53, TP63, TP73`) for contrast runs, then narrow/expand based on biological question.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "InterpretRnaReads.roi_seed_capture_enabled",
+          "where_used": "operation 3",
+          "why_it_matters": "Tracks request intent for future annotation-independent ROI capture layer.",
+          "how_to_derive": "Keep `false` for current runtime behavior; set `true` only when you want the deterministic pending-feature warning in provenance.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json",
+        "cargo run --bin gentle_cli -- shell 'rna-reads list-reports grch38_tp53'",
+        "cargo run --bin gentle_cli -- shell 'rna-reads show-report tp53_family_sparse_template'"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "TP53 locus extraction and RNA-read interpretation operations are both present in one workflow run history.",
+        "Report summary shows `origin_mode=multi_gene_sparse` and target-gene provenance fields.",
+        "Warnings remain explicit for any missing target genes and for ROI-capture requests when enabled."
+      ]
+    },
+    {
+      "id": "pcr_selection_batch_primer_pairs_offline",
+      "order": 13,
+      "title": "Selection-first PCR batch primer design (offline)",
+      "example_id": "pcr_selection_batch_primer_pairs_offline",
+      "tier": "core",
+      "guide_path": null,
+      "summary": "Use paint-first PCR Designer controls on local TP73 context to queue ROIs and run deterministic batch primer-pair reports, with optional extracted-region copies.",
+      "narrative": "This chapter is PCR-focused and biology-anchored without requiring genome mapping mechanics. You work directly on local TP73 locus sequence (`test_files/tp73.ncbi.gb`), open the dedicated PCR Designer, paint semantic regions on the linear map (`ROI` green, upstream primer window red, downstream primer window blue), queue promoter-proximal targets around TP73-AS2, and run one shared primer-constraint set across queued regions. Results remain deterministic (`..._r01`, `..._r02`) and can be shown/exported for handoff before entering the separate luciferase cloning tutorial.",
+      "use_cases": [
+        "You want a mouse-first way to assign PCR ROI and primer-window coordinates with immediate visual feedback.",
+        "You want to combine one ad hoc painted selection with one or more annotation-driven queue rows in one PCR batch run.",
+        "You want to amplify TP73-AS2 promoter-proximal windows from local TP73 sequence context.",
+        "You want to design primer pairs for several selected regions without retyping ROI coordinates.",
+        "You want PCR-first preparation that cleanly feeds later promoter-luciferase planning.",
+        "You need copied sequence artifacts for each PCR target before forwarding to other workflows.",
+        "You want deterministic report IDs for review and export."
+      ],
+      "gui_steps": [
+        "Load `test_files/tp73.ncbi.gb`, then open `Patterns -> PCR Designer...` (or command palette `PCR Designer`).",
+        "Keep the map in linear mode. Choose paint role `ROI` (green) and drag over one TP73-AS2 promoter-proximal window (for example around `61720..62120`).",
+        "Choose paint role `Upstream` (red) and drag one upstream primer-window interval. Choose `Downstream` (blue) and drag one downstream primer-window interval.",
+        "Use post-drag actions (`Set PCR ROI`, `Add ROI to Queue`, `Open PCR Designer`) or `Shift+drag` on ROI for immediate queue append.",
+        "Add one annotation-driven queue row via DNA-window fallback (`PCR ROI -> Add selected feature(s) to queue`) so queue sources include both painted and feature-driven entries.",
+        "In `Design primer pairs`, set shared constraints and a `report_id` base (for example `tp73_as2_promoter_batch`). The right pane live cartoon should reflect painted ROI/window geometry.",
+        "Optionally enable `Also create extracted region copies`, then run `Design Primer Pairs for queued regions`.",
+        "In `PCR batch results`, use `Show` for report summary, `Export` for JSON output, and `Open` to jump to the extracted copy (or template when copy mode is off)."
+      ],
+      "learning_objectives": [
+        "Capture PCR queue regions from paint-first map interaction and selected-feature fallback actions.",
+        "Use semantic painted intervals to preview pair-PCR geometry before execution.",
+        "Run deterministic multi-region primer design in one batch action with stable `_rNN` report suffixes.",
+        "Use batch-results actions (`Show`, `Export`, `Open`) for validation and downstream handoff."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "TP73-AS2 promoter-proximal ROI window (for example `61720..62120`)",
+          "where_used": "painted ROI role and Design primer pairs ROI fields around TP73-AS2",
+          "why_it_matters": "Keeps PCR targets tied to a biologically meaningful promoter-proximal context that can later feed luciferase planning.",
+          "how_to_derive": "Anchor on TP73-AS2 annotation in `test_files/tp73.ncbi.gb` (gene/ncRNA at lines ~1257-1270), then choose a local promoter-proximal window around the antisense 5' boundary.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "Paint roles (`ROI` green, `Upstream` red, `Downstream` blue)",
+          "where_used": "PCR Designer map interaction + live pair-PCR cartoon geometry",
+          "why_it_matters": "Separates biological target interval from allowed primer-placement windows and makes constraint intent visible before design execution.",
+          "how_to_derive": "Paint ROI over the target biology first, then paint upstream/downstream windows that bound forward/reverse primer search space.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "DesignPrimerPairs.report_id base",
+          "where_used": "batch execution in Design primer pairs form",
+          "why_it_matters": "Batch runs derive deterministic report IDs from this base with `_rNN` suffixes.",
+          "how_to_derive": "Pick one short base tied to experiment context (for example `tp73_as2_promoter_batch`).",
+          "omit_when": ""
+        },
+        {
+          "parameter": "PCR queue copy toggle (`Also create extracted region copies`)",
+          "where_used": "batch execution in Design primer pairs form",
+          "why_it_matters": "Enables per-region `ExtractRegion` artifacts before/alongside primer report generation.",
+          "how_to_derive": "Enable when downstream steps need sequence artifacts; leave off for report-only planning (default off).",
+          "omit_when": ""
+        },
+        {
+          "parameter": "Queue source mode (`painted ROI` vs `selected feature` fallback)",
+          "where_used": "queue rows before batch execution",
+          "why_it_matters": "Preserves coordinate provenance for each batch row and keeps mixed ad hoc + annotation flows inspectable.",
+          "how_to_derive": "Use paint-first for custom windows; use selected-feature fallback for annotation-defined intervals.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- shell 'ui open pcr-design'",
+        "cargo run --bin gentle_cli -- shell 'ui focus pcr-design'",
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json",
+        "cargo run --bin gentle_cli -- shell 'primers list-reports'",
+        "cargo run --bin gentle_cli -- shell 'primers show-report tp73_as2_promoter_batch_r01'",
+        "cargo run --bin gentle_cli -- shell 'primers export-report tp73_as2_promoter_batch_r01 tp73_as2_promoter_batch_r01.json'"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "PCR queue rows include both `painted ROI` and selected-feature source labels.",
+        "Live pair-PCR cartoon preview updates when ROI/upstream/downstream paint intervals change.",
+        "Two primer reports are created with deterministic `_r01`/`_r02` suffixes and appear in batch results.",
+        "If your runtime falls back to the internal primer backend, reports may validly contain zero accepted pairs under strict constraints; report creation/export behavior remains deterministic.",
+        "If copy toggle is enabled, each batch-results row includes a copy ID and `Open` jumps to that extracted sequence.",
+        "At least one report can be shown and exported from the batch-results row actions without manual JSON editing."
+      ]
+    },
+    {
+      "id": "tp73_cdna_genomic_dotplot_online",
+      "order": 14,
+      "title": "Compare TP73 cDNA against TP73 genomic context via dotplot (online)",
+      "example_id": "tp73_cdna_genomic_dotplot_online",
+      "tier": "online",
+      "guide_path": null,
+      "summary": "Fetch TP73 cDNA, extract TP73 from GRCh38, and compute a pair-forward dotplot with high-sensitivity defaults (`word=7`, `step=1`, `mismatches=0`).",
+      "narrative": "This chapter captures a practical cDNA-vs-genomic verification route for transcript structure interpretation. The focus is a reproducible first-pass map that reveals exon-aligned block patterns while preserving one shared operation path across GUI and CLI interfaces.",
+      "use_cases": [
+        "You want a deterministic cDNA-vs-genomic control for exon/intron-aware interpretation.",
+        "You need a reproducible TP73 baseline for demonstrating dotplot settings to collaborators.",
+        "You want one canonical workflow file that mirrors your GUI tutorial run."
+      ],
+      "gui_steps": [
+        "Fetch GenBank accession `NM_001126241.3` as `tp73_cdna`.",
+        "Prepare `Human GRCh38 Ensembl 116`, retrieve gene `TP73` as `tp73_genomic`.",
+        "Open `tp73_cdna`, switch to `Dotplot map`, set pair mode against `tp73_genomic`, and compute with `word<=7`, `step=1`, `mismatches=0`."
+      ],
+      "learning_objectives": [
+        "Use one deterministic route from accession retrieval to pairwise dotplot artifact generation.",
+        "Understand why high-sensitivity seed sampling (`step=1`, low word size) improves cDNA-vs-genomic block visibility.",
+        "Trace parity between GUI actions and canonical workflow JSON execution."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage",
+        "genome_catalog_targeting",
+        "online_opt_in"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "ComputeDotplot.word_size / step_bp / max_mismatches",
+          "where_used": "operation 4",
+          "why_it_matters": "These settings control sensitivity for dispersed exon-aligned signal in long genomic spans.",
+          "how_to_derive": "Start with `word=7`, `step=1`, `max_mismatches=0`; reduce to `word=6` only if additional sensitivity is needed.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "ComputeDotplot.reference_seq_id",
+          "where_used": "operation 4",
+          "why_it_matters": "Pairwise mode requires explicit reference identity for y-axis mapping.",
+          "how_to_derive": "Use the exact ID emitted by the gene-extraction step (`tp73_genomic` in this chapter).",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- shell 'dotplot show tp73_cdna_vs_genomic_dotplot'"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Dotplot artifact is created and can be listed/shown by id (`tp73_cdna_vs_genomic_dotplot`).",
+        "Pair-forward map shows exon-block style structure rather than one continuous full-length diagonal.",
+        "GUI tutorial and workflow JSON describe the same parameter baseline."
+      ]
+    },
+    {
+      "id": "gibson_specialist_testing_baseline",
+      "order": 15,
+      "title": "Gibson Specialist Starter Project (offline)",
+      "example_id": "gibson_specialist_testing_baseline",
+      "tier": "core",
+      "guide_path": "docs/tutorial/gibson_specialist_testing_gui.md",
+      "summary": "Build a ready-to-open tutorial project with one circular destination and one linear insert so the Gibson specialist can be tested without setup drift.",
+      "narrative": "This chapter exists to remove setup friction from Gibson specialist testing. The executable workflow loads a known circular pGEX destination and one small synthetic insert under stable IDs, so `File -> Open Tutorial Project...` can hand you a reproducible starting state before you continue in the dedicated GUI specialist.",
+      "use_cases": [
+        "You want to test `Patterns -> Gibson...` without manually importing files first.",
+        "You want a stable tutorial-project baseline that can be opened from the GUI and replayed from the CLI.",
+        "You want one deterministic starting state for checking overlaps, primer suggestions, cartoon rendering, and export behavior."
+      ],
+      "gui_steps": [
+        "Open `File -> Open Tutorial Project...` and choose `Gibson Specialist Starter Project (offline)`.",
+        "Confirm the opened project contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).",
+        "The Help window should open automatically on `Gibson Specialist Testing Tutorial`; continue there from `Step 3` onward to exercise the Gibson specialist itself."
+      ],
+      "learning_objectives": [
+        "Use executable tutorial projects as deterministic GUI test baselines.",
+        "Recognize the stable sequence IDs that the Gibson testing guide expects.",
+        "Replay the same baseline from GUI and CLI without changing biological setup."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "destination seq_id = gibson_destination_pgex",
+          "where_used": "Gibson specialist destination selection after tutorial project open",
+          "why_it_matters": "Keeps the circular vector choice stable across tutorial-project, GUI, and CLI replay paths.",
+          "how_to_derive": "This workflow assigns the ID directly during `LoadFile`.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "insert seq_id = gibson_insert_demo",
+          "where_used": "Gibson specialist insert selection after tutorial project open",
+          "why_it_matters": "Provides one deterministic linear insert for overlap and primer derivation checks.",
+          "how_to_derive": "This workflow assigns the ID directly during `LoadFile`.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "workflow example = gibson_specialist_testing_baseline",
+          "where_used": "`Open Tutorial Project...` and CLI workflow replay",
+          "why_it_matters": "This is the canonical executable setup layer behind the hand-written Gibson testing walkthrough.",
+          "how_to_derive": "Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "The tutorial project opens with exactly the expected destination and insert IDs already loaded.",
+        "The destination remains circular and the insert remains linear before entering `Patterns -> Gibson...`.",
+        "The hand-written Gibson testing guide can start from this baseline without any additional sequence imports."
+      ]
+    },
+    {
+      "id": "gibson_arrangements_baseline",
+      "order": 16,
+      "title": "Gibson Arrangements Starter Project (offline)",
+      "example_id": "gibson_arrangements_baseline",
+      "tier": "core",
+      "guide_path": "docs/tutorial/gibson_arrangements_gui.md",
+      "summary": "Open directly into an arrangement-ready Gibson result with vector, insert, assembled product, and the stored three-lane lane set already present.",
+      "narrative": "This chapter now uses its own deterministic workflow example instead of reusing the Gibson specialist starter. `File -> Open Tutorial Project...` builds the pGEX + insert starter, applies the canonical single-insert Gibson plan, and then opens the arrangement guide so the user can inspect singleton outputs, stored arrangements, and gel export without first repeating the cloning step.",
+      "use_cases": [
+        "You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier Gibson-specialist apply walkthrough.",
+        "You want a reproducible starter state for checking singleton output containers, the assembled product, and arrangement-level gel export.",
+        "You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial."
+      ],
+      "gui_steps": [
+        "Open `File -> Open Tutorial Project...` and choose `Gibson Arrangements Starter Project (offline)`.",
+        "Confirm the opened project contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.",
+        "The Help window should open automatically on `Gibson Arrangements Tutorial`; continue there from `Step 1` onward."
+      ],
+      "learning_objectives": [
+        "Use one executable starter project to reach an arrangement-ready walkthrough directly.",
+        "Recognize the separation between the Gibson specialist apply tutorial and the downstream arrangement/gel-inspection tutorial.",
+        "Replay the same arrangement-focused setup from GUI and CLI without requiring a second manual Gibson apply."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "destination seq_id = gibson_destination_pgex",
+          "where_used": "Stored vector lane in the arrangement walkthrough",
+          "why_it_matters": "Keeps the original vector lane stable across the arrangement guide and CLI replay.",
+          "how_to_derive": "This workflow assigns the ID directly during `LoadFile`.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "insert seq_id = gibson_insert_demo",
+          "where_used": "Insert lane in the arrangement walkthrough",
+          "why_it_matters": "Provides the same deterministic insert lane that the Gibson arrangement is expected to reference.",
+          "how_to_derive": "This workflow assigns the ID directly during `LoadFile`.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "assembled product seq_id = gibson_destination_pgex_with_gibson_insert_demo",
+          "where_used": "Stored Gibson result already present when the arrangement tutorial opens",
+          "why_it_matters": "Makes the arrangement tutorial disjunct from the separate Gibson-specialist apply walkthrough while keeping one deterministic product identity.",
+          "how_to_derive": "The chapter workflow applies the canonical single-insert Gibson plan before the guide opens.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "workflow example = gibson_arrangements_baseline",
+          "where_used": "`Open Tutorial Project...` and CLI workflow replay",
+          "why_it_matters": "The arrangement starter now has its own canonical example so the tutorial can begin with the cloned result and stored lane arrangement already available.",
+          "how_to_derive": "Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "The tutorial project opens with the expected destination, insert, and assembled-product IDs already loaded.",
+        "The Help window lands on the arrangement tutorial rather than the specialist testing tutorial.",
+        "The arrangement guide can start from this baseline without an additional manual Gibson apply."
+      ]
+    },
+    {
+      "id": "tp53_uniprot_projection_online",
+      "order": 17,
+      "title": "TP53 UniProt domain mapping and feature-coding DNA query (online)",
+      "example_id": "tp53_uniprot_projection_online",
+      "tier": "online",
+      "guide_path": null,
+      "summary": "Build a TP53 locus project, fetch UniProt P04637, map its domains onto the locus, and query which genomic DNA plus exon or exon pair encode one mapped feature.",
+      "narrative": "This chapter demonstrates the UniProt projection workflow as an inspectable bridge from protein annotation back to genomic DNA. Instead of importing a curated protein panel JSON, you fetch the reviewed UniProt TP53 entry, project its reference-protein intervals onto one extracted TP53 locus, inspect the mapped domains through the shared expert canvas, and then query one mapped feature such as `DNA-binding` to recover the exact spliced genomic coding DNA, exon attribution, and an optional translation-speed-oriented coding alternative.",
+      "use_cases": [
+        "You want to compare one gene locus against reviewed UniProt domains or regions without opening a first-class protein sequence window.",
+        "You want to know which spliced genomic DNA and which exon or exon pair encode one mapped feature such as TP53 DNA-binding.",
+        "You want a deterministic TP53 example that keeps one persisted projection record reusable for expert rendering, audit, and follow-up DNA queries."
+      ],
+      "gui_steps": [
+        "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`.",
+        "Open `File -> Protein Evidence...`, fetch `P04637`, keep `entry_id=P04637`, choose sequence `grch38_tp53`, and run `Project To Sequence`.",
+        "Inspect the stored projection with `Open Protein Expert` or export it with `Render Protein Mapping SVG...` so you can verify how UniProt domains/regions landed on the TP53 transcripts.",
+        "In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.",
+        "Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span."
+      ],
+      "learning_objectives": [
+        "Use one persisted UniProt projection as the canonical bridge from reviewed protein annotation to locus-level transcript/CDS geometry and back to coding DNA.",
+        "Understand that both the protein expert and the feature-coding DNA query are thin views over stored engine state, not separate GUI-only mapping models.",
+        "Recover exact genomic coding DNA plus exon attribution for one mapped protein feature, and compare it with an optional translation-speed-oriented codon choice."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "uniprot_projection_mapping",
+        "feature_coding_dna_attribution",
+        "expert_view_parity",
+        "online_opt_in",
+        "artifact_exports"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "FetchUniprotSwissProt.query / entry_id",
+          "where_used": "operation 3",
+          "why_it_matters": "Pins the reviewed UniProt entry that will contribute the protein coordinate system and interval annotations.",
+          "how_to_derive": "Use a stable accession or reviewed UniProt id. For the canonical TP53 example, `P04637` is the expected reviewed entry.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "ProjectUniprotToGenome.projection_id / transcript_id",
+          "where_used": "operation 4",
+          "why_it_matters": "The projection id becomes the durable handle reused by the GUI recent-projection list and the shared expert-render route. Leaving `transcript_id=null` lets the UniProt Ensembl transcript xrefs drive the full TP53 projection set.",
+          "how_to_derive": "Use a stable project-specific id such as `tp53_uniprot_p04637`. Supply `transcript_id` later only when you intentionally want a single-transcript projection.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "RenderFeatureExpertSvg.target / path",
+          "where_used": "operation 5",
+          "why_it_matters": "Confirms that the projection can be reopened through the shared feature-expert route and exported reproducibly.",
+          "how_to_derive": "Use `UniprotProjection` with the stored projection id and a stable project-relative output path such as `exports/tp53_uniprot_projection.svg`.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "query_uniprot_feature_coding_dna.feature_query / transcript_id",
+          "where_used": "GUI follow-up or shell follow-up after projection",
+          "why_it_matters": "The feature query chooses which mapped UniProt interval you want to trace back to coding DNA, while `transcript_id` narrows the report to one isoform when the projection stored multiple TP53 transcripts.",
+          "how_to_derive": "Use a case-insensitive mapped feature substring such as `DNA-binding`, `activation`, or `DOMAIN`. Leave `transcript_id` empty until you need to pin one transcript.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "query_uniprot_feature_coding_dna.mode / translation_speed_profile",
+          "where_used": "GUI follow-up or shell follow-up after projection",
+          "why_it_matters": "Controls whether you inspect only the exact genomic coding DNA or also a preferred-codon translation-speed-oriented alternative for the same amino-acid interval.",
+          "how_to_derive": "Use `mode=both` for this tutorial so you can compare the genomic sequence with the optimized alternative. Keep the speed profile on `Auto` in the GUI or choose `human` explicitly in shell/CLI for TP53.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- shell 'uniprot projection-show tp53_uniprot_p04637'",
+        "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 uniprot-projection tp53_uniprot_p04637",
+        "cargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 uniprot-projection tp53_uniprot_p04637 exports/tp53_uniprot_projection.svg",
+        "cargo run --bin gentle_cli -- shell 'uniprot feature-coding-dna tp53_uniprot_p04637 DNA-binding --mode both --speed-profile human'"
+      ],
+      "retain_outputs": [
+        "exports/tp53_uniprot_projection.svg"
+      ],
+      "checkpoints": [
+        "UniProt fetch/import reports the reviewed TP53 entry and the projection operation stores `tp53_uniprot_p04637` in project metadata.",
+        "Open Protein Expert shows one protein reference axis with projected transcript/CDS lanes from the TP53 locus.",
+        "Protein-mapping SVG export succeeds directly from the UniProt specialist without requiring a separate protein sequence window.",
+        "The feature-coding DNA query reports the coding-strand DNA for `DNA-binding` together with transcript-specific exon attribution, including an exon pair when the feature spans a splice junction."
+      ]
+    },
+    {
+      "id": "simple_pcr_selection_gui",
+      "order": 18,
+      "title": "Simple PCR From a Selected Core Region",
+      "example_id": "simple_pcr_selection_gui",
+      "tier": "core",
+      "guide_path": "docs/tutorial/simple_pcr_selection_gui.md",
+      "summary": "Open a ready local TP73 sequence and walk through the smallest useful PCR story: select the core ROI, limit primer distance from the core, and cap the amplicon length.",
+      "narrative": "This chapter is intentionally minimal. The tutorial project opens one stable local TP73 locus so you can stay in the GUI, paint or select one region of interest, launch `Simple PCR from selection`, and reason about primer placement in beginner terms before moving on to the richer batch-PCR chapter.",
+      "use_cases": [
+        "You want the shortest possible path from one selected region to one PCR design attempt.",
+        "You want to learn the meaning of core ROI, maximum primer distance from the core, and maximum amplicon length without queueing or painting multiple regions.",
+        "You want one offline tutorial project that opens directly into local TP73 context before using the PCR Designer."
+      ],
+      "gui_steps": [
+        "Open `File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region`.",
+        "In the opened TP73 project, keep the DNA map in linear mode and drag over one short core region that must be included in the amplicon.",
+        "Right-click the selection and choose `Simple PCR from selection`.",
+        "In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.",
+        "Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core."
+      ],
+      "learning_objectives": [
+        "Start a simple PCR directly from one sequence selection.",
+        "Interpret the beginner PCR controls as deterministic flank-window constraints around the selected core ROI.",
+        "Review saved primer pairs in terms of amplicon length and left/right distance from the core ROI."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "core ROI",
+          "where_used": "map selection and PCR Designer starter block",
+          "why_it_matters": "This is the part of the biology that must definitely be included in the PCR product.",
+          "how_to_derive": "Select only the indispensable sequence interval, not the full desired amplicon.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "max primer distance from core",
+          "where_used": "PCR Designer starter block",
+          "why_it_matters": "This sets how far upstream and downstream primers may move away from the required core region.",
+          "how_to_derive": "Choose the largest flank width you are comfortable allowing for primer search on each side of the core ROI.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "max amplicon",
+          "where_used": "Design primer pairs form",
+          "why_it_matters": "This caps product length so the simple-PCR result stays experimentally practical.",
+          "how_to_derive": "Set the longest acceptable product length for the assay before running primer design.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/simple_pcr_selection_gui.json",
+        "cargo run --bin gentle_cli -- shell 'ui open pcr-design'",
+        "cargo run --bin gentle_cli -- shell 'primers list-reports'"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "The tutorial project opens with local TP73 sequence `tp73_locus` already loaded.",
+        "A non-empty selection exposes `Simple PCR from selection` in the DNA-window context menu.",
+        "The PCR Designer shows the `Simple PCR starter` block.",
+        "After primer design, the report preview shows left/right distance from the core ROI and whether the pair cleanly flanks the core."
+      ]
+    },
+    {
+      "id": "tp73_uniprot_projection_audit_cli",
+      "order": 19,
+      "title": "Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)",
+      "example_id": "tp73_uniprot_projection_audit_online",
+      "tier": "online",
+      "guide_path": "docs/tutorial/tp73_uniprot_projection_audit_cli.md",
+      "summary": "Build a TP73 locus project, fetch UniProt and Ensembl protein evidence, persist the integrated audit plus parity report, and keep the matching expert SVG as an inspectable artifact.",
+      "narrative": "This executable chapter turns the TP73 UniProt/Ensembl audit into a reproducible online workflow. It prepares GRCh38, extracts TP73, fetches the reviewed UniProt entry and matching Ensembl protein evidence, projects the protein onto the locus, persists the integrated audit and direct-vs-composed parity report, and keeps one shared expert SVG export alongside the stored report artifacts. The companion hand-written tutorial then explains how to inspect the same outcome through the public primitive commands.",
+      "use_cases": [
+        "You want one canonical online starter project that proves the TP73 UniProt/Ensembl audit path still runs end to end.",
+        "You want a persisted TP73 audit report plus parity report before following the shell-level primitive walkthrough.",
+        "You want a deterministic bridge from locus extraction and UniProt projection into audit, parity, and expert-view artifact export."
+      ],
+      "gui_steps": [
+        "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP73` into `grch38_tp73`.",
+        "Fetch UniProt `Q9H3D4` and Ensembl protein `ENSP00000264724` from `Protein Evidence...`, then project the UniProt entry onto the TP73 locus.",
+        "Run the high-level audit and parity actions from `Protein Evidence...` so the stored audit rows and local unsent email draft are persisted.",
+        "Open the saved projection in the Protein Expert or inspect the exported SVG artifact to verify the projected feature geometry.",
+        "Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`."
+      ],
+      "learning_objectives": [
+        "Use one executable chapter as the reproducible setup layer behind the TP73 UniProt/Ensembl audit walkthrough.",
+        "Understand that the high-level audit and parity report are built on the same reusable primitive record families exposed to shell/CLI and future AI callers.",
+        "Preserve both the persisted audit reports and one shared expert SVG artifact so the TP73 workflow can be inspected visually and programmatically."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "uniprot_projection_mapping",
+        "feature_coding_dna_attribution",
+        "expert_view_parity",
+        "online_opt_in",
+        "artifact_exports"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "FetchUniprotSwissProt.query / entry_id",
+          "where_used": "operation 3",
+          "why_it_matters": "Pins the reviewed UniProt TP73 entry that drives the protein-coordinate system for projection and audit.",
+          "how_to_derive": "Use the stable reviewed TP73 accession `Q9H3D4` for this canonical chapter.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "FetchEnsemblProtein.query / entry_id",
+          "where_used": "operation 4",
+          "why_it_matters": "Keeps the Ensembl protein evidence explicit and reusable for exon/CDS and peptide comparison during audit.",
+          "how_to_derive": "Use `ENSP00000264724` with a stable project-local id such as `TP73_ENS`.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "ProjectUniprotToGenome.projection_id",
+          "where_used": "operation 5",
+          "why_it_matters": "The stored projection id is the durable handle reused by the expert SVG export, the integrated audit, and the parity report.",
+          "how_to_derive": "Use a stable intent-bearing id such as `tp73_uniprot_q9h3d4`.",
+          "omit_when": ""
+        },
+        {
+          "parameter": "AuditUniprotProjectionConsistency.report_id / AuditUniprotProjectionParity.report_id",
+          "where_used": "operations 7 and 8",
+          "why_it_matters": "Stable report ids make the saved audit/parity artifacts easy to reopen from GUI, CLI, or future AI orchestration.",
+          "how_to_derive": "Use descriptive ids like `tp73_projection_audit` and `tp73_projection_audit_parity`.",
+          "omit_when": ""
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- shell 'uniprot audit-show tp73_projection_audit'",
+        "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_q9h3d4'",
+        "cargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_q9h3d4'",
+        "cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'",
+        "cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'",
+        "cargo run --bin gentle_cli -- shell 'uniprot audit-parity-show tp73_projection_audit_parity'"
+      ],
+      "retain_outputs": [
+        "exports/tp73_uniprot_projection.svg"
+      ],
+      "checkpoints": [
+        "The TP73 locus, UniProt entry, and Ensembl protein evidence all persist under stable ids in one project state.",
+        "The integrated audit stores `tp73_projection_audit` with per-transcript accounting and a local unsent maintainer-email draft.",
+        "The parity report stores `tp73_projection_audit_parity` and confirms whether the integrated Rust audit matches the public primitive composition.",
+        "The shared expert SVG export succeeds so the projected TP73 feature geometry remains inspectable outside the live GUI."
+      ]
+    }
+  ]
+}

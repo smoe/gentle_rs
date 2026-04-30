@@ -1,0 +1,57 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tp73_cdna_genomic_dotplot_online",
+  "title": "TP73 cDNA vs genomic dotplot baseline (online)",
+  "summary": "Fetch TP73 cDNA, prepare GRCh38 and extract TP73 genomic locus, then compute a high-sensitivity pair-forward dotplot baseline.",
+  "test_mode": "online",
+  "required_files": [
+    "assets/genomes.json"
+  ],
+  "tags": [
+    "tutorial",
+    "dotplot",
+    "tp73",
+    "cdna",
+    "genomic",
+    "online"
+  ],
+  "workflow": {
+    "run_id": "example_tp73_cdna_genomic_dotplot_online",
+    "ops": [
+      {
+        "FetchGenBankAccession": {
+          "accession": "NM_001126241.3",
+          "as_id": "tp73_cdna"
+        }
+      },
+      {
+        "PrepareGenome": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtractGenomeGene": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "gene_query": "TP73",
+          "occurrence": 1,
+          "output_id": "tp73_genomic",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ComputeDotplot": {
+          "seq_id": "tp73_cdna",
+          "reference_seq_id": "tp73_genomic",
+          "mode": "pair_forward",
+          "word_size": 7,
+          "step_bp": 1,
+          "max_mismatches": 0,
+          "store_as": "tp73_cdna_vs_genomic_dotplot"
+        }
+      }
+    ]
+  }
+}

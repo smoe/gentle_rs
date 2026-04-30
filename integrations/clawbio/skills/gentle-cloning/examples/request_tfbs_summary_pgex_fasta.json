@@ -1,0 +1,7 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "shell",
+  "state_path": ".gentle_state.json",
+  "shell_line": "features tfbs-summary pgex_fasta --focus 1..1500 --context 1..4904 --limit 10",
+  "timeout_secs": 180
+}

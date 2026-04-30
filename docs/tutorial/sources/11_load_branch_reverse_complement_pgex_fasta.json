@@ -1,0 +1,53 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "load_branch_reverse_complement_pgex_fasta",
+  "title": "Load FASTA, branch, and reverse-complement",
+  "generated_chapter": {
+    "order": 1,
+    "example_id": "load_branch_reverse_complement_pgex_fasta",
+    "tier": "core",
+    "summary": "Start with a simple cloning-prep routine to learn product IDs and sequence lineage.",
+    "narrative": "In real cloning projects, the first question is often whether a sequence in hand is represented correctly and whether you can derive alternative views without losing provenance. This routine is the smallest possible example of that practice: load one sequence, create an explicit branch, and generate the reverse complement as a separate product.",
+    "use_cases": [
+      "You received a FASTA plasmid or amplicon sequence and want a reproducible project starting point.",
+      "You need a reverse-complemented working copy but want to preserve the original sequence identity.",
+      "You are onboarding to GENtle and need to understand how derived IDs are created and reused."
+    ],
+    "gui_steps": [
+      "Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.",
+      "In the DNA window, create a branch copy from the loaded sequence (Branch action).",
+      "Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views."
+    ],
+    "learning_objectives": [
+      "Run one canonical workflow from source JSON and interpret the result IDs.",
+      "Understand that branch and reverse-complement operations create explicit derivative sequences.",
+      "Recognize the shared-engine contract across GUI, CLI, and shell entry points."
+    ],
+    "concepts": [
+      "shared_engine_contract",
+      "deterministic_workflows",
+      "sequence_lineage"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "LoadFile.path",
+        "where_used": "operation 1",
+        "why_it_matters": "Defines the exact source sequence. Wrong file path means a different biological starting point.",
+        "how_to_derive": "Use the file you just loaded in the GUI for this routine (`test_files/pGEX_3X.fa`)."
+      },
+      {
+        "parameter": "Branch.output_id / ReverseComplement.output_id",
+        "where_used": "operations 2 and 3",
+        "why_it_matters": "Stable IDs make downstream commands unambiguous.",
+        "how_to_derive": "Pick short descriptive IDs tied to intent (e.g., branch copy vs reverse-complement product).",
+        "omit_when": "You can omit IDs only when you accept auto-generated names."
+      }
+    ],
+    "follow_up_commands": [],
+    "retain_outputs": [],
+    "checkpoints": [
+      "Workflow executes without warnings or errors.",
+      "Derived sequence IDs include a branch and reverse-complement product."
+    ]
+  }
+}

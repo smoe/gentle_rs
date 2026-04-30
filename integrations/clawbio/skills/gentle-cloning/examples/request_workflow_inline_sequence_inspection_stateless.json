@@ -1,0 +1,12 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "workflow_path": "docs/examples/workflows/inline_sequence_inspection_stateless_offline.json",
+  "expected_artifacts": [
+    "artifacts/inline_sequence_inspection.restriction_scan.json",
+    "artifacts/inline_sequence_inspection.tfbs_hits.json",
+    "artifacts/inline_sequence_inspection.tfbs_score_tracks.json",
+    "artifacts/inline_sequence_inspection.tfbs_score_tracks.svg"
+  ],
+  "timeout_secs": 180
+}

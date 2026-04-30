@@ -1,78 +1,125 @@
+//! Circular-map DNA renderer.
+
 use crate::{
-    dna_display::{DnaDisplay, Selection},
+    dna_display::{
+        ConstructReasoningOverlay, DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria,
+    },
     dna_sequence::DNAsequence,
-    gc_contents::GcRegion,
+    engine::{ConstructRole, EvidenceClass, RestrictionEnzymeDisplayMode},
+    feature_location::{feature_ranges_sorted_i64, normalize_range, unwrap_ranges_monotonic},
+    gc_contents::{GcContents, GcRegion},
     render_dna::RenderDna,
+    render_dna::RestrictionEnzymePosition,
     restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{
-    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke,
+    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke, StrokeKind,
+    Vec2,
 };
 use gb_io::seq::Feature;
-use lazy_static::lazy_static;
 use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
+    collections::{BTreeSet, HashMap},
+    sync::{Arc, LazyLock, RwLock},
 };
 
-lazy_static! {
-    pub static ref BLACK_1: Stroke = Stroke {
-        width: 1.0,
-        color: Color32::BLACK,
-    };
-    pub static ref GRAY_1: Stroke = Stroke {
-        width: 1.0,
-        color: Color32::GRAY,
-    };
-    static ref ORF_COLORS: HashMap<i32, Color32> = {
-        let mut m = HashMap::new();
-        m.insert(-1, Color32::LIGHT_RED);
-        m.insert(-2, Color32::LIGHT_GREEN);
-        m.insert(-3, Color32::LIGHT_BLUE);
-        m.insert(1, Color32::DARK_RED);
-        m.insert(2, Color32::DARK_GREEN);
-        m.insert(3, Color32::DARK_BLUE);
-        m
-    };
+// Defines static stroke styles (BLACK_1, GRAY_1) and a color map (ORF_COLORS) for Open Reading Frames (ORFs).
+pub static BLACK_1: LazyLock<Stroke> = LazyLock::new(|| Stroke {
+    width: 1.0,
+    color: Color32::BLACK,
+});
+pub static GRAY_1: LazyLock<Stroke> = LazyLock::new(|| Stroke {
+    width: 1.0,
+    color: Color32::GRAY,
+});
+const MCS_CIRCULAR_LABEL_FONT_SIZE: f32 = 11.5;
+const MCS_CIRCULAR_LABEL_PAD_X: f32 = 12.0;
+const MCS_CIRCULAR_LABEL_PAD_Y: f32 = 5.0;
+const CONSTRUCT_REASONING_CIRCULAR_THICKNESS_FACTOR: f32 = 0.45;
+const CONSTRUCT_REASONING_CIRCULAR_GAP_FACTOR: f32 = 0.45;
+static ORF_COLORS: LazyLock<HashMap<i32, Color32>> = LazyLock::new(|| {
+    let mut m = HashMap::new();
+    m.insert(-1, Color32::LIGHT_RED);
+    m.insert(-2, Color32::LIGHT_GREEN);
+    m.insert(-3, Color32::LIGHT_BLUE);
+    m.insert(1, Color32::DARK_RED);
+    m.insert(2, Color32::DARK_GREEN);
+    m.insert(3, Color32::DARK_BLUE);
+    m
+});
+
+/// Represents the position and attributes of a feature (e.g., gene, CDS) on the circular DNA.
+#[derive(Debug, Clone)]
+struct FeatureSegmentPosition {
+    // FIXME: Clarify if the first position is 0 or 1
+    from: i64,
+    // FIXME: Clarify if the first position is 0 or 1
+    to: i64,
+    to_90: i64,
+    angle_start: f32,
+    angle_stop: f32,
 }
 
+/// Represents the position and attributes of a feature (e.g., gene, CDS) on the circular DNA.
 #[derive(Debug, Clone)]
 struct FeaturePosition {
     feature_number: usize,
+    // FIXME: Clarify if the first position is 0 or 1
     from: i64,
+    // FIXME: Clarify if the first position is 0 or 1
     to: i64,
+    /// Representation as segment - start (degree: 0-360)
     angle_start: f32,
+    /// Representation as segment - end (degree: 0-360)
     angle_stop: f32,
+    /// Minimal distance to center of circular feature
     inner: f32,
+    /// Maximal distance to center of circular feature
     outer: f32,
     to_90: i64,
+    /// Directed features shall end with an arrow-like indication of the direction.
     is_pointy: bool,
+    is_mcs: bool,
     color: Color32,
     band: f32,
     label: String,
+    segments: Vec<FeatureSegmentPosition>,
+    intron_arches: Vec<(i64, i64)>,
+    intron_arch_color: Color32,
+    intron_arch_width: f32,
+    intron_arch_lift_factor: f32,
+}
+
+#[derive(Debug, Clone)]
+struct ConstructReasoningOverlayBand {
+    evidence_id: String,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    inner: f32,
+    outer: f32,
+    role: ConstructRole,
+    evidence_class: EvidenceClass,
+    editable_status: crate::engine::EditableStatus,
 }
 
 impl FeaturePosition {
+    /// Checks if a given angle and distance fall within the bounds of the feature.
     fn contains_angle_distance(&self, angle: f32, distance: f32) -> bool {
         if self.inner > distance || self.outer < distance {
             return false;
         }
-        if self.angle_stop < self.angle_start {
-            // Feature extends over zero point
-            (angle >= self.angle_start && angle <= 360.0)
-                || (angle >= 0.0 && angle <= self.angle_stop)
-        } else {
-            angle >= self.angle_start && angle <= self.angle_stop
-        }
+        self.segments.iter().any(|segment| {
+            if segment.angle_stop < segment.angle_start {
+                // Feature extends over zero point
+                (angle >= segment.angle_start && angle <= 360.0)
+                    || (angle >= 0.0 && angle <= segment.angle_stop)
+            } else {
+                angle >= segment.angle_start && angle <= segment.angle_stop
+            }
+        })
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct RestrictionEnzymePosition {
-    area: Rect,
-    key: RestrictionEnzymeKey,
-}
-
+/// Manages the rendering of circular DNA, including features, enzyme sites, and user interactions.
 #[derive(Debug, Clone)]
 pub struct RenderDnaCircular {
     dna: Arc<RwLock<DNAsequence>>,
@@ -84,11 +131,15 @@ pub struct RenderDnaCircular {
     features: Vec<FeaturePosition>,
     restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
     selected_feature_number: Option<usize>,
+    selected_enzyme: Option<RestrictionEnzymePosition>,
+    selected_reasoning_evidence_id: Option<String>,
     hovered_feature_number: Option<usize>,
     hover_enzyme: Option<RestrictionEnzymePosition>,
+    hovered_reasoning_evidence_id: Option<String>,
 }
 
 impl RenderDnaCircular {
+    /// Initializes a new RenderDnaCircular instance.
     pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
         Self {
             dna,
@@ -100,8 +151,11 @@ impl RenderDnaCircular {
             features: vec![],
             restriction_enzyme_sites: vec![],
             selected_feature_number: None,
+            selected_enzyme: None,
+            selected_reasoning_evidence_id: None,
             hovered_feature_number: None,
             hover_enzyme: None,
+            hovered_reasoning_evidence_id: None,
         }
     }
 
@@ -109,49 +163,123 @@ impl RenderDnaCircular {
         &self.area
     }
 
+    fn is_rect_usable(rect: Rect) -> bool {
+        rect.min.x.is_finite()
+            && rect.min.y.is_finite()
+            && rect.max.x.is_finite()
+            && rect.max.y.is_finite()
+            && rect.width() > 0.0
+            && rect.height() > 0.0
+    }
+
+    /// Handles click events to select features.
     pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
-            self.selected_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
+            if let Some(feature) = self.get_clicked_feature(pos) {
+                self.selected_feature_number = Some(feature.feature_number);
+                self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = None;
+            } else if let Some((evidence_id, _, _)) = self
+                .get_clicked_construct_reasoning_overlay(pos)
+                .map(|band| {
+                    (
+                        band.evidence_id,
+                        band.start_0based,
+                        band.end_0based_exclusive,
+                    )
+                })
+            {
+                self.selected_feature_number = None;
+                self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = Some(evidence_id);
+            } else {
+                self.selected_feature_number = None;
+                self.selected_reasoning_evidence_id = None;
+                self.selected_enzyme = self.get_re_site_for_positon(pos);
+            }
+        } else {
+            println!("I RenderDnaCircular::on_click: Could not select any feature.");
         }
     }
 
+    /// Handles hover events to highlight features and enzyme sites.
     pub fn on_hover(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
-            self.hover_enzyme = self.get_re_site_for_positon(pos);
+            self.hovered_reasoning_evidence_id = if self.hovered_feature_number.is_none() {
+                self.get_clicked_construct_reasoning_overlay(pos)
+                    .map(|band| band.evidence_id)
+            } else {
+                None
+            };
+            self.hover_enzyme = if self.hovered_feature_number.is_none()
+                && self.hovered_reasoning_evidence_id.is_none()
+            {
+                self.get_re_site_for_positon(pos)
+            } else {
+                None
+            };
+        } else {
+            println!("I RenderDnaCircular::on_hover: Could not select any feature.");
         }
     }
 
+    /// Handles double-click events to select features or enzyme sites.
     pub fn on_double_click(&mut self, pointer_state: PointerState) {
         self.display.write().unwrap().deselect();
         if let Some(pos) = pointer_state.latest_pos() {
-            if let Some(feature) = self.get_clicked_feature(pos) {
+            if let Some((feature_number, feature_from, feature_to)) = self
+                .get_clicked_feature(pos)
+                .map(|feature| (feature.feature_number, feature.from, feature.to))
+            {
+                self.selected_feature_number = Some(feature_number);
+                self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = None;
                 // println!("Double-clicked {:?}", feature);
                 let selection = Selection::new(
-                    feature.from as usize,
-                    feature.to as usize,
+                    feature_from as usize,
+                    feature_to as usize,
+                    self.sequence_length as usize,
+                );
+                self.display.write().unwrap().select(selection);
+            } else if let Some(band) = self.get_clicked_construct_reasoning_overlay(pos) {
+                self.selected_feature_number = None;
+                self.selected_enzyme = None;
+                self.selected_reasoning_evidence_id = Some(band.evidence_id);
+                let selection = Selection::new(
+                    band.start_0based,
+                    band.end_0based_exclusive,
                     self.sequence_length as usize,
                 );
                 self.display.write().unwrap().select(selection);
             } else if let Some(re_pos) = self.get_re_site_for_positon(pos) {
+                self.selected_feature_number = None;
+                self.selected_reasoning_evidence_id = None;
+                self.selected_enzyme = Some(re_pos.clone());
                 println!("Double-clicked {re_pos:?}");
                 let selection = Selection::new(
-                    re_pos.key.from() as usize,
-                    re_pos.key.to() as usize,
+                    re_pos.key().from() as usize,
+                    re_pos.key().to() as usize,
                     self.sequence_length as usize,
                 );
                 self.display.write().unwrap().select(selection);
+            } else {
+                println!(
+                    "I RenderDnaCircular::on_double_click: Could not select any feature or RestrictionEnzyme."
+                );
             }
         }
     }
 
+    /// Finds the restriction enzyme site at a given position.
     fn get_re_site_for_positon(&self, pos: Pos2) -> Option<RestrictionEnzymePosition> {
         self.restriction_enzyme_sites
             .iter()
-            .find(|rep| rep.area.contains(pos))
+            .find(|rep| rep.contains(pos))
             .cloned()
     }
 
+    /// Finds the feature at a given position.
     fn get_clicked_feature(&self, pos: Pos2) -> Option<&FeaturePosition> {
         let (angle, distance) = self.get_angle_distance(pos);
         let angle = Self::normalize_angle(angle - 90.0);
@@ -163,6 +291,23 @@ impl RenderDnaCircular {
         clicked_features.first().map(|f| f.to_owned())
     }
 
+    fn get_clicked_construct_reasoning_overlay(
+        &self,
+        pos: Pos2,
+    ) -> Option<ConstructReasoningOverlayBand> {
+        let (angle, distance) = self.get_angle_distance(pos);
+        let angle = Self::normalize_angle(angle - 90.0);
+        let pos_bp = ((angle / 360.0) * self.sequence_length.max(1) as f32).round() as usize;
+        self.construct_reasoning_overlay_bands()
+            .into_iter()
+            .find(|band| {
+                distance >= band.inner
+                    && distance <= band.outer
+                    && pos_bp >= band.start_0based
+                    && pos_bp < band.end_0based_exclusive
+            })
+    }
+
     pub fn set_area(&mut self, area: Rect) {
         self.area = area;
         self.center = self.area.center();
@@ -172,30 +317,53 @@ impl RenderDnaCircular {
         self.selected_feature_number.to_owned()
     }
 
-    pub fn select_feature(&mut self, feature_number: Option<usize>) {
-        self.selected_feature_number = feature_number;
+    pub fn hovered_feature_number(&self) -> Option<usize> {
+        self.hovered_feature_number
     }
 
-    fn layout_needs_recomputing(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut ret = false;
+    pub fn selected_restriction_enzyme(&self) -> Option<RestrictionEnzymePosition> {
+        self.selected_enzyme.clone()
+    }
 
-        // Recompute layout if area has changed
-        let new_area = ui.available_rect_before_wrap();
-        if self.area != new_area {
-            ret = true;
-            self.area = new_area;
+    pub fn selected_reasoning_evidence_id(&self) -> Option<String> {
+        self.selected_reasoning_evidence_id.clone()
+    }
+
+    pub fn hovered_reasoning_evidence_id(&self) -> Option<String> {
+        self.hovered_reasoning_evidence_id.clone()
+    }
+
+    pub fn select_restriction_enzyme(&mut self, selected: Option<RestrictionEnzymePosition>) {
+        let has_selected = selected.is_some();
+        self.selected_enzyme = selected;
+        if has_selected {
+            self.selected_feature_number = None;
+            self.selected_reasoning_evidence_id = None;
         }
+    }
 
-        // Recompute layout if update flag is set
-        ret = ret
-            || self
-                .display
-                .read()
-                .unwrap()
-                .update_layout()
-                .update_map_dna();
+    pub fn select_feature(&mut self, feature_number: Option<usize>) {
+        self.selected_feature_number = feature_number;
+        if feature_number.is_some() {
+            self.selected_enzyme = None;
+            self.selected_reasoning_evidence_id = None;
+        }
+    }
 
-        ret
+    pub fn select_reasoning_evidence(&mut self, evidence_id: Option<String>) {
+        let has_selected = evidence_id.is_some();
+        self.selected_reasoning_evidence_id = evidence_id;
+        if has_selected {
+            self.selected_feature_number = None;
+            self.selected_enzyme = None;
+        }
+    }
+
+    fn layout_needs_recomputing(&self) -> bool {
+        self.display
+            .read()
+            .map(|d| d.update_layout().update_map_dna())
+            .unwrap_or(false)
     }
 
     fn layout_was_updated(&self) {
@@ -206,29 +374,43 @@ impl RenderDnaCircular {
             .map_dna_updated();
     }
 
-    pub fn render(&mut self, ui: &mut egui::Ui) {
+    /// Renders the circular DNA visualization
+    pub fn render(&mut self, ui: &mut egui::Ui, area: Rect) {
+        let area_changed = self.area != area;
+        self.area = area;
         self.radius = self.area.width().min(self.area.height()) * 0.35;
         self.center = self.area.center();
         self.sequence_length = self.dna.read().expect("DNA lock poisoned").len() as i64;
+        if !Self::is_rect_usable(self.area) {
+            return;
+        }
+        let painter = ui.painter_at(self.area);
 
-        if self.layout_needs_recomputing(ui) {
+        if self.sequence_length <= 0 {
+            self.draw_main_label(&painter);
+            self.draw_bp(&painter);
+            return;
+        }
+
+        if (area_changed || self.layout_needs_recomputing()) && Self::is_rect_usable(self.area) {
             self.layout_features();
             self.layout_was_updated();
         }
 
-        let painter = ui.painter();
-        self.draw_selection(painter);
-        self.draw_backbone(painter);
-        self.draw_gc_contents(painter);
-        self.draw_methylation_sites(painter);
-        self.draw_main_label(painter);
-        self.draw_bp(painter);
-        self.draw_open_reading_frames(painter);
-        self.draw_restriction_enzyme_sites(painter);
-        self.draw_features(painter);
-        self.draw_hovered_feature(painter);
+        self.draw_selection(&painter);
+        self.draw_backbone(&painter);
+        self.draw_gc_contents(&painter);
+        self.draw_methylation_sites(&painter);
+        self.draw_construct_reasoning_overlay(&painter);
+        self.draw_main_label(&painter);
+        self.draw_bp(&painter);
+        self.draw_open_reading_frames(&painter);
+        self.draw_restriction_enzyme_sites(&painter);
+        self.draw_features(&painter);
+        self.draw_hovered_feature(&painter);
     }
 
+    /// Draws a filled circular section
     fn draw_circle_section(&self, start: u64, end: u64, color: Color32, painter: &egui::Painter) {
         let center = self.area.center();
         let radius = self.radius;
@@ -260,6 +442,7 @@ impl RenderDnaCircular {
         painter.add(shape);
     }
 
+    /// Draws the selected region on the circular DNA
     fn draw_selection(&self, painter: &egui::Painter) {
         let selection = match self.display.read().unwrap().selection() {
             Some(selection) => selection,
@@ -271,36 +454,44 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Displays information about the hovered feature
     fn draw_hovered_feature(&self, painter: &egui::Painter) {
-        if let Some(feature_id) = self.hovered_feature_number {
-            if let Some(fp) = self.features.get(feature_id) {
-                let feature = self
-                    .dna
-                    .read()
-                    .unwrap()
-                    .features()
-                    .get(fp.feature_number - 1)
-                    .cloned();
-                if let Some(feature) = feature {
-                    if let gb_io::seq::Location::Range(from, to) = &feature.location {
-                        let text = format!("{}: {}-{}", &fp.label, from.0, to.0);
-                        let font = FontId {
-                            size: 12.0,
-                            family: FontFamily::Monospace,
-                        };
-                        painter.text(
-                            self.area.left_bottom(),
-                            Align2::LEFT_BOTTOM,
-                            text,
-                            font.to_owned(),
-                            Color32::DARK_GRAY,
-                        );
-                    }
-                }
+        let Some(feature_id) = self.hovered_feature_number else {
+            return;
+        };
+        let Some(fp) = self
+            .features
+            .iter()
+            .find(|feature| feature.feature_number == feature_id)
+        else {
+            return;
+        };
+        let feature = self
+            .dna
+            .read()
+            .unwrap()
+            .features()
+            .get(fp.feature_number)
+            .cloned();
+        if let Some(feature) = feature {
+            if let Ok((from, to)) = feature.location.find_bounds() {
+                let text = format!("{}: {}-{}", &fp.label, from, to);
+                let font = FontId {
+                    size: 12.0,
+                    family: FontFamily::Monospace,
+                };
+                painter.text(
+                    self.area.left_bottom(),
+                    Align2::LEFT_BOTTOM,
+                    text,
+                    font.to_owned(),
+                    Color32::DARK_GRAY,
+                );
             }
         }
     }
 
+    /// Converts a position to an angle and geometric distance (Pythagoras) from the center.
     fn get_angle_distance(&self, pos: Pos2) -> (f32, f32) {
         let diff_x = pos.x - self.center.x;
         let diff_y = pos.y - self.center.y;
@@ -310,6 +501,7 @@ impl RenderDnaCircular {
         (angle, distance)
     }
 
+    /// Draws an arc with an arrow indicating direction
     fn draw_pointed_arc(
         &self,
         from: i32,
@@ -379,8 +571,14 @@ impl RenderDnaCircular {
         };
     }
 
+    /// Draws Open Reading Frames (ORFs) on the circular DNA
     fn draw_open_reading_frames(&self, painter: &egui::Painter) {
-        if !self.display.read().unwrap().show_open_reading_frames() {
+        if !self
+            .display
+            .read()
+            .unwrap()
+            .show_open_reading_frames_effective()
+        {
             return;
         }
         let orfs = self.dna.read().unwrap().open_reading_frames().to_owned();
@@ -402,6 +600,7 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Draws methylation sites on the circular DNA
     fn draw_methylation_sites(&self, painter: &egui::Painter) {
         if !self.display.read().unwrap().show_methylation_sites() {
             return;
@@ -416,18 +615,34 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Draws GC content regions on the circular DNA.
     fn draw_gc_contents(&self, painter: &egui::Painter) {
-        if !self.display.read().unwrap().show_gc_contents() {
+        let (show_gc, gc_content_bin_size_bp) = self
+            .display
+            .read()
+            .map(|display| (display.show_gc_contents(), display.gc_content_bin_size_bp()))
+            .unwrap_or((false, 100));
+        if !show_gc {
             return;
         }
         let radius = self.radius * 2.0 / 3.0;
         let mut last_point = self.pos2xy(0, radius);
-        let gc_content = self.dna.read().unwrap().gc_content().to_owned();
+        let gc_content = self
+            .dna
+            .read()
+            .map(|dna| {
+                GcContents::new_from_sequence_with_bin_size(
+                    dna.forward_bytes(),
+                    gc_content_bin_size_bp,
+                )
+            })
+            .unwrap_or_default();
         for gc_region in gc_content.regions() {
             last_point = self.draw_gc_arc(gc_region, radius, painter, last_point);
         }
     }
 
+    /// Draws a GC content arc segment
     fn draw_gc_arc(
         &self,
         gc_region: &GcRegion,
@@ -446,6 +661,7 @@ impl RenderDnaCircular {
         point
     }
 
+    /// Draws the backbone of the circular DNA with tick marks
     fn draw_backbone(&mut self, painter: &egui::Painter) {
         painter.circle_stroke(self.center.to_owned(), self.radius, BLACK_1.to_owned());
         let mut tick: i64 = 1;
@@ -482,8 +698,33 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Lays out features on the circular DNA
     fn layout_features(&mut self) {
         self.features.clear();
+        let (
+            show_cds_features,
+            show_gene_features,
+            show_mrna_features,
+            show_repeat_features,
+            show_contextual_transcript_features,
+            show_tfbs,
+            tfbs_display_criteria,
+            vcf_display_criteria,
+            hidden_feature_kinds,
+        ) = {
+            let display = self.display.read().expect("Display lock poisoned");
+            (
+                display.show_cds_features_effective(),
+                display.show_gene_features(),
+                display.show_mrna_features(),
+                display.show_repeat_features(),
+                display.show_contextual_transcript_features(),
+                display.show_tfbs(),
+                display.tfbs_display_criteria(),
+                display.vcf_display_criteria(),
+                display.hidden_feature_kinds().clone(),
+            )
+        };
         let features = self
             .dna
             .read()
@@ -491,23 +732,90 @@ impl RenderDnaCircular {
             .features()
             .to_owned();
         for (feature_number, feature) in features.iter().enumerate() {
-            let fp_opt = match &feature.location {
-                gb_io::seq::Location::Range(from, to) => {
-                    self.layout_feature_from_range(feature, *from, *to)
-                }
-                gb_io::seq::Location::External(_, _) => None, // TODO
-                gb_io::seq::Location::Between(_, _) => None,  // TODO
-                gb_io::seq::Location::Complement(_) => None,  // TODO
-                gb_io::seq::Location::Join(_) => None,        // TODO
-                gb_io::seq::Location::Order(_) => None,       // TODO
-                gb_io::seq::Location::Bond(_) => None,        // TODO
-                gb_io::seq::Location::OneOf(_) => None,       // TODO
-                gb_io::seq::Location::Gap(_) => None,         // TODO
-            };
+            let fp_opt = self.layout_feature_from_location(
+                feature,
+                show_cds_features,
+                show_gene_features,
+                show_mrna_features,
+                show_repeat_features,
+                show_contextual_transcript_features,
+                show_tfbs,
+                tfbs_display_criteria,
+                vcf_display_criteria.clone(),
+                &hidden_feature_kinds,
+            );
             if let Some(mut fp) = fp_opt {
                 fp.feature_number = feature_number;
                 self.features.push(fp);
             }
+        }
+        self.compact_feature_bands();
+    }
+
+    fn normalized_feature_range(&self, from: i64, to: i64) -> Option<(i64, i64)> {
+        normalize_range(self.sequence_length, from, to)
+    }
+
+    fn compact_feature_bands(&mut self) {
+        if self.features.is_empty() || self.sequence_length <= 0 {
+            return;
+        }
+
+        let thickness = self.feature_thickness().max(1.0);
+        let lane_gap = (thickness * 0.35).max(1.0);
+        let base_offset = (thickness * 0.15).max(0.5);
+        let overlap_padding_bp = ((self.sequence_length as f32) * 0.002).ceil() as i64;
+
+        #[derive(Clone)]
+        struct Seed {
+            feature_index: usize,
+            start: i64,
+            end: i64,
+            span: i64,
+        }
+
+        let mut seeds: Vec<Seed> = self
+            .features
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, feature)| {
+                let (start, end) = self.normalized_feature_range(feature.from, feature.to)?;
+                Some(Seed {
+                    feature_index: idx,
+                    start,
+                    end,
+                    span: end.saturating_sub(start).max(1),
+                })
+            })
+            .collect();
+
+        seeds.sort_by(|a, b| b.span.cmp(&a.span).then_with(|| a.start.cmp(&b.start)));
+
+        let mut lane_ends: Vec<Vec<(i64, i64)>> = Vec::new();
+        let mut lane_for_feature: Vec<usize> = vec![0; self.features.len()];
+
+        'seed_loop: for seed in seeds {
+            for (lane_idx, lane_ranges) in lane_ends.iter_mut().enumerate() {
+                let collides = lane_ranges.iter().any(|(other_start, other_end)| {
+                    !(seed.end + overlap_padding_bp < *other_start
+                        || seed.start > *other_end + overlap_padding_bp)
+                });
+                if !collides {
+                    lane_ranges.push((seed.start, seed.end));
+                    lane_for_feature[seed.feature_index] = lane_idx;
+                    continue 'seed_loop;
+                }
+            }
+            lane_ends.push(vec![(seed.start, seed.end)]);
+            lane_for_feature[seed.feature_index] = lane_ends.len() - 1;
+        }
+
+        for (feature_idx, feature) in self.features.iter_mut().enumerate() {
+            let lane = lane_for_feature.get(feature_idx).copied().unwrap_or(0) as f32;
+            let inner = self.radius + base_offset + lane * (thickness + lane_gap);
+            feature.inner = inner;
+            feature.outer = inner + thickness;
+            feature.band = lane + 1.0;
         }
     }
 
@@ -515,46 +823,371 @@ impl RenderDnaCircular {
         self.radius / 20.0
     }
 
-    fn layout_feature_from_range(
+    fn construct_reasoning_role_color(role: ConstructRole) -> Color32 {
+        match role {
+            ConstructRole::Promoter => Color32::from_rgb(234, 88, 12),
+            ConstructRole::Enhancer => Color32::from_rgb(217, 119, 6),
+            ConstructRole::Gene => Color32::from_rgb(37, 99, 235),
+            ConstructRole::Transcript => Color32::from_rgb(8, 145, 178),
+            ConstructRole::Exon => Color32::from_rgb(34, 197, 94),
+            ConstructRole::Utr5Prime | ConstructRole::Utr3Prime => Color32::from_rgb(16, 185, 129),
+            ConstructRole::Cds => Color32::from_rgb(79, 70, 229),
+            ConstructRole::Terminator => Color32::from_rgb(220, 38, 38),
+            ConstructRole::Variant => Color32::from_rgb(236, 72, 153),
+            ConstructRole::SignalPeptide | ConstructRole::LocalizationSignal => {
+                Color32::from_rgb(236, 72, 153)
+            }
+            ConstructRole::HomologyArm | ConstructRole::FusionBoundary => {
+                Color32::from_rgb(124, 58, 237)
+            }
+            ConstructRole::RepeatRegion => Color32::from_rgb(71, 85, 105),
+            ConstructRole::MobileElement => Color32::from_rgb(168, 85, 247),
+            ConstructRole::RestrictionSite => Color32::from_rgb(185, 28, 28),
+            ConstructRole::SpliceBoundary => Color32::from_rgb(202, 138, 4),
+            ConstructRole::Tfbs => Color32::from_rgb(190, 24, 93),
+            ConstructRole::Linker | ConstructRole::Tag => Color32::from_rgb(20, 184, 166),
+            ConstructRole::ContextBaggage | ConstructRole::Other => {
+                Color32::from_rgb(100, 116, 139)
+            }
+        }
+    }
+
+    fn construct_reasoning_overlay_fill(
+        role: ConstructRole,
+        evidence_class: EvidenceClass,
+        editable_status: crate::engine::EditableStatus,
+    ) -> Color32 {
+        let base = Self::construct_reasoning_role_color(role);
+        let alpha = match evidence_class {
+            EvidenceClass::HardFact => 180,
+            EvidenceClass::ReliableAnnotation => 145,
+            EvidenceClass::ContextEvidence => 120,
+            EvidenceClass::SoftHypothesis => 95,
+            EvidenceClass::UserOverride => 210,
+        };
+        let alpha = match editable_status {
+            crate::engine::EditableStatus::Draft => alpha,
+            crate::engine::EditableStatus::Accepted => (alpha + 30).min(230),
+            crate::engine::EditableStatus::Rejected => (alpha / 3).max(42),
+            crate::engine::EditableStatus::Locked => (alpha + 12).min(220),
+        };
+        Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha)
+    }
+
+    fn construct_reasoning_overlay_stroke(
+        role: ConstructRole,
+        evidence_class: EvidenceClass,
+        editable_status: crate::engine::EditableStatus,
+    ) -> Stroke {
+        let width = match evidence_class {
+            EvidenceClass::HardFact | EvidenceClass::UserOverride => 1.2,
+            EvidenceClass::ReliableAnnotation => 1.0,
+            EvidenceClass::ContextEvidence => 0.9,
+            EvidenceClass::SoftHypothesis => 0.8,
+        };
+        match editable_status {
+            crate::engine::EditableStatus::Draft => Stroke::new(
+                width,
+                Self::construct_reasoning_role_color(role).gamma_multiply(0.75),
+            ),
+            crate::engine::EditableStatus::Accepted => {
+                Stroke::new(width.max(1.4), Color32::from_rgb(22, 163, 74))
+            }
+            crate::engine::EditableStatus::Rejected => {
+                Stroke::new(width.max(1.0), Color32::from_gray(116))
+            }
+            crate::engine::EditableStatus::Locked => {
+                Stroke::new(width.max(1.2), Color32::from_rgb(14, 116, 144))
+            }
+        }
+    }
+
+    fn construct_reasoning_overlay_bands(&self) -> Vec<ConstructReasoningOverlayBand> {
+        let (
+            show_overlay,
+            overlay,
+            hidden_construct_reasoning_roles,
+            hidden_construct_reasoning_evidence_classes,
+        ) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.show_construct_reasoning_overlay(),
+                    display.construct_reasoning_overlay().cloned(),
+                    display.hidden_construct_reasoning_roles().clone(),
+                    display
+                        .hidden_construct_reasoning_evidence_classes()
+                        .clone(),
+                )
+            })
+            .unwrap_or((false, None, BTreeSet::new(), BTreeSet::new()));
+        if !show_overlay || self.sequence_length <= 0 {
+            return vec![];
+        }
+        let Some(ConstructReasoningOverlay { evidence, .. }) = overlay else {
+            return vec![];
+        };
+        let thickness =
+            (self.feature_thickness() * CONSTRUCT_REASONING_CIRCULAR_THICKNESS_FACTOR).max(2.0);
+        let gap = (thickness * CONSTRUCT_REASONING_CIRCULAR_GAP_FACTOR).max(1.0);
+        let overlap_padding_bp = ((self.sequence_length as f32) * 0.002).ceil() as i64;
+        let mut outer_ranges: Vec<Vec<(i64, i64)>> = vec![];
+        let mut inner_ranges: Vec<Vec<(i64, i64)>> = vec![];
+        let mut bands = vec![];
+
+        let mut seeds = evidence
+            .into_iter()
+            .filter_map(|span| {
+                if hidden_construct_reasoning_roles.contains(&span.role)
+                    || hidden_construct_reasoning_evidence_classes.contains(&span.evidence_class)
+                {
+                    return None;
+                }
+                let start = span.start_0based.min(self.sequence_length as usize) as i64;
+                let end = span.end_0based_exclusive.min(self.sequence_length as usize) as i64;
+                if end <= start {
+                    return None;
+                }
+                Some((span, start, end))
+            })
+            .collect::<Vec<_>>();
+        seeds.sort_by(|left, right| {
+            let left_span = left.2.saturating_sub(left.1);
+            let right_span = right.2.saturating_sub(right.1);
+            right_span
+                .cmp(&left_span)
+                .then_with(|| left.1.cmp(&right.1))
+        });
+
+        for (span, start, end) in seeds {
+            let place_outer = !matches!(span.strand.as_deref(), Some("-"));
+            let lane_ranges = if place_outer {
+                &mut outer_ranges
+            } else {
+                &mut inner_ranges
+            };
+            let mut lane = None;
+            for (lane_idx, ranges) in lane_ranges.iter_mut().enumerate() {
+                let collides = ranges.iter().any(|(other_start, other_end)| {
+                    !(end + overlap_padding_bp < *other_start
+                        || start > *other_end + overlap_padding_bp)
+                });
+                if !collides {
+                    ranges.push((start, end));
+                    lane = Some(lane_idx);
+                    break;
+                }
+            }
+            let lane = lane.unwrap_or_else(|| {
+                lane_ranges.push(vec![(start, end)]);
+                lane_ranges.len() - 1
+            }) as f32;
+
+            let (inner, outer) = if place_outer {
+                let inner = self.radius + 10.0 + lane * (thickness + gap);
+                (inner, inner + thickness)
+            } else {
+                let outer = self.radius - 10.0 - lane * (thickness + gap);
+                (outer - thickness, outer)
+            };
+            if inner <= 2.0 || outer <= inner {
+                continue;
+            }
+            bands.push(ConstructReasoningOverlayBand {
+                evidence_id: span.evidence_id,
+                start_0based: start as usize,
+                end_0based_exclusive: end as usize,
+                inner,
+                outer,
+                role: span.role,
+                evidence_class: span.evidence_class,
+                editable_status: span.editable_status,
+            });
+        }
+        bands
+    }
+
+    fn draw_construct_reasoning_overlay(&self, painter: &egui::Painter) {
+        for band in self.construct_reasoning_overlay_bands() {
+            let mut points = self.generate_arc_bp(
+                band.outer,
+                band.start_0based as i64,
+                band.end_0based_exclusive as i64,
+            );
+            let mut inner_points = self.generate_arc_bp(
+                band.inner,
+                band.start_0based as i64,
+                band.end_0based_exclusive as i64,
+            );
+            if points.len() < 2 || inner_points.len() < 2 {
+                continue;
+            }
+            inner_points.reverse();
+            points.extend(inner_points);
+            let stroke = if self.selected_reasoning_evidence_id.as_deref()
+                == Some(band.evidence_id.as_str())
+            {
+                Stroke::new(2.0, Color32::YELLOW)
+            } else if self.hovered_reasoning_evidence_id.as_deref()
+                == Some(band.evidence_id.as_str())
+            {
+                Stroke::new(1.6, Color32::WHITE)
+            } else {
+                Self::construct_reasoning_overlay_stroke(
+                    band.role,
+                    band.evidence_class,
+                    band.editable_status,
+                )
+            };
+            painter.add(Shape::convex_polygon(
+                points,
+                Self::construct_reasoning_overlay_fill(
+                    band.role,
+                    band.evidence_class,
+                    band.editable_status,
+                ),
+                stroke,
+            ));
+        }
+    }
+
+    fn intron_arch_style(feature: &Feature, base_color: Color32) -> (Color32, f32, f32) {
+        if RenderDna::is_mrna_feature(feature) {
+            // mRNA gets stronger intron arches because exon/intron structure is central here.
+            return (Color32::from_rgb(120, 60, 20), 1.8, 1.05);
+        }
+        if RenderDna::is_cds_feature(feature) || RenderDna::is_gene_feature(feature) {
+            return (base_color.gamma_multiply(0.8), 1.25, 0.75);
+        }
+        if RenderDna::is_regulatory_feature(feature) {
+            return (base_color.gamma_multiply(0.85), 1.1, 0.65);
+        }
+        (Color32::DARK_GRAY, 1.0, 0.6)
+    }
+
+    fn layout_feature_from_location(
         &self,
         feature: &Feature,
-        start: (i64, gb_io::seq::Before),
-        end: (i64, gb_io::seq::After),
+        show_cds_features: bool,
+        show_gene_features: bool,
+        show_mrna_features: bool,
+        show_repeat_features: bool,
+        show_contextual_transcript_features: bool,
+        show_tfbs: bool,
+        tfbs_display_criteria: TfbsDisplayCriteria,
+        vcf_display_criteria: VcfDisplayCriteria,
+        hidden_feature_kinds: &BTreeSet<String>,
     ) -> Option<FeaturePosition> {
-        if !Self::draw_feature(feature) {
+        if !Self::draw_feature(
+            feature,
+            show_cds_features,
+            show_gene_features,
+            show_mrna_features,
+            show_repeat_features,
+            show_contextual_transcript_features,
+            show_tfbs,
+            tfbs_display_criteria,
+            vcf_display_criteria,
+            hidden_feature_kinds,
+        ) {
             return None;
         }
+        let seq_len = self.sequence_length;
+        if seq_len <= 0 {
+            return None;
+        }
+        let location_ranges = feature_ranges_sorted_i64(feature);
+        if location_ranges.is_empty() {
+            return None;
+        }
+        let ranges = unwrap_ranges_monotonic(seq_len, &location_ranges);
+        if ranges.is_empty() {
+            return None;
+        }
+
+        let feature_from = ranges
+            .iter()
+            .map(|(start, _)| start.rem_euclid(seq_len))
+            .min()
+            .unwrap_or(0);
+        let feature_to = ranges
+            .iter()
+            .map(|(_, end)| end.rem_euclid(seq_len))
+            .max()
+            .unwrap_or(feature_from);
+
+        let feature_color = RenderDna::feature_color(feature);
+        let (intron_arch_color, intron_arch_width, intron_arch_lift_factor) =
+            Self::intron_arch_style(feature, feature_color);
         let mut ret: FeaturePosition = FeaturePosition {
             feature_number: 0,
-            from: start.0,
-            to: end.0,
+            from: feature_from,
+            to: feature_to,
             angle_start: 0.0,
             angle_stop: 0.0,
             inner: 0.0,
             outer: 0.0,
             to_90: 0,
             is_pointy: RenderDna::is_feature_pointy(feature),
-            color: RenderDna::feature_color(feature),
-            band: Self::feature_band(feature),
+            is_mcs: RenderDna::is_mcs_feature(feature),
+            color: feature_color,
+            band: 0.0,
             label: RenderDna::feature_name(feature),
+            segments: vec![],
+            intron_arches: vec![],
+            intron_arch_color,
+            intron_arch_width,
+            intron_arch_lift_factor,
         };
-        if Self::feature_band(feature) == 0.0 {
-            ret.inner = self.radius - self.feature_thickness() / 2.0;
-            ret.outer = self.radius + self.feature_thickness() / 2.0;
-        } else {
-            ret.inner = self.radius + Self::feature_band(feature) * self.feature_thickness();
-            ret.outer = self.radius + 2.0 * Self::feature_band(feature) * self.feature_thickness();
-        }
+        // Actual radial packing is computed later for currently visible features.
+        ret.inner = self.radius - self.feature_thickness() / 2.0;
+        ret.outer = self.radius + self.feature_thickness() / 2.0;
         if ret.inner > ret.outer {
             std::mem::swap(&mut ret.inner, &mut ret.outer);
         }
-        ret.to_90 = if ret.is_pointy {
-            ret.to - (ret.to - ret.from) / 20
-        } else {
-            ret.to
-        };
-        ret.angle_start = self.angle(ret.from);
-        ret.angle_stop = self.angle(ret.to_90);
+        ret.segments = ranges
+            .iter()
+            .enumerate()
+            .map(|(idx, (range_start, range_end))| {
+                let is_last_segment = idx + 1 == ranges.len();
+                let to_90 = if ret.is_pointy && is_last_segment {
+                    range_end - (range_end - range_start) / 20
+                } else {
+                    *range_end
+                };
+                FeatureSegmentPosition {
+                    from: *range_start,
+                    to: *range_end,
+                    to_90,
+                    angle_start: self.angle(*range_start),
+                    angle_stop: self.angle(to_90),
+                }
+            })
+            .collect();
+        ret.to_90 = ret.segments.last().map(|s| s.to_90).unwrap_or(ret.to);
+        ret.angle_start = ret
+            .segments
+            .first()
+            .map(|s| s.angle_start)
+            .unwrap_or_default();
+        ret.angle_stop = ret
+            .segments
+            .last()
+            .map(|s| s.angle_stop)
+            .unwrap_or_default();
+        ret.intron_arches = ranges
+            .windows(2)
+            .filter_map(|pair| {
+                let (_left_start, left_end) = pair[0];
+                let (right_start, _right_end) = pair[1];
+                if right_start > left_end + 1 {
+                    Some((left_end, right_start))
+                } else {
+                    None
+                }
+            })
+            .collect();
         Some(ret)
     }
 
@@ -567,66 +1200,265 @@ impl RenderDnaCircular {
         {
             return;
         }
+        let mut occupied_label_rects: Vec<Rect> = self
+            .restriction_enzyme_sites
+            .iter()
+            .map(|site| site.area)
+            .collect();
         for feature in &self.features {
-            self.draw_feature_from_range(painter, feature);
+            self.draw_feature_from_range(painter, feature, &mut occupied_label_rects);
         }
     }
 
-    fn draw_feature_from_range(&self, painter: &egui::Painter, ret: &FeaturePosition) {
-        let mut feature_points: Vec<Pos2> = vec![];
-        feature_points.push(self.pos2xy(ret.from, ret.outer));
-        feature_points.push(self.pos2xy(ret.from, ret.inner));
+    /// Draws a feature from a given range
+    fn draw_feature_from_range(
+        &self,
+        painter: &egui::Painter,
+        ret: &FeaturePosition,
+        occupied_label_rects: &mut Vec<Rect>,
+    ) {
+        let selected = self.selected_feature_number == Some(ret.feature_number);
+        let hovered = self.hovered_feature_number == Some(ret.feature_number);
+        let feature_stroke_width = if selected {
+            1.7
+        } else if hovered {
+            1.3
+        } else {
+            1.0
+        } + if ret.is_mcs { 0.35 } else { 0.0 };
 
-        let points = self.generate_arc(ret.inner, ret.angle_start, ret.angle_stop);
-        feature_points.extend(points);
+        for (segment_idx, segment) in ret.segments.iter().enumerate() {
+            let mut feature_points: Vec<Pos2> = vec![];
+            feature_points.push(self.pos2xy(segment.from, ret.outer));
+            feature_points.push(self.pos2xy(segment.from, ret.inner));
 
-        if ret.is_pointy {
-            feature_points.push(self.pos2xy(ret.to, (ret.outer + ret.inner) / 2.0));
+            let points = self.generate_arc(ret.inner, segment.angle_start, segment.angle_stop);
+            feature_points.extend(points);
+
+            let is_last_segment = segment_idx + 1 == ret.segments.len();
+            if ret.is_pointy && is_last_segment {
+                feature_points.push(self.pos2xy(segment.to, (ret.outer + ret.inner) / 2.0));
+            }
+
+            feature_points.push(self.pos2xy(segment.to_90, ret.outer));
+
+            let points = self.generate_arc(ret.outer, segment.angle_stop, segment.angle_start);
+            feature_points.extend(points);
+
+            let stroke = Stroke {
+                width: feature_stroke_width,
+                color: ret.color,
+            };
+            let line = Shape::closed_line(feature_points, stroke);
+            painter.add(line);
         }
 
-        feature_points.push(self.pos2xy(ret.to_90, ret.outer));
-
-        let points = self.generate_arc(ret.outer, ret.angle_stop, ret.angle_start);
-        feature_points.extend(points);
-
-        let stroke = Stroke {
-            width: 1.0,
-            color: ret.color,
-        };
-        let line = Shape::closed_line(feature_points, stroke);
-        painter.add(line);
+        let mut connector_radius =
+            ret.outer + self.feature_thickness() * ret.intron_arch_lift_factor;
+        if selected {
+            connector_radius += self.feature_thickness() * 0.15;
+        } else if hovered {
+            connector_radius += self.feature_thickness() * 0.08;
+        }
+        let mut connector_color = ret.intron_arch_color;
+        let mut connector_width = ret.intron_arch_width;
+        if hovered {
+            connector_color = connector_color.gamma_multiply(1.15);
+            connector_width += 0.2;
+        }
+        if selected {
+            connector_color = Color32::YELLOW;
+            connector_width += 0.5;
+        }
+        for (from, to) in &ret.intron_arches {
+            self.draw_intron_arch(
+                painter,
+                *from,
+                *to,
+                ret.outer,
+                connector_radius,
+                connector_color,
+                connector_width,
+            );
+        }
 
         let font_feature = FontId {
-            size: 10.0,
+            size: if ret.is_mcs {
+                MCS_CIRCULAR_LABEL_FONT_SIZE
+            } else {
+                10.0
+            },
             family: FontFamily::Monospace,
         };
 
         // Draw feature label
-        let middle = (ret.to + ret.from) / 2;
-        let point = self.pos2xy(
-            middle,
-            ret.outer + ret.band * self.feature_thickness() / 2.0,
-        );
-        let align = if ret.band < 0.0 {
-            // Inside
-            if middle < self.sequence_length / 2 {
-                Align2::RIGHT_CENTER
-            } else {
-                Align2::LEFT_CENTER
+        if !ret.label.trim().is_empty() {
+            let text_size = painter
+                .layout_no_wrap(ret.label.to_owned(), font_feature.to_owned(), ret.color)
+                .size();
+            if let Some((point, align, rect)) =
+                self.find_feature_label_placement(ret, text_size, occupied_label_rects)
+            {
+                if ret.is_mcs {
+                    painter.rect_filled(rect, 5.0, Self::mcs_badge_fill(ret.color));
+                    painter.rect_stroke(
+                        rect,
+                        5.0,
+                        Stroke::new(1.4, ret.color.gamma_multiply(0.85)),
+                        StrokeKind::Inside,
+                    );
+                    painter.text(
+                        rect.center(),
+                        Align2::CENTER_CENTER,
+                        ret.label.to_owned(),
+                        font_feature,
+                        Color32::from_rgb(24, 24, 24),
+                    );
+                } else {
+                    painter.text(point, align, ret.label.to_owned(), font_feature, ret.color);
+                }
+                occupied_label_rects.push(rect);
             }
-        } else {
-            // Outside
-            if middle > self.sequence_length / 2 {
-                Align2::RIGHT_CENTER
-            } else {
-                Align2::LEFT_CENTER
-            }
-        };
-        let text = ret.label.to_owned();
-        // let text = format!("{}: {}-{}", ret.label, ret.inner, ret.outer);
-        painter.text(point, align, text, font_feature, ret.color);
+        }
     }
 
+    fn label_rect_from_anchor(point: Pos2, align: Align2, text_size: Vec2) -> Rect {
+        let h2 = text_size.y * 0.5;
+        match align {
+            Align2::LEFT_CENTER => Rect::from_min_size(Pos2::new(point.x, point.y - h2), text_size),
+            Align2::RIGHT_CENTER => {
+                Rect::from_min_size(Pos2::new(point.x - text_size.x, point.y - h2), text_size)
+            }
+            _ => Rect::from_center_size(point, text_size),
+        }
+    }
+
+    fn mcs_label_badge_size(text_size: Vec2) -> Vec2 {
+        Vec2::new(
+            text_size.x + MCS_CIRCULAR_LABEL_PAD_X,
+            text_size.y + MCS_CIRCULAR_LABEL_PAD_Y,
+        )
+    }
+
+    fn mcs_badge_fill(fill: Color32) -> Color32 {
+        let mix = |component: u8| -> u8 { (((component as u16) * 18 + 255 * 82) / 100) as u8 };
+        Color32::from_rgba_unmultiplied(mix(fill.r()), mix(fill.g()), mix(fill.b()), 236)
+    }
+
+    fn segment_midpoint(segment: &FeatureSegmentPosition) -> i64 {
+        segment.from + (segment.to.saturating_sub(segment.from) / 2)
+    }
+
+    fn segment_candidate_offsets(max_shift: i64, step_bp: i64) -> Vec<i64> {
+        let mut offsets = vec![0];
+        if max_shift <= 0 {
+            return offsets;
+        }
+        let step = step_bp.max(1);
+        let mut shift = step;
+        while shift <= max_shift {
+            offsets.push(shift);
+            offsets.push(-shift);
+            shift = shift.saturating_add(step);
+        }
+        offsets
+    }
+
+    fn find_feature_label_placement(
+        &self,
+        feature: &FeaturePosition,
+        text_size: Vec2,
+        occupied_label_rects: &[Rect],
+    ) -> Option<(Pos2, Align2, Rect)> {
+        if self.sequence_length <= 0 || text_size.x <= 0.0 || text_size.y <= 0.0 {
+            return None;
+        }
+
+        let occupied_size = if feature.is_mcs {
+            Self::mcs_label_badge_size(text_size)
+        } else {
+            text_size
+        };
+        let label_radius = feature.outer + self.feature_thickness() * 0.35;
+        let seq_len = self.sequence_length.max(1) as f32;
+        let circumference_px = std::f32::consts::TAU * label_radius.max(1.0);
+        let bp_per_px = (self.sequence_length.max(1) as f32) / circumference_px.max(1.0);
+        let step_bp = (bp_per_px * 8.0).ceil().max(1.0) as i64;
+
+        let mut segment_refs = feature.segments.iter().collect::<Vec<_>>();
+        segment_refs.sort_by(|a, b| {
+            let span_a = a.to.saturating_sub(a.from);
+            let span_b = b.to.saturating_sub(b.from);
+            let mid_a = Self::segment_midpoint(a);
+            let mid_b = Self::segment_midpoint(b);
+            let feature_mid = feature.from + (feature.to.saturating_sub(feature.from) / 2);
+            let dist_a = (mid_a - feature_mid).abs();
+            let dist_b = (mid_b - feature_mid).abs();
+            span_b.cmp(&span_a).then_with(|| dist_a.cmp(&dist_b))
+        });
+
+        for segment in segment_refs {
+            let span = segment.to.saturating_sub(segment.from);
+            if span <= 0 {
+                continue;
+            }
+            let arc_px = (span as f32 / seq_len) * circumference_px;
+            if arc_px < occupied_size.x {
+                continue;
+            }
+
+            let middle = Self::segment_midpoint(segment);
+            let max_shift = span / 2;
+            for offset in Self::segment_candidate_offsets(max_shift, step_bp) {
+                let candidate_bp = (middle + offset).clamp(segment.from, segment.to);
+                let candidate_bp_norm = candidate_bp.rem_euclid(self.sequence_length.max(1));
+                let point = self.pos2xy(candidate_bp, label_radius);
+                let align = if candidate_bp_norm > self.sequence_length / 2 {
+                    Align2::RIGHT_CENTER
+                } else {
+                    Align2::LEFT_CENTER
+                };
+                let rect = Self::label_rect_from_anchor(point, align, occupied_size).expand(2.0);
+                if occupied_label_rects
+                    .iter()
+                    .any(|occupied| occupied.intersects(rect))
+                {
+                    continue;
+                }
+                return Some((point, align, rect));
+            }
+        }
+        None
+    }
+
+    fn draw_intron_arch(
+        &self,
+        painter: &egui::Painter,
+        from: i64,
+        to: i64,
+        base_radius: f32,
+        arch_radius: f32,
+        color: Color32,
+        stroke_width: f32,
+    ) {
+        if self.sequence_length <= 0 || to <= from {
+            return;
+        }
+        let stroke = Stroke::new(stroke_width, color);
+        let start_base = self.pos2xy(from, base_radius);
+        let start_arch = self.pos2xy(from, arch_radius);
+        let end_base = self.pos2xy(to, base_radius);
+        let end_arch = self.pos2xy(to, arch_radius);
+        painter.line_segment([start_base, start_arch], stroke.to_owned());
+        painter.line_segment([end_base, end_arch], stroke.to_owned());
+
+        let arch_points = self.generate_arc_bp(arch_radius, from, to);
+        if arch_points.len() >= 2 {
+            painter.add(Shape::line(arch_points, stroke));
+        }
+    }
+
+    /// Generates points for drawing an arc
     fn generate_arc(&self, radius: f32, angle_start: f32, angle_stop: f32) -> Vec<Pos2> {
         if angle_start == 0.0 && angle_stop == 360.0 {
             return vec![];
@@ -643,6 +1475,23 @@ impl RenderDnaCircular {
         points
     }
 
+    fn generate_arc_bp(&self, radius: f32, start_bp: i64, end_bp: i64) -> Vec<Pos2> {
+        if self.sequence_length <= 0 || end_bp <= start_bp {
+            return vec![];
+        }
+        let span = end_bp - start_bp;
+        let mut n = ((span as f32 / self.sequence_length as f32) * 180.0).ceil() as i64;
+        n = n.clamp(8, 180);
+
+        let mut points = Vec::with_capacity((n + 1) as usize);
+        for i in 0..=n {
+            let pos = start_bp + (span * i) / n;
+            points.push(self.pos2xy(pos, radius));
+        }
+        points
+    }
+
+    /// Draws the main label (name) of the DNA sequence
     fn draw_main_label(&self, painter: &egui::Painter) {
         let font_label = FontId {
             size: 20.0,
@@ -670,6 +1519,7 @@ impl RenderDnaCircular {
         );
     }
 
+    /// Draws restriction enzyme sites on the circular DNA.
     fn draw_restriction_enzyme_sites(&mut self, painter: &egui::Painter) {
         self.restriction_enzyme_sites.clear();
         if !self.display.read().unwrap().show_restriction_enzyme_sites() {
@@ -689,24 +1539,79 @@ impl RenderDnaCircular {
             .cloned()
             .collect();
         re_positions.sort();
+        let (display_mode, preferred_restriction_enzymes) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.restriction_enzyme_display_mode(),
+                    display.preferred_restriction_enzymes().to_vec(),
+                )
+            })
+            .unwrap_or((RestrictionEnzymeDisplayMode::default(), vec![]));
+        let all_groups = self.dna.read().unwrap().restriction_enzyme_groups().clone();
+        let visible_groups = re_positions
+            .into_iter()
+            .filter_map(|key| {
+                let names = all_groups.get(&key)?;
+                DnaDisplay::restriction_group_matches_mode(
+                    display_mode,
+                    &preferred_restriction_enzymes,
+                    &key,
+                    names,
+                )
+                .then_some((key, names.clone()))
+            })
+            .collect::<Vec<_>>();
+        if visible_groups.is_empty() {
+            let message = if all_groups.is_empty()
+                || matches!(display_mode, RestrictionEnzymeDisplayMode::AllInView)
+            {
+                RestrictionEnzymeDisplayMode::AllInView
+                    .empty_state_label()
+                    .to_string()
+            } else {
+                format!(
+                    "{} {} total cut sites hidden by the current filter.",
+                    display_mode.empty_state_label(),
+                    all_groups.len()
+                )
+            };
+            painter.text(
+                Pos2::new(self.center.x, self.center.y + self.radius * 0.78),
+                Align2::CENTER_CENTER,
+                message,
+                FontId {
+                    size: 10.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::DARK_GRAY,
+            );
+            return;
+        }
         let mut last_rect = Rect::NOTHING;
-        for restriction_enzyme_key in re_positions {
+        for (restriction_enzyme_key, names) in visible_groups {
             let pos = restriction_enzyme_key.pos() as i64;
-            let label = self
-                .dna
-                .read()
-                .unwrap()
-                .restriction_enzyme_groups()
-                .get(&restriction_enzyme_key)
-                .unwrap()
-                .join(", ");
+            let label = names.join(", ");
             let label = if pos < self.sequence_length / 2 {
                 format!("{pos} {label}")
             } else {
                 format!("{label} {pos}")
             };
             let cuts = restriction_enzyme_key.number_of_cuts();
-            let font_color = DnaDisplay::restriction_enzyme_group_color(cuts);
+            let mut font_color = DnaDisplay::restriction_enzyme_group_color(cuts);
+            let mut cut_color = DnaDisplay::restriction_enzyme_geometry_color(
+                restriction_enzyme_key.cut_geometry(),
+            );
+            let selected_here = self
+                .selected_enzyme
+                .as_ref()
+                .map(|selected| selected.key == restriction_enzyme_key)
+                .unwrap_or(false);
+            if selected_here {
+                font_color = Color32::BLACK;
+                cut_color = Color32::BLACK;
+            }
 
             let p1 = self.pos2xy(pos, self.radius);
             let p2 = self.pos2xy(pos, self.radius * 1.15);
@@ -724,7 +1629,7 @@ impl RenderDnaCircular {
             }
             let mut p4 = self.pos2xy(pos, self.radius * 1.28);
             p4.y = p3.y;
-            painter.line_segment([p1, p2], GRAY_1.to_owned());
+            painter.line_segment([p1, p2], Stroke::new(1.2, cut_color));
             painter.line_segment([p2, p3], GRAY_1.to_owned());
 
             let align = if pos > self.sequence_length / 2 {
@@ -737,15 +1642,19 @@ impl RenderDnaCircular {
                     painter.rect_filled(he.area, 0.0, Color32::LIGHT_YELLOW);
                 }
             }
+            if selected_here {
+                painter.line_segment([p1, p2], Stroke::new(2.0, Color32::BLACK));
+            }
             last_rect = painter.text(p4, align, label, font_tick.to_owned(), font_color);
             self.restriction_enzyme_sites
-                .push(RestrictionEnzymePosition {
-                    area: last_rect.to_owned(),
-                    key: restriction_enzyme_key.to_owned(),
-                });
+                .push(RestrictionEnzymePosition::new(
+                    last_rect.to_owned(),
+                    restriction_enzyme_key.to_owned(),
+                ));
         }
     }
 
+    /// Displays the length of the DNA sequence in base pairs (bp).
     fn draw_bp(&self, painter: &egui::Painter) {
         let font_label = FontId {
             size: 12.0,
@@ -760,38 +1669,175 @@ impl RenderDnaCircular {
         );
     }
 
-    fn feature_band(feature: &Feature) -> f32 {
-        match feature.kind.to_string().to_ascii_uppercase().as_str() {
-            "CDS" => 1.0,
-            "GENE" => -1.0,
-            _ => 0.0,
+    /// Determines if a feature should be drawn, true for all features that are not of kind
+    /// "SOURCE"
+    fn draw_feature(
+        feature: &Feature,
+        show_cds_features: bool,
+        show_gene_features: bool,
+        show_mrna_features: bool,
+        show_repeat_features: bool,
+        show_contextual_transcript_features: bool,
+        show_tfbs: bool,
+        tfbs_display_criteria: TfbsDisplayCriteria,
+        vcf_display_criteria: VcfDisplayCriteria,
+        hidden_feature_kinds: &BTreeSet<String>,
+    ) -> bool {
+        if RenderDna::is_source_feature(feature) {
+            return false;
         }
-    }
-
-    fn draw_feature(feature: &Feature) -> bool {
+        let is_mcs = RenderDna::is_mcs_feature(feature);
         let feature_kind = feature.kind.to_string().to_ascii_uppercase();
-        feature_kind != "SOURCE"
-    }
-
-    fn normalize_angle(angle: f32) -> f32 {
-        if angle < 0.0 {
-            angle + 360.0
-        } else if angle > 360.0 {
-            angle - 360.0
-        } else {
-            angle
+        if hidden_feature_kinds.contains(&feature_kind) && !is_mcs {
+            return false;
         }
+        if !RenderDna::feature_passes_kind_filter(
+            feature,
+            show_cds_features,
+            show_gene_features,
+            show_mrna_features,
+        ) {
+            return false;
+        }
+        if !show_contextual_transcript_features
+            && RenderDna::is_contextual_transcript_feature(feature)
+        {
+            return false;
+        }
+        if !show_repeat_features && RenderDna::is_repeat_feature(feature) {
+            return false;
+        }
+        if RenderDna::is_tfbs_feature(feature) {
+            if !show_tfbs {
+                return false;
+            }
+            return RenderDna::tfbs_feature_passes_display_filter(feature, tfbs_display_criteria);
+        }
+        if RenderDna::is_vcf_track_feature(feature) {
+            return RenderDna::vcf_feature_passes_display_filter(feature, &vcf_display_criteria);
+        }
+        true
     }
 
+    /// Determines if a feature should be drawn
+    fn normalize_angle(angle: f32) -> f32 {
+        angle.rem_euclid(360.0)
+    }
+
+    /// Converts a position to an angle
     fn angle(&self, pos: i64) -> f32 {
-        Self::normalize_angle(360.0 * (pos as f32) / (self.sequence_length as f32) - 90.0)
+        let denom = self.sequence_length.max(1) as f32;
+        Self::normalize_angle(360.0 * (pos as f32) / denom - 90.0)
     }
 
+    /// Converts a position to Cartesian coordinates.
     fn pos2xy(&self, pos: i64, radius: f32) -> Pos2 {
         let angle = self.angle(pos);
         let t = angle * std::f32::consts::PI / 180.0;
         let x = radius * t.cos() + self.center.x;
         let y = radius * t.sin() + self.center.y;
         Pos2 { x, y }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gb_io::seq::Location;
+
+    fn make_test_feature(location: Location) -> Feature {
+        Feature {
+            kind: "mRNA".into(),
+            location,
+            qualifiers: vec![("label".into(), Some("tp73 isoform".to_string()))],
+        }
+    }
+
+    fn test_renderer_with_feature(feature: Feature, sequence_len: usize) -> RenderDnaCircular {
+        let mut dna = DNAsequence::from_sequence(&"A".repeat(sequence_len)).expect("valid DNA");
+        dna.features_mut().push(feature);
+        let dna = Arc::new(RwLock::new(dna));
+        let display = Arc::new(RwLock::new(DnaDisplay::default()));
+        let mut renderer = RenderDnaCircular::new(dna, display);
+        renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 900.0));
+        renderer.center = renderer.area.center();
+        renderer.radius = 220.0;
+        renderer.sequence_length = sequence_len as i64;
+        renderer
+    }
+
+    #[test]
+    fn multipart_join_builds_segments_and_arches() {
+        let feature = make_test_feature(Location::Join(vec![
+            Location::simple_range(100, 150),
+            Location::simple_range(210, 250),
+            Location::simple_range(300, 340),
+        ]));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features();
+        assert_eq!(renderer.features.len(), 1);
+        let fp = &renderer.features[0];
+        assert_eq!(fp.segments.len(), 3);
+        assert_eq!(fp.intron_arches.len(), 2);
+        assert_eq!(fp.intron_arches[0], (150, 210));
+    }
+
+    #[test]
+    fn layout_features_handles_complement_join_without_dropping_feature() {
+        let feature = make_test_feature(Location::Complement(Box::new(Location::Join(vec![
+            Location::simple_range(920, 980),
+            Location::simple_range(20, 70),
+            Location::simple_range(130, 170),
+        ]))));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features();
+        assert_eq!(renderer.features.len(), 1);
+        let fp = &renderer.features[0];
+        assert_eq!(fp.segments.len(), 3);
+        assert_eq!(fp.intron_arches.len(), 2);
+        assert!(fp.outer > fp.inner);
+    }
+
+    #[test]
+    fn feature_label_offsets_start_at_center_then_expand() {
+        let offsets = RenderDnaCircular::segment_candidate_offsets(10, 3);
+        assert_eq!(offsets.first().copied(), Some(0));
+        assert_eq!(offsets.get(1).copied(), Some(3));
+        assert_eq!(offsets.get(2).copied(), Some(-3));
+    }
+
+    #[test]
+    fn mcs_label_badge_size_adds_padding() {
+        let text_size = Vec2::new(52.0, 11.0);
+        let badge_size = RenderDnaCircular::mcs_label_badge_size(text_size);
+        assert!(badge_size.x > text_size.x);
+        assert!(badge_size.y > text_size.y);
+    }
+
+    #[test]
+    fn find_feature_label_placement_avoids_occupied_center_rect() {
+        let feature = make_test_feature(Location::simple_range(100, 260));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features();
+        assert_eq!(renderer.features.len(), 1);
+        let fp = renderer.features[0].to_owned();
+        let text_size = Vec2::new(58.0, 12.0);
+        let middle = fp.segments[0].from + (fp.segments[0].to - fp.segments[0].from) / 2;
+        let label_radius = fp.outer + renderer.feature_thickness() * 0.35;
+        let center_point = renderer.pos2xy(middle, label_radius);
+        let center_align =
+            if middle.rem_euclid(renderer.sequence_length.max(1)) > renderer.sequence_length / 2 {
+                Align2::RIGHT_CENTER
+            } else {
+                Align2::LEFT_CENTER
+            };
+        let occupied_center =
+            RenderDnaCircular::label_rect_from_anchor(center_point, center_align, text_size)
+                .expand(2.0);
+        let placement = renderer
+            .find_feature_label_placement(&fp, text_size, &[occupied_center])
+            .expect("placement should shift away from occupied center");
+        let placed_rect = placement.2;
+        assert!(!placed_rect.intersects(occupied_center));
     }
 }

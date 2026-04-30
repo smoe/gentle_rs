@@ -1,0 +1,18 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "sequencing_confirmation_gui",
+  "title": "Inspect an Imported Sequencing Trace and Confirm a Construct (GUI Tutorial)",
+  "catalog": {
+    "order": 8,
+    "path": "docs/tutorial/sequencing_confirmation_gui.md",
+    "type": "gui_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "sequence_analysis",
+      "contributors"
+    ],
+    "notes": "GUI-first walkthrough for raw trace import, baseline-aware confirmation, chromatogram inspection, and lineage reopen."
+  }
+}

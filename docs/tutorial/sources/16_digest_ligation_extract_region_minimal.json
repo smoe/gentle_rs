@@ -1,0 +1,52 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "digest_ligation_extract_region_minimal",
+  "title": "Digest -> Ligation -> ExtractRegion minimal slice",
+  "generated_chapter": {
+    "order": 6,
+    "example_id": "digest_ligation_extract_region_minimal",
+    "tier": "core",
+    "summary": "Run a full mini-loop from fragment production to assembled product extraction.",
+    "narrative": "This chapter models a compact molecular cloning routine in one chain: digest source material, produce a ligation product, and extract a target segment for subsequent validation or design. It is the smallest end-to-end routine that still reflects real bench-side reasoning.",
+    "use_cases": [
+      "You want to test whether your planned digest/ligation sequence is internally consistent.",
+      "You need a deterministic extracted segment for primer design or annotation checks.",
+      "You want a regression slice that exercises core cloning operations together."
+    ],
+    "gui_steps": [
+      "Start from the loaded FASTA/plasmid sequence in the GUI.",
+      "Run digest with selected enzymes and inspect available products.",
+      "Run ligation with the intended inputs, then extract a focused region from the ligation result."
+    ],
+    "learning_objectives": [
+      "Execute a minimal end-to-end cloning chain.",
+      "Track how intermediate IDs are consumed by downstream operations.",
+      "Use ExtractRegion output as a stable hand-off point for later analyses."
+    ],
+    "concepts": [
+      "deterministic_workflows",
+      "sequence_lineage"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "Ligation.protocol",
+        "where_used": "operation 3",
+        "why_it_matters": "Protocol controls compatibility logic (e.g., blunt vs sticky behavior).",
+        "how_to_derive": "Choose based on end chemistry produced by upstream digest products."
+      },
+      {
+        "parameter": "ExtractRegion.from / to",
+        "where_used": "operation 4",
+        "why_it_matters": "Defines the exact segment handed to downstream interpretation.",
+        "how_to_derive": "Derive boundaries from feature coordinates or expected amplicon/design window."
+      }
+    ],
+    "follow_up_commands": [],
+    "retain_outputs": [],
+    "checkpoints": [
+      "Digest creates at least two fragments for ligation input.",
+      "Ligation creates deterministic output IDs.",
+      "ExtractRegion creates `lig_extract`."
+    ]
+  }
+}

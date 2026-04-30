@@ -1,0 +1,6 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "primer-preflight",
+  "backend": "auto",
+  "timeout_secs": 180
+}

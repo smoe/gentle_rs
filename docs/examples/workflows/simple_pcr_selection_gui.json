@@ -1,0 +1,34 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "simple_pcr_selection_gui",
+  "title": "Simple PCR starter project on local TP73 context (offline)",
+  "summary": "Load one stable local TP73 locus sequence and pin the primer backend to the deterministic internal implementation so the GUI walkthrough can begin from a ready offline project.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/tp73.ncbi.gb"
+  ],
+  "tags": [
+    "tutorial",
+    "pcr",
+    "primer",
+    "tp73",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_simple_pcr_selection_gui",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/tp73.ncbi.gb",
+          "as_id": "tp73_locus"
+        }
+      },
+      {
+        "SetParameter": {
+          "name": "primer_design_backend",
+          "value": "internal"
+        }
+      }
+    ]
+  }
+}

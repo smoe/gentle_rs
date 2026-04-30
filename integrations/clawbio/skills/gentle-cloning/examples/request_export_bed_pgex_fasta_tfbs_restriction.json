@@ -1,0 +1,45 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow": {
+    "run_id": "clawbio_pgex_tfbs_restriction_bed",
+    "ops": [
+      {
+        "AnnotateTfbs": {
+          "seq_id": "pgex_fasta",
+          "motifs": [
+            "SP1",
+            "CTCF",
+            "TATAAA"
+          ],
+          "min_llr_quantile": 0.95,
+          "clear_existing": true,
+          "max_hits": 200
+        }
+      },
+      {
+        "ExportFeaturesBed": {
+          "query": {
+            "seq_id": "pgex_fasta",
+            "kind_in": [
+              "TFBS"
+            ],
+            "sort_by": "start"
+          },
+          "path": "artifacts/pgex_fasta.tfbs_restriction.bed",
+          "coordinate_mode": "local",
+          "include_restriction_sites": true,
+          "restriction_enzymes": [
+            "EcoRI",
+            "BamHI"
+          ]
+        }
+      }
+    ]
+  },
+  "expected_artifacts": [
+    "artifacts/pgex_fasta.tfbs_restriction.bed"
+  ],
+  "timeout_secs": 300
+}

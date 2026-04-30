@@ -3,17 +3,50 @@
 This folder contains a series of accessory files that are meant to be available
 at the application's start or run time. These have mostly been carried over from the C++ version of GENtle.
 
-- amino_acids.json: Describes properties of amino acids (one and three letter abbreviation, molecular weight, [isoelectric point](https://en.wikipedia.org/wiki/Isoelectric_point) and various scores like [Kyte-Doolittle](https://en.wikipedia.org/wiki/Hydrophobicity_scales), [Chou-Fasman](https://en.wikipedia.org/wiki/Chou%E2%80%93Fasman_method), [Hopp-Woods](https://en.wikipedia.org/wiki/Hopp%E2%80%93Woods_scale) ) 
-- blank.mysql:
-- blank.sqlite3:
-- codon_catalog.csv: Tabular representation of nucleotide representations that should be selected by default for a given amino acid. A later development of that table should represent the codon frequencies for each species, as in https://www.creative-biostructure.com/codon-usage-frequency-table.htm .
-- codon_tables.json: A codon translation table.
-- commonvectors.db: Sqlite3 representation of the most common vectors.
-- dna_markers.json: Collection of DNA ladders, i.e. fragments of DNA of well-defined length and relative abundance that are accompanying gels to identify the molecular weight of DNA sequences.
-- enzymes.json: List of DNA restriction enzymes (endonucleases) and proteases
-- jaspar_2022.json: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
-- ncoils.matrix: File needed for the execution of the ncoils program, mostly obsolete since alpha Fold.
-- translations.csv: Translations of strings used in the user interface.
+amino_acids.json:: Describes properties of amino acids (one and three letter abbreviation, molecular weight, [isoelectric point](https://en.wikipedia.org/wiki/Isoelectric_point) and various scores like [Kyte-Doolittle](https://en.wikipedia.org/wiki/Hydrophobicity_scales), [Chou-Fasman](https://en.wikipedia.org/wiki/Chou%E2%80%93Fasman_method), [Hopp-Woods](https://en.wikipedia.org/wiki/Hopp%E2%80%93Woods_scale) ) 
+codon_catalog.csv:: Tabular representation of nucleotide representations that should be selected by default for a given amino acid. A later development of that table should represent the codon frequencies for each species, as in https://www.creative-biostructure.com/codon-usage-frequency-table.htm .
+codon_tables.json:: A codon translation table.
+dna_ladders.json:: Collection of DNA ladders, i.e. fragments of DNA of well-defined length and relative abundance that are accompanying gels to identify the molecular weight of DNA sequences.
+enzymes.json:: List of DNA restriction enzymes (endonucleases) and proteases
+genomes.json::
+helper_genomes.json::
+cutrun.json:: Starter CUT&RUN dataset catalog for processed evidence (BED/BigWig) and future raw-read reuse.
+host_profiles.json:: Starter host/strain catalog for construct-reasoning inspection in GUI/agent-facing workflows.
+blast_defaults.json:: Default BLAST option layer (`task`, `max_hits`, optional thresholds) used when no project/request override is provided.
+panels/tp53_isoforms_v1.json:: Curated TP53 isoform architecture panel used by isoform expert and protein-gel examples.
+panels/tp73_isoforms_v1.json:: Local TP73 isoform curation seed that records lab/public hybrid transcript-class knowledge for assay design without treating public disease-transcript coverage as complete.
+panels/tp73_long_range_cdna_virtual_panel_v1.json:: Local TP73 long-range cDNA selector panel that explicitly materializes virtual 5' x 3' isoform combinations absent from the bundled public RefSeq-style annotation; the companion FASTA stores the theoretical cDNA sequences.
+jaspar.motifs.json:: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
+ncoils.matrix::
+
+Data notes:
+
+- `enzymes.json` is restriction-enzyme data (REBASE-derived snapshot).
+- `dna_ladders.json` is the built-in DNA-ladder catalog used for pool gel
+  ladder auto-selection and rendering.
+- `jaspar.motifs.json` is a built-in JASPAR CORE motif snapshot (currently
+  generated from the 2026 non-redundant JASPAR-format release).
+- `genomes.json` is the default reference-genome catalog.
+  Entries may use explicit `sequence_remote`/`annotations_remote` URLs or
+  `ncbi_assembly_accession` + `ncbi_assembly_name` for direct NCBI GenBank/RefSeq
+  FTP-derived sources.
+- `helper_genomes.json` is a curated starter catalog for helper references
+  (host genomes plus common online vector backbones), intended to be copied and
+  edited for local vector inventories.
+  Entries can use explicit local/remote URLs or `genbank_accession` for
+  NCBI EFetch-derived FASTA + GenBank annotation during prepare/index.
+  The shipped defaults avoid absolute lab-specific paths.
+- `cutrun.json` is the default CUT&RUN catalog for V1 processed datasets.
+  Entries can point at prepared/local or remote peaks/signal assets and are
+  discoverable through the same built-in/system/project overlay chain as other
+  shared catalogs.
+- `host_profiles.json` is the starter host-profile catalog used by construct
+  reasoning and the Planning-window host browser. It is intentionally
+  human-editable and source-noted rather than hidden inside compiled logic.
+- `assets/panels/` contains curated isoform-panel resources. These are
+  machine-readable panels rather than hidden code paths; local/lab-curated
+  panels may carry structured curation metadata so public accession anchors and
+  local biological insight remain distinguishable.
 
 # "Finder" icon (seen in OS' task bar)
 

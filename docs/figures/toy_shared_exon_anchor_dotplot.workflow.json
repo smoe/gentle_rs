@@ -1,0 +1,67 @@
+{
+  "run_id": "toy_shared_exon_anchor_dotplot",
+  "ops": [
+    {
+      "LoadFile": {
+        "path": "docs/figures/toy_shared_exon_anchor_source.gb",
+        "as_id": "toy_anchor_ref"
+      }
+    },
+    {
+      "DeriveTranscriptSequences": {
+        "seq_id": "toy_anchor_ref",
+        "feature_ids": [6, 7, 8],
+        "output_prefix": "toy_anchor"
+      }
+    },
+    {
+      "ComputeDotplotOverlay": {
+        "owner_seq_id": "toy_anchor_ref",
+        "reference_seq_id": "toy_anchor_ref",
+        "reference_span_start_0based": 0,
+        "reference_span_end_0based": 150,
+        "queries": [
+          {
+            "seq_id": "toy_anchor__f7__toytx1",
+            "label": "Longest",
+            "transcript_feature_id": 6,
+            "mode": "pair_forward",
+            "color_rgb": [29, 78, 216]
+          },
+          {
+            "seq_id": "toy_anchor__f8__toytx2",
+            "label": "delta 5'",
+            "transcript_feature_id": 7,
+            "mode": "pair_forward",
+            "color_rgb": [220, 38, 38]
+          },
+          {
+            "seq_id": "toy_anchor__f9__toytx3",
+            "label": "delta 3'",
+            "transcript_feature_id": 8,
+            "mode": "pair_forward",
+            "color_rgb": [5, 150, 105]
+          }
+        ],
+        "word_size": 5,
+        "step_bp": 1,
+        "max_mismatches": 0,
+        "store_as": "toy_shared_exon_anchor_dotplot"
+      }
+    },
+    {
+      "RenderDotplotSvg": {
+        "seq_id": "toy_anchor_ref",
+        "dotplot_id": "toy_shared_exon_anchor_dotplot",
+        "path": "docs/figures/toy_shared_exon_anchor_dotplot.svg",
+        "display_density_threshold": 0.0,
+        "display_intensity_gain": 1.8,
+        "overlay_x_axis_mode": "shared_exon_anchor",
+        "overlay_anchor_exon": {
+          "start_1based": 85,
+          "end_1based": 108
+        }
+      }
+    }
+  ]
+}

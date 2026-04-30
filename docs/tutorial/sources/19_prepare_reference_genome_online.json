@@ -1,0 +1,54 @@
+{
+  "schema": "gentle.tutorial_source.v2",
+  "id": "prepare_reference_genome_online",
+  "title": "Prepare a reference genome cache (online)",
+  "generated_chapter": {
+    "order": 9,
+    "example_id": "prepare_reference_genome_online",
+    "tier": "online",
+    "summary": "Document network-dependent preparation without destabilizing offline default checks.",
+    "narrative": "Reference-genome preparation is crucial for genome-anchored cloning interpretation, but it depends on online resources and local tool setup. This chapter keeps that path explicit and opt-in so default tutorial checks remain robust.",
+    "use_cases": [
+      "You need genome-anchored extraction around gene/promoter context.",
+      "You want to prepare local cache/index assets for repeated anchor operations.",
+      "You need to understand which routines are intentionally online-only in CI defaults."
+    ],
+    "gui_steps": [
+      "Open prepared-reference controls from the GUI menus.",
+      "Select the target genome and start preparation with explicit cache settings.",
+      "Confirm prepared status in the GUI before attempting extraction workflows."
+    ],
+    "learning_objectives": [
+      "Recognize which tutorial flows require network access and external tools.",
+      "Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.",
+      "Preserve offline CI reliability while still documenting online capabilities."
+    ],
+    "concepts": [
+      "deterministic_workflows",
+      "online_opt_in",
+      "genome_catalog_targeting"
+    ],
+    "parameter_notes": [
+      {
+        "parameter": "PrepareGenome.genome_id",
+        "where_used": "operation 1",
+        "why_it_matters": "Selects the exact reference build and annotation set.",
+        "how_to_derive": "Choose the genome build matching your experimental system and downstream coordinate system."
+      },
+      {
+        "parameter": "PrepareGenome.catalog_path / cache_dir",
+        "where_used": "operation 1",
+        "why_it_matters": "Controls source catalog and local cache destination.",
+        "how_to_derive": "Use repository defaults unless your environment requires custom catalogs or cache locations."
+      }
+    ],
+    "follow_up_commands": [
+      "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_examples_docs -- tutorial-generate"
+    ],
+    "retain_outputs": [],
+    "checkpoints": [
+      "Genome preparation runs only when GENTLE_TEST_ONLINE is enabled.",
+      "Offline generation still emits the chapter with execution status noted."
+    ]
+  }
+}

@@ -1,49 +1,161 @@
+//! GENtle shared library crate.
+//!
+//! This crate exposes the shared biology engine, rendering paths, and adapter
+//! bridges used by GUI, CLI, and optional JavaScript/Lua frontends.
+
 use amino_acids::AminoAcids;
-use dna_marker::DNAMarkers;
+use dna_ladder::{LadderCatalog, default_dna_ladders, default_rna_ladders};
 use enzymes::Enzymes;
-use lazy_static::lazy_static;
-use translations::Translations;
+use std::sync::LazyLock;
 
+/// About/help metadata and version presentation helpers.
+pub mod about;
+/// Agent-assistant bridge models, transports, and execution guardrails.
+pub mod agent_bridge;
+/// Deterministic execution of stored machine-facing agent plans.
+pub mod agent_execution;
+/// Machine-facing prose compiler and typed plan/result contracts.
+pub mod agent_planner;
+/// Shared agent transport metadata, availability, and discovery helpers.
+pub mod agent_transport;
+/// Amino-acid lookup tables and codon translation helpers.
 pub mod amino_acids;
+/// Top-level GUI application wiring and event loop state.
 pub mod app;
+/// ATtRACT RNA-binding motif registry and runtime snapshot helpers.
+pub mod attract_motifs;
+/// Shared DNA display configuration and visibility policies.
 pub mod dna_display;
-pub mod dna_marker;
+/// DNA/RNA ladder catalogs and migration helper utilities.
+pub mod dna_ladder;
+/// Core DNA sequence model and sequence-level biological operations.
 pub mod dna_sequence;
+/// Internal egui compatibility helpers used during GUI API migrations.
+pub(crate) mod egui_compat;
+/// Shared deterministic operation engine and state model.
+pub mod engine;
+/// Shared shell command parser/executor reused by GUI shell and CLI shell mode.
+pub mod engine_shell;
+/// Ensembl gene-entry parsing contracts and REST normalization helpers.
+pub mod ensembl_gene;
+/// Ensembl protein-entry parsing contracts and REST normalization helpers.
+pub mod ensembl_protein;
+/// Restriction-enzyme catalog loading and convenience selection helpers.
 pub mod enzymes;
+/// Expert-view data contracts for feature-centric deep-inspection UIs.
+pub mod feature_expert;
+/// Feature location/strand utilities used across render and engine code.
+pub mod feature_location;
+/// GC-content computations and display helpers.
 pub mod gc_contents;
+/// Genome catalog, preparation, indexing, extraction, and BLAST integration.
 pub mod genomes;
+/// Gibson assembly planning contracts and deterministic preview derivation.
+pub mod gibson_planning;
+/// Embedded icon/resource helpers for GUI rendering.
 pub mod icons;
+/// IUPAC nucleotide-code conversion and validation helpers.
 pub mod iupac_code;
+/// JavaScript adapter wrappers over shared engine contracts.
+#[cfg(feature = "js-interface")]
 pub mod js_interface;
+/// Lineage graph export and serialization utilities.
+pub mod lineage_export;
+/// Adaptive routing decisions for linear DNA base-letter rendering.
+pub mod linear_base_routing;
+/// Lua adapter wrappers over shared engine contracts.
+#[cfg(feature = "lua-interface")]
 pub mod lua_interface;
+/// Main sequence-window GUI controller and interaction orchestration.
 pub mod main_area_dna;
+/// MCP stdio server adapter exposing tool execution and capability discovery.
+pub mod mcp_server;
+/// Methylation-site detection and state helpers.
 pub mod methylation_sites;
+/// NCBI sequence XML (`GBSet/GBSeq`, `INSDSet/INSDSeq`) parsing helpers.
+pub mod ncbi_genbank_xml;
+/// Open-reading-frame detection logic.
 pub mod open_reading_frame;
+/// Virtual pool gel model and rendering primitives.
+pub mod pool_gel;
+/// Protease digest definitions and helpers.
 pub mod protease;
+/// Protein molecular-weight gel model and rendering primitives.
+pub mod protein_gel;
+/// Protocol-cartoon catalog and deterministic SVG rendering helpers.
+pub mod protocol_cartoon;
+/// Position-specific scoring matrix (motif) primitives.
 pub mod pssm;
+/// Shared DNA rendering entry points.
 pub mod render_dna;
+/// Circular-map DNA renderer.
 pub mod render_dna_circular;
+/// Linear-map DNA renderer.
 pub mod render_dna_linear;
+/// Shared export surfaces (SVG and snapshot pathways).
+pub mod render_export;
+/// Feature expert-view SVG renderer.
+pub mod render_feature_expert;
+/// Shared multi-gene promoter TFBS small-multiples SVG renderer.
+pub mod render_multi_gene_promoter_tfbs;
+/// Sequence export helpers and render-side formatting.
 pub mod render_sequence;
+/// Shared TF motif score-track SVG renderer.
+pub mod render_tfbs_score_tracks;
+/// RepeatMasker/UCSC-style repeat-feature display classification helpers.
+pub mod repeat_features;
+/// Runtime status helpers for built-in and overrideable external resources.
+pub mod resource_status;
+/// Resource synchronization (REBASE/JASPAR/ATtRACT) parsing and snapshot writing.
+pub mod resource_sync;
+/// Restriction-enzyme site model and cut geometry utilities.
 pub mod restriction_enzyme;
+/// RNA structure wrappers and tool integration glue.
+pub mod rna_structure;
+/// Shared wheel/key/cursor interaction policy for scroll, pan, and zoom.
+pub mod scroll_input_policy;
+/// Sequence-row abstraction shared by specialized row renderers.
 pub mod sequence_rows;
+/// Blank-row renderer implementation.
 pub mod sequence_rows_blank;
+/// DNA base-row renderer implementation.
 pub mod sequence_rows_dna;
+/// Restriction-enzyme sequence-row renderer implementation.
 pub mod sequence_rows_restriction_enzymes;
-pub mod translations;
+/// Combined readiness summary for prepared references, helpers, and resources.
+pub mod service_readiness;
+/// Generated/derived shell-help documentation helpers.
+pub mod shell_docs;
+/// Deterministic SVG-to-PNG rasterization helpers for headless adapters.
+pub mod svg_png;
+/// Hidden shared support helpers for internal tests across library and binaries.
+#[doc(hidden)]
+pub mod test_support;
+/// TF-motif registry and matching support.
+pub mod tf_motifs;
+/// Process-local tool-path override registry.
+pub mod tool_overrides;
+/// UCSC RepeatMasker (`rmsk`) table resource contracts and indexing guidance.
+pub mod ucsc_rmsk;
+/// UniProt/SWISS-PROT parsing contracts and projection payload models.
+pub mod uniprot;
+/// Generic GUI window abstraction.
 pub mod window;
+/// Window backdrop configuration and rendering helpers.
+pub mod window_backdrop;
+/// DNA sequence-window wrapper and per-window controls.
 pub mod window_dna;
+/// Curated workflow example payloads and templates.
+pub mod workflow_examples;
 
-lazy_static! {
-    // Interface translations
-    pub static ref TRANSLATIONS: Translations = Translations::default();
+// Restriction enzymes and proteases
+pub static ENZYMES: LazyLock<Enzymes> = LazyLock::new(Enzymes::default);
 
-    // Restriction enzymes and proteases
-    pub static ref ENZYMES: Enzymes = Enzymes::default();
+// Amino acids
+pub static AMINO_ACIDS: LazyLock<AminoAcids> = LazyLock::new(AminoAcids::default);
 
-    // Amino acids
-    pub static ref AMINO_ACIDS : AminoAcids = AminoAcids::default();
+// DNA ladders
+pub static DNA_LADDERS: LazyLock<LadderCatalog> = LazyLock::new(default_dna_ladders);
 
-    // DNA markers
-    pub static ref DNA_MARKERS: DNAMarkers = DNAMarkers::default();
-}
+// RNA ladders
+pub static RNA_LADDERS: LazyLock<LadderCatalog> = LazyLock::new(default_rna_ladders);

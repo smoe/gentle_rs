@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1662" height="730" viewBox="0 0 1662 730" role="img">
+<title>TP73 virtual long-range cDNA selector gel</title>
+<style>text{font-family:Avenir Next,Segoe UI,Arial,sans-serif}.title{font-size:24px;font-weight:800;fill:#0f172a}.sub{font-size:12px;fill:#475569}.axis{font-size:10px;font-weight:700;fill:#64748b}.lane{fill:#f8fafc;stroke:#cbd5e1}.well{fill:#334155;opacity:.7}.band-label{font-size:9px;font-weight:700;fill:#0f172a}.legend{font-size:11px;fill:#334155}.small{font-size:10px;fill:#475569}.col{font-size:10px;font-weight:800;fill:#0f172a}.mono{font-size:8px;fill:#334155;font-family:Menlo,Consolas,monospace}.group{font-size:11px;font-weight:800;fill:#0f172a}.bar{stroke:#334155;stroke-width:1.4;stroke-linecap:round}.unreported{stroke:#0f172a;stroke-width:1.1;stroke-dasharray:3 2}.unreported-tag{font-size:8px;font-weight:900;fill:#0f172a}</style>
+<rect x="0" y="0" width="1662" height="730" fill="#ffffff"/>
+<rect x="18" y="18" width="1626" height="694" rx="14" fill="#f1f5f9" stroke="#cbd5e1"/>
+<text class="title" x="38" y="56">TP73 virtual long-range cDNA selector gel</text>
+<text class="sub" x="38" y="78">Virtual local-knowledge panel: five 5-prime classes crossed with alpha, beta, gamma, delta, epsilon, and zeta 3-prime classes.</text>
+<text class="sub" x="38" y="97">Readout lanes: alpha/gamma/zeta and beta/epsilon are separated by product size; delta uses its own junction primer.</text>
+<text class="axis" x="118" y="118">Top grouped bars: shared 5-prime forward selector across the three 3-prime readout lanes underneath.</text>
+<text class="mono" x="118" y="134">3-prime readout primers: AGZ 5&apos;-CCCCAGGTCCTCAATGGTCA-3&apos; | BE 5&apos;-CCAGGTCCTGACGAGGCTGG-3&apos; | DELTA 5&apos;-GTCGGCCTCTGTAGGAGCTGCTG-3&apos;</text>
+<line class="bar" x1="124" y1="166" x2="402" y2="166"/>
+<line class="bar" x1="124" y1="166" x2="124" y2="174"/>
+<line class="bar" x1="402" y1="166" x2="402" y2="174"/>
+<text class="group" x="263.0" y="145" text-anchor="middle">TP73-5p-TA-F (TAp73)</text>
+<text class="mono" x="263.0" y="158" text-anchor="middle">F 5'-ACGGCTGCAGAGCGAGCTGC-3'</text>
+<line class="bar" x1="424" y1="166" x2="702" y2="166"/>
+<line class="bar" x1="424" y1="166" x2="424" y2="174"/>
+<line class="bar" x1="702" y1="166" x2="702" y2="174"/>
+<text class="group" x="563.0" y="145" text-anchor="middle">TP73-5p-Ex2-F (Ex2-p73)</text>
+<text class="mono" x="563.0" y="158" text-anchor="middle">F 5'-AGGCTTAGCCAAGAGCGAGCTGC-3'</text>
+<line class="bar" x1="724" y1="166" x2="1002" y2="166"/>
+<line class="bar" x1="724" y1="166" x2="724" y2="174"/>
+<line class="bar" x1="1002" y1="166" x2="1002" y2="174"/>
+<text class="group" x="863.0" y="145" text-anchor="middle">TP73-5p-Ex3-F (Ex3-p73)</text>
+<text class="mono" x="863.0" y="158" text-anchor="middle">F 5'-AAATAACAGAGCGAGCTGCCCTCG-3'</text>
+<line class="bar" x1="1024" y1="166" x2="1302" y2="166"/>
+<line class="bar" x1="1024" y1="166" x2="1024" y2="174"/>
+<line class="bar" x1="1302" y1="166" x2="1302" y2="174"/>
+<text class="group" x="1163.0" y="145" text-anchor="middle">TP73-5p-DeltaN-F (DeltaN-p73)</text>
+<text class="mono" x="1163.0" y="158" text-anchor="middle">F 5'-ACCTCGCCACGGCCCAGTTCAAT-3'</text>
+<line class="bar" x1="1324" y1="166" x2="1602" y2="166"/>
+<line class="bar" x1="1324" y1="166" x2="1324" y2="174"/>
+<line class="bar" x1="1602" y1="166" x2="1602" y2="174"/>
+<text class="group" x="1463.0" y="145" text-anchor="middle">TP73-5p-V13-F (V13-p73)</text>
+<text class="mono" x="1463.0" y="158" text-anchor="middle">F 5'-CATCTGCAGGACAGGCCCAGTTC-3'</text>
+<line x1="78" y1="529.1" x2="1624" y2="529.1" stroke="#e2e8f0"/>
+<text class="axis" x="70" y="532.1" text-anchor="end">1000 bp</text>
+<line x1="78" y1="437.6" x2="1624" y2="437.6" stroke="#e2e8f0"/>
+<text class="axis" x="70" y="440.6" text-anchor="end">1200 bp</text>
+<line x1="78" y1="360.2" x2="1624" y2="360.2" stroke="#e2e8f0"/>
+<text class="axis" x="70" y="363.2" text-anchor="end">1400 bp</text>
+<line x1="78" y1="293.1" x2="1624" y2="293.1" stroke="#e2e8f0"/>
+<text class="axis" x="70" y="296.1" text-anchor="end">1600 bp</text>
+<line x1="78" y1="234.0" x2="1624" y2="234.0" stroke="#e2e8f0"/>
+<text class="axis" x="70" y="237.0" text-anchor="end">1800 bp</text>
+<text class="col" x="163.0" y="182" text-anchor="middle">L01</text>
+<text class="axis" x="163.0" y="196" text-anchor="middle">R AGZ: alpha/gamma/zeta</text>
+<rect class="lane" x="118" y="208" width="90" height="400" rx="7"><title>L01: TP73-5p-TA-F (ACGGCTGCAGAGCGAGCTGC) x TP73-3p-alpha-gamma-zeta-R (CCCCAGGTCCTCAATGGTCA)</title></rect>
+<rect class="well" x="136" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="163.0" y="656" text-anchor="middle">TAp73</text>
+<text class="small" x="163.0" y="671" text-anchor="middle">alpha/gamma/zeta</text>
+<rect x="128" y="279.8" width="70" height="8" rx="4" fill="#2563eb" opacity=".78"><title>TAp73-alpha: 1630 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="205" y="286.8" text-anchor="end">a 1630</text>
+<rect x="128" y="327.9" width="70" height="8" rx="4" fill="#16a34a" opacity=".78"><title>TAp73-gamma: 1481 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="205" y="334.9" text-anchor="end">g 1481</text>
+<rect x="128" y="377.4" width="70" height="8" rx="4" fill="#0f766e" opacity=".78"><title>TAp73-zeta: 1342 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="205" y="384.4" text-anchor="end">z 1342</text>
+<text class="col" x="263.0" y="182" text-anchor="middle">L02</text>
+<text class="axis" x="263.0" y="196" text-anchor="middle">R BE: beta/epsilon</text>
+<rect class="lane" x="218" y="208" width="90" height="400" rx="7"><title>L02: TP73-5p-TA-F (ACGGCTGCAGAGCGAGCTGC) x TP73-3p-beta-epsilon-R (CCAGGTCCTGACGAGGCTGG)</title></rect>
+<rect class="well" x="236" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="263.0" y="656" text-anchor="middle">TAp73</text>
+<text class="small" x="263.0" y="671" text-anchor="middle">beta/epsilon</text>
+<rect x="228" y="310.3" width="70" height="8" rx="4" fill="#dc2626" opacity=".78"><title>TAp73-beta: 1534 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="305" y="317.3" text-anchor="end">b 1534</text>
+<rect x="228" y="361.6" width="70" height="8" rx="4" fill="#f97316" opacity=".78"><title>TAp73-epsilon: 1385 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="305" y="368.6" text-anchor="end">e 1385</text>
+<text class="col" x="363.0" y="182" text-anchor="middle">L03</text>
+<text class="axis" x="363.0" y="196" text-anchor="middle">R DELTA: delta</text>
+<rect class="lane" x="318" y="208" width="90" height="400" rx="7"><title>L03: TP73-5p-TA-F (ACGGCTGCAGAGCGAGCTGC) x TP73-3p-delta-R2 (GTCGGCCTCTGTAGGAGCTGCTG)</title></rect>
+<rect class="well" x="336" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="363.0" y="656" text-anchor="middle">TAp73</text>
+<text class="small" x="363.0" y="671" text-anchor="middle">delta</text>
+<rect x="328" y="416.3" width="70" height="8" rx="4" fill="#9333ea" opacity=".78"><title>TAp73-delta: 1242 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="405" y="423.3" text-anchor="end">d 1242</text>
+<text class="col" x="463.0" y="182" text-anchor="middle">L04</text>
+<text class="axis" x="463.0" y="196" text-anchor="middle">R AGZ: alpha/gamma/zeta</text>
+<rect class="lane" x="418" y="208" width="90" height="400" rx="7"><title>L04: TP73-5p-Ex2-F (AGGCTTAGCCAAGAGCGAGCTGC) x TP73-3p-alpha-gamma-zeta-R (CCCCAGGTCCTCAATGGTCA)</title></rect>
+<rect class="well" x="436" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="463.0" y="656" text-anchor="middle">Ex2-p73</text>
+<text class="small" x="463.0" y="671" text-anchor="middle">alpha/gamma/zeta</text>
+<rect x="428" y="278.9" width="70" height="8" rx="4" fill="#2563eb" opacity=".78"><title>Ex2-p73-alpha: 1633 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="505" y="285.9" text-anchor="end">a 1633</text>
+<rect class="unreported" x="428" y="326.9" width="70" height="8" rx="4" fill="#16a34a" opacity=".38"><title>Ex2-p73-gamma: 1484 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="505" y="333.9" text-anchor="end">g 1484*</text>
+<text class="unreported-tag" x="432" y="323.9">*</text>
+<rect class="unreported" x="428" y="376.3" width="70" height="8" rx="4" fill="#0f766e" opacity=".38"><title>Ex2-p73-zeta: 1345 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="505" y="383.3" text-anchor="end">z 1345*</text>
+<text class="unreported-tag" x="432" y="373.3">*</text>
+<text class="col" x="563.0" y="182" text-anchor="middle">L05</text>
+<text class="axis" x="563.0" y="196" text-anchor="middle">R BE: beta/epsilon</text>
+<rect class="lane" x="518" y="208" width="90" height="400" rx="7"><title>L05: TP73-5p-Ex2-F (AGGCTTAGCCAAGAGCGAGCTGC) x TP73-3p-beta-epsilon-R (CCAGGTCCTGACGAGGCTGG)</title></rect>
+<rect class="well" x="536" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="563.0" y="656" text-anchor="middle">Ex2-p73</text>
+<text class="small" x="563.0" y="671" text-anchor="middle">beta/epsilon</text>
+<rect class="unreported" x="528" y="309.3" width="70" height="8" rx="4" fill="#dc2626" opacity=".38"><title>Ex2-p73-beta: 1537 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="605" y="316.3" text-anchor="end">b 1537*</text>
+<text class="unreported-tag" x="532" y="306.3">*</text>
+<rect class="unreported" x="528" y="360.5" width="70" height="8" rx="4" fill="#f97316" opacity=".38"><title>Ex2-p73-epsilon: 1388 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="605" y="367.5" text-anchor="end">e 1388*</text>
+<text class="unreported-tag" x="532" y="357.5">*</text>
+<text class="col" x="663.0" y="182" text-anchor="middle">L06</text>
+<text class="axis" x="663.0" y="196" text-anchor="middle">R DELTA: delta</text>
+<rect class="lane" x="618" y="208" width="90" height="400" rx="7"><title>L06: TP73-5p-Ex2-F (AGGCTTAGCCAAGAGCGAGCTGC) x TP73-3p-delta-R2 (GTCGGCCTCTGTAGGAGCTGCTG)</title></rect>
+<rect class="well" x="636" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="663.0" y="656" text-anchor="middle">Ex2-p73</text>
+<text class="small" x="663.0" y="671" text-anchor="middle">delta</text>
+<rect class="unreported" x="628" y="415.1" width="70" height="8" rx="4" fill="#9333ea" opacity=".38"><title>Ex2-p73-delta: 1245 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="705" y="422.1" text-anchor="end">d 1245*</text>
+<text class="unreported-tag" x="632" y="412.1">*</text>
+<text class="col" x="763.0" y="182" text-anchor="middle">L07</text>
+<text class="axis" x="763.0" y="196" text-anchor="middle">R AGZ: alpha/gamma/zeta</text>
+<rect class="lane" x="718" y="208" width="90" height="400" rx="7"><title>L07: TP73-5p-Ex3-F (AAATAACAGAGCGAGCTGCCCTCG) x TP73-3p-alpha-gamma-zeta-R (CCCCAGGTCCTCAATGGTCA)</title></rect>
+<rect class="well" x="736" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="763.0" y="656" text-anchor="middle">Ex3-p73</text>
+<text class="small" x="763.0" y="671" text-anchor="middle">alpha/gamma/zeta</text>
+<rect x="728" y="280.1" width="70" height="8" rx="4" fill="#2563eb" opacity=".78"><title>Ex3-p73-alpha: 1629 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="805" y="287.1" text-anchor="end">a 1629</text>
+<rect class="unreported" x="728" y="328.3" width="70" height="8" rx="4" fill="#16a34a" opacity=".38"><title>Ex3-p73-gamma: 1480 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="805" y="335.3" text-anchor="end">g 1480*</text>
+<text class="unreported-tag" x="732" y="325.3">*</text>
+<rect class="unreported" x="728" y="377.8" width="70" height="8" rx="4" fill="#0f766e" opacity=".38"><title>Ex3-p73-zeta: 1341 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="805" y="384.8" text-anchor="end">z 1341*</text>
+<text class="unreported-tag" x="732" y="374.8">*</text>
+<text class="col" x="863.0" y="182" text-anchor="middle">L08</text>
+<text class="axis" x="863.0" y="196" text-anchor="middle">R BE: beta/epsilon</text>
+<rect class="lane" x="818" y="208" width="90" height="400" rx="7"><title>L08: TP73-5p-Ex3-F (AAATAACAGAGCGAGCTGCCCTCG) x TP73-3p-beta-epsilon-R (CCAGGTCCTGACGAGGCTGG)</title></rect>
+<rect class="well" x="836" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="863.0" y="656" text-anchor="middle">Ex3-p73</text>
+<text class="small" x="863.0" y="671" text-anchor="middle">beta/epsilon</text>
+<rect class="unreported" x="828" y="310.6" width="70" height="8" rx="4" fill="#dc2626" opacity=".38"><title>Ex3-p73-beta: 1533 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="905" y="317.6" text-anchor="end">b 1533*</text>
+<text class="unreported-tag" x="832" y="307.6">*</text>
+<rect class="unreported" x="828" y="361.9" width="70" height="8" rx="4" fill="#f97316" opacity=".38"><title>Ex3-p73-epsilon: 1384 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="905" y="368.9" text-anchor="end">e 1384*</text>
+<text class="unreported-tag" x="832" y="358.9">*</text>
+<text class="col" x="963.0" y="182" text-anchor="middle">L09</text>
+<text class="axis" x="963.0" y="196" text-anchor="middle">R DELTA: delta</text>
+<rect class="lane" x="918" y="208" width="90" height="400" rx="7"><title>L09: TP73-5p-Ex3-F (AAATAACAGAGCGAGCTGCCCTCG) x TP73-3p-delta-R2 (GTCGGCCTCTGTAGGAGCTGCTG)</title></rect>
+<rect class="well" x="936" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="963.0" y="656" text-anchor="middle">Ex3-p73</text>
+<text class="small" x="963.0" y="671" text-anchor="middle">delta</text>
+<rect class="unreported" x="928" y="416.7" width="70" height="8" rx="4" fill="#9333ea" opacity=".38"><title>Ex3-p73-delta: 1241 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="1005" y="423.7" text-anchor="end">d 1241*</text>
+<text class="unreported-tag" x="932" y="413.7">*</text>
+<text class="col" x="1063.0" y="182" text-anchor="middle">L10</text>
+<text class="axis" x="1063.0" y="196" text-anchor="middle">R AGZ: alpha/gamma/zeta</text>
+<rect class="lane" x="1018" y="208" width="90" height="400" rx="7"><title>L10: TP73-5p-DeltaN-F (ACCTCGCCACGGCCCAGTTCAAT) x TP73-3p-alpha-gamma-zeta-R (CCCCAGGTCCTCAATGGTCA)</title></rect>
+<rect class="well" x="1036" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="1063.0" y="656" text-anchor="middle">DeltaN-p73</text>
+<text class="small" x="1063.0" y="671" text-anchor="middle">alpha/gamma/zeta</text>
+<rect x="1028" y="351.9" width="70" height="8" rx="4" fill="#2563eb" opacity=".78"><title>DeltaN-p73-alpha: 1412 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="1105" y="358.9" text-anchor="end">a 1412</text>
+<rect x="1028" y="407.9" width="70" height="8" rx="4" fill="#16a34a" opacity=".78"><title>DeltaN-p73-gamma: 1263 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="1105" y="414.9" text-anchor="end">g 1263</text>
+<rect x="1028" y="466.4" width="70" height="8" rx="4" fill="#0f766e" opacity=".78"><title>DeltaN-p73-zeta: 1124 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="1105" y="473.4" text-anchor="end">z 1124</text>
+<text class="col" x="1163.0" y="182" text-anchor="middle">L11</text>
+<text class="axis" x="1163.0" y="196" text-anchor="middle">R BE: beta/epsilon</text>
+<rect class="lane" x="1118" y="208" width="90" height="400" rx="7"><title>L11: TP73-5p-DeltaN-F (ACCTCGCCACGGCCCAGTTCAAT) x TP73-3p-beta-epsilon-R (CCAGGTCCTGACGAGGCTGG)</title></rect>
+<rect class="well" x="1136" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="1163.0" y="656" text-anchor="middle">DeltaN-p73</text>
+<text class="small" x="1163.0" y="671" text-anchor="middle">beta/epsilon</text>
+<rect x="1128" y="387.2" width="70" height="8" rx="4" fill="#dc2626" opacity=".78"><title>DeltaN-p73-beta: 1316 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="1205" y="394.2" text-anchor="end">b 1316</text>
+<rect x="1128" y="447.6" width="70" height="8" rx="4" fill="#f97316" opacity=".78"><title>DeltaN-p73-epsilon: 1167 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="1205" y="454.6" text-anchor="end">e 1167</text>
+<text class="col" x="1263.0" y="182" text-anchor="middle">L12</text>
+<text class="axis" x="1263.0" y="196" text-anchor="middle">R DELTA: delta</text>
+<rect class="lane" x="1218" y="208" width="90" height="400" rx="7"><title>L12: TP73-5p-DeltaN-F (ACCTCGCCACGGCCCAGTTCAAT) x TP73-3p-delta-R2 (GTCGGCCTCTGTAGGAGCTGCTG)</title></rect>
+<rect class="well" x="1236" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="1263.0" y="656" text-anchor="middle">DeltaN-p73</text>
+<text class="small" x="1263.0" y="671" text-anchor="middle">delta</text>
+<rect x="1228" y="513.2" width="70" height="8" rx="4" fill="#9333ea" opacity=".78"><title>DeltaN-p73-delta: 1024 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="1305" y="520.2" text-anchor="end">d 1024</text>
+<text class="col" x="1363.0" y="182" text-anchor="middle">L13</text>
+<text class="axis" x="1363.0" y="196" text-anchor="middle">R AGZ: alpha/gamma/zeta</text>
+<rect class="lane" x="1318" y="208" width="90" height="400" rx="7"><title>L13: TP73-5p-V13-F (CATCTGCAGGACAGGCCCAGTTC) x TP73-3p-alpha-gamma-zeta-R (CCCCAGGTCCTCAATGGTCA)</title></rect>
+<rect class="well" x="1336" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="1363.0" y="656" text-anchor="middle">V13-p73</text>
+<text class="small" x="1363.0" y="671" text-anchor="middle">alpha/gamma/zeta</text>
+<rect x="1328" y="350.8" width="70" height="8" rx="4" fill="#2563eb" opacity=".78"><title>V13-p73-alpha: 1415 bp; public record present in the bundled panel</title></rect>
+<text class="band-label" x="1405" y="357.8" text-anchor="end">a 1415</text>
+<rect class="unreported" x="1328" y="406.7" width="70" height="8" rx="4" fill="#16a34a" opacity=".38"><title>V13-p73-gamma: 1266 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="1405" y="413.7" text-anchor="end">g 1266*</text>
+<text class="unreported-tag" x="1332" y="403.7">*</text>
+<rect class="unreported" x="1328" y="465.1" width="70" height="8" rx="4" fill="#0f766e" opacity=".38"><title>V13-p73-zeta: 1127 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="1405" y="472.1" text-anchor="end">z 1127*</text>
+<text class="unreported-tag" x="1332" y="462.1">*</text>
+<text class="col" x="1463.0" y="182" text-anchor="middle">L14</text>
+<text class="axis" x="1463.0" y="196" text-anchor="middle">R BE: beta/epsilon</text>
+<rect class="lane" x="1418" y="208" width="90" height="400" rx="7"><title>L14: TP73-5p-V13-F (CATCTGCAGGACAGGCCCAGTTC) x TP73-3p-beta-epsilon-R (CCAGGTCCTGACGAGGCTGG)</title></rect>
+<rect class="well" x="1436" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="1463.0" y="656" text-anchor="middle">V13-p73</text>
+<text class="small" x="1463.0" y="671" text-anchor="middle">beta/epsilon</text>
+<rect class="unreported" x="1428" y="386.1" width="70" height="8" rx="4" fill="#dc2626" opacity=".38"><title>V13-p73-beta: 1319 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="1505" y="393.1" text-anchor="end">b 1319*</text>
+<text class="unreported-tag" x="1432" y="383.1">*</text>
+<rect class="unreported" x="1428" y="446.3" width="70" height="8" rx="4" fill="#f97316" opacity=".38"><title>V13-p73-epsilon: 1170 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="1505" y="453.3" text-anchor="end">e 1170*</text>
+<text class="unreported-tag" x="1432" y="443.3">*</text>
+<text class="col" x="1563.0" y="182" text-anchor="middle">L15</text>
+<text class="axis" x="1563.0" y="196" text-anchor="middle">R DELTA: delta</text>
+<rect class="lane" x="1518" y="208" width="90" height="400" rx="7"><title>L15: TP73-5p-V13-F (CATCTGCAGGACAGGCCCAGTTC) x TP73-3p-delta-R2 (GTCGGCCTCTGTAGGAGCTGCTG)</title></rect>
+<rect class="well" x="1536" y="215" width="54" height="8" rx="3"/>
+<text class="axis" x="1563.0" y="656" text-anchor="middle">V13-p73</text>
+<text class="small" x="1563.0" y="671" text-anchor="middle">delta</text>
+<rect class="unreported" x="1528" y="511.7" width="70" height="8" rx="4" fill="#9333ea" opacity=".38"><title>V13-p73-delta: 1027 bp; virtual local hypothesis, not reported in the bundled public GenBank/Ensembl-style panel</title></rect>
+<text class="band-label" x="1605" y="518.7" text-anchor="end">d 1027*</text>
+<text class="unreported-tag" x="1532" y="508.7">*</text>
+<rect x="42" y="638" width="18" height="8" rx="4" fill="#2563eb" opacity=".78"/>
+<text class="legend" x="67" y="646">alpha</text>
+<rect x="154" y="638" width="18" height="8" rx="4" fill="#dc2626" opacity=".78"/>
+<text class="legend" x="179" y="646">beta</text>
+<rect x="266" y="638" width="18" height="8" rx="4" fill="#16a34a" opacity=".78"/>
+<text class="legend" x="291" y="646">gamma</text>
+<rect x="378" y="638" width="18" height="8" rx="4" fill="#9333ea" opacity=".78"/>
+<text class="legend" x="403" y="646">delta</text>
+<rect x="490" y="638" width="18" height="8" rx="4" fill="#f97316" opacity=".78"/>
+<text class="legend" x="515" y="646">epsilon</text>
+<rect x="602" y="638" width="18" height="8" rx="4" fill="#0f766e" opacity=".78"/>
+<text class="legend" x="627" y="646">zeta</text>
+<rect class="unreported" x="734" y="638" width="18" height="8" rx="4" fill="#64748b" opacity=".38"/>
+<text class="legend" x="759" y="646">* virtual/unreported local hypothesis</text>
+<text class="small" x="42" y="690">No lane is interpreted as absence: all bands are theoretical products from explicitly synthesized local cDNA hypotheses; dim/dashed or * bands are not reported in the bundled public panel.</text>
+<text class="small" x="42" y="710">Coordinates and products are 0-based internally in the TSV/JSON; displayed band sizes are bp lengths.</text>
+</svg>

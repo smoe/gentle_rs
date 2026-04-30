@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": ".gentle_state.json",
+  "workflow_path": "docs/examples/workflows/tp73_isoform_protein_gel_offline.json",
+  "expected_artifacts": [
+    "exports/tp73_isoform_protein_gel.svg"
+  ],
+  "timeout_secs": 300
+}

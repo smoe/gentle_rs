@@ -1,0 +1,10 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "pcr-protocol-cartoon",
+  "protocol_id": "pcr.assay.pair.with_tail",
+  "output_path": "artifacts/pcr.assay.pair.with_tail.protocol.svg",
+  "expected_artifacts": [
+    "artifacts/pcr.assay.pair.with_tail.protocol.svg"
+  ],
+  "timeout_secs": 180
+}
