@@ -676,8 +676,9 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   pane.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
   Concatenated gzip members are accepted for gzipped FASTA input as well.
-  Progress output includes periodic `progress rna-reads ...` lines during
-  `apply_with_progress` runs.
+  Long runs can opt into live progress with the global `--progress-stderr`
+  option before the `rna-reads` command; this keeps the final JSON payload on
+  stdout while periodic `progress rna-reads ...` lines are written to stderr.
   Phase split:
   - `interpret`: seed-filter pass (Nanopore phase-1)
   - `batch-map`: manifest-driven wrapper over the same per-sample
@@ -1802,6 +1803,8 @@ Global CLI options:
 - `--progress-stdout`: print live progress events to `stdout`
 - `--allow-screenshots`: currently rejected (screenshot bridge disabled by security policy)
 
+Place global progress options before the command name, for example
+`gentle_cli --state "$STATE" --progress-stderr rna-reads interpret ...`.
 Current progress events include TFBS annotation updates, genome-prepare
 updates (download/index phases), genome-track import updates, RNA-read
 interpretation/alignment updates, and primer/qPCR design updates.
