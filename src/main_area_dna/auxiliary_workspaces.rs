@@ -6326,21 +6326,9 @@ impl MainAreaDna {
         format!("RNA-read Mapping - {} ({})", view.group_label, view.seq_id)
     }
 
+    #[cfg(test)]
     pub(super) fn stale_auxiliary_window_title_layer_id(title: &str) -> egui::LayerId {
-        egui::LayerId::new(egui::Order::Middle, egui::Id::new(title.to_string()))
-    }
-
-    pub(super) fn reset_auxiliary_window_areas_if_legacy_title_layer_visible(
-        ctx: &egui::Context,
-        title: &str,
-    ) -> bool {
-        let stale_title_layer = Self::stale_auxiliary_window_title_layer_id(title);
-        if ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer)) {
-            ctx.memory_mut(|mem| mem.reset_areas());
-            true
-        } else {
-            false
-        }
+        crate::egui_compat::hosted_window_title_layer_id(title)
     }
 
     pub(super) fn render_splicing_expert_embedded_window_shell(
@@ -6354,16 +6342,14 @@ impl MainAreaDna {
         focus_requested: bool,
     ) {
         let mut open = self.show_splicing_expert_window;
-        Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(ctx, title);
-        let mut window = egui::Window::new(title)
-            .id(Self::splicing_expert_embedded_window_id(view))
-            .open(&mut open)
-            .resizable(true)
-            .default_size(default_size);
-        if focus_requested {
-            window = window.order(egui::Order::Foreground);
-        }
-        window.show(ctx, |ui| {
+        let spec = crate::egui_compat::HostedWindowSpec::new(
+            title,
+            Self::splicing_expert_embedded_window_id(view),
+            default_size,
+            Self::splicing_expert_window_min_size(),
+        )
+        .foreground(focus_requested);
+        crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
             let backdrop_settings = current_window_backdrop_settings();
             paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
             egui::ScrollArea::both()
@@ -6408,16 +6394,14 @@ impl MainAreaDna {
         focus_requested: bool,
     ) {
         let mut open = self.show_rna_read_mapping_window;
-        Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(ctx, title);
-        let mut window = egui::Window::new(title)
-            .id(Self::rna_read_mapping_embedded_window_id(view))
-            .open(&mut open)
-            .resizable(true)
-            .default_size(default_size);
-        if focus_requested {
-            window = window.order(egui::Order::Foreground);
-        }
-        window.show(ctx, |ui| {
+        let spec = crate::egui_compat::HostedWindowSpec::new(
+            title,
+            Self::rna_read_mapping_embedded_window_id(view),
+            default_size,
+            Self::rna_read_mapping_window_min_size(),
+        )
+        .foreground(focus_requested);
+        crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
             let backdrop_settings = current_window_backdrop_settings();
             paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
             egui::ScrollArea::both()
@@ -6900,37 +6884,31 @@ impl MainAreaDna {
             .with_min_inner_size([min_size.x, min_size.y]);
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             if class == egui::ViewportClass::EmbeddedWindow {
-                Self::reset_auxiliary_window_areas_if_legacy_title_layer_visible(
-                    ctx,
-                    title.as_str(),
-                );
                 let mut open = self.show_dotplot_window;
-                egui::Window::new(title.clone())
-                    .id(egui::Id::new(format!(
-                        "dotplot_window_embedded_{}",
-                        viewport_seq_id
-                    )))
-                    .open(&mut open)
-                    .resizable(true)
-                    .default_size(default_size)
-                    .show(ctx, |ui| {
-                        let backdrop_settings = current_window_backdrop_settings();
-                        paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
-                        egui::ScrollArea::both()
-                            .id_salt(format!(
-                                "dotplot_window_scroll_embedded_{}",
-                                viewport_seq_id
-                            ))
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                    ui,
-                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                                );
-                                ui.set_min_size(content_min_size);
-                                self.render_dotplot_workspace_ui(ui);
-                            });
-                    });
+                let spec = crate::egui_compat::HostedWindowSpec::new(
+                    title.clone(),
+                    egui::Id::new(format!("dotplot_window_embedded_{}", viewport_seq_id)),
+                    default_size,
+                    min_size,
+                );
+                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                    let backdrop_settings = current_window_backdrop_settings();
+                    paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
+                    egui::ScrollArea::both()
+                        .id_salt(format!(
+                            "dotplot_window_scroll_embedded_{}",
+                            viewport_seq_id
+                        ))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            ui.set_min_size(content_min_size);
+                            self.render_dotplot_workspace_ui(ui);
+                        });
+                });
                 self.show_dotplot_window = open;
                 return;
             }

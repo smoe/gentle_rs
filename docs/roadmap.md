@@ -3015,6 +3015,21 @@ order. Durable architecture constraints and decisions remain in
   - GENtle now works around this by forcing `Context::set_embed_viewports(true)`
     on macOS, so auxiliary windows render as embedded windows until the
     upstream native viewport lifecycle issue is resolved
+  - hosted/specialist working windows now share
+    `egui_compat::HostedWindowSpec` / `show_hosted_window`, centralizing stable
+    egui IDs, safe-area clamping, foreground-on-focus ordering, viewport-builder
+    defaults, and legacy title-layer cleanup
+  - migrated first-pass high-risk shells include the hosted project workspace,
+    DNA sequence windows, Help, Configuration, Command Palette, Operation
+    History, reference/retrieve/BLAST helpers, Protein Evidence, GenBank/dbSNP,
+    Track Import, Gibson, PCR Designer, Sequencing Confirmation, Planning,
+    Routine Assistant, Agent Assistant, rack/preview windows, and DNA-owned
+    auxiliary workspaces such as Splicing Expert, RNA-read Mapping, Dotplot,
+    Isoform Expert, and Variant/Promoter follow-up
+  - follow-up: add a smaller modal wrapper for the remaining one-shot prompts
+    that are explicitly allowlisted today (unsaved changes, about,
+    confirmation/removal dialogs, operation failure, prepared-genome choice,
+    cache cleanup, and related centered prompts)
 - Slow-open diagnostics now emit status-bar timing hints when:
   - native macOS `GENtle Help...` menu dispatch to app-loop consumption exceeds
     a threshold

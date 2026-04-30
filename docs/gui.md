@@ -78,6 +78,10 @@ macOS auxiliary-window stability note:
   macOS until the upstream viewport lifecycle bug is understood or fixed.
 - The project/lineage surface should therefore open as one draggable/resizable
   hosted peer window again, rather than filling the root host as if maximized.
+- Hosted and specialist working windows are expected to route through the shared
+  `src/egui_compat.rs` `HostedWindowSpec` / `show_hosted_window` wrapper. The
+  wrapper owns stable egui ids, safe-area clamping, foreground-on-focus ordering,
+  viewport-builder defaults, and cleanup of stale title-derived layers.
 - Hosted windows are kept inside a small safety inset from the root workspace
   edges so resizing/moving them does not immediately hit the physical screen
   border and trigger the macOS menu bar or Dock.
@@ -127,6 +131,9 @@ macOS auxiliary-window stability note:
   Splicing Expert and RNA-read Mapping, route `Windows` menu focus through the
   owning sequence window so the auxiliary workspace is raised above the large
   DNA viewer instead of remaining hidden behind it.
+- Simple one-shot modal prompts such as unsaved-changes, removal confirmation,
+  cache cleanup, operation failure, and prepared-genome choice dialogs are still
+  intentionally deferred from the hosted-window wrapper migration.
 
 ## Configuration Window
 
