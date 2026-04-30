@@ -24,6 +24,9 @@ order. Durable architecture constraints and decisions remain in
     `data/genomes` / `data/helper_genomes` roots
   - `genomes status` / `helpers status` now report the effective cache root and
     emit a concrete `prepare_command` hint when no prepared install exists
+  - prepare activity markers now treat dead Unix `owner_pid` values as stale
+    and reused-running prepare messages report the effective install/activity
+    path so relative catalog-local cache roots are inspectable
 - Catalog-loading groundwork now also accepts either one JSON catalog file or
   one directory of JSON fragments for both reference and helper catalogs:
   - `GenomeCatalog::from_json_file(...)` now accepts a directory path and

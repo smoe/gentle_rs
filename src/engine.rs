@@ -7396,10 +7396,31 @@ impl GentleEngine {
         report: &PrepareGenomeReport,
     ) -> String {
         if report.lifecycle_status == "running" && report.reused_existing_activity {
-            let cache_suffix = cache_dir
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(|value| format!(" in '{}'", value))
+            let activity_location_suffix = report
+                .current_activity
+                .as_ref()
+                .and_then(|activity| {
+                    let status_path = activity.status_path.trim();
+                    if status_path.is_empty() {
+                        return None;
+                    }
+                    let install_dir = Path::new(status_path)
+                        .parent()
+                        .map(|path| path.display().to_string())
+                        .filter(|value| !value.is_empty());
+                    Some(match install_dir {
+                        Some(install_dir) => {
+                            format!(" in '{install_dir}' (activity status: '{status_path}')")
+                        }
+                        None => format!(" (activity status: '{status_path}')"),
+                    })
+                })
+                .or_else(|| {
+                    cache_dir
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| format!(" in '{}'", value))
+                })
                 .unwrap_or_default();
             let phase_suffix = report
                 .current_activity
@@ -7409,7 +7430,7 @@ impl GentleEngine {
                 .unwrap_or_default();
             return format!(
                 "Genome preparation for '{}' is already running{}{}.",
-                genome_id, cache_suffix, phase_suffix
+                genome_id, activity_location_suffix, phase_suffix
             );
         }
         let status = if report.reused_existing {
