@@ -43,11 +43,11 @@ use crate::{
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP,
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
-        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
-        FeatureBedCoordinateMode, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
-        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
-        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
-        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
+        DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine, EngineError,
+        ErrorCode, FeatureBedCoordinateMode, FeatureExpertTarget, FeatureExpertView,
+        FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope,
+        GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription, GentleEngine,
+        GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
         InlineSequenceTopology, LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
         Operation, OperationProgress, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
         PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
@@ -148,6 +148,7 @@ const BLAST_ASYNC_MAX_CONCURRENT_HARD_LIMIT: usize = 256;
 const BLAST_ASYNC_RESTART_INTERRUPTED_ERROR: &str =
     "BLAST async job interrupted by restart/reload before completion";
 static BLAST_ASYNC_JOB_COUNTER: AtomicU64 = AtomicU64::new(1);
+const SHELL_ENGINE_APPLY_STACK_SIZE: usize = 8 * 1024 * 1024;
 
 pub type ShellProgressCallback = Arc<Mutex<Box<dyn FnMut(OperationProgress) -> bool + Send>>>;
 
@@ -19994,10 +19995,143 @@ fn execute_agent_suggested_commands(
 }
 
 /// Execute one parsed shell command with default policy options.
+fn is_reference_or_track_command(command: &ShellCommand) -> bool {
+    matches!(
+        command,
+        ShellCommand::HostsList { .. }
+            | ShellCommand::ReferenceList { .. }
+            | ShellCommand::HelperVocabularyList { .. }
+            | ShellCommand::HelperVocabularyDoctor { .. }
+            | ShellCommand::ReferenceEnsemblAvailable { .. }
+            | ShellCommand::ReferenceInstallEnsembl { .. }
+            | ShellCommand::ReferenceValidateCatalog { .. }
+            | ShellCommand::ReferencePreviewEnsemblSpecs { .. }
+            | ShellCommand::ReferenceUpdateEnsemblSpecs { .. }
+            | ShellCommand::ReferenceStatus { .. }
+            | ShellCommand::ReferenceGenes { .. }
+            | ShellCommand::ReferencePrepare { .. }
+            | ShellCommand::ReferenceRemovePrepared { .. }
+            | ShellCommand::ReferenceRemoveCatalogEntry { .. }
+            | ShellCommand::ReferenceBlast { .. }
+            | ShellCommand::ReferenceBlastAsyncStart { .. }
+            | ShellCommand::ReferenceBlastAsyncStatus { .. }
+            | ShellCommand::ReferenceBlastAsyncCancel { .. }
+            | ShellCommand::ReferenceBlastAsyncList { .. }
+            | ShellCommand::ReferenceBlastTrack { .. }
+            | ShellCommand::ReferenceExtractRegion { .. }
+            | ShellCommand::ReferenceExtractGene { .. }
+            | ShellCommand::ReferenceExtractPromoter { .. }
+            | ShellCommand::ReferencePromoterTfbsSummary { .. }
+            | ShellCommand::ReferencePromoterTfbsSvg { .. }
+            | ShellCommand::ReferenceExtendAnchor { .. }
+            | ShellCommand::ReferenceVerifyAnchor { .. }
+            | ShellCommand::TracksImportBed { .. }
+            | ShellCommand::TracksImportBigWig { .. }
+            | ShellCommand::TracksImportVcf { .. }
+            | ShellCommand::TracksTrackedList
+            | ShellCommand::TracksTrackedAdd { .. }
+            | ShellCommand::TracksTrackedRemove { .. }
+            | ShellCommand::TracksTrackedClear
+            | ShellCommand::TracksTrackedApply { .. }
+    )
+}
+
+#[inline(never)]
+fn execute_stack_safe_reference_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Option<Result<ShellRunResult, String>> {
+    if let ShellCommand::ReferencePrepare {
+        helper_mode,
+        genome_id,
+        catalog_path,
+        cache_dir,
+        timeout_seconds,
+    } = command
+    {
+        return Some(execute_reference_prepare_command(
+            engine,
+            *helper_mode,
+            genome_id,
+            catalog_path,
+            cache_dir,
+            *timeout_seconds,
+        ));
+    }
+    if let ShellCommand::ReferenceExtractRegion {
+        helper_mode,
+        genome_id,
+        chromosome,
+        start_1based,
+        end_1based,
+        output_id,
+        annotation_scope,
+        max_annotation_features,
+        include_genomic_annotation,
+        catalog_path,
+        cache_dir,
+    } = command
+    {
+        return Some(execute_reference_extract_region_command(
+            engine,
+            *helper_mode,
+            genome_id,
+            chromosome,
+            *start_1based,
+            *end_1based,
+            output_id,
+            *annotation_scope,
+            *max_annotation_features,
+            *include_genomic_annotation,
+            catalog_path,
+            cache_dir,
+        ));
+    }
+    if let ShellCommand::ReferenceExtendAnchor {
+        helper_mode,
+        seq_id,
+        side,
+        length_bp,
+        output_id,
+        catalog_path,
+        cache_dir,
+        prepared_genome_id,
+    } = command
+    {
+        return Some(execute_reference_extend_anchor_command(
+            engine,
+            *helper_mode,
+            seq_id,
+            *side,
+            *length_bp,
+            output_id,
+            catalog_path,
+            cache_dir,
+            prepared_genome_id,
+        ));
+    }
+    None
+}
+
+#[inline(never)]
 pub fn execute_shell_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
+    if let Some(result) = execute_stack_safe_reference_command(engine, command) {
+        return result;
+    }
+    execute_shell_command_default(engine, command)
+}
+
+#[inline(never)]
+fn execute_shell_command_default(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    if is_reference_or_track_command(command) {
+        return execute_reference_and_track_command(engine, command);
+    }
     if matches!(
         command,
         ShellCommand::CreateArrangementSerial { .. }
@@ -29140,6 +29274,139 @@ fn execute_configuration_command(
 }
 
 #[inline(never)]
+fn apply_shell_operation_with_expanded_stack(
+    engine: &mut GentleEngine,
+    op: Operation,
+) -> Result<crate::engine::OpResult, EngineError> {
+    let engine_ptr = engine as *mut GentleEngine as usize;
+    let worker = thread::Builder::new()
+        .name("gentle-shell-engine-apply".to_string())
+        .stack_size(SHELL_ENGINE_APPLY_STACK_SIZE)
+        .spawn(move || {
+            // SAFETY: the caller synchronously joins this worker before returning
+            // and does not access `engine` while the worker is running. This keeps
+            // the shared engine operation path intact while avoiding stack-heavy
+            // execution on small test-thread stacks.
+            let engine = unsafe { &mut *(engine_ptr as *mut GentleEngine) };
+            engine.apply(op)
+        })
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not start shell engine worker thread: {error}"),
+        })?;
+    worker.join().map_err(|panic_payload| {
+        let message = panic_payload
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_string())
+            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_string());
+        EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Shell engine worker thread panicked: {message}"),
+        }
+    })?
+}
+
+#[inline(never)]
+fn execute_reference_prepare_command(
+    engine: &mut GentleEngine,
+    helper_mode: bool,
+    genome_id: &str,
+    catalog_path: &Option<String>,
+    cache_dir: &Option<String>,
+    timeout_seconds: Option<u64>,
+) -> Result<ShellRunResult, String> {
+    let binary_preflight = engine.blast_external_binary_preflight_report();
+    let op = Operation::PrepareGenome {
+        genome_id: genome_id.to_string(),
+        catalog_path: operation_catalog_path(catalog_path, helper_mode),
+        cache_dir: cache_dir.clone(),
+        timeout_seconds,
+    };
+    let op_result =
+        apply_shell_operation_with_expanded_stack(engine, op).map_err(|e| e.to_string())?;
+    Ok(ShellRunResult {
+        state_changed: true,
+        output: json!({
+            "binary_preflight": binary_preflight,
+            "result": op_result
+        }),
+    })
+}
+
+#[inline(never)]
+fn execute_reference_extract_region_command(
+    engine: &mut GentleEngine,
+    helper_mode: bool,
+    genome_id: &str,
+    chromosome: &str,
+    start_1based: usize,
+    end_1based: usize,
+    output_id: &Option<String>,
+    annotation_scope: Option<GenomeAnnotationScope>,
+    max_annotation_features: Option<usize>,
+    include_genomic_annotation: Option<bool>,
+    catalog_path: &Option<String>,
+    cache_dir: &Option<String>,
+) -> Result<ShellRunResult, String> {
+    let op_result = apply_shell_operation_with_expanded_stack(
+        engine,
+        Operation::ExtractGenomeRegion {
+            genome_id: genome_id.to_string(),
+            chromosome: chromosome.to_string(),
+            start_1based,
+            end_1based,
+            output_id: output_id.clone(),
+            annotation_scope,
+            max_annotation_features,
+            include_genomic_annotation,
+            catalog_path: operation_catalog_path(catalog_path, helper_mode),
+            cache_dir: cache_dir.clone(),
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    let state_changed =
+        !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+    Ok(ShellRunResult {
+        state_changed,
+        output: json!({ "result": op_result }),
+    })
+}
+
+#[inline(never)]
+fn execute_reference_extend_anchor_command(
+    engine: &mut GentleEngine,
+    helper_mode: bool,
+    seq_id: &str,
+    side: GenomeAnchorSide,
+    length_bp: usize,
+    output_id: &Option<String>,
+    catalog_path: &Option<String>,
+    cache_dir: &Option<String>,
+    prepared_genome_id: &Option<String>,
+) -> Result<ShellRunResult, String> {
+    let op_result = apply_shell_operation_with_expanded_stack(
+        engine,
+        Operation::ExtendGenomeAnchor {
+            seq_id: seq_id.to_string(),
+            side,
+            length_bp,
+            output_id: output_id.clone(),
+            catalog_path: operation_catalog_path(catalog_path, helper_mode),
+            cache_dir: cache_dir.clone(),
+            prepared_genome_id: prepared_genome_id.clone(),
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    let state_changed =
+        !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+    Ok(ShellRunResult {
+        state_changed,
+        output: json!({ "result": op_result }),
+    })
+}
+
+#[inline(never)]
 fn execute_cache_command(
     _engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -29562,6 +29829,9 @@ pub fn execute_shell_command_with_options(
     if matches!(command, ShellCommand::Help { .. }) {
         return execute_help_command(engine, command);
     }
+    if let Some(result) = execute_stack_safe_reference_command(engine, command) {
+        return result;
+    }
     if let ShellCommand::AgentsAsk {
         system_id,
         prompt,
@@ -29849,44 +30119,7 @@ pub fn execute_shell_command_with_options(
     ) {
         return execute_cutrun_command(engine, command);
     }
-    if matches!(
-        command,
-        ShellCommand::HostsList { .. }
-            | ShellCommand::ReferenceList { .. }
-            | ShellCommand::HelperVocabularyList { .. }
-            | ShellCommand::HelperVocabularyDoctor { .. }
-            | ShellCommand::ReferenceEnsemblAvailable { .. }
-            | ShellCommand::ReferenceInstallEnsembl { .. }
-            | ShellCommand::ReferenceValidateCatalog { .. }
-            | ShellCommand::ReferencePreviewEnsemblSpecs { .. }
-            | ShellCommand::ReferenceUpdateEnsemblSpecs { .. }
-            | ShellCommand::ReferenceStatus { .. }
-            | ShellCommand::ReferenceGenes { .. }
-            | ShellCommand::ReferencePrepare { .. }
-            | ShellCommand::ReferenceRemovePrepared { .. }
-            | ShellCommand::ReferenceRemoveCatalogEntry { .. }
-            | ShellCommand::ReferenceBlast { .. }
-            | ShellCommand::ReferenceBlastAsyncStart { .. }
-            | ShellCommand::ReferenceBlastAsyncStatus { .. }
-            | ShellCommand::ReferenceBlastAsyncCancel { .. }
-            | ShellCommand::ReferenceBlastAsyncList { .. }
-            | ShellCommand::ReferenceBlastTrack { .. }
-            | ShellCommand::ReferenceExtractRegion { .. }
-            | ShellCommand::ReferenceExtractGene { .. }
-            | ShellCommand::ReferenceExtractPromoter { .. }
-            | ShellCommand::ReferencePromoterTfbsSummary { .. }
-            | ShellCommand::ReferencePromoterTfbsSvg { .. }
-            | ShellCommand::ReferenceExtendAnchor { .. }
-            | ShellCommand::ReferenceVerifyAnchor { .. }
-            | ShellCommand::TracksImportBed { .. }
-            | ShellCommand::TracksImportBigWig { .. }
-            | ShellCommand::TracksImportVcf { .. }
-            | ShellCommand::TracksTrackedList
-            | ShellCommand::TracksTrackedAdd { .. }
-            | ShellCommand::TracksTrackedRemove { .. }
-            | ShellCommand::TracksTrackedClear
-            | ShellCommand::TracksTrackedApply { .. }
-    ) {
+    if is_reference_or_track_command(command) {
         return execute_reference_and_track_command(engine, command);
     }
     if matches!(
