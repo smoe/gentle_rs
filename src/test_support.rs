@@ -21,6 +21,112 @@ const DEMO_REBASE_WITHREFM: &str = "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n/
 const DEMO_JASPAR_PFM: &str =
     ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n";
 
+fn push_zip_u16(out: &mut Vec<u8>, value: u16) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_zip_u32(out: &mut Vec<u8>, value: u32) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+
+fn zip_crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xffff_ffffu32;
+    for &byte in bytes {
+        crc ^= byte as u32;
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0xedb8_8320 & mask);
+        }
+    }
+    !crc
+}
+
+/// Write a minimal ZIP archive with stored members for tests.
+///
+/// This avoids depending on a host `zip` binary while still exercising the
+/// production unzip-backed resource import paths.
+pub fn write_stored_zip_archive(path: &Path, members: &[(&str, &[u8])]) {
+    let mut out = Vec::new();
+    let mut central = Vec::new();
+
+    for (name, data) in members {
+        let name_bytes = name.as_bytes();
+        assert!(
+            name_bytes.len() <= u16::MAX as usize,
+            "synthetic ZIP member name too long"
+        );
+        assert!(
+            data.len() <= u32::MAX as usize,
+            "synthetic ZIP member too large"
+        );
+        assert!(
+            out.len() <= u32::MAX as usize,
+            "synthetic ZIP local offset too large"
+        );
+
+        let local_offset = out.len() as u32;
+        let crc = zip_crc32(data);
+        let size = data.len() as u32;
+        let name_len = name_bytes.len() as u16;
+
+        push_zip_u32(&mut out, 0x0403_4b50);
+        push_zip_u16(&mut out, 20);
+        push_zip_u16(&mut out, 0);
+        push_zip_u16(&mut out, 0);
+        push_zip_u16(&mut out, 0);
+        push_zip_u16(&mut out, 0);
+        push_zip_u32(&mut out, crc);
+        push_zip_u32(&mut out, size);
+        push_zip_u32(&mut out, size);
+        push_zip_u16(&mut out, name_len);
+        push_zip_u16(&mut out, 0);
+        out.extend_from_slice(name_bytes);
+        out.extend_from_slice(data);
+
+        push_zip_u32(&mut central, 0x0201_4b50);
+        push_zip_u16(&mut central, 20);
+        push_zip_u16(&mut central, 20);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u32(&mut central, crc);
+        push_zip_u32(&mut central, size);
+        push_zip_u32(&mut central, size);
+        push_zip_u16(&mut central, name_len);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u16(&mut central, 0);
+        push_zip_u32(&mut central, 0);
+        push_zip_u32(&mut central, local_offset);
+        central.extend_from_slice(name_bytes);
+    }
+
+    assert!(
+        members.len() <= u16::MAX as usize,
+        "synthetic ZIP has too many members"
+    );
+    assert!(
+        out.len() <= u32::MAX as usize && central.len() <= u32::MAX as usize,
+        "synthetic ZIP central directory too large"
+    );
+
+    let central_offset = out.len() as u32;
+    let central_size = central.len() as u32;
+    out.extend_from_slice(&central);
+    push_zip_u32(&mut out, 0x0605_4b50);
+    push_zip_u16(&mut out, 0);
+    push_zip_u16(&mut out, 0);
+    push_zip_u16(&mut out, members.len() as u16);
+    push_zip_u16(&mut out, members.len() as u16);
+    push_zip_u32(&mut out, central_size);
+    push_zip_u32(&mut out, central_offset);
+    push_zip_u16(&mut out, 0);
+
+    fs::write(path, out).expect("write synthetic ZIP archive");
+}
+
 /// Synthetic project state with one routine-decision trace used in parity tests.
 pub fn decision_trace_fixture_state() -> ProjectState {
     let mut state = ProjectState::default();
