@@ -47,6 +47,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::thread;
 use tempfile::tempdir;
 
 static JASPAR_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -15388,6 +15389,21 @@ fn parse_genomes_verify_anchor_with_prepared_genome() {
 
 #[test]
 fn execute_genomes_extend_anchor_creates_sequence() {
+    assert_genomes_extend_anchor_creates_sequence();
+}
+
+#[test]
+fn execute_genomes_extend_anchor_creates_sequence_on_small_stack() {
+    thread::Builder::new()
+        .name("gentle-test-small-stack-extend-anchor".to_string())
+        .stack_size(256 * 1024)
+        .spawn(assert_genomes_extend_anchor_creates_sequence)
+        .expect("spawn small-stack regression test")
+        .join()
+        .expect("small-stack regression test panicked");
+}
+
+fn assert_genomes_extend_anchor_creates_sequence() {
     let td = tempdir().expect("tempdir");
     let fasta = td.path().join("toy.fa");
     let gtf = td.path().join("toy.gtf");
