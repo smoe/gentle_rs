@@ -1177,36 +1177,23 @@ pub fn prepare_ucsc_rmsk_index(
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::write_stored_zip_archive;
+
     use super::*;
     use tempfile::tempdir;
 
     fn write_synthetic_attract_zip() -> std::path::PathBuf {
         let temp = tempdir().expect("tempdir");
         let root = temp.keep();
-        let db_path = root.join("ATtRACT_db.txt");
-        let pwm_path = root.join("pwm.txt");
-        fs::write(
-            &db_path,
-            "Gene_name\tGene_id\tOrganism\tMatrix_id\tMotif\tLen\tExperiment\tDomain\tPubmed\tQuality_score\nSRSF1\tENSG00000136450\tHomo sapiens\tM001\tGAAGAA\t6\tSELEX\tRRM\t12345\t4.2\nPTBP1\tENSG00000011304\tHomo sapiens\tM002\tUCUU\t4\tCLIP\tRRM\t23456\t3.1\n",
-        )
-        .expect("write attract db");
-        fs::write(
-            &pwm_path,
-            "M001\nA\t5\t0\t0\t0\t5\t5\nC\t0\t5\t0\t0\t0\t0\nG\t0\t0\t5\t0\t0\t0\nT\t0\t0\t0\t5\t0\t0\n\nM003\nA\t1\t1\t1\t1\nC\t1\t1\t1\t1\nG\t1\t1\t1\t1\nT\t1\t1\t1\t1\n",
-        )
-        .expect("write pwm placeholder");
+        let db_text = "Gene_name\tGene_id\tOrganism\tMatrix_id\tMotif\tLen\tExperiment\tDomain\tPubmed\tQuality_score\nSRSF1\tENSG00000136450\tHomo sapiens\tM001\tGAAGAA\t6\tSELEX\tRRM\t12345\t4.2\nPTBP1\tENSG00000011304\tHomo sapiens\tM002\tUCUU\t4\tCLIP\tRRM\t23456\t3.1\n";
+        let pwm_text = "M001\nA\t5\t0\t0\t0\t5\t5\nC\t0\t5\t0\t0\t0\t0\nG\t0\t0\t5\t0\t0\t0\nT\t0\t0\t0\t5\t0\t0\n\nM003\nA\t1\t1\t1\t1\nC\t1\t1\t1\t1\nG\t1\t1\t1\t1\nT\t1\t1\t1\t1\n";
         let archive_path = root.join("attract.zip");
-        let output = Command::new("zip")
-            .arg("-jq")
-            .arg(&archive_path)
-            .arg(&db_path)
-            .arg(&pwm_path)
-            .output()
-            .expect("run zip");
-        assert!(
-            output.status.success(),
-            "zip command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
+        write_stored_zip_archive(
+            &archive_path,
+            &[
+                ("ATtRACT_db.txt", db_text.as_bytes()),
+                ("pwm.txt", pwm_text.as_bytes()),
+            ],
         );
         archive_path
     }

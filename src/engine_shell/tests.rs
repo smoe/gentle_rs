@@ -37,6 +37,7 @@ use crate::ensembl_protein::{
 use crate::test_support::{
     decision_trace_fixture_state, decision_trace_with_construct_reasoning_fixture_state,
     write_demo_pool_json, write_demo_workflow_json, write_demo_workflow_with_shebang,
+    write_stored_zip_archive,
 };
 use gb_io::seq::{Feature, Location};
 use std::env;
@@ -44,7 +45,6 @@ use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
@@ -99,6 +99,12 @@ fn attract_test_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn lock_attract_tests() -> std::sync::MutexGuard<'static, ()> {
+    attract_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn jaspar_test_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -125,17 +131,28 @@ fn with_blast_async_test_overrides<R>(
 ) -> R {
     let _guard = BLAST_ASYNC_TEST_MUTEX
         .lock()
-        .expect("blast async test mutex lock");
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let previous_max =
         BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE.swap(max_concurrent, Ordering::SeqCst);
     let previous_delay =
         BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE.swap(worker_delay_ms, Ordering::SeqCst);
+    struct ResetGuard {
+        previous_max: usize,
+        previous_delay: u64,
+    }
+    impl Drop for ResetGuard {
+        fn drop(&mut self) {
+            clear_blast_async_jobs_for_test();
+            BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE.store(self.previous_delay, Ordering::SeqCst);
+            BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE.store(self.previous_max, Ordering::SeqCst);
+        }
+    }
+    let _reset = ResetGuard {
+        previous_max,
+        previous_delay,
+    };
     clear_blast_async_jobs_for_test();
-    let result = f();
-    clear_blast_async_jobs_for_test();
-    BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE.store(previous_delay, Ordering::SeqCst);
-    BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE.store(previous_max, Ordering::SeqCst);
-    result
+    f()
 }
 
 fn resource_fixture_path(name: &str) -> String {
@@ -195,32 +212,15 @@ fn rmsk_anchored_state(seq_id: &str, anchor_strand: &str) -> ProjectState {
 
 fn write_synthetic_attract_zip(dir: &Path) -> std::path::PathBuf {
     let unique = ATTRACT_RELOAD_TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let case_dir = dir.join(format!("attract_case_{unique}"));
-    fs::create_dir_all(&case_dir).expect("create attract case dir");
-    let db_path = case_dir.join("ATtRACT_db.txt");
-    let pwm_path = case_dir.join("pwm.txt");
-    fs::write(
-        &db_path,
-        "Gene_name\tGene_id\tOrganism\tMatrix_id\tMotif\tLen\tExperiment\tDomain\tPubmed\tQuality_score\nSRSF1\tENSG00000136450\tHomo sapiens\tM001\tGAAGAA\t6\tSELEX\tRRM\t12345\t4.2\nPTBP1\tENSG00000011304\tHomo sapiens\tM002\tUCUU\t4\tCLIP\tRRM\t23456\t3.1\n",
-    )
-    .expect("write attract db");
-    fs::write(
-        &pwm_path,
-        "M001\nA\t5\t0\t0\t0\t5\t5\nC\t0\t5\t0\t0\t0\t0\nG\t0\t0\t5\t0\t0\t0\nT\t0\t0\t0\t5\t0\t0\n",
-    )
-    .expect("write pwm placeholder");
+    let db_text = "Gene_name\tGene_id\tOrganism\tMatrix_id\tMotif\tLen\tExperiment\tDomain\tPubmed\tQuality_score\nSRSF1\tENSG00000136450\tHomo sapiens\tM001\tGAAGAA\t6\tSELEX\tRRM\t12345\t4.2\nPTBP1\tENSG00000011304\tHomo sapiens\tM002\tUCUU\t4\tCLIP\tRRM\t23456\t3.1\n";
+    let pwm_text = "M001\nA\t5\t0\t0\t0\t5\t5\nC\t0\t5\t0\t0\t0\t0\nG\t0\t0\t5\t0\t0\t0\nT\t0\t0\t0\t5\t0\t0\n";
     let archive_path = dir.join(format!("attract_{unique}.zip"));
-    let output = Command::new("zip")
-        .arg("-jq")
-        .arg(&archive_path)
-        .arg(&db_path)
-        .arg(&pwm_path)
-        .output()
-        .expect("run zip");
-    assert!(
-        output.status.success(),
-        "zip command failed: {}",
-        String::from_utf8_lossy(&output.stderr)
+    write_stored_zip_archive(
+        &archive_path,
+        &[
+            ("ATtRACT_db.txt", db_text.as_bytes()),
+            ("pwm.txt", pwm_text.as_bytes()),
+        ],
     );
     archive_path
 }
@@ -12073,7 +12073,9 @@ fn execute_primers_design_with_options_emits_primer_progress() {
 
 #[test]
 fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
-    let _guard = BLAST_ASYNC_TEST_MUTEX.lock().expect("blast mutex");
+    let _guard = BLAST_ASYNC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     clear_blast_async_jobs_for_test();
     let mut engine = GentleEngine::new();
     let start = execute_shell_command(
@@ -12306,7 +12308,7 @@ fn execute_export_run_bundle_matches_engine_construct_reasoning_block() {
 
 #[test]
 fn execute_async_blast_start_queues_when_capacity_is_reached() {
-    with_blast_async_test_overrides(1, 2000, || {
+    with_blast_async_test_overrides(1, 500, || {
         let mut engine = GentleEngine::new();
         let start_one = execute_shell_command(
             &mut engine,
@@ -12397,7 +12399,7 @@ fn execute_async_blast_start_queues_when_capacity_is_reached() {
 
         let mut observed_non_queued = start_two_state == Some("running");
         if !observed_non_queued {
-            for _ in 0..80 {
+            for _ in 0..200 {
                 let status = execute_shell_command(
                     &mut engine,
                     &ShellCommand::ReferenceBlastAsyncStatus {
@@ -14089,7 +14091,7 @@ fn execute_resources_benchmark_jaspar_writes_report_and_returns_payload() {
 
 #[test]
 fn execute_resources_sync_attract_with_local_fixture() {
-    let _serial = attract_test_lock().lock().expect("attract test lock");
+    let _serial = lock_attract_tests();
     struct ReloadResetGuard;
     impl Drop for ReloadResetGuard {
         fn drop(&mut self) {
@@ -14211,7 +14213,7 @@ fn execute_resources_list_jaspar_writes_report_and_returns_payload() {
 
 #[test]
 fn execute_attract_inspect_splicing_uses_shared_engine_view() {
-    let _serial = attract_test_lock().lock().expect("attract test lock");
+    let _serial = lock_attract_tests();
     struct ReloadResetGuard;
     impl Drop for ReloadResetGuard {
         fn drop(&mut self) {
