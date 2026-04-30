@@ -28639,6 +28639,7 @@ fn execute_batch_command(
 fn execute_rna_reads_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
+    options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     match command {
         ShellCommand::RnaReadsInterpret {
@@ -28659,26 +28660,33 @@ fn execute_rna_reads_command(
             checkpoint_every_reads,
             resume_from_checkpoint,
         } => {
-            let op_result = engine
-                .apply(Operation::InterpretRnaReads {
-                    seq_id: seq_id.clone(),
-                    seed_feature_id: *seed_feature_id,
-                    profile: *profile,
-                    input_path: input_path.clone(),
-                    input_format: *input_format,
-                    scope: *scope,
-                    origin_mode: *origin_mode,
-                    target_gene_ids: target_gene_ids.clone(),
-                    roi_seed_capture_enabled: *roi_seed_capture_enabled,
-                    seed_filter: seed_filter.clone(),
-                    align_config: align_config.clone(),
-                    report_id: report_id.clone(),
-                    report_mode: *report_mode,
-                    checkpoint_path: checkpoint_path.clone(),
-                    checkpoint_every_reads: *checkpoint_every_reads,
-                    resume_from_checkpoint: *resume_from_checkpoint,
-                })
-                .map_err(|e| e.to_string())?;
+            let op = Operation::InterpretRnaReads {
+                seq_id: seq_id.clone(),
+                seed_feature_id: *seed_feature_id,
+                profile: *profile,
+                input_path: input_path.clone(),
+                input_format: *input_format,
+                scope: *scope,
+                origin_mode: *origin_mode,
+                target_gene_ids: target_gene_ids.clone(),
+                roi_seed_capture_enabled: *roi_seed_capture_enabled,
+                seed_filter: seed_filter.clone(),
+                align_config: align_config.clone(),
+                report_id: report_id.clone(),
+                report_mode: *report_mode,
+                checkpoint_path: checkpoint_path.clone(),
+                checkpoint_every_reads: *checkpoint_every_reads,
+                resume_from_checkpoint: *resume_from_checkpoint,
+            };
+            let op_result = if options.progress_callback.is_some() {
+                engine
+                    .apply_with_progress(op, |progress| {
+                        forward_shell_progress(options, progress).unwrap_or(false)
+                    })
+                    .map_err(|e| e.to_string())?
+            } else {
+                engine.apply(op).map_err(|e| e.to_string())?
+            };
             let report = if let Some(id) = report_id
                 .as_deref()
                 .map(str::trim)
@@ -28759,14 +28767,21 @@ fn execute_rna_reads_command(
             align_config_override,
             selected_record_indices,
         } => {
-            let op_result = engine
-                .apply(Operation::AlignRnaReadReport {
-                    report_id: report_id.clone(),
-                    selection: *selection,
-                    align_config_override: align_config_override.clone(),
-                    selected_record_indices: selected_record_indices.clone(),
-                })
-                .map_err(|e| e.to_string())?;
+            let op = Operation::AlignRnaReadReport {
+                report_id: report_id.clone(),
+                selection: *selection,
+                align_config_override: align_config_override.clone(),
+                selected_record_indices: selected_record_indices.clone(),
+            };
+            let op_result = if options.progress_callback.is_some() {
+                engine
+                    .apply_with_progress(op, |progress| {
+                        forward_shell_progress(options, progress).unwrap_or(false)
+                    })
+                    .map_err(|e| e.to_string())?
+            } else {
+                engine.apply(op).map_err(|e| e.to_string())?
+            };
             let report = engine
                 .get_rna_read_report(report_id)
                 .map_err(|e| e.to_string())?;
@@ -30296,7 +30311,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
             | ShellCommand::RnaReadsExportAlignmentDotplotSvg { .. }
     ) {
-        return execute_rna_reads_command(engine, command);
+        return execute_rna_reads_command(engine, command, options);
     }
     if matches!(command, ShellCommand::SetParameter { .. }) {
         return execute_configuration_command(engine, command);
@@ -31768,7 +31783,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsExportScoreDensitySvg { .. }
         | ShellCommand::RnaReadsExportAlignmentsTsv { .. }
         | ShellCommand::RnaReadsExportAlignmentDotplotSvg { .. } => {
-            execute_rna_reads_command(engine, command)?
+            execute_rna_reads_command(engine, command, options)?
         }
         ShellCommand::BatchPlan { .. } | ShellCommand::BatchRun { .. } => {
             execute_batch_command(engine, command)?

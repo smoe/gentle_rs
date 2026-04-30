@@ -21103,6 +21103,131 @@ fn execute_splicing_refs_and_align_commands() {
 }
 
 #[test]
+fn execute_rna_reads_commands_with_options_emit_progress() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let feature_id = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present")
+        .features()
+        .iter()
+        .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        .expect("mRNA feature id");
+    let fasta_dir = tempdir().expect("tempdir");
+    let input_path = fasta_dir.path().join("reads.fa");
+    fs::write(
+            &input_path,
+            ">read_1\nATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCTATGGAAACTACTTCCTAATGGGCCCGGATTCCTTTTCTCTGTGAACCTTCCCGATGATGATGGAGGTGGAATGGAGGAGCCGCAGTCA\n",
+        )
+        .expect("write input fasta");
+    let report_id = "rna_reads_progress_test".to_string();
+    let mut seed_filter = RnaReadSeedFilterConfig::default();
+    seed_filter.kmer_len = 3;
+    seed_filter.min_seed_hit_fraction = 0.0;
+    seed_filter.min_weighted_seed_hit_fraction = 0.0;
+    seed_filter.min_unique_matched_kmers = 0;
+    seed_filter.min_chain_consistency_fraction = 0.0;
+    seed_filter.max_median_transcript_gap = 10_000.0;
+    seed_filter.min_confirmed_exon_transitions = 0;
+    seed_filter.min_transition_support_fraction = 0.0;
+
+    let progress_reads = Arc::new(Mutex::new(Vec::<(usize, bool)>::new()));
+    let callback_reads = Arc::clone(&progress_reads);
+    let progress_callback: ShellProgressCallback =
+        Arc::new(Mutex::new(Box::new(move |progress: OperationProgress| {
+            if let OperationProgress::RnaReadInterpret(p) = progress {
+                callback_reads
+                    .lock()
+                    .expect("progress reads lock")
+                    .push((p.reads_processed, p.done));
+            }
+            true
+        })));
+
+    let run = execute_shell_command_with_options(
+        &mut engine,
+        &ShellCommand::RnaReadsInterpret {
+            seq_id: "seq_a".to_string(),
+            seed_feature_id: feature_id,
+            input_path: input_path.display().to_string(),
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_format: RnaReadInputFormat::Fasta,
+            scope: SplicingScopePreset::AllOverlappingAnyStrand,
+            origin_mode: RnaReadOriginMode::SingleGene,
+            target_gene_ids: vec![],
+            roi_seed_capture_enabled: false,
+            seed_filter,
+            align_config: RnaReadAlignConfig::default(),
+            report_id: Some(report_id.clone()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
+        },
+        &ShellExecutionOptions {
+            allow_screenshots: false,
+            allow_agent_commands: true,
+            progress_callback: Some(progress_callback),
+        },
+    )
+    .expect("execute rna-reads interpret with progress");
+    assert!(run.state_changed);
+    assert_eq!(run.output["report"]["read_count_total"].as_u64(), Some(1));
+    {
+        let progress_reads = progress_reads.lock().expect("progress reads lock");
+        assert!(!progress_reads.is_empty());
+        assert!(progress_reads.iter().any(|(_, done)| *done));
+        assert_eq!(progress_reads.last(), Some(&(1, true)));
+    }
+
+    let align_progress_reads = Arc::new(Mutex::new(Vec::<(usize, bool)>::new()));
+    let callback_reads = Arc::clone(&align_progress_reads);
+    let align_progress_callback: ShellProgressCallback =
+        Arc::new(Mutex::new(Box::new(move |progress: OperationProgress| {
+            if let OperationProgress::RnaReadInterpret(p) = progress {
+                callback_reads
+                    .lock()
+                    .expect("align progress reads lock")
+                    .push((p.reads_processed, p.done));
+            }
+            true
+        })));
+    let align = execute_shell_command_with_options(
+        &mut engine,
+        &ShellCommand::RnaReadsAlignReport {
+            report_id: report_id.clone(),
+            selection: RnaReadHitSelection::All,
+            align_config_override: Some(RnaReadAlignConfig {
+                band_width_bp: 24,
+                min_identity_fraction: 0.60,
+                max_secondary_mappings: 0,
+            }),
+            selected_record_indices: vec![],
+        },
+        &ShellExecutionOptions {
+            allow_screenshots: false,
+            allow_agent_commands: true,
+            progress_callback: Some(align_progress_callback),
+        },
+    )
+    .expect("execute rna-reads align-report with progress");
+    assert!(align.state_changed);
+    {
+        let align_progress_reads = align_progress_reads
+            .lock()
+            .expect("align progress reads lock");
+        assert!(!align_progress_reads.is_empty());
+        assert!(align_progress_reads.iter().any(|(_, done)| *done));
+        assert_eq!(align_progress_reads.last(), Some(&(1, true)));
+    }
+}
+
+#[test]
 fn execute_rna_reads_commands_store_and_export_reports() {
     let mut state = ProjectState::default();
     state

@@ -219,6 +219,10 @@ Post-release work includes:
   scope vocabulary used by `cache inspect|clear` parsing and directly reuses
   `gentle-protocol` for candidate set-operator parsing instead of duplicating
   the engine operation enum.
+- Shared-shell RNA-read `interpret` and `align-report` dispatch now forwards
+  engine progress callbacks when adapters opt in, so long `gentle_cli
+  --progress-stderr rna-reads ...` runs expose live counters instead of relying
+  only on checkpoint files.
 - Shared shell/CLI batch helpers now provide manifest-driven workflow
   expansion:
   - `batch plan` binds TSV/CSV rows into an existing workflow template and

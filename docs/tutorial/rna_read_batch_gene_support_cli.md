@@ -151,7 +151,7 @@ find "$READ_DIR" -maxdepth 1 \( -name '*.fa.gz' -o -name '*.fasta.gz' \) -print0
       report_id="${GENE_ID,,}_${sample}"
       echo "$report_id" >> "$OUT/report_ids.txt"
 
-      cargo run --bin gentle_cli -- --state "$STATE" rna-reads interpret \
+      cargo run --bin gentle_cli -- --state "$STATE" --progress-stderr rna-reads interpret \
         "$SEQ_ID" "$FEATURE_ID" "$path" \
         --report-id "$report_id" \
         --profile nanopore_cdna_v1 \
@@ -172,7 +172,7 @@ If you need sparse family-aware indexing instead, change only the
 interpretation call:
 
 ```bash
-cargo run --bin gentle_cli -- --state "$STATE" rna-reads interpret \
+cargo run --bin gentle_cli -- --state "$STATE" --progress-stderr rna-reads interpret \
   "$SEQ_ID" "$FEATURE_ID" "$path" \
   --report-id "$report_id" \
   --profile nanopore_cdna_v1 \
@@ -192,7 +192,7 @@ Now rerun phase-2 on all retained rows for every report:
 
 ```bash
 while IFS= read -r report_id; do
-  cargo run --bin gentle_cli -- --state "$STATE" rna-reads align-report \
+  cargo run --bin gentle_cli -- --state "$STATE" --progress-stderr rna-reads align-report \
     "$report_id" \
     --selection all
 done < "$OUT/report_ids.txt"
