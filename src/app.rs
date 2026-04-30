@@ -13361,9 +13361,14 @@ Error: `{err}`"
                 return;
             }
         };
-        if matches!(command, ShellCommand::AgentsAsk { .. }) {
+        if matches!(
+            command,
+            ShellCommand::AgentsAsk { .. }
+                | ShellCommand::AgentsPlan { .. }
+                | ShellCommand::AgentsExecutePlan { .. }
+        ) {
             self.agent_status = format!(
-                "Suggestion #{index_1based} rejected: agent-to-agent 'agents ask' is blocked"
+                "Suggestion #{index_1based} rejected: agent-to-agent 'agents ...' commands are blocked"
             );
             self.agent_execution_log.push(AgentCommandExecutionRecord {
                 index_1based,
@@ -13371,7 +13376,7 @@ Error: `{err}`"
                 trigger: trigger.to_string(),
                 ok: false,
                 state_changed: false,
-                summary: "agent-to-agent agents ask blocked".to_string(),
+                summary: "agent-to-agent agents command blocked".to_string(),
                 executed_at_unix_ms: Self::now_unix_ms(),
             });
             return;
@@ -45449,6 +45454,33 @@ mod tests {
         app.agent_preflight_output = Some(crate::agent_transport::AgentSystemPreflight::default());
         app.invalidate_agent_preflight_after_setup_input_change();
         assert!(app.agent_preflight_output.is_none());
+    }
+
+    #[test]
+    fn agent_assistant_suggestions_block_nested_agent_family_commands() {
+        let mut app = GENtleApp::default();
+        for (idx, command) in [
+            "agents ask builtin_echo --prompt 'ask: capabilities'",
+            "agents plan builtin_echo --prompt 'ask: capabilities'",
+            "agents execute-plan @plan.json --candidate-id candidate-1",
+        ]
+        .iter()
+        .enumerate()
+        {
+            app.execute_agent_suggested_command(idx + 1, command, "manual");
+            assert!(
+                app.agent_status.contains("agent-to-agent"),
+                "unexpected status for {command}: {}",
+                app.agent_status
+            );
+            let entry = app
+                .agent_execution_log
+                .last()
+                .expect("blocked command should be logged");
+            assert!(!entry.ok);
+            assert_eq!(entry.command, *command);
+            assert_eq!(entry.summary, "agent-to-agent agents command blocked");
+        }
     }
 
     #[test]

@@ -13127,38 +13127,53 @@ fn execute_agents_execute_plan_requires_confirm_for_mutating_op_candidate() {
 }
 
 #[test]
-fn execute_agents_execute_plan_blocks_nested_agents_ask_candidate() {
-    let plan = serde_json::json!({
-        "schema": "gentle.agent_plan_result.v1",
-        "assistant_message": "ready",
-        "questions": [],
-        "candidates": [
-            {
-                "candidate_id": "candidate-1",
-                "title": "Nested ask",
-                "rationale": "should be blocked",
-                "kind": "shell",
-                "mutating": false,
-                "requires_confirmation": false,
-                "execution_mode": "auto",
-                "shell_command": "agents ask builtin_echo --prompt 'ask: capabilities'"
-            }
-        ]
-    });
-    let mut engine = GentleEngine::from_state(ProjectState::default());
-    let err = execute_shell_command(
-        &mut engine,
-        &ShellCommand::AgentsExecutePlan {
-            plan_input: plan.to_string(),
-            candidate_id: "candidate-1".to_string(),
-            confirm: false,
-        },
-    )
-    .expect_err("nested ask should be blocked");
-    assert!(
-        err.contains("blocks nested agent"),
-        "unexpected error: {err}"
-    );
+fn execute_agents_execute_plan_blocks_nested_agent_family_candidates() {
+    for (label, shell_command) in [
+        (
+            "Nested ask",
+            "agents ask builtin_echo --prompt 'ask: capabilities'",
+        ),
+        (
+            "Nested plan",
+            "agents plan builtin_echo --prompt 'ask: capabilities'",
+        ),
+        (
+            "Nested execute-plan",
+            "agents execute-plan @plan.json --candidate-id candidate-1",
+        ),
+    ] {
+        let plan = serde_json::json!({
+            "schema": "gentle.agent_plan_result.v1",
+            "assistant_message": "ready",
+            "questions": [],
+            "candidates": [
+                {
+                    "candidate_id": "candidate-1",
+                    "title": label,
+                    "rationale": "should be blocked",
+                    "kind": "shell",
+                    "mutating": false,
+                    "requires_confirmation": false,
+                    "execution_mode": "auto",
+                    "shell_command": shell_command
+                }
+            ]
+        });
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::AgentsExecutePlan {
+                plan_input: plan.to_string(),
+                candidate_id: "candidate-1".to_string(),
+                confirm: false,
+            },
+        )
+        .expect_err("nested agent-family command should be blocked");
+        assert!(
+            err.contains("blocks nested agent"),
+            "unexpected error for {label}: {err}"
+        );
+    }
 }
 
 #[test]
