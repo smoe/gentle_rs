@@ -316,6 +316,58 @@ fn ask_agent_system_impl(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn plan_agent_system_impl(
+    state: ProjectState,
+    system_id: &str,
+    prompt: &str,
+    catalog_path: &str,
+    include_state_summary: bool,
+    max_candidates: u32,
+    allow_mutating_candidates: bool,
+) -> Result<serde_json::Value, JsAnyhow> {
+    let mut engine = GentleEngine::from_state(state);
+    let command = ShellCommand::AgentsPlan {
+        system_id: system_id.to_string(),
+        prompt: prompt.to_string(),
+        catalog_path: empty_to_none(catalog_path).map(str::to_string),
+        base_url_override: None,
+        model_override: None,
+        timeout_seconds: None,
+        connect_timeout_seconds: None,
+        read_timeout_seconds: None,
+        max_retries: None,
+        max_response_bytes: None,
+        include_state_summary,
+        max_candidates: (max_candidates > 0).then_some(max_candidates as usize),
+        allow_mutating_candidates,
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("agents plan failed: {e}"))?;
+    Ok(run.output)
+}
+
+fn execute_agent_plan_impl(
+    state: ProjectState,
+    plan_input: &str,
+    candidate_id: &str,
+    confirm: bool,
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
+    let mut engine = GentleEngine::from_state(state);
+    let command = ShellCommand::AgentsExecutePlan {
+        plan_input: plan_input.to_string(),
+        candidate_id: candidate_id.to_string(),
+        confirm,
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("agents execute-plan failed: {e}"))?;
+    Ok(ShellUtilityApplyResponse {
+        state: engine.state().clone(),
+        state_changed: run.state_changed,
+        output: run.output,
+    })
+}
+
 #[op2]
 #[serde]
 fn load_dna(#[string] path: &str) -> Result<DNAsequence, JsAnyhow> {
@@ -578,6 +630,39 @@ fn ask_agent_system(
 
 #[op2]
 #[serde]
+fn plan_agent_system(
+    #[serde] state: Option<ProjectState>,
+    #[string] system_id: &str,
+    #[string] prompt: &str,
+    #[string] catalog_path: &str,
+    include_state_summary: bool,
+    max_candidates: u32,
+    allow_mutating_candidates: bool,
+) -> Result<serde_json::Value, JsAnyhow> {
+    plan_agent_system_impl(
+        state.unwrap_or_default(),
+        system_id,
+        prompt,
+        catalog_path,
+        include_state_summary,
+        max_candidates,
+        allow_mutating_candidates,
+    )
+}
+
+#[op2]
+#[serde]
+fn execute_agent_plan(
+    #[serde] state: Option<ProjectState>,
+    #[string] plan_input: &str,
+    #[string] candidate_id: &str,
+    confirm: bool,
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
+    execute_agent_plan_impl(state.unwrap_or_default(), plan_input, candidate_id, confirm)
+}
+
+#[op2]
+#[serde]
 fn is_reference_genome_prepared(
     #[string] genome_id: &str,
     #[string] catalog_path: &str,
@@ -743,6 +828,8 @@ impl JavaScriptInterface {
             write_back_construct_reasoning_annotation();
         const LIST_AGENT_SYSTEMS: OpDecl = list_agent_systems();
         const ASK_AGENT_SYSTEM: OpDecl = ask_agent_system();
+        const PLAN_AGENT_SYSTEM: OpDecl = plan_agent_system();
+        const EXECUTE_AGENT_PLAN: OpDecl = execute_agent_plan();
         const IS_REFERENCE_GENOME_PREPARED: OpDecl = is_reference_genome_prepared();
         const LIST_REFERENCE_GENOME_GENES: OpDecl = list_reference_genome_genes();
         const BLAST_REFERENCE_GENOME: OpDecl = blast_reference_genome();
@@ -778,6 +865,8 @@ impl JavaScriptInterface {
                 WRITE_BACK_CONSTRUCT_REASONING_ANNOTATION,
                 LIST_AGENT_SYSTEMS,
                 ASK_AGENT_SYSTEM,
+                PLAN_AGENT_SYSTEM,
+                EXECUTE_AGENT_PLAN,
                 IS_REFERENCE_GENOME_PREPARED,
                 LIST_REFERENCE_GENOME_GENES,
                 BLAST_REFERENCE_GENOME,
@@ -878,6 +967,28 @@ impl JavaScriptInterface {
 			          			(opts.include_state_summary === undefined) ? true : !!opts.include_state_summary
 			          		);
 			          	}
+                      function plan_agent_system(state, system_id, prompt, options) {
+                        const opts = options ?? {};
+                        return Deno.core.ops.plan_agent_system(
+                          (state === undefined ? null : state),
+                          system_id,
+                          prompt,
+                          opts.catalog_path ?? "",
+                          (opts.include_state_summary === undefined) ? true : !!opts.include_state_summary,
+                          Number.isInteger(opts.max_candidates) ? opts.max_candidates : 0,
+                          !!opts.allow_mutating_candidates
+                        );
+                      }
+                      function execute_agent_plan(state, plan, candidate_id, options) {
+                        const opts = options ?? {};
+                        const plan_input = (typeof plan === "string") ? plan : JSON.stringify(plan);
+                        return Deno.core.ops.execute_agent_plan(
+                          (state === undefined ? null : state),
+                          plan_input,
+                          candidate_id,
+                          !!opts.confirm
+                        );
+                      }
 	          	function is_reference_genome_prepared(genome_id, catalog_path, cache_dir) {
 	          		const status = Deno.core.ops.is_reference_genome_prepared(genome_id, catalog_path ?? "", cache_dir ?? "");
 	          		return !!status.prepared;
@@ -1389,6 +1500,72 @@ mod tests {
             out.output["invocation"]["system_id"].as_str(),
             Some("builtin_echo")
         );
+    }
+
+    #[test]
+    fn js_plan_agent_system_wrapper_uses_builtin_echo() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    { "id": "builtin_echo", "label": "Built-in Echo", "transport": "builtin_echo" }
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let out = plan_agent_system_impl(
+            ProjectState::default(),
+            "builtin_echo",
+            "auto: state-summary",
+            catalog_path.to_string_lossy().as_ref(),
+            false,
+            1,
+            false,
+        )
+        .expect("plan agent");
+        assert_eq!(out["schema"].as_str(), Some("gentle.agent_plan_result.v1"));
+        assert_eq!(out["candidates"].as_array().map(Vec::len), Some(1));
+        assert_eq!(
+            out["candidates"][0]["shell_command"].as_str(),
+            Some("state-summary")
+        );
+    }
+
+    #[test]
+    fn js_execute_agent_plan_wrapper_runs_shell_candidate() {
+        let plan = serde_json::json!({
+            "schema": "gentle.agent_plan_result.v1",
+            "assistant_message": "ready",
+            "questions": [],
+            "candidates": [
+                {
+                    "candidate_id": "candidate-1",
+                    "title": "Set parameter",
+                    "rationale": "test shell execution",
+                    "kind": "shell",
+                    "mutating": true,
+                    "requires_confirmation": false,
+                    "execution_mode": "auto",
+                    "shell_command": "set-param max_fragments_per_container 123"
+                }
+            ]
+        });
+        let out = execute_agent_plan_impl(
+            ProjectState::default(),
+            &plan.to_string(),
+            "candidate-1",
+            false,
+        )
+        .expect("execute agent plan");
+        assert!(out.state_changed);
+        assert_eq!(
+            out.output["schema"].as_str(),
+            Some("gentle.agent_execution_result.v1")
+        );
+        assert_eq!(out.output["candidate_id"].as_str(), Some("candidate-1"));
     }
 
     #[test]

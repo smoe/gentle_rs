@@ -2976,6 +2976,11 @@ Adapter-equivalence guarantee for UI-intent tools:
   - Nested `agents ask` / `agents plan` / `agents execute-plan` shell payloads
     are rejected.
 
+- JavaScript and Lua wrappers expose the same planner boundary through thin
+  shared-shell-backed helpers:
+  - `plan_agent_system(...)`
+  - `execute_agent_plan(...)`
+
 Machine-facing planner schemas:
 
 - `gentle.agent_plan_request.v1`
