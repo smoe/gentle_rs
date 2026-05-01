@@ -213,6 +213,32 @@ struct SvgViewBox {
     height: f32,
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone)]
+struct VisualSvgLabelBox {
+    role: String,
+    text: String,
+    rect: VisualSvgRect,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy)]
+struct VisualSvgRect {
+    left: f32,
+    top: f32,
+    right: f32,
+    bottom: f32,
+}
+
+#[cfg(test)]
+impl VisualSvgRect {
+    fn intersects_meaningfully(&self, other: &Self) -> bool {
+        let overlap_x = self.right.min(other.right) - self.left.max(other.left);
+        let overlap_y = self.bottom.min(other.bottom) - self.top.max(other.top);
+        overlap_x > 1.5 && overlap_y > 1.5
+    }
+}
+
 /// Assert that a generated SVG preserves the semantic markers used by visual benchmarks.
 #[cfg(test)]
 pub fn assert_visual_svg_lint(svg: &str, expected_roles: &[(&str, usize)]) {
@@ -243,6 +269,7 @@ pub fn assert_visual_svg_lint(svg: &str, expected_roles: &[(&str, usize)]) {
         }
         lint_visual_svg_numeric_attrs(tag, &attrs, view_box);
     }
+    lint_visual_svg_label_readability(svg, view_box);
 
     assert!(
         !role_counts.is_empty(),
@@ -254,6 +281,188 @@ pub fn assert_visual_svg_lint(svg: &str, expected_roles: &[(&str, usize)]) {
             count >= *min_count,
             "expected at least {min_count} SVG elements with data-gentle-role={role:?}, found {count}"
         );
+    }
+}
+
+#[cfg(test)]
+fn lint_visual_svg_label_readability(svg: &str, view_box: SvgViewBox) {
+    let labels = visual_svg_label_boxes(svg);
+    for label in &labels {
+        assert!(
+            visual_svg_rect_is_inside_view_box(label.rect, view_box, 2.0),
+            "SVG {} {:?} label should not be clipped by the viewBox: {:?}",
+            label.role,
+            label.text,
+            label.rect
+        );
+    }
+    for (i, left) in labels.iter().enumerate() {
+        for right in labels.iter().skip(i + 1) {
+            assert!(
+                !left.rect.intersects_meaningfully(&right.rect),
+                "SVG label overlap between {} {:?} at {:?} and {} {:?} at {:?}",
+                left.role,
+                left.text,
+                left.rect,
+                right.role,
+                right.text,
+                right.rect
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+fn visual_svg_label_boxes(svg: &str) -> Vec<VisualSvgLabelBox> {
+    let mut labels = Vec::new();
+    for (tag, text) in visual_svg_text_elements(svg) {
+        let attrs = visual_svg_attrs(tag);
+        let Some(role) = attrs.get("data-gentle-role") else {
+            continue;
+        };
+        if !matches!(role.as_str(), "feature-label" | "restriction-label") {
+            continue;
+        }
+        let text = decode_svg_text(&strip_svg_tags(text));
+        if text.trim().is_empty() {
+            continue;
+        }
+        labels.push(VisualSvgLabelBox {
+            role: role.clone(),
+            rect: visual_svg_text_rect(&attrs, &text),
+            text,
+        });
+    }
+    labels
+}
+
+#[cfg(test)]
+fn visual_svg_text_elements(svg: &str) -> Vec<(&str, &str)> {
+    let mut elements = Vec::new();
+    let mut offset = 0usize;
+    while let Some(relative_start) = svg[offset..].find("<text") {
+        let start = offset + relative_start + 1;
+        let Some(relative_tag_end) = svg[start..].find('>') else {
+            break;
+        };
+        let tag_end = start + relative_tag_end;
+        let content_start = tag_end + 1;
+        let Some(relative_close) = svg[content_start..].find("</text>") else {
+            break;
+        };
+        let close = content_start + relative_close;
+        elements.push((&svg[start..tag_end], &svg[content_start..close]));
+        offset = close + "</text>".len();
+    }
+    elements
+}
+
+#[cfg(test)]
+fn visual_svg_text_rect(attrs: &BTreeMap<String, String>, text: &str) -> VisualSvgRect {
+    let x = parse_svg_float(attrs.get("x").expect("marked SVG text should carry x"));
+    let y = parse_svg_float(attrs.get("y").expect("marked SVG text should carry y"));
+    let font_size = attrs
+        .get("font-size")
+        .map(|value| parse_svg_float(value))
+        .unwrap_or(10.0);
+    let text_anchor = attrs
+        .get("text-anchor")
+        .map(String::as_str)
+        .unwrap_or("start");
+    let width = text.chars().count() as f32 * font_size * 0.61;
+    let (left, right) = match text_anchor {
+        "middle" => (x - width * 0.5, x + width * 0.5),
+        "end" => (x - width, x),
+        _ => (x, x + width),
+    };
+    let dominant_baseline_middle = attrs
+        .get("dominant-baseline")
+        .is_some_and(|value| value == "middle");
+    let (top, bottom) = if dominant_baseline_middle {
+        let half_height = font_size * 0.6;
+        (y - half_height, y + half_height)
+    } else {
+        (y - font_size * 0.82, y + font_size * 0.28)
+    };
+    VisualSvgRect {
+        left,
+        top,
+        right,
+        bottom,
+    }
+}
+
+#[cfg(test)]
+fn visual_svg_rect_is_inside_view_box(
+    rect: VisualSvgRect,
+    view_box: SvgViewBox,
+    tolerance: f32,
+) -> bool {
+    rect.left >= view_box.min_x - tolerance
+        && rect.right <= view_box.min_x + view_box.width + tolerance
+        && rect.top >= view_box.min_y - tolerance
+        && rect.bottom <= view_box.min_y + view_box.height + tolerance
+}
+
+#[cfg(test)]
+fn strip_svg_tags(text: &str) -> String {
+    let mut stripped = String::with_capacity(text.len());
+    let mut in_tag = false;
+    for ch in text.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => stripped.push(ch),
+            _ => {}
+        }
+    }
+    stripped
+}
+
+#[cfg(test)]
+fn decode_svg_text(text: &str) -> String {
+    text.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+}
+
+#[cfg(test)]
+mod visual_svg_lint_tests {
+    use super::*;
+
+    #[test]
+    fn visual_svg_lint_accepts_separated_labels() {
+        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
+<text data-gentle-role="feature-label" x="20" y="30" text-anchor="start" font-family="monospace" font-size="10">Alpha</text>
+<text data-gentle-role="restriction-label" data-gentle-feature-kind="restriction_site" x="120" y="30" text-anchor="start" font-family="monospace" font-size="10">EcoRI</text>
+</svg>"#;
+        assert_visual_svg_lint(svg, &[("feature-label", 1), ("restriction-label", 1)]);
+    }
+
+    #[test]
+    fn visual_svg_lint_rejects_overlapping_labels() {
+        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
+<text data-gentle-role="feature-label" x="20" y="30" text-anchor="start" font-family="monospace" font-size="10">Alpha</text>
+<text data-gentle-role="restriction-label" data-gentle-feature-kind="restriction_site" x="25" y="30" text-anchor="start" font-family="monospace" font-size="10">EcoRI</text>
+</svg>"#;
+        let result =
+            std::panic::catch_unwind(|| assert_visual_svg_lint(svg, &[("feature-label", 1)]));
+        assert!(
+            result.is_err(),
+            "overlapping marked labels should fail lint"
+        );
+    }
+
+    #[test]
+    fn visual_svg_lint_rejects_clipped_labels() {
+        let svg = r#"<svg viewBox="0 0 200 80" width="200" height="80">
+<text data-gentle-role="feature-label" x="198" y="30" text-anchor="start" font-family="monospace" font-size="10">Clipped</text>
+</svg>"#;
+        let result =
+            std::panic::catch_unwind(|| assert_visual_svg_lint(svg, &[("feature-label", 1)]));
+        assert!(result.is_err(), "clipped marked labels should fail lint");
     }
 }
 
