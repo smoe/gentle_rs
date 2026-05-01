@@ -10,7 +10,8 @@ mod shell_docs;
 mod ui_intent;
 
 pub use command::{
-    BatchEmitMode, BatchManifestDelimiter, BatchStateMode, CandidateSetOperator, ShellRunResult,
+    BatchEmitMode, BatchManifestDelimiter, BatchStateMode, CacheCleanupScope, CandidateSetOperator,
+    ShellRunResult,
 };
 pub use parser::split_shell_words;
 pub use shell_docs::{

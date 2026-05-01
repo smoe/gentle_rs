@@ -1,6 +1,6 @@
 # Workspace / Crate Split Plan
 
-Last updated: 2026-04-22
+Last updated: 2026-05-02
 
 Purpose: describe the intended multi-crate end state for GENtle and the order
 in which the current monocrate should be split without breaking the
@@ -42,6 +42,12 @@ Current status:
   `SequenceOrigin`, lineage-node/edge and macro-instance records,
   `Container` / `Arrangement` / `Rack` state, and the built-in rack-profile /
   label-sheet / fill-direction / physical-template enums and helpers;
+- shell-first protocol extraction has now also moved several root-independent
+  `ShellCommand` field contracts into `gentle-protocol`, including render
+  mode, prepared-reference extraction policy enums, genome-track
+  subscriptions, primer backend selection, qPCR/cDNA transcript-targeting
+  enums, restriction-cloning handoff mode, sequence anchors, and
+  prepared-cache cleanup request/mode;
 - the root engine surface currently re-exports those extracted types so
   downstream callers do not need to change all at once.
 - `crates/gentle-render` is no longer only a placeholder:
@@ -53,9 +59,10 @@ Current status:
 - `crates/gentle-shell` is no longer only a placeholder either:
   the glossary-driven shell help rendering layer, shared shell tokenization,
   UI-intent discoverability vocabulary, shell run-result envelope, and several
-  parser-local shell enums now live there. Root-crate shims preserve the old
-  import paths while the full typed `ShellCommand` parser/executor extraction
-  remains staged.
+  parser-local shell enums now live there; it also owns the prepared-cache
+  scope vocabulary used by cache shell commands. Root-crate shims preserve the
+  old import paths while the full typed `ShellCommand` parser/executor
+  extraction remains staged.
 - `crates/gentle-gui` is no longer only a placeholder either:
   the window-backdrop configuration/rendering helper and embedded icon/resource
   helper now live there, with root-crate shims preserving the old import paths

@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-05-01
+Last updated: 2026-05-02
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -208,6 +208,9 @@ Shell modularisation rule:
 - The full typed `ShellCommand` parser may move before the executor only after
   all command field types it needs live in root-independent crates, preferably
   `gentle-protocol`.
+- When a command field type moves to `gentle-protocol`, its stable spelling
+  helpers (`as_str`, labels, extension inference, and similar adapter-facing
+  methods) move with it; lower adapters must not recreate those mappings.
 - The executor moves to `gentle-shell` only after `gentle-engine` owns the
   `GentleEngine` type, avoiding a dependency cycle from `gentle-shell` back to
   the root crate.

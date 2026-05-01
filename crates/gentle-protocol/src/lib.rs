@@ -45,6 +45,357 @@ pub type NodeId = String;
 pub type ContainerId = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Sequence SVG render layout requested by shell/CLI/export adapters.
+pub enum RenderSvgMode {
+    Linear,
+    Circular,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Strand-contextual anchor extension side.
+///
+/// Interpretation is biological 5'/3' relative to anchor strand, not absolute
+/// genomic coordinate direction.
+pub enum GenomeAnchorSide {
+    FivePrime,
+    ThreePrime,
+}
+
+impl GenomeAnchorSide {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FivePrime => "5prime",
+            Self::ThreePrime => "3prime",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Annotation projection policy for prepared/remote genome extraction.
+pub enum GenomeAnnotationScope {
+    None,
+    Core,
+    Full,
+}
+
+impl GenomeAnnotationScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Core => "core",
+            Self::Full => "full",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Interval policy for prepared-reference gene extraction.
+pub enum GenomeGeneExtractMode {
+    #[default]
+    Gene,
+    CodingWithPromoter,
+}
+
+impl GenomeGeneExtractMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Gene => "gene",
+            Self::CodingWithPromoter => "coding_with_promoter",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// External track source format used by tracked-import subscriptions.
+pub enum GenomeTrackSource {
+    #[default]
+    Bed,
+    BigWig,
+    Vcf,
+}
+
+impl GenomeTrackSource {
+    pub fn from_path(path: &str) -> Self {
+        let lower = path.trim().to_ascii_lowercase();
+        if lower.ends_with(".bw") || lower.ends_with(".bigwig") {
+            Self::BigWig
+        } else if lower.ends_with(".vcf") || lower.ends_with(".vcf.gz") {
+            Self::Vcf
+        } else {
+            Self::Bed
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Bed => "BED",
+            Self::BigWig => "BigWig",
+            Self::Vcf => "VCF",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+/// Persisted genome-track import subscription shared by GUI and shell routes.
+pub struct GenomeTrackSubscription {
+    pub source: GenomeTrackSource,
+    pub path: String,
+    pub track_name: Option<String>,
+    pub min_score: Option<f64>,
+    pub max_score: Option<f64>,
+    pub clear_existing: bool,
+}
+
+impl Default for GenomeTrackSubscription {
+    fn default() -> Self {
+        Self {
+            source: GenomeTrackSource::default(),
+            path: String::new(),
+            track_name: None,
+            min_score: None,
+            max_score: None,
+            clear_existing: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Primer-design backend requested by adapter-facing primer/qPCR commands.
+pub enum PrimerDesignBackend {
+    #[default]
+    Auto,
+    Internal,
+    Primer3,
+}
+
+impl PrimerDesignBackend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Internal => "internal",
+            Self::Primer3 => "primer3",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Transcript-aware qPCR design intent for splicing-driven assays.
+pub enum QpcrTranscriptTargetingMode {
+    SharedGene,
+    DistinguishTranscript,
+}
+
+impl Default for QpcrTranscriptTargetingMode {
+    fn default() -> Self {
+        Self::SharedGene
+    }
+}
+
+impl QpcrTranscriptTargetingMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::SharedGene => "shared_gene",
+            Self::DistinguishTranscript => "distinguish_transcript",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Which transcript-specific evidence kind a transcript-distinguishing qPCR
+/// assay must satisfy.
+pub enum QpcrTranscriptSpecificityEvidence {
+    #[default]
+    JunctionOnly,
+    UniqueExonOrChain,
+    EitherPreferJunction,
+}
+
+impl QpcrTranscriptSpecificityEvidence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::JunctionOnly => "junction_only",
+            Self::UniqueExonOrChain => "unique_exon_or_chain",
+            Self::EitherPreferJunction => "either_prefer_junction",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+/// Transcript-row ordering policy for cDNA PCR/qPCR transcript maps.
+pub enum CdnaAssayTranscriptOrder {
+    #[default]
+    TranscriptId,
+    GenomicFirstExon,
+    GenomicLastExon,
+    AntisenseFirstExon,
+}
+
+impl CdnaAssayTranscriptOrder {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::TranscriptId => "transcript_id",
+            Self::GenomicFirstExon => "genomic_first_exon",
+            Self::GenomicLastExon => "genomic_last_exon",
+            Self::AntisenseFirstExon => "antisense_first_exon",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+/// Coordinate system used by portable cDNA PCR/qPCR transcript maps.
+pub enum CdnaAssayTranscriptMapCoordinateMode {
+    #[default]
+    Cdna,
+    GenomicAligned,
+}
+
+impl CdnaAssayTranscriptMapCoordinateMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cdna => "cdna",
+            Self::GenomicAligned => "genomic_aligned",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Restriction-cloning handoff mode for tailed PCR primer workflows.
+pub enum RestrictionCloningPcrHandoffMode {
+    #[default]
+    SingleSite,
+    DirectedPair,
+}
+
+impl RestrictionCloningPcrHandoffMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleSite => "single_site",
+            Self::DirectedPair => "directed_pair",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Cleanup mode for conservative prepared-cache cleanup.
+pub enum PreparedCacheCleanupMode {
+    BlastDbOnly,
+    DerivedIndexesOnly,
+    SelectedPreparedInstalls,
+    AllPreparedInCache,
+}
+
+impl PreparedCacheCleanupMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::BlastDbOnly => "blast_db_only",
+            Self::DerivedIndexesOnly => "derived_indexes_only",
+            Self::SelectedPreparedInstalls => "selected_prepared_installs",
+            Self::AllPreparedInCache => "all_prepared_in_cache",
+        }
+    }
+
+    pub fn allows_orphaned_remnants(self) -> bool {
+        matches!(
+            self,
+            Self::SelectedPreparedInstalls | Self::AllPreparedInCache
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Request payload for deterministic prepared-cache cleanup.
+pub struct PreparedCacheCleanupRequest {
+    pub mode: PreparedCacheCleanupMode,
+    #[serde(default)]
+    pub cache_roots: Vec<String>,
+    #[serde(default)]
+    pub prepared_ids: Vec<String>,
+    #[serde(default)]
+    pub prepared_paths: Vec<String>,
+    #[serde(default)]
+    pub include_orphaned_remnants: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Named boundary selector for local sequence anchors.
+pub enum AnchorBoundary {
+    Start,
+    End,
+    Middle,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Directional expansion selector for local sequence anchors.
+pub enum AnchorDirection {
+    Upstream,
+    Downstream,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Root-independent sequence anchor used by candidate and extraction commands.
+pub enum SequenceAnchor {
+    Position {
+        zero_based: usize,
+    },
+    FeatureBoundary {
+        feature_kind: Option<String>,
+        feature_label: Option<String>,
+        boundary: AnchorBoundary,
+        occurrence: Option<usize>,
+    },
+}
+
+#[cfg(test)]
+mod shell_contract_extraction_tests {
+    use super::{
+        GenomeAnnotationScope, GenomeTrackSource, PreparedCacheCleanupMode,
+        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode,
+    };
+
+    #[test]
+    fn moved_shell_payload_methods_keep_stable_spellings() {
+        assert_eq!(GenomeAnnotationScope::Core.as_str(), "core");
+        assert_eq!(
+            QpcrTranscriptTargetingMode::SharedGene.as_str(),
+            "shared_gene"
+        );
+        assert_eq!(
+            QpcrTranscriptSpecificityEvidence::EitherPreferJunction.as_str(),
+            "either_prefer_junction"
+        );
+        assert_eq!(
+            PreparedCacheCleanupMode::SelectedPreparedInstalls.label(),
+            "selected_prepared_installs"
+        );
+    }
+
+    #[test]
+    fn genome_track_source_detects_common_extensions() {
+        assert_eq!(
+            GenomeTrackSource::from_path("signal.bigWig").label(),
+            "BigWig"
+        );
+        assert_eq!(
+            GenomeTrackSource::from_path("variants.vcf.gz").label(),
+            "VCF"
+        );
+        assert_eq!(GenomeTrackSource::from_path("peaks.bed").label(), "BED");
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// High-level provenance class for how a sequence entered or was derived in
 /// the project graph.
 pub enum SequenceOrigin {

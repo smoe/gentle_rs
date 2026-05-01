@@ -127,8 +127,8 @@ use std::{
 };
 
 pub use gentle_shell::{
-    BatchEmitMode, BatchManifestDelimiter, BatchStateMode, CandidateSetOperator, ShellRunResult,
-    UiIntentAction, UiIntentTarget, UiIntentTargetCatalogRow, split_shell_words,
+    BatchEmitMode, BatchManifestDelimiter, BatchStateMode, CacheCleanupScope, CandidateSetOperator,
+    ShellRunResult, UiIntentAction, UiIntentTarget, UiIntentTargetCatalogRow, split_shell_words,
     ui_intent_target_catalog,
 };
 
@@ -432,35 +432,6 @@ impl MacroTemplatePreflightReport {
     /// Returns true when no hard preflight errors are present.
     fn can_execute(&self) -> bool {
         self.errors.is_empty()
-    }
-}
-
-/// Which prepared-genome cache tree a cleanup command should inspect or mutate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CacheCleanupScope {
-    References,
-    Helpers,
-    Both,
-}
-
-impl CacheCleanupScope {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::References => "references",
-            Self::Helpers => "helpers",
-            Self::Both => "both",
-        }
-    }
-
-    fn default_cache_roots(self) -> Vec<String> {
-        match self {
-            Self::References => vec![configured_reference_genome_cache_dir()],
-            Self::Helpers => vec![configured_helper_genome_cache_dir()],
-            Self::Both => vec![
-                configured_reference_genome_cache_dir(),
-                configured_helper_genome_cache_dir(),
-            ],
-        }
     }
 }
 
@@ -5621,7 +5592,7 @@ impl ShellCommand {
             }
             Self::CacheInspect { scope, cache_dirs } => {
                 let roots = if cache_dirs.is_empty() {
-                    scope.default_cache_roots().join(",")
+                    default_cache_cleanup_roots(*scope).join(",")
                 } else {
                     cache_dirs.join(",")
                 };
@@ -5640,7 +5611,7 @@ impl ShellCommand {
                 include_orphans,
             } => {
                 let roots = if cache_dirs.is_empty() {
-                    scope.default_cache_roots().join(",")
+                    default_cache_cleanup_roots(*scope).join(",")
                 } else {
                     cache_dirs.join(",")
                 };
@@ -10061,7 +10032,7 @@ fn quote_shell_arg(raw: &str) -> String {
 
 fn effective_cache_cleanup_roots(scope: CacheCleanupScope, cache_dirs: &[String]) -> Vec<String> {
     if cache_dirs.is_empty() {
-        scope.default_cache_roots()
+        default_cache_cleanup_roots(scope)
     } else {
         cache_dirs
             .iter()
@@ -10069,6 +10040,17 @@ fn effective_cache_cleanup_roots(scope: CacheCleanupScope, cache_dirs: &[String]
             .filter(|value| !value.is_empty())
             .map(|value| value.to_string())
             .collect()
+    }
+}
+
+fn default_cache_cleanup_roots(scope: CacheCleanupScope) -> Vec<String> {
+    match scope {
+        CacheCleanupScope::References => vec![configured_reference_genome_cache_dir()],
+        CacheCleanupScope::Helpers => vec![configured_helper_genome_cache_dir()],
+        CacheCleanupScope::Both => vec![
+            configured_reference_genome_cache_dir(),
+            configured_helper_genome_cache_dir(),
+        ],
     }
 }
 
@@ -12072,20 +12054,11 @@ fn parse_cache_cleanup_scope_flag(
     scope: &mut CacheCleanupScope,
     token: &str,
 ) -> Result<bool, String> {
-    match token {
-        "--references" => {
-            *scope = CacheCleanupScope::References;
-            Ok(true)
-        }
-        "--helpers" => {
-            *scope = CacheCleanupScope::Helpers;
-            Ok(true)
-        }
-        "--both" => {
-            *scope = CacheCleanupScope::Both;
-            Ok(true)
-        }
-        _ => Ok(false),
+    if let Some(parsed) = CacheCleanupScope::from_flag(token) {
+        *scope = parsed;
+        Ok(true)
+    } else {
+        Ok(false)
     }
 }
 

@@ -121,9 +121,39 @@ impl CandidateSetOperator {
     }
 }
 
+/// Which prepared-genome cache tree a cleanup command should inspect or mutate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheCleanupScope {
+    References,
+    Helpers,
+    Both,
+}
+
+impl CacheCleanupScope {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::References => "references",
+            Self::Helpers => "helpers",
+            Self::Both => "both",
+        }
+    }
+
+    pub fn from_flag(raw: &str) -> Option<Self> {
+        match raw {
+            "--references" => Some(Self::References),
+            "--helpers" => Some(Self::Helpers),
+            "--both" => Some(Self::Both),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{BatchEmitMode, BatchManifestDelimiter, BatchStateMode, CandidateSetOperator};
+    use super::{
+        BatchEmitMode, BatchManifestDelimiter, BatchStateMode, CacheCleanupScope,
+        CandidateSetOperator,
+    };
 
     #[test]
     fn batch_contract_enums_parse_stable_aliases() {
@@ -146,5 +176,16 @@ mod tests {
                 .as_str(),
             "intersect"
         );
+    }
+
+    #[test]
+    fn cache_cleanup_scope_flags_are_stable() {
+        assert_eq!(
+            CacheCleanupScope::from_flag("--helpers")
+                .expect("parse scope")
+                .label(),
+            "helpers"
+        );
+        assert!(CacheCleanupScope::from_flag("--unknown").is_none());
     }
 }
