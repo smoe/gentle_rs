@@ -4747,6 +4747,24 @@ fn parse_primers_seed_from_feature_and_splicing() {
 }
 
 #[test]
+fn parse_features_formula_preserves_expression_tail() {
+    let cmd = parse_shell_line(
+        "features formula seq_a --expr =gene[label=REVGENE].upstream(25) .. gene[label=REVGENE].tss",
+    )
+    .expect("parse features formula");
+    match cmd {
+        ShellCommand::FeaturesResolveFormula { seq_id, expression } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(
+                expression,
+                "=gene[label=REVGENE].upstream(25) .. gene[label=REVGENE].tss"
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_features_query_with_filters() {
     let cmd = parse_shell_line(
         "features query seq_a --kind CDS --kind-not source --range 10..200 --within --strand reverse --label TP73 --label-regex ^TP73 --qual gene --qual-contains note=promoter --qual-regex product=TP73.* --min-len 30 --max-len 500 --limit 50 --offset 5 --sort start --desc --include-source --include-qualifiers",
@@ -10293,6 +10311,49 @@ fn execute_primers_restriction_cloning_handoff_report_commands() {
     );
     let text = fs::read_to_string(&export_path).expect("read handoff export");
     assert!(text.contains("gentle.restriction_cloning_pcr_handoff.v1"));
+}
+
+#[test]
+fn execute_features_formula_matches_shared_feature_coordinate_resolver() {
+    let mut state = ProjectState::default();
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(80)).expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "gene".into(),
+        location: Location::Complement(Box::new(Location::simple_range(80, 120))),
+        qualifiers: vec![("label".into(), Some("REVGENE".to_string()))],
+    });
+    state.sequences.insert("tp73".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let range_cmd = parse_shell_line(
+        "features formula tp73 '=gene[label=REVGENE].upstream(25) .. gene[label=REVGENE].tss'",
+    )
+    .expect("parse range formula");
+    let range = execute_shell_command(&mut engine, &range_cmd).expect("range formula");
+    assert!(!range.state_changed);
+    assert_eq!(
+        range.output["schema"].as_str(),
+        Some("gentle.feature_coordinate_formula_resolution.v1")
+    );
+    assert_eq!(range.output["resolution"].as_str(), Some("range"));
+    assert_eq!(range.output["range"]["start_0based"].as_u64(), Some(120));
+    assert_eq!(
+        range.output["range"]["end_0based_exclusive"].as_u64(),
+        Some(145)
+    );
+    assert_eq!(range.output["range"]["length_bp"].as_u64(), Some(25));
+
+    let coordinate = execute_shell_command(
+        &mut engine,
+        &ShellCommand::FeaturesResolveFormula {
+            seq_id: "tp73".to_string(),
+            expression: "=gene[label=REVGENE].tss".to_string(),
+        },
+    )
+    .expect("coordinate formula");
+    assert!(!coordinate.state_changed);
+    assert_eq!(coordinate.output["resolution"].as_str(), Some("coordinate"));
+    assert_eq!(coordinate.output["coordinate_0based"].as_u64(), Some(120));
 }
 
 #[test]

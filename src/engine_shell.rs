@@ -77,6 +77,8 @@ use crate::{
         UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        parse_feature_coordinate_term_on_sequence,
+        resolve_selection_formula_range_0based_on_sequence, split_feature_formula_range_expression,
     },
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
@@ -1553,6 +1555,10 @@ pub enum ShellCommand {
         oligo_set_id: Option<String>,
         path: String,
         include_qc_checklist: bool,
+    },
+    FeaturesResolveFormula {
+        seq_id: String,
+        expression: String,
     },
     FeaturesQuery {
         query: SequenceFeatureQuery,
@@ -7916,6 +7922,10 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("-"),
                 include_qc_checklist
+            ),
+            Self::FeaturesResolveFormula { seq_id, expression } => format!(
+                "resolve feature-coordinate formula on '{}' ({})",
+                seq_id, expression
             ),
             Self::FeaturesQuery { query } => format!(
                 "query features on '{}' (kinds={}, range={}..{}, relation={}, strand={}, label='{}', qualifiers={}, limit={}, offset={})",
@@ -26094,6 +26104,62 @@ fn execute_feature_scan_command(
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
     match command {
+        ShellCommand::FeaturesResolveFormula { seq_id, expression } => {
+            let dna = engine
+                .state()
+                .sequences
+                .get(seq_id)
+                .ok_or_else(|| format!("Sequence '{seq_id}' not found"))?;
+            let trimmed = expression.trim();
+            if trimmed.is_empty() {
+                return Err("features formula expression must not be empty".to_string());
+            }
+            let formula_body = trimmed.strip_prefix('=').unwrap_or(trimmed).trim();
+            if split_feature_formula_range_expression(formula_body).is_some() {
+                let normalized_expression = if trimmed.starts_with('=') {
+                    trimmed.to_string()
+                } else {
+                    format!("={trimmed}")
+                };
+                let (start_0based, end_0based_exclusive) =
+                    resolve_selection_formula_range_0based_on_sequence(
+                        dna,
+                        &normalized_expression,
+                    )?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": "gentle.feature_coordinate_formula_resolution.v1",
+                        "seq_id": seq_id,
+                        "sequence_length_bp": dna.len(),
+                        "expression": expression,
+                        "resolution": "range",
+                        "range": {
+                            "start_0based": start_0based,
+                            "end_0based_exclusive": end_0based_exclusive,
+                            "length_bp": end_0based_exclusive.saturating_sub(start_0based),
+                        },
+                    }),
+                })
+            } else {
+                let coordinate_0based = parse_feature_coordinate_term_on_sequence(
+                    dna,
+                    formula_body,
+                    "features formula",
+                )?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": "gentle.feature_coordinate_formula_resolution.v1",
+                        "seq_id": seq_id,
+                        "sequence_length_bp": dna.len(),
+                        "expression": expression,
+                        "resolution": "coordinate",
+                        "coordinate_0based": coordinate_0based,
+                    }),
+                })
+            }
+        }
         ShellCommand::FeaturesQuery { query } => {
             let result = engine
                 .query_sequence_features(query.clone())
@@ -29927,7 +29993,8 @@ pub fn execute_shell_command_with_options(
     }
     if matches!(
         command,
-        ShellCommand::FeaturesQuery { .. }
+        ShellCommand::FeaturesResolveFormula { .. }
+            | ShellCommand::FeaturesQuery { .. }
             | ShellCommand::FeaturesExportBed { .. }
             | ShellCommand::FeaturesTfbsSummary { .. }
             | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
@@ -30183,7 +30250,8 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::FeaturesRestrictionScan { .. } => {
             execute_features_restriction_scan_command(engine, command)?
         }
-        ShellCommand::FeaturesQuery { .. }
+        ShellCommand::FeaturesResolveFormula { .. }
+        | ShellCommand::FeaturesQuery { .. }
         | ShellCommand::FeaturesExportBed { .. }
         | ShellCommand::FeaturesTfbsSummary { .. }
         | ShellCommand::FeaturesTfbsScoreTracksSvg { .. }
