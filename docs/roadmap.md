@@ -5404,6 +5404,10 @@ Planned upgrades:
     SVG lint over those markers, checking expected role counts, finite geometry,
     positive dimensions, and viewBox-bounded anchor coordinates before any
     raster/screenshot benchmark work is attempted.
+  - Follow-on (2026-05-01): that lint now estimates marked label text boxes and
+    fails on clipped or meaningfully overlapping `feature-label` /
+    `restriction-label` elements, giving the dense-map fixtures a quantitative
+    readability gate without raster baselines.
 - If benchmark packs include screenshot/raster artifacts, capture and curation
   are manual contributions (agent screenshot route remains disabled by policy).
 - Add explicit label-placement modes where useful (for example,
