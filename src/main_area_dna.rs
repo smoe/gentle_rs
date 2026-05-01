@@ -50216,24 +50216,20 @@ impl MainAreaDna {
             return;
         };
         let mut open = true;
-        egui::Window::new("Operation Failed")
-            .id(egui::Id::new((
-                "dna_operation_failed",
-                self.panel_scope_key(),
-            )))
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.label(message);
-                if ui
-                    .button("Close")
-                    .on_hover_text("Dismiss this error popup")
-                    .clicked()
-                {
-                    self.op_error_popup = None;
-                }
-            });
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Operation Failed",
+            egui::Id::new(("dna_operation_failed", self.panel_scope_key())),
+        );
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.label(message);
+            if ui
+                .button("Close")
+                .on_hover_text("Dismiss this error popup")
+                .clicked()
+            {
+                self.op_error_popup = None;
+            }
+        });
         if !open {
             self.op_error_popup = None;
         }
@@ -50248,48 +50244,48 @@ impl MainAreaDna {
             let Some(dialog) = self.anchor_prepared_choice_dialog.as_mut() else {
                 return;
             };
-            egui::Window::new("Select Prepared Genome")
-                .id(egui::Id::new(("dna_anchor_prepared_choice", popup_scope)))
-                .open(&mut open)
-                .collapsible(false)
-                .resizable(false)
-                .show(ctx, |ui| {
-                    ui.label(format!(
-                        "Requested genome '{}' has multiple compatible prepared references.",
-                        dialog.requested_genome_id
-                    ));
-                    let selected_text = dialog
-                        .options
-                        .get(dialog.selected_index)
-                        .cloned()
-                        .unwrap_or_else(|| "<none>".to_string());
-                    egui::ComboBox::from_id_salt(format!(
-                        "prepared_genome_choice_{}",
-                        dialog.requested_genome_id
-                    ))
-                    .selected_text(selected_text)
-                    .show_ui(ui, |ui| {
-                        for (idx, option) in dialog.options.iter().enumerate() {
-                            ui.selectable_value(&mut dialog.selected_index, idx, option.as_str());
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        if ui
-                            .button("Use selected genome")
-                            .on_hover_text("Continue operation with selected prepared genome")
-                            .clicked()
-                        {
-                            apply_clicked = true;
-                        }
-                        if ui
-                            .button("Cancel")
-                            .on_hover_text("Cancel pending anchored operation")
-                            .clicked()
-                        {
-                            cancel_clicked = true;
-                        }
-                    });
+            let spec = crate::egui_compat::ModalWindowSpec::new(
+                "Select Prepared Genome",
+                egui::Id::new(("dna_anchor_prepared_choice", popup_scope)),
+            )
+            .default_size(egui::vec2(460.0, 140.0));
+            crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+                ui.label(format!(
+                    "Requested genome '{}' has multiple compatible prepared references.",
+                    dialog.requested_genome_id
+                ));
+                let selected_text = dialog
+                    .options
+                    .get(dialog.selected_index)
+                    .cloned()
+                    .unwrap_or_else(|| "<none>".to_string());
+                egui::ComboBox::from_id_salt(format!(
+                    "prepared_genome_choice_{}",
+                    dialog.requested_genome_id
+                ))
+                .selected_text(selected_text)
+                .show_ui(ui, |ui| {
+                    for (idx, option) in dialog.options.iter().enumerate() {
+                        ui.selectable_value(&mut dialog.selected_index, idx, option.as_str());
+                    }
                 });
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Use selected genome")
+                        .on_hover_text("Continue operation with selected prepared genome")
+                        .clicked()
+                    {
+                        apply_clicked = true;
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Cancel pending anchored operation")
+                        .clicked()
+                    {
+                        cancel_clicked = true;
+                    }
+                });
+            });
         }
 
         if !open || cancel_clicked {

@@ -132,8 +132,27 @@ macOS auxiliary-window stability note:
   owning sequence window so the auxiliary workspace is raised above the large
   DNA viewer instead of remaining hidden behind it.
 - Simple one-shot modal prompts such as unsaved-changes, removal confirmation,
-  cache cleanup, operation failure, and prepared-genome choice dialogs are still
-  intentionally deferred from the hosted-window wrapper migration.
+  cache cleanup, operation failure, and prepared-genome choice dialogs route
+  through `src/egui_compat.rs` `ModalWindowSpec` / `show_modal_window`. The modal
+  wrapper owns stable egui ids, foreground ordering, centered placement, and
+  safe-area clamping for prompt-sized shells.
+
+Manual GUI stability checklist for macOS hosted mode:
+
+- Start with default macOS hosted mode; do not set
+  `GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS=1`.
+- Resize the root window down to a small usable viewport and verify project,
+  sequence, Help, Configuration, Background Jobs, and specialist windows keep
+  reachable title bars and resize handles.
+- Open Help, Configuration, a sequence window, and one specialist window; reopen
+  each from its menu route and verify the existing window comes forward without
+  resetting the current tab/scroll/input state.
+- Exercise modal prompts: unsaved-changes, About, removal confirmation,
+  operation failure, prepared-genome choice, and cache cleanup close/cancel
+  buttons should dismiss the prompt they own.
+- Use `Window -> GENtle Open Windows...` or `GENtle -> GENtle Windows...` to
+  focus a background hosted window and verify it rises above the project
+  workspace.
 
 ## Configuration Window
 

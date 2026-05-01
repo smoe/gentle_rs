@@ -558,14 +558,17 @@ impl GENtleApp {
         }
 
         let mut open = self.show_jaspar_expert_dialog;
-        egui::Window::new("JASPAR Expert")
-            .open(&mut open)
-            .resizable(true)
-            .default_size(egui::Vec2::new(1280.0, 900.0))
-            .min_size(egui::Vec2::new(920.0, 640.0))
-            .show(ctx, |ui| {
-                ui.label("Inspect local JASPAR entries through GENtle’s own matrix/scoring path, with optional remote species metadata from the JASPAR REST API.");
-                ui.horizontal(|ui| {
+        let viewport_id = Self::jaspar_expert_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            "JASPAR Expert",
+            egui::Id::new(("jaspar_expert_hosted_window", viewport_id)),
+            viewport_id,
+            egui::Vec2::new(1280.0, 900.0),
+            egui::Vec2::new(920.0, 640.0),
+        );
+        crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            ui.label("Inspect local JASPAR entries through GENtle’s own matrix/scoring path, with optional remote species metadata from the JASPAR REST API.");
+            ui.horizontal(|ui| {
                     ui.label("Filter");
                     ui.text_edit_singleline(&mut self.jaspar_expert_filter);
                     ui.separator();
@@ -599,11 +602,11 @@ impl GENtleApp {
                         self.refresh_jaspar_expert_view();
                     }
                 });
-                if !self.jaspar_expert_status.trim().is_empty() {
-                    ui.small(self.jaspar_expert_status.clone());
-                }
-                ui.separator();
-                ui.columns(2, |columns| {
+            if !self.jaspar_expert_status.trim().is_empty() {
+                ui.small(self.jaspar_expert_status.clone());
+            }
+            ui.separator();
+            ui.columns(2, |columns| {
                     columns[0].vertical(|ui| {
                         let total_entries = self
                             .jaspar_catalog_report
@@ -872,7 +875,13 @@ impl GENtleApp {
                         }
                     });
                 });
-            });
+        });
+        if self.viewport_foreground_requested(viewport_id) {
+            self.set_active_window_viewport(viewport_id);
+            self.pending_focus_viewports.retain(|id| *id != viewport_id);
+            self.finalize_viewport_focus_probe(viewport_id);
+        }
+        self.finalize_viewport_open_probe(viewport_id, "JASPAR Expert");
         self.show_jaspar_expert_dialog = open;
     }
 }

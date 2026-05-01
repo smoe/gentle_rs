@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-04-29
+Last updated: 2026-05-01
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -552,6 +552,11 @@ Practical rule:
 - Route hosted/specialist working windows through `egui_compat::HostedWindowSpec`
   and `show_hosted_window` so stable ids, safe-area clamping, foreground focus,
   viewport-builder defaults, and stale title-layer cleanup stay centralized.
+- Route one-shot GUI prompts through `egui_compat::ModalWindowSpec` and
+  `show_modal_window` so stable ids, foreground ordering, centered placement,
+  close-state reconciliation, and safe-area clamping stay centralized. Direct
+  production `egui::Window::new` calls should remain inside `egui_compat`; tests
+  may use them only to exercise compatibility behavior.
 - Keep anchored-data imports preflighted in UI (detected anchor, matching
   status, projected targets), while execution remains engine-owned.
 - Current GUI-only routing note:

@@ -181,6 +181,16 @@ impl GENtleApp {
                 detail: "Undo/redo operation log".to_string(),
             });
         }
+        if self.show_jobs_panel {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::background_jobs_viewport_id(),
+                ),
+                viewport_id: Self::background_jobs_viewport_id(),
+                title: "Background Jobs".to_string(),
+                detail: "Progress, cancellation, and retry snapshots".to_string(),
+            });
+        }
         if self.show_reference_genome_prepare_dialog {
             let scope = self.genome_dialog_scope;
             entries.push(OpenWindowEntry {
@@ -299,6 +309,16 @@ impl GENtleApp {
                 viewport_id: Self::agent_assistant_viewport_id(),
                 title: "Agent Assistant".to_string(),
                 detail: "Agent chat and per-reply command execution".to_string(),
+            });
+        }
+        if self.show_jaspar_expert_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::jaspar_expert_viewport_id(),
+                ),
+                viewport_id: Self::jaspar_expert_viewport_id(),
+                title: "JASPAR Expert".to_string(),
+                detail: "Motif registry, sequence-logo, and scoring diagnostics".to_string(),
             });
         }
         if self.show_uniprot_dialog {

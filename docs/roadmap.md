@@ -3036,17 +3036,28 @@ order. Durable architecture constraints and decisions remain in
     `egui_compat::HostedWindowSpec` / `show_hosted_window`, centralizing stable
     egui IDs, safe-area clamping, foreground-on-focus ordering, viewport-builder
     defaults, and legacy title-layer cleanup
+  - one-shot modal prompts now share
+    `egui_compat::ModalWindowSpec` / `show_modal_window`, centralizing stable
+    egui IDs, foreground ordering, centered placement, close-state
+    reconciliation, and safe-area clamping for prompt-sized shells
   - migrated first-pass high-risk shells include the hosted project workspace,
     DNA sequence windows, Help, Configuration, Command Palette, Operation
     History, reference/retrieve/BLAST helpers, Protein Evidence, GenBank/dbSNP,
-    Track Import, Gibson, PCR Designer, Sequencing Confirmation, Planning,
-    Routine Assistant, Agent Assistant, rack/preview windows, and DNA-owned
+    Track Import, JASPAR Expert, Gibson, PCR Designer, Sequencing Confirmation,
+    Planning, Routine Assistant, Agent Assistant, rack/preview windows, and DNA-owned
     auxiliary workspaces such as Splicing Expert, RNA-read Mapping, Dotplot,
     Isoform Expert, and Variant/Promoter follow-up
-  - follow-up: add a smaller modal wrapper for the remaining one-shot prompts
-    that are explicitly allowlisted today (unsaved changes, about,
-    confirmation/removal dialogs, operation failure, prepared-genome choice,
-    cache cleanup, and related centered prompts)
+  - migrated modal shells include unsaved changes, About, lineage
+    rename/remove, placement/removal confirmations, operation failure,
+    prepared-genome choice, cache cleanup, and Ensembl/prepared-reference
+    one-shot prompts
+  - direct production `egui::Window::new` calls are guarded by an allowlist-style
+    test that permits them only in `egui_compat` or tests; future hosted
+    working windows should use `show_hosted_window`, and prompt dialogs should
+    use `show_modal_window`
+  - follow-up: keep manual macOS hosted-window QA current and revisit native
+    child viewports only after the upstream egui/eframe lifecycle regression is
+    resolved
 - Slow-open diagnostics now emit status-bar timing hints when:
   - native macOS `GENtle Help...` menu dispatch to app-loop consumption exceeds
     a threshold
