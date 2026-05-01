@@ -218,6 +218,9 @@ Visual consistency rule:
   useful, `data-gentle-feature-kind` attributes on semantic biological glyphs
   so tests and downstream tools can inspect figures without depending only on
   text placement or raster screenshots.
+- Restriction-site hover/popover UI must consume the shared
+  `RestrictionSiteExpertView` detail contract rather than deriving cut
+  geometry, recognition text, or site counts in GUI-only tooltip code.
 - Interaction contracts should be explicit where ambiguity is costly
   (for example, click vs double-click behavior).
 
