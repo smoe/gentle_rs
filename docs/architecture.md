@@ -1146,9 +1146,9 @@ Sequence-linked construct reasoning graph direction:
     `repClass`, and `repFamily` qualifiers for display/filtering.
   - Prepared `rmsk` interval indexes are the shared overlap-service boundary:
     engine, shell, GUI, and future adapters should query/project them through
-    the same coordinate helper, then materialize selected rows as ordinary
-    `repeat_region` sequence features rather than inventing parallel repeat
-    tracks.
+    the same coordinate helper, including chromosome/contig alias resolution,
+    then materialize selected rows as ordinary `repeat_region` sequence features
+    rather than inventing parallel repeat tracks.
   - frontends must not fake non-sequence host facts as anonymous sequence spans
     just to make them visible.
 - Evidence classes must remain explicit rather than collapsed into one opaque

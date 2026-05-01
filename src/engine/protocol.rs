@@ -1166,6 +1166,17 @@ pub struct SequenceRepeatOverlapRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Aggregate repeat-overlap metrics for one class/family/alias bucket.
+pub struct RepeatOverlapSummaryRow {
+    pub rep_class: String,
+    pub rep_family: String,
+    pub normalized_alias: String,
+    pub repeat_count: usize,
+    pub overlap_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// Repeat-overlap lookup over one genome-anchored sequence and prepared rmsk index.
 pub struct SequenceRepeatOverlapReport {
     pub schema: String,
@@ -1181,8 +1192,16 @@ pub struct SequenceRepeatOverlapReport {
     pub query_start_0based: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_end_0based_exclusive: Option<usize>,
+    pub query_length_bp: usize,
     pub matched_repeat_count: usize,
     pub returned_repeat_count: usize,
+    pub total_overlap_bp: usize,
+    pub covered_query_bp: usize,
+    pub coverage_fraction: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nearest_repeat_distance_bp: Option<usize>,
+    #[serde(default)]
+    pub class_summaries: Vec<RepeatOverlapSummaryRow>,
     #[serde(default)]
     pub rows: Vec<SequenceRepeatOverlapRow>,
     #[serde(default)]

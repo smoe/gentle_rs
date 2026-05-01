@@ -16,8 +16,9 @@ use crate::{
     tf_motifs::list_motif_summaries,
     tool_overrides::resolve_tool_executable,
     ucsc_rmsk::{
-        DEFAULT_UCSC_RMSK_ASSEMBLY, DEFAULT_UCSC_RMSK_RESOURCE_PATH, UCSC_RMSK_RESOURCE_SCHEMA,
-        UcscRmskIndexRecommendation, ucsc_rmsk_descriptor, ucsc_rmsk_index_recommendations,
+        DEFAULT_UCSC_RMSK_ASSEMBLY, DEFAULT_UCSC_RMSK_INDEX_PATH, DEFAULT_UCSC_RMSK_RESOURCE_PATH,
+        UCSC_RMSK_INTERVAL_INDEX_SCHEMA, UCSC_RMSK_RESOURCE_SCHEMA, UcscRmskIndexRecommendation,
+        ucsc_rmsk_descriptor, ucsc_rmsk_index_recommendations,
     },
 };
 use serde::Serialize;
@@ -139,7 +140,14 @@ pub struct UcscRmskResourceStatus {
     pub runtime_valid: bool,
     pub runtime_item_count: Option<usize>,
     pub runtime_error: Option<String>,
+    pub interval_index_path: String,
+    pub interval_index_exists: bool,
+    pub interval_index_valid: bool,
+    pub interval_index_item_count: Option<usize>,
+    pub interval_index_chromosome_count: Option<usize>,
+    pub interval_index_error: Option<String>,
     pub active_source: String,
+    pub install_command: String,
     pub index_recommendations: Vec<UcscRmskIndexRecommendation>,
     pub notes: Vec<String>,
 }
@@ -554,6 +562,30 @@ fn count_ucsc_rmsk_snapshot_items(text: &str) -> Result<usize, String> {
         .unwrap_or(0))
 }
 
+fn count_ucsc_rmsk_interval_index_items(text: &str) -> Result<(usize, usize), String> {
+    let parsed: Value = serde_json::from_str(text)
+        .map_err(|e| format!("Could not parse UCSC rmsk interval index JSON: {e}"))?;
+    let schema = parsed
+        .get("schema")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    if schema != UCSC_RMSK_INTERVAL_INDEX_SCHEMA {
+        return Err(format!(
+            "Unexpected UCSC rmsk interval index schema '{schema}'"
+        ));
+    }
+    let rows = parsed
+        .get("row_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
+    let chromosomes = parsed
+        .get("chromosome_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
+    Ok((rows, chromosomes))
+}
+
 fn ucsc_rmsk_status() -> UcscRmskResourceStatus {
     let descriptor = ucsc_rmsk_descriptor(DEFAULT_UCSC_RMSK_ASSEMBLY);
     let runtime_exists = std::path::Path::new(DEFAULT_UCSC_RMSK_RESOURCE_PATH).exists();
@@ -573,16 +605,49 @@ fn ucsc_rmsk_status() -> UcscRmskResourceStatus {
     } else {
         (false, None, None)
     };
-    let active_source = if runtime_valid {
-        "runtime".to_string()
+    let interval_index_exists = std::path::Path::new(DEFAULT_UCSC_RMSK_INDEX_PATH).exists();
+    let (
+        interval_index_valid,
+        interval_index_item_count,
+        interval_index_chromosome_count,
+        interval_index_error,
+    ) = if interval_index_exists {
+        match fs::read_to_string(DEFAULT_UCSC_RMSK_INDEX_PATH)
+            .map_err(|e| format!("Could not read UCSC rmsk interval index: {e}"))
+            .and_then(|text| count_ucsc_rmsk_interval_index_items(&text))
+        {
+            Ok((rows, chromosomes)) if rows > 0 && chromosomes > 0 => {
+                (true, Some(rows), Some(chromosomes), None)
+            }
+            Ok((rows, chromosomes)) => (
+                false,
+                Some(rows),
+                Some(chromosomes),
+                Some("UCSC rmsk interval index is empty".to_string()),
+            ),
+            Err(error) => (false, None, None, Some(error)),
+        }
+    } else {
+        (false, None, None, None)
+    };
+    let active_source = if runtime_valid && interval_index_valid {
+        "runtime_snapshot_and_interval_index".to_string()
+    } else if runtime_valid {
+        "runtime_snapshot_only".to_string()
     } else {
         "known_external_only".to_string()
     };
-    let support_status = if runtime_valid {
-        "runtime_snapshot".to_string()
+    let support_status = if runtime_valid && interval_index_valid {
+        "ready_runtime_index".to_string()
+    } else if runtime_valid {
+        "runtime_snapshot_missing_index".to_string()
     } else {
         "known_external_only".to_string()
     };
+    let install_command = format!(
+        "resources install-ucsc-rmsk --assembly {} --resource-output {} --index-output {}",
+        DEFAULT_UCSC_RMSK_ASSEMBLY, DEFAULT_UCSC_RMSK_RESOURCE_PATH, DEFAULT_UCSC_RMSK_INDEX_PATH
+    );
     UcscRmskResourceStatus {
         resource_id: "ucsc_rmsk".to_string(),
         display_name: "UCSC RepeatMasker rmsk".to_string(),
@@ -597,12 +662,20 @@ fn ucsc_rmsk_status() -> UcscRmskResourceStatus {
         runtime_valid,
         runtime_item_count,
         runtime_error,
+        interval_index_path: DEFAULT_UCSC_RMSK_INDEX_PATH.to_string(),
+        interval_index_exists,
+        interval_index_valid,
+        interval_index_item_count,
+        interval_index_chromosome_count,
+        interval_index_error,
         active_source,
+        install_command,
         index_recommendations: ucsc_rmsk_index_recommendations(),
         notes: vec![
             "UCSC rmsk rows are assembly-specific 0-based half-open RepeatMasker intervals.".to_string(),
-            "Use `resources sync-ucsc-rmsk INPUT.txt_or_txt.gz [OUTPUT.json] --assembly hg38` to create a local normalized snapshot.".to_string(),
+            "Use `resources install-ucsc-rmsk --assembly hg38` to download, normalize, and index the default human RepeatMasker table.".to_string(),
             "Large assemblies should prefer sidecar interval indexes over scanning the JSON snapshot for every extracted region.".to_string(),
+            "The prepared interval index resolves common contig aliases such as chr1/1 and chrM/MT during anchored-sequence projection.".to_string(),
         ],
     }
 }

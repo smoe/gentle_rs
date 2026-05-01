@@ -1128,6 +1128,13 @@ pub enum ShellCommand {
         assembly_database: Option<String>,
         max_records: Option<usize>,
     },
+    ResourcesInstallUcscRmsk {
+        assembly_database: Option<String>,
+        input: Option<String>,
+        resource_output: Option<String>,
+        index_output: Option<String>,
+        max_records: Option<usize>,
+    },
     ResourcesPrepareUcscRmskIndex {
         resource_path: String,
         output: Option<String>,
@@ -1408,6 +1415,9 @@ pub enum ShellCommand {
         include_genomic_annotation: Option<bool>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        rmsk_index_path: Option<String>,
+        max_repeat_features: Option<usize>,
+        append_repeat_features: bool,
     },
     ReferenceExtractGene {
         helper_mode: bool,
@@ -1422,6 +1432,9 @@ pub enum ShellCommand {
         include_genomic_annotation: Option<bool>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        rmsk_index_path: Option<String>,
+        max_repeat_features: Option<usize>,
+        append_repeat_features: bool,
     },
     ReferenceExtractPromoter {
         helper_mode: bool,
@@ -1437,6 +1450,9 @@ pub enum ShellCommand {
         include_genomic_annotation: Option<bool>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        rmsk_index_path: Option<String>,
+        max_repeat_features: Option<usize>,
+        append_repeat_features: bool,
     },
     ReferencePromoterTfbsSummary {
         helper_mode: bool,
@@ -6385,6 +6401,28 @@ impl ShellCommand {
                         .unwrap_or_default()
                 )
             }
+            Self::ResourcesInstallUcscRmsk {
+                assembly_database,
+                input,
+                resource_output,
+                index_output,
+                max_records,
+            } => {
+                let assembly = assembly_database
+                    .as_deref()
+                    .unwrap_or(ucsc_rmsk::DEFAULT_UCSC_RMSK_ASSEMBLY);
+                let source = input
+                    .as_deref()
+                    .unwrap_or("default UCSC hgdownload rmsk.txt.gz URL");
+                format!(
+                    "install UCSC rmsk resource and interval index for assembly '{assembly}' from '{source}' (resource_output={}, index_output={}{})",
+                    resource_output.as_deref().unwrap_or("default"),
+                    index_output.as_deref().unwrap_or("default"),
+                    max_records
+                        .map(|limit| format!(", limit={limit}"))
+                        .unwrap_or_default()
+                )
+            }
             Self::ResourcesPrepareUcscRmskIndex {
                 resource_path,
                 output,
@@ -7146,6 +7184,9 @@ impl ShellCommand {
                 include_genomic_annotation,
                 catalog_path,
                 cache_dir,
+                rmsk_index_path,
+                max_repeat_features,
+                append_repeat_features,
             } => {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
@@ -7171,8 +7212,20 @@ impl ShellCommand {
                 let include_annotation = include_genomic_annotation
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string());
+                let repeat_materialization = rmsk_index_path
+                    .as_deref()
+                    .map(|path| {
+                        format!(
+                            "{path}, max={}, append={}",
+                            max_repeat_features
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "all".to_string()),
+                            append_repeat_features
+                        )
+                    })
+                    .unwrap_or_else(|| "-".to_string());
                 format!(
-                    "extract {label} region {genome_id}:{chromosome}:{start_1based}-{end_1based} (output='{output}', annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, catalog='{catalog}', cache='{cache}')"
+                    "extract {label} region {genome_id}:{chromosome}:{start_1based}-{end_1based} (output='{output}', annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, rmsk_index={repeat_materialization}, catalog='{catalog}', cache='{cache}')"
                 )
             }
             Self::ReferenceExtractGene {
@@ -7188,6 +7241,9 @@ impl ShellCommand {
                 include_genomic_annotation,
                 catalog_path,
                 cache_dir,
+                rmsk_index_path,
+                max_repeat_features,
+                append_repeat_features,
             } => {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
@@ -7222,8 +7278,20 @@ impl ShellCommand {
                 let include_annotation = include_genomic_annotation
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string());
+                let repeat_materialization = rmsk_index_path
+                    .as_deref()
+                    .map(|path| {
+                        format!(
+                            "{path}, max={}, append={}",
+                            max_repeat_features
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "all".to_string()),
+                            append_repeat_features
+                        )
+                    })
+                    .unwrap_or_else(|| "-".to_string());
                 format!(
-                    "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', extract_mode={extract_mode}, promoter_upstream_bp={promoter_upstream_bp}, annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, catalog='{catalog}', cache='{cache}')"
+                    "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', extract_mode={extract_mode}, promoter_upstream_bp={promoter_upstream_bp}, annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, rmsk_index={repeat_materialization}, catalog='{catalog}', cache='{cache}')"
                 )
             }
             Self::ReferenceExtractPromoter {
@@ -7240,6 +7308,9 @@ impl ShellCommand {
                 include_genomic_annotation,
                 catalog_path,
                 cache_dir,
+                rmsk_index_path,
+                max_repeat_features,
+                append_repeat_features,
             } => {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
@@ -7278,8 +7349,20 @@ impl ShellCommand {
                 let include_annotation = include_genomic_annotation
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string());
+                let repeat_materialization = rmsk_index_path
+                    .as_deref()
+                    .map(|path| {
+                        format!(
+                            "{path}, max={}, append={}",
+                            max_repeat_features
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "all".to_string()),
+                            append_repeat_features
+                        )
+                    })
+                    .unwrap_or_else(|| "-".to_string());
                 format!(
-                    "extract {label} promoter '{gene_query}' from '{genome_id}' (occurrence={occ}, transcript_id='{transcript}', output='{output}', upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, catalog='{catalog}', cache='{cache}')"
+                    "extract {label} promoter '{gene_query}' from '{genome_id}' (occurrence={occ}, transcript_id='{transcript}', output='{output}', upstream_bp={upstream_bp}, downstream_bp={downstream_bp}, annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, rmsk_index={repeat_materialization}, catalog='{catalog}', cache='{cache}')"
                 )
             }
             Self::ReferencePromoterTfbsSummary {
@@ -10248,6 +10331,48 @@ fn operation_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> O
         .filter(|v| !v.is_empty())
         .map(|v| v.to_string())
         .or_else(|| helper_mode.then(|| default_catalog_discovery_token(true).to_string()))
+}
+
+fn maybe_materialize_repeats_for_first_created_sequence(
+    engine: &mut GentleEngine,
+    op_result: &mut crate::engine::OpResult,
+    rmsk_index_path: Option<&str>,
+    max_repeat_features: Option<usize>,
+    append_repeat_features: bool,
+) -> Result<Option<crate::engine::OpResult>, String> {
+    let Some(rmsk_index_path) = rmsk_index_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+    let Some(seq_id) = op_result.created_seq_ids.first().cloned() else {
+        op_result.warnings.push(format!(
+            "Requested UCSC rmsk repeat materialization from '{}', but the extraction did not create a sequence.",
+            rmsk_index_path
+        ));
+        return Ok(None);
+    };
+    let repeat_result = engine
+        .apply(Operation::MaterializeRepeatFeatures {
+            seq_id: seq_id.clone(),
+            rmsk_index_path: rmsk_index_path.to_string(),
+            max_features: max_repeat_features,
+            clear_existing: Some(!append_repeat_features),
+            path: None,
+        })
+        .map_err(|e| e.to_string())?;
+    if !op_result.changed_seq_ids.iter().any(|id| id == &seq_id) {
+        op_result.changed_seq_ids.push(seq_id.clone());
+    }
+    op_result.messages.push(format!(
+        "Loaded UCSC rmsk repeat features for extracted sequence '{}' from '{}'",
+        seq_id, rmsk_index_path
+    ));
+    op_result
+        .warnings
+        .extend(repeat_result.warnings.iter().cloned());
+    Ok(Some(repeat_result))
 }
 
 fn resolved_catalog_path<'a>(
@@ -13325,7 +13450,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         "extract-region" => {
             if tokens.len() < 6 {
                 return Err(format!(
-                    "{label} extract-region requires GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+                    "{label} extract-region requires GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
                 ));
             }
             let genome_id = tokens[2].clone();
@@ -13342,6 +13467,9 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             let mut include_genomic_annotation: Option<bool> = None;
             let mut catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
+            let mut rmsk_index_path: Option<String> = None;
+            let mut max_repeat_features: Option<usize> = None;
+            let mut append_repeat_features = false;
             let mut idx = 6usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -13354,6 +13482,29 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     }
                     "--cache-dir" => {
                         cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    "--rmsk-index" | "--repeat-index" => {
+                        rmsk_index_path =
+                            Some(parse_option_path(tokens, &mut idx, "--rmsk-index", label)?)
+                    }
+                    "--max-repeat-features" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--max-repeat-features", label)?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-repeat-features value '{raw}' for {label} extract-region: {e}"
+                            )
+                        })?;
+                        if parsed == 0 {
+                            return Err(format!(
+                                "--max-repeat-features must be >= 1 for {label} extract-region"
+                            ));
+                        }
+                        max_repeat_features = Some(parsed);
+                    }
+                    "--append-repeat-features" | "--append-rmsk-repeats" => {
+                        append_repeat_features = true;
+                        idx += 1;
                     }
                     "--annotation-scope" => {
                         let raw = parse_option_path(tokens, &mut idx, "--annotation-scope", label)?;
@@ -13427,12 +13578,15 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 include_genomic_annotation,
                 catalog_path,
                 cache_dir,
+                rmsk_index_path,
+                max_repeat_features,
+                append_repeat_features,
             })
         }
         "extract-gene" => {
             if tokens.len() < 4 {
                 return Err(format!(
-                    "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+                    "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
                 ));
             }
             let genome_id = tokens[2].clone();
@@ -13446,6 +13600,9 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             let mut include_genomic_annotation: Option<bool> = None;
             let mut catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
+            let mut rmsk_index_path: Option<String> = None;
+            let mut max_repeat_features: Option<usize> = None;
+            let mut append_repeat_features = false;
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -13528,6 +13685,29 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     "--cache-dir" => {
                         cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
+                    "--rmsk-index" | "--repeat-index" => {
+                        rmsk_index_path =
+                            Some(parse_option_path(tokens, &mut idx, "--rmsk-index", label)?)
+                    }
+                    "--max-repeat-features" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--max-repeat-features", label)?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-repeat-features value '{raw}' for {label} extract-gene: {e}"
+                            )
+                        })?;
+                        if parsed == 0 {
+                            return Err(format!(
+                                "--max-repeat-features must be >= 1 for {label} extract-gene"
+                            ));
+                        }
+                        max_repeat_features = Some(parsed);
+                    }
+                    "--append-repeat-features" | "--append-rmsk-repeats" => {
+                        append_repeat_features = true;
+                        idx += 1;
+                    }
                     other => {
                         return Err(format!("Unknown option '{other}' for {label} extract-gene"));
                     }
@@ -13573,12 +13753,15 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 include_genomic_annotation,
                 catalog_path,
                 cache_dir,
+                rmsk_index_path,
+                max_repeat_features,
+                append_repeat_features,
             })
         }
         "extract-promoter" => {
             if tokens.len() < 4 {
                 return Err(format!(
-                    "{label} extract-promoter requires GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+                    "{label} extract-promoter requires GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
                 ));
             }
             let genome_id = tokens[2].clone();
@@ -13593,6 +13776,9 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             let mut include_genomic_annotation: Option<bool> = None;
             let mut catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
+            let mut rmsk_index_path: Option<String> = None;
+            let mut max_repeat_features: Option<usize> = None;
+            let mut append_repeat_features = false;
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -13678,6 +13864,29 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     "--cache-dir" => {
                         cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
+                    "--rmsk-index" | "--repeat-index" => {
+                        rmsk_index_path =
+                            Some(parse_option_path(tokens, &mut idx, "--rmsk-index", label)?)
+                    }
+                    "--max-repeat-features" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--max-repeat-features", label)?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-repeat-features value '{raw}' for {label} extract-promoter: {e}"
+                            )
+                        })?;
+                        if parsed == 0 {
+                            return Err(format!(
+                                "--max-repeat-features must be >= 1 for {label} extract-promoter"
+                            ));
+                        }
+                        max_repeat_features = Some(parsed);
+                    }
+                    "--append-repeat-features" | "--append-rmsk-repeats" => {
+                        append_repeat_features = true;
+                        idx += 1;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for {label} extract-promoter"
@@ -13716,6 +13925,9 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 include_genomic_annotation,
                 catalog_path,
                 cache_dir,
+                rmsk_index_path,
+                max_repeat_features,
+                append_repeat_features,
             })
         }
         "promoter-tfbs-summary" => {
@@ -18171,7 +18383,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
-                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, inspect-jaspar, sync-attract, or status".to_string(),
+                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, inspect-jaspar, sync-attract, or status".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -18306,6 +18518,85 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         input,
                         output,
                         assembly_database,
+                        max_records,
+                    })
+                }
+                "install-ucsc-rmsk" => {
+                    let mut assembly_database: Option<String> = None;
+                    let mut input: Option<String> = None;
+                    let mut resource_output: Option<String> = None;
+                    let mut index_output: Option<String> = None;
+                    let mut max_records: Option<usize> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--assembly" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing DB after --assembly for resources install-ucsc-rmsk"
+                                            .to_string(),
+                                    );
+                                }
+                                assembly_database = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--input" | "--source" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH_OR_URL after --input for resources install-ucsc-rmsk"
+                                            .to_string(),
+                                    );
+                                }
+                                input = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--resource-output" | "--resource" | "--output-resource" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --resource-output for resources install-ucsc-rmsk"
+                                            .to_string(),
+                                    );
+                                }
+                                resource_output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--index-output" | "--index" | "--output-index" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --index-output for resources install-ucsc-rmsk"
+                                            .to_string(),
+                                    );
+                                }
+                                index_output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--limit" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing N after --limit for resources install-ucsc-rmsk"
+                                            .to_string(),
+                                    );
+                                }
+                                max_records = Some(tokens[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --limit '{}' for resources install-ucsc-rmsk: {e}",
+                                        tokens[idx + 1]
+                                    )
+                                })?);
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources install-ucsc-rmsk"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesInstallUcscRmsk {
+                        assembly_database,
+                        input,
+                        resource_output,
+                        index_output,
                         max_records,
                     })
                 }
@@ -18809,7 +19100,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     Ok(ShellCommand::ResourcesStatus)
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-ucsc-rmsk, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, resolve-tf-query, inspect-jaspar or sync-attract)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, resolve-tf-query, inspect-jaspar or sync-attract)"
                 )),
             }
         }
@@ -20070,6 +20361,9 @@ fn execute_stack_safe_reference_command(
         include_genomic_annotation,
         catalog_path,
         cache_dir,
+        rmsk_index_path,
+        max_repeat_features,
+        append_repeat_features,
     } = command
     {
         return Some(execute_reference_extract_region_command(
@@ -20085,6 +20379,9 @@ fn execute_stack_safe_reference_command(
             *include_genomic_annotation,
             catalog_path,
             cache_dir,
+            rmsk_index_path,
+            *max_repeat_features,
+            *append_repeat_features,
         ));
     }
     if let ShellCommand::ReferenceExtendAnchor {
@@ -22161,6 +22458,28 @@ fn execute_export_import_and_resource_command(
                 }),
             })
         }
+        ShellCommand::ResourcesInstallUcscRmsk {
+            assembly_database,
+            input,
+            resource_output,
+            index_output,
+            max_records,
+        } => {
+            let report = resource_sync::install_ucsc_rmsk(
+                assembly_database.as_deref(),
+                input.as_deref(),
+                resource_output.as_deref(),
+                index_output.as_deref(),
+                *max_records,
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!("Installed UCSC rmsk {} row(s) for '{}' (resource='{}', index='{}')", report.row_count, report.assembly_database, report.resource_output, report.index_output),
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::ResourcesPrepareUcscRmskIndex {
             resource_path,
             output,
@@ -23568,8 +23887,11 @@ fn execute_reference_and_track_command(
             include_genomic_annotation,
             catalog_path,
             cache_dir,
+            rmsk_index_path,
+            max_repeat_features,
+            append_repeat_features,
         } => {
-            let op_result = engine
+            let mut op_result = engine
                 .apply(Operation::ExtractGenomeRegion {
                     genome_id: genome_id.clone(),
                     chromosome: chromosome.clone(),
@@ -23583,11 +23905,18 @@ fn execute_reference_and_track_command(
                     cache_dir: cache_dir.clone(),
                 })
                 .map_err(|e| e.to_string())?;
+            let repeat_materialization = maybe_materialize_repeats_for_first_created_sequence(
+                engine,
+                &mut op_result,
+                rmsk_index_path.as_deref(),
+                *max_repeat_features,
+                *append_repeat_features,
+            )?;
             let state_changed =
                 !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
             Ok(ShellRunResult {
                 state_changed,
-                output: json!({ "result": op_result }),
+                output: json!({ "result": op_result, "repeat_materialization": repeat_materialization }),
             })
         }
         ShellCommand::ReferenceExtractGene {
@@ -23603,8 +23932,11 @@ fn execute_reference_and_track_command(
             include_genomic_annotation,
             catalog_path,
             cache_dir,
+            rmsk_index_path,
+            max_repeat_features,
+            append_repeat_features,
         } => {
-            let op_result = engine
+            let mut op_result = engine
                 .apply(Operation::ExtractGenomeGene {
                     genome_id: genome_id.clone(),
                     gene_query: gene_query.clone(),
@@ -23619,11 +23951,18 @@ fn execute_reference_and_track_command(
                     cache_dir: cache_dir.clone(),
                 })
                 .map_err(|e| e.to_string())?;
+            let repeat_materialization = maybe_materialize_repeats_for_first_created_sequence(
+                engine,
+                &mut op_result,
+                rmsk_index_path.as_deref(),
+                *max_repeat_features,
+                *append_repeat_features,
+            )?;
             let state_changed =
                 !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
             Ok(ShellRunResult {
                 state_changed,
-                output: json!({ "result": op_result }),
+                output: json!({ "result": op_result, "repeat_materialization": repeat_materialization }),
             })
         }
         ShellCommand::ReferenceExtractPromoter {
@@ -23640,8 +23979,11 @@ fn execute_reference_and_track_command(
             include_genomic_annotation,
             catalog_path,
             cache_dir,
+            rmsk_index_path,
+            max_repeat_features,
+            append_repeat_features,
         } => {
-            let op_result = engine
+            let mut op_result = engine
                 .apply(Operation::ExtractGenomePromoterSlice {
                     genome_id: genome_id.clone(),
                     gene_query: gene_query.clone(),
@@ -23657,11 +23999,18 @@ fn execute_reference_and_track_command(
                     cache_dir: cache_dir.clone(),
                 })
                 .map_err(|e| e.to_string())?;
+            let repeat_materialization = maybe_materialize_repeats_for_first_created_sequence(
+                engine,
+                &mut op_result,
+                rmsk_index_path.as_deref(),
+                *max_repeat_features,
+                *append_repeat_features,
+            )?;
             let state_changed =
                 !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
             Ok(ShellRunResult {
                 state_changed,
-                output: json!({ "result": op_result }),
+                output: json!({ "result": op_result, "repeat_materialization": repeat_materialization }),
             })
         }
         ShellCommand::ReferencePromoterTfbsSummary {
@@ -29377,8 +29726,11 @@ fn execute_reference_extract_region_command(
     include_genomic_annotation: Option<bool>,
     catalog_path: &Option<String>,
     cache_dir: &Option<String>,
+    rmsk_index_path: &Option<String>,
+    max_repeat_features: Option<usize>,
+    append_repeat_features: bool,
 ) -> Result<ShellRunResult, String> {
-    let op_result = apply_shell_operation_with_expanded_stack(
+    let mut op_result = apply_shell_operation_with_expanded_stack(
         engine,
         Operation::ExtractGenomeRegion {
             genome_id: genome_id.to_string(),
@@ -29394,11 +29746,18 @@ fn execute_reference_extract_region_command(
         },
     )
     .map_err(|e| e.to_string())?;
+    let repeat_materialization = maybe_materialize_repeats_for_first_created_sequence(
+        engine,
+        &mut op_result,
+        rmsk_index_path.as_deref(),
+        max_repeat_features,
+        append_repeat_features,
+    )?;
     let state_changed =
         !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
     Ok(ShellRunResult {
         state_changed,
-        output: json!({ "result": op_result }),
+        output: json!({ "result": op_result, "repeat_materialization": repeat_materialization }),
     })
 }
 
@@ -30105,6 +30464,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ResourcesSyncRebase { .. }
             | ShellCommand::ResourcesSyncJaspar { .. }
             | ShellCommand::ResourcesSyncUcscRmsk { .. }
+            | ShellCommand::ResourcesInstallUcscRmsk { .. }
             | ShellCommand::ResourcesPrepareUcscRmskIndex { .. }
             | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
             | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }
@@ -30699,6 +31059,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesSyncRebase { .. }
         | ShellCommand::ResourcesSyncJaspar { .. }
         | ShellCommand::ResourcesSyncUcscRmsk { .. }
+        | ShellCommand::ResourcesInstallUcscRmsk { .. }
         | ShellCommand::ResourcesPrepareUcscRmskIndex { .. }
         | ShellCommand::ResourcesSuggestUcscRmskIndex { .. }
         | ShellCommand::ResourcesSyncJasparRemoteMetadata { .. }

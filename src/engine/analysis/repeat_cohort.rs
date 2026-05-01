@@ -308,6 +308,68 @@ impl GentleEngine {
         }
     }
 
+    fn covered_repeat_overlap_bp(overlaps: &[crate::ucsc_rmsk::UcscRmskProjectedOverlap]) -> usize {
+        let mut spans = overlaps
+            .iter()
+            .filter_map(|overlap| {
+                (overlap.local_end_0based_exclusive > overlap.local_start_0based).then_some((
+                    overlap.local_start_0based,
+                    overlap.local_end_0based_exclusive,
+                ))
+            })
+            .collect::<Vec<_>>();
+        spans.sort_unstable();
+        let mut covered = 0usize;
+        let mut current: Option<(usize, usize)> = None;
+        for (start, end) in spans {
+            match current {
+                None => current = Some((start, end)),
+                Some((current_start, current_end)) if start <= current_end => {
+                    current = Some((current_start, current_end.max(end)));
+                }
+                Some((current_start, current_end)) => {
+                    covered = covered.saturating_add(current_end.saturating_sub(current_start));
+                    current = Some((start, end));
+                }
+            }
+        }
+        if let Some((start, end)) = current {
+            covered = covered.saturating_add(end.saturating_sub(start));
+        }
+        covered
+    }
+
+    fn repeat_overlap_class_summaries(
+        overlaps: &[crate::ucsc_rmsk::UcscRmskProjectedOverlap],
+    ) -> Vec<RepeatOverlapSummaryRow> {
+        let mut by_key = BTreeMap::<(String, String, String), (usize, usize)>::new();
+        for overlap in overlaps {
+            let interval = &overlap.interval;
+            let key = (
+                interval.rep_class.clone(),
+                interval.rep_family.clone(),
+                interval.normalized_alias.clone(),
+            );
+            let entry = by_key.entry(key).or_insert((0, 0));
+            entry.0 = entry.0.saturating_add(1);
+            entry.1 = entry.1.saturating_add(overlap.overlap_bp);
+        }
+        by_key
+            .into_iter()
+            .map(
+                |((rep_class, rep_family, normalized_alias), (repeat_count, overlap_bp))| {
+                    RepeatOverlapSummaryRow {
+                        rep_class,
+                        rep_family,
+                        normalized_alias,
+                        repeat_count,
+                        overlap_bp,
+                    }
+                },
+            )
+            .collect()
+    }
+
     pub fn query_sequence_repeat_overlaps(
         &self,
         seq_id: &str,
@@ -368,6 +430,23 @@ impl GentleEngine {
             None,
         );
         let matched_repeat_count = overlaps.len();
+        let query_length_bp = end.saturating_sub(start);
+        let total_overlap_bp = overlaps
+            .iter()
+            .map(|overlap| overlap.overlap_bp)
+            .sum::<usize>();
+        let covered_query_bp = Self::covered_repeat_overlap_bp(&overlaps);
+        let coverage_fraction = if query_length_bp == 0 {
+            0.0
+        } else {
+            covered_query_bp as f64 / query_length_bp as f64
+        };
+        let nearest_repeat_distance_bp =
+            crate::ucsc_rmsk::anchor_query_genomic_span(&projection_anchor, Some(start), Some(end))
+                .and_then(|(query_start, query_end)| {
+                    index.nearest_interval_distance_bp(&anchor.chromosome, query_start, query_end)
+                });
+        let class_summaries = Self::repeat_overlap_class_summaries(&overlaps);
         let effective_limit = limit.unwrap_or(usize::MAX);
         let rows = overlaps
             .into_iter()
@@ -396,8 +475,14 @@ impl GentleEngine {
             genome_anchor: Some(anchor),
             query_start_0based: Some(start),
             query_end_0based_exclusive: Some(end),
+            query_length_bp,
             matched_repeat_count,
             returned_repeat_count: rows.len(),
+            total_overlap_bp,
+            covered_query_bp,
+            coverage_fraction,
+            nearest_repeat_distance_bp,
+            class_summaries,
             rows,
             warnings: vec![],
         })
@@ -485,10 +570,15 @@ impl GentleEngine {
                     "genomic_end_1based".into(),
                     Some(overlap.genomic_end_0based_exclusive.to_string()),
                 ),
+                ("score".into(), Some(interval.sw_score.to_string())),
                 ("swScore".into(), Some(interval.sw_score.to_string())),
                 ("milliDiv".into(), Some(interval.milli_div.to_string())),
                 ("milliDel".into(), Some(interval.milli_del.to_string())),
                 ("milliIns".into(), Some(interval.milli_ins.to_string())),
+                (
+                    "rmsk_divergence_percent".into(),
+                    Some(format!("{:.1}", interval.milli_div as f64 / 10.0)),
+                ),
                 ("rmsk_clipped".into(), Some(overlap.clipped.to_string())),
             ],
         }

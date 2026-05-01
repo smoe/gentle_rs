@@ -528,7 +528,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -1631,6 +1631,7 @@ cargo run --bin gentle_cli -- resources status
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
 cargo run --bin gentle_cli -- resources sync-ucsc-rmsk rmsk.txt.gz data/resources/ucsc.rmsk.hg38.json --assembly hg38
+cargo run --bin gentle_cli -- resources install-ucsc-rmsk --assembly hg38
 cargo run --bin gentle_cli -- resources prepare-ucsc-rmsk-index data/resources/ucsc.rmsk.hg38.json data/resources/ucsc.rmsk.hg38.interval-index.json
 cargo run --bin gentle_cli -- resources suggest-ucsc-rmsk-index --assembly hg38 --output rmsk.indexing.json
 cargo run --bin gentle_cli -- resources sync-jaspar-remote-metadata --filter TP --limit 50 data/resources/jaspar.remote_metadata.json
@@ -1823,6 +1824,7 @@ Shared shell command:
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
     - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
+    - `resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]`
     - `resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]`
     - `resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]`
     - `resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]`
@@ -1845,8 +1847,9 @@ Shared shell command:
     - `genomes blast-status JOB_ID [--with-report]`
     - `genomes blast-cancel JOB_ID`
     - `genomes blast-list`
-    - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
-    - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
     - `helpers list [--catalog PATH]`
     - `helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
     - `helpers install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]`
@@ -1860,8 +1863,9 @@ Shared shell command:
     - `helpers blast-status JOB_ID [--with-report]`
     - `helpers blast-cancel JOB_ID`
     - `helpers blast-list`
-    - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
-    - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
     - `proteases list [--filter TEXT] [--output PATH]`
     - `proteases show QUERY [--output PATH]`
     - `proteases digest SEQ_ID PROTEASE[,PROTEASE...] [--output-prefix PREFIX] [--min-length-aa N] [--predict-only]`
@@ -2492,11 +2496,23 @@ Shared shell command:
         `SINE/Alu`, and `LTR/ERV`
       - `repeat-overlaps` uses a prepared interval index plus the selected
         sequence's genome anchor provenance to return clipped local repeat
-        spans with strand flipped correctly on reverse anchors
+        spans with strand flipped correctly on reverse anchors; the prepared
+        index resolves common chromosome aliases such as `1` versus `chr1`
+      - repeat-overlap reports also include neutral summary metrics:
+        query length, total repeat-overlap bp, union-covered query bp, coverage
+        fraction, nearest-repeat distance, and class/family/alias summaries
       - `materialize-repeats` writes those overlaps back as regular
         `repeat_region` features with UCSC `rmsk_*` and
-        `repName`/`repClass`/`repFamily` qualifiers; omit `--append` to replace
-        prior generated UCSC-rmsk features for the sequence
+        `repName`/`repClass`/`repFamily` qualifiers plus score/divergence
+        fields; omit `--append` to replace prior generated UCSC-rmsk features
+        for the sequence
+      - `genomes extract-region|extract-gene|extract-promoter` and matching
+        `helpers ...` commands can immediately materialize repeats on the new
+        anchored sequence with `--rmsk-index PATH`; `--max-repeat-features N`
+        caps the generated annotations and `--append-repeat-features` keeps
+        existing generated rmsk features
+      - materialized repeat features can be exported as BED with
+        `features export-bed SEQ_ID out.bed --kind repeat_region --coordinate-mode genomic --include-qualifiers`
       - `repeat-cohort` builds one repeat-locus row per selected annotation and
         stores all available geometry frames while marking missing transcript,
         UTR, or CDS-stop context explicitly
@@ -3155,6 +3171,15 @@ Resource sync commands:
     `repClass`, `repFamily`, etc.).
   - `--limit N` is intended for fixtures/smoke checks; a limited output is
     marked `truncated=true` and should not be used as a full assembly resource.
+- `resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]`
+  - One-step installer that normalizes the UCSC `rmsk` table and builds the
+    matching interval index sidecar.
+  - With no `--input`, GENtle downloads the UCSC default
+    `goldenPath/<assembly>/database/rmsk.txt.gz` source.
+  - Default hg38 outputs are `data/resources/ucsc.rmsk.hg38.json` and
+    `data/resources/ucsc.rmsk.hg38.interval-index.json`.
+  - Limited installs are rejected for runtime use so fixture snapshots cannot be
+    mistaken for full assembly resources.
 - `resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]`
   - Builds `gentle.ucsc_rmsk_interval_index.v1` from a complete normalized
     resource snapshot.
@@ -3162,7 +3187,8 @@ Resource sync commands:
     `data/resources/ucsc.rmsk.hg38.interval-index.json`.
   - The sidecar groups records by chromosome, stores intervals sorted by
     `(start,end,row_offset)`, and carries class/family and repeat-name lookup
-    dictionaries for deterministic overlap and display filtering.
+    dictionaries plus chromosome-alias mappings for deterministic overlap and
+    display filtering.
   - Truncated snapshots are rejected so smoke-test resources cannot be used as
     full assembly indexes by accident.
 - `resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]`
@@ -3483,7 +3509,7 @@ Genome convenience commands:
   - Requests cooperative cancellation for one async BLAST job.
 - `genomes blast-list`
   - Lists known async genome-BLAST jobs in the current process.
-- `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeRegion`.
   - `--annotation-scope` selects projection policy (`none`, `core`, `full`).
   - Default scope is `core` when neither scope nor legacy flags are set.
@@ -3491,10 +3517,14 @@ Genome convenience commands:
     (`0` disables the cap for explicit unrestricted transfer).
   - legacy `--include-genomic-annotation` maps to `--annotation-scope core`.
   - legacy `--no-include-genomic-annotation` maps to `--annotation-scope none`.
+  - `--rmsk-index PATH` materializes overlapping UCSC rmsk repeats on the
+    extracted anchored sequence; `--max-repeat-features N` caps the generated
+    repeat annotations, and `--append-repeat-features` keeps any pre-existing
+    generated rmsk annotations.
   - Result payload includes `genome_annotation_projection` telemetry.
-- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeGene`.
-- `genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomePromoterSlice`.
   - Derives one unclipped promoter slice directly from transcript TSS geometry.
   - When `--transcript-id` is omitted, GENtle deterministically uses the
@@ -3575,7 +3605,7 @@ Host convenience commands:
   - `--timeout-secs N`: optional prepare-job timebox.
 - `helpers remove-prepared HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes remove-prepared`, with helper-catalog default.
-- `helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-promoter`, with helper-catalog default.
 - `helpers promoter-tfbs-summary HELPER_ID --gene QUERY[::OCCURRENCE][@TRANSCRIPT_ID][#DISPLAY_LABEL] [--gene ...|--gene-json JSON] --motif TOKEN [--motif TOKEN ...|--motifs CSV] [--upstream-bp N] [--downstream-bp N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache-dir PATH] [--path FILE.json]`
   - Same behavior as `genomes promoter-tfbs-summary`, with helper-catalog default.
@@ -3641,14 +3671,14 @@ Host convenience commands:
   - Same behavior as `genomes blast-cancel`, scoped to helper jobs.
 - `helpers blast-list`
   - Same behavior as `genomes blast-list`, scoped to helper jobs.
-- `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-region`, with helper-catalog default.
   - For helper IDs containing `pUC18`/`pUC19`, GENtle auto-attaches a
     canonical MCS `misc_feature` when no MCS annotation is present in source
     annotation and exactly one canonical MCS motif is found.
   - MCS features expose `mcs_expected_sites` with REBASE-normalized enzyme names
     when recognizable from source/fallback annotation text.
-- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-gene`, with helper-catalog default.
   - pUC18/pUC19 helper extractions apply the same automatic MCS fallback
     annotation behavior when applicable (non-unique motif matches are warned and
