@@ -14,6 +14,8 @@
 //! - extracted helper modules first:
 //!   - `main_area_dna/auxiliary_workspaces.rs` for dotplot/splicing/RNA helper
 //!     workspaces
+//!   - `main_area_dna/cutrun_support.rs` for CUT&RUN regulatory-support
+//!     inspection/report UI helpers
 //!   - `main_area_dna/feature_actions.rs` for feature-linked expert/mapping
 //!     action launchers
 //!   - `main_area_dna/formula_controls.rs` for selection/ROI formula parsing
@@ -39,6 +41,9 @@
 
 #[path = "main_area_dna/auxiliary_workspaces.rs"]
 mod auxiliary_workspaces;
+
+#[path = "main_area_dna/cutrun_support.rs"]
+mod cutrun_support;
 
 #[path = "main_area_dna/feature_actions.rs"]
 mod feature_actions;
@@ -68,10 +73,12 @@ use crate::{
         AttractPwmMappingPolicy, AttractRegionClass, AttractSplicingEvidenceHitRow,
         AttractSplicingEvidenceSettings, AttractSplicingEvidenceView,
         CandidateFeatureStrandRelation, CandidateRecord, CandidateSetOperator,
-        ConstructReasoningGraph, ConstructRole, DecisionMethod, DesignDecisionNode, DesignFact,
-        DisplaySettings, DisplayTarget, DotplotMode, DotplotOverlayAnchorExonRef,
-        DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine, EngineError, ErrorCode,
-        EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
+        ConstructReasoningGraph, ConstructRole, CutRunMotifAbsentOccupancyInterpretation,
+        CutRunMotifContextScope, CutRunRegulatoryEvidenceSourceKind, CutRunRegulatorySupportReport,
+        CutRunRegulatoryTfbsConfirmationStatus, CutRunSupportStrength, DecisionMethod,
+        DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget, DotplotMode,
+        DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
+        EngineError, ErrorCode, EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
         GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine,
         JasparCatalogRemoteSummary, LigationProtocol, LinearSequenceLetterLayoutMode,
         MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
@@ -1205,6 +1212,18 @@ struct EngineOpsUiState {
     tfbs_track_similarity_limit: String,
     #[serde(default)]
     tfbs_track_similarity_ranking_metric: TfbsTrackSimilarityRankingMetric,
+    #[serde(default)]
+    cutrun_regulatory_dataset_ids: String,
+    #[serde(default)]
+    cutrun_regulatory_read_report_ids: String,
+    #[serde(default)]
+    cutrun_regulatory_promoter_start_0based: String,
+    #[serde(default)]
+    cutrun_regulatory_promoter_end_0based_exclusive: String,
+    #[serde(default = "default_cutrun_neighbor_window_bp_text")]
+    cutrun_regulatory_neighbor_window_bp: String,
+    #[serde(default)]
+    cutrun_regulatory_species_filters: String,
     #[serde(default = "default_true")]
     tfbs_display_use_llr_bits: bool,
     #[serde(default = "default_zero_f64")]
@@ -1320,6 +1339,7 @@ mod tests {
             AlternativePromoterComparisonRow, AnnotationCandidateSummary, AttractRegionClass,
             AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow,
             AttractSplicingEvidenceSettings, AttractSplicingEvidenceView, ConstructRole,
+            CutRunAlignConfig, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
             DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView,
             EditableStatus, Engine, EvidenceClass, FlexibilityModel, FlexibilityTrack,
             GentleEngine, LinearSequenceLetterLayoutMode, OpResult, Operation,
@@ -3315,6 +3335,141 @@ mod tests {
             TfbsTrackSimilarityRankingMetric::SmoothedSpearman
         );
         assert!(!report.rows.is_empty());
+    }
+
+    #[test]
+    fn cutrun_regulatory_support_gui_uses_shared_engine_report_path() {
+        let td = tempdir().expect("tempdir");
+        let root = td.path();
+        let sp1_consensus = "TATAAA";
+        let supported_prefix = "TTGACCAA";
+        let sequence = format!("{supported_prefix}{sp1_consensus}AACCGGTT");
+        let fasta = root.join("toy.fa");
+        let gtf = root.join("toy.gtf");
+        fs::write(&fasta, format!(">chr1\n{sequence}\n")).expect("write FASTA");
+        fs::write(
+            &gtf,
+            format!(
+                "chr1\tsrc\tgene\t1\t{}\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+                sequence.len()
+            ),
+        )
+        .expect("write GTF");
+        let catalog_path = root.join("catalog.json");
+        let cache_dir = root.join("cache");
+        fs::write(
+            &catalog_path,
+            serde_json::to_string_pretty(&json!({
+                "ToyGenome": {
+                    "sequence_local": fasta.to_string_lossy(),
+                    "annotations_local": gtf.to_string_lossy(),
+                    "cache_dir": cache_dir.to_string_lossy()
+                }
+            }))
+            .expect("serialize catalog"),
+        )
+        .expect("write catalog");
+        let mut engine_value = GentleEngine::new();
+        engine_value
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .expect("prepare toy genome");
+        engine_value
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 1,
+                end_1based: sequence.len(),
+                output_id: Some("seq1".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+            })
+            .expect("extract anchored toy ROI");
+        let dna = {
+            let dna = engine_value
+                .state_mut()
+                .sequences
+                .get_mut("seq1")
+                .expect("extracted sequence");
+            dna.features_mut().push(Feature {
+                kind: "TFBS".into(),
+                location: Location::simple_range(
+                    supported_prefix.len() as i64,
+                    (supported_prefix.len() + sp1_consensus.len()) as i64,
+                ),
+                qualifiers: vec![
+                    ("label".into(), Some("TATAAA".to_string())),
+                    ("bound_moiety".into(), Some("TATAAA".to_string())),
+                ],
+            });
+            dna.clone()
+        };
+        let engine = Arc::new(RwLock::new(engine_value));
+        let reads_path = root.join("cutrun_reads.fa");
+        fs::write(
+            &reads_path,
+            format!(
+                ">support_a\n{supported_prefix}{sp1_consensus}\n>support_b\n{supported_prefix}{sp1_consensus}\n"
+            ),
+        )
+        .expect("write CUT&RUN reads");
+        engine
+            .write()
+            .expect("engine lock")
+            .apply(Operation::InterpretCutRunReads {
+                seq_id: "seq1".to_string(),
+                input_r1_path: Some(reads_path.to_string_lossy().to_string()),
+                input_r2_path: None,
+                dataset_id: None,
+                catalog_path: None,
+                cache_dir: None,
+                input_format: CutRunInputFormat::Fasta,
+                read_layout: CutRunReadLayout::SingleEnd,
+                roi_flank_bp: 0,
+                seed_filter: CutRunSeedFilterConfig {
+                    kmer_len: 4,
+                    min_seed_matches: 1,
+                },
+                align_config: CutRunAlignConfig {
+                    max_mismatches: 0,
+                    min_identity_fraction: 1.0,
+                    max_fragment_span_bp: 64,
+                },
+                deduplicate_fragments: false,
+                report_id: Some("gui_cutrun_reads".to_string()),
+                checkpoint_path: None,
+                checkpoint_every_reads: 10,
+            })
+            .expect("interpret CUT&RUN reads");
+
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
+        area.cutrun_regulatory_read_report_ids = "gui_cutrun_reads".to_string();
+
+        area.inspect_cutrun_regulatory_support_for_active_sequence();
+
+        assert!(
+            area.op_status
+                .contains("CUT&RUN regulatory support for 'seq1'")
+        );
+        let report = area
+            .cached_cutrun_regulatory_support
+            .as_ref()
+            .expect("cached CUT&RUN regulatory-support report");
+        assert_eq!(report.seq_id, "seq1");
+        assert_eq!(report.evidence_sources.len(), 1);
+        assert!(!report.support_windows.is_empty());
+        assert_eq!(report.confirmed_tfbs_rows.len(), 1);
+        assert_eq!(
+            report.confirmed_tfbs_rows[0].motif_label.as_deref(),
+            Some("TATAAA")
+        );
     }
 
     #[test]
@@ -12539,6 +12694,10 @@ fn default_rna_checkpoint_every_reads_text() -> String {
     "10000".to_string()
 }
 
+fn default_cutrun_neighbor_window_bp_text() -> String {
+    "150".to_string()
+}
+
 fn default_rna_align_selection() -> RnaReadHitSelection {
     RnaReadHitSelection::SeedPassed
 }
@@ -13277,6 +13436,13 @@ pub struct MainAreaDna {
     tfbs_track_similarity_include_remote_metadata: bool,
     tfbs_track_similarity_limit: String,
     tfbs_track_similarity_ranking_metric: TfbsTrackSimilarityRankingMetric,
+    cutrun_regulatory_dataset_ids: String,
+    cutrun_regulatory_read_report_ids: String,
+    cutrun_regulatory_promoter_start_0based: String,
+    cutrun_regulatory_promoter_end_0based_exclusive: String,
+    cutrun_regulatory_neighbor_window_bp: String,
+    cutrun_regulatory_species_filters: String,
+    cached_cutrun_regulatory_support: Option<CutRunRegulatorySupportReport>,
     cached_restriction_site_scan: Option<RestrictionSiteScanReport>,
     cached_tfbs_hit_scan: Option<TfbsHitScanReport>,
     cached_tfbs_score_tracks: Option<TfbsScoreTrackReport>,
@@ -13928,6 +14094,13 @@ impl MainAreaDna {
             tfbs_track_similarity_limit: "25".to_string(),
             tfbs_track_similarity_ranking_metric:
                 TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
+            cutrun_regulatory_dataset_ids: String::new(),
+            cutrun_regulatory_read_report_ids: String::new(),
+            cutrun_regulatory_promoter_start_0based: String::new(),
+            cutrun_regulatory_promoter_end_0based_exclusive: String::new(),
+            cutrun_regulatory_neighbor_window_bp: default_cutrun_neighbor_window_bp_text(),
+            cutrun_regulatory_species_filters: String::new(),
+            cached_cutrun_regulatory_support: None,
             cached_restriction_site_scan: None,
             cached_tfbs_hit_scan: None,
             cached_tfbs_score_tracks: None,
@@ -19160,6 +19333,130 @@ impl MainAreaDna {
                     self.save_engine_ops_state();
                 }
             });
+
+                egui::CollapsingHeader::new("CUT&RUN regulatory support")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        let mut cutrun_settings_changed = false;
+                        ui.small(
+                            egui::RichText::new(
+                                "Inspect the shared CUT&RUN regulatory-support report for this genome-anchored sequence. The GUI only displays the engine-owned report; it does not add a separate scoring model.",
+                            )
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("dataset ids");
+                            if ui
+                                .text_edit_singleline(&mut self.cutrun_regulatory_dataset_ids)
+                                .changed()
+                            {
+                                cutrun_settings_changed = true;
+                            }
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("read-report ids");
+                            if ui
+                                .text_edit_singleline(&mut self.cutrun_regulatory_read_report_ids)
+                                .changed()
+                            {
+                                cutrun_settings_changed = true;
+                            }
+                            if ui
+                                .small_button("Use latest for sequence")
+                                .on_hover_text(
+                                    "Fill read-report ids with the newest saved CUT&RUN read report for this sequence",
+                                )
+                                .clicked()
+                            {
+                                self.seed_latest_cutrun_read_report_for_active_sequence();
+                            }
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("promoter span 0-based");
+                            if ui
+                                .text_edit_singleline(
+                                    &mut self.cutrun_regulatory_promoter_start_0based,
+                                )
+                                .changed()
+                            {
+                                cutrun_settings_changed = true;
+                            }
+                            ui.label("..");
+                            if ui
+                                .text_edit_singleline(
+                                    &mut self
+                                        .cutrun_regulatory_promoter_end_0based_exclusive,
+                                )
+                                .changed()
+                            {
+                                cutrun_settings_changed = true;
+                            }
+                            ui.label("blank = whole sequence");
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("neighbor window bp");
+                            if ui
+                                .text_edit_singleline(
+                                    &mut self.cutrun_regulatory_neighbor_window_bp,
+                                )
+                                .changed()
+                            {
+                                cutrun_settings_changed = true;
+                            }
+                            ui.label("species filters");
+                            if ui
+                                .text_edit_singleline(
+                                    &mut self.cutrun_regulatory_species_filters,
+                                )
+                                .changed()
+                            {
+                                cutrun_settings_changed = true;
+                            }
+                        });
+                        if cutrun_settings_changed {
+                            self.cached_cutrun_regulatory_support = None;
+                            self.save_engine_ops_state();
+                        }
+                        ui.horizontal_wrapped(|ui| {
+                            let has_source = !Self::parse_ids(&self.cutrun_regulatory_dataset_ids)
+                                .is_empty()
+                                || !Self::parse_ids(&self.cutrun_regulatory_read_report_ids)
+                                    .is_empty();
+                            if ui
+                                .add_enabled(
+                                    has_source,
+                                    egui::Button::new("Inspect CUT&RUN regulatory support"),
+                                )
+                                .on_hover_text(
+                                    "Run InspectCutRunRegulatorySupport through the shared engine contract and cache the returned report for inspection",
+                                )
+                                .clicked()
+                            {
+                                self.inspect_cutrun_regulatory_support_for_active_sequence();
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.cached_cutrun_regulatory_support.is_some(),
+                                    egui::Button::new("Export cached CUT&RUN JSON..."),
+                                )
+                                .on_hover_text(
+                                    "Write the cached CUT&RUN regulatory-support report by rerunning the shared engine operation with an output path",
+                                )
+                                .clicked()
+                            {
+                                self.export_cached_cutrun_regulatory_support_json();
+                            }
+                            if !has_source {
+                                ui.small(
+                                    egui::RichText::new(
+                                        "Add a prepared dataset id and/or a saved ROI read-report id.",
+                                    )
+                                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                                );
+                            }
+                        });
+                        self.render_cutrun_regulatory_support_summary_panel(ui);
+                    });
 
                 egui::CollapsingHeader::new("Direct scan inspectors")
                     .default_open(false)
@@ -36914,6 +37211,9 @@ impl MainAreaDna {
             self.last_protocol_cartoon_preview = Some(preview.clone());
             self.last_protocol_cartoon_preview_op_id = result.op_id.clone();
         }
+        if let Some(report) = result.cutrun_regulatory_support.as_ref() {
+            self.cached_cutrun_regulatory_support = Some(report.clone());
+        }
         if !result.created_seq_ids.is_empty() {
             self.last_created_seq_ids = result.created_seq_ids.clone();
             self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
@@ -49905,6 +50205,16 @@ impl MainAreaDna {
                 .tfbs_track_similarity_include_remote_metadata,
             tfbs_track_similarity_limit: self.tfbs_track_similarity_limit.clone(),
             tfbs_track_similarity_ranking_metric: self.tfbs_track_similarity_ranking_metric,
+            cutrun_regulatory_dataset_ids: self.cutrun_regulatory_dataset_ids.clone(),
+            cutrun_regulatory_read_report_ids: self.cutrun_regulatory_read_report_ids.clone(),
+            cutrun_regulatory_promoter_start_0based: self
+                .cutrun_regulatory_promoter_start_0based
+                .clone(),
+            cutrun_regulatory_promoter_end_0based_exclusive: self
+                .cutrun_regulatory_promoter_end_0based_exclusive
+                .clone(),
+            cutrun_regulatory_neighbor_window_bp: self.cutrun_regulatory_neighbor_window_bp.clone(),
+            cutrun_regulatory_species_filters: self.cutrun_regulatory_species_filters.clone(),
             tfbs_display_use_llr_bits: tfbs_display.use_llr_bits,
             tfbs_display_min_llr_bits: tfbs_display.min_llr_bits,
             tfbs_display_use_llr_quantile: tfbs_display.use_llr_quantile,
@@ -50149,10 +50459,23 @@ impl MainAreaDna {
             s.tfbs_track_similarity_limit
         };
         self.tfbs_track_similarity_ranking_metric = s.tfbs_track_similarity_ranking_metric;
+        self.cutrun_regulatory_dataset_ids = s.cutrun_regulatory_dataset_ids;
+        self.cutrun_regulatory_read_report_ids = s.cutrun_regulatory_read_report_ids;
+        self.cutrun_regulatory_promoter_start_0based = s.cutrun_regulatory_promoter_start_0based;
+        self.cutrun_regulatory_promoter_end_0based_exclusive =
+            s.cutrun_regulatory_promoter_end_0based_exclusive;
+        self.cutrun_regulatory_neighbor_window_bp =
+            if s.cutrun_regulatory_neighbor_window_bp.trim().is_empty() {
+                default_cutrun_neighbor_window_bp_text()
+            } else {
+                s.cutrun_regulatory_neighbor_window_bp
+            };
+        self.cutrun_regulatory_species_filters = s.cutrun_regulatory_species_filters;
         self.cached_restriction_site_scan = None;
         self.cached_tfbs_hit_scan = None;
         self.cached_tfbs_score_tracks = None;
         self.cached_tfbs_track_similarity = None;
+        self.cached_cutrun_regulatory_support = None;
         self.vcf_display_required_info_keys = s.vcf_display_required_info_keys;
         self.isoform_panel_path = s.isoform_panel_path;
         self.isoform_panel_id = s.isoform_panel_id;
