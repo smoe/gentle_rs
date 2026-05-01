@@ -3397,9 +3397,11 @@ Notes:
        - GUI widget-level formula coverage now includes an egui render/click
          regression test proving the inline `Apply Sel` control resolves via
          the same formula path
+       - GUI text-entry coverage now drives the same inline control by focusing
+         the formula field, injecting text, and resolving with Enter
      - remaining:
-       - wider GUI text-entry/Enter-key formula interaction tests remain
-         pending
+       - broader negative/error-state GUI interaction coverage can be added as
+         formula UI complexity grows
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete
