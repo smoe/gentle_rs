@@ -5394,6 +5394,10 @@ Planned upgrades:
   - Started (2026-05-01): committed synthetic JSON fixtures now cover a dense
     circular plasmid map and an antisense/repeat genomic dotplot context; tests
     assert semantic SVG structure instead of fragile raster screenshots.
+  - Follow-on (2026-05-01): sequence-map and dotplot SVG exports now tag core
+    biological glyphs with stable `data-gentle-role` /
+    `data-gentle-feature-kind` markers so benchmark tests and external tools
+    can inspect exported figures structurally.
 - If benchmark packs include screenshot/raster artifacts, capture and curation
   are manual contributions (agent screenshot route remains disabled by policy).
 - Add explicit label-placement modes where useful (for example,

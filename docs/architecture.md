@@ -214,6 +214,10 @@ Visual consistency rule:
 - Legends must map 1:1 to rendered glyph semantics (shape + color + label).
 - If node/track glyph semantics change, legend text/colors must be updated in
   the same change.
+- Engine-owned SVG exports should expose stable `data-gentle-role` and, where
+  useful, `data-gentle-feature-kind` attributes on semantic biological glyphs
+  so tests and downstream tools can inspect figures without depending only on
+  text placement or raster screenshots.
 - Interaction contracts should be explicit where ambiguity is costly
   (for example, click vs double-click behavior).
 

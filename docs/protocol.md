@@ -1684,6 +1684,11 @@ Current draft operations:
     `rmsk_*` / `repeat_*` / `rpt_*` aliases) use shared repeat subtype labels
     and colors across GUI maps, feature-tree grouping/filtering, and SVG
     export
+  - SVG feature blocks, feature labels, restriction labels, and selected
+    directional/variation markers carry stable `data-gentle-role` attributes
+    plus `data-gentle-feature-kind` when applicable, so visual-regression tests
+    and downstream tooling can inspect semantic glyphs without relying on
+    raster screenshots
 - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain?, overlay_x_axis_mode? }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
@@ -4003,6 +4008,11 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     rail beside the reference/genomic y-axis when `reference_annotation`
     intervals are present; supported intervals include exon and materialized
     RepeatMasker/UCSC repeat context
+  - genome-context rail SVG elements carry stable `data-gentle-role`
+    attributes (`genome-context-track`, `genome-context-interval`,
+    `genome-context-strand`, `genome-context-intron-guide`) plus
+    `data-gentle-feature-kind` / `data-gentle-lane` markers for machine
+    inspection
   - overlay payloads render all stored `query_series` with a legend;
     `overlay_x_axis_mode` chooses whether transcript queries are shown as
     normalized percent length, as left/right aligned base-pair coordinates, as

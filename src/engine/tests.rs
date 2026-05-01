@@ -12313,6 +12313,32 @@ fn test_visual_benchmark_dense_plasmid_sequence_svg_operation() {
             "circular dense benchmark should include restriction site {enzyme}"
         );
     }
+    assert!(
+        linear_svg
+            .matches("data-gentle-role=\"feature-label\"")
+            .count()
+            >= 4
+    );
+    assert!(
+        circular_svg
+            .matches("data-gentle-role=\"feature-label\"")
+            .count()
+            >= 4
+    );
+    assert!(
+        linear_svg
+            .matches("data-gentle-role=\"restriction-label\"")
+            .count()
+            >= 4
+    );
+    assert!(
+        circular_svg
+            .matches("data-gentle-role=\"restriction-label\"")
+            .count()
+            >= 4
+    );
+    assert!(linear_svg.contains("data-gentle-feature-kind=\"restriction_site\""));
+    assert!(circular_svg.contains("data-gentle-feature-kind=\"restriction_site\""));
 }
 
 #[test]
@@ -12571,6 +12597,26 @@ fn test_visual_benchmark_dotplot_context_renders_antisense_and_repeat_lanes() {
     assert!(svg.contains("dotplot-genome-context-exon"));
     assert!(svg.contains("dotplot-genome-context-repeat"));
     assert!(svg.contains("dotplot-annotation-intron-guide"));
+    assert!(svg.contains("data-gentle-role=\"genome-context-interval\""));
+    assert!(svg.contains("data-gentle-role=\"genome-context-strand\""));
+    assert_eq!(
+        svg.matches("data-gentle-role=\"genome-context-interval\"")
+            .count(),
+        5
+    );
+    assert_eq!(
+        svg.matches("data-gentle-feature-kind=\"exon\"").count(),
+        10,
+        "four exon intervals, four strand markers, and two intron guide lines should carry exon markers"
+    );
+    assert_eq!(
+        svg.matches("data-gentle-feature-kind=\"repeat\"").count(),
+        2,
+        "repeat interval and repeat strand marker should carry repeat markers"
+    );
+    assert!(svg.contains("data-gentle-lane=\"0\""));
+    assert!(svg.contains("data-gentle-lane=\"1\""));
+    assert!(svg.contains("data-gentle-lane=\"2\""));
     assert!(svg.contains("SENSEA"));
     assert!(svg.contains("ANTISENSEB"));
     assert!(svg.contains("repeat: AluY"));
