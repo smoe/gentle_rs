@@ -2527,7 +2527,7 @@ impl GentleEngine {
         let annotation_width = (lane_count as f32 * lane_width) + 2.0;
         let annotation_left = dotplot_left - annotation_width - 6.0;
         svg.push_str(&format!(
-            "<rect class=\"dotplot-genome-context-track\" x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#f8fafc\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"2\" ry=\"2\"/>",
+            "<rect class=\"dotplot-genome-context-track\" data-gentle-role=\"genome-context-track\" x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#f8fafc\" stroke=\"#cbd5e1\" stroke-width=\"1\" rx=\"2\" ry=\"2\"/>",
             annotation_left,
             dotplot_top,
             annotation_width,
@@ -2563,7 +2563,7 @@ impl GentleEngine {
                 let y0 = dotplot_top + (upper_end as f32 / reference_span_f32) * dotplot_height;
                 let y1 = dotplot_top + (lower_start as f32 / reference_span_f32) * dotplot_height;
                 svg.push_str(&format!(
-                    "<line class=\"dotplot-annotation-intron-guide\" x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#bbf7d0\" stroke-width=\"1\" stroke-dasharray=\"2 2\"/>",
+                    "<line class=\"dotplot-annotation-intron-guide\" data-gentle-role=\"genome-context-intron-guide\" data-gentle-feature-kind=\"exon\" x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#bbf7d0\" stroke-width=\"1\" stroke-dasharray=\"2 2\"/>",
                     lane_x, y0, lane_x, y1
                 ));
             }
@@ -2584,8 +2584,10 @@ impl GentleEngine {
             let color = Self::dotplot_reference_annotation_color(interval);
             let class_token = Self::dotplot_reference_annotation_class_token(&interval.kind);
             svg.push_str(&format!(
-                "<rect class=\"dotplot-genome-context-interval dotplot-genome-context-{}\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"rgb({},{},{})\" rx=\"1\" ry=\"1\"><title>{}</title></rect>",
+                "<rect class=\"dotplot-genome-context-interval dotplot-genome-context-{}\" data-gentle-role=\"genome-context-interval\" data-gentle-feature-kind=\"{}\" data-gentle-lane=\"{}\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"rgb({},{},{})\" rx=\"1\" ry=\"1\"><title>{}</title></rect>",
                 class_token,
+                class_token,
+                interval.lane,
                 lane_x,
                 y0,
                 interval_width,
@@ -2608,7 +2610,9 @@ impl GentleEngine {
                 };
                 let x_mid = lane_x + interval_width * 0.5;
                 svg.push_str(&format!(
-                    "<polygon class=\"dotplot-annotation-strand\" points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"#0f172a\" fill-opacity=\"0.72\"><title>{}</title></polygon>",
+                    "<polygon class=\"dotplot-annotation-strand\" data-gentle-role=\"genome-context-strand\" data-gentle-feature-kind=\"{}\" data-gentle-lane=\"{}\" points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"#0f172a\" fill-opacity=\"0.72\"><title>{}</title></polygon>",
+                    class_token,
+                    interval.lane,
                     x_mid,
                     marker_y,
                     x_mid - 2.4,

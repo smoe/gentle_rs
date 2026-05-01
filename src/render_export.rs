@@ -67,6 +67,7 @@ struct FeatureVm {
     label: String,
     legend_line: Option<String>,
     color: &'static str,
+    kind_attr: String,
     kind_role: FeatureKindRole,
     is_gene: bool,
     is_promoter: bool,
@@ -185,6 +186,26 @@ fn feature_kind_role(feature: &Feature) -> FeatureKindRole {
         "CDS" => FeatureKindRole::Cds,
         "PROMOTER" | "REGULATORY" => FeatureKindRole::Regulatory,
         _ => FeatureKindRole::Other,
+    }
+}
+
+fn svg_attr_token(value: &str) -> String {
+    let token = value
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string();
+    if token.is_empty() {
+        "unknown".to_string()
+    } else {
+        token
     }
 }
 
@@ -944,6 +965,7 @@ fn collect_features(
             label,
             legend_line,
             color: feature_color(feature),
+            kind_attr: svg_attr_token(&kind),
             kind_role: feature_kind_role(feature),
             is_gene: kind == "GENE",
             is_promoter: is_promoter_feature(feature),
@@ -978,6 +1000,7 @@ fn merge_equivalent_features(preferred: FeatureVm, other: &FeatureVm) -> Feature
         label: preferred.label,
         legend_line: preferred.legend_line.or_else(|| other.legend_line.clone()),
         color: preferred.color,
+        kind_attr: preferred.kind_attr,
         kind_role: preferred.kind_role,
         is_gene: preferred.is_gene || other.is_gene,
         is_promoter: preferred.is_promoter || other.is_promoter,
@@ -1106,7 +1129,8 @@ fn linear_transcription_direction_glyph(
         .set("stroke-width", 2)
         .set("stroke-linecap", "round")
         .set("stroke-linejoin", "round")
-        .set("data-gentle-role", "linear-transcription-start-tick");
+        .set("data-gentle-role", "linear-transcription-start-tick")
+        .set("data-gentle-feature-kind", feature.kind_attr.as_str());
     let (head_tip_x, base_x) = if feature.is_reverse {
         (
             tip_x - LINEAR_TSS_ARROW_LENGTH * 0.14,
@@ -1127,7 +1151,8 @@ fn linear_transcription_direction_glyph(
         .set("d", tri)
         .set("fill", feature.color)
         .set("stroke", "none")
-        .set("data-gentle-role", "linear-transcription-start-arrow");
+        .set("data-gentle-role", "linear-transcription-start-arrow")
+        .set("data-gentle-feature-kind", feature.kind_attr.as_str());
     (tick, arrow)
 }
 
@@ -1590,7 +1615,9 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                             .set("x2", x)
                             .set("y2", baseline + VARIATION_MARKER_OVERSHOOT_PX)
                             .set("stroke", f.color)
-                            .set("stroke-width", VARIATION_MARKER_STROKE_WIDTH),
+                            .set("stroke-width", VARIATION_MARKER_STROKE_WIDTH)
+                            .set("data-gentle-role", "variation-marker-line")
+                            .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                     );
                     doc = doc.add(
                         Circle::new()
@@ -1599,7 +1626,9 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                             .set("r", VARIATION_MARKER_RADIUS)
                             .set("fill", "#ffffff")
                             .set("stroke", f.color)
-                            .set("stroke-width", 1.5),
+                            .set("stroke-width", 1.5)
+                            .set("data-gentle-role", "variation-marker-dot")
+                            .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                     );
                     if feature_has_visible_export_label(f) {
                         labels.push(
@@ -1609,7 +1638,9 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                                 .set("text-anchor", "middle")
                                 .set("font-family", "monospace")
                                 .set("font-size", 9)
-                                .set("fill", "#111111"),
+                                .set("fill", "#111111")
+                                .set("data-gentle-role", "feature-label")
+                                .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                         );
                     }
                     continue;
@@ -1652,7 +1683,9 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                         .set("y", y - half_height)
                         .set("width", x2 - x1)
                         .set("height", block_height)
-                        .set("fill", f.color),
+                        .set("fill", f.color)
+                        .set("data-gentle-role", "feature-block")
+                        .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
 
                 if f.is_pointy {
@@ -1670,7 +1703,13 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                             .line_to((x2, y + half_height))
                             .close()
                     };
-                    doc = doc.add(Path::new().set("d", data).set("fill", f.color));
+                    doc = doc.add(
+                        Path::new()
+                            .set("d", data)
+                            .set("fill", f.color)
+                            .set("data-gentle-role", "feature-direction-head")
+                            .set("data-gentle-feature-kind", f.kind_attr.as_str()),
+                    );
                 }
 
                 if f.has_transcription_direction {
@@ -1693,7 +1732,9 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                             .set("text-anchor", "middle")
                             .set("font-family", "monospace")
                             .set("font-size", 10)
-                            .set("fill", "#f8f8f8"),
+                            .set("fill", "#f8f8f8")
+                            .set("data-gentle-role", "feature-label")
+                            .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                     );
                     continue;
                 }
@@ -1736,7 +1777,9 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                         .set("text-anchor", anchor)
                         .set("font-family", "monospace")
                         .set("font-size", 10)
-                        .set("fill", "#111111"),
+                        .set("fill", "#111111")
+                        .set("data-gentle-role", "feature-label")
+                        .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
                 if f.is_regulatory {
                     placed_regulatory_labels.push((f.label.clone(), x1));
@@ -1790,7 +1833,9 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                     .set("x2", x)
                     .set("y2", baseline + 8.0)
                     .set("stroke", color)
-                    .set("stroke-width", 1),
+                    .set("stroke-width", 1)
+                    .set("data-gentle-role", "restriction-site-tick")
+                    .set("data-gentle-feature-kind", "restriction_site"),
             );
             if let Some(names) = dna.restriction_enzyme_groups().get(key) {
                 let label = names.join(",");
@@ -1815,7 +1860,9 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                         .set("text-anchor", "middle")
                         .set("font-family", "monospace")
                         .set("font-size", 9)
-                        .set("fill", color),
+                        .set("fill", color)
+                        .set("data-gentle-role", "restriction-label")
+                        .set("data-gentle-feature-kind", "restriction_site"),
                 );
             }
         }
@@ -2520,7 +2567,8 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("y2", outer_y)
                         .set("stroke", f.color)
                         .set("stroke-width", CIRCULAR_VARIATION_MARKER_STROKE_WIDTH)
-                        .set("data-gentle-role", "variation-marker-line"),
+                        .set("data-gentle-role", "variation-marker-line")
+                        .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
                 doc = doc.add(
                     Circle::new()
@@ -2530,7 +2578,8 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("fill", "#ffffff")
                         .set("stroke", f.color)
                         .set("stroke-width", 2)
-                        .set("data-gentle-role", "variation-marker-dot"),
+                        .set("data-gentle-role", "variation-marker-dot")
+                        .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
                 if feature_has_visible_export_label(&f) {
                     doc = doc.add(
@@ -2540,7 +2589,9 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                             .set("text-anchor", "middle")
                             .set("font-family", "monospace")
                             .set("font-size", CIRCULAR_FEATURE_LABEL_FONT_SIZE)
-                            .set("fill", "#111111"),
+                            .set("fill", "#111111")
+                            .set("data-gentle-role", "feature-label")
+                            .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                     );
                 }
                 continue;
@@ -2551,7 +2602,9 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("d", path_d)
                         .set("fill", "none")
                         .set("stroke", f.color)
-                        .set("stroke-width", CIRCULAR_FEATURE_STROKE_WIDTH),
+                        .set("stroke-width", CIRCULAR_FEATURE_STROKE_WIDTH)
+                        .set("data-gentle-role", "feature-block")
+                        .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
             }
             if f.has_transcription_direction {
@@ -2576,7 +2629,8 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("stroke-width", 2)
                         .set("stroke-linecap", "round")
                         .set("stroke-linejoin", "round")
-                        .set("data-gentle-role", "transcription-start-arrow-shaft"),
+                        .set("data-gentle-role", "transcription-start-arrow-shaft")
+                        .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
                 let tip_x = stem_x + dir_x * (CIRCULAR_TSS_ARROW_LENGTH * 0.7);
                 let tip_y = stem_y + dir_y * (CIRCULAR_TSS_ARROW_LENGTH * 0.7);
@@ -2598,7 +2652,8 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("d", tri)
                         .set("fill", f.color)
                         .set("stroke", "none")
-                        .set("data-gentle-role", "transcription-start-arrow"),
+                        .set("data-gentle-role", "transcription-start-arrow")
+                        .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
             }
             let label_radius = circular_feature_label_radius(band_radius, anchor_is_reverse);
@@ -2619,7 +2674,8 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                             .set("y2", leader_end_y)
                             .set("stroke", f.color)
                             .set("stroke-width", 2)
-                            .set("data-gentle-role", "functional-annotation-leader"),
+                            .set("data-gentle-role", "functional-annotation-leader")
+                            .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                     );
                 }
                 let placement = circular_feature_label_placement(
@@ -2640,7 +2696,9 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                         .set("text-anchor", placement.text_anchor)
                         .set("font-family", "monospace")
                         .set("font-size", CIRCULAR_FEATURE_LABEL_FONT_SIZE)
-                        .set("fill", "#111111"),
+                        .set("fill", "#111111")
+                        .set("data-gentle-role", "feature-label")
+                        .set("data-gentle-feature-kind", f.kind_attr.as_str()),
                 );
             }
         }
@@ -2686,7 +2744,9 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                     .set("x2", placement.x2)
                     .set("y2", placement.y2)
                     .set("stroke", "#808080")
-                    .set("stroke-width", 1),
+                    .set("stroke-width", 1)
+                    .set("data-gentle-role", "restriction-site-leader")
+                    .set("data-gentle-feature-kind", "restriction_site"),
             );
             doc = doc.add(
                 Line::new()
@@ -2695,7 +2755,9 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                     .set("x2", placement.x3)
                     .set("y2", placement.y3)
                     .set("stroke", "#808080")
-                    .set("stroke-width", 1),
+                    .set("stroke-width", 1)
+                    .set("data-gentle-role", "restriction-site-leader")
+                    .set("data-gentle-feature-kind", "restriction_site"),
             );
             doc = doc.add(
                 Text::new(placement.label.clone())
@@ -2705,7 +2767,9 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                     .set("dominant-baseline", "middle")
                     .set("font-family", "monospace")
                     .set("font-size", 9)
-                    .set("fill", placement.font_color),
+                    .set("fill", placement.font_color)
+                    .set("data-gentle-role", "restriction-label")
+                    .set("data-gentle-feature-kind", "restriction_site"),
             );
         }
     }
@@ -2899,6 +2963,34 @@ mod tests {
         assert!(linear_svg.contains("dense synthetic plasmid benchmark"));
         assert!(linear_svg.contains("361 bp"));
         assert!(circular_svg.contains("dense synthetic plasmid benchmark"));
+        assert!(
+            linear_svg
+                .matches("data-gentle-role=\"feature-label\"")
+                .count()
+                >= 5
+        );
+        assert!(
+            circular_svg
+                .matches("data-gentle-role=\"feature-label\"")
+                .count()
+                >= 5
+        );
+        assert_eq!(
+            linear_svg
+                .matches("data-gentle-role=\"restriction-label\"")
+                .count(),
+            9
+        );
+        assert_eq!(
+            circular_svg
+                .matches("data-gentle-role=\"restriction-label\"")
+                .count(),
+            9
+        );
+        assert!(linear_svg.contains("data-gentle-feature-kind=\"cds\""));
+        assert!(circular_svg.contains("data-gentle-feature-kind=\"cds\""));
+        assert!(linear_svg.contains("data-gentle-feature-kind=\"restriction_site\""));
+        assert!(circular_svg.contains("data-gentle-feature-kind=\"restriction_site\""));
         assert!(!linear_svg.contains("NaN"));
         assert!(!circular_svg.contains("NaN"));
     }
