@@ -3391,9 +3391,11 @@ Notes:
        - GUI-side formula handling now lives behind the focused
          `main_area_dna/formula_controls.rs` seam rather than staying
          interleaved with unrelated sequence-window rendering logic
+       - shared-shell/CLI formula resolution now exposes the same resolver via
+         `features formula SEQ_ID EXPR`, with parser/executor regression tests
+         covering reverse-strand upstream/TSS parity
      - remaining:
-       - broader GUI/shared-shell parity tests for formula evaluation remain
-         pending
+       - wider GUI widget-level formula interaction tests remain pending
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete

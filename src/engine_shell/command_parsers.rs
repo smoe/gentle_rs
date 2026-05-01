@@ -1827,11 +1827,36 @@ fn parse_repeat_filter_option(
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: formula, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "formula" | "resolve-formula" | "resolve_formula" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "features formula requires SEQ_ID EXPR (for example: features formula seq '=gene.upstream(1000) .. gene.tss')"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("features formula SEQ_ID must not be empty".to_string());
+            }
+            let expression = if matches!(tokens[3].as_str(), "--expr" | "--expression") {
+                if tokens.len() < 5 {
+                    return Err("features formula --expr requires a formula expression".to_string());
+                }
+                tokens[4..].join(" ")
+            } else {
+                tokens[3..].join(" ")
+            };
+            let expression = expression.trim().to_string();
+            if expression.is_empty() {
+                return Err("features formula expression must not be empty".to_string());
+            }
+            Ok(ShellCommand::FeaturesResolveFormula { seq_id, expression })
+        }
         "repeat-query" | "repeats-query" => {
             if tokens.len() < 5 {
                 return Err(
@@ -3485,7 +3510,7 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             })
         }
         other => Err(format!(
-            "Unknown features subcommand '{other}' (expected query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-score-track-correlation-svg, tfbs-scan, or restriction-scan)"
+            "Unknown features subcommand '{other}' (expected formula, query, export-bed, tfbs-summary, tfbs-score-tracks-svg, tfbs-score-track-correlation-svg, tfbs-scan, or restriction-scan)"
         )),
     }
 }

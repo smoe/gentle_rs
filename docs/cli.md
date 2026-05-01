@@ -1947,6 +1947,7 @@ Shared shell command:
     - `guides oligos-show OLIGO_SET_ID`
     - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
+    - `features formula SEQ_ID EXPR`
     - `features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
@@ -2477,6 +2478,15 @@ Shared shell command:
       - `primers list-restriction-cloning-handoffs`
       - `primers show-restriction-cloning-handoff REPORT_ID`
       - `primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json`
+    - Feature formula helper notes (`features formula`):
+      - non-mutating structured result schema:
+        `gentle.feature_coordinate_formula_resolution.v1`
+      - resolves the same coordinate/range formulas used by GUI selection and
+        primer/qPCR ROI fields, including `KIND.tss` and strand-aware
+        `KIND.upstream(N)`
+      - range expressions return normalized `start_0based` /
+        `end_0based_exclusive` intervals, so reverse-strand upstream/TSS
+        formulas are directly usable by agents
     - Feature query helper notes (`features query`):
       - non-mutating structured result schema:
         `gentle.sequence_feature_query_result.v1`

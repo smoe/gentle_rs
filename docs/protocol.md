@@ -5701,6 +5701,27 @@ Primer-design shell command family (implemented):
   - `vector_suggestions`
   - `operation` (`{"PrepareRestrictionCloningPcrHandoff": ...}`)
 
+Feature formula shell contract (implemented):
+
+- Shared-shell command:
+  - `features formula SEQ_ID EXPR`
+  - `EXPR` may be a single coordinate term (`=gene.tss`) or a range
+    expression (`=gene.upstream(1000) .. gene.tss`)
+- Execution semantics:
+  - non-mutating engine inspection over one sequence
+  - uses the same engine-owned feature-coordinate resolver as GUI selection
+    and primer/qPCR ROI fields
+  - supports occurrence selectors, label selectors, signed offsets, `tss`, and
+    strand-aware `upstream(N)`
+  - range expressions normalize endpoint order after resolution, so
+    reverse-strand upstream/TSS formulas yield a local
+    `start_0based..end_0based_exclusive` interval
+- Response schema:
+  - `gentle.feature_coordinate_formula_resolution.v1`
+  - coordinate results include `coordinate_0based`
+  - range results include `range.start_0based`,
+    `range.end_0based_exclusive`, and `range.length_bp`
+
 Feature-query shell contract (implemented):
 
 - Shared-shell command:
