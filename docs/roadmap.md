@@ -3394,8 +3394,12 @@ Notes:
        - shared-shell/CLI formula resolution now exposes the same resolver via
          `features formula SEQ_ID EXPR`, with parser/executor regression tests
          covering reverse-strand upstream/TSS parity
+       - GUI widget-level formula coverage now includes an egui render/click
+         regression test proving the inline `Apply Sel` control resolves via
+         the same formula path
      - remaining:
-       - wider GUI widget-level formula interaction tests remain pending
+       - wider GUI text-entry/Enter-key formula interaction tests remain
+         pending
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete

@@ -1548,6 +1548,26 @@ mod tests {
         }
     }
 
+    fn collect_rendered_text_rects_from_shape(
+        shape: &egui::epaint::Shape,
+        out: &mut Vec<(String, egui::Rect)>,
+    ) {
+        match shape {
+            egui::epaint::Shape::Text(text) => {
+                let raw = text.galley.job.text.trim();
+                if !raw.is_empty() {
+                    out.push((raw.to_string(), text.visual_bounding_rect()));
+                }
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                for shape in shapes {
+                    collect_rendered_text_rects_from_shape(shape, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn collect_pass_texts(ctx: &egui::Context) -> Vec<String> {
         let full_output = ctx.end_pass();
         let mut texts = Vec::new();
@@ -1555,6 +1575,23 @@ mod tests {
             collect_rendered_text_from_shape(&clipped.shape, &mut texts);
         }
         texts
+    }
+
+    fn render_selection_formula_control_pass(
+        ctx: &egui::Context,
+        area: &mut MainAreaDna,
+        raw_input: egui::RawInput,
+    ) -> Vec<(String, egui::Rect)> {
+        ctx.begin_pass(raw_input);
+        crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+            area.render_selection_formula_inline_controls(ui, 420.0);
+        });
+        let full_output = ctx.end_pass();
+        let mut rects = Vec::new();
+        for clipped in full_output.shapes {
+            collect_rendered_text_rects_from_shape(&clipped.shape, &mut rects);
+        }
+        rects
     }
 
     fn make_area_with_unique_compatible_anchor(
@@ -4629,6 +4666,75 @@ mod tests {
         area.apply_selection_formula();
 
         assert_eq!(area.current_selection_range_0based(), Some((30, 95)));
+    }
+
+    #[test]
+    fn selection_formula_inline_controls_apply_button_resolves_formula() {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(20, 100),
+            qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
+        });
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.selection_formula_text = "=CDS.start+10 .. CDS.end-5".to_string();
+
+        let ctx = egui::Context::default();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(720.0, 180.0));
+        let rects = render_selection_formula_control_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                ..Default::default()
+            },
+        );
+        assert!(
+            rects.iter().any(|(text, _)| text == "Selection formula"),
+            "inline control should render its label: {rects:?}"
+        );
+        let apply_center = rects
+            .iter()
+            .find_map(|(text, rect)| (text == "Apply Sel").then_some(rect.center()))
+            .expect("Apply Sel button text should render");
+
+        render_selection_formula_control_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                events: vec![
+                    egui::Event::PointerMoved(apply_center),
+                    egui::Event::PointerButton {
+                        pos: apply_center,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+        );
+        render_selection_formula_control_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                events: vec![
+                    egui::Event::PointerMoved(apply_center),
+                    egui::Event::PointerButton {
+                        pos: apply_center,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(area.current_selection_range_0based(), Some((30, 95)));
+        assert!(area.op_status.contains("Selected region from formula"));
     }
 
     #[test]
