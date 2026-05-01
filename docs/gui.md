@@ -3595,6 +3595,16 @@ Safety behavior:
   continuous score-track view depends on motif selection plus the chosen
   score-family/clipping mode.
 
+The DNA-window Engine Ops panel also includes a `CUT&RUN regulatory support`
+inspector for release smoke/proof runs. It is deliberately thin GUI plumbing:
+dataset ids, saved ROI read-report ids, an optional promoter span, neighbor
+window, and species filters are sent through the shared
+`InspectCutRunRegulatorySupport` engine operation. The panel displays the
+returned `gentle.cutrun_regulatory_support.v1` record: evidence sources,
+support windows, confirmed/unconfirmed TFBS rows, motif-absent supported
+windows, recurring motif context, warnings, and JSON export. It does not add
+GUI-only CUT&RUN scoring or motif interpretation logic.
+
 While TFBS annotation is running, GUI shows live progress indicators and keeps
 repainting until completion:
 
