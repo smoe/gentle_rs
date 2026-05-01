@@ -3922,6 +3922,15 @@ How to enlarge the genomic span after extraction:
     to the genome-anchor status line
   - `Re-verify anchor` re-runs verification against the currently resolved
     prepared genome and records a new provenance entry
+- UCSC rmsk repeat loading in GUI:
+  - anchored sequence windows expose an `rmsk index` path, `max` feature cap,
+    `Append` toggle, and `Load Repeats` action next to the genome-anchor tools
+  - `Load Repeats` applies the shared `MaterializeRepeatFeatures` operation and
+    writes overlapping RepeatMasker rows as ordinary `repeat_region` features
+    controlled by the existing Repeat layer toggle
+  - the default index path is `data/resources/ucsc.rmsk.hg38.interval-index.json`;
+    prepare it with `resources install-ucsc-rmsk --assembly hg38` or point the
+    field at another prepared interval index
 - Shell fallback path (same engine operation):
   - click `Shell` in the sequence toolbar
   - run one of these commands:
@@ -3929,6 +3938,7 @@ How to enlarge the genomic span after extraction:
     - `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
     - `genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
     - `helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
+    - `features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append]`
 - Example:
   - `genomes extend-anchor grch38_tp53 5p 2000 --output-id grch38_tp53_plus2kb_5p`
 - Result behavior:

@@ -6,7 +6,7 @@
 //! details in adapter code.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, Write};
 use std::path::Path;
 
@@ -171,6 +171,8 @@ pub struct UcscRmskIntervalIndex {
     pub row_count: usize,
     pub chromosome_count: usize,
     pub chromosomes: BTreeMap<String, Vec<UcscRmskIndexedInterval>>,
+    #[serde(default)]
+    pub chromosome_aliases: BTreeMap<String, String>,
     pub class_family_index: BTreeMap<String, Vec<usize>>,
     pub repeat_name_index: BTreeMap<String, Vec<usize>>,
 }
@@ -582,6 +584,68 @@ fn flip_strand(raw: &str) -> String {
     }
 }
 
+fn chromosome_aliases_for(canonical: &str) -> BTreeSet<String> {
+    let trimmed = canonical.trim();
+    let mut aliases = BTreeSet::new();
+    if trimmed.is_empty() {
+        return aliases;
+    }
+    if let Some(stripped) = trimmed.strip_prefix("chr") {
+        if !stripped.is_empty() {
+            aliases.insert(stripped.to_string());
+            aliases.insert(stripped.to_ascii_uppercase());
+            aliases.insert(stripped.to_ascii_lowercase());
+            if stripped.eq_ignore_ascii_case("M") {
+                aliases.insert("MT".to_string());
+                aliases.insert("Mt".to_string());
+                aliases.insert("mt".to_string());
+            }
+        }
+    } else {
+        aliases.insert(format!("chr{trimmed}"));
+        aliases.insert(format!("CHR{}", trimmed.to_ascii_uppercase()));
+        if trimmed.eq_ignore_ascii_case("MT") || trimmed.eq_ignore_ascii_case("M") {
+            aliases.insert("chrM".to_string());
+            aliases.insert("ChrM".to_string());
+            aliases.insert("M".to_string());
+            aliases.insert("MT".to_string());
+        }
+    }
+    aliases.retain(|alias| !alias.eq_ignore_ascii_case(trimmed));
+    aliases
+}
+
+fn build_chromosome_alias_map(
+    chromosomes: &BTreeMap<String, Vec<UcscRmskIndexedInterval>>,
+) -> BTreeMap<String, String> {
+    let mut aliases = BTreeMap::new();
+    for canonical in chromosomes.keys() {
+        for alias in chromosome_aliases_for(canonical) {
+            if chromosomes.contains_key(&alias) {
+                continue;
+            }
+            aliases.entry(alias).or_insert_with(|| canonical.clone());
+        }
+    }
+    aliases
+}
+
+fn chromosome_names_equivalent(left: &str, right: &str) -> bool {
+    if left.eq_ignore_ascii_case(right) {
+        return true;
+    }
+    let left_aliases = chromosome_aliases_for(left);
+    if left_aliases
+        .iter()
+        .any(|alias| alias.eq_ignore_ascii_case(right))
+    {
+        return true;
+    }
+    chromosome_aliases_for(right)
+        .iter()
+        .any(|alias| alias.eq_ignore_ascii_case(left))
+}
+
 pub fn build_ucsc_rmsk_interval_index(
     source_resource: &str,
     assembly_database: &str,
@@ -623,6 +687,7 @@ pub fn build_ucsc_rmsk_interval_index(
         coordinate_system: "UCSC 0-based half-open genomic intervals".to_string(),
         row_count: records.len(),
         chromosome_count: chromosomes.len(),
+        chromosome_aliases: build_chromosome_alias_map(&chromosomes),
         chromosomes,
         class_family_index,
         repeat_name_index,
@@ -630,14 +695,29 @@ pub fn build_ucsc_rmsk_interval_index(
 }
 
 impl UcscRmskIntervalIndex {
-    pub fn chromosome_intervals(&self, chromosome: &str) -> Option<&[UcscRmskIndexedInterval]> {
-        if let Some(rows) = self.chromosomes.get(chromosome) {
-            return Some(rows);
+    pub fn resolve_chromosome_name(&self, chromosome: &str) -> Option<&str> {
+        if let Some((key, _)) = self.chromosomes.get_key_value(chromosome) {
+            return Some(key.as_str());
         }
-        self.chromosomes
+        if let Some((key, _)) = self
+            .chromosomes
             .iter()
             .find(|(key, _)| key.eq_ignore_ascii_case(chromosome))
-            .map(|(_, rows)| rows.as_slice())
+        {
+            return Some(key.as_str());
+        }
+        if let Some(canonical) = self.chromosome_aliases.get(chromosome) {
+            return Some(canonical.as_str());
+        }
+        self.chromosome_aliases
+            .iter()
+            .find(|(alias, _)| alias.eq_ignore_ascii_case(chromosome))
+            .map(|(_, canonical)| canonical.as_str())
+    }
+
+    pub fn chromosome_intervals(&self, chromosome: &str) -> Option<&[UcscRmskIndexedInterval]> {
+        let canonical = self.resolve_chromosome_name(chromosome)?;
+        self.chromosomes.get(canonical).map(Vec::as_slice)
     }
 
     pub fn overlapping_intervals(
@@ -657,6 +737,43 @@ impl UcscRmskIntervalIndex {
             .take_while(|row| row.start_0based < end_0based_exclusive)
             .filter(|row| row.end_0based_exclusive > start_0based)
             .collect()
+    }
+
+    pub fn nearest_interval_distance_bp(
+        &self,
+        chromosome: &str,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> Option<usize> {
+        let rows = self.chromosome_intervals(chromosome)?;
+        if rows.is_empty() || end_0based_exclusive <= start_0based {
+            return None;
+        }
+        let mut best: Option<usize> = None;
+        for row in rows {
+            let distance = if row.end_0based_exclusive <= start_0based {
+                start_0based.saturating_sub(row.end_0based_exclusive)
+            } else if row.start_0based >= end_0based_exclusive {
+                row.start_0based.saturating_sub(end_0based_exclusive)
+            } else {
+                0
+            };
+            best = Some(
+                best.map(|current| current.min(distance))
+                    .unwrap_or(distance),
+            );
+            if best == Some(0) {
+                break;
+            }
+            if row.start_0based > end_0based_exclusive
+                && best.is_some_and(|current| {
+                    row.start_0based.saturating_sub(end_0based_exclusive) > current
+                })
+            {
+                break;
+            }
+        }
+        best
     }
 }
 
@@ -725,7 +842,7 @@ pub fn project_interval_to_anchor(
     interval: &UcscRmskIndexedInterval,
     anchor: &UcscRmskProjectionAnchor,
 ) -> Option<UcscRmskProjectedOverlap> {
-    if !interval.chromosome.eq_ignore_ascii_case(&anchor.chromosome)
+    if !chromosome_names_equivalent(&interval.chromosome, &anchor.chromosome)
         || anchor.end_1based < anchor.start_1based
     {
         return None;
@@ -766,6 +883,36 @@ pub fn project_interval_to_anchor(
     })
 }
 
+pub fn anchor_query_genomic_span(
+    anchor: &UcscRmskProjectionAnchor,
+    start_0based: Option<usize>,
+    end_0based_exclusive: Option<usize>,
+) -> Option<(usize, usize)> {
+    let anchor_start_0based = anchor.start_1based.checked_sub(1)?;
+    let anchor_end_0based_exclusive = anchor.end_1based;
+    if anchor_end_0based_exclusive < anchor_start_0based {
+        return None;
+    }
+    let anchor_len = anchor_end_0based_exclusive.saturating_sub(anchor_start_0based);
+    let local_start = start_0based.unwrap_or(0).min(anchor_len);
+    let local_end = end_0based_exclusive.unwrap_or(anchor_len).min(anchor_len);
+    if local_end <= local_start {
+        return None;
+    }
+    let span = if anchor.strand == Some('-') {
+        (
+            anchor_end_0based_exclusive.saturating_sub(local_end),
+            anchor_end_0based_exclusive.saturating_sub(local_start),
+        )
+    } else {
+        (
+            anchor_start_0based.saturating_add(local_start),
+            anchor_start_0based.saturating_add(local_end),
+        )
+    };
+    (span.1 > span.0).then_some(span)
+}
+
 pub fn project_index_overlaps_to_anchor(
     index: &UcscRmskIntervalIndex,
     anchor: &UcscRmskProjectionAnchor,
@@ -773,24 +920,13 @@ pub fn project_index_overlaps_to_anchor(
     end_0based_exclusive: Option<usize>,
     limit: Option<usize>,
 ) -> Vec<UcscRmskProjectedOverlap> {
+    let Some((query_start, query_end)) =
+        anchor_query_genomic_span(anchor, start_0based, end_0based_exclusive)
+    else {
+        return vec![];
+    };
     let anchor_start_0based = anchor.start_1based.saturating_sub(1);
     let anchor_end_0based_exclusive = anchor.end_1based;
-    let (query_start, query_end) = if anchor.strand == Some('-') {
-        let local_start = start_0based.unwrap_or(0);
-        let local_end = end_0based_exclusive
-            .unwrap_or(anchor_end_0based_exclusive.saturating_sub(anchor_start_0based));
-        (
-            anchor_end_0based_exclusive.saturating_sub(local_end),
-            anchor_end_0based_exclusive.saturating_sub(local_start),
-        )
-    } else {
-        (
-            anchor_start_0based.saturating_add(start_0based.unwrap_or(0)),
-            end_0based_exclusive
-                .map(|end| anchor_start_0based.saturating_add(end))
-                .unwrap_or(anchor_end_0based_exclusive),
-        )
-    };
     let effective_limit = limit.unwrap_or(usize::MAX);
     index
         .overlapping_intervals(&anchor.chromosome, query_start, query_end)
@@ -1053,6 +1189,20 @@ mod tests {
     }
 
     #[test]
+    fn interval_index_resolves_common_chromosome_aliases() {
+        let text = include_str!("../test_files/fixtures/resources/ucsc.rmsk.hg38.edge.txt");
+        let records = parse_ucsc_rmsk_records(text).expect("parse rmsk fixture");
+        let index =
+            build_ucsc_rmsk_interval_index("fixture", "hg38", &records).expect("build index");
+        assert_eq!(index.resolve_chromosome_name("1"), Some("chr1"));
+        assert_eq!(index.overlapping_intervals("1", 10_300, 10_800).len(), 2);
+        assert_eq!(
+            index.nearest_interval_distance_bp("1", 12_000, 12_100),
+            Some(220)
+        );
+    }
+
+    #[test]
     fn projects_plus_anchor_repeat_overlap_to_local_feature_span() {
         let text = include_str!("../test_files/fixtures/resources/ucsc.rmsk.hg38.edge.txt");
         let records = parse_ucsc_rmsk_records(text).expect("parse rmsk fixture");
@@ -1074,6 +1224,23 @@ mod tests {
         assert_eq!(overlaps[1].local_end_0based_exclusive, 1000);
         assert_eq!(overlaps[1].local_strand, "-");
         assert!(overlaps[1].clipped);
+    }
+
+    #[test]
+    fn projects_anchor_with_chromosome_alias() {
+        let text = include_str!("../test_files/fixtures/resources/ucsc.rmsk.hg38.edge.txt");
+        let records = parse_ucsc_rmsk_records(text).expect("parse rmsk fixture");
+        let index =
+            build_ucsc_rmsk_interval_index("fixture", "hg38", &records).expect("build index");
+        let anchor = UcscRmskProjectionAnchor {
+            chromosome: "1".to_string(),
+            start_1based: 10_001,
+            end_1based: 11_000,
+            strand: Some('+'),
+        };
+        let overlaps = project_index_overlaps_to_anchor(&index, &anchor, None, None, None);
+        assert_eq!(overlaps.len(), 2);
+        assert_eq!(overlaps[0].interval.chromosome, "chr1");
     }
 
     #[test]

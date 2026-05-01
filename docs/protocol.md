@@ -860,6 +860,7 @@ resource rather than a GUI-only track import convention.
 Current shared-shell routes:
 
 ```bash
+gentle_cli shell 'resources install-ucsc-rmsk --assembly hg38'
 gentle_cli shell 'resources sync-ucsc-rmsk https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/rmsk.txt.gz data/resources/ucsc.rmsk.hg38.json --assembly hg38'
 gentle_cli shell 'resources prepare-ucsc-rmsk-index data/resources/ucsc.rmsk.hg38.json data/resources/ucsc.rmsk.hg38.interval-index.json'
 gentle_cli shell 'resources suggest-ucsc-rmsk-index --assembly hg38 --output rmsk.indexing.json'
@@ -868,6 +869,7 @@ gentle_cli shell 'resources suggest-ucsc-rmsk-index --assembly hg38 --output rms
 Portable schemas:
 
 - `gentle.ucsc_rmsk_resource.v1`
+- `gentle.ucsc_rmsk_install_report.v1`
 - `gentle.ucsc_rmsk_interval_index.v1`
 - `gentle.ucsc_rmsk_descriptor.v1`
 
@@ -884,12 +886,18 @@ Behavior notes:
   future GUI/CLI/projectors can inspect the resource without hard-coding UCSC
   table details
 - `resources status` reports the default hg38 runtime snapshot path
-  `data/resources/ucsc.rmsk.hg38.json`, validation state, row count when
-  available, and the same index recommendations
+  `data/resources/ucsc.rmsk.hg38.json`, the matching interval-index path,
+  validation state, row/index counts when available, and the same index
+  recommendations
+- `resources install-ucsc-rmsk` is the preferred runtime setup route: it
+  downloads or reads the source table, writes the normalized snapshot, and builds
+  the interval index in one reportable step
 - `resources prepare-ucsc-rmsk-index` builds the prepared interval sidecar at
   `data/resources/ucsc.rmsk.<assembly>.interval-index.json` by default; it
   refuses truncated snapshots so fixtures cannot accidentally masquerade as a
   full assembly index
+- prepared interval indexes carry chromosome aliases such as `1` <-> `chr1`, so
+  genome-anchor projection does not depend on catalog/source naming style
 - `--limit N` creates a deliberately truncated snapshot for fixtures/smoke
   checks and marks `truncated=true`
 
@@ -899,7 +907,7 @@ Indexing guidance:
   `(genoName, bin, genoStart, genoEnd)` so genome-region/gene extraction can
   project only overlapping repeats; GENtle's prepared sidecar stores intervals
   grouped by chromosome and sorted by `(start,end,row_offset)` for deterministic
-  overlap queries
+  overlap queries, plus an alias dictionary for common contig spelling variants
 - secondary: keep class/family partitions keyed by normalized
   `(repClass, repFamily, repName)` for display filtering, feature-tree
   grouping, and legends
@@ -5739,6 +5747,7 @@ Repeat-environment cohort contract (implemented baseline):
   - `features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]`
   - `features repeat-cohort GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--geometry repeat_midpoint|transcript_5utr_start|pol2_promoter_upstream|cds_stop_context] [--upstream-bp N] [--downstream-bp N] [--limit N] [--catalog PATH] [--cache DIR] [--path FILE.json]`
   - `features window-cohort-tfbs COHORT_JSON --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache DIR] [--path FILE.json]`
+  - `genomes extract-region|extract-gene|extract-promoter ... [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features]`
 - Raw/shared operations:
   - `{"QueryRepeatAnnotations":{"genome_id":"Human GRCh38 Ensembl 116","rmsk_path":"data/rmsk.txt.gz","filter":{"normalized_alias":"LINE/L1"},"limit":100}}`
   - `{"QueryRepeatOverlaps":{"seq_id":"grch38_tp53","rmsk_index_path":"data/resources/ucsc.rmsk.hg38.interval-index.json","start_0based":0,"end_0based_exclusive":5000,"limit":100}}`
@@ -5756,14 +5765,23 @@ Repeat-environment cohort contract (implemented baseline):
   - `QueryRepeatOverlaps` requires a sequence with genome-extraction anchor
     provenance. It projects prepared-index intervals into local sequence
     coordinates, clips optional local query ranges, flips local strand on
-    reverse anchors, and returns `gentle.sequence_repeat_overlap.v1`.
+    reverse anchors, resolves common chromosome aliases, and returns
+    `gentle.sequence_repeat_overlap.v1`.
+  - `gentle.sequence_repeat_overlap.v1` includes both row-level overlaps and
+    neutral metrics: `query_length_bp`, `total_overlap_bp`,
+    `covered_query_bp`, `coverage_fraction`, `nearest_repeat_distance_bp`, and
+    class/family/alias summary rows.
   - `MaterializeRepeatFeatures` uses the same projection service and writes
     ordinary `repeat_region` features with `gentle_generated=ucsc_rmsk`,
     `rmsk_*`, `repeat_*`, and original `repName`/`repClass`/`repFamily`
-    qualifiers. By default it clears prior generated UCSC-rmsk features before
+    qualifiers plus score/divergence fields. By default it clears prior
+    generated UCSC-rmsk features before
     writing; `--append` keeps existing generated rows and skips duplicates by
     stable annotation id. The report schema is
     `gentle.repeat_feature_materialization.v1`.
+  - Reference extraction commands with `--rmsk-index` apply
+    `MaterializeRepeatFeatures` immediately to the first created anchored
+    sequence and return a sibling `repeat_materialization` result object.
   - `BuildRepeatEnvironmentCohort` creates one row per selected repeat locus,
     then projects transcript/gene context when a prepared genome catalog is
     available. The report stores all geometry windows, the selected geometry,

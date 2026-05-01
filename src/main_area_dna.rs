@@ -1027,6 +1027,12 @@ struct EngineOpsUiState {
     extract_to: String,
     #[serde(default)]
     extract_output_id: String,
+    #[serde(default = "default_ucsc_rmsk_interval_index_path")]
+    rmsk_index_path: String,
+    #[serde(default = "default_rmsk_max_features_text")]
+    rmsk_max_features: String,
+    #[serde(default)]
+    rmsk_append_features: bool,
     #[serde(default)]
     genome_anchor_extend_length_bp: String,
     #[serde(default)]
@@ -8007,6 +8013,24 @@ mod tests {
     }
 
     #[test]
+    fn rmsk_materialization_controls_default_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("rmsk_index_path");
+        object.remove("rmsk_max_features");
+        object.remove("rmsk_append_features");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            decoded.rmsk_index_path,
+            crate::ucsc_rmsk::DEFAULT_UCSC_RMSK_INDEX_PATH
+        );
+        assert_eq!(decoded.rmsk_max_features, "5000");
+        assert!(!decoded.rmsk_append_features);
+    }
+
+    #[test]
     fn clamp_extended_top_panel_height_respects_bounds() {
         let max_height = MainAreaDna::max_extended_top_panel_height(900.0, true);
         assert!(
@@ -12491,6 +12515,14 @@ fn default_simple_pcr_max_primer_distance_bp() -> String {
     "150".to_string()
 }
 
+fn default_ucsc_rmsk_interval_index_path() -> String {
+    crate::ucsc_rmsk::DEFAULT_UCSC_RMSK_INDEX_PATH.to_string()
+}
+
+fn default_rmsk_max_features_text() -> String {
+    "5000".to_string()
+}
+
 fn default_poly_t_prefix_min_bp_text() -> String {
     "18".to_string()
 }
@@ -13156,6 +13188,9 @@ pub struct MainAreaDna {
     extract_from: String,
     extract_to: String,
     extract_output_id: String,
+    rmsk_index_path: String,
+    rmsk_max_features: String,
+    rmsk_append_features: bool,
     genome_anchor_extend_length_bp: String,
     genome_anchor_extend_output_id: String,
     parameter_name: String,
@@ -13802,6 +13837,9 @@ impl MainAreaDna {
             extract_from: "0".to_string(),
             extract_to: "0".to_string(),
             extract_output_id: String::new(),
+            rmsk_index_path: default_ucsc_rmsk_interval_index_path(),
+            rmsk_max_features: default_rmsk_max_features_text(),
+            rmsk_append_features: false,
             genome_anchor_extend_length_bp: "2000".to_string(),
             genome_anchor_extend_output_id: String::new(),
             parameter_name: "max_fragments_per_container".to_string(),
@@ -17625,6 +17663,50 @@ impl MainAreaDna {
                         .clicked()
                     {
                         self.verify_active_genome_anchor();
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("rmsk index");
+                    let index_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rmsk_index_path)
+                                .desired_width(320.0),
+                        )
+                        .on_hover_text(
+                            "Prepared UCSC rmsk interval index JSON used to annotate this anchored sequence.",
+                        )
+                        .changed();
+                    ui.label("max");
+                    let max_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.rmsk_max_features)
+                                .desired_width(70.0),
+                        )
+                        .on_hover_text("Maximum repeat features to add; leave blank for no cap.")
+                        .changed();
+                    let append_changed = ui
+                        .checkbox(&mut self.rmsk_append_features, "Append")
+                        .on_hover_text(
+                            "Keep existing generated rmsk repeat features instead of replacing them.",
+                        )
+                        .changed();
+                    if index_changed || max_changed || append_changed {
+                        self.save_engine_ops_state();
+                    }
+                    let can_load_repeats = anchor_summary.is_some();
+                    let load_response =
+                        ui.add_enabled(can_load_repeats, egui::Button::new("Load Repeats"));
+                    let load_response = if can_load_repeats {
+                        load_response.on_hover_text(
+                            "Materialize overlapping UCSC rmsk repeats as repeat_region features.",
+                        )
+                    } else {
+                        load_response.on_disabled_hover_text(
+                            "Repeat loading requires a genome anchor on the active sequence.",
+                        )
+                    };
+                    if load_response.clicked() {
+                        self.materialize_active_repeat_features();
                     }
                 });
                 ui.small(
@@ -36742,6 +36824,36 @@ impl MainAreaDna {
         self.run_pending_genome_anchor_action(action, None);
     }
 
+    fn materialize_active_repeat_features(&mut self) {
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active sequence selected".to_string();
+            return;
+        };
+        let rmsk_index_path = self.rmsk_index_path.trim().to_string();
+        if rmsk_index_path.is_empty() {
+            self.op_status = "Provide a prepared UCSC rmsk interval-index path".to_string();
+            return;
+        }
+        let max_features = match self.rmsk_max_features.trim() {
+            "" => None,
+            value => match Self::parse_positive_usize_text(value, "rmsk max features") {
+                Ok(parsed) => Some(parsed),
+                Err(message) => {
+                    self.op_status = message.clone();
+                    self.op_error_popup = Some(message);
+                    return;
+                }
+            },
+        };
+        self.apply_operation_with_feedback(Operation::MaterializeRepeatFeatures {
+            seq_id,
+            rmsk_index_path,
+            max_features,
+            clear_existing: Some(!self.rmsk_append_features),
+            path: None,
+        });
+    }
+
     fn handle_operation_success(&mut self, result: OpResult, started: Instant) {
         self.invalidate_rna_read_report_display_cache();
         if let Some(preview) = result.protocol_cartoon_preview.as_ref() {
@@ -49630,6 +49742,9 @@ impl MainAreaDna {
             extract_from: self.extract_from.clone(),
             extract_to: self.extract_to.clone(),
             extract_output_id: self.extract_output_id.clone(),
+            rmsk_index_path: self.rmsk_index_path.clone(),
+            rmsk_max_features: self.rmsk_max_features.clone(),
+            rmsk_append_features: self.rmsk_append_features,
             genome_anchor_extend_length_bp: self.genome_anchor_extend_length_bp.clone(),
             genome_anchor_extend_output_id: self.genome_anchor_extend_output_id.clone(),
             parameter_name: self.parameter_name.clone(),
@@ -49876,6 +49991,13 @@ impl MainAreaDna {
         self.extract_from = s.extract_from;
         self.extract_to = s.extract_to;
         self.extract_output_id = s.extract_output_id;
+        self.rmsk_index_path = if s.rmsk_index_path.trim().is_empty() {
+            default_ucsc_rmsk_interval_index_path()
+        } else {
+            s.rmsk_index_path
+        };
+        self.rmsk_max_features = s.rmsk_max_features;
+        self.rmsk_append_features = s.rmsk_append_features;
         self.genome_anchor_extend_length_bp = if s.genome_anchor_extend_length_bp.trim().is_empty()
         {
             "2000".to_string()

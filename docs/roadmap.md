@@ -782,20 +782,27 @@ order. Durable architecture constraints and decisions remain in
   - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT] --assembly DB`
     normalizes the 17-column UCSC table into
     `gentle.ucsc_rmsk_resource.v1`
+  - `resources install-ucsc-rmsk [--assembly DB]` now performs the runtime
+    one-step install from source table to normalized snapshot plus prepared
+    interval index (`gentle.ucsc_rmsk_install_report.v1`)
   - `resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT]` now builds
-    the prepared `gentle.ucsc_rmsk_interval_index.v1` sidecar and rejects
-    truncated snapshots
+    the prepared `gentle.ucsc_rmsk_interval_index.v1` sidecar, carries common
+    chromosome aliases such as `1`/`chr1`, and rejects truncated snapshots
   - `resources suggest-ucsc-rmsk-index` emits the matching
     `gentle.ucsc_rmsk_descriptor.v1` source/field/index recommendation
     payload without requiring the large table download
-  - `resources status` now reports the default hg38 runtime snapshot path,
-    UCSC download/schema URLs, validation state, and recommended indexes
+  - `resources status` now reports the default hg38 runtime snapshot and
+    interval-index paths, UCSC download/schema URLs, validation state, counts,
+    an install command, and recommended indexes
   - engine/shell operations now query the prepared index against genome-anchored
-    sequence coordinates (`features repeat-overlaps`) and can materialize
-    overlapping rows as generated `repeat_region` features
-    (`features materialize-repeats`)
+    sequence coordinates (`features repeat-overlaps`), return neutral coverage
+    and class/family summary metrics, and can materialize overlapping rows as
+    generated `repeat_region` features (`features materialize-repeats`)
+  - genome/helper extract-region/gene/promoter shell commands can immediately
+    materialize repeats on the created anchored sequence with `--rmsk-index`
   - GUI/SVG display now has a shared `show_repeat_features` layer toggle for
-    RepeatMasker/rmsk-derived repeat features
+    RepeatMasker/rmsk-derived repeat features, and anchored sequence windows can
+    run the same materialization via `Load Repeats`
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
 - Shared engine/shell TFBS region summary path now reports grouped factor
@@ -3644,7 +3651,7 @@ Planned work:
        stable JSON
      - pending follow-up: GUI cohort browser/row actions, RNA-read support as a
        ranking layer, richer intron/splicing handoff, and first curated
-       ClawBio request examples over a local `data/rmsk.txt.gz`
+       ClawBio request examples over installed/prepared rmsk resources
 5. Plan the terminology move from `helper genomes` to `helper constructs` as
    one atomic protocol/docs/code rename once parallel feature churn is low.
 6. Prepare for ontology-backed helper/vector description:

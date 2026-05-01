@@ -13921,6 +13921,35 @@ fn execute_resources_prepare_ucsc_rmsk_index_with_synced_fixture() {
 }
 
 #[test]
+fn execute_resources_install_ucsc_rmsk_with_fixture_source() {
+    let td = tempdir().expect("tempdir");
+    let resource_path = td.path().join("rmsk.resource.json");
+    let index_path = td.path().join("rmsk.interval-index.json");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesInstallUcscRmsk {
+            assembly_database: Some("hg38".to_string()),
+            input: Some(resource_fixture_path("ucsc.rmsk.hg38.edge.txt")),
+            resource_output: Some(resource_path.to_string_lossy().to_string()),
+            index_output: Some(index_path.to_string_lossy().to_string()),
+            max_records: None,
+        },
+    )
+    .expect("execute resources install-ucsc-rmsk");
+
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["report"]["schema"].as_str(),
+        Some("gentle.ucsc_rmsk_install_report.v1")
+    );
+    assert_eq!(out.output["report"]["row_count"].as_u64(), Some(4));
+    assert!(resource_path.exists());
+    assert!(index_path.exists());
+}
+
+#[test]
 fn execute_features_repeat_overlaps_and_materialize_repeats_with_rmsk_index() {
     let td = tempdir().expect("tempdir");
     let index_path = write_ucsc_rmsk_interval_index_fixture(td.path());
@@ -13946,6 +13975,19 @@ fn execute_features_repeat_overlaps_and_materialize_repeats_with_rmsk_index() {
     assert_eq!(
         overlaps.output["report"]["rows"][1]["repeat"]["rep_name"].as_str(),
         Some("TAR1")
+    );
+    assert_eq!(
+        overlaps.output["report"]["covered_query_bp"].as_u64(),
+        Some(300)
+    );
+    assert_eq!(
+        overlaps.output["report"]["nearest_repeat_distance_bp"].as_u64(),
+        Some(0)
+    );
+    assert!(
+        overlaps.output["report"]["class_summaries"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|row| row["rep_class"] == "Satellite"))
     );
 
     let materialized = execute_shell_command(
@@ -15112,6 +15154,7 @@ fn parse_genomes_extract_promoter_with_scope_and_transcript() {
             include_genomic_annotation,
             catalog_path,
             cache_dir,
+            ..
         } => {
             assert!(!helper_mode);
             assert_eq!(genome_id, "ToyGenome".to_string());
@@ -15276,6 +15319,32 @@ fn parse_genomes_extract_region_with_scope_and_cap() {
             assert_eq!(annotation_scope, Some(GenomeAnnotationScope::Full));
             assert_eq!(max_annotation_features, Some(1200));
             assert_eq!(include_genomic_annotation, None);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_genomes_extract_region_with_rmsk_materialization_options() {
+    let cmd = parse_shell_line(
+        "genomes extract-region ToyGenome chr1 100 250 --rmsk-index rmsk.interval-index.json --max-repeat-features 250 --append-repeat-features --output-id out",
+    )
+    .expect("parse genomes extract-region with rmsk materialization options");
+    match cmd {
+        ShellCommand::ReferenceExtractRegion {
+            rmsk_index_path,
+            max_repeat_features,
+            append_repeat_features,
+            output_id,
+            ..
+        } => {
+            assert_eq!(
+                rmsk_index_path,
+                Some("rmsk.interval-index.json".to_string())
+            );
+            assert_eq!(max_repeat_features, Some(250));
+            assert!(append_repeat_features);
+            assert_eq!(output_id, Some("out".to_string()));
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -15463,6 +15532,9 @@ fn assert_genomes_extend_anchor_creates_sequence() {
             include_genomic_annotation: None,
             catalog_path: Some(catalog_path.clone()),
             cache_dir: None,
+            rmsk_index_path: None,
+            max_repeat_features: None,
+            append_repeat_features: false,
         },
     )
     .expect("extract region");
@@ -15679,6 +15751,9 @@ fn assert_execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand
             include_genomic_annotation: None,
             catalog_path: Some(catalog_path),
             cache_dir: None,
+            rmsk_index_path: None,
+            max_repeat_features: None,
+            append_repeat_features: false,
         },
     )
     .expect("extract promoter");
@@ -15899,6 +15974,9 @@ fn assert_execute_genomes_verify_anchor_updates_verification_status() {
             include_genomic_annotation: None,
             catalog_path: Some(catalog_path.clone()),
             cache_dir: None,
+            rmsk_index_path: None,
+            max_repeat_features: None,
+            append_repeat_features: false,
         },
     )
     .expect("extract region");

@@ -1,5 +1,5 @@
 {
-   "command_count": 373,
+   "command_count": 376,
    "commands": [
       {
          "aliases": [
@@ -1346,6 +1346,18 @@
          "usage": "resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]"
       },
       {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources install-ucsc-rmsk",
+         "summary": "Install a UCSC RepeatMasker rmsk resource snapshot and prepared interval index in one step.",
+         "usage": "resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]"
+      },
+      {
          "aliases": [
             "resources index-ucsc-rmsk"
          ],
@@ -1662,7 +1674,7 @@
          ],
          "path": "genomes extract-region",
          "summary": "Extract genomic interval into a project sequence (default annotation_scope=core).",
-         "usage": "genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -1676,7 +1688,21 @@
          ],
          "path": "genomes extract-gene",
          "summary": "Extract a named gene interval into a project sequence.",
-         "usage": "genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomePromoterSlice"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "genomes extract-promoter",
+         "summary": "Extract a transcript-oriented promoter slice into a project sequence.",
+         "usage": "genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -1963,7 +1989,7 @@
          ],
          "path": "helpers extract-region",
          "summary": "Extract helper-genome interval into a project sequence (default annotation_scope=core).",
-         "usage": "helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -1977,7 +2003,21 @@
          ],
          "path": "helpers extract-gene",
          "summary": "Extract helper-gene interval into a project sequence.",
-         "usage": "helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
+         "usage": "helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExtractGenomePromoterSlice"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "helpers extract-promoter",
+         "summary": "Extract a helper promoter slice into a project sequence.",
+         "usage": "helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -2675,7 +2715,7 @@
             "cli-direct"
          ],
          "path": "features repeat-overlaps",
-         "summary": "Project prepared UCSC rmsk intervals onto one genome-anchored sequence and report local overlap coordinates.",
+         "summary": "Project prepared UCSC rmsk intervals onto one genome-anchored sequence and report local overlap coordinates plus neutral coverage/class metrics.",
          "usage": "features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]"
       },
       {
