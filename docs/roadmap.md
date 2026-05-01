@@ -87,7 +87,9 @@ order. Durable architecture constraints and decisions remain in
     layout/export layer, plus the new protein-gel and protein-2D-gel
     layout/export layers, and
     `crates/gentle-shell` now already owns the glossary-driven shell help
-    rendering layer, while `crates/gentle-gui` now already owns the
+    rendering layer, shared shell tokenization, UI-intent vocabulary, shell
+    run-result envelope, and parser-local batch/candidate shell enums, while
+    `crates/gentle-gui` now already owns the
     window-backdrop configuration/rendering helper and embedded icon/resource
     helper
   - Phase 1 is now initiated:
@@ -180,7 +182,10 @@ order. Durable architecture constraints and decisions remain in
   - the next documentation targets now shift from file-level maps to richer
     public-API docs on the remaining GUI-facing state records where warranted
 - Shared shell layer in `src/engine_shell.rs` reused by GUI Shell and
-  `gentle_cli shell`.
+  `gentle_cli shell`; root `engine_shell` now re-exports the shell-owned
+  façade contracts from `crates/gentle-shell` while retaining typed
+  `ShellCommand` parsing/execution until the remaining command field types are
+  root-independent.
 - Shared shell/CLI batch helpers now provide manifest-driven workflow
   expansion:
   - `batch plan` binds TSV/CSV rows into an existing workflow template and

@@ -51,9 +51,11 @@ Current status:
   now lives there as well, with root-crate shims preserving the old import
   paths.
 - `crates/gentle-shell` is no longer only a placeholder either:
-  the glossary-driven shell help rendering layer now lives there, again with
-  root-crate shims preserving the old import paths while parser/executor
-  extraction is still staged.
+  the glossary-driven shell help rendering layer, shared shell tokenization,
+  UI-intent discoverability vocabulary, shell run-result envelope, and several
+  parser-local shell enums now live there. Root-crate shims preserve the old
+  import paths while the full typed `ShellCommand` parser/executor extraction
+  remains staged.
 - `crates/gentle-gui` is no longer only a placeholder either:
   the window-backdrop configuration/rendering helper and embedded icon/resource
   helper now live there, with root-crate shims preserving the old import paths
@@ -307,7 +309,11 @@ Success criterion:
 
 ### Phase 4: extract `gentle-shell`
 
-Move shell parsing/execution after protocol and engine are stable.
+Move shell parsing/execution after protocol and engine are stable. A
+shell-first façade slice is already allowed before full `gentle-engine`
+extraction: root-independent shell contracts, tokenization, and
+discoverability catalogs may move to `gentle-shell` while root execution stays
+as the compatibility layer.
 
 Success criterion:
 
