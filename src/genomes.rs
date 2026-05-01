@@ -40,6 +40,7 @@
 use crate::feature_location::feature_is_reverse;
 use crate::ncbi_genbank_xml::{NcbiXmlDialect, parse_gbseq_xml_file_with_dialect};
 use flate2::read::MultiGzDecoder;
+pub use gentle_protocol::{PreparedCacheCleanupMode, PreparedCacheCleanupRequest};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
@@ -2342,48 +2343,6 @@ pub struct PreparedCacheInspectionReport {
     pub entry_count: usize,
     pub total_size_bytes: u64,
     pub total_file_count: usize,
-}
-
-/// Cleanup mode for conservative prepared-cache cleanup.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PreparedCacheCleanupMode {
-    BlastDbOnly,
-    DerivedIndexesOnly,
-    SelectedPreparedInstalls,
-    AllPreparedInCache,
-}
-
-impl PreparedCacheCleanupMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::BlastDbOnly => "blast_db_only",
-            Self::DerivedIndexesOnly => "derived_indexes_only",
-            Self::SelectedPreparedInstalls => "selected_prepared_installs",
-            Self::AllPreparedInCache => "all_prepared_in_cache",
-        }
-    }
-
-    pub fn allows_orphaned_remnants(self) -> bool {
-        matches!(
-            self,
-            Self::SelectedPreparedInstalls | Self::AllPreparedInCache
-        )
-    }
-}
-
-/// Request payload for deterministic prepared-cache cleanup.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PreparedCacheCleanupRequest {
-    pub mode: PreparedCacheCleanupMode,
-    #[serde(default)]
-    pub cache_roots: Vec<String>,
-    #[serde(default)]
-    pub prepared_ids: Vec<String>,
-    #[serde(default)]
-    pub prepared_paths: Vec<String>,
-    #[serde(default)]
-    pub include_orphaned_remnants: bool,
 }
 
 /// Per-entry cleanup result for prepared-cache cleanup.

@@ -17,12 +17,13 @@ use std::collections::HashMap;
 pub use gentle_protocol::{
     ANNOTATION_CANDIDATE_SCHEMA, ANNOTATION_CANDIDATE_SUMMARY_SCHEMA,
     ANNOTATION_CANDIDATE_WRITEBACK_SCHEMA, AdapterCaptureProtectionMode, AdapterCaptureStyle,
-    AdapterRestrictionCapturePlan, AnnotationCandidate, AnnotationCandidateSummary,
-    AnnotationCandidateWriteback, AttractPwmMappingPolicy, AttractRegionClass,
-    AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow, AttractSplicingEvidencePolicySummary,
-    AttractSplicingEvidenceSettings, AttractSplicingEvidenceSummaryRow,
-    AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA, CONSTRUCT_OBJECTIVE_SCHEMA,
-    CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA, Capabilities,
+    AdapterRestrictionCapturePlan, AnchorBoundary, AnchorDirection, AnnotationCandidate,
+    AnnotationCandidateSummary, AnnotationCandidateWriteback, AttractPwmMappingPolicy,
+    AttractRegionClass, AttractSpeciesMatchMode, AttractSplicingEvidenceHitRow,
+    AttractSplicingEvidencePolicySummary, AttractSplicingEvidenceSettings,
+    AttractSplicingEvidenceSummaryRow, AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA,
+    CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
+    Capabilities, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
     ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
     ConstructRole, ContainerId, ContainerKind, CutRunAlignConfig, CutRunCatalogEntry,
     CutRunCatalogListEntry, CutRunCoverageKind, CutRunDatasetListReport,
@@ -42,14 +43,18 @@ pub use gentle_protocol::{
     DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotReferenceAnnotationInterval,
     DotplotReferenceAnnotationTrack, DotplotView, DotplotViewSummary, EditableStatus, EngineError,
     ErrorCode, EvidenceClass, EvidenceScope, FeatureBedCoordinateMode, FlexibilityModel,
-    GenomeTrackImportProgress, HOST_PROFILE_CATALOG_SCHEMA, HelperConstructProfile,
-    HostLifecycleRole, HostProfileCatalog, HostProfileRecord, HostRouteStep, PairwiseAlignmentMode,
-    ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
+    GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
+    GenomeTrackSource, GenomeTrackSubscription, HOST_PROFILE_CATALOG_SCHEMA,
+    HelperConstructProfile, HostLifecycleRole, HostProfileCatalog, HostProfileRecord,
+    HostRouteStep, PairwiseAlignmentMode, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
+    PrimerDesignBackend, ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
     ProteinResidueGenomicCoordinateReport, ProteinToDnaHandoffCandidate,
     ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
-    RNA_READ_BATCH_MAP_REPORT_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, RnaReadAlignConfig,
-    RnaReadAlignmentBackend, RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport,
-    RnaReadAlignmentEffect, RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
+    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode,
+    RNA_READ_BATCH_MAP_REPORT_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, RenderSvgMode,
+    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadAlignmentBackend,
+    RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect,
+    RnaReadAlignmentInspection, RnaReadAlignmentInspectionEffectFilter,
     RnaReadAlignmentInspectionRow, RnaReadAlignmentInspectionSortKey,
     RnaReadAlignmentInspectionSubsetSpec, RnaReadAlignmentMode, RnaReadAlignmentTsvExport,
     RnaReadBatchConcatemerPartnerRow, RnaReadBatchIsoformSupportRow, RnaReadBatchMapReport,
@@ -68,17 +73,17 @@ pub use gentle_protocol::{
     RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, RnaReadSeedHistogramBin,
     RnaReadStrandAssignmentDiagnostics, RnaReadTopHitPreview, RnaReadTranscriptCatalogIndex,
     RnaReadTranscriptCatalogTemplateRecord, RnaReadTransitionSupportRow, RnaSeedHashCatalogEntry,
-    RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceFeatureBedExportReport,
-    SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureQueryResult,
-    SequenceFeatureQueryRow, SequenceFeatureRangeRelation, SequenceFeatureSortBy,
-    SequenceFeatureStrandFilter, SequencingPrimerOrientation, SequencingPrimerOverlayReport,
-    SequencingPrimerOverlaySuggestion, SequencingPrimerProblemGuidanceRow,
-    SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingTraceChannelData,
-    SequencingTraceChannelSummary, SequencingTraceFormat, SequencingTraceImportReport,
-    SequencingTraceRecord, SequencingTraceSummary, SharedAssetActivityStatus, SplicingScopePreset,
-    TfbsProgress, TranscriptProteinDerivation, TranscriptProteinDerivationMode,
-    TranscriptProteinTranslationTableSource, TranslationSpeedMark, TranslationSpeedProfile,
-    TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
+    RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport, SequenceAnchor,
+    SequenceFeatureBedExportReport, SequenceFeatureQualifierFilter, SequenceFeatureQuery,
+    SequenceFeatureQueryResult, SequenceFeatureQueryRow, SequenceFeatureRangeRelation,
+    SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequencingPrimerOrientation,
+    SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
+    SequencingPrimerProblemGuidanceRow, SequencingPrimerProblemKind, SequencingPrimerProposalRow,
+    SequencingTraceChannelData, SequencingTraceChannelSummary, SequencingTraceFormat,
+    SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary,
+    SharedAssetActivityStatus, SplicingScopePreset, TfbsProgress, TranscriptProteinDerivation,
+    TranscriptProteinDerivationMode, TranscriptProteinTranslationTableSource, TranslationSpeedMark,
+    TranslationSpeedProfile, TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
     UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
     UniprotFeatureCodingDnaSegment,
@@ -3638,55 +3643,6 @@ pub enum GenomeAnchorPreparedFallbackPolicy {
     AlwaysExplicit,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-/// Strand-contextual anchor extension side.
-///
-/// Interpretation is biological 5'/3' relative to anchor strand, not absolute
-/// genomic coordinate direction.
-pub enum GenomeAnchorSide {
-    FivePrime,
-    ThreePrime,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-/// Annotation projection policy for `ExtractGenomeRegion`.
-pub enum GenomeAnnotationScope {
-    None,
-    Core,
-    Full,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Interval policy for `ExtractGenomeGene`.
-pub enum GenomeGeneExtractMode {
-    #[default]
-    Gene,
-    CodingWithPromoter,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum GenomeTrackSource {
-    #[default]
-    Bed,
-    BigWig,
-    Vcf,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct GenomeTrackSubscription {
-    pub source: GenomeTrackSource,
-    pub path: String,
-    pub track_name: Option<String>,
-    pub min_score: Option<f64>,
-    pub max_score: Option<f64>,
-    pub clear_existing: bool,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GenomeTrackSyncReport {
     pub subscriptions_considered: usize,
@@ -3710,24 +3666,9 @@ pub enum ExportFormat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RenderSvgMode {
-    Linear,
-    Circular,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PrimerLibraryMode {
     Enumerate,
     Sample,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum PrimerDesignBackend {
-    #[default]
-    Auto,
-    Internal,
-    Primer3,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -4355,23 +4296,6 @@ pub struct PrimerDesignReportSummary {
     pub backend_used: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum RestrictionCloningPcrHandoffMode {
-    #[default]
-    SingleSite,
-    DirectedPair,
-}
-
-impl RestrictionCloningPcrHandoffMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::SingleSite => "single_site",
-            Self::DirectedPair => "directed_pair",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RestrictionCloningSingleSiteSuggestion {
@@ -4945,90 +4869,6 @@ pub struct QpcrAssayRuleFlags {
     pub primer_tm_delta_in_range: bool,
     pub probe_inside_amplicon: bool,
     pub probe_tm_delta_in_range: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-/// Transcript-aware qPCR design intent for splicing-driven assays.
-pub enum QpcrTranscriptTargetingMode {
-    SharedGene,
-    DistinguishTranscript,
-}
-
-impl Default for QpcrTranscriptTargetingMode {
-    fn default() -> Self {
-        Self::SharedGene
-    }
-}
-
-impl QpcrTranscriptTargetingMode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::SharedGene => "shared_gene",
-            Self::DistinguishTranscript => "distinguish_transcript",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Which transcript-specific evidence kind a transcript-distinguishing qPCR
-/// assay must satisfy.
-pub enum QpcrTranscriptSpecificityEvidence {
-    #[default]
-    JunctionOnly,
-    UniqueExonOrChain,
-    EitherPreferJunction,
-}
-
-impl QpcrTranscriptSpecificityEvidence {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::JunctionOnly => "junction_only",
-            Self::UniqueExonOrChain => "unique_exon_or_chain",
-            Self::EitherPreferJunction => "either_prefer_junction",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-/// Transcript-row ordering policy for cDNA PCR/qPCR transcript maps.
-pub enum CdnaAssayTranscriptOrder {
-    #[default]
-    TranscriptId,
-    GenomicFirstExon,
-    GenomicLastExon,
-    AntisenseFirstExon,
-}
-
-impl CdnaAssayTranscriptOrder {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::TranscriptId => "transcript_id",
-            Self::GenomicFirstExon => "genomic_first_exon",
-            Self::GenomicLastExon => "genomic_last_exon",
-            Self::AntisenseFirstExon => "antisense_first_exon",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-/// Coordinate system used by the portable cDNA PCR/qPCR transcript map.
-pub enum CdnaAssayTranscriptMapCoordinateMode {
-    #[default]
-    Cdna,
-    GenomicAligned,
-}
-
-impl CdnaAssayTranscriptMapCoordinateMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Cdna => "cdna",
-            Self::GenomicAligned => "genomic_aligned",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -6224,32 +6064,6 @@ pub struct IsoformPanelValidationReport {
     pub status: String,
     pub isoforms: Vec<IsoformPanelValidationIsoformSummary>,
     pub issues: Vec<IsoformPanelValidationIssue>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AnchorBoundary {
-    Start,
-    End,
-    Middle,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AnchorDirection {
-    Upstream,
-    Downstream,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum SequenceAnchor {
-    Position {
-        zero_based: usize,
-    },
-    FeatureBoundary {
-        feature_kind: Option<String>,
-        feature_label: Option<String>,
-        boundary: AnchorBoundary,
-        occurrence: Option<usize>,
-    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

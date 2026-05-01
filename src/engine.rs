@@ -42,7 +42,7 @@ use crate::{
         GenomeSourcePlan, GenomeTranscriptRecord, HelperConstructInterpretation,
         HelperConstructVocabularyDoctorReport, HelperConstructVocabularyTerm,
         PrepareGenomeActivityStatus, PrepareGenomePlan, PrepareGenomeProgress, PrepareGenomeReport,
-        PreparedCacheCleanupReport, PreparedCacheCleanupRequest, PreparedCacheInspectionReport,
+        PreparedCacheCleanupReport, PreparedCacheInspectionReport,
         PreparedGenomeCompatibilityInspection, PreparedGenomeFallbackPolicy,
         PreparedGenomeInspection, PreparedGenomeRemovalReport,
         blast_external_binary_preflight_report, build_genbank_efetch_url,
@@ -1882,16 +1882,6 @@ impl ProjectState {
     }
 }
 
-impl PrimerDesignBackend {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::Internal => "internal",
-            Self::Primer3 => "primer3",
-        }
-    }
-}
-
 impl Default for PrimerDesignPairConstraint {
     fn default() -> Self {
         Self {
@@ -1958,40 +1948,6 @@ pub struct TfThresholdOverride {
 
 // Backward-compatible alias kept while adapter/docs migrate to SequenceAnchor.
 pub type AnchoredRegionAnchor = SequenceAnchor;
-
-impl GenomeTrackSource {
-    pub fn from_path(path: &str) -> Self {
-        let lower = path.trim().to_ascii_lowercase();
-        if lower.ends_with(".bw") || lower.ends_with(".bigwig") {
-            Self::BigWig
-        } else if lower.ends_with(".vcf") || lower.ends_with(".vcf.gz") {
-            Self::Vcf
-        } else {
-            Self::Bed
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Bed => "BED",
-            Self::BigWig => "BigWig",
-            Self::Vcf => "VCF",
-        }
-    }
-}
-
-impl Default for GenomeTrackSubscription {
-    fn default() -> Self {
-        Self {
-            source: GenomeTrackSource::Bed,
-            path: String::new(),
-            track_name: None,
-            min_score: None,
-            max_score: None,
-            clear_existing: false,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -2613,34 +2569,6 @@ impl BlastRunOptions {
             self.max_hits = other.max_hits;
         }
         self.thresholds.merge_from(&other.thresholds);
-    }
-}
-
-impl GenomeAnchorSide {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::FivePrime => "5prime",
-            Self::ThreePrime => "3prime",
-        }
-    }
-}
-
-impl GenomeAnnotationScope {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::Core => "core",
-            Self::Full => "full",
-        }
-    }
-}
-
-impl GenomeGeneExtractMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Gene => "gene",
-            Self::CodingWithPromoter => "coding_with_promoter",
-        }
     }
 }
 
