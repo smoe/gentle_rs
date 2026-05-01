@@ -536,6 +536,229 @@ impl RenderDna {
         None
     }
 
+    fn push_repeat_detail_once(
+        lines: &mut Vec<String>,
+        seen: &mut BTreeSet<String>,
+        key: &str,
+        value: String,
+    ) {
+        let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+        let value = value.trim();
+        if value.is_empty() {
+            return;
+        }
+        let line = format!("{key}: {value}");
+        if seen.insert(line.clone()) {
+            lines.push(line);
+        }
+    }
+
+    fn push_repeat_qualifier_detail(
+        lines: &mut Vec<String>,
+        seen: &mut BTreeSet<String>,
+        label: &str,
+        feature: &Feature,
+        keys: &[&str],
+    ) -> bool {
+        if let Some(value) = Self::first_nonempty_qualifier(feature, keys) {
+            Self::push_repeat_detail_once(lines, seen, label, value);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn repeat_feature_detail_lines(feature: &Feature) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut seen = BTreeSet::new();
+
+        let source =
+            Self::first_nonempty_qualifier(feature, &["gentle_feature_source", "gentle_generated"]);
+        if source
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case("ucsc_rmsk"))
+        {
+            Self::push_repeat_detail_once(
+                &mut lines,
+                &mut seen,
+                "repeat_source",
+                "UCSC rmsk".to_string(),
+            );
+        } else if Self::first_nonempty_qualifier(feature, &["rmsk_name", "rmsk_class"]).is_some() {
+            Self::push_repeat_detail_once(
+                &mut lines,
+                &mut seen,
+                "repeat_source",
+                "RepeatMasker/UCSC rmsk".to_string(),
+            );
+        }
+
+        if let Some(repeat) = repeat_feature_display(feature) {
+            Self::push_repeat_detail_once(
+                &mut lines,
+                &mut seen,
+                "repeat_summary",
+                repeat.display_label(),
+            );
+        }
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "repeat_name",
+            feature,
+            &[
+                "rmsk_name",
+                "repName",
+                "repeat_name",
+                "rpt_name",
+                "repeat_id",
+            ],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "repeat_class",
+            feature,
+            &[
+                "rmsk_class",
+                "repClass",
+                "repeat_class",
+                "rpt_class",
+                "rpt_type",
+                "mobile_element_type",
+            ],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "repeat_family",
+            feature,
+            &[
+                "rmsk_family",
+                "repFamily",
+                "repeat_family",
+                "rpt_family",
+                "repeat_subfamily",
+                "subfamily",
+            ],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "repeat_alias",
+            feature,
+            &["repeat_alias"],
+        );
+
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "local_strand",
+            feature,
+            &["strand"],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "genomic_strand",
+            feature,
+            &["rmsk_genomic_strand"],
+        );
+        match (
+            Self::first_nonempty_qualifier(feature, &["chromosome"]),
+            Self::first_nonempty_qualifier(feature, &["genomic_start_1based"]),
+            Self::first_nonempty_qualifier(feature, &["genomic_end_1based"]),
+        ) {
+            (Some(chromosome), Some(start), Some(end)) => {
+                Self::push_repeat_detail_once(
+                    &mut lines,
+                    &mut seen,
+                    "genomic_interval",
+                    format!("{chromosome}:{start}..{end}"),
+                );
+            }
+            _ => {
+                Self::push_repeat_qualifier_detail(
+                    &mut lines,
+                    &mut seen,
+                    "chromosome",
+                    feature,
+                    &["chromosome"],
+                );
+                Self::push_repeat_qualifier_detail(
+                    &mut lines,
+                    &mut seen,
+                    "genomic_start_1based",
+                    feature,
+                    &["genomic_start_1based"],
+                );
+                Self::push_repeat_qualifier_detail(
+                    &mut lines,
+                    &mut seen,
+                    "genomic_end_1based",
+                    feature,
+                    &["genomic_end_1based"],
+                );
+            }
+        }
+
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "score",
+            feature,
+            &["swScore", "score"],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "divergence_percent",
+            feature,
+            &["rmsk_divergence_percent"],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "milli_div",
+            feature,
+            &["milliDiv"],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "milli_del",
+            feature,
+            &["milliDel"],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "milli_ins",
+            feature,
+            &["milliIns"],
+        );
+        Self::push_repeat_qualifier_detail(
+            &mut lines,
+            &mut seen,
+            "clipped_to_sequence",
+            feature,
+            &["rmsk_clipped"],
+        );
+
+        for (label, keys) in [
+            ("rmsk_annotation_id", &["rmsk_annotation_id"][..]),
+            ("rmsk_row_offset", &["rmsk_row_offset"][..]),
+            ("rmsk_bin", &["rmsk_bin"][..]),
+            ("rmsk_index_path", &["rmsk_index_path"][..]),
+            ("note", &["note"][..]),
+            ("db_xref", &["db_xref"][..]),
+        ] {
+            Self::push_repeat_qualifier_detail(&mut lines, &mut seen, label, feature, keys);
+        }
+
+        lines
+    }
+
     pub fn is_mcs_feature(feature: &Feature) -> bool {
         if Self::feature_has_qualifier_value(feature, "gentle_generated", "helper_mcs") {
             return true;
@@ -918,32 +1141,13 @@ impl RenderDna {
     }
 
     pub fn feature_detail_lines(feature: &Feature) -> Vec<String> {
+        if Self::is_repeat_feature(feature) {
+            return Self::repeat_feature_detail_lines(feature);
+        }
+
         let mut lines = Vec::new();
         let kind = feature.kind.to_string().to_ascii_uppercase();
-        let keys = if Self::is_repeat_feature(feature) {
-            vec![
-                "repName",
-                "repClass",
-                "repFamily",
-                "rmsk_name",
-                "rmsk_class",
-                "rmsk_family",
-                "repeat_name",
-                "repeat_class",
-                "repeat_family",
-                "rpt_type",
-                "rpt_family",
-                "mobile_element_type",
-                "label",
-                "name",
-                "note",
-                "score",
-                "milliDiv",
-                "milliDel",
-                "milliIns",
-                "db_xref",
-            ]
-        } else if Self::is_regulatory_feature(feature) {
+        let keys = if Self::is_regulatory_feature(feature) {
             vec![
                 "regulatory_class",
                 "standard_name",
@@ -1219,5 +1423,71 @@ mod tests {
             RenderDna::feature_color(&feature),
             Color32::from_rgb(14, 116, 144)
         );
+    }
+
+    #[test]
+    fn repeatmasker_feature_details_summarize_ucsc_rmsk_qualifiers() {
+        let feature = make_feature(
+            "repeat_region",
+            &[
+                ("gentle_generated", "ucsc_rmsk"),
+                (
+                    "rmsk_index_path",
+                    "data/resources/ucsc.rmsk.hg38.interval-index.json",
+                ),
+                ("rmsk_annotation_id", "chr1:100-200:AluY:42"),
+                ("rmsk_row_offset", "41"),
+                ("rmsk_bin", "585"),
+                ("repName", "AluY"),
+                ("rmsk_name", "AluY"),
+                ("repClass", "SINE"),
+                ("rmsk_class", "SINE"),
+                ("repFamily", "Alu"),
+                ("rmsk_family", "Alu"),
+                ("repeat_alias", "SINE/Alu/AluY"),
+                ("strand", "+"),
+                ("rmsk_genomic_strand", "-"),
+                ("chromosome", "chr1"),
+                ("genomic_start_1based", "101"),
+                ("genomic_end_1based", "200"),
+                ("score", "1234"),
+                ("swScore", "1234"),
+                ("milliDiv", "18"),
+                ("milliDel", "2"),
+                ("milliIns", "0"),
+                ("rmsk_divergence_percent", "1.8"),
+                ("rmsk_clipped", "false"),
+                ("note", "UCSC RepeatMasker rmsk interval"),
+            ],
+        );
+
+        let details = RenderDna::feature_detail_lines(&feature);
+        assert_eq!(
+            details,
+            vec![
+                "repeat_source: UCSC rmsk",
+                "repeat_summary: AluY (SINE / Alu)",
+                "repeat_name: AluY",
+                "repeat_class: SINE",
+                "repeat_family: Alu",
+                "repeat_alias: SINE/Alu/AluY",
+                "local_strand: +",
+                "genomic_strand: -",
+                "genomic_interval: chr1:101..200",
+                "score: 1234",
+                "divergence_percent: 1.8",
+                "milli_div: 18",
+                "milli_del: 2",
+                "milli_ins: 0",
+                "clipped_to_sequence: false",
+                "rmsk_annotation_id: chr1:100-200:AluY:42",
+                "rmsk_row_offset: 41",
+                "rmsk_bin: 585",
+                "rmsk_index_path: data/resources/ucsc.rmsk.hg38.interval-index.json",
+                "note: UCSC RepeatMasker rmsk interval",
+            ]
+        );
+        assert!(!details.iter().any(|line| line.starts_with("repName:")));
+        assert!(!details.iter().any(|line| line.starts_with("rmsk_name:")));
     }
 }
