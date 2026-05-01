@@ -212,6 +212,11 @@ Both panels can be shown/hidden from the toolbar.
 - On macOS-hosted windows, the sequence-text toggle now keeps a stable
   bottom-panel layout slot even while hidden/auto-hidden, reducing repaint
   churn and transient relayout artifacts when switching the text panel on/off.
+- Hovering a visible restriction-site label or tick shows a compact shared
+  restriction-site tooltip with enzyme/site count, recognition span, cut
+  geometry, caret-marked top/bottom cut positions, and REBASE/note metadata
+  when available; clicking the same site still opens the richer description
+  panel expert view.
 
 The project main window (lineage page) supports two views:
 

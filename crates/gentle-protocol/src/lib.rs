@@ -1506,6 +1506,113 @@ pub struct RestrictionSiteExpertView {
     pub instruction: String,
 }
 
+impl RestrictionSiteExpertView {
+    pub fn enzyme_display_label(&self) -> String {
+        self.selected_enzyme
+            .clone()
+            .or_else(|| (!self.enzyme_names.is_empty()).then(|| self.enzyme_names.join(", ")))
+            .unwrap_or_else(|| "Restriction site".to_string())
+    }
+
+    pub fn paired_cut_pos_1based_effective(&self) -> usize {
+        if self.paired_cut_pos_1based == 0 {
+            self.cut_pos_1based
+        } else {
+            self.paired_cut_pos_1based
+        }
+    }
+
+    pub fn paired_cut_index_0based_effective(&self) -> usize {
+        if self.paired_cut_pos_1based == 0 && self.paired_cut_index_0based == 0 {
+            self.cut_index_0based
+        } else {
+            self.paired_cut_index_0based
+        }
+    }
+
+    pub fn site_count_label(&self) -> String {
+        match self.number_of_cuts_for_enzyme {
+            1 => "1 site".to_string(),
+            count => format!("{count} sites"),
+        }
+    }
+
+    pub fn cut_position_label(&self) -> String {
+        let paired = self.paired_cut_pos_1based_effective();
+        if paired == self.cut_pos_1based {
+            format!("cut at {} bp", self.cut_pos_1based)
+        } else {
+            format!("cuts at {}|{} bp", self.cut_pos_1based, paired)
+        }
+    }
+
+    pub fn geometry_display_label(&self) -> String {
+        match self.end_geometry.as_str() {
+            "5prime_overhang" => format!(
+                "5' overhang ({} bp)",
+                self.overlap_bp.unwrap_or(0).unsigned_abs()
+            ),
+            "3prime_overhang" => format!(
+                "3' overhang ({} bp)",
+                self.overlap_bp.unwrap_or(0).unsigned_abs()
+            ),
+            _ => match self.overlap_bp {
+                Some(value) if value > 0 => format!("5' overhang ({} bp)", value as usize),
+                Some(value) if value < 0 => format!("3' overhang ({} bp)", value.unsigned_abs()),
+                _ => "blunt".to_string(),
+            },
+        }
+    }
+
+    pub fn marked_top_sequence(&self) -> String {
+        sequence_with_cut_marker(&self.site_sequence, self.cut_index_0based)
+    }
+
+    pub fn marked_bottom_sequence(&self) -> String {
+        sequence_with_cut_marker(
+            &self.site_sequence_complement,
+            self.paired_cut_index_0based_effective(),
+        )
+    }
+
+    pub fn tooltip_summary_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            format!(
+                "{} | {} | {}",
+                self.enzyme_display_label(),
+                self.site_count_label(),
+                self.geometry_display_label()
+            ),
+            format!(
+                "{} | recognition {}..{}",
+                self.cut_position_label(),
+                self.recognition_start_1based,
+                self.recognition_end_1based
+            ),
+        ];
+        if let Some(iupac) = self.recognition_iupac.as_deref() {
+            lines.push(format!("recognition_iupac={iupac}"));
+        }
+        lines.push(format!("5' {} 3'", self.marked_top_sequence()));
+        lines.push(format!("3' {} 5'", self.marked_bottom_sequence()));
+        if let Some(note) = self.enzyme_note.as_deref() {
+            lines.push(format!("note={note}"));
+        }
+        if let Some(url) = self.rebase_url.as_deref() {
+            lines.push(format!("REBASE: {url}"));
+        }
+        lines
+    }
+}
+
+fn sequence_with_cut_marker(sequence: &str, index_0based: usize) -> String {
+    let chars = sequence.chars().collect::<Vec<_>>();
+    let split = index_0based.min(chars.len());
+    let left = chars[..split].iter().collect::<String>();
+    let right = chars[split..].iter().collect::<String>();
+    format!("{left}^{right}")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "data", rename_all = "snake_case")]
 pub enum FeatureExpertView {
@@ -5473,7 +5580,7 @@ pub struct RnaReadInterpretationReportSummary {
 mod dotplot_and_concatemer_setting_tests {
     use super::{
         DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayResolvedAnchorSeries,
-        DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotView,
+        DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotView, RestrictionSiteExpertView,
         RnaReadConcatemerInspectionSettings,
     };
 
@@ -5613,5 +5720,41 @@ mod dotplot_and_concatemer_setting_tests {
                 "data/ncrna.fa.gz".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn restriction_site_expert_view_builds_tooltip_lines_with_cut_markers() {
+        let view = RestrictionSiteExpertView {
+            seq_id: "p".to_string(),
+            cut_pos_1based: 4,
+            paired_cut_pos_1based: 8,
+            recognition_start_1based: 3,
+            recognition_end_1based: 8,
+            cut_index_0based: 1,
+            paired_cut_index_0based: 5,
+            end_geometry: "5prime_overhang".to_string(),
+            number_of_cuts_for_enzyme: 1,
+            selected_enzyme: Some("EcoRI".to_string()),
+            enzyme_names: vec!["EcoRI".to_string()],
+            recognition_iupac: Some("GAATTC".to_string()),
+            site_sequence: "GAATTC".to_string(),
+            site_sequence_complement: "CTTAAG".to_string(),
+            enzyme_cut_offset_0based: Some(1),
+            overlap_bp: Some(4),
+            enzyme_note: None,
+            rebase_url: Some("https://rebase.neb.com/rebase/enz/EcoRI.html".to_string()),
+            instruction: "inspect".to_string(),
+        };
+
+        assert_eq!(view.enzyme_display_label(), "EcoRI");
+        assert_eq!(view.site_count_label(), "1 site");
+        assert_eq!(view.cut_position_label(), "cuts at 4|8 bp");
+        assert_eq!(view.geometry_display_label(), "5' overhang (4 bp)");
+        assert_eq!(view.marked_top_sequence(), "G^AATTC");
+        assert_eq!(view.marked_bottom_sequence(), "CTTAA^G");
+        let lines = view.tooltip_summary_lines();
+        assert!(lines.iter().any(|line| line.contains("EcoRI | 1 site")));
+        assert!(lines.iter().any(|line| line.contains("5' G^AATTC 3'")));
+        assert!(lines.iter().any(|line| line.contains("3' CTTAA^G 5'")));
     }
 }

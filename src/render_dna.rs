@@ -153,6 +153,19 @@ impl RenderDna {
         }
     }
 
+    pub fn get_hovered_restriction_site(&self) -> Option<RestrictionEnzymePosition> {
+        match self {
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_restriction_enzyme()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_restriction_enzyme()),
+        }
+    }
+
     pub fn get_selected_reasoning_evidence_id(&self) -> Option<String> {
         match self {
             RenderDna::Circular(renderer) => renderer
