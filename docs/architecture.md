@@ -1812,6 +1812,11 @@ Architecture constraints for this track:
   operations.
 - Cross-adapter parity (GUI/CLI/shared shell) is required for summary
   inspection/export surfaces.
+- GUI inspection may be richer than CLI text output, but it must remain an
+  introspection view over engine-owned explanation records: score inputs,
+  thresholds, provenance, accepted/rejected reasons, and per-row diagnostics
+  should come from persisted payloads or shared helper contracts, not from
+  duplicate GUI-side biology logic.
 - Long-running RNA-read interpretation should avoid exclusive engine-write
   lock residency during compute-heavy read parsing/filtering so adapters stay
   responsive while progress streams are active.

@@ -8,25 +8,90 @@ order. Durable architecture constraints and decisions remain in
 
 ## Release cut line (pre- vs post-release)
 
-Pre-release work stays in release-hardening mode:
+This section is the current stop/continue rule for the next publication. The
+rest of this roadmap remains the detailed backlog; this cut line decides what
+is allowed to move before the release tag and what should wait.
 
-- keep core implementation gene-agnostic; TP73 may appear only in fixtures,
-  examples, runbooks, or proof data
-- prefer engine-owned explanation/report records so GUI, CLI, shell, MCP, and
-  ClawBio surfaces inspect the same deterministic artifacts
-- for CUT&RUN, ship only the small generic smoke/proof slice documented in
-  `docs/cutrun_release_smoke.md`: dataset lifecycle, genome-anchored
-  projection, optional ROI read interpretation, regulatory-support inspection,
-  existing TFBS scan/score-track surfaces, and a thin GUI inspector over the
-  same engine-owned regulatory-support report
+### Pre-release scope
 
-Post-release work includes:
+Pre-release work should be limited to release confidence, reproducibility, and
+one persuasive end-to-end proof path.
 
-- de-novo motif discovery
-- new or recalibrated motif scoring models
-- expression-stratified CUT&RUN comparisons
-- richer GUI CUT&RUN workflows and figures beyond the pre-release shared-report
-  inspector, especially after real proof runs settle the most useful views
+- Freeze new biology features by default. Accept only changes that unblock or
+  verify the TP73 pancreatic cDNA proof run, fix correctness regressions, or
+  remove release-risk ambiguity.
+- Keep core implementation gene-agnostic. TP73 may appear only in fixtures,
+  examples, runbooks, or proof data.
+- Prefer engine-owned explanation/report records so GUI, CLI, shell, MCP, and
+  ClawBio surfaces inspect the same deterministic artifacts.
+- Keep the GUI in "shop-window" mode: it must open reliably, show the core
+  sequence/RNA-read/report surfaces, and export evidence without hangs or
+  obvious redraw pathologies. It does not need to reach full parity with the
+  agent/CLI surface before this release.
+- Preserve the GUI's special role as an introspection surface: where the CLI
+  can return compact machine-readable results, the GUI should help users feel
+  in control by exposing why a read, feature, primer, motif, or routine was
+  scored or accepted. Release-critical GUI paths should therefore keep visible
+  score inputs, thresholds, provenance, filter reasons, and drill-down links
+  rather than hiding engine decisions behind a single final label.
+- Treat the shared engine, shell, CLI, and portable report contracts as the
+  load-bearing release surface. GUI actions that matter for the proof should
+  continue to route through those same contracts rather than gaining GUI-only
+  logic.
+- Complete one from-scratch TP73 pancreatic cancer Nanopore cDNA benchmark run
+  using `docs/tp73_pancreas_benchmark_runbook.md`, and preserve the generated
+  preflight summary, final report summary, TSV exports, SVG target-quality
+  export, logs, and evidence-bundle note.
+- Keep CUT&RUN pre-release work to a small TP73-adjacent smoke/proof slice:
+  reuse existing prepared-dataset projection, ROI read interpretation,
+  regulatory-support inspection, existing TFBS scan/score-track surfaces, and
+  the thin GUI inspector over the same engine-owned regulatory-support report
+  documented in `docs/cutrun_release_smoke.md`; do not start new de-novo motif
+  discovery, differential-expression integration, or improved scoring-model
+  work before the release cut.
+- Keep TP73 positive controls and TP53/TP63 negative controls in deterministic
+  test coverage for RNA-read preflight/threshold optimization.
+- Before tagging, run a release-signoff test slice:
+  - targeted RNA-read/preflight tests for TP73 positives and TP53/TP63 controls
+  - shell/CLI command glossary parity tests
+  - workflow/example tests touched by the release proof path
+  - `cargo check -q`
+  - one broader `cargo test -q` pass when local time/CPU permits
+- Before tagging, run a small manual GUI smoke pass:
+  - launch the app
+  - open a known TP73 sequence/project
+  - open/focus RNA-read Mapping
+  - inspect a saved RNA-read report
+  - export at least one evidence artifact
+  - confirm scrolling/redraw remains responsive enough for demonstration
+- Keep release notes and install/run documentation aligned with the actual
+  shipped artifacts and the headless/agent-first positioning.
+
+### Post-release scope
+
+Post-release work may resume broader product development and deeper polish
+without blocking this publication.
+
+- Broaden MCP/agent route coverage and mutating-intent safety beyond the
+  release proof path.
+- Resume broader CUT&RUN development: generalized batch mapping, improved
+  motif/support scoring, sequence-first de-novo pattern discovery, and
+  expression-stratified regulatory-context comparison.
+- Build richer GUI CUT&RUN workflows and figures beyond the pre-release
+  shared-report inspector, especially after real proof runs settle the most
+  useful views.
+- Continue GUI visual polish, publication-style presets, screenshot atlas work,
+  and tutorial screenshot completion after the stability gate.
+- Deepen helper-construct/catalog semantics, including any eventual
+  terminology migration away from legacy "helper genome" wording.
+- Expand cloning-routine standardization, guideRNA workflows, Primer3 parity,
+  async orchestration, and cross-tool parity tracks.
+- Add GUI-driven feature editing and richer RNA-seq-informed curation flows
+  once the engine-owned edit/provenance contracts are ready.
+- Extend benchmark fixtures beyond the compact TP73/p53-family release slice,
+  including future TP53-forward and larger RNA-mapping profiles.
+- Resume larger adapter, workspace split, cross-application clipboard,
+  XML/SnapGene parity, protein UX, and documentation automation work.
 
 ## 1. Current implementation snapshot
 
@@ -4630,6 +4695,36 @@ Status:
      release proof data, not as implementation behavior.
    - deterministic synthetic tests already cover the generic CUT&RUN engine and
      shell path; no committed large TP73 CUT&RUN fixture is bundled yet.
+
+Release cut for the requested CUT&RUN analysis layers:
+
+- Pre-release: genome-anchored projection and ROI read interpretation
+  (`a`). GENtle already has catalog/cache/status, prepared BED/BigWig
+  projection, raw FASTA/FASTQ ROI interpretation, coverage/cut-site exports,
+  and regulatory-support inspection. Before release, this should only be
+  exercised as a small TP73-focused proof/smoke path using existing contracts,
+  not expanded into a new full cohort pipeline.
+- Pre-release, limited: TP73 motif scoring inside supported windows (`b`).
+  Use the current JASPAR/TFBS score-track and
+  `InspectCutRunRegulatorySupport` machinery to show where TP73-like motifs are
+  confirmed, unconfirmed, or absent despite support. Any "improved score" work
+  should be limited to documenting observed weaknesses and preserving the
+  score inputs/thresholds needed to reproduce them.
+- Post-release: improved CUT&RUN-aware scoring (`b`, extended). Empirical
+  background models, target-vs-context motif calibration, signal/peak/read
+  support weighting, replicate-aware confidence, and TP73-family-specific score
+  refinement are research/model-development tasks and should not block the
+  release.
+- Post-release: novel pattern discovery without genome mapping (`c`). De-novo
+  motif/k-mer discovery from unmapped or sequence-first CUT&RUN reads is a
+  separate sequence-mining track. It should define its own deterministic input
+  subsets, background controls, repeat/low-complexity handling, and exportable
+  motif candidates before becoming a GUI surface.
+- Post-release: expression-stratified regulatory-context comparison (`d`).
+  Up/downregulated-gene comparisons need expression-matrix ingestion,
+  gene/sample metadata, cohort definitions, normalization policy, and
+  multiple-testing/report semantics. They should consume CUT&RUN support and
+  motif-context reports later rather than reshaping the release proof path.
 
 Remaining CUT&RUN follow-up:
 
