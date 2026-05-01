@@ -6784,6 +6784,29 @@ impl GentleEngine {
         self.write_uniprot_projection_store(store)
     }
 
+    fn trim_isoform_panel_optional_text(value: &mut Option<String>) {
+        *value = value
+            .take()
+            .map(|entry| entry.trim().to_string())
+            .filter(|entry| !entry.is_empty());
+    }
+
+    fn normalize_isoform_panel_string_vec(values: &mut Vec<String>) {
+        let mut out: Vec<String> = Vec::with_capacity(values.len());
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        for entry in values.iter() {
+            let normalized = entry.trim().to_string();
+            if normalized.is_empty() {
+                continue;
+            }
+            let key = normalized.to_ascii_uppercase();
+            if seen.insert(key) {
+                out.push(normalized);
+            }
+        }
+        *values = out;
+    }
+
     pub(super) fn load_isoform_panel_resource(
         path: &str,
         panel_id_override: Option<&str>,
@@ -6832,6 +6855,44 @@ impl GentleEngine {
                 code: ErrorCode::InvalidInput,
                 message: format!("Isoform panel file '{}' has no isoforms", path),
             });
+        }
+        Self::trim_isoform_panel_optional_text(&mut resource.assembly);
+        Self::trim_isoform_panel_optional_text(&mut resource.source);
+        Self::trim_isoform_panel_optional_text(&mut resource.notes);
+        for evidence in &mut resource.evidence {
+            evidence.evidence_id = evidence.evidence_id.trim().to_string();
+            evidence.source_type = evidence.source_type.trim().to_string();
+            evidence.accession = evidence.accession.trim().to_string();
+            Self::trim_isoform_panel_optional_text(&mut evidence.version);
+            Self::trim_isoform_panel_optional_text(&mut evidence.label);
+            Self::trim_isoform_panel_optional_text(&mut evidence.description);
+            Self::trim_isoform_panel_optional_text(&mut evidence.url);
+            Self::trim_isoform_panel_optional_text(&mut evidence.sequence_path);
+            Self::trim_isoform_panel_optional_text(&mut evidence.sequence_sha256);
+            Self::trim_isoform_panel_optional_text(&mut evidence.retrieved_on);
+        }
+        for evaluation in &mut resource.evaluations {
+            evaluation.evaluation_id = evaluation.evaluation_id.trim().to_string();
+            evaluation.status = evaluation.status.trim().to_string();
+            evaluation.summary = evaluation.summary.trim().to_string();
+            Self::trim_isoform_panel_optional_text(&mut evaluation.title);
+            Self::trim_isoform_panel_optional_text(&mut evaluation.created_on);
+            Self::trim_isoform_panel_optional_text(&mut evaluation.method);
+            Self::normalize_isoform_panel_string_vec(&mut evaluation.source_evidence_ids);
+            Self::normalize_isoform_panel_string_vec(&mut evaluation.isoform_ids);
+            for row in &mut evaluation.rows {
+                Self::trim_isoform_panel_optional_text(&mut row.isoform_id);
+                Self::trim_isoform_panel_optional_text(&mut row.evidence_id);
+                Self::trim_isoform_panel_optional_text(&mut row.compared_to);
+                row.status = row.status.trim().to_string();
+                row.summary = row.summary.trim().to_string();
+                for metric in &mut row.metrics {
+                    metric.key = metric.key.trim().to_string();
+                    metric.value = metric.value.trim().to_string();
+                }
+                row.metrics
+                    .retain(|metric| !metric.key.is_empty() || !metric.value.is_empty());
+            }
         }
         for (idx, isoform) in resource.isoforms.iter_mut().enumerate() {
             isoform.isoform_id = isoform.isoform_id.trim().to_string();
@@ -7012,6 +7073,200 @@ impl GentleEngine {
         let mut curated_isoform_count = 0usize;
         let mut isoform_id_buckets: HashMap<String, Vec<String>> = HashMap::new();
         let mut transcript_probe_buckets: HashMap<String, BTreeSet<String>> = HashMap::new();
+        let known_isoform_ids: BTreeSet<String> = resource
+            .isoforms
+            .iter()
+            .map(|isoform| isoform.isoform_id.to_ascii_uppercase())
+            .collect();
+        let mut known_evidence_ids: BTreeSet<String> = BTreeSet::new();
+        let mut evidence_id_buckets: HashMap<String, Vec<String>> = HashMap::new();
+        let evidence_count = resource.evidence.len();
+        let evaluation_count = resource.evaluations.len();
+        let evaluation_row_count = resource
+            .evaluations
+            .iter()
+            .map(|evaluation| evaluation.rows.len())
+            .sum::<usize>();
+
+        for evidence in &resource.evidence {
+            let evidence_key = evidence.evidence_id.to_ascii_uppercase();
+            if evidence.evidence_id.is_empty() {
+                issues.push(Self::isoform_validation_issue(
+                    "missing_evidence_id",
+                    format!(
+                        "Panel '{}' contains evidence with empty evidence_id",
+                        resource.panel_id
+                    ),
+                    None,
+                    None,
+                    None,
+                ));
+            } else {
+                known_evidence_ids.insert(evidence_key.clone());
+                evidence_id_buckets
+                    .entry(evidence_key)
+                    .or_default()
+                    .push(evidence.evidence_id.clone());
+            }
+            if evidence.source_type.is_empty() {
+                issues.push(Self::isoform_validation_issue(
+                    "missing_evidence_source_type",
+                    format!("Evidence '{}' has empty source_type", evidence.evidence_id),
+                    None,
+                    None,
+                    None,
+                ));
+            }
+            if evidence.accession.is_empty() {
+                issues.push(Self::isoform_validation_issue(
+                    "missing_evidence_accession",
+                    format!("Evidence '{}' has empty accession", evidence.evidence_id),
+                    None,
+                    None,
+                    None,
+                ));
+            }
+            if matches!(evidence.sequence_length_bp, Some(0)) {
+                issues.push(Self::isoform_validation_issue(
+                    "invalid_evidence_sequence_length",
+                    format!(
+                        "Evidence '{}' has sequence_length_bp=0",
+                        evidence.evidence_id
+                    ),
+                    None,
+                    None,
+                    None,
+                ));
+            }
+            if let (Some(start), Some(end)) = (evidence.cds_start_1based, evidence.cds_end_1based)
+                && (start == 0 || end < start)
+            {
+                issues.push(Self::isoform_validation_issue(
+                    "invalid_evidence_cds_range",
+                    format!(
+                        "Evidence '{}' has invalid CDS range {}..{}",
+                        evidence.evidence_id, start, end
+                    ),
+                    None,
+                    None,
+                    None,
+                ));
+            }
+        }
+
+        for evidence_ids in evidence_id_buckets.values() {
+            if evidence_ids.len() < 2 {
+                continue;
+            }
+            let mut ids = evidence_ids.clone();
+            ids.sort();
+            ids.dedup();
+            issues.push(Self::isoform_validation_issue(
+                "duplicate_evidence_id",
+                format!(
+                    "Panel '{}' contains duplicate evidence_id entries: {}",
+                    resource.panel_id,
+                    ids.join(", ")
+                ),
+                None,
+                None,
+                None,
+            ));
+        }
+
+        for evaluation in &resource.evaluations {
+            if evaluation.evaluation_id.is_empty() {
+                issues.push(Self::isoform_validation_issue(
+                    "missing_evaluation_id",
+                    format!(
+                        "Panel '{}' contains evaluation with empty evaluation_id",
+                        resource.panel_id
+                    ),
+                    None,
+                    None,
+                    None,
+                ));
+            }
+            if evaluation.status.is_empty() {
+                issues.push(Self::isoform_validation_issue(
+                    "missing_evaluation_status",
+                    format!("Evaluation '{}' has empty status", evaluation.evaluation_id),
+                    None,
+                    None,
+                    None,
+                ));
+            }
+            for evidence_id in &evaluation.source_evidence_ids {
+                if !known_evidence_ids.contains(&evidence_id.to_ascii_uppercase()) {
+                    issues.push(Self::isoform_validation_issue(
+                        "unknown_evaluation_evidence",
+                        format!(
+                            "Evaluation '{}' references unknown evidence '{}'",
+                            evaluation.evaluation_id, evidence_id
+                        ),
+                        None,
+                        None,
+                        None,
+                    ));
+                }
+            }
+            for isoform_id in &evaluation.isoform_ids {
+                if !known_isoform_ids.contains(&isoform_id.to_ascii_uppercase()) {
+                    issues.push(Self::isoform_validation_issue(
+                        "unknown_evaluation_isoform",
+                        format!(
+                            "Evaluation '{}' references unknown isoform '{}'",
+                            evaluation.evaluation_id, isoform_id
+                        ),
+                        Some(isoform_id),
+                        None,
+                        None,
+                    ));
+                }
+            }
+            for row in &evaluation.rows {
+                if row.status.is_empty() {
+                    issues.push(Self::isoform_validation_issue(
+                        "missing_evaluation_row_status",
+                        format!(
+                            "Evaluation '{}' contains a row with empty status",
+                            evaluation.evaluation_id
+                        ),
+                        row.isoform_id.as_deref(),
+                        None,
+                        None,
+                    ));
+                }
+                if let Some(isoform_id) = row.isoform_id.as_deref()
+                    && !known_isoform_ids.contains(&isoform_id.to_ascii_uppercase())
+                {
+                    issues.push(Self::isoform_validation_issue(
+                        "unknown_evaluation_row_isoform",
+                        format!(
+                            "Evaluation '{}' row references unknown isoform '{}'",
+                            evaluation.evaluation_id, isoform_id
+                        ),
+                        Some(isoform_id),
+                        None,
+                        None,
+                    ));
+                }
+                if let Some(evidence_id) = row.evidence_id.as_deref()
+                    && !known_evidence_ids.contains(&evidence_id.to_ascii_uppercase())
+                {
+                    issues.push(Self::isoform_validation_issue(
+                        "unknown_evaluation_row_evidence",
+                        format!(
+                            "Evaluation '{}' row references unknown evidence '{}'",
+                            evaluation.evaluation_id, evidence_id
+                        ),
+                        row.isoform_id.as_deref(),
+                        None,
+                        None,
+                    ));
+                }
+            }
+        }
 
         Self::validate_isoform_panel_curation(resource.curation.as_ref(), &mut issues, None);
         for isoform in &resource.isoforms {
@@ -7252,6 +7507,9 @@ impl GentleEngine {
             domain_count,
             curation_source_kind,
             curated_isoform_count,
+            evidence_count,
+            evaluation_count,
+            evaluation_row_count,
             issue_count,
             status,
             isoforms,

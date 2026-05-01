@@ -1826,6 +1826,7 @@ Current draft operations:
 - `ConfirmConstructReads { expected_seq_id, baseline_seq_id?, read_seq_ids?, trace_ids?, targets?, alignment_mode?, match_score?, mismatch_score?, gap_open?, gap_extend?, min_identity_fraction?, min_target_coverage_fraction?, allow_reverse_complement?, report_id? }` (implemented baseline; accepts already-loaded read sequences and/or imported sequencing traces as evidence inputs into one shared confirmation report, with optional baseline context for intended-edit vs reversion classification)
 - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA phase-1 seed-filter pass; `multi_gene_sparse` expands local transcript-template indexing, while ROI capture remains planned)
 - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }` (Nanopore cDNA phase-2 retained-hit alignment pass; updates mapping/MSA/abundance report fields and re-ranks retained hits by alignment-aware retention rank)
+- `PreflightRnaReadIsoforms { seq_id, seed_feature_id, scope?, seed_filter?, optimize_parameters?, positive_transcript_fasta_paths?, control_transcript_fasta_paths?, max_control_match_probability? }` (non-mutating target-transcript seed representation preflight; repeated positive FASTAs are hard must-pass transcript variants, repeated negative control FASTAs are grouped by inferred gene/symbol, and optimizer candidates are rejected when any positive transcript fails or any control group exceeds the configured match-probability ceiling)
 - `ListRnaReadReports { seq_id? }`
 - `ShowRnaReadReport { report_id }`
 - `ExportRnaReadReport { report_id, path }`
@@ -2220,6 +2221,19 @@ Isoform-panel operation semantics (current):
     GUI/CLI/ClawBio routes can distinguish local knowledge from public
     accession anchors instead of flattening both into one free-text source
     string.
+- `gentle.isoform_panel_resource.v1` may also carry panel-level curation
+  sidecars:
+  - `evidence[]`: upstream or local records that support the panel
+    (`evidence_id`, `source_type`, `accession`, optional `url`,
+    `sequence_path`, `sequence_length_bp`, `sequence_sha256`, CDS span, and
+    retrieval date)
+  - `evaluations[]`: stored comparison or trust-assessment records with
+    source evidence ids, isoform ids, row-level status/summary text, and small
+    key/value metrics
+  - validation reports include `evidence_count`, `evaluation_count`, and
+    `evaluation_row_count`, and warn about dangling evidence/isoform
+    references so curated resources can remain auditable across GUI, CLI, and
+    headless workflows.
 
 `LoadFile` import detection semantics (current):
 
@@ -6228,6 +6242,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 - Operations:
   - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }`
   - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }`
+  - `PreflightRnaReadIsoforms { seq_id, seed_feature_id, scope?, seed_filter?, optimize_parameters?, positive_transcript_fasta_paths?, control_transcript_fasta_paths?, max_control_match_probability? }`
   - `SummarizeRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, path? }`
   - `InspectRnaReadGeneSupport { report_id, gene_ids, selected_record_indices?, complete_rule?, cohort_filter?, path? }`
   - `RunRnaReadBatchMap { manifest_path, seq_id, seed_feature_id, gene_ids[], out_dir, profile?, input_format?, scope?, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter?, align_config?, report_mode?, align_selection?, complete_rule?, concatemer_settings?, concatemer_limit?, continue_on_error? }`
@@ -6738,6 +6753,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--transcript-fasta PATH]... [--transcript-index PATH]...`
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+  - `rna-reads preflight-isoforms SEQ_ID FEATURE_ID [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--positive-transcript-fasta PATH ...] [--must-pass-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
   - `rna-reads show-alignment REPORT_ID RECORD_INDEX`
@@ -6802,6 +6818,17 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       catalogs to one audit run; the serialized settings now preserve those as
       `transcript_fasta_paths[]`, while legacy single-path payloads still
       deserialize via `transcript_fasta_path`
+    - `rna-reads preflight-isoforms` returns the full
+      `gentle.rna_read_isoform_preflight.v1` payload directly, including
+      target transcript seed-pass rows, external must-pass positive transcript
+      rows, separate grouped negative-control summaries
+      (`TP53`, `TP63`, or inferred symbols from supplied FASTA headers/paths),
+      the selected `recommended_seed_filter`,
+      `threshold_recommendation` with control-margin diagnostics plus
+      paste-ready `seed_filter_cli_fragment` / `interpret_command_fragment`,
+      and a reproducible
+      `recommended_command_fragment` that preserves every
+      `--positive-transcript-fasta` / `--control-transcript-fasta` path
     - `fragment_max_parts = 0` is now a supported "signals only" mode for the
       concatemer audit:
       - it disables fragment decomposition entirely

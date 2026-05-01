@@ -20331,6 +20331,46 @@ fn parse_rna_reads_commands() {
         other => panic!("expected RnaReadsInterpret, got {other:?}"),
     }
 
+    let preflight = parse_shell_line(
+            "rna-reads preflight-isoforms seq_a 7 --scope target_group_target_strand --positive-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp73_all.fasta --must-pass-transcript-fasta test_files/fixtures/mapping/ensembl_chimp_tp73_all.fasta --control-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp53_all.fasta --control-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp63_all.fasta --optimize-parameters --max-control-match-probability 0.01 --kmer-len 9 --min-seed-hit-fraction 0.35",
+        )
+        .expect("parse rna-reads preflight-isoforms");
+    match preflight {
+        ShellCommand::RnaReadsPreflightIsoforms {
+            seq_id,
+            seed_feature_id,
+            scope,
+            seed_filter,
+            optimize_parameters,
+            positive_transcript_fasta_paths,
+            control_transcript_fasta_paths,
+            max_control_match_probability,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(seed_feature_id, 7);
+            assert_eq!(scope, SplicingScopePreset::TargetGroupTargetStrand);
+            assert_eq!(seed_filter.kmer_len, 9);
+            assert!((seed_filter.min_seed_hit_fraction - 0.35).abs() < f64::EPSILON);
+            assert!(optimize_parameters);
+            assert!((max_control_match_probability - 0.01).abs() < f64::EPSILON);
+            assert_eq!(
+                positive_transcript_fasta_paths,
+                vec![
+                    "test_files/fixtures/mapping/ensembl_human_tp73_all.fasta".to_string(),
+                    "test_files/fixtures/mapping/ensembl_chimp_tp73_all.fasta".to_string(),
+                ]
+            );
+            assert_eq!(
+                control_transcript_fasta_paths,
+                vec![
+                    "test_files/fixtures/mapping/ensembl_human_tp53_all.fasta".to_string(),
+                    "test_files/fixtures/mapping/ensembl_human_tp63_all.fasta".to_string(),
+                ]
+            );
+        }
+        other => panic!("expected RnaReadsPreflightIsoforms, got {other:?}"),
+    }
+
     let list =
         parse_shell_line("rna-reads list-reports seq_a").expect("parse rna-reads list-reports");
     assert!(matches!(

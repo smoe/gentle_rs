@@ -157,6 +157,25 @@ struct RnaReadConcatemerFragmentContext {
     seed_kmer_len: usize,
 }
 
+#[derive(Debug, Clone)]
+struct RnaReadPreflightScoringContext {
+    templates: Vec<SplicingTranscriptTemplate>,
+    seed_index: HashSet<u32>,
+    seed_occurrence_counts: HashMap<u32, usize>,
+    seed_template_positions: HashMap<u32, Vec<SeedTemplatePosition>>,
+    seed_to_exons: HashMap<u32, Vec<usize>>,
+    seed_to_transitions: HashMap<u32, Vec<(usize, usize)>>,
+    transcript_exon_models: Vec<TranscriptExonPathModel>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RnaReadPreflightControlAccumulator {
+    source_paths: BTreeSet<String>,
+    transcript_count: usize,
+    passed_transcript_count: usize,
+    best_score: Option<RnaReadIsoformPreflightScore>,
+}
+
 impl RnaReadGeneSupportAccumulator {
     fn add_read(
         &mut self,
@@ -6989,6 +7008,835 @@ impl GentleEngine {
         Ok(templates)
     }
 
+    fn build_rna_read_preflight_scoring_context(
+        transcript_lanes: &[SplicingTranscriptLane],
+        templates: &[SplicingTranscriptTemplate],
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> Result<RnaReadPreflightScoringContext, EngineError> {
+        let seed_catalog_rows =
+            Self::collect_rna_seed_hash_catalog_rows(templates, seed_filter.kmer_len);
+        let seed_index = seed_catalog_rows
+            .iter()
+            .map(|row| row.seed_bits)
+            .collect::<HashSet<_>>();
+        if seed_index.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: "No directional k-mer seeds could be generated from transcript templates"
+                    .to_string(),
+            });
+        }
+        let mut seed_occurrence_counts = HashMap::<u32, usize>::new();
+        for row in &seed_catalog_rows {
+            *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
+        }
+        let seed_support_exons = Self::collect_seed_support_exon_summaries(transcript_lanes);
+        let (seed_to_exons, seed_to_transitions, transcript_exon_models, _transition_rows) =
+            Self::build_seed_support_indexes(&seed_support_exons, templates, seed_filter.kmer_len);
+        Ok(RnaReadPreflightScoringContext {
+            templates: templates.to_vec(),
+            seed_index,
+            seed_occurrence_counts,
+            seed_template_positions: Self::build_seed_template_position_index(templates),
+            seed_to_exons,
+            seed_to_transitions,
+            transcript_exon_models,
+        })
+    }
+
+    fn score_rna_read_isoform_preflight_sequence(
+        sequence: &[u8],
+        transcript_id: &str,
+        transcript_label: &str,
+        context: &RnaReadPreflightScoringContext,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> RnaReadIsoformPreflightScore {
+        let (normalized, _reverse_complemented) =
+            Self::normalize_rna_read_sequence_for_scoring(sequence, seed_filter);
+        let windows = Self::full_read_hash_windows(normalized.len());
+        let histogram_index = HashMap::<u32, Vec<SeedHistogramWeight>>::new();
+        let mut bins = vec![RnaReadSeedHistogramBin {
+            start_1based: 1,
+            end_1based: 1,
+            confirmed_plus: 0,
+            confirmed_minus: 0,
+        }];
+        let mut tested_kmers = 0usize;
+        let mut matched_kmers = 0usize;
+        let mut matched_seed_bits = HashSet::<u32>::new();
+        let mut matched_seed_observations = Vec::<SeedMatchObservation>::new();
+        for (start, end) in windows {
+            let (tested, matched, matched_bits, matched_observations) =
+                Self::count_seed_hits_in_window_with_histogram(
+                    &normalized[start..end],
+                    start,
+                    seed_filter.kmer_len,
+                    seed_filter.seed_stride_bp,
+                    &context.seed_index,
+                    &histogram_index,
+                    &mut bins,
+                    &context.seed_occurrence_counts,
+                );
+            tested_kmers = tested_kmers.saturating_add(tested);
+            matched_kmers = matched_kmers.saturating_add(matched);
+            matched_seed_bits.extend(matched_bits);
+            matched_seed_observations.extend(matched_observations);
+        }
+        let (raw_hit_fraction, _perfect, _raw_pass) = Self::seed_hit_metrics(
+            tested_kmers,
+            matched_kmers,
+            seed_filter.min_seed_hit_fraction,
+        );
+        let weighted_hit_fraction = if tested_kmers == 0 {
+            0.0
+        } else {
+            Self::weighted_seed_support_from_occurrences(
+                &matched_seed_bits,
+                &context.seed_occurrence_counts,
+            ) / tested_kmers as f64
+        };
+        let spacing = Self::compute_seed_chain_spacing_metrics(
+            &matched_seed_observations,
+            &context.seed_template_positions,
+            &context.templates,
+        );
+        let mut supported_exons = HashSet::<usize>::new();
+        let mut supported_transitions = HashSet::<(usize, usize)>::new();
+        for bits in &matched_seed_bits {
+            if let Some(exons) = context.seed_to_exons.get(bits) {
+                supported_exons.extend(exons.iter().copied());
+            }
+            if let Some(transitions) = context.seed_to_transitions.get(bits) {
+                supported_transitions.extend(transitions.iter().copied());
+            }
+        }
+        let path_inference = Self::infer_read_exon_path(
+            &context.transcript_exon_models,
+            &supported_exons,
+            &supported_transitions,
+            &spacing.transcript_id,
+        );
+        let passed_seed_filter = Self::seed_filter_passes(
+            raw_hit_fraction,
+            weighted_hit_fraction,
+            tested_kmers,
+            matched_seed_bits.len(),
+            spacing.support_fraction,
+            spacing.median_transcript_gap,
+            spacing.transcript_gap_count,
+            path_inference.confirmed_transitions,
+            path_inference.total_transitions,
+            seed_filter,
+        );
+        RnaReadIsoformPreflightScore {
+            transcript_id: transcript_id.to_string(),
+            transcript_label: transcript_label.to_string(),
+            sequence_length_bp: normalized.len(),
+            passed_seed_filter,
+            raw_hit_fraction,
+            weighted_hit_fraction,
+            unique_matched_kmers: matched_seed_bits.len(),
+            chain_consistency_fraction: spacing.support_fraction,
+            seed_median_transcript_gap: spacing.median_transcript_gap,
+            confirmed_transitions: path_inference.confirmed_transitions,
+            total_transitions: path_inference.total_transitions,
+        }
+    }
+
+    fn infer_rna_read_preflight_control_id(path: &str, gene_id: &str) -> String {
+        let path_upper = Path::new(path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(path)
+            .to_ascii_uppercase();
+        for symbol in ["TP53", "TP63", "TP73", "TRP73"] {
+            if path_upper.contains(symbol) {
+                return symbol.to_string();
+            }
+        }
+        let gene = gene_id.trim();
+        if gene.is_empty() {
+            "unknown_control".to_string()
+        } else {
+            gene.to_string()
+        }
+    }
+
+    fn score_rna_read_preflight_control_summaries(
+        control_transcript_fasta_paths: &[String],
+        context: &RnaReadPreflightScoringContext,
+        seed_filter: &RnaReadSeedFilterConfig,
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<RnaReadIsoformPreflightControlSummary>, EngineError> {
+        let mut groups = BTreeMap::<String, RnaReadPreflightControlAccumulator>::new();
+        let mut next_feature_id = 1_000_000usize;
+        for path in control_transcript_fasta_paths {
+            let (templates, transcript_gene_lookup, _transcript_gene_lookup_by_id) =
+                Self::load_external_rna_read_concatemer_templates(
+                    path,
+                    seed_filter.kmer_len,
+                    next_feature_id,
+                    warnings,
+                )?;
+            next_feature_id = templates
+                .iter()
+                .map(|template| template.transcript_feature_id)
+                .max()
+                .unwrap_or(next_feature_id.saturating_sub(1))
+                .saturating_add(1);
+            if templates.is_empty() {
+                warnings.push(format!(
+                    "control transcript FASTA '{}' did not contain any usable transcript records",
+                    path
+                ));
+            }
+            for template in templates {
+                let gene_id = transcript_gene_lookup
+                    .get(&template.transcript_feature_id)
+                    .map(String::as_str)
+                    .unwrap_or(template.transcript_label.as_str());
+                let control_id = Self::infer_rna_read_preflight_control_id(path, gene_id);
+                let score = Self::score_rna_read_isoform_preflight_sequence(
+                    &template.sequence,
+                    &template.transcript_id,
+                    &template.transcript_label,
+                    context,
+                    seed_filter,
+                );
+                let accumulator = groups.entry(control_id).or_default();
+                accumulator.source_paths.insert(path.clone());
+                accumulator.transcript_count = accumulator.transcript_count.saturating_add(1);
+                if score.passed_seed_filter {
+                    accumulator.passed_transcript_count =
+                        accumulator.passed_transcript_count.saturating_add(1);
+                }
+                let replace_best = accumulator.best_score.as_ref().is_none_or(|best| {
+                    score
+                        .raw_hit_fraction
+                        .partial_cmp(&best.raw_hit_fraction)
+                        .unwrap_or(Ordering::Equal)
+                        .then_with(|| {
+                            score
+                                .weighted_hit_fraction
+                                .partial_cmp(&best.weighted_hit_fraction)
+                                .unwrap_or(Ordering::Equal)
+                        })
+                        .then_with(|| score.unique_matched_kmers.cmp(&best.unique_matched_kmers))
+                        .is_gt()
+                });
+                if replace_best {
+                    accumulator.best_score = Some(score);
+                }
+            }
+        }
+        Ok(groups
+            .into_iter()
+            .map(|(control_id, accumulator)| {
+                let transcript_count = accumulator.transcript_count;
+                let weighted_pass_probability = if transcript_count == 0 {
+                    0.0
+                } else {
+                    accumulator.passed_transcript_count as f64 / transcript_count as f64
+                };
+                let best_score = accumulator.best_score;
+                RnaReadIsoformPreflightControlSummary {
+                    control_id,
+                    source_paths: accumulator.source_paths.into_iter().collect(),
+                    transcript_count,
+                    passed_transcript_count: accumulator.passed_transcript_count,
+                    weighted_pass_probability,
+                    best_transcript_id: best_score
+                        .as_ref()
+                        .map(|score| score.transcript_id.clone()),
+                    best_transcript_label: best_score
+                        .as_ref()
+                        .map(|score| score.transcript_label.clone()),
+                    best_raw_hit_fraction: best_score
+                        .as_ref()
+                        .map(|score| score.raw_hit_fraction)
+                        .unwrap_or(0.0),
+                    best_weighted_hit_fraction: best_score
+                        .as_ref()
+                        .map(|score| score.weighted_hit_fraction)
+                        .unwrap_or(0.0),
+                    best_unique_matched_kmers: best_score
+                        .as_ref()
+                        .map(|score| score.unique_matched_kmers)
+                        .unwrap_or(0),
+                    best_chain_consistency_fraction: best_score
+                        .as_ref()
+                        .map(|score| score.chain_consistency_fraction)
+                        .unwrap_or(0.0),
+                    best_seed_median_transcript_gap: best_score
+                        .as_ref()
+                        .map(|score| score.seed_median_transcript_gap)
+                        .unwrap_or(0.0),
+                    best_confirmed_transitions: best_score
+                        .as_ref()
+                        .map(|score| score.confirmed_transitions)
+                        .unwrap_or(0),
+                    best_total_transitions: best_score
+                        .as_ref()
+                        .map(|score| score.total_transitions)
+                        .unwrap_or(0),
+                    worst_case_ambiguity: best_score
+                        .as_ref()
+                        .map(|score| score.raw_hit_fraction)
+                        .unwrap_or(0.0),
+                }
+            })
+            .collect())
+    }
+
+    fn score_rna_read_preflight_positive_transcripts(
+        positive_transcript_fasta_paths: &[String],
+        context: &RnaReadPreflightScoringContext,
+        seed_filter: &RnaReadSeedFilterConfig,
+        warnings: &mut Vec<String>,
+    ) -> Result<Vec<RnaReadIsoformPreflightScore>, EngineError> {
+        let mut scores = Vec::<RnaReadIsoformPreflightScore>::new();
+        let mut next_feature_id = 2_000_000usize;
+        for path in positive_transcript_fasta_paths {
+            let (templates, _transcript_gene_lookup, _transcript_gene_lookup_by_id) =
+                Self::load_external_rna_read_concatemer_templates(
+                    path,
+                    seed_filter.kmer_len,
+                    next_feature_id,
+                    warnings,
+                )?;
+            next_feature_id = templates
+                .iter()
+                .map(|template| template.transcript_feature_id)
+                .max()
+                .unwrap_or(next_feature_id.saturating_sub(1))
+                .saturating_add(1);
+            if templates.is_empty() {
+                warnings.push(format!(
+                    "positive transcript FASTA '{}' did not contain any usable transcript records",
+                    path
+                ));
+            }
+            for template in templates {
+                scores.push(Self::score_rna_read_isoform_preflight_sequence(
+                    &template.sequence,
+                    &template.transcript_id,
+                    &template.transcript_label,
+                    context,
+                    seed_filter,
+                ));
+            }
+        }
+        Ok(scores)
+    }
+
+    fn rna_read_preflight_candidate_filters(
+        requested: &RnaReadSeedFilterConfig,
+    ) -> Vec<RnaReadSeedFilterConfig> {
+        let raw_thresholds = [requested.min_seed_hit_fraction, 0.30, 0.35, 0.40, 0.50];
+        let weighted_thresholds = [requested.min_weighted_seed_hit_fraction, 0.05, 0.075, 0.10];
+        let unique_thresholds = [requested.min_unique_matched_kmers, 12, 16, 20, 24];
+        let chain_thresholds = [requested.min_chain_consistency_fraction, 0.40, 0.50, 0.60];
+        let mut filters = Vec::<RnaReadSeedFilterConfig>::new();
+        let mut seen = HashSet::<String>::new();
+        for raw in raw_thresholds {
+            for weighted in weighted_thresholds {
+                for unique in unique_thresholds {
+                    for chain in chain_thresholds {
+                        let mut candidate = requested.clone();
+                        candidate.min_seed_hit_fraction = raw.clamp(0.0, 1.0);
+                        candidate.min_weighted_seed_hit_fraction = weighted.clamp(0.0, 1.0);
+                        candidate.min_unique_matched_kmers = unique;
+                        candidate.min_chain_consistency_fraction = chain.clamp(0.0, 1.0);
+                        let key = format!(
+                            "{}:{:.6}:{:.6}:{}:{:.6}:{:.6}:{}:{:.6}:{}:{}",
+                            candidate.kmer_len,
+                            candidate.min_seed_hit_fraction,
+                            candidate.min_weighted_seed_hit_fraction,
+                            candidate.min_unique_matched_kmers,
+                            candidate.max_median_transcript_gap,
+                            candidate.min_chain_consistency_fraction,
+                            candidate.min_confirmed_exon_transitions,
+                            candidate.min_transition_support_fraction,
+                            candidate.cdna_poly_t_flip_enabled,
+                            candidate.poly_t_prefix_min_bp
+                        );
+                        if seen.insert(key) {
+                            filters.push(candidate);
+                        }
+                    }
+                }
+            }
+        }
+        filters
+    }
+
+    fn quote_rna_read_preflight_command_arg(raw: &str) -> String {
+        if raw.is_empty() {
+            "''".to_string()
+        } else if raw
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':'))
+        {
+            raw.to_string()
+        } else {
+            format!("'{}'", raw.replace('\'', "'\"'\"'"))
+        }
+    }
+
+    fn build_rna_read_seed_filter_cli_fragment(seed_filter: &RnaReadSeedFilterConfig) -> String {
+        let mut fragment = format!(
+            "--kmer-len {} --seed-stride-bp {} --min-seed-hit-fraction {:.3} --min-weighted-seed-hit-fraction {:.3} --min-unique-matched-kmers {} --min-chain-consistency-fraction {:.2} --max-median-transcript-gap {:.2} --min-confirmed-transitions {} --min-transition-support-fraction {:.2}",
+            seed_filter.kmer_len,
+            seed_filter.seed_stride_bp,
+            seed_filter.min_seed_hit_fraction,
+            seed_filter.min_weighted_seed_hit_fraction,
+            seed_filter.min_unique_matched_kmers,
+            seed_filter.min_chain_consistency_fraction,
+            seed_filter.max_median_transcript_gap,
+            seed_filter.min_confirmed_exon_transitions,
+            seed_filter.min_transition_support_fraction,
+        );
+        if seed_filter.cdna_poly_t_flip_enabled {
+            fragment.push_str(" --cdna-poly-t-flip");
+        } else {
+            fragment.push_str(" --no-cdna-poly-t-flip");
+        }
+        fragment.push_str(&format!(
+            " --poly-t-prefix-min-bp {}",
+            seed_filter.poly_t_prefix_min_bp
+        ));
+        fragment
+    }
+
+    fn build_rna_read_interpret_threshold_command_fragment(
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> String {
+        format!(
+            "rna-reads interpret {} {} INPUT.fa[.gz] --scope {} {}",
+            Self::quote_rna_read_preflight_command_arg(seq_id),
+            seed_feature_id,
+            scope.as_str(),
+            Self::build_rna_read_seed_filter_cli_fragment(seed_filter)
+        )
+    }
+
+    fn build_rna_read_preflight_threshold_recommendation(
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        recommended_seed_filter: &RnaReadSeedFilterConfig,
+        target_pass_probability: f64,
+        positive_pass_probability: f64,
+        control_summaries: &[RnaReadIsoformPreflightControlSummary],
+    ) -> RnaReadIsoformPreflightThresholdRecommendation {
+        let limiting_control = control_summaries.iter().max_by(|left, right| {
+            left.weighted_pass_probability
+                .partial_cmp(&right.weighted_pass_probability)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| {
+                    left.worst_case_ambiguity
+                        .partial_cmp(&right.worst_case_ambiguity)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| {
+                    left.best_unique_matched_kmers
+                        .cmp(&right.best_unique_matched_kmers)
+                })
+        });
+        let max_control_pass_probability = control_summaries
+            .iter()
+            .map(|summary| summary.weighted_pass_probability)
+            .fold(0.0_f64, f64::max);
+        let max_control_raw = control_summaries
+            .iter()
+            .map(|summary| summary.best_raw_hit_fraction)
+            .fold(0.0_f64, f64::max);
+        let max_control_weighted = control_summaries
+            .iter()
+            .map(|summary| summary.best_weighted_hit_fraction)
+            .fold(0.0_f64, f64::max);
+        let max_control_unique = control_summaries
+            .iter()
+            .map(|summary| summary.best_unique_matched_kmers)
+            .max()
+            .unwrap_or(0);
+        let basis = if control_summaries.is_empty() {
+            "target_only".to_string()
+        } else {
+            "target_vs_control_gene_margin".to_string()
+        };
+        let seed_filter_cli_fragment =
+            Self::build_rna_read_seed_filter_cli_fragment(recommended_seed_filter);
+        let interpret_command_fragment = Self::build_rna_read_interpret_threshold_command_fragment(
+            seq_id,
+            seed_feature_id,
+            scope,
+            recommended_seed_filter,
+        );
+        RnaReadIsoformPreflightThresholdRecommendation {
+            basis,
+            target_pass_probability,
+            positive_pass_probability,
+            max_control_pass_probability,
+            limiting_control_id: limiting_control.map(|summary| summary.control_id.clone()),
+            limiting_control_transcript_id: limiting_control
+                .and_then(|summary| summary.best_transcript_id.clone()),
+            limiting_control_transcript_label: limiting_control
+                .and_then(|summary| summary.best_transcript_label.clone()),
+            control_raw_hit_margin: recommended_seed_filter.min_seed_hit_fraction - max_control_raw,
+            control_weighted_hit_margin: recommended_seed_filter.min_weighted_seed_hit_fraction
+                - max_control_weighted,
+            control_unique_kmer_margin: recommended_seed_filter.min_unique_matched_kmers as isize
+                - max_control_unique as isize,
+            seed_filter_cli_fragment,
+            interpret_command_fragment,
+        }
+    }
+
+    fn build_rna_read_preflight_command_fragment(
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        positive_transcript_fasta_paths: &[String],
+        control_transcript_fasta_paths: &[String],
+        optimize_parameters: bool,
+        max_control_match_probability: f64,
+    ) -> String {
+        let mut command = format!(
+            "rna-reads preflight-isoforms {} {} --scope {} {}",
+            Self::quote_rna_read_preflight_command_arg(seq_id),
+            seed_feature_id,
+            scope.as_str(),
+            Self::build_rna_read_seed_filter_cli_fragment(seed_filter),
+        );
+        for path in positive_transcript_fasta_paths {
+            command.push_str(" --positive-transcript-fasta ");
+            command.push_str(&Self::quote_rna_read_preflight_command_arg(path));
+        }
+        for path in control_transcript_fasta_paths {
+            command.push_str(" --control-transcript-fasta ");
+            command.push_str(&Self::quote_rna_read_preflight_command_arg(path));
+        }
+        if optimize_parameters {
+            command.push_str(" --optimize-parameters");
+            command.push_str(&format!(
+                " --max-control-match-probability {:.6}",
+                max_control_match_probability
+            ));
+        }
+        command
+    }
+
+    fn evaluate_rna_read_isoform_preflight_for_filter(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        positive_transcript_fasta_paths: &[String],
+        control_transcript_fasta_paths: &[String],
+    ) -> Result<
+        (
+            Vec<RnaReadIsoformPreflightScore>,
+            Vec<RnaReadIsoformPreflightScore>,
+            Vec<RnaReadIsoformPreflightControlSummary>,
+            Vec<String>,
+        ),
+        EngineError,
+    > {
+        if seed_filter.kmer_len == 0 || seed_filter.kmer_len > 16 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "kmer_len must be within 1..=16".to_string(),
+            });
+        }
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
+        let transcript_lanes = splicing.transcripts;
+        let templates = transcript_lanes
+            .iter()
+            .map(|lane| Self::make_transcript_template(dna, lane, seed_filter.kmer_len))
+            .filter(|template| !template.sequence.is_empty())
+            .collect::<Vec<_>>();
+        if templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No transcript templates available for splicing scope '{}' on '{}'",
+                    scope.as_str(),
+                    seq_id
+                ),
+            });
+        }
+        let context = Self::build_rna_read_preflight_scoring_context(
+            &transcript_lanes,
+            &templates,
+            seed_filter,
+        )?;
+        let target_transcripts = templates
+            .iter()
+            .map(|template| {
+                Self::score_rna_read_isoform_preflight_sequence(
+                    &template.sequence,
+                    &template.transcript_id,
+                    &template.transcript_label,
+                    &context,
+                    seed_filter,
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut warnings = Vec::<String>::new();
+        let positive_control_transcripts = Self::score_rna_read_preflight_positive_transcripts(
+            positive_transcript_fasta_paths,
+            &context,
+            seed_filter,
+            &mut warnings,
+        )?;
+        let control_summaries = Self::score_rna_read_preflight_control_summaries(
+            control_transcript_fasta_paths,
+            &context,
+            seed_filter,
+            &mut warnings,
+        )?;
+        Ok((
+            target_transcripts,
+            positive_control_transcripts,
+            control_summaries,
+            warnings,
+        ))
+    }
+
+    pub fn preflight_rna_read_isoforms(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        optimize_parameters: bool,
+        positive_transcript_fasta_paths: &[String],
+        control_transcript_fasta_paths: &[String],
+        max_control_match_probability: f64,
+    ) -> Result<RnaReadIsoformPreflightReport, EngineError> {
+        if optimize_parameters && control_transcript_fasta_paths.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "rna-reads preflight-isoforms --optimize-parameters requires at least one --control-transcript-fasta"
+                    .to_string(),
+            });
+        }
+        if !(0.0..=1.0).contains(&max_control_match_probability) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_control_match_probability must be within 0.0..=1.0".to_string(),
+            });
+        }
+
+        let mut recommended_seed_filter = seed_filter.clone();
+        let mut search_candidate_filters = optimize_parameters;
+        if optimize_parameters {
+            let (target_transcripts, positive_control_transcripts, control_summaries, _warnings) =
+                self.evaluate_rna_read_isoform_preflight_for_filter(
+                    seq_id,
+                    seed_feature_id,
+                    scope,
+                    seed_filter,
+                    positive_transcript_fasta_paths,
+                    control_transcript_fasta_paths,
+                )?;
+            let target_count = target_transcripts.len();
+            let target_passed = target_transcripts
+                .iter()
+                .filter(|score| score.passed_seed_filter)
+                .count();
+            let positive_count = positive_control_transcripts.len();
+            let positive_passed = positive_control_transcripts
+                .iter()
+                .filter(|score| score.passed_seed_filter)
+                .count();
+            let max_control_probability = control_summaries
+                .iter()
+                .map(|summary| summary.weighted_pass_probability)
+                .fold(0.0_f64, f64::max);
+            if target_count > 0
+                && target_passed == target_count
+                && positive_passed == positive_count
+                && max_control_probability
+                    <= max_control_match_probability.clamp(0.0, 1.0) + f64::EPSILON
+            {
+                search_candidate_filters = false;
+            }
+        }
+        if search_candidate_filters {
+            let mut best_filter: Option<RnaReadSeedFilterConfig> = None;
+            let mut best_key: Option<(usize, u64, usize)> = None;
+            for candidate in Self::rna_read_preflight_candidate_filters(seed_filter) {
+                let (
+                    target_transcripts,
+                    positive_control_transcripts,
+                    control_summaries,
+                    _warnings,
+                ) = self.evaluate_rna_read_isoform_preflight_for_filter(
+                    seq_id,
+                    seed_feature_id,
+                    scope,
+                    &candidate,
+                    positive_transcript_fasta_paths,
+                    control_transcript_fasta_paths,
+                )?;
+                let target_count = target_transcripts.len();
+                let target_passed = target_transcripts
+                    .iter()
+                    .filter(|score| score.passed_seed_filter)
+                    .count();
+                let positive_count = positive_control_transcripts.len();
+                let positive_passed = positive_control_transcripts
+                    .iter()
+                    .filter(|score| score.passed_seed_filter)
+                    .count();
+                if target_passed != target_count || positive_passed != positive_count {
+                    continue;
+                }
+                let max_control_probability = control_summaries
+                    .iter()
+                    .map(|summary| summary.weighted_pass_probability)
+                    .fold(0.0_f64, f64::max);
+                if max_control_probability
+                    > max_control_match_probability.clamp(0.0, 1.0) + f64::EPSILON
+                {
+                    continue;
+                }
+                let strictness = candidate.min_unique_matched_kmers
+                    + (candidate.min_seed_hit_fraction * 1000.0).round() as usize
+                    + (candidate.min_weighted_seed_hit_fraction * 1000.0).round() as usize
+                    + (candidate.min_chain_consistency_fraction * 1000.0).round() as usize;
+                let control_penalty = (max_control_probability * 1_000_000.0).round() as u64;
+                let key = (
+                    target_passed * 1_000_000 / target_count.max(1),
+                    u64::MAX - control_penalty,
+                    strictness,
+                );
+                if best_key.as_ref().is_none_or(|current| key > *current) {
+                    best_key = Some(key);
+                    best_filter = Some(candidate);
+                }
+            }
+            if let Some(filter) = best_filter {
+                recommended_seed_filter = filter;
+            }
+        }
+
+        let (target_transcripts, positive_control_transcripts, control_summaries, mut warnings) =
+            self.evaluate_rna_read_isoform_preflight_for_filter(
+                seq_id,
+                seed_feature_id,
+                scope,
+                &recommended_seed_filter,
+                positive_transcript_fasta_paths,
+                control_transcript_fasta_paths,
+            )?;
+        let target_transcript_count = target_transcripts.len();
+        let target_passed_transcript_count = target_transcripts
+            .iter()
+            .filter(|score| score.passed_seed_filter)
+            .count();
+        let target_pass_probability = if target_transcript_count == 0 {
+            0.0
+        } else {
+            target_passed_transcript_count as f64 / target_transcript_count as f64
+        };
+        let positive_control_transcript_count = positive_control_transcripts.len();
+        let positive_control_passed_transcript_count = positive_control_transcripts
+            .iter()
+            .filter(|score| score.passed_seed_filter)
+            .count();
+        let positive_control_pass_probability = if positive_control_transcript_count == 0 {
+            1.0
+        } else {
+            positive_control_passed_transcript_count as f64
+                / positive_control_transcript_count as f64
+        };
+        if optimize_parameters {
+            if target_passed_transcript_count != target_transcript_count
+                || positive_control_passed_transcript_count != positive_control_transcript_count
+            {
+                warnings.push(format!(
+                    "No candidate seed filter retained all target/positive transcripts; retained target={}/{} positive={}/{}",
+                    target_passed_transcript_count,
+                    target_transcript_count,
+                    positive_control_passed_transcript_count,
+                    positive_control_transcript_count
+                ));
+            }
+            let max_control_probability = control_summaries
+                .iter()
+                .map(|summary| summary.weighted_pass_probability)
+                .fold(0.0_f64, f64::max);
+            if max_control_probability
+                > max_control_match_probability.clamp(0.0, 1.0) + f64::EPSILON
+            {
+                warnings.push(format!(
+                    "No candidate seed filter kept control-match probability <= {:.6}; best retained max control probability is {:.6}",
+                    max_control_match_probability,
+                    max_control_probability
+                ));
+            }
+        }
+        let recommended_command_fragment = Self::build_rna_read_preflight_command_fragment(
+            seq_id,
+            seed_feature_id,
+            scope,
+            &recommended_seed_filter,
+            positive_transcript_fasta_paths,
+            control_transcript_fasta_paths,
+            optimize_parameters,
+            max_control_match_probability,
+        );
+        let threshold_recommendation = Self::build_rna_read_preflight_threshold_recommendation(
+            seq_id,
+            seed_feature_id,
+            scope,
+            &recommended_seed_filter,
+            target_pass_probability,
+            positive_control_pass_probability,
+            &control_summaries,
+        );
+        Ok(RnaReadIsoformPreflightReport {
+            schema: RNA_READ_ISOFORM_PREFLIGHT_SCHEMA.to_string(),
+            seq_id: seq_id.to_string(),
+            seed_feature_id,
+            scope,
+            seed_filter: seed_filter.clone(),
+            optimize_parameters,
+            positive_transcript_fasta_paths: positive_transcript_fasta_paths.to_vec(),
+            control_transcript_fasta_paths: control_transcript_fasta_paths.to_vec(),
+            max_control_match_probability,
+            target_transcript_count,
+            target_passed_transcript_count,
+            target_pass_probability,
+            positive_control_transcript_count,
+            positive_control_passed_transcript_count,
+            positive_control_pass_probability,
+            target_transcripts,
+            positive_control_transcripts,
+            control_summaries,
+            recommended_seed_filter,
+            threshold_recommendation,
+            recommended_command_fragment,
+            warnings,
+        })
+    }
+
     pub fn export_rna_seed_hash_catalog(
         &self,
         seq_id: &str,
@@ -11221,6 +12069,7 @@ impl GentleEngine {
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
+            rna_read_isoform_preflight: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -11312,6 +12161,7 @@ impl GentleEngine {
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
+            rna_read_isoform_preflight: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,

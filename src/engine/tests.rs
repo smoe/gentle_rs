@@ -12446,6 +12446,80 @@ fn test_validate_tp73_isoform_panel_resource_exposes_local_curation() {
 }
 
 #[test]
+fn test_validate_isoform_panel_resource_tracks_evidence_evaluations() {
+    let tmp = tempdir().expect("tempdir");
+    let panel_path = tmp.path().join("panel_evidence.json");
+    fs::write(
+        &panel_path,
+        r##"{
+  "schema": "gentle.isoform_panel_resource.v1",
+  "panel_id": "tp73_dn_demo",
+  "gene_symbol": "TP73",
+  "evidence": [
+    {
+      "evidence_id": "ena_ay040828",
+      "source_type": "ENA sequence",
+      "accession": "AY040828.1",
+      "sequence_length_bp": 2117,
+      "cds_start_1based": 235,
+      "cds_end_1based": 1587
+    }
+  ],
+  "evaluations": [
+    {
+      "evaluation_id": "ena_vs_ensembl",
+      "status": "warning",
+      "summary": "Curated comparison summary",
+      "source_evidence_ids": ["ena_ay040828"],
+      "isoform_ids": ["dnp73beta"],
+      "rows": [
+        {
+          "isoform_id": "dnp73beta",
+          "evidence_id": "ena_ay040828",
+          "compared_to": "ENST00000378285.5",
+          "status": "single_base_difference",
+          "summary": "One synonymous coding-base difference"
+        },
+        {
+          "isoform_id": "missing_isoform",
+          "evidence_id": "missing_evidence",
+          "status": "warning",
+          "summary": "Deliberate dangling references for validation"
+        }
+      ]
+    }
+  ],
+  "isoforms": [
+    {
+      "isoform_id": "dnp73beta",
+      "label": "DNp73β",
+      "transcript_ids": ["AY040828.1", "ENST00000378285.5"],
+      "domains": [{"name": "placeholder", "start_aa": 1, "end_aa": 10}]
+    }
+  ]
+}"##,
+    )
+    .expect("write panel");
+
+    let report =
+        GentleEngine::validate_isoform_panel_resource(panel_path.to_string_lossy().as_ref(), None)
+            .expect("validate panel");
+    assert_eq!(report.evidence_count, 1);
+    assert_eq!(report.evaluation_count, 1);
+    assert_eq!(report.evaluation_row_count, 2);
+    assert!(report.issues.iter().any(|issue| {
+        issue.code == "unknown_evaluation_row_isoform"
+            && issue.isoform_id.as_deref() == Some("missing_isoform")
+    }));
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "unknown_evaluation_row_evidence")
+    );
+}
+
+#[test]
 fn test_import_isoform_panel_allows_unmapped_when_strict_false_and_no_mrna_features() {
     let mut state = ProjectState::default();
     state
@@ -28341,6 +28415,10 @@ fn test_seed_filter_cross_species_and_close_family_specificity_sets() {
         "test_files/fixtures/mapping/ensembl_human_tp53_all.fasta",
         &mut bins,
     );
+    let (tp63_total, tp63_passed, tp63_best_raw, tp63_best_weighted, tp63_failed) = evaluate_set(
+        "test_files/fixtures/mapping/ensembl_human_tp63_all.fasta",
+        &mut bins,
+    );
     let (mouse_total, _mouse_passed, _mouse_best_raw, _mouse_best_weighted, _mouse_failed) =
         evaluate_set(
             "test_files/fixtures/mapping/ensembl_mouse_trp73_all.fasta",
@@ -28359,6 +28437,145 @@ fn test_seed_filter_cross_species_and_close_family_specificity_sets() {
     assert_eq!(
         tp53_passed, 0,
         "human TP53 sequences should be rejected (passed={tp53_passed}/{tp53_total}, best_raw={tp53_best_raw:.3}, best_weighted={tp53_best_weighted:.4}, failed={tp53_failed:?})"
+    );
+    assert_eq!(
+        tp63_passed, 0,
+        "human TP63 sequences should be rejected (passed={tp63_passed}/{tp63_total}, best_raw={tp63_best_raw:.3}, best_weighted={tp63_best_weighted:.4}, failed={tp63_failed:?})"
+    );
+}
+
+#[test]
+fn test_rna_read_preflight_uses_tp53_tp63_variant_controls() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73".to_string()),
+        })
+        .expect("load tp73 fixture");
+    let feature_id = {
+        let dna = engine
+            .state()
+            .sequences
+            .get("tp73")
+            .expect("tp73 sequence present");
+        dna.features()
+            .iter()
+            .position(GentleEngine::is_mrna_feature)
+            .expect("tp73 mRNA feature")
+    };
+    let control_paths = vec![
+        "test_files/fixtures/mapping/ensembl_human_tp53_all.fasta".to_string(),
+        "test_files/fixtures/mapping/ensembl_human_tp63_all.fasta".to_string(),
+    ];
+    let positive_paths = vec![
+        "test_files/fixtures/mapping/ensembl_human_tp73_all.fasta".to_string(),
+        "test_files/fixtures/mapping/ensembl_chimp_tp73_all.fasta".to_string(),
+    ];
+
+    let result = engine
+        .apply(Operation::PreflightRnaReadIsoforms {
+            seq_id: "tp73".to_string(),
+            seed_feature_id: feature_id,
+            scope: SplicingScopePreset::TargetGroupTargetStrand,
+            seed_filter: RnaReadSeedFilterConfig::default(),
+            optimize_parameters: true,
+            positive_transcript_fasta_paths: positive_paths.clone(),
+            control_transcript_fasta_paths: control_paths.clone(),
+            max_control_match_probability: 0.0,
+        })
+        .expect("run RNA-read isoform preflight");
+    let report = result
+        .rna_read_isoform_preflight
+        .expect("preflight report payload");
+
+    assert_eq!(report.schema, "gentle.rna_read_isoform_preflight.v1");
+    assert_eq!(report.positive_transcript_fasta_paths, positive_paths);
+    assert_eq!(report.control_transcript_fasta_paths, control_paths);
+    assert!(
+        report.target_transcript_count > 0,
+        "TP73 preflight should evaluate at least one target transcript"
+    );
+    assert!(
+        report.target_passed_transcript_count > 0,
+        "optimized preflight should retain TP73 target support"
+    );
+    assert!(
+        report.positive_control_transcript_count > 1,
+        "preflight should load multiple positive-control transcript variants"
+    );
+    assert_eq!(
+        report.positive_control_passed_transcript_count, report.positive_control_transcript_count,
+        "all positive-control transcript variants must pass the seed gate"
+    );
+    assert_eq!(
+        report.threshold_recommendation.basis,
+        "target_vs_control_gene_margin"
+    );
+    assert!(
+        (report.threshold_recommendation.positive_pass_probability - 1.0).abs() < f64::EPSILON,
+        "threshold recommendation should echo the must-pass positive probability"
+    );
+    assert!(
+        report
+            .threshold_recommendation
+            .seed_filter_cli_fragment
+            .contains("--min-seed-hit-fraction"),
+        "threshold recommendation should expose paste-ready seed-filter flags"
+    );
+    assert!(
+        report
+            .threshold_recommendation
+            .interpret_command_fragment
+            .contains("rna-reads interpret tp73"),
+        "threshold recommendation should expose an RNA mapping command fragment"
+    );
+
+    for control_id in ["TP53", "TP63"] {
+        let summary = report
+            .control_summaries
+            .iter()
+            .find(|summary| summary.control_id == control_id)
+            .unwrap_or_else(|| panic!("missing {control_id} control summary"));
+        assert!(
+            summary.transcript_count > 0,
+            "{control_id} control FASTA should contribute transcript variants"
+        );
+        assert!(
+            summary.best_unique_matched_kmers > 0,
+            "{control_id} control summary should carry best-match threshold evidence"
+        );
+        assert!(
+            summary.weighted_pass_probability
+                <= report.max_control_match_probability + f64::EPSILON,
+            "{control_id} control-match probability should stay below threshold: {} > {}",
+            summary.weighted_pass_probability,
+            report.max_control_match_probability
+        );
+    }
+    assert!(
+        report.recommended_command_fragment.contains(
+            "--positive-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp73_all.fasta"
+        ),
+        "recommended command should preserve human TP73 positive FASTA path"
+    );
+    assert!(
+        report.recommended_command_fragment.contains(
+            "--positive-transcript-fasta test_files/fixtures/mapping/ensembl_chimp_tp73_all.fasta"
+        ),
+        "recommended command should preserve chimp TP73 positive FASTA path"
+    );
+    assert!(
+        report.recommended_command_fragment.contains(
+            "--control-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp53_all.fasta"
+        ),
+        "recommended command should preserve TP53 control FASTA path"
+    );
+    assert!(
+        report.recommended_command_fragment.contains(
+            "--control-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp63_all.fasta"
+        ),
+        "recommended command should preserve TP63 control FASTA path"
     );
 }
 

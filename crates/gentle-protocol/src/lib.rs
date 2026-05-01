@@ -5588,6 +5588,92 @@ pub struct RnaReadTranscriptCatalogIndex {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Seed-gate score for one pseudo-read used by the RNA-read isoform preflight.
+pub struct RnaReadIsoformPreflightScore {
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub sequence_length_bp: usize,
+    pub passed_seed_filter: bool,
+    pub raw_hit_fraction: f64,
+    pub weighted_hit_fraction: f64,
+    pub unique_matched_kmers: usize,
+    pub chain_consistency_fraction: f64,
+    pub seed_median_transcript_gap: f64,
+    pub confirmed_transitions: usize,
+    pub total_transitions: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Per-gene/per-family control summary emitted by RNA-read isoform preflight.
+pub struct RnaReadIsoformPreflightControlSummary {
+    pub control_id: String,
+    pub source_paths: Vec<String>,
+    pub transcript_count: usize,
+    pub passed_transcript_count: usize,
+    pub weighted_pass_probability: f64,
+    pub best_transcript_id: Option<String>,
+    pub best_transcript_label: Option<String>,
+    pub best_raw_hit_fraction: f64,
+    pub best_weighted_hit_fraction: f64,
+    pub best_unique_matched_kmers: usize,
+    pub best_chain_consistency_fraction: f64,
+    pub best_seed_median_transcript_gap: f64,
+    pub best_confirmed_transitions: usize,
+    pub best_total_transitions: usize,
+    pub worst_case_ambiguity: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Paste-ready seed-filter thresholds derived from target-vs-control isoform
+/// preflight.
+pub struct RnaReadIsoformPreflightThresholdRecommendation {
+    pub basis: String,
+    pub target_pass_probability: f64,
+    pub positive_pass_probability: f64,
+    pub max_control_pass_probability: f64,
+    pub limiting_control_id: Option<String>,
+    pub limiting_control_transcript_id: Option<String>,
+    pub limiting_control_transcript_label: Option<String>,
+    pub control_raw_hit_margin: f64,
+    pub control_weighted_hit_margin: f64,
+    pub control_unique_kmer_margin: isize,
+    pub seed_filter_cli_fragment: String,
+    pub interpret_command_fragment: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Upfront RNA-read isoform seed-gate preflight over target transcripts and
+/// explicit external control transcript variants.
+pub struct RnaReadIsoformPreflightReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub seed_feature_id: usize,
+    pub scope: SplicingScopePreset,
+    pub seed_filter: RnaReadSeedFilterConfig,
+    pub optimize_parameters: bool,
+    pub positive_transcript_fasta_paths: Vec<String>,
+    pub control_transcript_fasta_paths: Vec<String>,
+    pub max_control_match_probability: f64,
+    pub target_transcript_count: usize,
+    pub target_passed_transcript_count: usize,
+    pub target_pass_probability: f64,
+    pub positive_control_transcript_count: usize,
+    pub positive_control_passed_transcript_count: usize,
+    pub positive_control_pass_probability: f64,
+    pub target_transcripts: Vec<RnaReadIsoformPreflightScore>,
+    pub positive_control_transcripts: Vec<RnaReadIsoformPreflightScore>,
+    pub control_summaries: Vec<RnaReadIsoformPreflightControlSummary>,
+    pub recommended_seed_filter: RnaReadSeedFilterConfig,
+    pub threshold_recommendation: RnaReadIsoformPreflightThresholdRecommendation,
+    pub recommended_command_fragment: String,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One internal adapter-signature match found away from the read ends.
 pub struct RnaReadConcatemerAdapterHit {
     pub label: String,

@@ -1066,6 +1066,7 @@ impl GentleEngine {
             | Operation::ComputeFlexibilityTrack { seq_id, .. }
             | Operation::DeriveSplicingReferences { seq_id, .. }
             | Operation::InterpretRnaReads { seq_id, .. }
+            | Operation::PreflightRnaReadIsoforms { seq_id, .. }
             | Operation::SetTopology { seq_id, .. }
             | Operation::RecomputeFeatures { seq_id, .. }
             | Operation::AnnotateTfbs { seq_id, .. } => {
@@ -1280,6 +1281,19 @@ impl GentleEngine {
         | Operation::ExportProtocolCartoonTemplateJson { path, .. } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
+        }
+        if let Operation::PreflightRnaReadIsoforms {
+            positive_transcript_fasta_paths,
+            control_transcript_fasta_paths,
+            ..
+        } = op
+        {
+            for path in positive_transcript_fasta_paths {
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
+            for path in control_transcript_fasta_paths {
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
         }
         if let Operation::SummarizeRnaReadGeneSupport {
             path: Some(path), ..

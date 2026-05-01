@@ -438,6 +438,7 @@ const RNA_READ_ALIGNMENT_TSV_EXPORT_SCHEMA: &str = "gentle.rna_read_alignment_ts
 const RNA_READ_ALIGNMENT_DOTPLOT_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_alignment_dotplot_svg_export.v1";
 const RNA_READ_ALIGNMENT_INSPECTION_SCHEMA: &str = "gentle.rna_read_alignment_inspection.v1";
+const RNA_READ_ISOFORM_PREFLIGHT_SCHEMA: &str = "gentle.rna_read_isoform_preflight.v1";
 const RNA_READ_CONCATEMER_INSPECTION_SCHEMA: &str = "gentle.rna_read_concatemer_inspection.v1";
 const RNA_READ_ALIGNMENT_DETAIL_SCHEMA: &str = "gentle.rna_read_alignment_detail.v1";
 const CUTRUN_DATASET_LIST_SCHEMA: &str = "gentle.cutrun_dataset_list.v1";
@@ -699,6 +700,10 @@ fn default_cutrun_neighbor_window_bp() -> usize {
 
 fn default_rna_read_alignment_dotplot_max_points() -> usize {
     2_500
+}
+
+fn default_rna_read_preflight_max_control_match_probability() -> f64 {
+    0.0
 }
 
 fn default_splicing_reference_scope() -> SplicingScopePreset {
@@ -3632,6 +3637,22 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         selected_record_indices: Vec<usize>,
     },
+    PreflightRnaReadIsoforms {
+        seq_id: SeqId,
+        seed_feature_id: usize,
+        #[serde(default)]
+        scope: SplicingScopePreset,
+        #[serde(default)]
+        seed_filter: RnaReadSeedFilterConfig,
+        #[serde(default)]
+        optimize_parameters: bool,
+        #[serde(default)]
+        positive_transcript_fasta_paths: Vec<String>,
+        #[serde(default)]
+        control_transcript_fasta_paths: Vec<String>,
+        #[serde(default = "default_rna_read_preflight_max_control_match_probability")]
+        max_control_match_probability: f64,
+    },
     ListRnaReadReports {
         #[serde(default)]
         seq_id: Option<SeqId>,
@@ -5215,6 +5236,7 @@ impl GentleEngine {
                 "ExportSequencingConfirmationSupportTsv".to_string(),
                 "InterpretRnaReads".to_string(),
                 "AlignRnaReadReport".to_string(),
+                "PreflightRnaReadIsoforms".to_string(),
                 "ListRnaReadReports".to_string(),
                 "ShowRnaReadReport".to_string(),
                 "SummarizeRnaReadGeneSupport".to_string(),
@@ -7360,6 +7382,7 @@ impl GentleEngine {
                 | Operation::ShowCutRunReadReport { .. }
                 | Operation::ExportCutRunReadCoverage { .. }
                 | Operation::InspectCutRunRegulatorySupport { .. }
+                | Operation::PreflightRnaReadIsoforms { .. }
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }
                 | Operation::SummarizeRnaReadGeneSupport { .. }

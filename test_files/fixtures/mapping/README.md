@@ -14,7 +14,8 @@ Compact RNA-seed mapping benchmark fixtures used by deterministic tests.
 
 - Keep committed mapping benchmarks small and CI-friendly.
 - Decouple regression tests from larger exploratory TP73 cDNA datasets.
-- Include TP53 as a practical near-family benchmark for TP73 specificity.
+- Include TP53 and TP63 as practical near-family benchmarks for TP73
+  specificity and isoform-preflight optimizer controls.
 
 ## Provenance
 
@@ -29,10 +30,11 @@ Compact RNA-seed mapping benchmark fixtures used by deterministic tests.
 
 ## Current usage in GENtle
 
-- Engine regression test in `src/engine.rs`:
-  - `test_tp73_seed_filter_cross_species_and_tp53_specificity_sets`
-- TP63 fixture is available for cross-family mapping/specificity benchmarks and
-  follow-up sparse-origin test expansion.
+- Engine regression tests in `src/engine/tests.rs`:
+  - `test_seed_filter_cross_species_and_close_family_specificity_sets`
+  - `test_rna_read_preflight_uses_tp53_tp63_variant_controls`
+- TP53 and TP63 fixtures are actively loaded as p53-family control transcript
+  variants for RNA isoform preflight/optimizer specificity checks.
 
 ## Recreation guidance (deterministic target)
 

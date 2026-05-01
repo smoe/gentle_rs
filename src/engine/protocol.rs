@@ -71,8 +71,10 @@ pub use gentle_protocol::{
     RnaReadConcatemerSuspicionLevel, RnaReadConcatemerSuspicionRow, RnaReadExonAbundanceExport,
     RnaReadExonPathsExport, RnaReadExonSupportFrequency, RnaReadHitSelection, RnaReadInputFormat,
     RnaReadInterpretProgress, RnaReadInterpretationHit, RnaReadInterpretationProfile,
-    RnaReadInterpretationReport, RnaReadInterpretationReportSummary, RnaReadIsoformSupportRow,
-    RnaReadJunctionSupportFrequency, RnaReadMappedIsoformSupportRow,
+    RnaReadInterpretationReport, RnaReadInterpretationReportSummary,
+    RnaReadIsoformPreflightControlSummary, RnaReadIsoformPreflightReport,
+    RnaReadIsoformPreflightScore, RnaReadIsoformPreflightThresholdRecommendation,
+    RnaReadIsoformSupportRow, RnaReadJunctionSupportFrequency, RnaReadMappedIsoformSupportRow,
     RnaReadMappedSupportExonAttribution, RnaReadMappedSupportJunctionAttribution,
     RnaReadMappingHit, RnaReadOriginCandidateContribution, RnaReadOriginClass, RnaReadOriginMode,
     RnaReadPairwiseAlignmentDetail, RnaReadReportMode, RnaReadSampleSheetExport,
@@ -3374,6 +3376,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_batch_map_report: Option<RnaReadBatchMapReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rna_read_isoform_preflight: Option<RnaReadIsoformPreflightReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_region_summary: Option<TfbsRegionSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tfbs_score_tracks: Option<TfbsScoreTrackReport>,
@@ -5910,6 +5914,80 @@ pub struct IsoformPanelCurationInfo {
     pub notes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// One upstream or local source record that supports a curated isoform panel.
+pub struct IsoformPanelEvidenceRecord {
+    pub evidence_id: String,
+    pub source_type: String,
+    pub accession: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub sequence_path: Option<String>,
+    #[serde(default)]
+    pub sequence_length_bp: Option<usize>,
+    #[serde(default)]
+    pub sequence_sha256: Option<String>,
+    #[serde(default)]
+    pub cds_start_1based: Option<usize>,
+    #[serde(default)]
+    pub cds_end_1based: Option<usize>,
+    #[serde(default)]
+    pub retrieved_on: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// Small key/value metric attached to one curated isoform-panel evaluation row.
+pub struct IsoformPanelEvaluationMetric {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// One comparison row inside a curated isoform-panel evaluation.
+pub struct IsoformPanelEvaluationRow {
+    #[serde(default)]
+    pub isoform_id: Option<String>,
+    #[serde(default)]
+    pub evidence_id: Option<String>,
+    #[serde(default)]
+    pub compared_to: Option<String>,
+    pub status: String,
+    pub summary: String,
+    #[serde(default)]
+    pub metrics: Vec<IsoformPanelEvaluationMetric>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+/// A stored curation/comparison note for a panel, such as ENA-vs-Ensembl checks.
+pub struct IsoformPanelEvaluationRecord {
+    pub evaluation_id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub created_on: Option<String>,
+    #[serde(default)]
+    pub method: Option<String>,
+    pub status: String,
+    pub summary: String,
+    #[serde(default)]
+    pub source_evidence_ids: Vec<String>,
+    #[serde(default)]
+    pub isoform_ids: Vec<String>,
+    #[serde(default)]
+    pub rows: Vec<IsoformPanelEvaluationRow>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum IsoformTranscriptGeometryMode {
@@ -5957,6 +6035,10 @@ pub struct IsoformPanelResource {
     #[serde(default)]
     pub curation: Option<IsoformPanelCurationInfo>,
     #[serde(default)]
+    pub evidence: Vec<IsoformPanelEvidenceRecord>,
+    #[serde(default)]
+    pub evaluations: Vec<IsoformPanelEvaluationRecord>,
+    #[serde(default)]
     pub isoforms: Vec<IsoformPanelIsoformSpec>,
 }
 
@@ -6002,6 +6084,12 @@ pub struct IsoformPanelValidationReport {
     pub curation_source_kind: Option<String>,
     #[serde(default)]
     pub curated_isoform_count: usize,
+    #[serde(default)]
+    pub evidence_count: usize,
+    #[serde(default)]
+    pub evaluation_count: usize,
+    #[serde(default)]
+    pub evaluation_row_count: usize,
     pub issue_count: usize,
     pub status: String,
     pub isoforms: Vec<IsoformPanelValidationIsoformSummary>,
