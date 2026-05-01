@@ -6,6 +6,28 @@ Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
 `docs/architecture.md`. Machine contracts remain in `docs/protocol.md`.
 
+## Release cut line (pre- vs post-release)
+
+Pre-release work stays in release-hardening mode:
+
+- keep core implementation gene-agnostic; TP73 may appear only in fixtures,
+  examples, runbooks, or proof data
+- prefer engine-owned explanation/report records so GUI, CLI, shell, MCP, and
+  ClawBio surfaces inspect the same deterministic artifacts
+- for CUT&RUN, ship only the small generic smoke/proof slice documented in
+  `docs/cutrun_release_smoke.md`: dataset lifecycle, genome-anchored
+  projection, optional ROI read interpretation, regulatory-support inspection,
+  existing TFBS scan/score-track surfaces, and a thin GUI inspector over the
+  same engine-owned regulatory-support report
+
+Post-release work includes:
+
+- de-novo motif discovery
+- new or recalibrated motif scoring models
+- expression-stratified CUT&RUN comparisons
+- richer GUI CUT&RUN workflows and figures beyond the pre-release shared-report
+  inspector, especially after real proof runs settle the most useful views
+
 ## 1. Current implementation snapshot
 
 ### Engine and adapter baseline in place
@@ -4484,17 +4506,44 @@ Status:
    - motif-context scans use a high-confidence default
      `motif_context_min_llr_quantile = 0.95` and omit resolved target motifs
      from the "other motifs" context rows.
-   - the first V3 surface remains CLI/protocol/shell only; GUI inspection is
-     still deferred until the report shape settles.
+  - the DNA-window Engine Ops panel now also exposes a thin GUI inspector for
+    the same `gentle.cutrun_regulatory_support.v1` payload:
+    - source ids, optional promoter span, neighbor window, and species filters
+      are collected in GUI state, then sent unchanged through
+      `InspectCutRunRegulatorySupport`
+    - the panel caches and displays the returned evidence sources, support
+      windows, TFBS confirmation rows, motif-absent windows, recurring motif
+      context, warnings, and JSON export path
+    - the GUI does not add independent scoring or biology logic; it is only an
+      introspection surface over the shared report.
+
+4. Pre-release smoke/signoff path:
+   - `docs/cutrun_release_smoke.md` now defines the generic release proof path
+     using existing engine-owned operations only:
+     - genome prepare/extract to obtain one anchored ROI,
+     - CUT&RUN dataset list/status/prepare/project,
+     - optional ROI read interpretation plus coverage export,
+     - regulatory-support inspection,
+     - TFBS scan and score-track SVG inspection,
+     - optional GUI inspection of the same regulatory-support report.
+   - TP73 is treated only as a suggested proof target in runbook wording and
+     release proof data, not as implementation behavior.
+   - deterministic synthetic tests already cover the generic CUT&RUN engine and
+     shell path; no committed large TP73 CUT&RUN fixture is bundled yet.
 
 Remaining CUT&RUN follow-up:
 
-- expose V3 regulatory-support inspection in the GUI once the report shape is
-  stable in real use
+- decide whether to commit one tiny curated public CUT&RUN proof fixture, or to
+  keep TP73-adjacent release evidence as external proof data referenced from
+  release notes
+- broaden GUI support from report inspection to richer dashboards/figures once
+  real proof data has clarified the most useful visualization shape
 - consider richer support-window strength tuning and/or user-configurable
   thresholds for signal-only evidence
 - consider more explicit promoter-boundary candidate interval reporting on top
   of the current merged support-window baseline
+- post-release only: de-novo motif discovery, new motif scoring models, and
+  expression-stratified CUT&RUN comparisons
 - if later shared expression-matrix installs or external evidence bundles gain
   one prepared-cache route, they should reuse the same CUT&RUN/genome/helper
   lease + lifecycle model rather than introducing a second shared-runtime
