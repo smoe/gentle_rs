@@ -18145,6 +18145,26 @@ fn parse_feature_expert_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let restriction = parse_shell_line(
+        "inspect-feature-expert s restriction 123 --enzyme EcoRI --start 100 --end 106",
+    )
+    .expect("parse restriction feature target");
+    match restriction {
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            assert_eq!(seq_id, "s");
+            assert_eq!(
+                target,
+                FeatureExpertTarget::RestrictionSite {
+                    cut_pos_1based: 123,
+                    enzyme: Some("EcoRI".to_string()),
+                    recognition_start_1based: Some(100),
+                    recognition_end_1based: Some(106),
+                }
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let isoform = parse_shell_line("inspect-feature-expert s isoform tp53_isoforms_v1")
         .expect("parse isoform feature target");
     match isoform {
@@ -18879,6 +18899,56 @@ fn execute_inspect_feature_expert_returns_view_json() {
     assert_eq!(
         output.output["data"]["feature_id"].as_u64(),
         Some(feature_id as u64)
+    );
+}
+
+#[test]
+fn execute_inspect_feature_expert_restriction_site_includes_tooltip_lines() {
+    let mut dna = DNAsequence::from_sequence("AAGAATTCTT").expect("valid dna");
+    *dna.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
+    dna.update_computed_features();
+    let key = dna
+        .restriction_enzyme_groups()
+        .iter()
+        .find(|(_, names)| names.iter().any(|name| name.eq_ignore_ascii_case("EcoRI")))
+        .map(|(key, _)| key.clone())
+        .expect("EcoRI site should exist");
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let output = execute_shell_command(
+        &mut engine,
+        &ShellCommand::InspectFeatureExpert {
+            seq_id: "s".to_string(),
+            target: FeatureExpertTarget::RestrictionSite {
+                cut_pos_1based: key.pos() as usize + 1,
+                enzyme: Some("EcoRI".to_string()),
+                recognition_start_1based: Some(key.from() as usize + 1),
+                recognition_end_1based: Some(key.to() as usize),
+            },
+        },
+    )
+    .expect("execute restriction inspect-feature-expert");
+
+    assert!(!output.state_changed);
+    assert_eq!(output.output["kind"].as_str(), Some("restriction_site"));
+    let lines = output.output["data"]["tooltip_lines"]
+        .as_array()
+        .expect("tooltip lines");
+    assert!(lines.iter().any(|line| {
+        line.as_str()
+            .is_some_and(|line| line.contains("EcoRI | 1 site | 5' overhang (4 bp)"))
+    }));
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.as_str() == Some("5' G^AATTC 3'"))
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.as_str() == Some("3' CTTAA^G 5'"))
     );
 }
 

@@ -181,7 +181,7 @@ fn tool_list() -> Value {
         .iter()
         .map(|target| target.as_str())
         .collect();
-    json!([
+    let mut tools = json!([
         {
             "name": "capabilities",
             "title": "Capabilities",
@@ -819,7 +819,52 @@ fn tool_list() -> Value {
                 "additionalProperties": false
             }
         }
-    ])
+    ]);
+    if let Some(items) = tools.as_array_mut() {
+        items.insert(
+            2,
+            json!({
+                "name": "restriction_site_detail",
+                "title": "Restriction Site Detail",
+                "description": "Return one restriction-site expert record through the shared `inspect-feature-expert ... restriction` shell contract.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "state_path": {
+                            "type": "string",
+                            "description": "Optional project state path. Defaults to server startup state path."
+                        },
+                        "seq_id": {
+                            "type": "string",
+                            "description": "Stored sequence id to inspect."
+                        },
+                        "cut_pos_1based": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "One-based top-strand cut position."
+                        },
+                        "enzyme": {
+                            "type": "string",
+                            "description": "Optional enzyme-name disambiguator."
+                        },
+                        "recognition_start_1based": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "Optional one-based recognition-site start disambiguator."
+                        },
+                        "recognition_end_1based": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "Optional one-based inclusive recognition-site end disambiguator."
+                        }
+                    },
+                    "required": ["seq_id", "cut_pos_1based"],
+                    "additionalProperties": false
+                }
+            }),
+        );
+    }
+    tools
 }
 
 fn jsonrpc_response(id: Value, result: Value) -> Value {
@@ -1003,6 +1048,15 @@ fn required_string_arg(args: &Map<String, Value>, key: &str) -> Result<String, S
         Some(value) => Ok(value),
         None => Err(format!(
             "MCP argument '{key}' is required and must be non-empty"
+        )),
+    }
+}
+
+fn required_usize_arg(args: &Map<String, Value>, key: &str) -> Result<usize, String> {
+    match optional_usize_arg(args, key)? {
+        Some(value) => Ok(value),
+        None => Err(format!(
+            "MCP argument '{key}' is required and must be a non-negative integer"
         )),
     }
 }
@@ -1319,6 +1373,82 @@ fn construct_reasoning_write_annotation_tool_result(
         ],
         "construct_reasoning_write_annotation",
     ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn restriction_site_detail_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let seq_id = match required_string_arg(&args, "seq_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let cut_pos_1based = match required_usize_arg(&args, "cut_pos_1based") {
+        Ok(value) if value > 0 => value,
+        Ok(_) => {
+            return tool_result_text(
+                "MCP argument 'cut_pos_1based' must be >= 1".to_string(),
+                "text",
+                true,
+            );
+        }
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let enzyme = match optional_string_arg(&args, "enzyme") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let recognition_start_1based = match optional_usize_arg(&args, "recognition_start_1based") {
+        Ok(Some(0)) => {
+            return tool_result_text(
+                "MCP argument 'recognition_start_1based' must be >= 1".to_string(),
+                "text",
+                true,
+            );
+        }
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let recognition_end_1based = match optional_usize_arg(&args, "recognition_end_1based") {
+        Ok(Some(0)) => {
+            return tool_result_text(
+                "MCP argument 'recognition_end_1based' must be >= 1".to_string(),
+                "text",
+                true,
+            );
+        }
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    if let (Some(start), Some(end)) = (recognition_start_1based, recognition_end_1based) {
+        if start > end {
+            return tool_result_text(
+                "MCP argument 'recognition_start_1based' must be <= 'recognition_end_1based'"
+                    .to_string(),
+                "text",
+                true,
+            );
+        }
+    }
+
+    let mut tokens = vec![
+        "inspect-feature-expert".to_string(),
+        seq_id,
+        "restriction".to_string(),
+        cut_pos_1based.to_string(),
+    ];
+    append_string_flag(&mut tokens, "--enzyme", enzyme);
+    if let Some(value) = recognition_start_1based {
+        tokens.push("--start".to_string());
+        tokens.push(value.to_string());
+    }
+    if let Some(value) = recognition_end_1based {
+        tokens.push("--end".to_string());
+        tokens.push(value.to_string());
+    }
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "restriction_site_detail")
+    {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
     }
@@ -2124,6 +2254,9 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
                 ),
             }
         }
+        "restriction_site_detail" => {
+            restriction_site_detail_tool_result(default_state_path, &params.arguments)
+        }
         "agent_systems" => agent_systems_tool_result(default_state_path, &params.arguments),
         "agent_preflight" => agent_preflight_tool_result(default_state_path, &params.arguments),
         "agent_models" => agent_models_tool_result(default_state_path, &params.arguments),
@@ -2605,6 +2738,29 @@ mod tests {
             .map(|target| target.as_str().to_string())
             .collect::<Vec<_>>();
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn tools_list_includes_restriction_site_detail_schema() {
+        let tools = tool_list();
+        let restriction_detail = tools
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("restriction_site_detail"))
+            .expect("restriction_site_detail tool");
+        let required = restriction_detail["inputSchema"]["required"]
+            .as_array()
+            .expect("required fields")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert!(required.contains(&"seq_id"));
+        assert!(required.contains(&"cut_pos_1based"));
+        assert_eq!(
+            restriction_detail["inputSchema"]["properties"]["cut_pos_1based"]["minimum"].as_u64(),
+            Some(1)
+        );
     }
 
     #[test]
@@ -3374,6 +3530,84 @@ mod tests {
             "deoR".to_string(),
         ]);
         assert_eq!(mcp_host["result"]["structuredContent"], expected_host);
+    }
+
+    #[test]
+    fn mcp_restriction_site_detail_matches_shared_shell_contract() {
+        let td = tempdir().expect("tempdir");
+        let state_path = td.path().join("restriction_site_state.json");
+        let state_path_str = state_path.to_string_lossy().to_string();
+
+        let mut dna = DNAsequence::from_sequence("AAGAATTCTT").expect("valid dna");
+        *dna.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();
+        dna.update_computed_features();
+        let key = dna
+            .restriction_enzyme_groups()
+            .iter()
+            .find(|(_, names)| names.iter().any(|name| name.eq_ignore_ascii_case("EcoRI")))
+            .map(|(key, _)| key.clone())
+            .expect("EcoRI site should exist");
+        let cut_pos_1based = key.pos() as usize + 1;
+        let recognition_start_1based = key.from() as usize + 1;
+        let recognition_end_1based = key.to() as usize;
+
+        let mut state = ProjectState::default();
+        state.sequences.insert("restriction_mcp".to_string(), dna);
+        state.save_to_path(&state_path_str).expect("save state");
+
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "restriction_site_detail",
+            json!({
+                "state_path": state_path_str.clone(),
+                "seq_id": "restriction_mcp",
+                "cut_pos_1based": cut_pos_1based,
+                "enzyme": "EcoRI",
+                "recognition_start_1based": recognition_start_1based,
+                "recognition_end_1based": recognition_end_1based
+            }),
+        );
+        assert_eq!(
+            response.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+
+        let expected = {
+            let state = ProjectState::load_from_path(&state_path_str).expect("load state");
+            let mut engine = GentleEngine::from_state(state);
+            let command = parse_shell_tokens(&[
+                "inspect-feature-expert".to_string(),
+                "restriction_mcp".to_string(),
+                "restriction".to_string(),
+                cut_pos_1based.to_string(),
+                "--enzyme".to_string(),
+                "EcoRI".to_string(),
+                "--start".to_string(),
+                recognition_start_1based.to_string(),
+                "--end".to_string(),
+                recognition_end_1based.to_string(),
+            ])
+            .expect("parse shell restriction detail");
+            let run = execute_shell_command(&mut engine, &command)
+                .expect("execute shell restriction detail");
+            assert!(!run.state_changed);
+            run.output
+        };
+        let structured = &response["result"]["structuredContent"];
+        assert_eq!(structured, &expected);
+        assert_eq!(structured["kind"].as_str(), Some("restriction_site"));
+        let tooltip_lines = structured["data"]["tooltip_lines"]
+            .as_array()
+            .expect("tooltip lines");
+        assert!(tooltip_lines.iter().any(|line| {
+            line.as_str()
+                .is_some_and(|line| line.contains("EcoRI | 1 site | 5' overhang (4 bp)"))
+        }));
+        assert!(
+            tooltip_lines
+                .iter()
+                .any(|line| line.as_str() == Some("5' G^AATTC 3'"))
+        );
     }
 
     #[test]

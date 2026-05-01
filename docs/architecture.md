@@ -708,6 +708,7 @@ Current baseline:
 - Exposed tools:
   - `capabilities`
   - `state_summary`
+  - `restriction_site_detail`
   - `op` (shared engine operation execution; explicit `confirm=true` required)
   - `workflow` (shared engine workflow execution; explicit `confirm=true` required)
   - `help`
@@ -718,7 +719,8 @@ Current baseline:
 - Handlers are thin and map to existing shared contracts
   (`GentleEngine::capabilities`, state summary, `Engine::apply`,
   `Engine::apply_workflow`, glossary-backed help, and shared shell
-  parser/executor for `ui ...` routes).
+  parser/executor for `ui ...` and `inspect-feature-expert ... restriction`
+  routes).
 - Mutating MCP tools persist project state to disk after successful execution.
 - Structured JSON-RPC diagnostics are returned for invalid requests/params.
 - UI-intent MCP tools are explicitly non-mutating and reject unexpected
@@ -730,7 +732,8 @@ Current baseline:
   an intentional shared-state model and should be treated as a trusted-client
   boundary.
 - Adapter-equivalence tests cover MCP-vs-shared-shell parity for:
-  `ui_intents`, `ui_prepared_genomes`, `ui_latest_prepared`, and `ui_intent`.
+  `ui_intents`, `ui_prepared_genomes`, `ui_latest_prepared`, `ui_intent`, and
+  `restriction_site_detail`.
 
 Remaining expansion scope:
 

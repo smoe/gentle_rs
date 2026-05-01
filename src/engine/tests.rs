@@ -10004,6 +10004,21 @@ fn test_inspect_restriction_site_expert_view() {
                 Some("https://rebase.neb.com/rebase/enz/EcoRI.html")
             );
             assert!(
+                re.tooltip_lines
+                    .iter()
+                    .any(|line| line.contains("EcoRI | 1 site | 5' overhang (4 bp)"))
+            );
+            assert!(
+                re.tooltip_lines
+                    .iter()
+                    .any(|line| line.contains("5' G^AATTC 3'"))
+            );
+            assert!(
+                re.tooltip_lines
+                    .iter()
+                    .any(|line| line.contains("3' CTTAA^G 5'"))
+            );
+            assert!(
                 re.enzyme_names
                     .iter()
                     .any(|name| name.eq_ignore_ascii_case("EcoRI"))

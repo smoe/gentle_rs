@@ -13,6 +13,7 @@ gentle_mcp [--state PATH|--project PATH] [--help|-h] [--version|-V]\n\n  \
 Starts a MCP stdio server with tools:\n  \
   - capabilities\n  \
   - state_summary\n  \
+  - restriction_site_detail\n  \
   - op (requires confirm=true)\n  \
   - workflow (requires confirm=true)\n  \
   - help\n\n  \

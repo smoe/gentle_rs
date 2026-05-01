@@ -235,7 +235,9 @@ Both panels can be shown/hidden from the toolbar.
   restriction-site tooltip with enzyme/site count, recognition span, cut
   geometry, caret-marked top/bottom cut positions, and REBASE/note metadata
   when available; clicking the same site still opens the richer description
-  panel expert view.
+  panel expert view. The same presentation-ready lines are serialized as
+  `tooltip_lines[]` by `inspect-feature-expert ... restriction ...` for
+  scripts and external tools.
 
 The project main window (lineage page) supports two views:
 
