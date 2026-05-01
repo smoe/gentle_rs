@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-05-01
+Last updated: 2026-05-02
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -225,6 +225,9 @@ Post-release work includes:
   - `src/main_area_dna/feature_actions.rs` (feature-linked splicing/RNA-mapping/dotplot launcher helpers extracted from `src/main_area_dna.rs`)
   - `src/main_area_dna/formula_controls.rs` (selection/ROI formula parsing/apply helpers plus shared numeric field parsers extracted from `src/main_area_dna.rs`)
   - `src/main_area_dna/rna_read_support.rs` (RNA-read report/cache/inspection helper routines extracted from `src/main_area_dna.rs`)
+  - `src/main_area_dna/cutrun_support.rs` (CUT&RUN regulatory-support report
+    request/caching/export and inspector-table helpers extracted from
+    `src/main_area_dna.rs`)
   - `src/main_area_dna/auxiliary_workspaces.rs` (dotplot support plus splicing/RNA-mapping auxiliary workspace helpers extracted from `src/main_area_dna.rs`)
 - Engine-shell decomposition is now underway:
   - `src/engine_shell/command_parsers.rs` (candidate/guide/macro/routine/planning command parser helpers)
