@@ -3003,8 +3003,16 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle Agent Assistant Viewport")
     }
 
+    fn jaspar_expert_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle JASPAR Expert Viewport")
+    }
+
     fn command_palette_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Command Palette Viewport")
+    }
+
+    fn background_jobs_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Background Jobs Viewport")
     }
 
     fn history_viewport_id() -> ViewportId {
@@ -3887,6 +3895,20 @@ Error: `{err}`"
         self.show_command_palette_dialog = true;
         self.command_palette_focus_query = true;
         self.mark_window_open_or_focus(Self::command_palette_viewport_id(), was_open);
+    }
+
+    fn open_background_jobs_panel(&mut self) {
+        let was_open = self.show_jobs_panel;
+        self.show_jobs_panel = true;
+        self.mark_window_open_or_focus(Self::background_jobs_viewport_id(), was_open);
+    }
+
+    fn toggle_background_jobs_panel(&mut self) {
+        if self.show_jobs_panel {
+            self.show_jobs_panel = false;
+        } else {
+            self.open_background_jobs_panel();
+        }
     }
 
     fn track_hover_status<S: Into<String>>(
@@ -5205,7 +5227,7 @@ Error: `{err}`"
             CommandPaletteAction::OpenShellManual => self.open_help_doc(HelpDoc::Shell),
             CommandPaletteAction::ExportLineageSvg => self.prompt_export_lineage_svg(),
             CommandPaletteAction::ToggleJobsPanel => {
-                self.show_jobs_panel = !self.show_jobs_panel;
+                self.toggle_background_jobs_panel();
             }
             CommandPaletteAction::ToggleHistoryPanel => {
                 self.show_history_panel = !self.show_history_panel;
@@ -5524,6 +5546,8 @@ Error: `{err}`"
             "Routine Assistant focus acquisition"
         } else if viewport_id == Self::agent_assistant_viewport_id() {
             "Agent Assistant focus acquisition"
+        } else if viewport_id == Self::jaspar_expert_viewport_id() {
+            "JASPAR Expert focus acquisition"
         } else if viewport_id == Self::uniprot_viewport_id() {
             "UniProt focus acquisition"
         } else if viewport_id == Self::genbank_viewport_id() {
@@ -6977,7 +7001,7 @@ Error: `{err}`"
             self.tutorial_project_status =
                 "A tutorial project is already opening in the background".to_string();
             self.app_status = self.tutorial_project_status.clone();
-            self.show_jobs_panel = true;
+            self.open_background_jobs_panel();
             return;
         }
 
@@ -6992,7 +7016,7 @@ Error: `{err}`"
             chapter_id_owned
         );
         self.app_status = self.tutorial_project_status.clone();
-        self.show_jobs_panel = true;
+        self.open_background_jobs_panel();
         self.push_job_event(
             BackgroundJobKind::OpenTutorialProject,
             BackgroundJobEventPhase::Started,
@@ -10485,55 +10509,55 @@ Error: `{err}`"
         }
         let mut open = self.show_place_arrangement_rack_dialog;
         let mut close_requested = false;
-        egui::Window::new("Place Arrangement on Existing Rack")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_size(Vec2::new(560.0, 220.0))
-            .show(ctx, |ui| {
-                ui.label("Append one arrangement as a contiguous block onto an existing rack. Existing blocks stay intact.");
-                ui.horizontal(|ui| {
-                    ui.label("Arrangement");
-                    ui.monospace(self.place_arrangement_source_id.clone());
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Target rack");
-                    egui::ComboBox::from_id_salt("place_arrangement_rack_combo")
-                        .selected_text(if self.place_arrangement_target_rack_id.trim().is_empty() {
-                            "(choose rack)".to_string()
-                        } else {
-                            self.place_arrangement_target_rack_id.clone()
-                        })
-                        .show_ui(ui, |ui| {
-                            for rack in &self.lineage_racks {
-                                ui.selectable_value(
-                                    &mut self.place_arrangement_target_rack_id,
-                                    rack.rack_id.clone(),
-                                    format!(
-                                        "{} — {} ({}, {} occupied, {} arrangement block(s))",
-                                        rack.rack_id,
-                                        rack.name,
-                                        rack.profile,
-                                        rack.occupied_positions,
-                                        rack.arrangement_ids.len()
-                                    ),
-                                );
-                            }
-                        });
-                });
-                if !self.place_arrangement_status.trim().is_empty() {
-                    ui.small(self.place_arrangement_status.clone());
-                }
-                ui.separator();
-                ui.horizontal(|ui| {
-                    if ui.button("Place").clicked() {
-                        self.submit_place_arrangement_on_rack();
-                    }
-                    if ui.button("Cancel").clicked() {
-                        close_requested = true;
-                    }
-                });
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Place Arrangement on Existing Rack",
+            egui::Id::new("place_arrangement_on_rack_modal"),
+        )
+        .default_size(Vec2::new(560.0, 220.0));
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.label("Append one arrangement as a contiguous block onto an existing rack. Existing blocks stay intact.");
+            ui.horizontal(|ui| {
+                ui.label("Arrangement");
+                ui.monospace(self.place_arrangement_source_id.clone());
             });
+            ui.horizontal(|ui| {
+                ui.label("Target rack");
+                egui::ComboBox::from_id_salt("place_arrangement_rack_combo")
+                    .selected_text(if self.place_arrangement_target_rack_id.trim().is_empty() {
+                        "(choose rack)".to_string()
+                    } else {
+                        self.place_arrangement_target_rack_id.clone()
+                    })
+                    .show_ui(ui, |ui| {
+                        for rack in &self.lineage_racks {
+                            ui.selectable_value(
+                                &mut self.place_arrangement_target_rack_id,
+                                rack.rack_id.clone(),
+                                format!(
+                                    "{} — {} ({}, {} occupied, {} arrangement block(s))",
+                                    rack.rack_id,
+                                    rack.name,
+                                    rack.profile,
+                                    rack.occupied_positions,
+                                    rack.arrangement_ids.len()
+                                ),
+                            );
+                        }
+                    });
+            });
+            if !self.place_arrangement_status.trim().is_empty() {
+                ui.small(self.place_arrangement_status.clone());
+            }
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button("Place").clicked() {
+                    self.submit_place_arrangement_on_rack();
+                }
+                if ui.button("Cancel").clicked() {
+                    close_requested = true;
+                }
+            });
+        });
         if close_requested {
             open = false;
         }
@@ -11205,7 +11229,9 @@ Error: `{err}`"
     }
 
     fn open_jaspar_expert_dialog(&mut self) {
+        let was_open = self.show_jaspar_expert_dialog;
         if self.show_jaspar_expert_dialog {
+            self.mark_window_open_or_focus(Self::jaspar_expert_viewport_id(), true);
             return;
         }
         if self.jaspar_expert_selected_motif_id.trim().is_empty() {
@@ -11215,6 +11241,7 @@ Error: `{err}`"
                 .unwrap_or_default();
         }
         self.show_jaspar_expert_dialog = true;
+        self.mark_window_open_or_focus(Self::jaspar_expert_viewport_id(), was_open);
     }
 
     fn open_jaspar_expert_dialog_for_motif(&mut self, motif_id: &str) {
@@ -21306,34 +21333,38 @@ Error: `{err}`"
         } else {
             request.cache_dir.trim().to_string()
         };
-        egui::Window::new("Reindex Prepared Genome")
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .movable(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Reindex prepared {} '{}'?",
-                    request.scope.description(),
-                    request.genome_id
-                ));
-                ui.small(
+        let mut open = true;
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Reindex Prepared Genome",
+            egui::Id::new((
+                "reindex_prepared_genome_modal",
+                matches!(request.scope, GenomeDialogScope::Helper),
+                request.genome_id.clone(),
+            )),
+        );
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.label(format!(
+                "Reindex prepared {} '{}'?",
+                request.scope.description(),
+                request.genome_id
+            ));
+            ui.small(
                     "Reindex keeps the cached local sequence/annotation files and rebuilds local indexes in the selected cache.",
                 );
-                ui.small(
+            ui.small(
                     "Removing cached files and re-downloading from sources is available below, but only as an explicit action.",
                 );
+            ui.separator();
+            ui.label(format!("catalog: {resolved_catalog}"));
+            ui.label(format!("cache_dir: {resolved_cache}"));
+            if self.genome_prepare_task.is_some() {
                 ui.separator();
-                ui.label(format!("catalog: {resolved_catalog}"));
-                ui.label(format!("cache_dir: {resolved_cache}"));
-                if self.genome_prepare_task.is_some() {
-                    ui.separator();
-                    ui.colored_label(
+                ui.colored_label(
                         egui::Color32::from_rgb(190, 70, 70),
                         "Another genome prepare task is already running. Finish or cancel it before starting a reindex or refresh.",
                     );
-                }
-                ui.horizontal(|ui| {
+            }
+            ui.horizontal(|ui| {
                     if ui
                         .add_enabled(
                             self.genome_prepare_task.is_none(),
@@ -21370,138 +21401,150 @@ Error: `{err}`"
                         self.pending_prepared_genome_reinstall = None;
                     }
                 });
-            });
+        });
+        if !open {
+            self.pending_prepared_genome_reinstall = None;
+        }
     }
 
     fn render_pending_ensembl_catalog_update_dialog(&mut self, ctx: &egui::Context) {
         let Some(mut dialog) = self.pending_ensembl_catalog_update.clone() else {
             return;
         };
-        egui::Window::new("Update Ensembl Specs")
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .movable(false)
-            .resizable(true)
-            .default_width(760.0)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Refresh pinned Ensembl catalog specs for the {} catalog?",
-                    dialog.scope.description()
-                ));
-                ui.small(
+        let mut open = true;
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Update Ensembl Specs",
+            egui::Id::new((
+                "update_ensembl_specs_modal",
+                matches!(dialog.scope, GenomeDialogScope::Helper),
+                dialog.catalog_path.clone(),
+            )),
+        )
+        .default_size(Vec2::new(760.0, 520.0))
+        .min_size(Vec2::new(560.0, 320.0))
+        .resizable(true);
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.label(format!(
+                "Refresh pinned Ensembl catalog specs for the {} catalog?",
+                dialog.scope.description()
+            ));
+            ui.small(
                     "Older pinned releases stay in the catalog. Newer release rows are added or refreshed without downloading/preparing genomes.",
                 );
-                ui.separator();
-                ui.label(format!("catalog: {}", dialog.catalog_path));
-                if dialog.preview.writable_catalog {
-                    ui.small("This catalog is writable and can be updated in place.");
-                } else {
-                    ui.colored_label(
+            ui.separator();
+            ui.label(format!("catalog: {}", dialog.catalog_path));
+            if dialog.preview.writable_catalog {
+                ui.small("This catalog is writable and can be updated in place.");
+            } else {
+                ui.colored_label(
                         egui::Color32::from_rgb(170, 120, 50),
                         "This catalog is not writable in place. Choose a save path for an updated copy.",
                     );
-                }
-                ui.horizontal(|ui| {
-                    ui.label("output");
-                    ui.text_edit_singleline(&mut dialog.output_catalog_path);
-                    if ui
-                        .button("Browse...")
-                        .on_hover_text("Pick a destination for an updated catalog copy")
-                        .clicked()
+            }
+            ui.horizontal(|ui| {
+                ui.label("output");
+                ui.text_edit_singleline(&mut dialog.output_catalog_path);
+                if ui
+                    .button("Browse...")
+                    .on_hover_text("Pick a destination for an updated catalog copy")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("JSON", &["json"])
+                        .save_file()
                     {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .save_file()
-                        {
-                            dialog.output_catalog_path = path.display().to_string();
-                        }
+                        dialog.output_catalog_path = path.display().to_string();
                     }
-                });
-                if !dialog.preview.collection_latest_releases.is_empty() {
-                    let mut collections: Vec<_> =
-                        dialog.preview.collection_latest_releases.iter().collect();
-                    collections.sort_by(|left, right| left.0.cmp(right.0));
-                    for (collection, release) in collections {
-                        ui.small(format!("latest {collection} release seen: {release}"));
-                    }
-                }
-                ui.separator();
-                ui.label(format!(
-                    "Updates: {} | unchanged: {} | skipped: {}",
-                    dialog.preview.updates.len(),
-                    dialog.preview.unchanged_entries.len(),
-                    dialog.preview.skipped_entries.len()
-                ));
-                egui::ScrollArea::vertical()
-                    .id_salt("ensembl_catalog_update_updates_scroll")
-                    .max_height(220.0)
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        for update in &dialog.preview.updates {
-                            ui.group(|ui| {
-                                ui.label(format!(
-                                    "{} -> {} ({}, {} -> {})",
-                                    update.source_genome_id,
-                                    update.target_genome_id,
-                                    update.action,
-                                    update.old_release,
-                                    update.new_release
-                                ));
-                                ui.small(format!("sequence: {}", update.new_sequence_remote));
-                                ui.small(format!("annotation: {}", update.new_annotations_remote));
-                            });
-                        }
-                    });
-                if !dialog.preview.skipped_entries.is_empty() {
-                    ui.separator();
-                    ui.label("Skipped:");
-                    for row in &dialog.preview.skipped_entries {
-                        ui.small(row);
-                    }
-                }
-                if !dialog.preview.warnings.is_empty() {
-                    ui.separator();
-                    ui.label("Warnings:");
-                    for warning in &dialog.preview.warnings {
-                        ui.small(warning);
-                    }
-                }
-                ui.separator();
-                let needs_output_copy =
-                    !dialog.preview.writable_catalog && dialog.output_catalog_path.trim().is_empty();
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(
-                            !needs_output_copy,
-                            egui::Button::new(if dialog.preview.writable_catalog {
-                                "Update Catalog"
-                            } else {
-                                "Save Updated Copy"
-                            }),
-                        )
-                        .on_hover_text(
-                            "Write the refreshed Ensembl entries to the selected catalog path.",
-                        )
-                        .clicked()
-                    {
-                        self.pending_ensembl_catalog_update = Some(dialog.clone());
-                        self.apply_pending_ensembl_catalog_update();
-                    }
-                    if ui
-                        .button("Cancel")
-                        .on_hover_text("Close this preview without changing the catalog")
-                        .clicked()
-                    {
-                        self.pending_ensembl_catalog_update = None;
-                    }
-                });
-                if self.pending_ensembl_catalog_update.is_some() {
-                    self.pending_ensembl_catalog_update = Some(dialog);
                 }
             });
+            if !dialog.preview.collection_latest_releases.is_empty() {
+                let mut collections: Vec<_> =
+                    dialog.preview.collection_latest_releases.iter().collect();
+                collections.sort_by(|left, right| left.0.cmp(right.0));
+                for (collection, release) in collections {
+                    ui.small(format!("latest {collection} release seen: {release}"));
+                }
+            }
+            ui.separator();
+            ui.label(format!(
+                "Updates: {} | unchanged: {} | skipped: {}",
+                dialog.preview.updates.len(),
+                dialog.preview.unchanged_entries.len(),
+                dialog.preview.skipped_entries.len()
+            ));
+            egui::ScrollArea::vertical()
+                .id_salt("ensembl_catalog_update_updates_scroll")
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    for update in &dialog.preview.updates {
+                        ui.group(|ui| {
+                            ui.label(format!(
+                                "{} -> {} ({}, {} -> {})",
+                                update.source_genome_id,
+                                update.target_genome_id,
+                                update.action,
+                                update.old_release,
+                                update.new_release
+                            ));
+                            ui.small(format!("sequence: {}", update.new_sequence_remote));
+                            ui.small(format!("annotation: {}", update.new_annotations_remote));
+                        });
+                    }
+                });
+            if !dialog.preview.skipped_entries.is_empty() {
+                ui.separator();
+                ui.label("Skipped:");
+                for row in &dialog.preview.skipped_entries {
+                    ui.small(row);
+                }
+            }
+            if !dialog.preview.warnings.is_empty() {
+                ui.separator();
+                ui.label("Warnings:");
+                for warning in &dialog.preview.warnings {
+                    ui.small(warning);
+                }
+            }
+            ui.separator();
+            let needs_output_copy =
+                !dialog.preview.writable_catalog && dialog.output_catalog_path.trim().is_empty();
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(
+                        !needs_output_copy,
+                        egui::Button::new(if dialog.preview.writable_catalog {
+                            "Update Catalog"
+                        } else {
+                            "Save Updated Copy"
+                        }),
+                    )
+                    .on_hover_text(
+                        "Write the refreshed Ensembl entries to the selected catalog path.",
+                    )
+                    .clicked()
+                {
+                    self.pending_ensembl_catalog_update = Some(dialog.clone());
+                    self.apply_pending_ensembl_catalog_update();
+                }
+                if ui
+                    .button("Cancel")
+                    .on_hover_text("Close this preview without changing the catalog")
+                    .clicked()
+                {
+                    self.pending_ensembl_catalog_update = None;
+                }
+            });
+            if self.pending_ensembl_catalog_update.is_some() {
+                self.pending_ensembl_catalog_update = Some(dialog);
+            }
+        });
+        if !open {
+            self.pending_ensembl_catalog_update = None;
+        }
     }
 
     fn render_pending_ensembl_installable_genomes_dialog(&mut self, ctx: &egui::Context) {
@@ -21510,91 +21553,94 @@ Error: `{err}`"
         };
         let mut reload_requested = false;
         let mut close_requested = false;
-        egui::Window::new("Browse Ensembl Candidates")
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .resizable(true)
-            .default_size(Vec2::new(820.0, 520.0))
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Inspect Ensembl-discovered candidates for the {} workflow.",
-                    dialog.scope.description()
-                ));
-                ui.small(
+        let mut open = true;
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Browse Ensembl Candidates",
+            egui::Id::new((
+                "browse_ensembl_candidates_modal",
+                matches!(dialog.scope, GenomeDialogScope::Helper),
+            )),
+        )
+        .default_size(Vec2::new(820.0, 520.0))
+        .min_size(Vec2::new(560.0, 320.0))
+        .resizable(true);
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.label(format!(
+                "Inspect Ensembl-discovered candidates for the {} workflow.",
+                dialog.scope.description()
+            ));
+            ui.small(
                     "This is a read-only discovery view. Candidates appear when both current FASTA and GTF species-directory listings are present; no catalog rows are created here.",
                 );
-                ui.small(format!(
-                    "Availability basis: {}",
-                    dialog.report.availability_basis
-                ));
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.label("collection");
-                    egui::ComboBox::from_id_salt("ensembl_installable_collection_filter")
-                        .selected_text(dialog.collection_filter.as_str())
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut dialog.collection_filter,
-                                "all".to_string(),
-                                "all",
-                            );
-                            ui.selectable_value(
-                                &mut dialog.collection_filter,
-                                "vertebrates".to_string(),
-                                "vertebrates",
-                            );
-                            ui.selectable_value(
-                                &mut dialog.collection_filter,
-                                "metazoa".to_string(),
-                                "metazoa",
-                            );
-                        });
-                    ui.label("filter");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut dialog.filter)
-                            .desired_width(f32::INFINITY),
-                    );
-                    if ui
-                        .button("Clear")
-                        .on_hover_text("Clear the Ensembl candidate text filter")
-                        .clicked()
-                    {
-                        dialog.filter.clear();
-                    }
-                });
-                ui.horizontal(|ui| {
-                    if ui
-                        .button("Reload")
-                        .on_hover_text(
-                            "Refetch current Ensembl listings with the selected collection/filter",
-                        )
-                        .clicked()
-                    {
-                        reload_requested = true;
-                    }
-                    if ui
-                        .button("Close")
-                        .on_hover_text("Close the Ensembl candidate browser")
-                        .clicked()
-                    {
-                        close_requested = true;
-                    }
-                });
-                if !dialog.report.collection_latest_releases.is_empty() {
-                    let mut collections: Vec<_> =
-                        dialog.report.collection_latest_releases.iter().collect();
-                    collections.sort_by(|left, right| left.0.cmp(right.0));
-                    for (collection, release) in collections {
-                        ui.small(format!("latest {collection} release seen: {release}"));
-                    }
+            ui.small(format!(
+                "Availability basis: {}",
+                dialog.report.availability_basis
+            ));
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label("collection");
+                egui::ComboBox::from_id_salt("ensembl_installable_collection_filter")
+                    .selected_text(dialog.collection_filter.as_str())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut dialog.collection_filter,
+                            "all".to_string(),
+                            "all",
+                        );
+                        ui.selectable_value(
+                            &mut dialog.collection_filter,
+                            "vertebrates".to_string(),
+                            "vertebrates",
+                        );
+                        ui.selectable_value(
+                            &mut dialog.collection_filter,
+                            "metazoa".to_string(),
+                            "metazoa",
+                        );
+                    });
+                ui.label("filter");
+                ui.add(egui::TextEdit::singleline(&mut dialog.filter).desired_width(f32::INFINITY));
+                if ui
+                    .button("Clear")
+                    .on_hover_text("Clear the Ensembl candidate text filter")
+                    .clicked()
+                {
+                    dialog.filter.clear();
                 }
-                ui.separator();
-                ui.label(format!(
-                    "Candidates: {} (loaded for collection='{}')",
-                    dialog.report.candidates.len(),
-                    dialog.report.collection_filter
-                ));
-                egui::ScrollArea::vertical()
+            });
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Reload")
+                    .on_hover_text(
+                        "Refetch current Ensembl listings with the selected collection/filter",
+                    )
+                    .clicked()
+                {
+                    reload_requested = true;
+                }
+                if ui
+                    .button("Close")
+                    .on_hover_text("Close the Ensembl candidate browser")
+                    .clicked()
+                {
+                    close_requested = true;
+                }
+            });
+            if !dialog.report.collection_latest_releases.is_empty() {
+                let mut collections: Vec<_> =
+                    dialog.report.collection_latest_releases.iter().collect();
+                collections.sort_by(|left, right| left.0.cmp(right.0));
+                for (collection, release) in collections {
+                    ui.small(format!("latest {collection} release seen: {release}"));
+                }
+            }
+            ui.separator();
+            ui.label(format!(
+                "Candidates: {} (loaded for collection='{}')",
+                dialog.report.candidates.len(),
+                dialog.report.collection_filter
+            ));
+            egui::ScrollArea::vertical()
                     .id_salt("ensembl_candidates_scroll")
                     .max_height(320.0)
                     .show(ui, |ui| {
@@ -21645,15 +21691,15 @@ Error: `{err}`"
                             }
                         }
                     });
-                if !dialog.report.warnings.is_empty() {
-                    ui.separator();
-                    ui.label("Warnings:");
-                    for warning in &dialog.report.warnings {
-                        ui.small(warning);
-                    }
+            if !dialog.report.warnings.is_empty() {
+                ui.separator();
+                ui.label("Warnings:");
+                for warning in &dialog.report.warnings {
+                    ui.small(warning);
                 }
-            });
-        if close_requested {
+            }
+        });
+        if !open || close_requested {
             self.pending_ensembl_installable_genomes = None;
             return;
         }
@@ -21673,68 +21719,74 @@ Error: `{err}`"
         let Some(mut dialog) = self.pending_ensembl_quick_install.clone() else {
             return;
         };
-        egui::Window::new("Quick Install Ensembl Candidate")
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .movable(false)
-            .resizable(true)
-            .default_width(760.0)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Install '{}' from the current Ensembl {} listing?",
-                    dialog.preview.display_name, dialog.preview.collection
-                ));
-                ui.small(
+        let mut open = true;
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Quick Install Ensembl Candidate",
+            egui::Id::new((
+                "quick_install_ensembl_candidate_modal",
+                dialog.preview.collection.clone(),
+                dialog.preview.species_dir.clone(),
+            )),
+        )
+        .default_size(Vec2::new(760.0, 520.0))
+        .min_size(Vec2::new(560.0, 320.0))
+        .resizable(true);
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.label(format!(
+                "Install '{}' from the current Ensembl {} listing?",
+                dialog.preview.display_name, dialog.preview.collection
+            ));
+            ui.small(
                     "This writes a real catalog entry first and then starts the normal prepare workflow. Downloads and indexing may take some time.",
                 );
-                ui.separator();
-                ui.label(format!("species_dir: {}", dialog.preview.species_dir));
-                ui.label(format!("resolved release: {}", dialog.preview.release));
-                ui.label(format!("file_stem: {}", dialog.preview.file_stem));
-                ui.horizontal(|ui| {
-                    ui.label("genome_id");
-                    ui.text_edit_singleline(&mut dialog.genome_id);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("output");
-                    ui.text_edit_singleline(&mut dialog.output_catalog_path);
-                    if ui
-                        .button("Browse...")
-                        .on_hover_text("Choose a catalog file or overlay directory for the new entry")
-                        .clicked()
-                    {
-                        if let Some(path) = rfd::FileDialog::new().save_file() {
-                            dialog.output_catalog_path = path.display().to_string();
-                        }
-                    }
-                });
-                ui.small(format!(
-                    "catalog origin: {}",
-                    dialog.preview.catalog_origin_label
-                ));
-                ui.small(format!(
-                    "catalog write mode: {} ({})",
-                    dialog.preview.catalog_write_mode, dialog.preview.catalog_entry_action
-                ));
-                ui.separator();
-                ui.small(format!("sequence: {}", dialog.preview.sequence_remote));
-                ui.small(format!("annotation: {}", dialog.preview.annotations_remote));
-                if !dialog.preview.warnings.is_empty() {
-                    ui.separator();
-                    ui.label("Warnings:");
-                    for warning in &dialog.preview.warnings {
-                        ui.small(warning);
+            ui.separator();
+            ui.label(format!("species_dir: {}", dialog.preview.species_dir));
+            ui.label(format!("resolved release: {}", dialog.preview.release));
+            ui.label(format!("file_stem: {}", dialog.preview.file_stem));
+            ui.horizontal(|ui| {
+                ui.label("genome_id");
+                ui.text_edit_singleline(&mut dialog.genome_id);
+            });
+            ui.horizontal(|ui| {
+                ui.label("output");
+                ui.text_edit_singleline(&mut dialog.output_catalog_path);
+                if ui
+                    .button("Browse...")
+                    .on_hover_text("Choose a catalog file or overlay directory for the new entry")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new().save_file() {
+                        dialog.output_catalog_path = path.display().to_string();
                     }
                 }
-                if self.genome_prepare_task.is_some() {
-                    ui.separator();
-                    ui.colored_label(
+            });
+            ui.small(format!(
+                "catalog origin: {}",
+                dialog.preview.catalog_origin_label
+            ));
+            ui.small(format!(
+                "catalog write mode: {} ({})",
+                dialog.preview.catalog_write_mode, dialog.preview.catalog_entry_action
+            ));
+            ui.separator();
+            ui.small(format!("sequence: {}", dialog.preview.sequence_remote));
+            ui.small(format!("annotation: {}", dialog.preview.annotations_remote));
+            if !dialog.preview.warnings.is_empty() {
+                ui.separator();
+                ui.label("Warnings:");
+                for warning in &dialog.preview.warnings {
+                    ui.small(warning);
+                }
+            }
+            if self.genome_prepare_task.is_some() {
+                ui.separator();
+                ui.colored_label(
                         egui::Color32::from_rgb(190, 70, 70),
                         "Another genome prepare task is already running. Finish or cancel it before starting a quick install.",
                     );
-                }
-                ui.separator();
-                ui.horizontal(|ui| {
+            }
+            ui.separator();
+            ui.horizontal(|ui| {
                     if ui
                         .add_enabled(
                             self.genome_prepare_task.is_none(),
@@ -21756,38 +21808,45 @@ Error: `{err}`"
                         self.pending_ensembl_quick_install = None;
                     }
                 });
-                if self.pending_ensembl_quick_install.is_some() {
-                    self.pending_ensembl_quick_install = Some(dialog);
-                }
-            });
+            if self.pending_ensembl_quick_install.is_some() {
+                self.pending_ensembl_quick_install = Some(dialog);
+            }
+        });
+        if !open {
+            self.pending_ensembl_quick_install = None;
+        }
     }
 
     fn render_pending_prepared_genome_removal_dialog(&mut self, ctx: &egui::Context) {
         let Some(request) = self.pending_prepared_genome_removal.clone() else {
             return;
         };
-        egui::Window::new("Remove Prepared Genome")
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .movable(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Remove prepared {} '{}' from the cache?",
-                    request.scope.description(),
-                    request.genome_id
-                ));
-                ui.small("This deletes the prepared install only. The catalog entry stays available.");
-                ui.separator();
-                ui.label(format!("catalog: {}", request.catalog_path));
-                let cache_display = request
-                    .cache_dir
-                    .as_deref()
-                    .filter(|value| !value.trim().is_empty())
-                    .unwrap_or("(catalog/default)");
-                ui.label(format!("cache_dir: {cache_display}"));
-                ui.label(format!("install_dir: {}", request.install_dir));
-                ui.horizontal(|ui| {
+        let mut open = true;
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Remove Prepared Genome",
+            egui::Id::new((
+                "remove_prepared_genome_modal",
+                matches!(request.scope, GenomeDialogScope::Helper),
+                request.genome_id.clone(),
+            )),
+        );
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.label(format!(
+                "Remove prepared {} '{}' from the cache?",
+                request.scope.description(),
+                request.genome_id
+            ));
+            ui.small("This deletes the prepared install only. The catalog entry stays available.");
+            ui.separator();
+            ui.label(format!("catalog: {}", request.catalog_path));
+            let cache_display = request
+                .cache_dir
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("(catalog/default)");
+            ui.label(format!("cache_dir: {cache_display}"));
+            ui.label(format!("install_dir: {}", request.install_dir));
+            ui.horizontal(|ui| {
                     if ui
                         .button("Remove Prepared")
                         .on_hover_text("Delete the prepared install directory and all cached/indexed files for this genome")
@@ -21803,46 +21862,56 @@ Error: `{err}`"
                         self.pending_prepared_genome_removal = None;
                     }
                 });
-            });
+        });
+        if !open {
+            self.pending_prepared_genome_removal = None;
+        }
     }
 
     fn render_pending_catalog_entry_removal_dialog(&mut self, ctx: &egui::Context) {
         let Some(request) = self.pending_genome_catalog_entry_removal.clone() else {
             return;
         };
-        egui::Window::new("Remove Catalog Entry")
-            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .collapsible(false)
-            .movable(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "Remove {} catalog entry '{}'?",
-                    request.scope.description(),
-                    request.genome_id
-                ));
-                ui.small(
+        let mut open = true;
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Remove Catalog Entry",
+            egui::Id::new((
+                "remove_catalog_entry_modal",
+                matches!(request.scope, GenomeDialogScope::Helper),
+                request.genome_id.clone(),
+            )),
+        );
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.label(format!(
+                "Remove {} catalog entry '{}'?",
+                request.scope.description(),
+                request.genome_id
+            ));
+            ui.small(
                     "This edits only the catalog JSON. Prepared cache files, if any, are not deleted unless you also use 'Remove Prepared...'.",
                 );
-                ui.separator();
-                ui.label(format!("catalog: {}", request.catalog_path));
-                ui.horizontal(|ui| {
-                    if ui
-                        .button("Remove Catalog Entry")
-                        .on_hover_text("Delete this genome row from the active writable catalog")
-                        .clicked()
-                    {
-                        self.confirm_catalog_entry_removal();
-                    }
-                    if ui
-                        .button("Cancel")
-                        .on_hover_text("Keep the catalog entry unchanged")
-                        .clicked()
-                    {
-                        self.pending_genome_catalog_entry_removal = None;
-                    }
-                });
+            ui.separator();
+            ui.label(format!("catalog: {}", request.catalog_path));
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Remove Catalog Entry")
+                    .on_hover_text("Delete this genome row from the active writable catalog")
+                    .clicked()
+                {
+                    self.confirm_catalog_entry_removal();
+                }
+                if ui
+                    .button("Cancel")
+                    .on_hover_text("Keep the catalog entry unchanged")
+                    .clicked()
+                {
+                    self.pending_genome_catalog_entry_removal = None;
+                }
             });
+        });
+        if !open {
+            self.pending_genome_catalog_entry_removal = None;
+        }
     }
 
     fn render_reference_genome_retrieve_contents(&mut self, ui: &mut Ui) -> bool {
@@ -24364,79 +24433,80 @@ Error: `{err}`"
         }
         let mut open = self.show_cache_cleanup_dialog;
         let mut close_requested = false;
-        egui::Window::new("Clear Caches")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .show(ctx, |ui| {
-                let close_hover =
-                    Self::specialist_window_close_hover_text("Genome > Clear Caches");
-                if self.render_specialist_window_nav_with_close(
-                    ui,
-                    Some(("Close", close_hover.as_str())),
-                ) {
-                    close_requested = true;
-                    return;
-                }
-                ui.label(
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Clear Caches",
+            egui::Id::new("clear_caches_modal"),
+        )
+        .default_size(Vec2::new(980.0, 720.0))
+        .min_size(Vec2::new(700.0, 420.0))
+        .resizable(true);
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            let close_hover = Self::specialist_window_close_hover_text("Genome > Clear Caches");
+            if self
+                .render_specialist_window_nav_with_close(ui, Some(("Close", close_hover.as_str())))
+            {
+                close_requested = true;
+                return;
+            }
+            ui.label(
                     "Inspect and conservatively clean prepared genome/helper caches. Project state files, catalog JSON, MCP/runtime files, and build artifacts are out of scope.",
                 );
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.label("scope");
-                    for scope in [
-                        CacheCleanupScope::References,
-                        CacheCleanupScope::Helpers,
-                        CacheCleanupScope::Both,
-                    ] {
-                        let clicked = ui
-                            .radio_value(&mut self.cache_cleanup_scope, scope, scope.label())
-                            .clicked();
-                        if clicked {
-                            self.cache_cleanup_confirm_pending = false;
-                            self.cache_cleanup_rebuild_candidates.clear();
-                        }
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("reference cache");
-                    let edited = ui
-                        .text_edit_singleline(&mut self.cache_cleanup_reference_cache_dir)
-                        .changed();
-                    if ui
-                        .button("Browse...")
-                        .on_hover_text("Browse filesystem and fill this path")
-                        .clicked()
-                    {
-                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            self.cache_cleanup_reference_cache_dir = path.display().to_string();
-                        }
-                    }
-                    if edited {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label("scope");
+                for scope in [
+                    CacheCleanupScope::References,
+                    CacheCleanupScope::Helpers,
+                    CacheCleanupScope::Both,
+                ] {
+                    let clicked = ui
+                        .radio_value(&mut self.cache_cleanup_scope, scope, scope.label())
+                        .clicked();
+                    if clicked {
                         self.cache_cleanup_confirm_pending = false;
                         self.cache_cleanup_rebuild_candidates.clear();
                     }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("helper cache");
-                    let edited = ui
-                        .text_edit_singleline(&mut self.cache_cleanup_helper_cache_dir)
-                        .changed();
-                    if ui
-                        .button("Browse...")
-                        .on_hover_text("Browse filesystem and fill this path")
-                        .clicked()
-                    {
-                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            self.cache_cleanup_helper_cache_dir = path.display().to_string();
-                        }
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("reference cache");
+                let edited = ui
+                    .text_edit_singleline(&mut self.cache_cleanup_reference_cache_dir)
+                    .changed();
+                if ui
+                    .button("Browse...")
+                    .on_hover_text("Browse filesystem and fill this path")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                        self.cache_cleanup_reference_cache_dir = path.display().to_string();
                     }
-                    if edited {
-                        self.cache_cleanup_confirm_pending = false;
-                        self.cache_cleanup_rebuild_candidates.clear();
+                }
+                if edited {
+                    self.cache_cleanup_confirm_pending = false;
+                    self.cache_cleanup_rebuild_candidates.clear();
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("helper cache");
+                let edited = ui
+                    .text_edit_singleline(&mut self.cache_cleanup_helper_cache_dir)
+                    .changed();
+                if ui
+                    .button("Browse...")
+                    .on_hover_text("Browse filesystem and fill this path")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                        self.cache_cleanup_helper_cache_dir = path.display().to_string();
                     }
-                });
-                ui.horizontal(|ui| {
+                }
+                if edited {
+                    self.cache_cleanup_confirm_pending = false;
+                    self.cache_cleanup_rebuild_candidates.clear();
+                }
+            });
+            ui.horizontal(|ui| {
                     if ui
                         .button("Inspect")
                         .on_hover_text("Inspect prepared installs and orphaned remnants in the selected cache roots")
@@ -24449,59 +24519,59 @@ Error: `{err}`"
                         self.cache_cleanup_selected_roots().join(", ")
                     ));
                 });
-                ui.separator();
-                ui.label("Cleanup mode");
-                let modes = [
-                    (
-                        PreparedCacheCleanupMode::DerivedIndexesOnly,
-                        "Remove rebuildable indexes",
-                    ),
-                    (
-                        PreparedCacheCleanupMode::BlastDbOnly,
-                        "Remove BLAST databases only",
-                    ),
-                    (
-                        PreparedCacheCleanupMode::SelectedPreparedInstalls,
-                        "Remove selected prepared installs",
-                    ),
-                    (
-                        PreparedCacheCleanupMode::AllPreparedInCache,
-                        "Remove all prepared installs in cache",
-                    ),
-                ];
-                for (mode, label) in modes {
-                    if ui
-                        .radio_value(&mut self.cache_cleanup_mode, mode, label)
-                        .clicked()
-                    {
-                        self.cache_cleanup_confirm_pending = false;
-                        self.cache_cleanup_rebuild_candidates.clear();
-                    }
-                }
-                let include_orphans_enabled = self.cache_cleanup_mode.allows_orphaned_remnants();
-                let include_changed = ui
-                    .add_enabled(
-                        include_orphans_enabled,
-                        egui::Checkbox::new(
-                            &mut self.cache_cleanup_include_orphans,
-                            "Include orphaned remnants",
-                        ),
-                    )
-                    .changed();
-                if include_changed {
+            ui.separator();
+            ui.label("Cleanup mode");
+            let modes = [
+                (
+                    PreparedCacheCleanupMode::DerivedIndexesOnly,
+                    "Remove rebuildable indexes",
+                ),
+                (
+                    PreparedCacheCleanupMode::BlastDbOnly,
+                    "Remove BLAST databases only",
+                ),
+                (
+                    PreparedCacheCleanupMode::SelectedPreparedInstalls,
+                    "Remove selected prepared installs",
+                ),
+                (
+                    PreparedCacheCleanupMode::AllPreparedInCache,
+                    "Remove all prepared installs in cache",
+                ),
+            ];
+            for (mode, label) in modes {
+                if ui
+                    .radio_value(&mut self.cache_cleanup_mode, mode, label)
+                    .clicked()
+                {
                     self.cache_cleanup_confirm_pending = false;
                     self.cache_cleanup_rebuild_candidates.clear();
                 }
-                if !include_orphans_enabled {
-                    self.cache_cleanup_include_orphans = false;
-                }
-                ui.separator();
-                ui.label("Discovered items");
-                if let Some(report) = &self.cache_cleanup_inspection {
-                    if report.entries.is_empty() {
-                        ui.small("Nothing to clean in selected cache roots.");
-                    } else {
-                        egui::ScrollArea::vertical()
+            }
+            let include_orphans_enabled = self.cache_cleanup_mode.allows_orphaned_remnants();
+            let include_changed = ui
+                .add_enabled(
+                    include_orphans_enabled,
+                    egui::Checkbox::new(
+                        &mut self.cache_cleanup_include_orphans,
+                        "Include orphaned remnants",
+                    ),
+                )
+                .changed();
+            if include_changed {
+                self.cache_cleanup_confirm_pending = false;
+                self.cache_cleanup_rebuild_candidates.clear();
+            }
+            if !include_orphans_enabled {
+                self.cache_cleanup_include_orphans = false;
+            }
+            ui.separator();
+            ui.label("Discovered items");
+            if let Some(report) = &self.cache_cleanup_inspection {
+                if report.entries.is_empty() {
+                    ui.small("Nothing to clean in selected cache roots.");
+                } else {
+                    egui::ScrollArea::vertical()
                             .id_salt("cache_cleanup_discovered_items_scroll")
                             .max_height(260.0)
                             .show(ui, |ui| {
@@ -24568,56 +24638,53 @@ Error: `{err}`"
                                         }
                                     });
                             });
+                }
+                let (targets, preview_bytes, root_count, explanation) =
+                    self.cache_cleanup_preview_targets();
+                let target_count = targets.len();
+                let has_targets = target_count > 0;
+                let roots_text = self.cache_cleanup_selected_roots().join(", ");
+                ui.separator();
+                ui.label("Preview");
+                ui.small(format!(
+                    "Targets: {} item(s) across {} selected cache root(s) | reclaimable: {}",
+                    target_count,
+                    root_count,
+                    Self::format_bytes_compact(preview_bytes)
+                ));
+                ui.small(explanation);
+                ui.small(format!("Roots: {roots_text}"));
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(has_targets, egui::Button::new("Review Cleanup"))
+                        .on_hover_text("Arm the confirm step for the current cleanup preview")
+                        .clicked()
+                    {
+                        self.cache_cleanup_confirm_pending = true;
                     }
-                    let (targets, preview_bytes, root_count, explanation) =
-                        self.cache_cleanup_preview_targets();
-                    let target_count = targets.len();
-                    let has_targets = target_count > 0;
-                    let roots_text = self.cache_cleanup_selected_roots().join(", ");
+                    if ui
+                        .add_enabled(
+                            self.cache_cleanup_confirm_pending && has_targets,
+                            egui::Button::new("Confirm Cleanup"),
+                        )
+                        .on_hover_text("Delete the currently previewed cache artifacts")
+                        .clicked()
+                    {
+                        self.apply_cache_cleanup();
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close_requested = true;
+                    }
+                });
+                if !self.cache_cleanup_rebuild_candidates.is_empty() {
                     ui.separator();
-                    ui.label("Preview");
-                    ui.small(format!(
-                        "Targets: {} item(s) across {} selected cache root(s) | reclaimable: {}",
-                        target_count,
-                        root_count,
-                        Self::format_bytes_compact(preview_bytes)
-                    ));
-                    ui.small(explanation);
-                    ui.small(format!("Roots: {roots_text}"));
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(
-                                has_targets,
-                                egui::Button::new("Review Cleanup"),
-                            )
-                            .on_hover_text("Arm the confirm step for the current cleanup preview")
-                            .clicked()
-                        {
-                            self.cache_cleanup_confirm_pending = true;
-                        }
-                        if ui
-                            .add_enabled(
-                                self.cache_cleanup_confirm_pending && has_targets,
-                                egui::Button::new("Confirm Cleanup"),
-                            )
-                            .on_hover_text("Delete the currently previewed cache artifacts")
-                            .clicked()
-                        {
-                            self.apply_cache_cleanup();
-                        }
-                        if ui.button("Cancel").clicked() {
-                            close_requested = true;
-                        }
-                    });
-                    if !self.cache_cleanup_rebuild_candidates.is_empty() {
-                        ui.separator();
-                        ui.label("Rebuild from cached files");
-                        ui.small(
+                    ui.label("Rebuild from cached files");
+                    ui.small(
                             "These prepared installs kept their cached FASTA/annotation sources. Reindex them through the existing cached-files rebuild flow if you want the indexes back now.",
                         );
-                        for index in 0..self.cache_cleanup_rebuild_candidates.len() {
-                            let request = self.cache_cleanup_rebuild_candidates[index].clone();
-                            ui.horizontal(|ui| {
+                    for index in 0..self.cache_cleanup_rebuild_candidates.len() {
+                        let request = self.cache_cleanup_rebuild_candidates[index].clone();
+                        ui.horizontal(|ui| {
                                 if ui
                                     .add_enabled(
                                         self.genome_prepare_task.is_none(),
@@ -24639,21 +24706,21 @@ Error: `{err}`"
                                     request.cache_dir
                                 ));
                             });
-                        }
-                        if self.genome_prepare_task.is_some() {
-                            ui.small(
+                    }
+                    if self.genome_prepare_task.is_some() {
+                        ui.small(
                                 "Finish or cancel the running genome prepare task before launching another rebuild.",
                             );
-                        }
                     }
-                } else {
-                    ui.small("Inspect selected cache roots to preview removable items.");
                 }
-                if !self.cache_cleanup_status.trim().is_empty() {
-                    ui.separator();
-                    ui.monospace(self.cache_cleanup_status.clone());
-                }
-            });
+            } else {
+                ui.small("Inspect selected cache roots to preview removable items.");
+            }
+            if !self.cache_cleanup_status.trim().is_empty() {
+                ui.separator();
+                ui.monospace(self.cache_cleanup_status.clone());
+            }
+        });
         self.show_cache_cleanup_dialog = open && !close_requested;
     }
 
@@ -32352,7 +32419,7 @@ Error: `{err}`"
                             self.request_tutorial_project_task_cancel("tutorial menu");
                         }
                         if show_jobs_clicked {
-                            self.show_jobs_panel = true;
+                            self.open_background_jobs_panel();
                         }
                         return;
                     }
@@ -32889,7 +32956,7 @@ Error: `{err}`"
                     "Window > Background Jobs Panel",
                 );
                 if jobs_panel_resp.clicked() {
-                    self.show_jobs_panel = !self.show_jobs_panel;
+                    self.toggle_background_jobs_panel();
                     ui.close();
                 }
                 let history_panel_resp = self.track_hover_status(
@@ -36650,36 +36717,36 @@ Error: `{err}`"
         };
         let mut open = true;
         let mut apply_clicked = false;
-        egui::Window::new("Rename Leaf Node")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_size(Vec2::new(420.0, 120.0))
-            .show(ctx, |ui| {
-                ui.monospace(format!("node: {}", target_node_id));
-                ui.horizontal(|ui| {
-                    ui.label("new_name");
-                    ui.text_edit_singleline(&mut self.lineage_node_rename_text)
-                        .on_hover_text("Display name shown in lineage graph/table");
-                });
-                ui.horizontal(|ui| {
-                    if ui
-                        .button("Apply")
-                        .on_hover_text("Apply leaf-node rename")
-                        .clicked()
-                    {
-                        apply_clicked = true;
-                    }
-                    if ui
-                        .button("Cancel")
-                        .on_hover_text("Close rename window without changes")
-                        .clicked()
-                    {
-                        self.lineage_node_rename_target_id = None;
-                        self.lineage_node_rename_text.clear();
-                    }
-                });
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Rename Leaf Node",
+            egui::Id::new(("rename_leaf_node_modal", target_node_id.clone())),
+        )
+        .default_size(Vec2::new(420.0, 120.0));
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.monospace(format!("node: {}", target_node_id));
+            ui.horizontal(|ui| {
+                ui.label("new_name");
+                ui.text_edit_singleline(&mut self.lineage_node_rename_text)
+                    .on_hover_text("Display name shown in lineage graph/table");
             });
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Apply")
+                    .on_hover_text("Apply leaf-node rename")
+                    .clicked()
+                {
+                    apply_clicked = true;
+                }
+                if ui
+                    .button("Cancel")
+                    .on_hover_text("Close rename window without changes")
+                    .clicked()
+                {
+                    self.lineage_node_rename_target_id = None;
+                    self.lineage_node_rename_text.clear();
+                }
+            });
+        });
         if !open {
             self.lineage_node_rename_target_id = None;
             self.lineage_node_rename_text.clear();
@@ -36720,35 +36787,35 @@ Error: `{err}`"
         };
         let mut open = true;
         let mut remove_clicked = false;
-        egui::Window::new("Remove Leaf Node")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_size(Vec2::new(460.0, 130.0))
-            .show(ctx, |ui| {
-                ui.colored_label(
-                    egui::Color32::from_rgb(150, 20, 20),
-                    "This action removes the sequence/node from the current project.",
-                );
-                ui.monospace(format!("node: {}", target_node_id));
-                ui.monospace(format!("sequence: {}", seq_id_hint));
-                ui.horizontal(|ui| {
-                    if ui
-                        .button("Remove")
-                        .on_hover_text("Confirm removal of this leaf node")
-                        .clicked()
-                    {
-                        remove_clicked = true;
-                    }
-                    if ui
-                        .button("Cancel")
-                        .on_hover_text("Cancel removal")
-                        .clicked()
-                    {
-                        self.lineage_node_remove_target_id = None;
-                    }
-                });
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Remove Leaf Node",
+            egui::Id::new(("remove_leaf_node_modal", target_node_id.clone())),
+        )
+        .default_size(Vec2::new(460.0, 130.0));
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.colored_label(
+                egui::Color32::from_rgb(150, 20, 20),
+                "This action removes the sequence/node from the current project.",
+            );
+            ui.monospace(format!("node: {}", target_node_id));
+            ui.monospace(format!("sequence: {}", seq_id_hint));
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Remove")
+                    .on_hover_text("Confirm removal of this leaf node")
+                    .clicked()
+                {
+                    remove_clicked = true;
+                }
+                if ui
+                    .button("Cancel")
+                    .on_hover_text("Cancel removal")
+                    .clicked()
+                {
+                    self.lineage_node_remove_target_id = None;
+                }
             });
+        });
         if !open {
             self.lineage_node_remove_target_id = None;
             return;
@@ -42150,66 +42217,70 @@ Error: `{err}`"
         if self.pending_project_action.is_none() {
             return;
         }
-        egui::Window::new("Unsaved Changes")
-            .id(Self::unsaved_changes_dialog_id())
-            .order(egui::Order::Foreground)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.label("Save changes to the current project before continuing?");
-                ui.horizontal(|ui| {
-                    if ui
-                        .button("Save")
-                        .on_hover_text("Save current project, then continue")
-                        .clicked()
-                    {
-                        if self.save_current_project() {
-                            if let Some(action) = self.pending_project_action.take() {
-                                self.execute_project_action(action);
-                            }
-                        }
-                    }
-                    if ui
-                        .button("Don't Save")
-                        .on_hover_text("Continue without saving current project changes")
-                        .clicked()
-                    {
+        let mut open = true;
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "Unsaved Changes",
+            Self::unsaved_changes_dialog_id(),
+        );
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.label("Save changes to the current project before continuing?");
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Save")
+                    .on_hover_text("Save current project, then continue")
+                    .clicked()
+                {
+                    if self.save_current_project() {
                         if let Some(action) = self.pending_project_action.take() {
                             self.execute_project_action(action);
                         }
                     }
-                    if ui
-                        .button("Cancel")
-                        .on_hover_text("Cancel and keep editing current project")
-                        .clicked()
-                    {
-                        self.pending_project_action = None;
+                }
+                if ui
+                    .button("Don't Save")
+                    .on_hover_text("Continue without saving current project changes")
+                    .clicked()
+                {
+                    if let Some(action) = self.pending_project_action.take() {
+                        self.execute_project_action(action);
                     }
-                });
+                }
+                if ui
+                    .button("Cancel")
+                    .on_hover_text("Cancel and keep editing current project")
+                    .clicked()
+                {
+                    self.pending_project_action = None;
+                }
             });
+        });
+        if !open {
+            self.pending_project_action = None;
+        }
     }
 
     fn render_about_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_about_dialog {
             return;
         }
-        egui::Window::new("About GENtle")
-            .open(&mut self.show_about_dialog)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add(APP_ICON.clone().fit_to_exact_size(Vec2::new(96.0, 96.0)));
-                    for line in about::version_cli_text().lines() {
-                        if line.starts_with("GENtle ") {
-                            ui.heading(line);
-                        } else {
-                            ui.label(line);
-                        }
+        let mut open = self.show_about_dialog;
+        let spec = crate::egui_compat::ModalWindowSpec::new(
+            "About GENtle",
+            egui::Id::new("about_gentle_modal"),
+        );
+        crate::egui_compat::show_modal_window(ctx, &spec, &mut open, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add(APP_ICON.clone().fit_to_exact_size(Vec2::new(96.0, 96.0)));
+                for line in about::version_cli_text().lines() {
+                    if line.starts_with("GENtle ") {
+                        ui.heading(line);
+                    } else {
+                        ui.label(line);
                     }
-                });
+                }
             });
+        });
+        self.show_about_dialog = open;
     }
 
     fn render_command_palette_dialog(&mut self, ctx: &egui::Context) {
@@ -42342,63 +42413,69 @@ Error: `{err}`"
             return;
         }
         let mut open = self.show_jobs_panel;
-        egui::Window::new("Background Jobs")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_size(Vec2::new(760.0, 480.0))
-            .show(ctx, |ui| {
-                ui.label("Centralized progress, cancellation, and completion summaries");
-                ui.separator();
+        let viewport_id = Self::background_jobs_viewport_id();
+        let spec = self.hosted_window_spec_for_viewport(
+            "Background Jobs",
+            egui::Id::new(("background_jobs_hosted_window", viewport_id)),
+            viewport_id,
+            Vec2::new(760.0, 480.0),
+            Vec2::new(520.0, 320.0),
+        );
+        crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            ui.label("Centralized progress, cancellation, and completion summaries");
+            ui.separator();
 
-                ui.strong("Prepare Genome");
-                let mut cancel_prepare_clicked = false;
-                if self.genome_prepare_task.is_some() {
-                    if let Some(task) = &self.genome_prepare_task {
-                        ui.horizontal(|ui| {
-                            ui.add(egui::Spinner::new());
-                            let genome_label = self
-                                .genome_prepare_progress
-                                .as_ref()
-                                .map(|progress| progress.genome_id.clone())
-                                .unwrap_or_else(|| self.genome_id.clone());
-                            ui.label(format!(
-                                "{} '{}' ({:.1}s)",
-                                task.mode.progress_label(),
-                                genome_label,
-                                task.started.elapsed().as_secs_f32()
-                            ));
-                            if ui
-                                .button("Cancel")
-                                .on_hover_text("Request cancellation of genome prepare job")
-                                .clicked()
-                            {
-                                cancel_prepare_clicked = true;
-                            }
-                        });
-                    }
-                    if let Some((current_step, completed_steps, total_steps, overall, eta)) =
-                        self.prepare_step_summary()
-                    {
-                        let mut step_summary =
-                            format!("Current step: {} ({}/{})", current_step, completed_steps, total_steps);
-                        if let Some(eta) = eta {
-                            step_summary.push_str(&format!(
-                                " • ETA {}",
-                                Self::format_duration_compact(eta)
-                            ));
-                        }
-                        ui.small(step_summary);
-                        ui.add(
-                            egui::ProgressBar::new(overall)
-                                .show_percentage()
-                                .text(format!("{}/{} steps", completed_steps, total_steps)),
-                        );
-                    } else if let Some(progress) = &self.genome_prepare_progress {
-                        ui.small(format!("Current phase: {} ({})", progress.phase, progress.item));
-                    }
-                } else {
+            ui.strong("Prepare Genome");
+            let mut cancel_prepare_clicked = false;
+            if self.genome_prepare_task.is_some() {
+                if let Some(task) = &self.genome_prepare_task {
                     ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new());
+                        let genome_label = self
+                            .genome_prepare_progress
+                            .as_ref()
+                            .map(|progress| progress.genome_id.clone())
+                            .unwrap_or_else(|| self.genome_id.clone());
+                        ui.label(format!(
+                            "{} '{}' ({:.1}s)",
+                            task.mode.progress_label(),
+                            genome_label,
+                            task.started.elapsed().as_secs_f32()
+                        ));
+                        if ui
+                            .button("Cancel")
+                            .on_hover_text("Request cancellation of genome prepare job")
+                            .clicked()
+                        {
+                            cancel_prepare_clicked = true;
+                        }
+                    });
+                }
+                if let Some((current_step, completed_steps, total_steps, overall, eta)) =
+                    self.prepare_step_summary()
+                {
+                    let mut step_summary = format!(
+                        "Current step: {} ({}/{})",
+                        current_step, completed_steps, total_steps
+                    );
+                    if let Some(eta) = eta {
+                        step_summary
+                            .push_str(&format!(" • ETA {}", Self::format_duration_compact(eta)));
+                    }
+                    ui.small(step_summary);
+                    ui.add(
+                        egui::ProgressBar::new(overall)
+                            .show_percentage()
+                            .text(format!("{}/{} steps", completed_steps, total_steps)),
+                    );
+                } else if let Some(progress) = &self.genome_prepare_progress {
+                    ui.small(format!(
+                        "Current phase: {} ({})",
+                        progress.phase, progress.item
+                    ));
+                }
+            } else {
+                ui.horizontal(|ui| {
                         if self.genome_prepare_failure_recovery.is_some() {
                             ui.small("Last reindex needs reinstall");
                             if ui
@@ -42438,40 +42515,43 @@ Error: `{err}`"
                             self.start_prepare_reference_genome_for_current_selection();
                         }
                     });
-                }
-                if cancel_prepare_clicked {
-                    self.request_prepare_task_cancel("background jobs panel");
-                }
-                if !self.genome_prepare_status.trim().is_empty() {
-                    ui.small(self.genome_prepare_status.clone());
-                }
+            }
+            if cancel_prepare_clicked {
+                self.request_prepare_task_cancel("background jobs panel");
+            }
+            if !self.genome_prepare_status.trim().is_empty() {
+                ui.small(self.genome_prepare_status.clone());
+            }
 
-                ui.separator();
-                ui.strong("BLAST");
-                let mut cancel_blast_clicked = false;
-                if let Some(task) = &self.genome_blast_task {
-                    ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new());
-                        ui.label(format!("Running ({:.1}s)", task.started.elapsed().as_secs_f32()));
-                        if task.cancel_requested.load(Ordering::Relaxed) {
-                            ui.small("Cancellation requested...");
-                        } else if ui
-                            .button("Cancel")
-                            .on_hover_text("Request cancellation of running BLAST job")
-                            .clicked()
-                        {
-                            cancel_blast_clicked = true;
-                        }
-                    });
-                    if let Some(fraction) = self.genome_blast_progress_fraction {
-                        ui.add(
-                            egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
-                                .show_percentage()
-                                .text(self.genome_blast_progress_label.clone()),
-                            );
+            ui.separator();
+            ui.strong("BLAST");
+            let mut cancel_blast_clicked = false;
+            if let Some(task) = &self.genome_blast_task {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new());
+                    ui.label(format!(
+                        "Running ({:.1}s)",
+                        task.started.elapsed().as_secs_f32()
+                    ));
+                    if task.cancel_requested.load(Ordering::Relaxed) {
+                        ui.small("Cancellation requested...");
+                    } else if ui
+                        .button("Cancel")
+                        .on_hover_text("Request cancellation of running BLAST job")
+                        .clicked()
+                    {
+                        cancel_blast_clicked = true;
                     }
-                } else {
-                    ui.horizontal(|ui| {
+                });
+                if let Some(fraction) = self.genome_blast_progress_fraction {
+                    ui.add(
+                        egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
+                            .show_percentage()
+                            .text(self.genome_blast_progress_label.clone()),
+                    );
+                }
+            } else {
+                ui.horizontal(|ui| {
                         ui.small("Idle");
                         if ui
                             .button("Retry")
@@ -42494,42 +42574,42 @@ Error: `{err}`"
                             self.start_reference_genome_blast();
                         }
                     });
-                }
-                if cancel_blast_clicked {
-                    self.request_blast_task_cancel("background jobs panel");
-                }
-                if !self.genome_blast_status.trim().is_empty() {
-                    ui.small(self.genome_blast_status.clone());
-                }
+            }
+            if cancel_blast_clicked {
+                self.request_blast_task_cancel("background jobs panel");
+            }
+            if !self.genome_blast_status.trim().is_empty() {
+                ui.small(self.genome_blast_status.clone());
+            }
 
-                ui.separator();
-                ui.strong("Genome Track Import");
-                let mut cancel_track_import_clicked = false;
-                if self.genome_track_import_task.is_some() {
-                    ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new());
-                        if let Some(progress) = &self.genome_track_import_progress {
-                            ui.label(format!(
-                                "{} '{}' parsed={} imported={} skipped={}",
-                                progress.source,
-                                progress.seq_id,
-                                progress.parsed_records,
-                                progress.imported_features,
-                                progress.skipped_records
-                            ));
-                        } else {
-                            ui.label("Running...");
-                        }
-                        if ui
-                            .button("Cancel")
-                            .on_hover_text("Request cancellation of running track-import job")
-                            .clicked()
-                        {
-                            cancel_track_import_clicked = true;
-                        }
-                    });
-                } else {
-                    ui.horizontal(|ui| {
+            ui.separator();
+            ui.strong("Genome Track Import");
+            let mut cancel_track_import_clicked = false;
+            if self.genome_track_import_task.is_some() {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new());
+                    if let Some(progress) = &self.genome_track_import_progress {
+                        ui.label(format!(
+                            "{} '{}' parsed={} imported={} skipped={}",
+                            progress.source,
+                            progress.seq_id,
+                            progress.parsed_records,
+                            progress.imported_features,
+                            progress.skipped_records
+                        ));
+                    } else {
+                        ui.label("Running...");
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Request cancellation of running track-import job")
+                        .clicked()
+                    {
+                        cancel_track_import_clicked = true;
+                    }
+                });
+            } else {
+                ui.horizontal(|ui| {
                         ui.small("Idle");
                         if ui
                             .button("Retry")
@@ -42554,66 +42634,67 @@ Error: `{err}`"
                             self.import_genome_bed_track_for_selected_sequence();
                         }
                     });
-                }
-                if cancel_track_import_clicked {
-                    self.request_track_import_task_cancel("background jobs panel");
-                }
-                if !self.genome_track_status.trim().is_empty() {
-                    ui.small(self.genome_track_status.clone());
-                }
+            }
+            if cancel_track_import_clicked {
+                self.request_track_import_task_cancel("background jobs panel");
+            }
+            if !self.genome_track_status.trim().is_empty() {
+                ui.small(self.genome_track_status.clone());
+            }
 
-                ui.separator();
-                ui.strong("Tutorial Project");
-                let mut cancel_tutorial_clicked = false;
-                if let Some(task) = &self.tutorial_project_task {
-                    ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new());
-                        ui.label(format!(
-                            "Opening '{}' ({:.1}s)",
-                            task.chapter_title,
-                            task.started.elapsed().as_secs_f32()
-                        ));
-                        if task.cancel_requested.load(Ordering::Relaxed) {
-                            ui.small("Cancellation requested...");
-                        } else if ui
-                            .button("Cancel")
-                            .on_hover_text(
-                                "Request cancellation of the running tutorial-project build",
-                            )
-                            .clicked()
-                        {
-                            cancel_tutorial_clicked = true;
-                        }
-                    });
-                    if let Some(fraction) = self.tutorial_project_progress_fraction {
-                        ui.add(
-                            egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
-                                .show_percentage()
-                                .text(self.tutorial_project_progress_label.clone()),
-                        );
-                    } else if !self.tutorial_project_progress_label.trim().is_empty() {
-                        ui.small(self.tutorial_project_progress_label.clone());
+            ui.separator();
+            ui.strong("Tutorial Project");
+            let mut cancel_tutorial_clicked = false;
+            if let Some(task) = &self.tutorial_project_task {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new());
+                    ui.label(format!(
+                        "Opening '{}' ({:.1}s)",
+                        task.chapter_title,
+                        task.started.elapsed().as_secs_f32()
+                    ));
+                    if task.cancel_requested.load(Ordering::Relaxed) {
+                        ui.small("Cancellation requested...");
+                    } else if ui
+                        .button("Cancel")
+                        .on_hover_text("Request cancellation of the running tutorial-project build")
+                        .clicked()
+                    {
+                        cancel_tutorial_clicked = true;
                     }
-                } else {
-                    ui.small("Idle");
+                });
+                if let Some(fraction) = self.tutorial_project_progress_fraction {
+                    ui.add(
+                        egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
+                            .show_percentage()
+                            .text(self.tutorial_project_progress_label.clone()),
+                    );
+                } else if !self.tutorial_project_progress_label.trim().is_empty() {
+                    ui.small(self.tutorial_project_progress_label.clone());
                 }
-                if cancel_tutorial_clicked {
-                    self.request_tutorial_project_task_cancel("background jobs panel");
-                }
-                if !self.tutorial_project_status.trim().is_empty() {
-                    ui.small(self.tutorial_project_status.clone());
-                }
+            } else {
+                ui.small("Idle");
+            }
+            if cancel_tutorial_clicked {
+                self.request_tutorial_project_task_cancel("background jobs panel");
+            }
+            if !self.tutorial_project_status.trim().is_empty() {
+                ui.small(self.tutorial_project_status.clone());
+            }
 
-                ui.separator();
-                ui.strong("Agent Assistant");
-                if let Some(task) = &self.agent_task {
-                    ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new());
-                        ui.label(format!("Running ({:.1}s)", task.started.elapsed().as_secs_f32()));
-                        ui.small("Cancellation is not yet available for agent requests");
-                    });
-                } else {
-                    ui.horizontal(|ui| {
+            ui.separator();
+            ui.strong("Agent Assistant");
+            if let Some(task) = &self.agent_task {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new());
+                    ui.label(format!(
+                        "Running ({:.1}s)",
+                        task.started.elapsed().as_secs_f32()
+                    ));
+                    ui.small("Cancellation is not yet available for agent requests");
+                });
+            } else {
+                ui.horizontal(|ui| {
                         ui.small("Idle");
                         if ui
                             .button("Retry")
@@ -42636,30 +42717,30 @@ Error: `{err}`"
                             self.start_agent_assistant_request();
                         }
                     });
-                }
-                if !self.agent_status.trim().is_empty() {
-                    ui.small(self.agent_status.clone());
-                }
+            }
+            if !self.agent_status.trim().is_empty() {
+                ui.small(self.agent_status.clone());
+            }
 
-                ui.separator();
-                ui.strong("Recent job events");
-                egui::ScrollArea::vertical()
-                    .id_salt(BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID)
-                    .max_height(180.0)
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        for event in self.job_event_log.iter().rev().take(40) {
-                            ui.small(event.to_line());
-                        }
-                    });
+            ui.separator();
+            ui.strong("Recent job events");
+            egui::ScrollArea::vertical()
+                .id_salt(BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID)
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    for event in self.job_event_log.iter().rev().take(40) {
+                        ui.small(event.to_line());
+                    }
+                });
 
-                ui.separator();
-                ui.strong("Recent retry snapshots");
-                self.retry_snapshot_retain_count = self.retry_snapshot_retention_limit();
-                ui.horizontal(|ui| {
+            ui.separator();
+            ui.strong("Recent retry snapshots");
+            self.retry_snapshot_retain_count = self.retry_snapshot_retention_limit();
+            ui.horizontal(|ui| {
                     ui.label("Retain newest");
                     ui.add(
                         egui::DragValue::new(&mut self.retry_snapshot_retain_count)
@@ -42727,7 +42808,7 @@ Error: `{err}`"
                         };
                     }
                 });
-                ui.horizontal(|ui| {
+            ui.horizontal(|ui| {
                     ui.label("Kind");
                     egui::ComboBox::from_id_salt("retry_snapshot_kind_filter")
                         .selected_text(self.retry_snapshot_kind_filter.label())
@@ -42813,106 +42894,132 @@ Error: `{err}`"
                         );
                     }
                 });
-                let dry_run_diff = self.retry_snapshot_dry_run_diff();
-                let filtered_snapshots = &dry_run_diff.removed;
-                if filtered_snapshots.is_empty() {
-                    self.retry_snapshot_pending_cleanup_action = None;
-                    self.retry_snapshot_cleanup_confirm_text.clear();
-                }
-                if let Some(action) = self.retry_snapshot_pending_cleanup_action {
-                    let preview_summary =
-                        Self::summarize_retry_snapshot_cleanup_targets(filtered_snapshots);
-                    let confirm_phrase = action.confirm_phrase(filtered_snapshots.len());
-                    ui.group(|ui| {
-                        ui.label(format!("Pending confirmation: {}", action.label()));
-                        ui.small(preview_summary.clone());
-                        ui.small(dry_run_diff.summary_line());
-                        ui.small(format!("Type '{}' to confirm", confirm_phrase));
-                        ui.horizontal(|ui| {
-                            ui.label("Confirm phrase");
-                            ui.add(
-                                egui::TextEdit::singleline(
-                                    &mut self.retry_snapshot_cleanup_confirm_text,
-                                )
-                                .desired_width(220.0)
-                                .hint_text(confirm_phrase.as_str()),
-                            );
-                        });
-                        let confirm_ready = Self::retry_snapshot_cleanup_confirm_input_matches(
-                            action,
-                            filtered_snapshots.len(),
-                            &self.retry_snapshot_cleanup_confirm_text,
+            let dry_run_diff = self.retry_snapshot_dry_run_diff();
+            let filtered_snapshots = &dry_run_diff.removed;
+            if filtered_snapshots.is_empty() {
+                self.retry_snapshot_pending_cleanup_action = None;
+                self.retry_snapshot_cleanup_confirm_text.clear();
+            }
+            if let Some(action) = self.retry_snapshot_pending_cleanup_action {
+                let preview_summary =
+                    Self::summarize_retry_snapshot_cleanup_targets(filtered_snapshots);
+                let confirm_phrase = action.confirm_phrase(filtered_snapshots.len());
+                ui.group(|ui| {
+                    ui.label(format!("Pending confirmation: {}", action.label()));
+                    ui.small(preview_summary.clone());
+                    ui.small(dry_run_diff.summary_line());
+                    ui.small(format!("Type '{}' to confirm", confirm_phrase));
+                    ui.horizontal(|ui| {
+                        ui.label("Confirm phrase");
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.retry_snapshot_cleanup_confirm_text,
+                            )
+                            .desired_width(220.0)
+                            .hint_text(confirm_phrase.as_str()),
                         );
-                        if !confirm_ready {
-                            ui.small("Confirmation phrase does not match yet");
-                        }
-                        ui.columns(2, |columns| {
-                            columns[0].small("Would be removed");
-                            egui::ScrollArea::vertical()
-                                .id_salt(
-                                    BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
-                                )
-                                .max_height(120.0)
-                                .show(&mut columns[0], |ui| {
-                                    if filtered_snapshots.is_empty() {
-                                        ui.small("No snapshots match current filters");
-                                    } else {
-                                        for snapshot in filtered_snapshots.iter().rev().take(12) {
-                                            ui.small(snapshot.to_line());
-                                        }
-                                        if filtered_snapshots.len() > 12 {
-                                            ui.small(format!(
-                                                "... and {} more",
-                                                filtered_snapshots.len() - 12
-                                            ));
-                                        }
+                    });
+                    let confirm_ready = Self::retry_snapshot_cleanup_confirm_input_matches(
+                        action,
+                        filtered_snapshots.len(),
+                        &self.retry_snapshot_cleanup_confirm_text,
+                    );
+                    if !confirm_ready {
+                        ui.small("Confirmation phrase does not match yet");
+                    }
+                    ui.columns(2, |columns| {
+                        columns[0].small("Would be removed");
+                        egui::ScrollArea::vertical()
+                            .id_salt(BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID)
+                            .max_height(120.0)
+                            .show(&mut columns[0], |ui| {
+                                if filtered_snapshots.is_empty() {
+                                    ui.small("No snapshots match current filters");
+                                } else {
+                                    for snapshot in filtered_snapshots.iter().rev().take(12) {
+                                        ui.small(snapshot.to_line());
                                     }
-                                });
-                            columns[1].small("Would remain");
-                            egui::ScrollArea::vertical()
-                                .id_salt(
-                                    BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
-                                )
-                                .max_height(120.0)
-                                .show(&mut columns[1], |ui| {
-                                    if dry_run_diff.retained.is_empty() {
-                                        ui.small("No snapshots would remain");
-                                    } else {
-                                        for snapshot in dry_run_diff.retained.iter().rev().take(12) {
-                                            ui.small(snapshot.to_line());
-                                        }
-                                        if dry_run_diff.retained.len() > 12 {
-                                            ui.small(format!(
-                                                "... and {} more",
-                                                dry_run_diff.retained.len() - 12
-                                            ));
-                                        }
+                                    if filtered_snapshots.len() > 12 {
+                                        ui.small(format!(
+                                            "... and {} more",
+                                            filtered_snapshots.len() - 12
+                                        ));
                                     }
-                                });
-                        });
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add_enabled(
-                                    !filtered_snapshots.is_empty() && confirm_ready,
-                                    egui::Button::new("Confirm"),
-                                )
-                                .clicked()
-                            {
-                                let before = self.retry_argument_snapshots.len();
-                                match action {
-                                    RetrySnapshotPendingCleanupAction::DeleteFiltered => {
-                                        let removed = self.remove_filtered_retry_snapshots();
+                                }
+                            });
+                        columns[1].small("Would remain");
+                        egui::ScrollArea::vertical()
+                            .id_salt(BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID)
+                            .max_height(120.0)
+                            .show(&mut columns[1], |ui| {
+                                if dry_run_diff.retained.is_empty() {
+                                    ui.small("No snapshots would remain");
+                                } else {
+                                    for snapshot in dry_run_diff.retained.iter().rev().take(12) {
+                                        ui.small(snapshot.to_line());
+                                    }
+                                    if dry_run_diff.retained.len() > 12 {
+                                        ui.small(format!(
+                                            "... and {} more",
+                                            dry_run_diff.retained.len() - 12
+                                        ));
+                                    }
+                                }
+                            });
+                    });
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                !filtered_snapshots.is_empty() && confirm_ready,
+                                egui::Button::new("Confirm"),
+                            )
+                            .clicked()
+                        {
+                            let before = self.retry_argument_snapshots.len();
+                            match action {
+                                RetrySnapshotPendingCleanupAction::DeleteFiltered => {
+                                    let removed = self.remove_filtered_retry_snapshots();
+                                    let after = self.retry_argument_snapshots.len();
+                                    if removed > 0 {
+                                        let audit_id = self.record_retry_snapshot_cleanup_audit(
+                                            "delete_filtered",
+                                            &preview_summary,
+                                            filtered_snapshots.len(),
+                                            removed,
+                                            before,
+                                            after,
+                                            None,
+                                        );
+                                        self.app_status = format!(
+                                            "{} (audit #{}); {}",
+                                            Self::format_retry_snapshot_cleanup_status(
+                                                action, removed, before, after
+                                            ),
+                                            audit_id,
+                                            preview_summary
+                                        );
+                                    } else {
+                                        self.app_status =
+                                            "Delete filtered confirmed: no snapshots removed"
+                                                .to_string();
+                                    }
+                                }
+                                RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered => {
+                                    let archive_result =
+                                        self.prompt_archive_and_delete_filtered_retry_snapshots();
+                                    if let Some((removed, archive_path)) = archive_result {
                                         let after = self.retry_argument_snapshots.len();
                                         if removed > 0 {
-                                            let audit_id = self.record_retry_snapshot_cleanup_audit(
-                                                "delete_filtered",
-                                                &preview_summary,
-                                                filtered_snapshots.len(),
-                                                removed,
-                                                before,
-                                                after,
-                                                None,
-                                            );
+                                            let audit_id = self
+                                                .record_retry_snapshot_cleanup_audit(
+                                                    "archive_delete_filtered",
+                                                    &preview_summary,
+                                                    filtered_snapshots.len(),
+                                                    removed,
+                                                    before,
+                                                    after,
+                                                    Some(archive_path.as_str()),
+                                                );
                                             self.app_status = format!(
                                                 "{} (audit #{}); {}",
                                                 Self::format_retry_snapshot_cleanup_status(
@@ -42921,123 +43028,95 @@ Error: `{err}`"
                                                 audit_id,
                                                 preview_summary
                                             );
-                                        } else {
-                                            self.app_status = "Delete filtered confirmed: no snapshots removed"
-                                                .to_string();
-                                        }
-                                    }
-                                    RetrySnapshotPendingCleanupAction::ArchiveAndDeleteFiltered => {
-                                        let archive_result =
-                                            self.prompt_archive_and_delete_filtered_retry_snapshots();
-                                        if let Some((removed, archive_path)) = archive_result {
-                                            let after = self.retry_argument_snapshots.len();
-                                            if removed > 0 {
-                                                let audit_id = self
-                                                    .record_retry_snapshot_cleanup_audit(
-                                                        "archive_delete_filtered",
-                                                        &preview_summary,
-                                                        filtered_snapshots.len(),
-                                                        removed,
-                                                        before,
-                                                        after,
-                                                        Some(archive_path.as_str()),
-                                                    );
-                                                self.app_status = format!(
-                                                    "{} (audit #{}); {}",
-                                                    Self::format_retry_snapshot_cleanup_status(
-                                                        action, removed, before, after
-                                                    ),
-                                                    audit_id,
-                                                    preview_summary
-                                                );
-                                            }
                                         }
                                     }
                                 }
-                                self.retry_snapshot_pending_cleanup_action = None;
-                                self.retry_snapshot_cleanup_confirm_text.clear();
                             }
-                            if ui.button("Cancel").clicked() {
-                                self.retry_snapshot_pending_cleanup_action = None;
-                                self.retry_snapshot_cleanup_confirm_text.clear();
-                                self.app_status =
-                                    "Retry snapshot cleanup confirmation canceled".to_string();
-                            }
-                        });
-                    });
-                }
-                ui.small(format!(
-                    "Showing {} of {} retained snapshots",
-                    filtered_snapshots.len(),
-                    self.retry_argument_snapshots.len()
-                ));
-                egui::ScrollArea::vertical()
-                    .id_salt(BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID)
-                    .max_height(160.0)
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        if self.retry_argument_snapshots.is_empty() {
-                            ui.small("No retry snapshots captured yet");
-                        } else if filtered_snapshots.is_empty() {
-                            ui.small("No retry snapshots match current filters");
-                        } else {
-                            for snapshot in filtered_snapshots.iter().rev().take(40) {
-                                ui.small(snapshot.to_line());
-                            }
+                            self.retry_snapshot_pending_cleanup_action = None;
+                            self.retry_snapshot_cleanup_confirm_text.clear();
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.retry_snapshot_pending_cleanup_action = None;
+                            self.retry_snapshot_cleanup_confirm_text.clear();
+                            self.app_status =
+                                "Retry snapshot cleanup confirmation canceled".to_string();
                         }
                     });
-                ui.separator();
-                ui.strong("Retry cleanup audit");
-                if self.retry_snapshot_cleanup_audit.is_empty() {
-                    self.retry_cleanup_audit_pending_clear_all = false;
-                    self.retry_cleanup_audit_clear_confirm_text.clear();
-                }
-                self.retry_cleanup_audit_retain_count = self.retry_cleanup_audit_retention_limit();
-                ui.horizontal(|ui| {
-                    ui.label("Retain newest");
-                    ui.add(
-                        egui::DragValue::new(&mut self.retry_cleanup_audit_retain_count)
-                            .range(1..=MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES)
-                            .speed(1.0),
-                    )
-                    .on_hover_text("Retention cap for cleanup-audit entries");
-                    ui.small(format!("max {}", MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES));
-                    if ui
-                        .button("Prune oldest")
-                        .on_hover_text("Drop oldest cleanup-audit entries until retained count is reached")
-                        .clicked()
-                    {
-                        let removed = self.prune_retry_cleanup_audit_to_limit(
-                            self.retry_cleanup_audit_retain_count,
-                        );
-                        self.app_status = if removed == 0 {
-                            "Retry cleanup audit prune: no entries removed".to_string()
-                        } else {
-                            format!("Retry cleanup audit prune: removed {removed} oldest entries")
-                        };
-                    }
-                    if ui
-                        .add_enabled(
-                            !self.retry_snapshot_cleanup_audit.is_empty(),
-                            egui::Button::new("Clear all"),
-                        )
-                        .on_hover_text("Delete all retained cleanup-audit entries")
-                        .clicked()
-                    {
-                        let target_count = self.retry_snapshot_cleanup_audit.len();
-                        let confirm_phrase =
-                            Self::retry_cleanup_audit_clear_confirm_phrase(target_count);
-                        self.retry_cleanup_audit_pending_clear_all = true;
-                        self.retry_cleanup_audit_clear_confirm_text.clear();
-                        self.app_status = format!(
-                            "Retry cleanup audit clear-all staged: type '{confirm_phrase}' to confirm"
-                        );
+                });
+            }
+            ui.small(format!(
+                "Showing {} of {} retained snapshots",
+                filtered_snapshots.len(),
+                self.retry_argument_snapshots.len()
+            ));
+            egui::ScrollArea::vertical()
+                .id_salt(BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID)
+                .max_height(160.0)
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    if self.retry_argument_snapshots.is_empty() {
+                        ui.small("No retry snapshots captured yet");
+                    } else if filtered_snapshots.is_empty() {
+                        ui.small("No retry snapshots match current filters");
+                    } else {
+                        for snapshot in filtered_snapshots.iter().rev().take(40) {
+                            ui.small(snapshot.to_line());
+                        }
                     }
                 });
-                ui.horizontal(|ui| {
+            ui.separator();
+            ui.strong("Retry cleanup audit");
+            if self.retry_snapshot_cleanup_audit.is_empty() {
+                self.retry_cleanup_audit_pending_clear_all = false;
+                self.retry_cleanup_audit_clear_confirm_text.clear();
+            }
+            self.retry_cleanup_audit_retain_count = self.retry_cleanup_audit_retention_limit();
+            ui.horizontal(|ui| {
+                ui.label("Retain newest");
+                ui.add(
+                    egui::DragValue::new(&mut self.retry_cleanup_audit_retain_count)
+                        .range(1..=MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES)
+                        .speed(1.0),
+                )
+                .on_hover_text("Retention cap for cleanup-audit entries");
+                ui.small(format!("max {}", MAX_RETRY_SNAPSHOT_CLEANUP_AUDIT_ENTRIES));
+                if ui
+                    .button("Prune oldest")
+                    .on_hover_text(
+                        "Drop oldest cleanup-audit entries until retained count is reached",
+                    )
+                    .clicked()
+                {
+                    let removed = self
+                        .prune_retry_cleanup_audit_to_limit(self.retry_cleanup_audit_retain_count);
+                    self.app_status = if removed == 0 {
+                        "Retry cleanup audit prune: no entries removed".to_string()
+                    } else {
+                        format!("Retry cleanup audit prune: removed {removed} oldest entries")
+                    };
+                }
+                if ui
+                    .add_enabled(
+                        !self.retry_snapshot_cleanup_audit.is_empty(),
+                        egui::Button::new("Clear all"),
+                    )
+                    .on_hover_text("Delete all retained cleanup-audit entries")
+                    .clicked()
+                {
+                    let target_count = self.retry_snapshot_cleanup_audit.len();
+                    let confirm_phrase =
+                        Self::retry_cleanup_audit_clear_confirm_phrase(target_count);
+                    self.retry_cleanup_audit_pending_clear_all = true;
+                    self.retry_cleanup_audit_clear_confirm_text.clear();
+                    self.app_status = format!(
+                        "Retry cleanup audit clear-all staged: type '{confirm_phrase}' to confirm"
+                    );
+                }
+            });
+            ui.horizontal(|ui| {
                     ui.label("Action");
                     egui::ComboBox::from_id_salt("retry_cleanup_audit_action_filter")
                         .selected_text(self.retry_cleanup_audit_action_filter.label())
@@ -43092,79 +43171,87 @@ Error: `{err}`"
                         self.prompt_export_retry_cleanup_audit_report();
                     }
                 });
-                let filtered_audit_entries = self.filtered_retry_cleanup_audit_entries();
-                if self.retry_cleanup_audit_pending_clear_all {
-                    let target_count = self.retry_snapshot_cleanup_audit.len();
-                    let confirm_phrase = Self::retry_cleanup_audit_clear_confirm_phrase(target_count);
-                    let confirm_ready = Self::retry_cleanup_audit_clear_confirm_input_matches(
-                        target_count,
-                        &self.retry_cleanup_audit_clear_confirm_text,
-                    );
-                    ui.group(|ui| {
-                        ui.label("Pending confirmation: Clear all cleanup-audit entries");
-                        ui.small(format!(
-                            "This will remove all {} retained cleanup-audit entries",
-                            target_count
-                        ));
-                        ui.small(format!("Type '{}' to confirm", confirm_phrase));
-                        ui.horizontal(|ui| {
-                            ui.label("Confirm phrase");
-                            ui.add(
-                                egui::TextEdit::singleline(
-                                    &mut self.retry_cleanup_audit_clear_confirm_text,
-                                )
-                                .desired_width(220.0)
-                                .hint_text(confirm_phrase.as_str()),
-                            );
-                        });
-                        if !confirm_ready {
-                            ui.small("Confirmation phrase does not match yet");
-                        }
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add_enabled(target_count > 0 && confirm_ready, egui::Button::new("Confirm clear all"))
-                                .clicked()
-                            {
-                                let removed = self.clear_retry_cleanup_audit();
-                                self.retry_cleanup_audit_pending_clear_all = false;
-                                self.retry_cleanup_audit_clear_confirm_text.clear();
-                                self.app_status =
-                                    format!("Cleared {removed} retry cleanup audit entries");
-                            }
-                            if ui.button("Cancel").clicked() {
-                                self.retry_cleanup_audit_pending_clear_all = false;
-                                self.retry_cleanup_audit_clear_confirm_text.clear();
-                                self.app_status =
-                                    "Retry cleanup audit clear-all confirmation canceled"
-                                        .to_string();
-                            }
-                        });
-                    });
-                }
-                ui.small(format!(
-                    "Showing {} of {} retained audit entries",
-                    filtered_audit_entries.len(),
-                    self.retry_snapshot_cleanup_audit.len()
-                ));
-                egui::ScrollArea::vertical()
-                    .id_salt(BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID)
-                    .max_height(120.0)
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+            let filtered_audit_entries = self.filtered_retry_cleanup_audit_entries();
+            if self.retry_cleanup_audit_pending_clear_all {
+                let target_count = self.retry_snapshot_cleanup_audit.len();
+                let confirm_phrase = Self::retry_cleanup_audit_clear_confirm_phrase(target_count);
+                let confirm_ready = Self::retry_cleanup_audit_clear_confirm_input_matches(
+                    target_count,
+                    &self.retry_cleanup_audit_clear_confirm_text,
+                );
+                ui.group(|ui| {
+                    ui.label("Pending confirmation: Clear all cleanup-audit entries");
+                    ui.small(format!(
+                        "This will remove all {} retained cleanup-audit entries",
+                        target_count
+                    ));
+                    ui.small(format!("Type '{}' to confirm", confirm_phrase));
+                    ui.horizontal(|ui| {
+                        ui.label("Confirm phrase");
+                        ui.add(
+                            egui::TextEdit::singleline(
+                                &mut self.retry_cleanup_audit_clear_confirm_text,
+                            )
+                            .desired_width(220.0)
+                            .hint_text(confirm_phrase.as_str()),
                         );
-                        if self.retry_snapshot_cleanup_audit.is_empty() {
-                            ui.small("No retry cleanup audit entries yet");
-                        } else if filtered_audit_entries.is_empty() {
-                            ui.small("No retry cleanup audit entries match current filters");
-                        } else {
-                            for entry in filtered_audit_entries.iter().rev().take(40) {
-                                ui.small(entry.to_line());
-                            }
+                    });
+                    if !confirm_ready {
+                        ui.small("Confirmation phrase does not match yet");
+                    }
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                target_count > 0 && confirm_ready,
+                                egui::Button::new("Confirm clear all"),
+                            )
+                            .clicked()
+                        {
+                            let removed = self.clear_retry_cleanup_audit();
+                            self.retry_cleanup_audit_pending_clear_all = false;
+                            self.retry_cleanup_audit_clear_confirm_text.clear();
+                            self.app_status =
+                                format!("Cleared {removed} retry cleanup audit entries");
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.retry_cleanup_audit_pending_clear_all = false;
+                            self.retry_cleanup_audit_clear_confirm_text.clear();
+                            self.app_status =
+                                "Retry cleanup audit clear-all confirmation canceled".to_string();
                         }
                     });
-            });
+                });
+            }
+            ui.small(format!(
+                "Showing {} of {} retained audit entries",
+                filtered_audit_entries.len(),
+                self.retry_snapshot_cleanup_audit.len()
+            ));
+            egui::ScrollArea::vertical()
+                .id_salt(BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID)
+                .max_height(120.0)
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    if self.retry_snapshot_cleanup_audit.is_empty() {
+                        ui.small("No retry cleanup audit entries yet");
+                    } else if filtered_audit_entries.is_empty() {
+                        ui.small("No retry cleanup audit entries match current filters");
+                    } else {
+                        for entry in filtered_audit_entries.iter().rev().take(40) {
+                            ui.small(entry.to_line());
+                        }
+                    }
+                });
+        });
+        if self.viewport_foreground_requested(viewport_id) {
+            self.set_active_window_viewport(viewport_id);
+            self.pending_focus_viewports.retain(|id| *id != viewport_id);
+            self.finalize_viewport_focus_probe(viewport_id);
+        }
+        self.finalize_viewport_open_probe(viewport_id, "Background Jobs");
         self.show_jobs_panel = open;
     }
 
@@ -45015,6 +45102,7 @@ mod tests {
     use std::{
         collections::{HashMap, HashSet},
         env, fs,
+        path::{Path, PathBuf},
         sync::{
             Arc, RwLock,
             atomic::{AtomicBool, Ordering},
@@ -45025,63 +45113,88 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn direct_egui_windows_are_limited_to_wrapper_and_deferred_modal_allowlist() {
-        let app_source = include_str!("app.rs");
-        let app_production_source = app_source
-            .split_once("\n#[cfg(test)]\nmod tests")
-            .map(|(production, _)| production)
-            .unwrap_or(app_source);
-        let files = [
-            ("src/app.rs", app_production_source),
-            ("src/main_area_dna.rs", include_str!("main_area_dna.rs")),
-            (
-                "src/main_area_dna/auxiliary_workspaces.rs",
-                include_str!("main_area_dna/auxiliary_workspaces.rs"),
-            ),
-            (
-                "src/main_area_dna/variant_followup.rs",
-                include_str!("main_area_dna/variant_followup.rs"),
-            ),
-        ];
-        let deferred_modal_allowlist = [
-            "Place Arrangement on Existing Rack",
-            "Reindex Prepared Genome",
-            "Update Ensembl Specs",
-            "Browse Ensembl Candidates",
-            "Quick Install Ensembl Candidate",
-            "Remove Prepared Genome",
-            "Remove Catalog Entry",
-            "Clear Caches",
-            "Rename Leaf Node",
-            "Remove Leaf Node",
-            "Unsaved Changes",
-            "About GENtle",
-            "Background Jobs",
-            "Operation Failed",
-            "Select Prepared Genome",
-        ];
+    fn direct_egui_windows_are_limited_to_window_shell_wrappers() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut source_files = Vec::new();
+        collect_rust_source_files(&manifest_dir.join("src"), &mut source_files);
         let mut unexpected = Vec::new();
-        for (path, source) in files {
-            for (line_index, line) in source.lines().enumerate() {
-                if !line.contains("egui::Window::new") {
-                    continue;
-                }
-                if line.contains(".show(&ctx")
-                    || deferred_modal_allowlist
-                        .iter()
-                        .any(|allowed| line.contains(allowed))
-                {
-                    continue;
-                }
-                unexpected.push(format!("{path}:{}: {}", line_index + 1, line.trim()));
+
+        for path in source_files {
+            let relative = path
+                .strip_prefix(manifest_dir)
+                .expect("source path should be inside manifest dir")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if matches!(
+                relative.as_str(),
+                "src/egui_compat.rs" | "src/bin/gentle_egui_window_repro.rs"
+            ) {
+                continue;
             }
+            let source = fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("read {relative} for window-shell guard: {err}"));
+            collect_direct_window_new_lines(&relative, &source, &mut unexpected);
         }
 
         assert!(
             unexpected.is_empty(),
-            "hosted/specialist windows should use egui_compat::show_hosted_window; add only explicitly deferred modals here:\n{}",
+            "production windows must use egui_compat::show_hosted_window for hosted/specialist surfaces or egui_compat::show_modal_window for one-shot prompts; direct egui::Window::new belongs only in egui_compat or tests:\n{}",
             unexpected.join("\n")
         );
+    }
+
+    fn collect_rust_source_files(dir: &Path, files: &mut Vec<PathBuf>) {
+        for entry in fs::read_dir(dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()))
+        {
+            let entry = entry.expect("read source directory entry");
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rust_source_files(&path, files);
+            } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                files.push(path);
+            }
+        }
+    }
+
+    fn collect_direct_window_new_lines(relative: &str, source: &str, unexpected: &mut Vec<String>) {
+        let mut pending_cfg_test = false;
+        let mut skipping_test_module_depth: Option<i32> = None;
+        for (line_index, line) in source.lines().enumerate() {
+            if let Some(depth) = skipping_test_module_depth.as_mut() {
+                *depth += brace_delta(line);
+                if *depth <= 0 {
+                    skipping_test_module_depth = None;
+                }
+                continue;
+            }
+
+            let trimmed = line.trim();
+            if pending_cfg_test && trimmed.starts_with("mod tests") {
+                let depth = brace_delta(line);
+                if depth > 0 {
+                    skipping_test_module_depth = Some(depth);
+                }
+                pending_cfg_test = false;
+                continue;
+            }
+            if pending_cfg_test && !trimmed.starts_with("#[") {
+                pending_cfg_test = false;
+            }
+            if trimmed == "#[cfg(test)]" {
+                pending_cfg_test = true;
+                continue;
+            }
+
+            if line.contains("egui::Window::new") {
+                unexpected.push(format!("{relative}:{}: {}", line_index + 1, line.trim()));
+            }
+        }
+    }
+
+    fn brace_delta(line: &str) -> i32 {
+        let opens = line.chars().filter(|ch| *ch == '{').count() as i32;
+        let closes = line.chars().filter(|ch| *ch == '}').count() as i32;
+        opens - closes
     }
 
     fn make_prepare_plan(step_ids: &[PrepareGenomeStepId]) -> PrepareGenomePlan {
@@ -48978,6 +49091,24 @@ mod tests {
         assert!(entries.iter().any(|entry| {
             entry.viewport_id == GENtleApp::retrieve_genome_viewport_id()
                 && entry.title == "Retrieve Genomic Sequence"
+        }));
+    }
+
+    #[test]
+    fn open_window_entries_include_background_jobs_and_jaspar_when_open() {
+        let mut app = GENtleApp::default();
+        app.show_jobs_panel = true;
+        app.show_jaspar_expert_dialog = true;
+
+        let entries = app.collect_open_window_entries();
+
+        assert!(entries.iter().any(|entry| {
+            entry.viewport_id == GENtleApp::background_jobs_viewport_id()
+                && entry.title == "Background Jobs"
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry.viewport_id == GENtleApp::jaspar_expert_viewport_id()
+                && entry.title == "JASPAR Expert"
         }));
     }
 
