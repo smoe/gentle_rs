@@ -2042,9 +2042,12 @@ order. Durable architecture constraints and decisions remain in
       `Open Splicing Window`)
   - DNA-window toolbar now includes `Selection formula` with `Apply Sel`:
     - formula-driven range selection (`=left .. right` or `=left to right`)
-    - feature-relative coordinate terms (`KIND.start|end|middle`,
-      optional occurrence `KIND[2]`, optional label filter
-      `KIND[label=TP73]`, optional `+/-N` offsets)
+    - feature-relative coordinate terms (`KIND.start|end|middle|tss`,
+      strand-aware `KIND.upstream(N)`, optional occurrence `KIND[2]`,
+      optional label filter `KIND[label=TP73]`, optional `+/-N` offsets)
+    - range formulas normalize the two resolved endpoints so
+      `=gene.upstream(1000) .. gene.tss` remains usable for reverse-strand
+      features
     - resolved selection feeds existing `Extract Sel`, `Queue PCR selection`,
       and `PCR ROI` actions without separate handoff steps
   - shared-shell/agent feature inspection now includes `features query`:
@@ -2071,11 +2074,13 @@ order. Durable architecture constraints and decisions remain in
     examples), including `require ROI flanking`
   - ROI coordinate formulas are now baseline in primer/qPCR forms:
     - ROI fields accept `=` feature-relative formulas
-      (`KIND.start|end|middle +/- N`)
+      (`KIND.start|end|middle|tss +/- N`, strand-aware
+      `KIND.upstream(N)`)
     - optional deterministic selector suffixes:
       occurrence (`KIND[2]`) and label filter (`KIND[label=TP73]`)
     - ROI-start range form (`=left .. right` or `=left to right`) now resolves
-      both coordinates in one entry
+      both coordinates in one entry and normalizes reverse-strand endpoint
+      order
     - explicit `Apply ROI formula` action resolves current formula text into
       numeric 0-based coordinates before queue/run
     - queue/run paths (`Queue current ROI spec`, `Design Primer Pairs`,
@@ -3318,11 +3323,12 @@ Notes:
    - any screenshot-based readability baseline artifacts require manual human
      contribution while agent screenshot execution remains policy-disabled
    - unified zoom/pan behavior is now implemented for map/graph/help/list panes;
-    focused-region fallback behavior and wider regression coverage are pending
+     focused-region fallback behavior and wider regression coverage are pending
    - feature-relative coordinate formulas are partially implemented:
      - done baseline:
        - primer/qPCR ROI fields now accept `=` formulas
-         (`KIND.start|end|middle +/- N`)
+         (`KIND.start|end|middle|tss +/- N`, strand-aware
+         `KIND.upstream(N)`)
        - DNA-window toolbar `Selection formula` now applies formula-resolved
          ranges directly to map/text selection
        - optional selectors:
@@ -3330,6 +3336,9 @@ Notes:
          - label filter (`KIND[label=TP73]`)
        - ROI-start range form:
          `=left .. right` (or `=left to right`)
+       - formula ranges normalize endpoint order so reverse-strand
+         `KIND.upstream(N) .. KIND.tss` expressions resolve to the intended
+         genomic interval
        - parser/resolver is now engine-owned (`engine/state/feature_coordinate_formulas.rs`)
          and reused by GUI selection + primer/qPCR ROI controls instead of
          keeping formula semantics only in `main_area_dna.rs`
@@ -3337,7 +3346,6 @@ Notes:
          `main_area_dna/formula_controls.rs` seam rather than staying
          interleaved with unrelated sequence-window rendering logic
      - remaining:
-       - strand-aware helper aliases (`tss`, `upstream(n)`) remain pending
        - broader GUI/shared-shell parity tests for formula evaluation remain
          pending
    - UI-level snapshot tests for feature-tree grouping/collapse are pending

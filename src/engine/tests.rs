@@ -306,6 +306,13 @@ fn formula_test_sequence() -> DNAsequence {
         location: gb_io::seq::Location::simple_range(80, 140),
         qualifiers: vec![("label".into(), Some("TP73".to_string()))],
     });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            500, 560,
+        ))),
+        qualifiers: vec![("label".into(), Some("REVGENE".to_string()))],
+    });
     dna
 }
 
@@ -483,6 +490,62 @@ fn feature_coordinate_formula_helper_resolves_selection_range_expression() {
             .expect("selection formula");
 
     assert_eq!((start, end_exclusive), (30, 75));
+}
+
+#[test]
+fn feature_coordinate_formula_helper_resolves_strand_aware_tss_and_upstream_aliases() {
+    let dna = formula_test_sequence();
+
+    let forward_tss = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=gene[label=TP73].tss",
+        "primer_design.roi_start_0based",
+    )
+    .expect("forward tss");
+    let forward_upstream = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=gene[label=TP73].upstream(5)",
+        "primer_design.roi_start_0based",
+    )
+    .expect("forward upstream");
+    let reverse_tss = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=gene[label=REVGENE].tss",
+        "primer_design.roi_start_0based",
+    )
+    .expect("reverse tss");
+    let reverse_upstream = parse_required_usize_or_formula_text_on_sequence(
+        &dna,
+        "=gene[label=REVGENE].upstream(25)",
+        "primer_design.roi_end_0based",
+    )
+    .expect("reverse upstream");
+
+    assert_eq!(forward_tss, 10);
+    assert_eq!(forward_upstream, 5);
+    assert_eq!(reverse_tss, 560);
+    assert_eq!(reverse_upstream, 585);
+}
+
+#[test]
+fn feature_coordinate_formula_range_normalizes_reverse_strand_upstream_window() {
+    let dna = formula_test_sequence();
+
+    let (selection_start, selection_end) = resolve_selection_formula_range_0based_on_sequence(
+        &dna,
+        "=gene[label=REVGENE].upstream(25) .. gene[label=REVGENE].tss",
+    )
+    .expect("reverse selection formula");
+    let (roi_start, roi_end) = resolve_formula_roi_range_inputs_0based_on_sequence(
+        &dna,
+        "=gene[label=REVGENE].upstream(25) .. gene[label=REVGENE].tss",
+        "",
+        "qpcr_design",
+    )
+    .expect("reverse ROI formula");
+
+    assert_eq!((selection_start, selection_end), (560, 585));
+    assert_eq!((roi_start, roi_end), (560, 585));
 }
 
 fn splicing_test_sequence() -> DNAsequence {
