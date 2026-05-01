@@ -2731,6 +2731,7 @@ mod tests {
     use crate::{
         engine::{DisplaySettings, RestrictionEnzymeDisplayMode},
         enzymes::active_restriction_enzymes,
+        test_support::dense_plasmid_visual_benchmark_state,
     };
     use gb_io::seq::Location;
     #[cfg(feature = "snapshot-tests")]
@@ -2858,6 +2859,48 @@ mod tests {
         let all_svg = export_linear_svg(&dna, &display);
         assert!(all_svg.contains("EcoRI"));
         assert!(all_svg.contains("BamHI"));
+    }
+
+    #[test]
+    fn visual_benchmark_dense_plasmid_map_exports_labels_and_re_sites() {
+        let state = dense_plasmid_visual_benchmark_state();
+        let dna = state
+            .sequences
+            .get("dense_plasmid")
+            .expect("dense plasmid fixture");
+        let mut display = DisplaySettings::default();
+        display.restriction_enzyme_display_mode = RestrictionEnzymeDisplayMode::AllInView;
+
+        let linear_svg = export_linear_svg(dna, &display);
+        let circular_svg = export_circular_svg(dna, &display);
+
+        for label in ["lac promoter", "AmpR", "TetR", "ori", "MCS"] {
+            assert!(
+                linear_svg.contains(label),
+                "linear benchmark SVG should include feature label {label}"
+            );
+            assert!(
+                circular_svg.contains(label),
+                "circular benchmark SVG should include feature label {label}"
+            );
+        }
+        for enzyme in [
+            "EcoRI", "HindIII", "BamHI", "PstI", "SalI", "SmaI", "XbaI", "SacI", "KpnI",
+        ] {
+            assert!(
+                linear_svg.contains(enzyme),
+                "linear benchmark SVG should include restriction site {enzyme}"
+            );
+            assert!(
+                circular_svg.contains(enzyme),
+                "circular benchmark SVG should include restriction site {enzyme}"
+            );
+        }
+        assert!(linear_svg.contains("dense synthetic plasmid benchmark"));
+        assert!(linear_svg.contains("361 bp"));
+        assert!(circular_svg.contains("dense synthetic plasmid benchmark"));
+        assert!(!linear_svg.contains("NaN"));
+        assert!(!circular_svg.contains("NaN"));
     }
 
     #[test]
