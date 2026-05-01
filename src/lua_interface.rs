@@ -133,6 +133,12 @@ impl LuaInterface {
             "  - ask_agent_system(project_or_nil, system_id, prompt, [catalog_path], [allow_auto_exec], [execute_all], [execute_indices], [include_state_summary]): Asks one configured AI system"
         );
         println!(
+            "  - plan_agent_system(project_or_nil, system_id, prompt, [catalog_path], [include_state_summary], [max_candidates], [allow_mutating_candidates]): Compiles prose into a typed agent plan"
+        );
+        println!(
+            "  - execute_agent_plan(project_or_nil, plan_json_or_table, candidate_id, [confirm]): Executes one stored agent-plan candidate"
+        );
+        println!(
             "  - is_reference_genome_prepared(genome_id, [catalog_path], [cache_dir]): Prepared check"
         );
         println!(
@@ -446,6 +452,61 @@ impl LuaInterface {
         };
         let run = execute_shell_command(&mut engine, &command)
             .map_err(|e| Self::err(&format!("agents ask failed: {e}")))?;
+        Ok(ShellUtilityResponse {
+            state: engine.state().clone(),
+            state_changed: run.state_changed,
+            output: run.output,
+        })
+    }
+
+    fn plan_agent_system(
+        state: Option<ProjectState>,
+        system_id: String,
+        prompt: String,
+        catalog_path: Option<String>,
+        include_state_summary: Option<bool>,
+        max_candidates: Option<usize>,
+        allow_mutating_candidates: Option<bool>,
+    ) -> LuaResult<serde_json::Value> {
+        let mut engine = GentleEngine::from_state(state.unwrap_or_default());
+        let command = ShellCommand::AgentsPlan {
+            system_id,
+            prompt,
+            catalog_path: catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+            base_url_override: None,
+            model_override: None,
+            timeout_seconds: None,
+            connect_timeout_seconds: None,
+            read_timeout_seconds: None,
+            max_retries: None,
+            max_response_bytes: None,
+            include_state_summary: include_state_summary.unwrap_or(true),
+            max_candidates,
+            allow_mutating_candidates: allow_mutating_candidates.unwrap_or(false),
+        };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("agents plan failed: {e}")))?;
+        Ok(run.output)
+    }
+
+    fn execute_agent_plan(
+        state: Option<ProjectState>,
+        plan_input: String,
+        candidate_id: String,
+        confirm: Option<bool>,
+    ) -> LuaResult<ShellUtilityResponse> {
+        let mut engine = GentleEngine::from_state(state.unwrap_or_default());
+        let command = ShellCommand::AgentsExecutePlan {
+            plan_input,
+            candidate_id,
+            confirm: confirm.unwrap_or(false),
+        };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("agents execute-plan failed: {e}")))?;
         Ok(ShellUtilityResponse {
             state: engine.state().clone(),
             state_changed: run.state_changed,
@@ -942,6 +1003,82 @@ impl LuaInterface {
                         execute_indices,
                         include_state_summary,
                     )?;
+                    lua.to_value(&response)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "plan_agent_system",
+            self.lua.create_function(
+                |lua,
+                 (
+                    state,
+                    system_id,
+                    prompt,
+                    catalog_path,
+                    include_state_summary,
+                    max_candidates,
+                    allow_mutating_candidates,
+                ): (
+                    Value,
+                    String,
+                    String,
+                    Option<String>,
+                    Option<bool>,
+                    Option<usize>,
+                    Option<bool>,
+                )| {
+                    let state = if matches!(state, Value::Nil) {
+                        None
+                    } else {
+                        Some(
+                            lua.from_value(state)
+                                .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?,
+                        )
+                    };
+                    let plan = Self::plan_agent_system(
+                        state,
+                        system_id,
+                        prompt,
+                        catalog_path,
+                        include_state_summary,
+                        max_candidates,
+                        allow_mutating_candidates,
+                    )?;
+                    lua.to_value(&plan)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "execute_agent_plan",
+            self.lua.create_function(
+                |lua, (state, plan, candidate_id, confirm): (Value, Value, String, Option<bool>)| {
+                    let state = if matches!(state, Value::Nil) {
+                        None
+                    } else {
+                        Some(
+                            lua.from_value(state)
+                                .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?,
+                        )
+                    };
+                    let plan_input = match plan {
+                        Value::String(value) => value
+                            .to_str()
+                            .map_err(|e| Self::err(&format!("Invalid plan JSON string: {e}")))?
+                            .to_string(),
+                        other => {
+                            let json: serde_json::Value = lua.from_value(other).map_err(|e| {
+                                Self::err(&format!("Invalid plan JSON/table value: {e}"))
+                            })?;
+                            serde_json::to_string(&json).map_err(|e| {
+                                Self::err(&format!("Could not serialize plan payload: {e}"))
+                            })?
+                        }
+                    };
+                    let response =
+                        Self::execute_agent_plan(state, plan_input, candidate_id, confirm)?;
                     lua.to_value(&response)
                 },
             )?,
@@ -2026,6 +2163,72 @@ mod tests {
             out.output["invocation"]["system_id"].as_str(),
             Some("builtin_echo")
         );
+    }
+
+    #[test]
+    fn lua_plan_agent_system_wrapper_uses_builtin_echo() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    { "id": "builtin_echo", "label": "Built-in Echo", "transport": "builtin_echo" }
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let out = LuaInterface::plan_agent_system(
+            Some(ProjectState::default()),
+            "builtin_echo".to_string(),
+            "auto: state-summary".to_string(),
+            Some(catalog_path.to_string_lossy().to_string()),
+            Some(false),
+            Some(1),
+            Some(false),
+        )
+        .expect("plan agent");
+        assert_eq!(out["schema"].as_str(), Some("gentle.agent_plan_result.v1"));
+        assert_eq!(out["candidates"].as_array().map(Vec::len), Some(1));
+        assert_eq!(
+            out["candidates"][0]["shell_command"].as_str(),
+            Some("state-summary")
+        );
+    }
+
+    #[test]
+    fn lua_execute_agent_plan_wrapper_runs_shell_candidate() {
+        let plan = serde_json::json!({
+            "schema": "gentle.agent_plan_result.v1",
+            "assistant_message": "ready",
+            "questions": [],
+            "candidates": [
+                {
+                    "candidate_id": "candidate-1",
+                    "title": "Set parameter",
+                    "rationale": "test shell execution",
+                    "kind": "shell",
+                    "mutating": true,
+                    "requires_confirmation": false,
+                    "execution_mode": "auto",
+                    "shell_command": "set-param max_fragments_per_container 123"
+                }
+            ]
+        });
+        let out = LuaInterface::execute_agent_plan(
+            Some(ProjectState::default()),
+            plan.to_string(),
+            "candidate-1".to_string(),
+            Some(false),
+        )
+        .expect("execute agent plan");
+        assert!(out.state_changed);
+        assert_eq!(
+            out.output["schema"].as_str(),
+            Some("gentle.agent_execution_result.v1")
+        );
+        assert_eq!(out.output["candidate_id"].as_str(), Some("candidate-1"));
     }
 
     #[test]

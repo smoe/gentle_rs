@@ -547,9 +547,15 @@ Construct-reasoning inspection capability status:
 
 Agent-assistant capability status:
 
-- `gentle_cli`: supported via shared-shell command family (`agents list`, `agents ask`) and direct forwarding (`gentle_cli agents ...`)
-- `gentle_js`: supported via helper wrappers (`list_agent_systems`, `ask_agent_system`) over shared shell execution
-- `gentle_lua`: supported via helper wrappers (`list_agent_systems`, `ask_agent_system`) over shared shell execution
+- `gentle_cli`: supported via shared-shell command family (`agents list`,
+  `agents ask`, `agents plan`, `agents execute-plan`) and direct forwarding
+  (`gentle_cli agents ...`)
+- `gentle_js`: supported via helper wrappers (`list_agent_systems`,
+  `ask_agent_system`, `plan_agent_system`, `execute_agent_plan`) over shared
+  shell execution
+- `gentle_lua`: supported via helper wrappers (`list_agent_systems`,
+  `ask_agent_system`, `plan_agent_system`, `execute_agent_plan`) over shared
+  shell execution
 - GUI: supported via standalone `Agent Assistant` viewport using the same bridge and command executor
 
 Candidate-set capability status:
@@ -1174,7 +1180,17 @@ Exit methods:
       - `allow_auto_exec` / `execute_all`
       - `execute_indices` (1-based)
       - `include_state_summary` (default `true`)
-25. `render_dotplot_svg(state, seq_id, dotplot_id, output_svg, options)`
+31. `plan_agent_system(state, system_id, prompt, options)`
+    - Compiles prose into a typed `gentle.agent_plan_result.v1` plan through
+      the shared `agents plan` route.
+    - `state` may be `null`; options support `catalog_path`,
+      `include_state_summary`, `max_candidates`, and
+      `allow_mutating_candidates`.
+32. `execute_agent_plan(state, plan, candidate_id, options)`
+    - Executes one stored plan candidate through shared `agents execute-plan`.
+    - `plan` may be a JSON string or JS object.
+    - Returns `{ state, state_changed, output }`; options support `confirm`.
+33. `render_dotplot_svg(state, seq_id, dotplot_id, output_svg, options)`
     - Convenience wrapper around engine `RenderDotplotSvg`.
     - `options` supports:
       - `flex_track_id` (or `flexTrackId`)
@@ -1502,7 +1518,13 @@ Exit methods:
     - Invokes one configured agent system through shared shell execution.
     - Returns table with `state`, `state_changed`, and `output`.
     - `project` may be `nil` to use an empty/default project state.
-25. `render_dotplot_svg(project, seq_id, dotplot_id, output_svg, [flex_track_id], [display_density_threshold], [display_intensity_gain])`
+31. `plan_agent_system(project, system_id, prompt, [catalog_path], [include_state_summary], [max_candidates], [allow_mutating_candidates])`
+    - Compiles prose into a typed `gentle.agent_plan_result.v1` plan through
+      the shared `agents plan` route.
+32. `execute_agent_plan(project, plan_json_or_table, candidate_id, [confirm])`
+    - Executes one stored plan candidate through shared `agents execute-plan`
+      and returns table with `state`, `state_changed`, and `output`.
+33. `render_dotplot_svg(project, seq_id, dotplot_id, output_svg, [flex_track_id], [display_density_threshold], [display_intensity_gain])`
     - Convenience wrapper around engine `RenderDotplotSvg`.
 
 ### Lua example
@@ -3360,7 +3382,8 @@ Conceptual/tutorial companion:
   - Suggested commands are executed only when explicitly selected
     (`--execute-all`, `--execute-index`) or when `--allow-auto-exec` is enabled
     and the suggestion intent is `auto`.
-  - Recursive `agents ask` execution from suggested commands is blocked by design.
+  - Recursive `agents ask`, `agents plan`, and `agents execute-plan` execution
+    from suggested commands is blocked by design.
   - Failures use deterministic error prefixes for scripting, e.g.
     `AGENT_ADAPTER_UNAVAILABLE`, `AGENT_ADAPTER_TRANSIENT`,
     `AGENT_RESPONSE_PARSE`, `AGENT_RESPONSE_VALIDATION`.
