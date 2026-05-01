@@ -3,11 +3,22 @@
 //! This module centralizes the `=KIND.start+N` / `=left .. right` parsing used
 //! by GUI selection and ROI-entry controls so future shell/CLI surfaces can
 //! reuse the exact same resolution logic instead of re-implementing it in
-//! adapters.
+//! adapters. Feature aliases such as `tss` and `upstream(N)` are resolved from
+//! the feature strand when the annotation carries strand information.
 
-use crate::{dna_sequence::DNAsequence, feature_location::collect_location_ranges_usize};
+use crate::{
+    dna_sequence::DNAsequence,
+    feature_location::{collect_location_ranges_usize, feature_is_reverse},
+};
 
-use super::AnchorBoundary;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FeatureFormulaAnchor {
+    Start,
+    End,
+    Middle,
+    Tss,
+    Upstream { bp: isize },
+}
 
 fn feature_formula_label_values(feature: &gb_io::seq::Feature) -> Vec<String> {
     let mut labels = Vec::new();
@@ -131,30 +142,64 @@ fn parse_feature_formula_coordinate_expression_on_sequence(
     }
     if !saw_separator {
         return Err(format!(
-            "Invalid {field_name}: expected `.start`, `.end`, or `.middle` after feature kind"
+            "Invalid {field_name}: expected `.start`, `.end`, `.middle`, `.tss`, or `.upstream(N)` after feature kind"
         ));
     }
 
-    let boundary_start = idx;
+    let anchor_start = idx;
     while idx < bytes.len() && bytes[idx].is_ascii_alphabetic() {
         idx += 1;
     }
-    if boundary_start == idx {
+    if anchor_start == idx {
         return Err(format!(
-            "Invalid {field_name}: expected boundary token (start|end|middle)"
+            "Invalid {field_name}: expected boundary token (start|end|middle|tss|upstream(N))"
         ));
     }
-    let boundary = match raw[boundary_start..idx]
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "start" => AnchorBoundary::Start,
-        "end" => AnchorBoundary::End,
-        "middle" => AnchorBoundary::Middle,
+    let anchor_token = raw[anchor_start..idx].trim().to_ascii_lowercase();
+    let anchor = match anchor_token.as_str() {
+        "start" => FeatureFormulaAnchor::Start,
+        "end" => FeatureFormulaAnchor::End,
+        "middle" => FeatureFormulaAnchor::Middle,
+        "tss" => FeatureFormulaAnchor::Tss,
+        "upstream" => {
+            while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                idx += 1;
+            }
+            if idx >= bytes.len() || bytes[idx] != b'(' {
+                return Err(format!(
+                    "Invalid {field_name}: upstream requires `(N)` base-pair distance"
+                ));
+            }
+            idx += 1;
+            while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                idx += 1;
+            }
+            let number_start = idx;
+            while idx < bytes.len() && bytes[idx].is_ascii_digit() {
+                idx += 1;
+            }
+            if number_start == idx {
+                return Err(format!(
+                    "Invalid {field_name}: upstream distance must be an integer"
+                ));
+            }
+            let bp = raw[number_start..idx]
+                .parse::<isize>()
+                .map_err(|_| format!("Invalid {field_name}: could not parse upstream distance"))?;
+            while idx < bytes.len() && bytes[idx].is_ascii_whitespace() {
+                idx += 1;
+            }
+            if idx >= bytes.len() || bytes[idx] != b')' {
+                return Err(format!(
+                    "Invalid {field_name}: missing closing ')' in upstream distance"
+                ));
+            }
+            idx += 1;
+            FeatureFormulaAnchor::Upstream { bp }
+        }
         other => {
             return Err(format!(
-                "Invalid {field_name}: unknown boundary '{other}' (expected start|end|middle)"
+                "Invalid {field_name}: unknown boundary '{other}' (expected start|end|middle|tss|upstream(N))"
             ));
         }
     };
@@ -200,7 +245,7 @@ fn parse_feature_formula_coordinate_expression_on_sequence(
         return Err(format!("Invalid {field_name}: active sequence is empty"));
     }
 
-    let mut matches: Vec<(usize, usize, usize)> = Vec::new();
+    let mut matches: Vec<(usize, usize, isize)> = Vec::new();
     for (feature_id, feature) in dna.features().iter().enumerate() {
         if feature.kind.to_string().eq_ignore_ascii_case("SOURCE")
             || !feature.kind.to_string().eq_ignore_ascii_case(&feature_kind)
@@ -239,14 +284,29 @@ fn parse_feature_formula_coordinate_expression_on_sequence(
         if end_exclusive <= start || start >= dna.len() {
             continue;
         }
-        let anchor_pos = match boundary {
-            AnchorBoundary::Start => start,
-            AnchorBoundary::End => end_exclusive,
-            AnchorBoundary::Middle => start + (end_exclusive.saturating_sub(start) / 2),
+        let is_reverse = feature_is_reverse(feature);
+        let anchor_pos = match anchor {
+            FeatureFormulaAnchor::Start => start as isize,
+            FeatureFormulaAnchor::End => end_exclusive as isize,
+            FeatureFormulaAnchor::Middle => {
+                (start + (end_exclusive.saturating_sub(start) / 2)) as isize
+            }
+            FeatureFormulaAnchor::Tss => {
+                if is_reverse {
+                    end_exclusive as isize
+                } else {
+                    start as isize
+                }
+            }
+            FeatureFormulaAnchor::Upstream { bp } => {
+                if is_reverse {
+                    end_exclusive as isize + bp
+                } else {
+                    start as isize - bp
+                }
+            }
         };
-        if anchor_pos <= dna.len() {
-            matches.push((start, feature_id, anchor_pos));
-        }
+        matches.push((start, feature_id, anchor_pos));
     }
 
     if matches.is_empty() {
@@ -268,7 +328,7 @@ fn parse_feature_formula_coordinate_expression_on_sequence(
             matches.len()
         ));
     };
-    let resolved = *base_pos as isize + offset;
+    let resolved = *base_pos + offset;
     if resolved < 0 || resolved > dna.len() as isize {
         return Err(format!(
             "Invalid {field_name}: resolved coordinate {} is out of bounds for sequence length {}",
@@ -277,6 +337,14 @@ fn parse_feature_formula_coordinate_expression_on_sequence(
         ));
     }
     Ok(resolved as usize)
+}
+
+fn normalize_coordinate_pair(left: usize, right: usize) -> (usize, usize) {
+    if left <= right {
+        (left, right)
+    } else {
+        (right, left)
+    }
 }
 
 pub fn parse_feature_coordinate_term_on_sequence(
@@ -323,18 +391,17 @@ pub fn resolve_formula_roi_range_inputs_0based_on_sequence(
     let (start, end_exclusive) = if let Some(formula) = start_trimmed.strip_prefix('=')
         && let Some((left, right)) = split_feature_formula_range_expression(formula)
     {
-        (
-            parse_feature_coordinate_term_on_sequence(
-                dna,
-                &left,
-                &format!("{field_prefix}.roi_start_0based"),
-            )?,
-            parse_feature_coordinate_term_on_sequence(
-                dna,
-                &right,
-                &format!("{field_prefix}.roi_end_0based"),
-            )?,
-        )
+        let left = parse_feature_coordinate_term_on_sequence(
+            dna,
+            &left,
+            &format!("{field_prefix}.roi_start_0based"),
+        )?;
+        let right = parse_feature_coordinate_term_on_sequence(
+            dna,
+            &right,
+            &format!("{field_prefix}.roi_end_0based"),
+        )?;
+        normalize_coordinate_pair(left, right)
     } else {
         (
             parse_required_usize_or_formula_text_on_sequence(
@@ -391,6 +458,7 @@ pub fn resolve_selection_formula_range_0based_on_sequence(
         parse_feature_coordinate_term_on_sequence(dna, &left_raw, "selection_formula.start")?;
     let end_exclusive =
         parse_feature_coordinate_term_on_sequence(dna, &right_raw, "selection_formula.end")?;
+    let (start, end_exclusive) = normalize_coordinate_pair(start, end_exclusive);
     if end_exclusive <= start {
         return Err(format!(
             "Invalid selection formula range: start ({start}) must be < end ({end_exclusive})"

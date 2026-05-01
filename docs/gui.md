@@ -2042,10 +2042,15 @@ Controls:
    - Coordinate terms support:
      - numeric bp positions
      - feature-relative terms:
-       - `KIND.start|end|middle`
+       - `KIND.start|end|middle|tss`
+       - strand-aware upstream boundary (`KIND.upstream(N)`)
        - optional occurrence selector (`KIND[2]`, 1-based)
        - optional label selector (`KIND[label=TP73]`)
        - optional signed offsets (`+N`, `-N`)
+   - Range formulas select the interval between the two resolved coordinates;
+     this keeps `=gene.upstream(1000) .. gene.tss` usable on reverse-strand
+     annotations where the upstream coordinate is numerically greater than the
+     TSS.
    - `Apply Sel` resolves the formula and sets the active map/text selection,
      which can then be used directly by `Extract Sel`, `Queue PCR selection`,
      or `PCR ROI` actions.
@@ -3148,10 +3153,12 @@ Primer pairs form:
 - ROI and amplicon controls:
   - `ROI start`, `ROI end`
     - both accept numeric coordinates and `=` formulas
-      (`=KIND.start+N`, `=KIND.end-N`, optional `KIND[2]`,
-      optional `KIND[label=TP73]`)
+      (`=KIND.start+N`, `=KIND.end-N`, `=KIND.tss`,
+      `=KIND.upstream(N)`, optional `KIND[2]`, optional
+      `KIND[label=TP73]`)
     - `ROI start` also accepts range form
-      (`=left .. right` or `=left to right`)
+      (`=left .. right` or `=left to right`); range form resolves the interval
+      between both coordinates, including reverse-strand upstream/TSS pairs
     - `Apply ROI formula` resolves formulas into numeric coordinates
   - `min amplicon`, `max amplicon`
     - pair-PCR now requires `min amplicon <= ROI length`
