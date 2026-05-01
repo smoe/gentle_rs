@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-04-30
+Last updated: 2026-05-01
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -4825,8 +4825,9 @@ Current baseline:
   cached install.
 - The prepare specialist window now scrolls vertically when its checklist/status
   content exceeds the viewport height.
-- Testing gap: specialist-window scrolling still relies on manual GUI
-  verification; there is not yet a dedicated egui regression test for it.
+- The prepare specialist scroll behavior now has a deterministic egui regression
+  test that renders a long checklist/status block inside a small viewport and
+  asserts the scroll area remains bounded while content overflows vertically.
 - Shell/agent UI-intent routing is implemented:
   - `ui intents`
   - `ui open|focus TARGET ...`

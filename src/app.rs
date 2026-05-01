@@ -21240,6 +21240,17 @@ Error: `{err}`"
         close_requested
     }
 
+    fn render_reference_genome_prepare_scroll_area(
+        &mut self,
+        ui: &mut Ui,
+        id_salt: &'static str,
+    ) -> egui::containers::scroll_area::ScrollAreaOutput<bool> {
+        egui::ScrollArea::vertical()
+            .id_salt(id_salt)
+            .auto_shrink([false, false])
+            .show(ui, |ui| self.render_reference_genome_prepare_contents(ui))
+    }
+
     fn render_reference_genome_prepare_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_reference_genome_prepare_dialog {
             return;
@@ -21261,12 +21272,12 @@ Error: `{err}`"
                 let mut open = self.show_reference_genome_prepare_dialog;
                 let mut close_requested = false;
                 crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("prepare_genome_embedded_scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            close_requested = self.render_reference_genome_prepare_contents(ui);
-                        });
+                    close_requested = self
+                        .render_reference_genome_prepare_scroll_area(
+                            ui,
+                            "prepare_genome_embedded_scroll",
+                        )
+                        .inner;
                 });
                 if close_requested {
                     open = false;
@@ -21290,12 +21301,12 @@ Error: `{err}`"
 
             let mut close_requested = false;
             crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("prepare_genome_viewport_scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        close_requested = self.render_reference_genome_prepare_contents(ui);
-                    });
+                close_requested = self
+                    .render_reference_genome_prepare_scroll_area(
+                        ui,
+                        "prepare_genome_viewport_scroll",
+                    )
+                    .inner;
             });
             self.render_prepared_genome_reinstall_confirm_dialog(
                 ctx,
@@ -51946,6 +51957,70 @@ mod tests {
         assert!(widths.iter().all(|width| *width > 0.0), "widths={widths:?}");
         assert!(max_width <= 820.0, "widths={widths:?}");
         assert!(max_width - min_width <= 8.0, "widths={widths:?}");
+    }
+
+    #[test]
+    fn prepare_dialog_scroll_area_keeps_long_checklist_reachable_on_small_viewport() {
+        let td = tempdir().unwrap();
+        let (catalog_path, cache_dir) = write_toy_prepare_catalog(td.path());
+        let ctx = egui::Context::default();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(640.0, 220.0));
+        let mut app = GENtleApp::default();
+        app.genome_catalog_path = catalog_path;
+        app.genome_cache_dir = cache_dir;
+        app.genome_catalog_genomes = vec!["ToyGenome".to_string()];
+        app.genome_id = "ToyGenome".to_string();
+        app.reset_prepare_step_state_from_plan(Some(make_prepare_plan(&[
+            PrepareGenomeStepId::ResetIndexes,
+            PrepareGenomeStepId::Sequence,
+            PrepareGenomeStepId::Annotation,
+            PrepareGenomeStepId::FastaIndex,
+            PrepareGenomeStepId::GeneIndex,
+            PrepareGenomeStepId::BlastIndex,
+        ])));
+        for (idx, step) in app.genome_prepare_steps.iter_mut().enumerate() {
+            step.status = if idx < 2 {
+                PrepareGenomeUiStepStatus::Completed
+            } else if idx == 2 {
+                PrepareGenomeUiStepStatus::Running
+            } else {
+                PrepareGenomeUiStepStatus::Pending
+            };
+            step.detail = format!(
+                "regression detail line {idx}: keep this prepare checklist reachable after resize"
+            );
+        }
+        app.genome_prepare_status = (0..18)
+            .map(|idx| format!("diagnostic status line {idx}: index/progress context"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        let panel_response =
+            crate::egui_compat::show_central_panel(&ctx, egui::CentralPanel::default(), |ui| {
+                app.render_reference_genome_prepare_scroll_area(
+                    ui,
+                    "prepare_genome_scroll_regression_test",
+                )
+            });
+        let scroll_output = panel_response.inner;
+
+        assert!(
+            scroll_output.content_size.y > scroll_output.inner_rect.height() + 80.0,
+            "prepare dialog content should overflow vertically on a small viewport: content={:?}, inner={:?}",
+            scroll_output.content_size,
+            scroll_output.inner_rect
+        );
+        assert!(
+            scroll_output.inner_rect.height() <= screen_rect.height(),
+            "scroll area should stay bounded by the viewport: inner={:?}, screen={:?}",
+            scroll_output.inner_rect,
+            screen_rect
+        );
+        let _ = ctx.end_pass();
     }
 
     #[test]
