@@ -6377,28 +6377,26 @@ Current parking-lot ideas:
       enriched restriction-enzyme annotations beyond the current REBASE data
 - Restriction-site inspector and shared site-detail records:
   - current position:
-    - restriction-site rendering and hover hit-testing exist, but GENtle does
-      not yet expose a richer per-site inspection record comparable to the
-      “selected enzyme/site” tooltip style seen in mature plasmid-map tools
-    - do not start implementation during the current delivery track
+    - restriction-site rendering, hover hit-testing, selected-site highlighting,
+      and the shared `RestrictionSiteExpertView` detail record now exist
+    - first tooltip slice (2026-05-01): map hover over visible restriction-site
+      labels/ticks now uses that shared expert view to show enzyme grouping,
+      site count, recognition span, cut geometry, caret-marked top/bottom cut
+      positions, optional enzyme notes, and REBASE links without adding
+      adapter-only tooltip biology
   - if revisited later, likely staged implementation is:
-    1. define one engine-owned restriction-site detail record that can be
-       derived deterministically from sequence + enzyme metadata and reused by
-       GUI/CLI/MCP/JS/Lua instead of inventing adapter-local tooltip state
-    2. include in that record:
-       - enzyme name / isoschizomer grouping label when relevant
-       - recognition sequence with explicit cleavage markers on both strands
-       - cut geometry summary (blunt / 5' overhang / 3' overhang)
-       - site count for the active sequence / viewport context
-       - later optional links to methylation-sensitivity or sidecar usage notes
-    3. add GUI selection/highlight + popover/inspector surfaces on top of that
-       shared record, then optionally expose shell/CLI/MCP inspection routes
-       for the same data contract
+    1. add a pinned popover/inspector action that can stay open after hover and
+       copy/export the same shared detail record
+    2. optionally expose shell/CLI/MCP inspection routes for the same data
+       contract when non-GUI callers need per-site detail without rendering SVG
+    3. later optional links to methylation-sensitivity or sidecar usage notes
+       can attach to the shared record without changing enzyme-resolution
+       semantics
     4. add focused regression coverage for crowded maps, selected-site
        highlighting, and deterministic cut-geometry presentation
   - note:
-    - keep this deferred until the map-presentation/UI polish track needs a
-      richer enzyme-site inspection surface
+    - keep supplemental non-REBASE usage annotations separate until a concrete
+      curated sidecar/provenance policy exists
 - SnapGene-style plasmid-map presentation parity (deferred UX polish):
   - current position:
     - GENtle already renders circular maps, enzyme labels, and collision-aware

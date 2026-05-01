@@ -1554,6 +1554,10 @@ impl RenderDnaLinear {
         self.selected_enzyme.clone()
     }
 
+    pub fn hovered_restriction_enzyme(&self) -> Option<RestrictionEnzymePosition> {
+        self.hover_enzyme.clone()
+    }
+
     pub fn selected_reasoning_evidence_id(&self) -> Option<String> {
         self.selected_reasoning_evidence_id.clone()
     }
