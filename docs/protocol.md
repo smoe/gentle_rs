@@ -1694,9 +1694,10 @@ Current draft operations:
   - it exposes enzyme grouping, selected enzyme, site count, recognition span,
     explicit top/bottom cut positions, recognition/site sequence, complement,
     cut geometry, optional enzyme note, and REBASE URL
-  - protocol helpers format concise tooltip lines with caret-marked top and
-    bottom cut positions so GUI hover text and future CLI/MCP inspectors do
-    not each invent separate cut-geometry presentation rules
+  - `tooltip_lines[]` carries concise presentation-ready lines with
+    caret-marked top and bottom cut positions so GUI hover text, shared shell
+    JSON, MCP tools, and future inspectors do not each invent separate
+    cut-geometry presentation rules
 - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain?, overlay_x_axis_mode? }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
@@ -2470,6 +2471,7 @@ external coding agent runtime, see:
   - current tools:
     - `capabilities`
     - `state_summary`
+    - `restriction_site_detail` (shared restriction-site expert detail record)
     - `op` (apply one `Operation`; requires explicit `confirm=true`)
     - `workflow` (apply one `Workflow`; requires explicit `confirm=true`)
     - `help`
@@ -2546,6 +2548,21 @@ MCP query/introspection tool contracts (current):
   - behavior:
     - returns the same structured payload shape as shared shell
       `agents execute-plan ...`
+
+- `restriction_site_detail`
+  - arguments:
+    - required: `seq_id`, `cut_pos_1based`
+    - optional: `state_path`, `enzyme`, `recognition_start_1based`,
+      `recognition_end_1based`
+  - behavior:
+    - returns the same structured payload shape as shared shell
+      `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED ...`
+    - remains non-mutating and rejects any shared-shell path that reports
+      `state_changed=true`
+  - result:
+    - `kind = "restriction_site"`
+    - `data` is the shared `RestrictionSiteExpertView`, including
+      `tooltip_lines[]` for GUI-style hover/popover summaries
 
 - `reference_catalog_entries`
   - arguments:

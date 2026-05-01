@@ -1503,6 +1503,8 @@ pub struct RestrictionSiteExpertView {
     pub enzyme_note: Option<String>,
     #[serde(default)]
     pub rebase_url: Option<String>,
+    #[serde(default)]
+    pub tooltip_lines: Vec<String>,
     pub instruction: String,
 }
 
@@ -1576,6 +1578,13 @@ impl RestrictionSiteExpertView {
     }
 
     pub fn tooltip_summary_lines(&self) -> Vec<String> {
+        if !self.tooltip_lines.is_empty() {
+            return self.tooltip_lines.clone();
+        }
+        self.computed_tooltip_summary_lines()
+    }
+
+    pub fn computed_tooltip_summary_lines(&self) -> Vec<String> {
         let mut lines = vec![
             format!(
                 "{} | {} | {}",
@@ -5743,6 +5752,7 @@ mod dotplot_and_concatemer_setting_tests {
             overlap_bp: Some(4),
             enzyme_note: None,
             rebase_url: Some("https://rebase.neb.com/rebase/enz/EcoRI.html".to_string()),
+            tooltip_lines: vec![],
             instruction: "inspect".to_string(),
         };
 

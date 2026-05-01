@@ -6385,15 +6385,21 @@ Current parking-lot ideas:
       site count, recognition span, cut geometry, caret-marked top/bottom cut
       positions, optional enzyme notes, and REBASE links without adding
       adapter-only tooltip biology
+    - follow-up (2026-05-01): `RestrictionSiteExpertView` now serializes those
+      presentation-ready tooltip lines as `tooltip_lines[]`, so shared-shell
+      `inspect-feature-expert ... restriction ...` output can reuse the same
+      cut-site summary without reformatting
+    - MCP follow-up (2026-05-01): `restriction_site_detail` now exposes the
+      same non-mutating shared-shell detail record over `gentle_mcp`, including
+      `tooltip_lines[]`, so external agents can inspect the exact GUI-style
+      restriction-site summary without rendering SVG or adding MCP-only biology
   - if revisited later, likely staged implementation is:
     1. add a pinned popover/inspector action that can stay open after hover and
        copy/export the same shared detail record
-    2. optionally expose shell/CLI/MCP inspection routes for the same data
-       contract when non-GUI callers need per-site detail without rendering SVG
-    3. later optional links to methylation-sensitivity or sidecar usage notes
+    2. later optional links to methylation-sensitivity or sidecar usage notes
        can attach to the shared record without changing enzyme-resolution
        semantics
-    4. add focused regression coverage for crowded maps, selected-site
+    3. add focused regression coverage for crowded maps, selected-site
        highlighting, and deterministic cut-geometry presentation
   - note:
     - keep supplemental non-REBASE usage annotations separate until a concrete

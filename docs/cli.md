@@ -1220,6 +1220,8 @@ Current tools:
 
 - `capabilities`
 - `state_summary`
+- `restriction_site_detail` (shared restriction-site expert detail record,
+  including `tooltip_lines[]`)
 - `op` (apply one operation; requires `confirm=true`)
 - `workflow` (apply one workflow; requires `confirm=true`)
 - `help`
@@ -1370,6 +1372,14 @@ Minimum MCP JSON-RPC flow:
 
 - required: `helper_id` (catalog id or alias)
 - optional: `catalog_path`
+
+`restriction_site_detail` arguments:
+
+- required: `seq_id`, `cut_pos_1based`
+- optional: `state_path`, `enzyme`, `recognition_start_1based`,
+  `recognition_end_1based`
+- returns the same `kind = "restriction_site"` payload as
+  `inspect-feature-expert`, including `data.tooltip_lines[]`
 
 `blast_async_start` arguments:
 
@@ -2635,6 +2645,10 @@ Isoform architecture panel workflow:
 - direct expert route:
   - `inspect-feature-expert SEQ_ID isoform PANEL_ID`
   - `render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg`
+  - same command family for restriction-site details:
+    - `inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]`
+    - JSON output includes `tooltip_lines[]` with the same concise
+      caret-marked cut-site summary used by GUI hover tooltips
   - same command family for splicing:
     - `inspect-feature-expert SEQ_ID splicing FEATURE_ID`
     - `render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg`

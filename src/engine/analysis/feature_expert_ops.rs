@@ -1115,7 +1115,7 @@ impl GentleEngine {
         let paired_cut_index_0based = key.mate_pos().saturating_sub(key.from()).max(0) as usize;
         let paired_cut_index_0based = paired_cut_index_0based.min(max_cut);
 
-        Ok(RestrictionSiteExpertView {
+        let mut view = RestrictionSiteExpertView {
             seq_id: seq_id.to_string(),
             cut_pos_1based,
             paired_cut_pos_1based,
@@ -1134,8 +1134,11 @@ impl GentleEngine {
             overlap_bp,
             enzyme_note,
             rebase_url,
+            tooltip_lines: vec![],
             instruction: RESTRICTION_EXPERT_INSTRUCTION.to_string(),
-        })
+        };
+        view.tooltip_lines = view.computed_tooltip_summary_lines();
+        Ok(view)
     }
 
     pub(super) fn is_mrna_feature(feature: &gb_io::seq::Feature) -> bool {
