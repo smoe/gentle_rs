@@ -309,12 +309,17 @@ order. Durable architecture constraints and decisions remain in
     large routines/planning shell branch
 - Engine-shell reference-genome and track commands now also use a dedicated
   helper dispatch before the monolithic matcher:
-  - `ReferenceExtendAnchor` still overflowed CI/local smaller-stack test
+  - `ReferenceExtendAnchor` previously overflowed CI/local smaller-stack test
     threads while living inside the deep reference/tracks section
   - the full reference/tracks command family
     (catalog/prepare/blast/extract/verify plus track import/subscription paths)
     now dispatches through one `#[inline(never)]` helper instead of the deep
     inline match block
+  - `ReferenceExtractRegion` and `ReferenceExtendAnchor` now additionally
+    short-circuit into the expanded-stack reference worker before constructing
+    stack-heavy operation payloads, so the
+    `gentle-test-small-stack-extend-anchor` regression no longer overflows the
+    256 KiB caller stack during anchor-extension setup
 - Engine-shell Gibson commands now use the same split-helper pattern:
   - `GibsonApply` still overflowed smaller-stack test threads while living
     inline inside the monolithic matcher
