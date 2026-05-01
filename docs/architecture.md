@@ -198,6 +198,20 @@ Internal-first execution rule:
   - but do not silently let the external workaround become the de facto
     product behavior.
 
+Shell modularisation rule:
+
+- Shared shell syntax and discoverability contracts should move into
+  `crates/gentle-shell` as soon as they are root-independent.
+- While the full engine still lives in the root crate, root
+  `engine_shell` remains the execution compatibility layer and re-exports
+  shell-owned contracts for older call sites.
+- The full typed `ShellCommand` parser may move before the executor only after
+  all command field types it needs live in root-independent crates, preferably
+  `gentle-protocol`.
+- The executor moves to `gentle-shell` only after `gentle-engine` owns the
+  `GentleEngine` type, avoiding a dependency cycle from `gentle-shell` back to
+  the root crate.
+
 Tooltip coverage rule:
 
 - Every actionable GUI button must include a concise, context-sensitive
