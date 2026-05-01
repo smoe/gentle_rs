@@ -1,5 +1,5 @@
 {
-   "command_count": 378,
+   "command_count": 379,
    "commands": [
       {
          "aliases": [
@@ -3208,6 +3208,20 @@
          "path": "rna-reads align-report",
          "summary": "Run retained-hit alignment phase and refresh report mappings/support summaries.",
          "usage": "rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "PreflightRnaReadIsoforms"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads preflight-isoforms",
+         "summary": "Preflight target RNA-read isoform seed support against explicit control transcript variants.",
+         "usage": "rna-reads preflight-isoforms SEQ_ID FEATURE_ID [--scope SCOPE] [--positive-transcript-fasta PATH ...] [--must-pass-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]"
       },
       {
          "aliases": [],

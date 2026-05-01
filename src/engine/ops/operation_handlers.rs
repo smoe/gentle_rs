@@ -15327,6 +15327,7 @@ impl GentleEngine {
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
             rna_read_batch_map_report: None,
+            rna_read_isoform_preflight: None,
             tfbs_region_summary: None,
             tfbs_score_tracks: None,
             tfbs_track_similarity: None,
@@ -22059,8 +22060,42 @@ impl GentleEngine {
                         )
                     },
                     report.read_count_aligned,
-                    report.retained_count_msa_eligible
+                        report.retained_count_msa_eligible
                 ));
+                }
+                Operation::PreflightRnaReadIsoforms {
+                    seq_id,
+                    seed_feature_id,
+                    scope,
+                    seed_filter,
+                    optimize_parameters,
+                    positive_transcript_fasta_paths,
+                    control_transcript_fasta_paths,
+                    max_control_match_probability,
+                } => {
+                    let report = self.preflight_rna_read_isoforms(
+                        &seq_id,
+                        seed_feature_id,
+                        scope,
+                        &seed_filter,
+                        optimize_parameters,
+                        &positive_transcript_fasta_paths,
+                        &control_transcript_fasta_paths,
+                        max_control_match_probability,
+                    )?;
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "RNA-read isoform preflight for '{}' evaluated {} target transcript(s), {} positive control transcript(s), and {} control group(s); target_pass={}/{} positive_pass={}/{}",
+                        report.seq_id,
+                        report.target_transcript_count,
+                        report.positive_control_transcript_count,
+                        report.control_summaries.len(),
+                        report.target_passed_transcript_count,
+                        report.target_transcript_count,
+                        report.positive_control_passed_transcript_count,
+                        report.positive_control_transcript_count
+                    ));
+                    result.rna_read_isoform_preflight = Some(report);
                 }
                 Operation::ListRnaReadReports { seq_id } => {
                     let rows = self.list_rna_read_reports(seq_id.as_deref());

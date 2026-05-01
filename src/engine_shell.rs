@@ -2088,6 +2088,16 @@ pub enum ShellCommand {
         align_config_override: Option<RnaReadAlignConfig>,
         selected_record_indices: Vec<usize>,
     },
+    RnaReadsPreflightIsoforms {
+        seq_id: String,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: RnaReadSeedFilterConfig,
+        optimize_parameters: bool,
+        positive_transcript_fasta_paths: Vec<String>,
+        control_transcript_fasta_paths: Vec<String>,
+        max_control_match_probability: f64,
+    },
     RnaReadsListReports {
         seq_id: Option<String>,
     },
@@ -9455,6 +9465,29 @@ impl ShellCommand {
                     align_note
                 )
             }
+            Self::RnaReadsPreflightIsoforms {
+                seq_id,
+                seed_feature_id,
+                scope,
+                seed_filter,
+                optimize_parameters,
+                positive_transcript_fasta_paths,
+                control_transcript_fasta_paths,
+                max_control_match_probability,
+            } => format!(
+                "preflight RNA-read isoform controls for '{}' feature={} (scope={}, positives={}, controls={}, optimize={}, max_control_match_probability={:.3}, k={}, min_seed_hit_fraction={:.2}, min_weighted_seed_hit_fraction={:.2}, min_unique_matched_kmers={})",
+                seq_id,
+                seed_feature_id,
+                scope.as_str(),
+                positive_transcript_fasta_paths.len(),
+                control_transcript_fasta_paths.len(),
+                optimize_parameters,
+                max_control_match_probability,
+                seed_filter.kmer_len,
+                seed_filter.min_seed_hit_fraction,
+                seed_filter.min_weighted_seed_hit_fraction,
+                seed_filter.min_unique_matched_kmers
+            ),
             Self::RnaReadsListReports { seq_id } => format!(
                 "list stored RNA-read reports{}",
                 seq_id
@@ -28793,6 +28826,37 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsPreflightIsoforms {
+            seq_id,
+            seed_feature_id,
+            scope,
+            seed_filter,
+            optimize_parameters,
+            positive_transcript_fasta_paths,
+            control_transcript_fasta_paths,
+            max_control_match_probability,
+        } => {
+            let result = engine
+                .apply(Operation::PreflightRnaReadIsoforms {
+                    seq_id: seq_id.clone(),
+                    seed_feature_id: *seed_feature_id,
+                    scope: *scope,
+                    seed_filter: seed_filter.clone(),
+                    optimize_parameters: *optimize_parameters,
+                    positive_transcript_fasta_paths: positive_transcript_fasta_paths.clone(),
+                    control_transcript_fasta_paths: control_transcript_fasta_paths.clone(),
+                    max_control_match_probability: *max_control_match_probability,
+                })
+                .map_err(|e| e.to_string())?;
+            let preflight = result.rna_read_isoform_preflight.ok_or_else(|| {
+                "PreflightRnaReadIsoforms did not return a preflight payload".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&preflight)
+                    .map_err(|e| format!("Could not serialize RNA-read isoform preflight: {e}"))?,
+            })
+        }
         ShellCommand::RnaReadsListReports { seq_id } => {
             let rows = engine.list_rna_read_reports(seq_id.as_deref());
             let summary_rows = rows
@@ -30292,6 +30356,7 @@ pub fn execute_shell_command_with_options(
         ShellCommand::RnaReadsInterpret { .. }
             | ShellCommand::RnaReadsBatchMap { .. }
             | ShellCommand::RnaReadsAlignReport { .. }
+            | ShellCommand::RnaReadsPreflightIsoforms { .. }
             | ShellCommand::RnaReadsListReports { .. }
             | ShellCommand::RnaReadsShowReport { .. }
             | ShellCommand::RnaReadsShowAlignment { .. }
@@ -31765,6 +31830,7 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::RnaReadsInterpret { .. }
         | ShellCommand::RnaReadsBatchMap { .. }
         | ShellCommand::RnaReadsAlignReport { .. }
+        | ShellCommand::RnaReadsPreflightIsoforms { .. }
         | ShellCommand::RnaReadsListReports { .. }
         | ShellCommand::RnaReadsShowReport { .. }
         | ShellCommand::RnaReadsShowAlignment { .. }

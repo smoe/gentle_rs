@@ -166,7 +166,10 @@ Post-release work includes:
       layer
     - the portable isoform-panel resource and validation report structs now
       also live there so curated panel import, validation, and renderer-facing
-      adapters share one slower-changing schema surface
+      adapters share one slower-changing schema surface; curated panels can now
+      carry evidence and evaluation sidecars so transcript sources, external
+      comparisons, and trust assessments remain part of the portable knowledge
+      resource rather than living only in prose notes
     - the portable planning profile/objective/estimate/suggestion contracts now
       also live there so GUI/CLI/agent-facing planning surfaces share one
       durable schema layer while merge/normalization behavior remains in
@@ -232,6 +235,12 @@ Post-release work includes:
   - the helper stays adapter-generic and biology-neutral, so RNA-read mapping,
     CUT&RUN, promoter scans, guide design, and future repeated analyses can
     reuse the same batch contract instead of growing one-off loop commands
+- A focused TP73 DeltaN alpha/beta/gamma ENA transcript supplement now lives at
+  `data/resources/tp73_dn_ena_transcripts.fasta`, with panel-level provenance
+  and ENA-vs-Ensembl comparison rows in
+  `assets/panels/tp73_dn_isoforms_v1.json`; this gives RNA-read review a
+  compact external transcript resource for non-standard TP73 terminal-isoform
+  checks while UniProt/domain curation is still pending.
 - GUI tutorial-project opening is now backgrounded instead of blocking the main
   event loop:
   - `File -> Open Tutorial Project...` now launches a cancellable background
@@ -4004,8 +4013,18 @@ Status:
     fixtures (`test_files/fixtures/mapping/`) and cover:
     - expected TP73 positive behavior (TP73-derived reads with 30% deletions
       still pass)
-    - close-family negative control (human TP53 set rejected for TP73 model)
+    - close-family negative controls (human TP53 and TP63 sets rejected for
+      the TP73 model)
     - generic negative control (same-length deterministic random reads fail)
+  - RNA-read isoform preflight is now available as a non-mutating shared-engine
+    operation and shell command (`PreflightRnaReadIsoforms` /
+    `rna-reads preflight-isoforms`), including repeatable must-pass positive
+    transcript FASTAs, repeatable negative control transcript FASTAs, grouped
+    TP53/TP63 control summaries, and an optimizer path that rejects candidate
+    seed filters whose target sensitivity depends on failing positives or also
+    admitting p53-family controls. The report now also surfaces
+    control-derived threshold margins and paste-ready `rna-reads interpret`
+    seed-filter fragments for cluster/headless mapping runs.
   - Histogram guide overlays are now user-toggleable (`Exons`, `Introns`) for
     clearer exon-context interpretation during filtering runs.
   - Histogram coordinate mode now supports genomic axis and exonic-only compact
@@ -4317,6 +4336,13 @@ Status:
     - still missing if performance pressure warrants it later:
       a heavier fully joined global inverted seed index across external
       catalogs rather than the current reusable per-template catalog index
+    - still missing for phase-1 rare-isoform discovery:
+      `InterpretRnaReads` does not yet accept external transcript FASTA/panel
+      supplements as seed templates; focused resources such as
+      `data/resources/tp73_dn_ena_transcripts.fasta` currently affect the
+      transcript-catalog audit/review path, and a follow-up should decide how
+      to merge external templates into the initial seed gate without blurring
+      genome-anchored exon/junction support semantics
   - GUI RNA-read mapping now keeps `Report ID` in a clearer state:
     - auto-generated IDs are now derived from locus + input + profile +
       scope + origin mode instead of only the input filename

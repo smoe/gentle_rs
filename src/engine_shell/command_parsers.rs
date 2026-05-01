@@ -7701,11 +7701,262 @@ pub(super) fn parse_cutrun_command(tokens: &[String]) -> Result<ShellCommand, St
 pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
+            "rna-reads requires a subcommand: preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg"
                 .to_string(),
         );
     }
     match tokens[1].as_str() {
+        "preflight-isoforms" | "preflight-isoform" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads preflight-isoforms requires SEQ_ID FEATURE_ID [--scope SCOPE] [--positive-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("rna-reads preflight-isoforms SEQ_ID must not be empty".to_string());
+            }
+            let seed_feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid FEATURE_ID '{}' for rna-reads preflight-isoforms: {e}",
+                    tokens[3]
+                )
+            })?;
+            let mut scope = SplicingScopePreset::AllOverlappingAnyStrand;
+            let mut seed_filter = RnaReadSeedFilterConfig::default();
+            let mut optimize_parameters = false;
+            let mut positive_transcript_fasta_paths = Vec::<String>::new();
+            let mut control_transcript_fasta_paths = Vec::<String>::new();
+            let mut max_control_match_probability = 0.0_f64;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--scope" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--scope",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        scope = parse_splicing_scope_preset(&raw)?;
+                    }
+                    "--positive-transcript-fasta" | "--must-pass-transcript-fasta" => {
+                        let flag = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            flag.as_str(),
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err(
+                                "rna-reads preflight-isoforms --positive-transcript-fasta requires a non-empty path"
+                                    .to_string(),
+                            );
+                        }
+                        positive_transcript_fasta_paths.push(raw);
+                    }
+                    "--control-transcript-fasta" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--control-transcript-fasta",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err(
+                                "rna-reads preflight-isoforms --control-transcript-fasta requires a non-empty path"
+                                    .to_string(),
+                            );
+                        }
+                        control_transcript_fasta_paths.push(raw);
+                    }
+                    "--optimize-parameters" => {
+                        optimize_parameters = true;
+                        idx += 1;
+                    }
+                    "--no-optimize-parameters" => {
+                        optimize_parameters = false;
+                        idx += 1;
+                    }
+                    "--max-control-match-probability" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-control-match-probability",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        max_control_match_probability = raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --max-control-match-probability value '{raw}' for rna-reads preflight-isoforms: {e}"
+                            )
+                        })?;
+                    }
+                    "--kmer-len" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--kmer-len",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.kmer_len = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --kmer-len value '{raw}' for rna-reads preflight-isoforms: {e}"
+                            )
+                        })?;
+                    }
+                    "--seed-stride-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seed-stride-bp",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.seed_stride_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --seed-stride-bp value '{raw}' for rna-reads preflight-isoforms: {e}"
+                            )
+                        })?;
+                    }
+                    "--min-seed-hit-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-seed-hit-fraction",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_seed_hit_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-seed-hit-fraction value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-weighted-seed-hit-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-weighted-seed-hit-fraction",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_weighted_seed_hit_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-weighted-seed-hit-fraction value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-unique-matched-kmers" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-unique-matched-kmers",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_unique_matched_kmers =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-unique-matched-kmers value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--max-median-transcript-gap" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-median-transcript-gap",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.max_median_transcript_gap =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --max-median-transcript-gap value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-chain-consistency-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-chain-consistency-fraction",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_chain_consistency_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-chain-consistency-fraction value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-confirmed-transitions" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-confirmed-transitions",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_confirmed_exon_transitions =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-confirmed-transitions value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-transition-support-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-transition-support-fraction",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.min_transition_support_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-transition-support-fraction value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    "--cdna-poly-t-flip" => {
+                        seed_filter.cdna_poly_t_flip_enabled = true;
+                        idx += 1;
+                    }
+                    "--no-cdna-poly-t-flip" => {
+                        seed_filter.cdna_poly_t_flip_enabled = false;
+                        idx += 1;
+                    }
+                    "--poly-t-prefix-min-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--poly-t-prefix-min-bp",
+                            "rna-reads preflight-isoforms",
+                        )?;
+                        seed_filter.poly_t_prefix_min_bp =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --poly-t-prefix-min-bp value '{raw}' for rna-reads preflight-isoforms: {e}"
+                                )
+                            })?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads preflight-isoforms"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsPreflightIsoforms {
+                seq_id,
+                seed_feature_id,
+                scope,
+                seed_filter,
+                optimize_parameters,
+                positive_transcript_fasta_paths,
+                control_transcript_fasta_paths,
+                max_control_match_probability,
+            })
+        }
         "interpret" => {
             if tokens.len() < 5 {
                 return Err(
@@ -9780,7 +10031,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             })
         }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
+            "Unknown rna-reads subcommand '{other}' (expected preflight-isoforms, interpret, batch-map, align-report, list-reports, show-report, show-alignment, summarize-gene-support, inspect-gene-support, inspect-alignments, inspect-concatemers, build-transcript-index, materialize-hits, export-report, export-hits-fasta, export-sample-sheet, export-target-quality, export-paths-tsv, export-abundance-tsv, export-score-density-svg, export-alignments-tsv, export-alignment-dotplot-svg)"
         )),
     }
 }
