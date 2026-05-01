@@ -1,0 +1,129 @@
+{
+  "schema": "gentle.isoform_panel_resource.v1",
+  "panel_id": "tp73_delta_ex2_3_isoforms_v1",
+  "gene_symbol": "TP73",
+  "transcript_geometry_mode": "cds",
+  "assembly": "GRCh38.p14",
+  "source": "RefSeq-derived TP73 DEx2,3Np73 alpha/beta transcript panel from local NCBI GenBank TP73 locus fixture",
+  "notes": "This panel carries two derived, non-accessioned TP73 transcript models requested for RNA-read transcript-catalog review: D_{Ex2,3}Np73alpha and D_{Ex2,3}Np73beta. Each sequence joins the full-length TAp73 5' exon directly to the fourth transcript exon, skipping the second and third transcript exons of the selected full-length RefSeq source transcript. Because the skipped region contains the TAp73 start codon, the CDS spans below refer to the downstream p73-frame ORF starting at cDNA position 154. These records are intended as explicit curated transcript evidence for hashing/preflight/concatemer review, not as hard-coded TP73 behavior in the RNA mapper.",
+  "evidence": [
+    {
+      "evidence_id": "refseq_tp73_local_genbank_2026_05_02",
+      "source_type": "Local RefSeq/NCBI GenBank locus fixture",
+      "accession": "NC_000001.11",
+      "label": "TP73 locus fixture",
+      "description": "Local TP73 GenBank fixture test_files/tp73.ncbi.gb, anchored to GRCh38.p14 chromosome 1:3652516..3736201, used as the deterministic source for exon-chain derivation.",
+      "sequence_path": "test_files/tp73.ncbi.gb",
+      "retrieved_on": "2026-05-02"
+    },
+    {
+      "evidence_id": "refseq_nm005427_delta_ex2_3_alpha_derived",
+      "source_type": "RefSeq-derived transcript model",
+      "accession": "NM_005427.4",
+      "label": "DEx2_3Np73alpha",
+      "description": "Derived alpha 3' variant from full-length TAp73alpha / RefSeq transcript variant 1 by retaining exon 1 and alpha downstream exons while skipping transcript exons 2 and 3.",
+      "sequence_path": "data/resources/tp73_delta_ex2_3_refseq_derived_transcripts.fasta",
+      "sequence_length_bp": 4973,
+      "sequence_sha256": "a3dd92e7ee336147c245a600f32e9d781e64850389ebad396e207e3bdfaae8f1",
+      "cds_start_1based": 154,
+      "cds_end_1based": 1851,
+      "retrieved_on": "2026-05-02"
+    },
+    {
+      "evidence_id": "refseq_nm001204184_delta_ex2_3_beta_derived",
+      "source_type": "RefSeq-derived transcript model",
+      "accession": "NM_001204184.2",
+      "label": "DEx2_3Np73beta",
+      "description": "Derived beta 3' variant from full-length RefSeq transcript variant 8 by retaining exon 1 and beta-like downstream exons while skipping transcript exons 2 and 3.",
+      "sequence_path": "data/resources/tp73_delta_ex2_3_refseq_derived_transcripts.fasta",
+      "sequence_length_bp": 4879,
+      "sequence_sha256": "9ed3fc78311dba1f4d3d52b43586ba5cabc8e5b243cf4ada40ec86434c994ee3",
+      "cds_start_1based": 154,
+      "cds_end_1based": 1440,
+      "retrieved_on": "2026-05-02"
+    }
+  ],
+  "evaluations": [
+    {
+      "evaluation_id": "tp73_delta_ex2_3_refseq_derivation_2026_05_02",
+      "title": "TP73 DEx2,3Np73 alpha/beta derivation from local RefSeq exon chains",
+      "created_on": "2026-05-02",
+      "method": "Parsed test_files/tp73.ncbi.gb, selected full-length TAp73 source transcripts NM_005427.4 and NM_001204184.2, removed transcript exon ranges 29818..29915 and 30545..30665, concatenated the retained genomic ranges in transcript order, and annotated the downstream p73-frame ORF after the skipped TAp73 start-codon region.",
+      "status": "ok",
+      "summary": "Both derived transcripts preserve the full-length TAp73 5' UTR exon, skip transcript exons 2 and 3, and retain the alpha or beta-like 3' source transcript chain. The resulting modeled CDS starts at cDNA position 154 and predicts 565 aa for DEx2_3Np73alpha and 428 aa for DEx2_3Np73beta.",
+      "source_evidence_ids": [
+        "refseq_tp73_local_genbank_2026_05_02",
+        "refseq_nm005427_delta_ex2_3_alpha_derived",
+        "refseq_nm001204184_delta_ex2_3_beta_derived"
+      ],
+      "isoform_ids": [
+        "dex2_3np73alpha",
+        "dex2_3np73beta"
+      ],
+      "rows": [
+        {
+          "isoform_id": "dex2_3np73alpha",
+          "evidence_id": "refseq_nm005427_delta_ex2_3_alpha_derived",
+          "compared_to": "NM_005427.4",
+          "status": "derived_from_source_exon_chain",
+          "summary": "DEx2_3Np73alpha is derived from the RefSeq TAp73alpha transcript by joining the first transcript exon to the exon beginning at local TP73 range 55034..55276, then retaining the alpha downstream exon chain.",
+          "metrics": [
+            {"key": "source_transcript", "value": "NM_005427.4"},
+            {"key": "skipped_genbank_ranges", "value": "29818..29915;30545..30665"},
+            {"key": "retained_genbank_ranges", "value": "1..126;55034..55276;69506..69692;70839..70954;74600..74709;75113..75255;75614..75702;76812..76933;77485..77633;78412..78550;78948..79041;80232..83686"},
+            {"key": "derived_cdna_length_bp", "value": "4973"},
+            {"key": "derived_cds_1based", "value": "154..1851"},
+            {"key": "expected_protein_length_aa", "value": "565"},
+            {"key": "cds_note", "value": "Downstream p73-frame ORF after skipped exon-2/3 start-codon region"}
+          ]
+        },
+        {
+          "isoform_id": "dex2_3np73beta",
+          "evidence_id": "refseq_nm001204184_delta_ex2_3_beta_derived",
+          "compared_to": "NM_001204184.2",
+          "status": "derived_from_source_exon_chain",
+          "summary": "DEx2_3Np73beta is derived from the RefSeq transcript variant 8 beta-like 3' chain by joining the first transcript exon to the exon beginning at local TP73 range 55034..55276, then retaining the beta-like downstream chain.",
+          "metrics": [
+            {"key": "source_transcript", "value": "NM_001204184.2"},
+            {"key": "skipped_genbank_ranges", "value": "29818..29915;30545..30665"},
+            {"key": "retained_genbank_ranges", "value": "1..126;55034..55276;69506..69692;70839..70954;74600..74709;75113..75255;75614..75702;76812..76933;77485..77633;78412..78550;80232..83686"},
+            {"key": "derived_cdna_length_bp", "value": "4879"},
+            {"key": "derived_cds_1based", "value": "154..1440"},
+            {"key": "expected_protein_length_aa", "value": "428"},
+            {"key": "cds_note", "value": "Downstream p73-frame ORF after skipped exon-2/3 start-codon region"}
+          ]
+        }
+      ]
+    }
+  ],
+  "isoforms": [
+    {
+      "isoform_id": "dex2_3np73alpha",
+      "label": "DEx2_3Np73alpha",
+      "transcript_ids": [
+        "TP73_DEx2_3_alpha_refseq_derived",
+        "NM_005427.4_delta_ex2_3",
+        "DEx2_3Np73alpha"
+      ],
+      "transactivation_class": "dominant_negative_delta_ex2_3",
+      "expected_length_aa": 565,
+      "reference_start_aa": 1,
+      "reference_end_aa": 565,
+      "domains": []
+    },
+    {
+      "isoform_id": "dex2_3np73beta",
+      "label": "DEx2_3Np73beta",
+      "transcript_ids": [
+        "TP73_DEx2_3_beta_refseq_derived",
+        "NM_001204184.2_delta_ex2_3",
+        "DEx2_3Np73beta"
+      ],
+      "transactivation_class": "dominant_negative_delta_ex2_3",
+      "expected_length_aa": 428,
+      "reference_start_aa": 1,
+      "reference_end_aa": 428,
+      "domains": []
+    }
+  ]
+}

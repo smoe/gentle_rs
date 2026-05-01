@@ -42,6 +42,11 @@ one persuasive end-to-end proof path.
   using `docs/tp73_pancreas_benchmark_runbook.md`, and preserve the generated
   preflight summary, final report summary, TSV exports, SVG target-quality
   export, logs, and evidence-bundle note.
+- If abundance variation across pancreatic cancer cell lines is needed for the
+  release story, keep it to the fixed-parameter cohort route in
+  `docs/tp73_pancreas_cohort_batch_runbook.md`: one preflight-derived seed
+  filter, one method across all runs, per-run state copies for cluster safety,
+  and a merged sample sheet for comparison.
 - Keep CUT&RUN pre-release work to a small TP73-adjacent smoke/proof slice:
   reuse existing prepared-dataset projection, ROI read interpretation,
   regulatory-support inspection, existing TFBS scan/score-track surfaces, and
@@ -306,6 +311,12 @@ without blocking this publication.
   `assets/panels/tp73_dn_isoforms_v1.json`; this gives RNA-read review a
   compact external transcript resource for non-standard TP73 terminal-isoform
   checks while UniProt/domain curation is still pending.
+- A companion TP73 D_{Ex2,3}Np73 alpha/beta supplement now lives at
+  `data/resources/tp73_delta_ex2_3_refseq_derived_transcripts.fasta`, with
+  deterministic RefSeq exon-chain provenance in
+  `assets/panels/tp73_delta_ex2_3_isoforms_v1.json`; this keeps the
+  non-accessioned exon-skip hypotheses available to RNA-read hashing and
+  transcript-catalog review without adding TP73-specific mapper logic.
 - GUI tutorial-project opening is now backgrounded instead of blocking the main
   event loop:
   - `File -> Open Tutorial Project...` now launches a cancellable background

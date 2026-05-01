@@ -8,6 +8,9 @@ before RNA-read mapping.
 This runbook is written for `gentle.functional.domains` and assumes a local
 GENtle checkout at `/home/clawbio/GENtle`.
 
+For a fixed-parameter multi-accession cohort run after this single-run proof,
+see `docs/tp73_pancreas_cohort_batch_runbook.md`.
+
 ## 1. Environment
 
 ```bash
@@ -128,15 +131,19 @@ echo "Using SEED_FEATURE_ID=$SEED_FEATURE_ID"
 
 ## 5. Derive TP73 Thresholds From Positive And Control Genes
 
-Positive controls are hard must-pass transcript variants. TP53 and TP63 are
-negative controls; optimized seed filters are rejected if either control family
-passes above the configured ceiling.
+Positive controls are hard must-pass transcript variants. They include Ensembl
+TP73 transcripts plus the curated TP73 DeltaN and D_{Ex2,3}Np73 supplements so
+non-standard TP73 isoforms participate in seed-filter optimization. TP53 and
+TP63 are negative controls; optimized seed filters are rejected if either
+control family passes above the configured ceiling.
 
 ```bash
 "${GENTLE[@]}" rna-reads preflight-isoforms "$SEQ_ID" "$SEED_FEATURE_ID" \
   --scope all_overlapping_any_strand \
   --must-pass-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp73_all.fasta \
   --must-pass-transcript-fasta test_files/fixtures/mapping/ensembl_chimp_tp73_all.fasta \
+  --must-pass-transcript-fasta data/resources/tp73_dn_ena_transcripts.fasta \
+  --must-pass-transcript-fasta data/resources/tp73_delta_ex2_3_refseq_derived_transcripts.fasta \
   --control-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp53_all.fasta \
   --control-transcript-fasta test_files/fixtures/mapping/ensembl_human_tp63_all.fasta \
   --optimize-parameters \

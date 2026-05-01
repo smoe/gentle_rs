@@ -683,6 +683,9 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   A complete headless TP73 pancreatic cancer cDNA benchmark recipe, including
   SRA retrieval and TP53/TP63 preflight controls, is maintained in
   `docs/tp73_pancreas_benchmark_runbook.md`.
+  The fixed-parameter multi-accession cohort variant for comparing TP73
+  abundance across pancreatic cancer runs is maintained in
+  `docs/tp73_pancreas_cohort_batch_runbook.md`.
   Phase split:
   - `interpret`: seed-filter pass (Nanopore phase-1)
   - `batch-map`: manifest-driven wrapper over the same per-sample
@@ -2161,6 +2164,11 @@ Shared shell command:
           `rna-reads inspect-concatemers REPORT_ID --selection aligned --record-indices i,j,k --transcript-fasta data/resources/tp73_dn_ena_transcripts.fasta`
           The companion curation/evaluation resource is
           `assets/panels/tp73_dn_isoforms_v1.json`.
+        - TP73 D_{Ex2,3}Np73 alpha/beta RefSeq-derived supplement for
+          focused exon-skip review:
+          `rna-reads inspect-concatemers REPORT_ID --selection aligned --record-indices i,j,k --transcript-fasta data/resources/tp73_delta_ex2_3_refseq_derived_transcripts.fasta`
+          The companion curation/evaluation resource is
+          `assets/panels/tp73_delta_ex2_3_isoforms_v1.json`.
       - practical TP73-style two-pass cohort review:
           1. run a cheap local suspicion pass first:
              `rna-reads inspect-concatemers REPORT_ID --selection aligned --limit 200 --fragment-max-parts 0`
