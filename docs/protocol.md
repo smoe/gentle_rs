@@ -1689,6 +1689,14 @@ Current draft operations:
     plus `data-gentle-feature-kind` when applicable, so visual-regression tests
     and downstream tooling can inspect semantic glyphs without relying on
     raster screenshots
+- `RestrictionSiteExpertView` is also the shared restriction-site detail
+  contract for map hover/popover UI:
+  - it exposes enzyme grouping, selected enzyme, site count, recognition span,
+    explicit top/bottom cut positions, recognition/site sequence, complement,
+    cut geometry, optional enzyme note, and REBASE URL
+  - protocol helpers format concise tooltip lines with caret-marked top and
+    bottom cut positions so GUI hover text and future CLI/MCP inspectors do
+    not each invent separate cut-geometry presentation rules
 - `RenderDotplotSvg { seq_id, dotplot_id, path, flex_track_id?, display_density_threshold?, display_intensity_gain?, overlay_x_axis_mode? }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports

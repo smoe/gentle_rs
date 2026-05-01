@@ -24954,6 +24954,60 @@ impl MainAreaDna {
             .map_err(|e| e.to_string())
     }
 
+    fn restriction_site_expert_target_for_position(
+        &self,
+        site: &RestrictionEnzymePosition,
+    ) -> FeatureExpertTarget {
+        let key = site.key();
+        let mut names = self
+            .dna
+            .read()
+            .ok()
+            .and_then(|dna| dna.restriction_enzyme_groups().get(key).cloned())
+            .unwrap_or_default();
+        names.sort_by(|a, b| a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase()));
+        names.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        FeatureExpertTarget::RestrictionSite {
+            cut_pos_1based: key.pos().max(0) as usize + 1,
+            enzyme: names.first().cloned(),
+            recognition_start_1based: Some(key.from().max(0) as usize + 1),
+            recognition_end_1based: Some(key.to().max(0) as usize),
+        }
+    }
+
+    fn restriction_site_expert_view_for_position(
+        &self,
+        site: &RestrictionEnzymePosition,
+    ) -> Result<RestrictionSiteExpertView, String> {
+        let target = self.restriction_site_expert_target_for_position(site);
+        match self.inspect_feature_expert_target(&target)? {
+            FeatureExpertView::RestrictionSite(view) => Ok(view),
+            other => Err(format!(
+                "Expected restriction-site expert view, got {:?}",
+                other
+            )),
+        }
+    }
+
+    fn render_restriction_site_hover_ui(
+        ui: &mut egui::Ui,
+        view: &RestrictionSiteExpertView,
+        font_size: f32,
+    ) {
+        let lines = view.tooltip_summary_lines();
+        if let Some(first) = lines.first() {
+            ui.label(
+                egui::RichText::new(first)
+                    .strong()
+                    .monospace()
+                    .size(font_size),
+            );
+        }
+        for line in lines.iter().skip(1) {
+            ui.label(egui::RichText::new(line).monospace().size(font_size));
+        }
+    }
+
     fn tfbs_base_color(base_idx: usize) -> egui::Color32 {
         match base_idx {
             0 => egui::Color32::from_rgb(43, 138, 62), // A
@@ -53409,6 +53463,17 @@ impl MainAreaDna {
                         {
                             response.clone().on_hover_ui_at_pointer(|ui| {
                                 self.render_construct_reasoning_hover_ui(ui, &overlay, &span);
+                            });
+                        }
+                    } else if let Some(site) = self.map_dna.get_hovered_restriction_site() {
+                        if let Ok(view) = self.restriction_site_expert_view_for_position(&site) {
+                            let detail_font_size = self.feature_details_font_size();
+                            response.clone().on_hover_ui_at_pointer(|ui| {
+                                Self::render_restriction_site_hover_ui(
+                                    ui,
+                                    &view,
+                                    detail_font_size,
+                                );
                             });
                         }
                     }
