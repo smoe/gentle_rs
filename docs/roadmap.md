@@ -803,7 +803,9 @@ order. Durable architecture constraints and decisions remain in
     materialize repeats on the created anchored sequence with `--rmsk-index`
   - GUI/SVG display now has a shared `show_repeat_features` layer toggle for
     RepeatMasker/rmsk-derived repeat features, and anchored sequence windows can
-    run the same materialization via `Load Repeats`
+    run the same materialization via `Load Repeats`; the selected-feature
+    details pane summarizes materialized UCSC-rmsk qualifier fields without
+    reopening the upstream table
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
 - Shared engine/shell TFBS region summary path now reports grouped factor
