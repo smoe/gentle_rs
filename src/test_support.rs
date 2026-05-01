@@ -204,6 +204,259 @@ pub fn antisense_repeat_dotplot_context_visual_benchmark_state() -> ProjectState
     )
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, Copy)]
+struct SvgViewBox {
+    min_x: f32,
+    min_y: f32,
+    width: f32,
+    height: f32,
+}
+
+/// Assert that a generated SVG preserves the semantic markers used by visual benchmarks.
+#[cfg(test)]
+pub fn assert_visual_svg_lint(svg: &str, expected_roles: &[(&str, usize)]) {
+    assert!(svg.contains("<svg"), "visual benchmark output must be SVG");
+    assert!(!svg.contains("NaN"), "SVG must not contain NaN coordinates");
+    assert!(
+        !svg.contains("Infinity"),
+        "SVG must not contain infinite coordinates"
+    );
+
+    let view_box = visual_svg_view_box(svg);
+    let mut role_counts = BTreeMap::<String, usize>::new();
+    for tag in visual_svg_tags(svg) {
+        let attrs = visual_svg_attrs(tag);
+        let Some(role) = attrs.get("data-gentle-role") else {
+            continue;
+        };
+        assert!(
+            !role.trim().is_empty(),
+            "data-gentle-role must not be empty on tag <{tag}>"
+        );
+        *role_counts.entry(role.clone()).or_default() += 1;
+        if let Some(kind) = attrs.get("data-gentle-feature-kind") {
+            assert!(
+                !kind.trim().is_empty(),
+                "data-gentle-feature-kind must not be empty on tag <{tag}>"
+            );
+        }
+        lint_visual_svg_numeric_attrs(tag, &attrs, view_box);
+    }
+
+    assert!(
+        !role_counts.is_empty(),
+        "visual benchmark SVG should expose data-gentle-role markers"
+    );
+    for (role, min_count) in expected_roles {
+        let count = role_counts.get(*role).copied().unwrap_or_default();
+        assert!(
+            count >= *min_count,
+            "expected at least {min_count} SVG elements with data-gentle-role={role:?}, found {count}"
+        );
+    }
+}
+
+#[cfg(test)]
+fn visual_svg_tags(svg: &str) -> Vec<&str> {
+    let mut tags = Vec::new();
+    let mut cursor = svg;
+    while let Some(start) = cursor.find('<') {
+        cursor = &cursor[start + 1..];
+        if cursor.starts_with('/') || cursor.starts_with('!') || cursor.starts_with('?') {
+            let Some(end) = cursor.find('>') else {
+                break;
+            };
+            cursor = &cursor[end + 1..];
+            continue;
+        }
+        let Some(end) = cursor.find('>') else {
+            break;
+        };
+        tags.push(cursor[..end].trim());
+        cursor = &cursor[end + 1..];
+    }
+    tags
+}
+
+#[cfg(test)]
+fn visual_svg_attrs(tag: &str) -> BTreeMap<String, String> {
+    let bytes = tag.as_bytes();
+    let mut attrs = BTreeMap::new();
+    let mut i = 0usize;
+    while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    while i < bytes.len() {
+        while i < bytes.len() && (bytes[i].is_ascii_whitespace() || bytes[i] == b'/') {
+            i += 1;
+        }
+        let key_start = i;
+        while i < bytes.len()
+            && !bytes[i].is_ascii_whitespace()
+            && bytes[i] != b'='
+            && bytes[i] != b'/'
+        {
+            i += 1;
+        }
+        if key_start == i {
+            break;
+        }
+        let key = &tag[key_start..i];
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'=' {
+            continue;
+        }
+        i += 1;
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+        let quote = bytes[i];
+        let value = if quote == b'"' || quote == b'\'' {
+            i += 1;
+            let value_start = i;
+            while i < bytes.len() && bytes[i] != quote {
+                i += 1;
+            }
+            let value = tag[value_start..i].to_string();
+            if i < bytes.len() {
+                i += 1;
+            }
+            value
+        } else {
+            let value_start = i;
+            while i < bytes.len() && !bytes[i].is_ascii_whitespace() && bytes[i] != b'/' {
+                i += 1;
+            }
+            tag[value_start..i].to_string()
+        };
+        attrs.insert(key.to_string(), value);
+    }
+    attrs
+}
+
+#[cfg(test)]
+fn visual_svg_view_box(svg: &str) -> SvgViewBox {
+    let root = visual_svg_tags(svg)
+        .into_iter()
+        .find(|tag| tag.starts_with("svg"))
+        .expect("SVG root tag");
+    let attrs = visual_svg_attrs(root);
+    if let Some(view_box) = attrs.get("viewBox") {
+        let parts = view_box
+            .split(|c: char| c.is_ascii_whitespace() || c == ',')
+            .filter(|part| !part.is_empty())
+            .map(|part| {
+                part.parse::<f32>()
+                    .expect("SVG viewBox values should be numeric")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(parts.len(), 4, "SVG viewBox should have four numbers");
+        assert!(
+            parts[2].is_finite() && parts[2] > 0.0,
+            "SVG viewBox width should be positive"
+        );
+        assert!(
+            parts[3].is_finite() && parts[3] > 0.0,
+            "SVG viewBox height should be positive"
+        );
+        return SvgViewBox {
+            min_x: parts[0],
+            min_y: parts[1],
+            width: parts[2],
+            height: parts[3],
+        };
+    }
+
+    let width = parse_svg_float(attrs.get("width").expect("SVG width attribute"));
+    let height = parse_svg_float(attrs.get("height").expect("SVG height attribute"));
+    assert!(
+        width.is_finite() && width > 0.0,
+        "SVG width should be positive"
+    );
+    assert!(
+        height.is_finite() && height > 0.0,
+        "SVG height should be positive"
+    );
+    SvgViewBox {
+        min_x: 0.0,
+        min_y: 0.0,
+        width,
+        height,
+    }
+}
+
+#[cfg(test)]
+fn lint_visual_svg_numeric_attrs(
+    tag: &str,
+    attrs: &BTreeMap<String, String>,
+    view_box: SvgViewBox,
+) {
+    for name in [
+        "x",
+        "y",
+        "x1",
+        "y1",
+        "x2",
+        "y2",
+        "cx",
+        "cy",
+        "width",
+        "height",
+        "r",
+        "stroke-width",
+        "font-size",
+    ] {
+        let Some(value) = attrs.get(name) else {
+            continue;
+        };
+        let parsed = parse_svg_float(value);
+        assert!(
+            parsed.is_finite(),
+            "SVG attribute {name}={value:?} should be finite on tag <{tag}>"
+        );
+        if matches!(
+            name,
+            "width" | "height" | "r" | "stroke-width" | "font-size"
+        ) {
+            assert!(
+                parsed > 0.0,
+                "SVG attribute {name}={value:?} should be positive on tag <{tag}>"
+            );
+        }
+        if matches!(name, "x" | "x1" | "x2" | "cx") {
+            assert_svg_coordinate_in_view_box(name, parsed, view_box.min_x, view_box.width, tag);
+        }
+        if matches!(name, "y" | "y1" | "y2" | "cy") {
+            assert_svg_coordinate_in_view_box(name, parsed, view_box.min_y, view_box.height, tag);
+        }
+    }
+}
+
+#[cfg(test)]
+fn assert_svg_coordinate_in_view_box(name: &str, value: f32, min: f32, span: f32, tag: &str) {
+    let tolerance = 1.0;
+    assert!(
+        value >= min - tolerance && value <= min + span + tolerance,
+        "SVG coordinate {name}={value} should be inside viewBox range {min}..{} on tag <{tag}>",
+        min + span
+    );
+}
+
+#[cfg(test)]
+fn parse_svg_float(value: &str) -> f32 {
+    value
+        .trim()
+        .trim_end_matches("px")
+        .parse::<f32>()
+        .unwrap_or_else(|err| panic!("SVG numeric value {value:?} should parse: {err}"))
+}
+
 fn push_zip_u16(out: &mut Vec<u8>, value: u16) {
     out.extend_from_slice(&value.to_le_bytes());
 }

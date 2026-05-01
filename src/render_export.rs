@@ -2795,7 +2795,7 @@ mod tests {
     use crate::{
         engine::{DisplaySettings, RestrictionEnzymeDisplayMode},
         enzymes::active_restriction_enzymes,
-        test_support::dense_plasmid_visual_benchmark_state,
+        test_support::{assert_visual_svg_lint, dense_plasmid_visual_benchmark_state},
     };
     use gb_io::seq::Location;
     #[cfg(feature = "snapshot-tests")]
@@ -2937,6 +2937,24 @@ mod tests {
 
         let linear_svg = export_linear_svg(dna, &display);
         let circular_svg = export_circular_svg(dna, &display);
+        assert_visual_svg_lint(
+            &linear_svg,
+            &[
+                ("feature-block", 5),
+                ("feature-label", 5),
+                ("restriction-label", 9),
+                ("restriction-site-tick", 9),
+            ],
+        );
+        assert_visual_svg_lint(
+            &circular_svg,
+            &[
+                ("feature-block", 5),
+                ("feature-label", 5),
+                ("restriction-label", 9),
+                ("restriction-site-leader", 9),
+            ],
+        );
 
         for label in ["lac promoter", "AmpR", "TetR", "ori", "MCS"] {
             assert!(

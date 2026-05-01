@@ -12293,6 +12293,24 @@ fn test_visual_benchmark_dense_plasmid_sequence_svg_operation() {
 
     let linear_svg = fs::read_to_string(&linear_path).expect("read linear svg");
     let circular_svg = fs::read_to_string(&circular_path).expect("read circular svg");
+    crate::test_support::assert_visual_svg_lint(
+        &linear_svg,
+        &[
+            ("feature-block", 4),
+            ("feature-label", 4),
+            ("restriction-label", 4),
+            ("restriction-site-tick", 4),
+        ],
+    );
+    crate::test_support::assert_visual_svg_lint(
+        &circular_svg,
+        &[
+            ("feature-block", 4),
+            ("feature-label", 4),
+            ("restriction-label", 4),
+            ("restriction-site-leader", 4),
+        ],
+    );
     for label in ["lac promoter", "AmpR", "TetR", "MCS"] {
         assert!(
             linear_svg.contains(label),
@@ -12594,6 +12612,15 @@ fn test_visual_benchmark_dotplot_context_renders_antisense_and_repeat_lanes() {
         })
         .expect("render visual context dotplot");
     let svg = fs::read_to_string(path).expect("read visual context dotplot svg");
+    crate::test_support::assert_visual_svg_lint(
+        &svg,
+        &[
+            ("genome-context-track", 1),
+            ("genome-context-interval", 5),
+            ("genome-context-strand", 5),
+            ("genome-context-intron-guide", 2),
+        ],
+    );
     assert!(svg.contains("dotplot-genome-context-exon"));
     assert!(svg.contains("dotplot-genome-context-repeat"));
     assert!(svg.contains("dotplot-annotation-intron-guide"));
