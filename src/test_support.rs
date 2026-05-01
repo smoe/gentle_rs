@@ -11,7 +11,15 @@ use crate::engine::{
     RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
     RoutineDecisionTracePreflightSnapshot, RoutineDecisionTraceStore,
 };
+#[cfg(test)]
+use crate::enzymes::Enzymes;
+#[cfg(test)]
+use gb_io::seq::Location;
+#[cfg(test)]
+use serde::Deserialize;
 use serde_json::json;
+#[cfg(test)]
+use std::collections::BTreeMap;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -20,6 +28,181 @@ use std::{
 const DEMO_REBASE_WITHREFM: &str = "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n//\n";
 const DEMO_JASPAR_PFM: &str =
     ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n";
+#[cfg(test)]
+const DENSE_PLASMID_VISUAL_BENCHMARK: &str =
+    include_str!("../test_files/fixtures/visual_benchmarks/dense_plasmid_map.json");
+#[cfg(test)]
+const ANTISENSE_REPEAT_DOTPLOT_CONTEXT_VISUAL_BENCHMARK: &str =
+    include_str!("../test_files/fixtures/visual_benchmarks/antisense_repeat_dotplot_context.json");
+
+#[cfg(test)]
+#[derive(Debug, Deserialize)]
+struct VisualBenchmarkFile {
+    schema: String,
+    fixture_id: String,
+    sequences: Vec<VisualBenchmarkSequence>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Deserialize)]
+struct VisualBenchmarkSequence {
+    id: String,
+    name: Option<String>,
+    topology: Option<String>,
+    #[serde(default)]
+    restriction_enzymes: Vec<String>,
+    sequence_segments: Vec<VisualBenchmarkSequenceSegment>,
+    #[serde(default)]
+    features: Vec<VisualBenchmarkFeature>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Deserialize)]
+struct VisualBenchmarkSequenceSegment {
+    literal: Option<String>,
+    repeat: Option<String>,
+    count: Option<usize>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Deserialize)]
+struct VisualBenchmarkFeature {
+    kind: String,
+    label: Option<String>,
+    strand: Option<String>,
+    ranges: Vec<[usize; 2]>,
+    #[serde(default)]
+    qualifiers: BTreeMap<String, String>,
+}
+
+#[cfg(test)]
+fn visual_benchmark_sequence_text(segments: &[VisualBenchmarkSequenceSegment]) -> String {
+    let mut sequence = String::new();
+    for segment in segments {
+        match (&segment.literal, &segment.repeat, segment.count) {
+            (Some(literal), None, None) => sequence.push_str(literal),
+            (None, Some(unit), Some(count)) => {
+                for _ in 0..count {
+                    sequence.push_str(unit);
+                }
+            }
+            _ => {
+                panic!("visual benchmark sequence segment must have either literal or repeat+count")
+            }
+        }
+    }
+    sequence
+}
+
+#[cfg(test)]
+fn visual_benchmark_location(feature: &VisualBenchmarkFeature) -> Location {
+    assert!(
+        !feature.ranges.is_empty(),
+        "visual benchmark feature requires at least one range"
+    );
+    let mut parts = feature
+        .ranges
+        .iter()
+        .map(|[start, end]| {
+            assert!(
+                end > start,
+                "visual benchmark feature range must be non-empty"
+            );
+            Location::simple_range(*start as i64, *end as i64)
+        })
+        .collect::<Vec<_>>();
+    let base = if parts.len() == 1 {
+        parts.remove(0)
+    } else {
+        Location::Join(parts)
+    };
+    if feature.strand.as_deref() == Some("-") {
+        Location::Complement(Box::new(base))
+    } else {
+        base
+    }
+}
+
+#[cfg(test)]
+fn visual_benchmark_dna(sequence_fixture: &VisualBenchmarkSequence) -> DNAsequence {
+    let sequence_text = visual_benchmark_sequence_text(&sequence_fixture.sequence_segments);
+    let mut dna = DNAsequence::from_sequence(&sequence_text).expect("visual benchmark sequence");
+    if let Some(name) = sequence_fixture.name.as_ref() {
+        dna.set_name(name);
+    }
+    if sequence_fixture
+        .topology
+        .as_deref()
+        .is_some_and(|topology| topology.eq_ignore_ascii_case("circular"))
+    {
+        dna.set_circular(true);
+    }
+    for feature in &sequence_fixture.features {
+        let mut qualifiers = Vec::new();
+        if let Some(label) = feature.label.as_ref() {
+            qualifiers.push(("label".into(), Some(label.clone())));
+        }
+        qualifiers.extend(
+            feature
+                .qualifiers
+                .iter()
+                .filter(|(key, _)| key.as_str() != "label")
+                .map(|(key, value)| (key.clone().into(), Some(value.clone()))),
+        );
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: feature.kind.clone().into(),
+            location: visual_benchmark_location(feature),
+            qualifiers,
+        });
+    }
+    if !sequence_fixture.restriction_enzymes.is_empty() {
+        let enzyme_names = sequence_fixture
+            .restriction_enzymes
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let enzymes = Enzymes::default().restriction_enzymes_by_name(&enzyme_names);
+        assert_eq!(
+            enzymes.len(),
+            enzyme_names.len(),
+            "visual benchmark restriction-enzyme fixture references missing enzymes"
+        );
+        *dna.restriction_enzymes_mut() = enzymes;
+        dna.set_max_restriction_enzyme_sites(None);
+    }
+    dna.update_computed_features();
+    dna
+}
+
+#[cfg(test)]
+fn visual_benchmark_state_from_json(text: &str, expected_fixture_id: &str) -> ProjectState {
+    let fixture: VisualBenchmarkFile =
+        serde_json::from_str(text).expect("parse visual benchmark fixture");
+    assert_eq!(fixture.schema, "gentle.visual_benchmark_fixture.v1");
+    assert_eq!(fixture.fixture_id, expected_fixture_id);
+    let mut state = ProjectState::default();
+    for sequence in &fixture.sequences {
+        state
+            .sequences
+            .insert(sequence.id.clone(), visual_benchmark_dna(sequence));
+    }
+    state
+}
+
+/// Synthetic dense plasmid-map benchmark state.
+#[cfg(test)]
+pub fn dense_plasmid_visual_benchmark_state() -> ProjectState {
+    visual_benchmark_state_from_json(DENSE_PLASMID_VISUAL_BENCHMARK, "dense_plasmid_map")
+}
+
+/// Synthetic genomic dotplot-context benchmark state.
+#[cfg(test)]
+pub fn antisense_repeat_dotplot_context_visual_benchmark_state() -> ProjectState {
+    visual_benchmark_state_from_json(
+        ANTISENSE_REPEAT_DOTPLOT_CONTEXT_VISUAL_BENCHMARK,
+        "antisense_repeat_dotplot_context",
+    )
+}
 
 /// Synthetic project state with one routine-decision trace used in parity tests.
 pub fn decision_trace_fixture_state() -> ProjectState {

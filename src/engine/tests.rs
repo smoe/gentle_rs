@@ -12269,6 +12269,53 @@ fn test_render_sequence_svg_operation() {
 }
 
 #[test]
+fn test_visual_benchmark_dense_plasmid_sequence_svg_operation() {
+    let state = crate::test_support::dense_plasmid_visual_benchmark_state();
+    let mut engine = GentleEngine::from_state(state);
+    let tmp = tempdir().expect("tempdir");
+    let linear_path = tmp.path().join("dense_plasmid.linear.svg");
+    let circular_path = tmp.path().join("dense_plasmid.circular.svg");
+
+    engine
+        .apply(Operation::RenderSequenceSvg {
+            seq_id: "dense_plasmid".to_string(),
+            mode: RenderSvgMode::Linear,
+            path: linear_path.display().to_string(),
+        })
+        .expect("render dense plasmid linear svg");
+    engine
+        .apply(Operation::RenderSequenceSvg {
+            seq_id: "dense_plasmid".to_string(),
+            mode: RenderSvgMode::Circular,
+            path: circular_path.display().to_string(),
+        })
+        .expect("render dense plasmid circular svg");
+
+    let linear_svg = fs::read_to_string(&linear_path).expect("read linear svg");
+    let circular_svg = fs::read_to_string(&circular_path).expect("read circular svg");
+    for label in ["lac promoter", "AmpR", "TetR", "MCS"] {
+        assert!(
+            linear_svg.contains(label),
+            "linear dense benchmark should preserve label {label}"
+        );
+        assert!(
+            circular_svg.contains(label),
+            "circular dense benchmark should preserve label {label}"
+        );
+    }
+    for enzyme in ["EcoRI", "HindIII", "BamHI", "PstI"] {
+        assert!(
+            linear_svg.contains(enzyme),
+            "linear dense benchmark should include restriction site {enzyme}"
+        );
+        assert!(
+            circular_svg.contains(enzyme),
+            "circular dense benchmark should include restriction site {enzyme}"
+        );
+    }
+}
+
+#[test]
 fn test_render_sequence_svg_operation_honors_linear_viewport() {
     let mut state = ProjectState::default();
     state
@@ -12436,6 +12483,98 @@ fn test_render_dotplot_overlay_svg_operation_includes_legend_and_annotation() {
     assert!(text.contains("Isoform B"));
     assert!(text.contains("genome context"));
     assert!(text.contains("x: transcript length (%)"));
+}
+
+#[test]
+fn test_visual_benchmark_dotplot_context_renders_antisense_and_repeat_lanes() {
+    let state = crate::test_support::antisense_repeat_dotplot_context_visual_benchmark_state();
+    let query_len = state
+        .sequences
+        .get("benchmark_query")
+        .expect("benchmark query")
+        .len();
+    let reference_len = state
+        .sequences
+        .get("benchmark_ref")
+        .expect("benchmark reference")
+        .len();
+    let mut engine = GentleEngine::from_state(state);
+
+    engine
+        .apply(Operation::ComputeDotplot {
+            seq_id: "benchmark_query".to_string(),
+            reference_seq_id: Some("benchmark_ref".to_string()),
+            span_start_0based: Some(0),
+            span_end_0based: Some(query_len),
+            reference_span_start_0based: Some(0),
+            reference_span_end_0based: Some(reference_len),
+            mode: DotplotMode::PairForward,
+            word_size: 4,
+            step_bp: 1,
+            max_mismatches: 0,
+            tile_bp: None,
+            store_as: Some("visual_context_dotplot".to_string()),
+        })
+        .expect("compute visual context dotplot");
+
+    let view = engine
+        .get_dotplot_view("visual_context_dotplot")
+        .expect("visual context dotplot");
+    let annotation = view
+        .reference_annotation
+        .as_ref()
+        .expect("visual context annotation");
+    assert_eq!(annotation.interval_count, 5);
+    assert_eq!(
+        annotation
+            .intervals
+            .iter()
+            .filter(|interval| interval.kind == "exon" && interval.lane == 0)
+            .count(),
+        2,
+        "sense exons should stay together on lane 0"
+    );
+    assert_eq!(
+        annotation
+            .intervals
+            .iter()
+            .filter(|interval| interval.kind == "exon" && interval.lane == 1)
+            .count(),
+        2,
+        "antisense exons should stay together on lane 1"
+    );
+    assert!(
+        annotation
+            .intervals
+            .iter()
+            .any(|interval| interval.kind == "repeat"
+                && interval.label == "repeat: AluY"
+                && interval.lane == 2),
+        "rmsk-style repeat should be projected onto the repeat lane"
+    );
+
+    let tmp = tempdir().expect("tempdir");
+    let path = tmp.path().join("visual_context.dotplot.svg");
+    engine
+        .apply(Operation::RenderDotplotSvg {
+            seq_id: "benchmark_query".to_string(),
+            dotplot_id: "visual_context_dotplot".to_string(),
+            path: path.display().to_string(),
+            flex_track_id: None,
+            display_density_threshold: Some(0.0),
+            display_intensity_gain: Some(1.0),
+            overlay_x_axis_mode: DotplotOverlayXAxisMode::PercentLength,
+            overlay_anchor_exon: None,
+        })
+        .expect("render visual context dotplot");
+    let svg = fs::read_to_string(path).expect("read visual context dotplot svg");
+    assert!(svg.contains("dotplot-genome-context-exon"));
+    assert!(svg.contains("dotplot-genome-context-repeat"));
+    assert!(svg.contains("dotplot-annotation-intron-guide"));
+    assert!(svg.contains("SENSEA"));
+    assert!(svg.contains("ANTISENSEB"));
+    assert!(svg.contains("repeat: AluY"));
+    assert!(svg.contains("annotation_intervals=5 exons=4 repeats=1"));
 }
 
 #[test]
