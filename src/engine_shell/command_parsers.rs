@@ -7709,7 +7709,7 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
         "preflight-isoforms" | "preflight-isoform" => {
             if tokens.len() < 4 {
                 return Err(
-                    "rna-reads preflight-isoforms requires SEQ_ID FEATURE_ID [--scope SCOPE] [--positive-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]"
+                    "rna-reads preflight-isoforms requires SEQ_ID FEATURE_ID [--scope SCOPE] [--positive-transcript-fasta PATH ...] [--must-pass-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]"
                         .to_string(),
                 );
             }

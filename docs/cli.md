@@ -680,6 +680,9 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   Long runs can opt into live progress with the global `--progress-stderr`
   option before the `rna-reads` command; this keeps the final JSON payload on
   stdout while periodic `progress rna-reads ...` lines are written to stderr.
+  A complete headless TP73 pancreatic cancer cDNA benchmark recipe, including
+  SRA retrieval and TP53/TP63 preflight controls, is maintained in
+  `docs/tp73_pancreas_benchmark_runbook.md`.
   Phase split:
   - `interpret`: seed-filter pass (Nanopore phase-1)
   - `batch-map`: manifest-driven wrapper over the same per-sample

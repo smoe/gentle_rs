@@ -4025,6 +4025,11 @@ Status:
     admitting p53-family controls. The report now also surfaces
     control-derived threshold margins and paste-ready `rna-reads interpret`
     seed-filter fragments for cluster/headless mapping runs.
+  - A from-scratch TP73 pancreatic cancer Nanopore cDNA benchmark runbook now
+    lives at `docs/tp73_pancreas_benchmark_runbook.md`, tying SRA retrieval,
+    FASTQ/FASTA conversion, TP73 positive controls, TP53/TP63 negative
+    controls, phase-1 interpretation, phase-2 alignment, and evidence exports
+    into one headless proof workflow.
   - Histogram guide overlays are now user-toggleable (`Exons`, `Introns`) for
     clearer exon-context interpretation during filtering runs.
   - Histogram coordinate mode now supports genomic axis and exonic-only compact
