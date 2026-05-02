@@ -195,6 +195,8 @@ const RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD: u32 = 3;
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
+const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX: f32 = 140.0;
+const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX: f32 = 72.0;
 const HELP_MARKDOWN_REFLOW_DELTA_PX: f32 = 8.0;
 const MACOS_NATIVE_CHILD_VIEWPORTS_ENV: &str = "GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -33163,11 +33165,16 @@ Error: `{err}`"
                         min_size,
                     )
                     .initial_pos(initial_position)
+                    .drag_margin(Vec2::new(
+                        EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX,
+                        EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX,
+                    ))
                     .foreground(render_hosted_sequence_in_foreground)
                     .legacy_layer_id(egui::LayerId::new(egui::Order::Middle, egui::Id::new(id)));
                     crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                         w.update_embedded(ui);
                     });
+                    w.update_auxiliary_windows_only(ctx);
                     if !open {
                         w.take_close_requested();
                         if let Ok(mut to_close) = windows_to_close.write() {
@@ -33214,6 +33221,7 @@ Error: `{err}`"
                     if let Ok(mut w) = window.write() {
                         if Self::sequence_viewport_class_has_embedded_shell(class) {
                             w.update_embedded(ui);
+                            w.update_auxiliary_windows_only(ui.ctx());
                         } else {
                             w.update(ui.ctx());
                         }
@@ -51550,6 +51558,82 @@ mod tests {
     }
 
     #[test]
+    fn embedded_sequence_viewport_resets_stale_full_width_shell() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+        let viewport_id =
+            app.register_window(Window::new_dna(dna, "seq1".to_string(), app.engine.clone()));
+        let window = app
+            .windows
+            .get(&viewport_id)
+            .cloned()
+            .expect("registered sequence window");
+        const OUTER_CHROME_TOLERANCE_PX: f32 = 96.0;
+        let stable_id = egui::Id::new(("hosted_sequence_window", viewport_id));
+        let safe = crate::egui_compat::hosted_window_safe_rect_for_rect(screen_rect);
+        let max_size = crate::egui_compat::hosted_window_max_inner_size(
+            safe,
+            egui::vec2(820.0, 520.0),
+            egui::vec2(
+                super::EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX,
+                super::EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX,
+            ),
+        );
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        let mut stale_open = true;
+        crate::egui_compat::show_hosted_window(
+            &ctx,
+            &crate::egui_compat::HostedWindowSpec::new(
+                "seq1",
+                stable_id,
+                egui::vec2(5000.0, 5000.0),
+                egui::vec2(820.0, 520.0),
+            ),
+            &mut stale_open,
+            |ui| {
+                ui.set_min_size(egui::vec2(5000.0, 5000.0));
+                ui.label("stale full-width sequence shell");
+            },
+        );
+        let stale_rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("stale sequence area should be visible");
+        assert!(
+            stale_rect.width() > max_size.x + OUTER_CHROME_TOLERANCE_PX
+                || stale_rect.height() > max_size.y + OUTER_CHROME_TOLERANCE_PX,
+            "stale_rect={stale_rect:?}, max_size={max_size:?}"
+        );
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        let initial_position = app.pending_window_initial_positions.remove(&viewport_id);
+        app.show_window(&ctx, viewport_id, window, initial_position);
+
+        let rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("sequence area should be visible");
+        assert!(
+            rect.width() <= max_size.x + OUTER_CHROME_TOLERANCE_PX,
+            "rect={rect:?}, max_size={max_size:?}"
+        );
+        assert!(
+            rect.height() <= max_size.y + OUTER_CHROME_TOLERANCE_PX,
+            "rect={rect:?}, max_size={max_size:?}"
+        );
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
     fn newly_focused_embedded_sequence_window_renders_above_hosted_project_window() {
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);
@@ -51657,7 +51741,7 @@ mod tests {
     }
 
     #[test]
-    fn focusing_rna_mapping_from_windows_menu_queues_owner_and_child_focus() {
+    fn focusing_rna_mapping_from_windows_menu_queues_child_focus_without_owner_foreground() {
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
@@ -51672,8 +51756,8 @@ mod tests {
         app.focus_window_viewport(&ctx, mapping_viewport_id);
 
         assert!(
-            app.pending_focus_viewports.contains(&owner_viewport_id),
-            "focusing the RNA-read Mapping menu item should also raise its DNA host"
+            !app.pending_focus_viewports.contains(&owner_viewport_id),
+            "embedded RNA-read Mapping focus should keep the DNA host visible without queuing it above the child workspace"
         );
         let window = app
             .windows
@@ -51696,7 +51780,64 @@ mod tests {
     }
 
     #[test]
-    fn focusing_splicing_expert_from_windows_menu_queues_owner_and_child_focus() {
+    fn focusing_rna_mapping_from_windows_menu_renders_child_above_sequence_window() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+        let mut window = Window::new_dna(dna, "seq1".to_string(), app.engine.clone());
+        window.seed_rna_read_mapping_window_for_tests("seq1", 17, "TP73");
+        let owner_viewport_id = app.register_window(window);
+        app.pending_focus_viewports.clear();
+        app.pending_viewport_focus_timestamps.clear();
+        let mapping_viewport_id =
+            egui::ViewportId::from_hash_of(("rna_read_mapping_viewport", "seq1", 17usize));
+
+        app.focus_window_viewport(&ctx, mapping_viewport_id);
+
+        let window = app
+            .windows
+            .get(&owner_viewport_id)
+            .cloned()
+            .expect("registered sequence owner");
+        let initial_position = app
+            .pending_window_initial_positions
+            .remove(&owner_viewport_id);
+        let sequence_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(("hosted_sequence_window", owner_viewport_id)),
+        );
+        let foreground_sequence_layer_id = egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new(("hosted_sequence_window", owner_viewport_id)),
+        );
+        let mapping_layer_id = egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("rna_read_mapping_window_embedded_seq1_17"),
+        );
+        let stale_viewport_layer_id =
+            egui::LayerId::new(egui::Order::Middle, egui::Id::new(mapping_viewport_id));
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        app.show_window(&ctx, owner_viewport_id, window, initial_position);
+
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&sequence_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&foreground_sequence_layer_id)));
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&mapping_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        assert!(
+            ctx.memory(|mem| mem.areas().visible_layer_ids().contains(&mapping_layer_id)),
+            "focused RNA-read Mapping should render as a foreground hosted layer above its middle-order DNA host"
+        );
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn focusing_splicing_expert_from_windows_menu_queues_child_focus_without_owner_foreground() {
         let ctx = egui::Context::default();
         ctx.set_embed_viewports(true);
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
@@ -51711,8 +51852,8 @@ mod tests {
         app.focus_window_viewport(&ctx, splicing_viewport_id);
 
         assert!(
-            app.pending_focus_viewports.contains(&owner_viewport_id),
-            "focusing the Splicing Expert menu item should also raise its DNA host"
+            !app.pending_focus_viewports.contains(&owner_viewport_id),
+            "embedded Splicing Expert focus should keep the DNA host visible without queuing it above the child workspace"
         );
         let window = app
             .windows

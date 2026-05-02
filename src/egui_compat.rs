@@ -10,6 +10,8 @@ use eframe::egui;
 const HOSTED_WINDOW_SAFE_INSET_X_PX: f32 = 28.0;
 const HOSTED_WINDOW_SAFE_INSET_TOP_PX: f32 = 36.0;
 const HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX: f32 = 42.0;
+const HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX: f32 = 96.0;
+const HOSTED_WINDOW_STALE_ROOT_OCCUPANCY_THRESHOLD: f32 = 0.92;
 
 pub(crate) fn hosted_window_safe_rect_for_rect(rect: egui::Rect) -> egui::Rect {
     let shrunk = egui::Rect::from_min_max(
@@ -61,12 +63,52 @@ pub(crate) fn clamp_hosted_window_default_size(
     )
 }
 
+pub(crate) fn hosted_window_max_inner_size(
+    constrain_rect: egui::Rect,
+    min_size: egui::Vec2,
+    drag_margin: egui::Vec2,
+) -> egui::Vec2 {
+    egui::vec2(
+        (constrain_rect.width() - (drag_margin.x.max(0.0) * 2.0))
+            .max(min_size.x)
+            .min(constrain_rect.width()),
+        (constrain_rect.height() - (drag_margin.y.max(0.0) * 2.0))
+            .max(min_size.y)
+            .min(constrain_rect.height()),
+    )
+}
+
+pub(crate) fn reset_hosted_window_area_if_stale_oversized(
+    ctx: &egui::Context,
+    stable_id: egui::Id,
+    constrain_rect: egui::Rect,
+    max_inner_size: egui::Vec2,
+) -> bool {
+    let Some(rect) = ctx.memory(|mem| mem.area_rect(stable_id)) else {
+        return false;
+    };
+    let tolerance = HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX;
+    let over_width = rect.width() > max_inner_size.x + tolerance;
+    let over_height = rect.height() > max_inner_size.y + tolerance;
+    let fills_root_width =
+        rect.width() > constrain_rect.width() * HOSTED_WINDOW_STALE_ROOT_OCCUPANCY_THRESHOLD;
+    let fills_root_height =
+        rect.height() > constrain_rect.height() * HOSTED_WINDOW_STALE_ROOT_OCCUPANCY_THRESHOLD;
+    if !(over_width && fills_root_width || over_height && fills_root_height) {
+        return false;
+    }
+    ctx.memory_mut(|mem| mem.reset_areas());
+    ctx.request_repaint();
+    true
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct HostedWindowSpec {
     pub(crate) title: String,
     pub(crate) stable_id: egui::Id,
     pub(crate) default_size: egui::Vec2,
     pub(crate) min_size: egui::Vec2,
+    pub(crate) drag_margin: egui::Vec2,
     pub(crate) initial_pos: Option<egui::Pos2>,
     pub(crate) resizable: bool,
     pub(crate) collapsible: bool,
@@ -87,6 +129,7 @@ impl HostedWindowSpec {
             stable_id,
             default_size,
             min_size,
+            drag_margin: egui::Vec2::ZERO,
             initial_pos: None,
             resizable: true,
             collapsible: false,
@@ -98,6 +141,11 @@ impl HostedWindowSpec {
 
     pub(crate) fn initial_pos(mut self, initial_pos: Option<egui::Pos2>) -> Self {
         self.initial_pos = initial_pos;
+        self
+    }
+
+    pub(crate) fn drag_margin(mut self, drag_margin: egui::Vec2) -> Self {
+        self.drag_margin = egui::vec2(drag_margin.x.max(0.0), drag_margin.y.max(0.0));
         self
     }
 
@@ -227,6 +275,8 @@ pub(crate) fn show_hosted_window<R>(
     open: &mut bool,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> Option<egui::InnerResponse<Option<R>>> {
+    let constrain_rect = hosted_window_safe_rect(ctx);
+    let max_size = hosted_window_max_inner_size(constrain_rect, spec.min_size, spec.drag_margin);
     let stale_extra_visible = spec
         .legacy_layer_ids
         .iter()
@@ -240,10 +290,13 @@ pub(crate) fn show_hosted_window<R>(
         }
         ctx.request_repaint();
     }
-
-    let constrain_rect = hosted_window_safe_rect(ctx);
-    let default_size =
-        clamp_hosted_window_default_size(spec.default_size, constrain_rect, spec.min_size);
+    if spec.drag_margin != egui::Vec2::ZERO {
+        reset_hosted_window_area_if_stale_oversized(ctx, spec.stable_id, constrain_rect, max_size);
+    }
+    let default_size = egui::vec2(
+        spec.default_size.x.clamp(spec.min_size.x, max_size.x),
+        spec.default_size.y.clamp(spec.min_size.y, max_size.y),
+    );
     let default_pos =
         clamp_hosted_window_default_pos(spec.initial_pos, constrain_rect, default_size);
     let mut window = egui::Window::new(spec.title.clone())
@@ -254,7 +307,7 @@ pub(crate) fn show_hosted_window<R>(
         .default_pos(default_pos)
         .default_size(default_size)
         .min_size(spec.min_size)
-        .max_size(constrain_rect.size())
+        .max_size(max_size)
         .constrain_to(constrain_rect);
     if spec.foreground {
         window = window.order(egui::Order::Foreground);
@@ -325,9 +378,11 @@ pub(crate) fn show_bottom_panel_inside<R>(
 mod tests {
     use super::{
         HOSTED_WINDOW_SAFE_INSET_BOTTOM_PX, HOSTED_WINDOW_SAFE_INSET_TOP_PX,
-        HOSTED_WINDOW_SAFE_INSET_X_PX, HostedWindowSpec, ModalWindowSpec,
+        HOSTED_WINDOW_SAFE_INSET_X_PX, HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX,
+        HOSTED_WINDOW_STALE_ROOT_OCCUPANCY_THRESHOLD, HostedWindowSpec, ModalWindowSpec,
         clamp_hosted_window_default_pos, clamp_hosted_window_default_size,
-        hosted_window_safe_rect_for_rect, show_hosted_window, show_modal_window,
+        hosted_window_max_inner_size, hosted_window_safe_rect_for_rect,
+        reset_hosted_window_area_if_stale_oversized, show_hosted_window, show_modal_window,
     };
     use eframe::egui::{self, Rect, pos2, vec2};
 
@@ -450,6 +505,190 @@ mod tests {
             mem.areas()
                 .is_visible(&egui::LayerId::new(egui::Order::Foreground, foreground_id))
         }));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn show_hosted_window_drag_margin_resets_stale_oversized_area() {
+        let ctx = egui::Context::default();
+        let stable_id = egui::Id::new("drag_margin_hosted_layer");
+        let spec = HostedWindowSpec::new(
+            "Drag Margin",
+            stable_id,
+            vec2(900.0, 620.0),
+            vec2(180.0, 120.0),
+        )
+        .drag_margin(vec2(96.0, 48.0));
+        let mut open = true;
+        let screen_rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1000.0, 720.0));
+        let safe = hosted_window_safe_rect_for_rect(screen_rect);
+        let max_size = hosted_window_max_inner_size(safe, spec.min_size, spec.drag_margin);
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        show_hosted_window(
+            &ctx,
+            &HostedWindowSpec::new(
+                "Drag Margin",
+                stable_id,
+                vec2(5000.0, 5000.0),
+                vec2(180.0, 120.0),
+            ),
+            &mut open,
+            |ui| {
+                ui.set_min_size(vec2(5000.0, 5000.0));
+                ui.label("stale full-size shell");
+            },
+        );
+        let stale_rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("stale hosted area should be visible");
+        assert!(
+            stale_rect.width() > max_size.x + HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX
+                || stale_rect.height() > max_size.y + HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX,
+            "stale_rect={stale_rect:?}, max_size={max_size:?}"
+        );
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("normal content");
+        });
+        let rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("hosted area should be visible");
+        assert!(
+            rect.width() <= max_size.x + HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX,
+            "rect={rect:?}, max_size={max_size:?}"
+        );
+        assert!(
+            rect.height() <= max_size.y + HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX,
+            "rect={rect:?}, max_size={max_size:?}"
+        );
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn hosted_window_stale_reset_ignores_non_full_root_natural_width() {
+        let ctx = egui::Context::default();
+        let stable_id = egui::Id::new("natural_width_hosted_layer");
+        let screen_rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1400.0, 900.0));
+        let safe = hosted_window_safe_rect_for_rect(screen_rect);
+        let max_size = hosted_window_max_inner_size(safe, vec2(820.0, 520.0), vec2(140.0, 72.0));
+        let natural_width = max_size.x + 120.0;
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        egui::Area::new(stable_id)
+            .fixed_pos(safe.min)
+            .show(&ctx, |ui| {
+                ui.set_min_size(vec2(natural_width, 240.0));
+            });
+        let rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("test area should be visible");
+        assert!(
+            rect.width() > max_size.x + HOSTED_WINDOW_STALE_OUTER_SIZE_TOLERANCE_PX,
+            "rect={rect:?}, max_size={max_size:?}"
+        );
+        assert!(
+            rect.width() < safe.width() * HOSTED_WINDOW_STALE_ROOT_OCCUPANCY_THRESHOLD,
+            "rect={rect:?}, safe={safe:?}"
+        );
+        assert!(
+            !reset_hosted_window_area_if_stale_oversized(&ctx, stable_id, safe, max_size),
+            "natural-width content should not be treated like a stale full-root shell"
+        );
+        let retained_rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("test area should remain visible");
+        assert_eq!(retained_rect, rect);
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn show_hosted_window_with_drag_margin_moves_on_title_bar_drag() {
+        let ctx = egui::Context::default();
+        let stable_id = egui::Id::new("drag_room_move_layer");
+        let spec = HostedWindowSpec::new(
+            "Drag Room",
+            stable_id,
+            vec2(480.0, 320.0),
+            vec2(180.0, 120.0),
+        )
+        .drag_margin(vec2(96.0, 48.0));
+        let mut open = true;
+        let screen_rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1200.0, 800.0));
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("content");
+        });
+        let initial_rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("hosted area should be visible");
+        let drag_start = pos2(initial_rect.center().x, initial_rect.top() + 18.0);
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![
+                egui::Event::PointerMoved(drag_start),
+                egui::Event::PointerButton {
+                    pos: drag_start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("content");
+        });
+        let _ = ctx.end_pass();
+
+        let drag_end = drag_start + vec2(80.0, 0.0);
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerMoved(drag_end)],
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("content");
+        });
+        let moved_rect = ctx
+            .memory(|mem| mem.area_rect(stable_id))
+            .expect("hosted area should remain visible");
+        assert!(
+            moved_rect.min.x > initial_rect.min.x + 40.0,
+            "initial_rect={initial_rect:?}, moved_rect={moved_rect:?}"
+        );
+        let _ = ctx.end_pass();
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            events: vec![egui::Event::PointerButton {
+                pos: drag_end,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::default(),
+            }],
+            ..Default::default()
+        });
+        show_hosted_window(&ctx, &spec, &mut open, |ui| {
+            ui.label("content");
+        });
         let _ = ctx.end_pass();
     }
 

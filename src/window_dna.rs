@@ -382,7 +382,7 @@ impl WindowDna {
                     },
                 );
             } else {
-                self.main_area.render_inside(ui);
+                self.main_area.render_inside_without_auxiliary_windows(ui);
             }
         }));
         if result.is_err() {

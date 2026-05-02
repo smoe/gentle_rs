@@ -593,6 +593,14 @@ Post-release work includes:
   - hosted project/sequence windows now clamp their initial size to that safe
     rect so resize handles remain reachable and arrangement/detail panes are
     not born beyond the hosted workspace
+  - hosted sequence windows now reserve explicit drag room and clear stale
+    oversized shell state when a prior frame/window geometry would otherwise
+    leave the DNA viewer nearly full-width and barely movable
+  - DNA-owned auxiliary workspaces now render from a root-level hosted pass
+    after their owning sequence window body in macOS hosted mode; this removes
+    nested eframe/egui title shells for RNA-read Mapping, Splicing Expert,
+    Dotplot, Promoter design, and Isoform/Protein Expert, and `Windows` menu
+    focus keeps the owner visible without raising it over the auxiliary target
   - the hosted Help/Tutorial viewport now uses a stable hosted child-window id
     on macOS and resets stale local area state on first reopen, so old broken
     help geometry from earlier builds does not persist across restarts or topic
@@ -3415,7 +3423,12 @@ Notes:
      - remaining:
        - broader multi-field error-state GUI interaction coverage can be added
          as formula UI complexity grows
-   - UI-level snapshot tests for feature-tree grouping/collapse are pending
+   - UI-level feature-tree grouping/collapse coverage is started:
+     - an egui interaction regression now opens an `mRNA` kind group, then its
+       `TP73` subgroup, and confirms transcript rows render only after the
+       expected collapse path
+     - broader snapshot coverage for regulatory/repeat/track grouping and
+       selected-row auto-open behavior is still pending
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete
    - optional all-open-window refresh behavior for applied display changes

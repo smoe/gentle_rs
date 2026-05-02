@@ -578,10 +578,21 @@ impl GENtleApp {
 
     pub(super) fn focus_window_viewport(&mut self, ctx: &egui::Context, viewport_id: ViewportId) {
         let auxiliary_owner_viewport = self.request_auxiliary_window_focus(viewport_id);
+        let embedded_auxiliary_focus = ctx.embed_viewports() && auxiliary_owner_viewport.is_some();
         if let Some(owner_viewport_id) = auxiliary_owner_viewport {
-            self.queue_focus_viewport(owner_viewport_id);
-            ctx.send_viewport_cmd_to(owner_viewport_id, egui::ViewportCommand::Visible(true));
-            ctx.send_viewport_cmd_to(owner_viewport_id, egui::ViewportCommand::Focus);
+            if ctx.embed_viewports() {
+                if let Some(layer_id) =
+                    self.embedded_window_layer_id_for_viewport(owner_viewport_id)
+                {
+                    ctx.move_to_top(layer_id);
+                }
+                ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Focus);
+            } else {
+                self.queue_focus_viewport(owner_viewport_id);
+                ctx.send_viewport_cmd_to(owner_viewport_id, egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd_to(owner_viewport_id, egui::ViewportCommand::Focus);
+            }
         }
 
         if viewport_id == Self::configuration_viewport_id() {
@@ -626,8 +637,10 @@ impl GENtleApp {
                 ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Focus);
             }
         }
-        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
-        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+        if !embedded_auxiliary_focus {
+            ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+        }
         ctx.request_repaint();
         self.set_active_window_viewport(viewport_id);
     }
