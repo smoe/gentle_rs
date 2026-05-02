@@ -29306,6 +29306,36 @@ fn execute_reference_and_track_command_with_expanded_stack(
 }
 
 #[inline(never)]
+fn execute_sequence_analysis_command_with_expanded_stack(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    let engine_ptr = engine as *mut GentleEngine as usize;
+    let command = command.clone();
+    let worker = thread::Builder::new()
+        .name("gentle-shell-sequence-analysis-command".to_string())
+        .stack_size(SHELL_EXPANDED_STACK_SIZE)
+        .spawn(move || {
+            // SAFETY: the caller synchronously joins this worker before returning
+            // and does not access `engine` while the worker is running. This keeps
+            // sequence-analysis shell routes usable from small-stack callers.
+            let engine = unsafe { &mut *(engine_ptr as *mut GentleEngine) };
+            execute_sequence_analysis_command(engine, &command)
+        })
+        .map_err(|error| {
+            format!("Could not start shell sequence-analysis worker thread: {error}")
+        })?;
+    worker.join().map_err(|panic_payload| {
+        let message = panic_payload
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_string())
+            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_string());
+        format!("Shell sequence-analysis worker thread panicked: {message}")
+    })?
+}
+
+#[inline(never)]
 fn execute_cache_command(
     _engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -30144,7 +30174,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::SplicingRefsDerive { .. }
             | ShellCommand::AlignCompute { .. }
     ) {
-        return execute_sequence_analysis_command(engine, command);
+        return execute_sequence_analysis_command_with_expanded_stack(engine, command);
     }
     if matches!(
         command,
@@ -30398,7 +30428,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FlexList { .. }
         | ShellCommand::FlexShow { .. }
         | ShellCommand::SplicingRefsDerive { .. }
-        | ShellCommand::AlignCompute { .. } => execute_sequence_analysis_command(engine, command)?,
+        | ShellCommand::AlignCompute { .. } => {
+            execute_sequence_analysis_command_with_expanded_stack(engine, command)?
+        }
         ShellCommand::GenbankFetch { .. } | ShellCommand::DbsnpFetch { .. } => {
             execute_external_sequence_fetch_command(engine, command)?
         }
