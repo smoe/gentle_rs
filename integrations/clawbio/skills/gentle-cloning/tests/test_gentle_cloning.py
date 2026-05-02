@@ -4124,6 +4124,16 @@ def test_example_requests_cover_bootstrap_analysis_and_typical_request_routes() 
                 "artifacts/simple_pcr_demo_primers.report.json"
             ]
             assert payload["timeout_secs"] == 300
+        if name == "request_workflow_gibson_lab_assistant_handoff_demo.json":
+            assert payload["state_path"] == ".gentle_state.json"
+            assert (
+                payload["workflow_path"]
+                == "docs/examples/workflows/gibson_arrangements_baseline.json"
+            )
+            assert payload["expected_artifacts"] == [
+                "artifacts/gibson_lab_assistant_handoff.md"
+            ]
+            assert payload["timeout_secs"] == 300
         if name == "request_primers_preflight_auto.json":
             assert payload["backend"] == "auto"
         if name in {
@@ -4760,6 +4770,10 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "pcr protocol cartoon" in trigger_keywords
     assert "taqman protocol cartoon" in trigger_keywords
     assert "restriction cloning pcr handoff" in trigger_keywords
+    assert "lab assistant handoff" in trigger_keywords
+    assert "lab assistant instructions" in trigger_keywords
+    assert "lab assistant demo" in trigger_keywords
+    assert "cloning handoff demo" in trigger_keywords
     assert "database status" in trigger_keywords
     assert "installed databases" in trigger_keywords
     assert "resources status" in trigger_keywords
@@ -4807,6 +4821,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert set(routes) == {
         "telegram_guide_isoforms_gene",
         "lab_assistant_handoff_export",
+        "demo_lab_assistant_handoff",
         "skill_info",
         "telegram_guide_overview",
         "telegram_guide_readiness",
@@ -4878,6 +4893,9 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "protein_residue_genomic_coordinates": None,
         "transcript_qpcr_panel": None,
         "telegram_guide_isoforms_gene": None,
+        "demo_lab_assistant_handoff": (
+            "examples/request_workflow_gibson_lab_assistant_handoff_demo.json"
+        ),
         "ensembl_gene_protein_2d_gel": None,
         "demo_isoform_protein_gel": "examples/request_workflow_isoform_protein_gel_demo.json",
         "demo_isoform_protein_2d_gel": (

@@ -2812,6 +2812,10 @@ Pool exchange commands:
   - GENtle does not invent reagent volumes, incubation temperatures, or
     kit-specific timings; local SOPs and supervisor-approved conditions remain
     authoritative.
+  - Offline demo:
+    `workflow @docs/examples/workflows/gibson_arrangements_baseline.json`
+    now designs the pGEX/insert Gibson example and writes
+    `artifacts/gibson_lab_assistant_handoff.md` for ClawBio/Telegram previews.
 
 Rendering export commands:
 

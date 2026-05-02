@@ -3462,8 +3462,11 @@ Notes:
      (notably `import-pool` and resource-sync utilities)
    - first technical-assistant protocol text export is now available through
      `ExportLabAssistantInstructions` and shared shell
-     `export-lab-instructions`; follow-on work should deepen operation-specific
-     phrasing, vendor/SOP template overlays, and GUI affordances
+     `export-lab-instructions`; the offline Gibson tutorial workflow now also
+     exports `artifacts/gibson_lab_assistant_handoff.md` so ClawBio can present
+     a complete design-plus-bench-handoff demo without pre-existing state.
+     Follow-on work should deepen operation-specific phrasing, vendor/SOP
+     template overlays, and GUI affordances
    - view-model contract is not yet formalized as a frontend-neutral schema
 7. guideRNA workflow remains incomplete (guide-candidate model, oligo
    generation/export, macro template flow; draft in `docs/rna_guides_spec.md`).

@@ -48,7 +48,7 @@
     "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "63cb61a92a28c445ce5810f6f2a186ee0216f4d5",
     "chapters/14_tp73_cdna_genomic_dotplot_online.md": "ac2afd635828d8e2e6bbb0e4ef57c22cc440004b",
     "chapters/15_gibson_specialist_testing_baseline.md": "d2e3b339ca0493f7845a8064d4d4e5a3d4dfd10d",
-    "chapters/16_gibson_arrangements_baseline.md": "ba68817abab9d8768ebed547a7a2af16447f3e06",
+    "chapters/16_gibson_arrangements_baseline.md": "61c723a2ae467ab111d3ac726b42aab910d07abf",
     "chapters/17_tp53_uniprot_projection_online.md": "c29e64d3b686bc26c10dfa5aab0e1d8c140d74ed",
     "chapters/18_simple_pcr_selection_gui.md": "4ddcd3e977a30d98729265305aa27b196d677733",
     "chapters/19_tp73_uniprot_projection_audit_cli.md": "60eb489b9d04feeaf510ac112495c9691ae49828"
@@ -298,7 +298,9 @@
         "sequence_lineage"
       ],
       "executed": true,
-      "retained_artifacts": []
+      "retained_artifacts": [
+        "artifacts/gibson_lab_assistant_handoff.md"
+      ]
     },
     {
       "id": "tp53_uniprot_projection_online",
