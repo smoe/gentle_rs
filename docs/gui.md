@@ -240,7 +240,8 @@ Both panels can be shown/hidden from the toolbar.
   restriction-site tooltip with enzyme/site count, recognition span, cut
   geometry, caret-marked top/bottom cut positions, and REBASE/note metadata
   when available; clicking the same site still opens the richer description
-  panel expert view. The same presentation-ready lines are serialized as
+  panel expert view and the hover reminds users that click pins the details.
+  The same presentation-ready lines are serialized as
   `tooltip_lines[]` by `inspect-feature-expert ... restriction ...` for
   scripts and external tools.
 
@@ -553,6 +554,10 @@ Feature tree grouping:
   (`recognition_iupac`, `enzyme_cut_offset_0based`, `overlap_bp`, optional
   `note`) plus a direct REBASE enzyme URL
   (`https://rebase.neb.com/rebase/enz/<Enzyme>.html`).
+- The pinned restriction-site expert view includes `Copy Summary` and
+  `Copy Detail JSON` actions so the SnapGene-style tooltip summary or full
+  shared expert record can be pasted into protocols, bug reports, or external
+  agent/MCP handoffs.
 - Restriction-site markers now preserve end geometry in the UI:
   - blunt cuts use aligned markers in a neutral slate color
   - `5'` overhang cuts use blue staggered markers

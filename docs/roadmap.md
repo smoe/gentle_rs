@@ -6482,9 +6482,13 @@ Current parking-lot ideas:
       same non-mutating shared-shell detail record over `gentle_mcp`, including
       `tooltip_lines[]`, so external agents can inspect the exact GUI-style
       restriction-site summary without rendering SVG or adding MCP-only biology
+    - pinned-copy follow-up (2026-05-02): clicking a restriction site pins the
+      shared expert view in the Description panel, and that pinned view now has
+      `Copy Summary` / `Copy Detail JSON` actions for protocol notes, bug
+      reports, and external-agent handoff
   - if revisited later, likely staged implementation is:
-    1. add a pinned popover/inspector action that can stay open after hover and
-       copy/export the same shared detail record
+    1. optionally add a floating popover/window variant if the Description
+       panel proves too easy to miss during dense plasmid-map work
     2. later optional links to methylation-sensitivity or sidecar usage notes
        can attach to the shared record without changing enzyme-resolution
        semantics
