@@ -64,6 +64,26 @@
       ]
     },
     {
+      "intent_id": "demo_lab_assistant_handoff",
+      "description": "Run the deterministic offline Gibson cloning demo and export assistant-ready bench instructions as Markdown.",
+      "trigger_terms": [
+        "demo lab assistant handoff",
+        "show lab assistant handoff demo",
+        "cloning handoff demo",
+        "gibson lab assistant demo",
+        "demo wet lab instructions",
+        "show cloning instructions demo"
+      ],
+      "demo_policy": "only_when_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_workflow_gibson_lab_assistant_handoff_demo.json"
+        }
+      ]
+    },
+    {
       "intent_id": "skill_info",
       "description": "Report GENtle ClawBio skill metadata without requiring a GENtle runtime.",
       "trigger_terms": [

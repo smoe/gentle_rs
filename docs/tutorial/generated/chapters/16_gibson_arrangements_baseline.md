@@ -7,20 +7,22 @@
 - Example test_mode: `always`
 - Executed during generation: `yes`
 
-Open directly into an arrangement-ready Gibson result with vector, insert, assembled product, and the stored three-lane lane set already present.
+Open directly into an arrangement-ready Gibson result with vector, insert, assembled product, a stored three-lane lane set, and an assistant-facing bench handoff already present.
 
-This chapter now uses its own deterministic workflow example instead of reusing the Gibson specialist starter. `File -> Open Tutorial Project...` builds the pGEX + insert starter, applies the canonical single-insert Gibson plan, and then opens the arrangement guide so the user can inspect singleton outputs, stored arrangements, and gel export without first repeating the cloning step.
+This chapter now uses its own deterministic workflow example instead of reusing the Gibson specialist starter. `File -> Open Tutorial Project...` builds the pGEX + insert starter, applies the canonical single-insert Gibson plan, exports a lab-assistant handoff Markdown file, and then opens the arrangement guide so the user can inspect singleton outputs, stored arrangements, gel export, and bench-facing instructions without first repeating the cloning step.
 
 ## When This Routine Is Useful
 
 - You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier Gibson-specialist apply walkthrough.
 - You want a reproducible starter state for checking singleton output containers, the assembled product, and arrangement-level gel export.
+- You want a deterministic example of GENtle handing a designed cloning experiment to a non-IT lab assistant.
 - You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial.
 
 ## What You Learn
 
 - Use one executable starter project to reach an arrangement-ready walkthrough directly.
 - Recognize the separation between the Gibson specialist apply tutorial and the downstream arrangement/gel-inspection tutorial.
+- Inspect the generated lab-assistant handoff as the bench-facing counterpart to the design state.
 - Replay the same arrangement-focused setup from GUI and CLI without requiring a second manual Gibson apply.
 
 ## Concepts and Recurrence
@@ -64,6 +66,9 @@ cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/gibson_ar
 - `workflow example = gibson_arrangements_baseline` (where used: `Open Tutorial Project...` and CLI workflow replay)
   - Why it matters: The arrangement starter now has its own canonical example so the tutorial can begin with the cloned result and stored lane arrangement already available.
   - How to derive it: Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.
+- `lab assistant handoff = artifacts/gibson_lab_assistant_handoff.md` (where used: ClawBio/Telegram demo artifact and CLI replay)
+  - Why it matters: Provides non-IT bench-facing instructions tied to the exact deterministic design outputs.
+  - How to derive it: The workflow calls `ExportLabAssistantInstructions` after applying the Gibson plan.
 
 ## Follow-up Commands
 
@@ -74,12 +79,13 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangeme
 ## Checkpoints
 
 - The tutorial project opens with the expected destination, insert, and assembled-product IDs already loaded.
+- The workflow writes `artifacts/gibson_lab_assistant_handoff.md` with material IDs, design-derived bench steps, checkpoints, and safety scope.
 - The Help window lands on the arrangement tutorial rather than the specialist testing tutorial.
 - The arrangement guide can start from this baseline without an additional manual Gibson apply.
 
 ## Retained Outputs
 
-- None for this chapter.
+- [`artifacts/gibson_lab_assistant_handoff.md`](../artifacts/gibson_lab_assistant_handoff.md)
 
 ## Canonical Source
 
