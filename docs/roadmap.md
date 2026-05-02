@@ -4115,6 +4115,12 @@ Status:
   - `RNA-read Mapping` now exposes explicit cDNA/direct-RNA interpretation mode
     control (`Input is cDNA` checkbox) with configurable poly-T prefix minimum
     for automatic reverse-complement normalization.
+  - RNA-read report inventory/detail/sample-sheet surfaces now derive stable
+    `input_orientation_mode` / `input_orientation_label` markers
+    (`cdna_oriented` / `cDNA-oriented` or `direct_rna` / `direct-RNA`) from the
+    engine-owned `seed_filter.cdna_poly_t_flip_enabled` setting, so GUI/CLI/TSV
+    consumers do not have to infer the presentation mode from the raw seed
+    filter field.
   - `RNA-read Mapping` / `InterpretRnaReads` now admit `ncRNA` seed features in
     addition to `mRNA`/`transcript`/`exon`, so reverse-strand antisense loci
     such as `TP73-AS3` can use the shared cDNA filtering path without

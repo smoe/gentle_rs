@@ -1318,7 +1318,9 @@ Feature tree grouping:
   - saved-report warnings and retained-preview details are collapsed by default
     under `Saved report details` to reduce idle clutter after large runs
   - `Export RNA sample sheet ...` writes a TSV summary for current-sequence
-    reports, including exon/junction support-frequency JSON columns
+    reports, including cDNA/direct-RNA `input_orientation_mode` /
+    `input_orientation_label` provenance and exon/junction support-frequency
+    JSON columns
   - executes read-only interpretation/report generation (no direct feature
     mutation).
 

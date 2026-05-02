@@ -28691,11 +28691,17 @@ fn execute_rna_reads_command(
                 .get_rna_read_report(report_id)
                 .map_err(|e| e.to_string())?;
             let summary = GentleEngine::format_rna_read_report_detail_summary(&report);
+            let input_orientation_mode = report.seed_filter.input_orientation_mode();
+            let input_orientation_label = report.seed_filter.input_orientation_label();
+            let report_value =
+                GentleEngine::rna_read_report_export_value(&report).map_err(|e| e.to_string())?;
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({
-                    "report": report,
+                    "report": report_value,
                     "summary": summary,
+                    "input_orientation_mode": input_orientation_mode,
+                    "input_orientation_label": input_orientation_label,
                 }),
             })
         }

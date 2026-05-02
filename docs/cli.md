@@ -2239,13 +2239,15 @@ Shared shell command:
       - `--roi-seed-capture` remains planned and is surfaced as a deterministic
         warning until implemented
     - `rna-reads list-reports` rows expose sparse-origin request provenance:
-      `origin_mode`, `target_gene_count`, and `roi_seed_capture_enabled`
+      `origin_mode`, `input_orientation_mode`, `input_orientation_label`,
+      `target_gene_count`, and `roi_seed_capture_enabled`
       - shell/CLI JSON output also includes `summary_rows[]` for quick
-        human-readable triage (`mode`, `origin`, target count, ROI-capture
-        flag, and read counters)
+        human-readable triage (`mode`, cDNA/direct-RNA orientation, `origin`,
+        target count, ROI-capture flag, and read counters)
     - `rna-reads show-report` output includes a `summary` field with the same
-      compact provenance framing, plus aligned/full-length percentages and
-      compact read-length histogram summaries for:
+      compact provenance framing and top-level `input_orientation_mode` /
+      `input_orientation_label` JSON markers, plus aligned/full-length
+      percentages and compact read-length histogram summaries for:
       - all reads
       - seed-passed reads
       - aligned reads
@@ -2255,10 +2257,10 @@ Shared shell command:
     - batch target-gene cohort tutorial:
       `docs/tutorial/rna_read_batch_gene_support_cli.md`
     - `rna-reads export-sample-sheet` includes sparse-origin provenance columns
-      (`report_mode`, `origin_mode`, `target_gene_count`,
-      `target_gene_ids_json`, `roi_seed_capture_enabled`),
-      `mean_read_length_bp`, and `origin_class_counts_json` alongside
-      exon/junction frequency JSON fields
+      (`report_mode`, `input_orientation_mode`, `input_orientation_label`,
+      `origin_mode`, `target_gene_count`, `target_gene_ids_json`,
+      `roi_seed_capture_enabled`), `mean_read_length_bp`, and
+      `origin_class_counts_json` alongside exon/junction frequency JSON fields
     - when `rna-reads export-sample-sheet` is given one or more `--gene`
       arguments, each report row also carries target-gene cohort metrics:
       - accepted-target counts/fractions
