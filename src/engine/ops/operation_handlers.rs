@@ -15,6 +15,7 @@ use crate::{
     AMINO_ACIDS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
     dna_ladder::default_dna_ladders,
+    exon_frame::ExonLengthFrameCue,
     genomes::{BlastHit, default_catalog_discovery_label, default_catalog_discovery_token},
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     protein_gel::{
@@ -5621,25 +5622,19 @@ impl GentleEngine {
                     .filter(|(_, ranges)| ranges.iter().any(|range| range == &(*start, *end)))
                     .count()
                     .max(1);
-                let length_bp = end.saturating_sub(*start);
+                let frame_cue = ExonLengthFrameCue::from_range(*start, *end);
+                let length_bp = frame_cue.length_bp;
                 let cds_overlap = cds_ranges
                     .iter()
                     .any(|(cds_start, cds_end)| *cds_end > *start && *cds_start < *end);
-                let cds_phase_warning = if cds_overlap && length_bp % 3 != 0 {
-                    Some(format!(
-                        "Skipping this CDS-overlapping exon changes coding length by {} bp (not divisible by 3).",
-                        length_bp
-                    ))
-                } else {
-                    None
-                };
+                let cds_phase_warning = frame_cue.cds_phase_warning(cds_overlap);
                 ExonSkipCandidateExon {
                     candidate_id: format!("exon_{}", idx + 1),
                     ordinal: idx + 1,
                     start_1based: start.saturating_add(1),
                     end_1based: *end,
                     length_bp,
-                    length_mod3: length_bp % 3,
+                    length_mod3: frame_cue.length_mod3,
                     support_transcript_count,
                     constitutive: support_transcript_count == transcript_count,
                     present_in_base_transcript: true,

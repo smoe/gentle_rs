@@ -3,6 +3,7 @@
 use crate::{
     dna_display::{DnaDisplay, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
+    exon_frame::ExonLengthFrameCue,
     feature_location::collect_location_ranges_usize,
     render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
@@ -24,6 +25,13 @@ pub struct RestrictionEnzymePosition {
     pub area: Rect,
     pub hit_areas: Vec<Rect>,
     pub key: RestrictionEnzymeKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoveredExonFrameCue {
+    pub exon_number: usize,
+    pub length_mod3: u8,
+    pub skip_frame_hint: &'static str,
 }
 
 impl RestrictionEnzymePosition {
@@ -193,6 +201,16 @@ impl RenderDna {
         }
     }
 
+    pub fn get_hovered_exon_frame_cue(&self) -> Option<HoveredExonFrameCue> {
+        match self {
+            RenderDna::Circular(_) => None,
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_exon_frame_cue()),
+        }
+    }
+
     pub fn get_hovered_reasoning_evidence_id(&self) -> Option<String> {
         match self {
             RenderDna::Circular(renderer) => renderer
@@ -330,9 +348,7 @@ impl RenderDna {
     }
 
     pub fn exon_length_mod3_for_range(start_0based: usize, end_0based_exclusive: usize) -> u8 {
-        end_0based_exclusive
-            .saturating_sub(start_0based)
-            .rem_euclid(3) as u8
+        ExonLengthFrameCue::from_range(start_0based, end_0based_exclusive).length_mod3 as u8
     }
 
     pub fn exon_length_mod3_color(mod3: u8) -> Color32 {
@@ -340,6 +356,14 @@ impl RenderDna {
             0 => Color32::from_rgb(30, 64, 175),
             1 => Color32::from_rgb(217, 119, 6),
             _ => Color32::from_rgb(225, 29, 72),
+        }
+    }
+
+    pub fn exon_length_mod3_color_label(mod3: u8) -> &'static str {
+        match mod3 % 3 {
+            0 => "blue",
+            1 => "amber",
+            _ => "rose",
         }
     }
 
@@ -896,11 +920,10 @@ impl RenderDna {
         let mut mod_counts = [0usize; 3];
         let mut parts = Vec::new();
         for (idx, (start, end)) in exon_ranges.iter().copied().enumerate() {
-            let len = end.saturating_sub(start);
-            let mod3 = Self::exon_length_mod3_for_range(start, end) as usize;
-            mod_counts[mod3] = mod_counts[mod3].saturating_add(1);
+            let cue = ExonLengthFrameCue::from_range(start, end);
+            mod_counts[cue.length_mod3] = mod_counts[cue.length_mod3].saturating_add(1);
             if idx < 12 {
-                parts.push(format!("{}bp->{}", len, mod3));
+                parts.push(format!("{}bp->{}", cue.length_bp, cue.length_mod3));
             }
         }
         if exon_ranges.len() > parts.len() {
@@ -915,13 +938,11 @@ impl RenderDna {
         ));
         lines.push(format!("exon_length_mod3_segments: {}", parts.join(", ")));
         if exon_ranges.len() == 1 {
-            let mod3 = Self::exon_length_mod3_for_range(exon_ranges[0].0, exon_ranges[0].1);
-            let hint = if mod3 == 0 {
-                "length is a multiple of 3; whole-exon omission is length-frame-neutral"
-            } else {
-                "whole-exon omission changes coding-frame length if the exon is coding"
-            };
-            lines.push(format!("exon_skip_frame_hint: {hint}"));
+            let cue = ExonLengthFrameCue::from_range(exon_ranges[0].0, exon_ranges[0].1);
+            lines.push(format!(
+                "exon_skip_frame_hint: {}",
+                cue.skip_frame_hint(true)
+            ));
         }
         lines
     }
@@ -1602,7 +1623,7 @@ mod tests {
                 "exon_count: 1",
                 "exon_length_mod3_counts: 0=0 1=1 2=0",
                 "exon_length_mod3_segments: 10bp->1",
-                "exon_skip_frame_hint: whole-exon omission changes coding-frame length if the exon is coding",
+                "exon_skip_frame_hint: whole-exon omission changes coding-frame length",
                 "label: exon 2",
             ]
         );

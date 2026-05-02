@@ -42,6 +42,8 @@ pub mod ensembl_gene;
 pub mod ensembl_protein;
 /// Restriction-enzyme catalog loading and convenience selection helpers.
 pub mod enzymes;
+/// Shared exon length and coding-frame cue helpers.
+pub mod exon_frame;
 /// Expert-view data contracts for feature-centric deep-inspection UIs.
 pub mod feature_expert;
 /// Feature location/strand utilities used across render and engine code.

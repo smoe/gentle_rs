@@ -125,6 +125,7 @@ use crate::{
         shell_help_text,
     },
     enzymes::active_restriction_enzymes,
+    exon_frame::{ExonLengthFrameCue, phase_entry_hint},
     feature_expert::{
         FeatureExpertTarget, FeatureExpertView, IsoformArchitectureExpertView,
         RestrictionSiteExpertView, SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView,
@@ -27378,6 +27379,7 @@ impl MainAreaDna {
                                         .map(|phase| phase.to_string())
                                         .unwrap_or_else(|| "n/a".to_string()),
                                 ));
+                                ui.label(format!("CDS entry: {}", phase_entry_hint(left_phase)));
                                 if interactive {
                                     ui.label(
                                     "Click lane to focus this transcript feature in sequence view",
@@ -28199,6 +28201,26 @@ impl MainAreaDna {
             ui.horizontal_wrapped(|ui| {
                 for (idx, exon) in lane.exons.iter().enumerate() {
                     let candidate_id = Self::splicing_exon_skip_candidate_id(idx + 1);
+                    let exon_len = exon
+                        .end_1based
+                        .max(exon.start_1based)
+                        .saturating_sub(exon.end_1based.min(exon.start_1based))
+                        + 1;
+                    let frame_cue = ExonLengthFrameCue::from_length(exon_len);
+                    let left_phase = lane
+                        .exon_cds_phases
+                        .get(idx)
+                        .filter(|phase| {
+                            phase.start_1based == exon.start_1based
+                                && phase.end_1based == exon.end_1based
+                        })
+                        .or_else(|| {
+                            lane.exon_cds_phases.iter().find(|phase| {
+                                phase.start_1based == exon.start_1based
+                                    && phase.end_1based == exon.end_1based
+                            })
+                        })
+                        .and_then(|phase| phase.left_cds_phase);
                     let mut selected = self
                         .splicing_exon_skip_selected_candidate_ids
                         .contains(&candidate_id);
@@ -28208,7 +28230,17 @@ impl MainAreaDna {
                     );
                     if ui
                         .checkbox(&mut selected, label)
-                        .on_hover_text("Select this exon candidate to skip in the materialized isoform")
+                        .on_hover_text(format!(
+                            "Select this exon candidate to skip in the materialized isoform.\nlength={} bp; len%3={} ({})\n{}\nCDS entry phase: {} ({})",
+                            exon_len,
+                            frame_cue.length_mod3,
+                            RenderDna::exon_length_mod3_color_label(frame_cue.length_mod3 as u8),
+                            frame_cue.skip_frame_hint(true),
+                            left_phase
+                                .map(|phase| phase.to_string())
+                                .unwrap_or_else(|| "n/a".to_string()),
+                            phase_entry_hint(left_phase),
+                        ))
                         .changed()
                     {
                         if selected {
@@ -28217,6 +28249,117 @@ impl MainAreaDna {
                         } else {
                             self.splicing_exon_skip_selected_candidate_ids
                                 .remove(&candidate_id);
+                        }
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button("Add len%3=0")
+                    .on_hover_text("Add exon candidates whose length is a multiple of 3")
+                    .clicked()
+                {
+                    for (idx, exon) in lane.exons.iter().enumerate() {
+                        let len = exon
+                            .end_1based
+                            .max(exon.start_1based)
+                            .saturating_sub(exon.end_1based.min(exon.start_1based))
+                            + 1;
+                        if ExonLengthFrameCue::from_length(len).frame_neutral_length {
+                            self.splicing_exon_skip_selected_candidate_ids
+                                .insert(Self::splicing_exon_skip_candidate_id(idx + 1));
+                        }
+                    }
+                }
+                if ui
+                    .button("Add len%3=1")
+                    .on_hover_text("Add exon candidates whose length leaves one extra base modulo 3")
+                    .clicked()
+                {
+                    for (idx, exon) in lane.exons.iter().enumerate() {
+                        let len = exon
+                            .end_1based
+                            .max(exon.start_1based)
+                            .saturating_sub(exon.end_1based.min(exon.start_1based))
+                            + 1;
+                        if ExonLengthFrameCue::from_length(len).length_mod3 == 1 {
+                            self.splicing_exon_skip_selected_candidate_ids
+                                .insert(Self::splicing_exon_skip_candidate_id(idx + 1));
+                        }
+                    }
+                }
+                if ui
+                    .button("Add len%3=2")
+                    .on_hover_text("Add exon candidates whose length leaves two extra bases modulo 3")
+                    .clicked()
+                {
+                    for (idx, exon) in lane.exons.iter().enumerate() {
+                        let len = exon
+                            .end_1based
+                            .max(exon.start_1based)
+                            .saturating_sub(exon.end_1based.min(exon.start_1based))
+                            + 1;
+                        if ExonLengthFrameCue::from_length(len).length_mod3 == 2 {
+                            self.splicing_exon_skip_selected_candidate_ids
+                                .insert(Self::splicing_exon_skip_candidate_id(idx + 1));
+                        }
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button("Add phase 0 starts")
+                    .on_hover_text(
+                        "Add exon candidates whose CDS left flank phase is 0: they start at a codon boundary/new amino acid in this transcript",
+                    )
+                    .clicked()
+                {
+                    for (idx, exon) in lane.exons.iter().enumerate() {
+                        let left_phase = lane
+                            .exon_cds_phases
+                            .get(idx)
+                            .filter(|phase| {
+                                phase.start_1based == exon.start_1based
+                                    && phase.end_1based == exon.end_1based
+                            })
+                            .or_else(|| {
+                                lane.exon_cds_phases.iter().find(|phase| {
+                                    phase.start_1based == exon.start_1based
+                                        && phase.end_1based == exon.end_1based
+                                })
+                            })
+                            .and_then(|phase| phase.left_cds_phase);
+                        if left_phase.map(|phase| phase % 3) == Some(0) {
+                            self.splicing_exon_skip_selected_candidate_ids
+                                .insert(Self::splicing_exon_skip_candidate_id(idx + 1));
+                        }
+                    }
+                }
+                if ui
+                    .button("Add split-codon starts")
+                    .on_hover_text(
+                        "Add exon candidates whose CDS left flank phase is 1 or 2: they enter within a split codon in this transcript",
+                    )
+                    .clicked()
+                {
+                    for (idx, exon) in lane.exons.iter().enumerate() {
+                        let left_phase = lane
+                            .exon_cds_phases
+                            .get(idx)
+                            .filter(|phase| {
+                                phase.start_1based == exon.start_1based
+                                    && phase.end_1based == exon.end_1based
+                            })
+                            .or_else(|| {
+                                lane.exon_cds_phases.iter().find(|phase| {
+                                    phase.start_1based == exon.start_1based
+                                        && phase.end_1based == exon.end_1based
+                                })
+                            })
+                            .and_then(|phase| phase.left_cds_phase);
+                        if matches!(left_phase.map(|phase| phase % 3), Some(1 | 2)) {
+                            self.splicing_exon_skip_selected_candidate_ids
+                                .insert(Self::splicing_exon_skip_candidate_id(idx + 1));
                         }
                     }
                 }
@@ -54857,6 +55000,7 @@ impl MainAreaDna {
                     self.map_dna.on_hover(pointer_state);
 
                     if let Some(feature_id) = self.map_dna.get_hovered_feature_id() {
+                        let exon_frame_cue = self.map_dna.get_hovered_exon_frame_cue();
                         let hover_text = self.dna.read().ok().and_then(|dna| {
                             let feature = dna.features().get(feature_id)?;
                             let name = {
@@ -54887,6 +55031,28 @@ impl MainAreaDna {
                                         .monospace()
                                         .size(detail_font_size),
                                 );
+                                if let Some(cue) = exon_frame_cue.as_ref() {
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "hovered_exon_{}: len%3={} ({})",
+                                            cue.exon_number,
+                                            cue.length_mod3,
+                                            RenderDna::exon_length_mod3_color_label(
+                                                cue.length_mod3
+                                            )
+                                        ))
+                                        .monospace()
+                                        .size(detail_font_size),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "exon_skip_frame_hint: {}",
+                                            cue.skip_frame_hint
+                                        ))
+                                        .monospace()
+                                        .size(detail_font_size),
+                                    );
+                                }
                                 for line in details.iter().take(4) {
                                     ui.label(
                                         egui::RichText::new(line)
