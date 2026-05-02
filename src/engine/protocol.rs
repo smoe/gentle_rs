@@ -26,6 +26,7 @@ pub use gentle_protocol::{
     CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
     CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
     CandidateSetOperator, CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Capabilities,
+    CdnaAssayMaterializedProductRow, CdnaAssayProductGelBandRow, CdnaAssayProductMaterialization,
     CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, ConstructCandidate,
     ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore, ConstructRole,
     ContainerId, ContainerKind, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
@@ -3336,7 +3337,7 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cdna_assay_test_report: Option<Box<CdnaAssayTestReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cdna_assay_product_materialization: Option<CdnaAssayProductMaterialization>,
+    pub cdna_assay_product_materialization: Option<Box<CdnaAssayProductMaterialization>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_qpcr_panel: Option<Box<TranscriptQpcrPanelReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5014,31 +5015,6 @@ pub struct CdnaAssayTestReport {
     pub transcript_results: Vec<CdnaAssayTranscriptResult>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcript_map: Option<CdnaAssayTranscriptMap>,
-    #[serde(default)]
-    pub warnings: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-/// Summary of optional cDNA PCR/qPCR product materialization into concrete
-/// GENtle sequence entries and a wet-lab-style product container.
-pub struct CdnaAssayProductMaterialization {
-    pub schema: String,
-    pub assay_kind: String,
-    pub source_seq_id: String,
-    pub source_feature_id: usize,
-    pub group_label: String,
-    pub product_count: usize,
-    #[serde(default)]
-    pub product_seq_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub container_id: Option<ContainerId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub container_kind: Option<ContainerKind>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub product_gel_svg_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub product_output_prefix: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }

@@ -2147,6 +2147,10 @@ without blocking this publication.
     while requested oligo sequences are shown once in the legend, crowded
     transcript sets auto-wrap into columns, and transcript-local exon ordinals
     remain available in SVG tooltips
+  - cDNA PCR/qPCR product materialization is now idempotent and text-friendly:
+    repeat assay runs reuse existing matching product sequence ids and the same
+    singleton/pool container, while product-gel outputs include structured band
+    rows plus concise text summaries for Telegram/CLI surfaces
   - remaining deterministic test gap:
     - TP73-AS2 / TP73-AS3 cover shared-mode success, no-competitor failure,
       transcript-specific junction-only success, transcript-specific

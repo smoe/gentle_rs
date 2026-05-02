@@ -1914,6 +1914,165 @@ pub struct ExonSkipMaterializationReport {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One transcript-derived PCR/qPCR product materialized as a reusable sequence.
+pub struct CdnaAssayMaterializedProductRow {
+    pub product_seq_id: SeqId,
+    pub transcript_id: String,
+    pub transcript_feature_id: usize,
+    pub product_index: usize,
+    pub amplicon_length_bp: usize,
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub probe_supported: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub covered_junction_labels: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub genomic_carryover_risk: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub genomic_carryover_rationale: String,
+    pub created: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Text-friendly row describing one rendered PCR/qPCR product-gel band.
+pub struct CdnaAssayProductGelBandRow {
+    pub lane_name: String,
+    pub band_index: usize,
+    pub apparent_bp: usize,
+    pub min_bp: usize,
+    pub max_bp: usize,
+    pub product_count: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Summary of optional cDNA PCR/qPCR product materialization into concrete
+/// GENtle sequence entries, a reusable product container, and an optional gel.
+pub struct CdnaAssayProductMaterialization {
+    pub schema: String,
+    pub assay_kind: String,
+    pub source_seq_id: String,
+    pub source_feature_id: usize,
+    pub group_label: String,
+    pub product_count: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub product_seq_ids: Vec<SeqId>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub created_product_seq_ids: Vec<SeqId>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reused_product_seq_ids: Vec<SeqId>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub product_rows: Vec<CdnaAssayMaterializedProductRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container_id: Option<ContainerId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container_kind: Option<ContainerKind>,
+    pub container_created: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product_gel_svg_path: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub gel_band_rows: Vec<CdnaAssayProductGelBandRow>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub gel_summary_lines: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product_output_prefix: Option<String>,
+    pub idempotent_reuse: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+#[cfg(test)]
+mod exon_skip_return_contract_tests {
+    use super::{
+        CdnaAssayMaterializedProductRow, CdnaAssayProductGelBandRow,
+        CdnaAssayProductMaterialization, ContainerKind, ExonSkipReturnKind, ExonSkipReturnPayload,
+    };
+
+    #[test]
+    fn exon_skip_return_payloads_keep_stable_public_spellings() {
+        assert_eq!(ExonSkipReturnKind::Genbank.as_str(), "genbank");
+        assert_eq!(ExonSkipReturnKind::CdnaFasta.as_str(), "cdna_fasta");
+        assert_eq!(
+            ExonSkipReturnKind::AminoAcidSequence.as_str(),
+            "amino_acid_sequence"
+        );
+        assert_eq!(
+            ExonSkipReturnKind::AminoAcidFasta.as_str(),
+            "amino_acid_fasta"
+        );
+
+        let payload = ExonSkipReturnPayload {
+            kind: ExonSkipReturnKind::AminoAcidSequence,
+            available: true,
+            seq_id: None,
+            label: "skipped isoform protein".to_string(),
+            mime_type: "text/plain".to_string(),
+            text: "MK".to_string(),
+            message: None,
+        };
+        let json = serde_json::to_string(&payload).expect("serialize return payload");
+        assert!(json.contains(r#""kind":"amino_acid_sequence""#));
+    }
+
+    #[test]
+    fn cdna_assay_product_materialization_contract_round_trips_idempotency_fields() {
+        let payload = CdnaAssayProductMaterialization {
+            schema: "gentle.cdna_assay_product_materialization.v1".to_string(),
+            assay_kind: "pcr".to_string(),
+            source_seq_id: "source".to_string(),
+            source_feature_id: 7,
+            group_label: "GENE1".to_string(),
+            product_count: 1,
+            product_seq_ids: vec!["gene1_pcr_TX1_p1_42bp".to_string()],
+            reused_product_seq_ids: vec!["gene1_pcr_TX1_p1_42bp".to_string()],
+            product_rows: vec![CdnaAssayMaterializedProductRow {
+                product_seq_id: "gene1_pcr_TX1_p1_42bp".to_string(),
+                transcript_id: "TX1".to_string(),
+                transcript_feature_id: 3,
+                product_index: 1,
+                amplicon_length_bp: 42,
+                amplicon_start_0based: 10,
+                amplicon_end_0based_exclusive: 52,
+                probe_supported: false,
+                genomic_carryover_risk: "low".to_string(),
+                created: false,
+                ..CdnaAssayMaterializedProductRow::default()
+            }],
+            container_id: Some("container-1".to_string()),
+            container_kind: Some(ContainerKind::Singleton),
+            gel_band_rows: vec![CdnaAssayProductGelBandRow {
+                lane_name: "cDNA PCR products (GENE1)".to_string(),
+                band_index: 1,
+                apparent_bp: 42,
+                min_bp: 42,
+                max_bp: 42,
+                product_count: 1,
+                labels: vec!["gene1_pcr_TX1_p1_42bp (42 bp)".to_string()],
+            }],
+            gel_summary_lines: vec![
+                "Product gel lane 'cDNA PCR products (GENE1)' has 1 band(s).".to_string(),
+            ],
+            product_output_prefix: Some("gene1_pcr".to_string()),
+            idempotent_reuse: true,
+            ..CdnaAssayProductMaterialization::default()
+        };
+        let json =
+            serde_json::to_string(&payload).expect("serialize product materialization contract");
+        assert!(json.contains(r#""reused_product_seq_ids":["gene1_pcr_TX1_p1_42bp"]"#));
+        assert!(json.contains(r#""gel_summary_lines":["#));
+        let round_tripped: CdnaAssayProductMaterialization =
+            serde_json::from_str(&json).expect("round-trip product materialization contract");
+        assert!(round_tripped.idempotent_reuse);
+        assert_eq!(round_tripped.product_rows[0].created, false);
+        assert_eq!(round_tripped.gel_band_rows[0].apparent_bp, 42);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SplicingBoundaryMarker {
     pub transcript_feature_id: usize,

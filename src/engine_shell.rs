@@ -25549,9 +25549,9 @@ fn execute_primers_command(
                     product_gel_path.as_deref(),
                     "cDNA PCR product gel",
                 );
-                let state_changed = materialization
-                    .as_ref()
-                    .is_some_and(|summary| !summary.product_seq_ids.is_empty());
+                let state_changed = materialization.as_ref().is_some_and(|summary| {
+                    !summary.created_product_seq_ids.is_empty() || summary.container_created
+                });
                 return Ok(ShellRunResult {
                     state_changed,
                     output: json!({
@@ -25589,6 +25589,7 @@ fn execute_primers_command(
             {
                 let json_text = serde_json::to_string_pretty(&report)
                     .map_err(|e| format!("Could not serialize cDNA PCR assay-test report: {e}"))?;
+                ensure_shell_output_parent_dir(path)?;
                 fs::write(path, json_text).map_err(|e| {
                     format!("Could not write cDNA PCR assay-test report to '{path}': {e}")
                 })?;
@@ -25603,6 +25604,7 @@ fn execute_primers_command(
                     .as_ref()
                     .map(|map| map.svg.as_str())
                     .unwrap_or_default();
+                ensure_shell_output_parent_dir(svg_path)?;
                 fs::write(svg_path, svg).map_err(|e| {
                     format!("Could not write cDNA PCR transcript-map SVG to '{svg_path}': {e}")
                 })?;
@@ -25693,9 +25695,9 @@ fn execute_primers_command(
                     product_gel_path.as_deref(),
                     "cDNA qPCR product gel",
                 );
-                let state_changed = materialization
-                    .as_ref()
-                    .is_some_and(|summary| !summary.product_seq_ids.is_empty());
+                let state_changed = materialization.as_ref().is_some_and(|summary| {
+                    !summary.created_product_seq_ids.is_empty() || summary.container_created
+                });
                 return Ok(ShellRunResult {
                     state_changed,
                     output: json!({
@@ -25734,6 +25736,7 @@ fn execute_primers_command(
             {
                 let json_text = serde_json::to_string_pretty(&report)
                     .map_err(|e| format!("Could not serialize cDNA qPCR assay-test report: {e}"))?;
+                ensure_shell_output_parent_dir(path)?;
                 fs::write(path, json_text).map_err(|e| {
                     format!("Could not write cDNA qPCR assay-test report to '{path}': {e}")
                 })?;
@@ -25748,6 +25751,7 @@ fn execute_primers_command(
                     .as_ref()
                     .map(|map| map.svg.as_str())
                     .unwrap_or_default();
+                ensure_shell_output_parent_dir(svg_path)?;
                 fs::write(svg_path, svg).map_err(|e| {
                     format!("Could not write cDNA qPCR transcript-map SVG to '{svg_path}': {e}")
                 })?;

@@ -3712,7 +3712,7 @@ fn test_cdna_qpcr_operation_writes_report_json() {
 fn test_cdna_pcr_operation_can_materialize_nonspecific_products_as_pool_gel() {
     let mut engine = cdna_assay_nonspecific_test_engine();
     let td = tempdir().expect("tempdir");
-    let gel_path = td.path().join("cdna_pcr_products.gel.svg");
+    let gel_path = td.path().join("nested").join("cdna_pcr_products.gel.svg");
     let result = engine
         .apply(Operation::TestCdnaPcr {
             seq_id: "cdna_nonspecific".to_string(),
@@ -3750,10 +3750,20 @@ fn test_cdna_pcr_operation_can_materialize_nonspecific_products_as_pool_gel() {
         "gentle.cdna_assay_product_materialization.v1"
     );
     assert_eq!(materialization.product_seq_ids.len(), 2);
+    assert_eq!(materialization.created_product_seq_ids.len(), 2);
+    assert!(materialization.reused_product_seq_ids.is_empty());
+    assert_eq!(materialization.product_rows.len(), 2);
+    assert!(materialization.product_rows.iter().all(|row| row.created));
+    assert!(materialization.product_rows.iter().any(|row| {
+        row.transcript_id == "TX_SHORT"
+            && row.amplicon_length_bp == 21
+            && !row.genomic_carryover_risk.is_empty()
+    }));
     assert!(matches!(
         materialization.container_kind,
         Some(ContainerKind::Pool)
     ));
+    assert!(materialization.container_created);
     let container_id = materialization
         .container_id
         .as_ref()
@@ -3781,11 +3791,86 @@ fn test_cdna_pcr_operation_can_materialize_nonspecific_products_as_pool_gel() {
         .collect::<Vec<_>>();
     lengths.sort_unstable();
     assert_eq!(lengths, vec![21, 41]);
+    for seq_id in &materialization.product_seq_ids {
+        let dna = engine
+            .state()
+            .sequences
+            .get(seq_id)
+            .expect("materialized product metadata");
+        assert!(dna.features().iter().any(|feature| {
+            feature.kind.to_string() == "cDNA_assay_product"
+                && feature.qualifiers.iter().any(|(key, value)| {
+                    key.to_string() == "cdna_assay_signature"
+                        && value.as_deref().is_some_and(|raw| !raw.is_empty())
+                })
+        }));
+    }
     let svg_text = fs::read_to_string(&gel_path).expect("product gel svg");
     assert!(svg_text.contains("Serial Gel Preview"));
     assert!(svg_text.contains("cDNA PCR products"));
     assert!(svg_text.contains("nonspecific_cdna_pcr_TX_SHORT_p1_21bp"));
     assert!(svg_text.contains("nonspecific_cdna_pcr_TX_LONG_p1_41bp"));
+    assert_eq!(materialization.gel_band_rows.len(), 2);
+    assert!(
+        materialization
+            .gel_summary_lines
+            .iter()
+            .any(|line| line.contains("Product gel lane"))
+    );
+    assert!(
+        materialization
+            .gel_summary_lines
+            .iter()
+            .any(|line| line.contains("nonspecific_cdna_pcr_TX_SHORT_p1_21bp"))
+    );
+
+    let sequence_count_after_first_run = engine.state().sequences.len();
+    let container_count_after_first_run = engine.state().container_state.containers.len();
+    let repeat = engine
+        .apply(Operation::TestCdnaPcr {
+            seq_id: "cdna_nonspecific".to_string(),
+            source_feature_id: 0,
+            forward_primer: "AAACCC".to_string(),
+            reverse_primer: "CCCAAA".to_string(),
+            transcript_id: None,
+            min_amplicon_bp: Some(10),
+            max_amplicon_bp: Some(80),
+            max_mismatches: None,
+            require_3prime_exact_bases: Some(4),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
+            path: None,
+            svg_path: None,
+            materialize_products: true,
+            product_output_prefix: Some("nonspecific_cdna_pcr".to_string()),
+            product_gel_svg_path: Some(gel_path.to_string_lossy().to_string()),
+            product_gel_ladders: None,
+        })
+        .expect("repeated materialized cDNA PCR products");
+    let repeat_materialization = repeat
+        .cdna_assay_product_materialization
+        .as_ref()
+        .expect("repeat materialization summary");
+    assert_eq!(
+        repeat_materialization.product_seq_ids,
+        materialization.product_seq_ids
+    );
+    assert_eq!(repeat_materialization.created_product_seq_ids.len(), 0);
+    assert_eq!(repeat_materialization.reused_product_seq_ids.len(), 2);
+    assert!(repeat_materialization.idempotent_reuse);
+    assert_eq!(
+        repeat_materialization.container_id,
+        materialization.container_id
+    );
+    assert!(!repeat_materialization.container_created);
+    assert_eq!(
+        engine.state().sequences.len(),
+        sequence_count_after_first_run
+    );
+    assert_eq!(
+        engine.state().container_state.containers.len(),
+        container_count_after_first_run
+    );
 }
 
 #[test]
@@ -3830,6 +3915,13 @@ fn test_cdna_qpcr_operation_materializes_probe_supported_products() {
         .as_ref()
         .expect("materialization summary");
     assert_eq!(materialization.product_seq_ids.len(), 2);
+    assert_eq!(materialization.created_product_seq_ids.len(), 2);
+    assert!(
+        materialization
+            .product_rows
+            .iter()
+            .all(|row| row.probe_supported)
+    );
     assert!(materialization.product_gel_svg_path.is_none());
 }
 
