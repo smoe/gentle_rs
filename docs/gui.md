@@ -104,6 +104,11 @@ macOS auxiliary-window stability note:
   Splicing Expert and RNA-read Mapping now also clear older legacy
   title-derived embedded layers, so reopening those windows no longer leaves
   detached non-functional title bars behind.
+- If eframe itself reports a sequence child viewport as already being an
+  embedded window, GENtle now renders the DNA-window content directly into that
+  outer shell instead of wrapping it in a second hosted window. This prevents
+  the inner sequence client area from moving independently of the visible outer
+  frame.
 - The root hosted workspace also checks open auxiliary workspace titles and
   clears stale title-derived layers there, covering cases where RNA-read
   Mapping or Splicing Expert is opened or re-owned from inside a DNA sequence
