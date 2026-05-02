@@ -558,6 +558,10 @@ Feature tree grouping:
   `Copy Detail JSON` actions so the SnapGene-style tooltip summary or full
   shared expert record can be pasted into protocols, bug reports, or external
   agent/MCP handoffs.
+- Right-clicking a hovered or selected restriction-site label/tick on the map
+  exposes the same actions directly: `Pin Restriction Site Details`,
+  `Copy Restriction Summary`, and `Copy Detail JSON`. This only changes the
+  interaction menu; restriction-site rendering itself stays unchanged.
 - Restriction-site markers now preserve end geometry in the UI:
   - blunt cuts use aligned markers in a neutral slate color
   - `5'` overhang cuts use blue staggered markers

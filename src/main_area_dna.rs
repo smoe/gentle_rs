@@ -1487,6 +1487,11 @@ mod tests {
         assert!(json.contains("\"kind\": \"restriction_site\""));
         assert!(json.contains("\"tooltip_lines\""));
         assert!(json.contains("\"selected_enzyme\": \"SgrAI\""));
+
+        assert_eq!(
+            MainAreaDna::restriction_site_context_menu_title(&view),
+            "Restriction site: SgrAI at 410 bp"
+        );
     }
 
     fn sanitize_for_path_for_test(s: &str) -> String {
@@ -25795,6 +25800,14 @@ impl MainAreaDna {
         })
     }
 
+    fn restriction_site_context_menu_title(view: &RestrictionSiteExpertView) -> String {
+        format!(
+            "Restriction site: {} at {} bp",
+            view.enzyme_display_label(),
+            view.cut_pos_1based
+        )
+    }
+
     fn copy_restriction_site_payload_to_clipboard(
         &mut self,
         ctx: &egui::Context,
@@ -25818,6 +25831,69 @@ impl MainAreaDna {
             view.enzyme_display_label(),
             view.cut_pos_1based
         );
+    }
+
+    fn render_restriction_site_context_menu_items(
+        &mut self,
+        ui: &mut egui::Ui,
+        site: &RestrictionEnzymePosition,
+        view: &RestrictionSiteExpertView,
+    ) -> bool {
+        let mut handled = false;
+        ui.label(
+            egui::RichText::new(Self::restriction_site_context_menu_title(view))
+                .strong()
+                .monospace(),
+        );
+        if ui
+            .button("Pin Restriction Site Details")
+            .on_hover_text(
+                "Select this restriction site and show the pinned shared expert record in the Description panel",
+            )
+            .clicked()
+        {
+            self.map_dna.select_restriction_site(Some(site.clone()));
+            self.clear_feature_focus_keep_map_selection();
+            self.description_cache_initialized = false;
+            self.op_status = format!(
+                "Pinned restriction-site details for {} at {} bp",
+                view.enzyme_display_label(),
+                view.cut_pos_1based
+            );
+            handled = true;
+        }
+        if ui
+            .button("Copy Restriction Summary")
+            .on_hover_text("Copy the same concise restriction-site summary used by the map tooltip")
+            .clicked()
+        {
+            self.copy_restriction_site_payload_to_clipboard(
+                ui.ctx(),
+                view,
+                "summary",
+                Self::restriction_site_copy_summary_text(view),
+            );
+            handled = true;
+        }
+        if ui
+            .button("Copy Detail JSON")
+            .on_hover_text(
+                "Copy the shared restriction-site expert record as JSON for CLI/MCP/agent handoff",
+            )
+            .clicked()
+        {
+            self.copy_restriction_site_payload_to_clipboard(
+                ui.ctx(),
+                view,
+                "detail JSON",
+                Self::restriction_site_copy_json_text(view),
+            );
+            handled = true;
+        }
+        if handled {
+            ui.close();
+        }
+        handled
     }
 
     fn render_restriction_expert_view_ui(
@@ -54318,6 +54394,13 @@ impl MainAreaDna {
                         .map_dna
                         .get_hovered_reasoning_evidence_id()
                         .or_else(|| self.map_dna.get_selected_reasoning_evidence_id());
+                    let candidate_restriction_site = self
+                        .map_dna
+                        .get_hovered_restriction_site()
+                        .or_else(|| self.map_dna.get_selected_restriction_site());
+                    let candidate_restriction_view = candidate_restriction_site
+                        .as_ref()
+                        .and_then(|site| self.restriction_site_expert_view_for_position(site).ok());
                     let promoter_feature_id = candidate_feature_id
                         .filter(|feature_id| self.feature_supports_variant_followup(*feature_id));
                     let promoter_reasoning_evidence_id = candidate_reasoning_evidence_id
@@ -54326,6 +54409,17 @@ impl MainAreaDna {
                                 .map(|(_, span)| self.reasoning_span_supports_variant_followup(&span))
                                 .unwrap_or(false)
                         });
+                    if let (Some(site), Some(view)) =
+                        (candidate_restriction_site.as_ref(), candidate_restriction_view.as_ref())
+                    {
+                        if showed_any {
+                            ui.separator();
+                        }
+                        showed_any = true;
+                        if self.render_restriction_site_context_menu_items(ui, site, view) {
+                            return;
+                        }
+                    }
                     let Some(feature_id) = candidate_feature_id else {
                         if let Some(evidence_id) = promoter_reasoning_evidence_id {
                             if showed_any {
