@@ -13581,7 +13581,7 @@ struct SplicingIntronRegulatoryRow {
     top_rbps: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct SplicingIntronSignalKey {
     transcript_feature_id: usize,
     donor_position_1based: usize,
@@ -14174,6 +14174,7 @@ pub struct MainAreaDna {
     splicing_exon_skip_overlap_label: String,
     splicing_exon_skip_plan: Option<ExonSkipSelectionPlan>,
     splicing_expert_selected_intron_signal_key: Option<SplicingIntronSignalKey>,
+    splicing_expert_selected_intron_keys: BTreeSet<SplicingIntronSignalKey>,
     show_rna_read_mapping_window: bool,
     rna_read_mapping_window_pending_initial_render: bool,
     rna_read_mapping_window_focus_requested: bool,
@@ -14836,6 +14837,7 @@ impl MainAreaDna {
             splicing_exon_skip_overlap_label: String::new(),
             splicing_exon_skip_plan: None,
             splicing_expert_selected_intron_signal_key: None,
+            splicing_expert_selected_intron_keys: BTreeSet::new(),
             show_rna_read_mapping_window: false,
             rna_read_mapping_window_pending_initial_render: false,
             rna_read_mapping_window_focus_requested: false,
@@ -26602,6 +26604,34 @@ impl MainAreaDna {
         }
     }
 
+    fn splicing_intron_key_for_lane_range(
+        transcript_feature_id: usize,
+        strand: &str,
+        intron: &SplicingRange,
+    ) -> SplicingIntronSignalKey {
+        if strand.trim() == "-" {
+            SplicingIntronSignalKey {
+                transcript_feature_id,
+                donor_position_1based: intron.end_1based,
+                acceptor_position_1based: intron.start_1based,
+            }
+        } else {
+            SplicingIntronSignalKey {
+                transcript_feature_id,
+                donor_position_1based: intron.start_1based,
+                acceptor_position_1based: intron.end_1based,
+            }
+        }
+    }
+
+    fn splicing_intron_range_length_bp(intron: &SplicingRange) -> usize {
+        intron
+            .end_1based
+            .max(intron.start_1based)
+            .saturating_sub(intron.end_1based.min(intron.start_1based))
+            + 1
+    }
+
     fn splicing_boundary_motif_class_label(class: &str) -> &'static str {
         match class {
             "gt_ag_major_canonical" => "canonical major (GT-AG)",
@@ -27018,27 +27048,24 @@ impl MainAreaDna {
                     for intron in &transcript.introns {
                         let x1 = to_x(intron.start_1based);
                         let x2 = to_x(intron.end_1based);
-                        let signal_key = if transcript.strand.trim() == "-" {
-                            (
-                                transcript.transcript_feature_id,
-                                intron.end_1based,
-                                intron.start_1based,
-                            )
-                        } else {
-                            (
-                                transcript.transcript_feature_id,
-                                intron.start_1based,
-                                intron.end_1based,
-                            )
-                        };
+                        let signal_key = Self::splicing_intron_key_for_lane_range(
+                            transcript.transcript_feature_id,
+                            transcript.strand.as_str(),
+                            intron,
+                        );
                         let is_selected_signal = selected_intron_signal_key
                             .as_ref()
                             .map(|selected| {
-                                selected.transcript_feature_id == signal_key.0
-                                    && selected.donor_position_1based == signal_key.1
-                                    && selected.acceptor_position_1based == signal_key.2
+                                selected.transcript_feature_id == signal_key.transcript_feature_id
+                                    && selected.donor_position_1based
+                                        == signal_key.donor_position_1based
+                                    && selected.acceptor_position_1based
+                                        == signal_key.acceptor_position_1based
                             })
-                            .unwrap_or(false);
+                            .unwrap_or(false)
+                            || self
+                                .splicing_expert_selected_intron_keys
+                                .contains(&signal_key);
                         painter.line_segment(
                             [egui::pos2(x1, y), egui::pos2(x2, y)],
                             egui::Stroke::new(
@@ -27050,7 +27077,12 @@ impl MainAreaDna {
                                 },
                             ),
                         );
-                        if let Some(signal) = intron_signal_lookup.get(&signal_key).copied() {
+                        let signal_tuple = (
+                            signal_key.transcript_feature_id,
+                            signal_key.donor_position_1based,
+                            signal_key.acceptor_position_1based,
+                        );
+                        if let Some(signal) = intron_signal_lookup.get(&signal_tuple).copied() {
                             if let (Some(tract_start), Some(tract_end)) = (
                                 signal.polypyrimidine_start_1based,
                                 signal.polypyrimidine_end_1based,
@@ -27155,6 +27187,41 @@ impl MainAreaDna {
                     }
                 }
 
+                let intron_at_pos = |pointer_pos: egui::Pos2| {
+                    for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
+                        let y = lanes_top
+                            + lane_idx as f32 * style.lane_height_px
+                            + style.lane_height_px * 0.5;
+                        for intron in &transcript.introns {
+                            let x1 = to_x(intron.start_1based);
+                            let x2 = to_x(intron.end_1based);
+                            let hit_rect = egui::Rect::from_min_max(
+                                egui::pos2(x1.min(x2), y - 5.0),
+                                egui::pos2(x1.max(x2), y + 5.0),
+                            );
+                            if !hit_rect.expand(1.0).contains(pointer_pos) {
+                                continue;
+                            }
+                            let key = Self::splicing_intron_key_for_lane_range(
+                                transcript.transcript_feature_id,
+                                transcript.strand.as_str(),
+                                intron,
+                            );
+                            let signal_tuple = (
+                                key.transcript_feature_id,
+                                key.donor_position_1based,
+                                key.acceptor_position_1based,
+                            );
+                            let length_bp = intron_signal_lookup
+                                .get(&signal_tuple)
+                                .map(|signal| signal.intron_length_bp)
+                                .unwrap_or_else(|| Self::splicing_intron_range_length_bp(intron));
+                            return Some((key, transcript.transcript_id.as_str(), length_bp));
+                        }
+                    }
+                    None
+                };
+
                 let mut has_boundary_hover = false;
                 let mut has_exon_hover = false;
                 if let Some(pointer_pos) = response.hover_pos() {
@@ -27211,88 +27278,64 @@ impl MainAreaDna {
                 }
                 if let Some(pointer_pos) = response.hover_pos() {
                     if !has_boundary_hover {
-                        let mut hovered_intron_signal = None;
-                        for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
-                            let y = lanes_top
-                                + lane_idx as f32 * style.lane_height_px
-                                + style.lane_height_px * 0.5;
-                            for intron in &transcript.introns {
-                                let x1 = to_x(intron.start_1based);
-                                let x2 = to_x(intron.end_1based);
-                                let hit_rect = egui::Rect::from_min_max(
-                                    egui::pos2(x1.min(x2), y - 5.0),
-                                    egui::pos2(x1.max(x2), y + 5.0),
-                                );
-                                if !hit_rect.expand(1.0).contains(pointer_pos) {
-                                    continue;
-                                }
-                                let signal_key = if transcript.strand.trim() == "-" {
-                                    (
-                                        transcript.transcript_feature_id,
-                                        intron.end_1based,
-                                        intron.start_1based,
-                                    )
-                                } else {
-                                    (
-                                        transcript.transcript_feature_id,
-                                        intron.start_1based,
-                                        intron.end_1based,
-                                    )
-                                };
-                                if let Some(signal) = intron_signal_lookup.get(&signal_key).copied()
-                                {
-                                    hovered_intron_signal = Some(signal);
-                                    break;
-                                }
-                            }
-                            if hovered_intron_signal.is_some() {
-                                break;
-                            }
-                        }
-                        if let Some(signal) = hovered_intron_signal {
+                        if let Some((key, transcript_id, length_bp)) = intron_at_pos(pointer_pos) {
+                            let signal_tuple = (
+                                key.transcript_feature_id,
+                                key.donor_position_1based,
+                                key.acceptor_position_1based,
+                            );
+                            let signal = intron_signal_lookup.get(&signal_tuple).copied();
                             has_boundary_hover = true;
                             response.clone().on_hover_ui_at_pointer(|ui| {
                                 ui.monospace(format!(
                                     "n-{} {}",
-                                    signal.transcript_feature_id, signal.transcript_id
+                                    key.transcript_feature_id, transcript_id
                                 ));
                                 ui.monospace(format!(
                                     "intron {}..{}  len={} bp",
-                                    signal.donor_position_1based,
-                                    signal.acceptor_position_1based,
-                                    signal.intron_length_bp
+                                    key.donor_position_1based,
+                                    key.acceptor_position_1based,
+                                    length_bp
                                 ));
-                                if let Some(branchpoint_position) =
-                                    signal.branchpoint_position_1based
-                                {
-                                    ui.label(format!(
-                                        "Branchpoint-like site: {} ({})  score={:.1}",
-                                        branchpoint_position,
-                                        signal.branchpoint_motif,
-                                        signal.branchpoint_score
-                                    ));
+                                ui.label(
+                                    "Click to select this intron; Shift-click or Command-click toggles multi-selection.",
+                                );
+                                if let Some(signal) = signal {
+                                    if let Some(branchpoint_position) =
+                                        signal.branchpoint_position_1based
+                                    {
+                                        ui.label(format!(
+                                            "Branchpoint-like site: {} ({})  score={:.1}",
+                                            branchpoint_position,
+                                            signal.branchpoint_motif,
+                                            signal.branchpoint_score
+                                        ));
+                                    } else {
+                                        ui.label(
+                                            "Branchpoint-like site: none above the current heuristic",
+                                        );
+                                    }
+                                    ui.label(signal.branchpoint_annotation.as_str());
+                                    if let (Some(tract_start), Some(tract_end)) = (
+                                        signal.polypyrimidine_start_1based,
+                                        signal.polypyrimidine_end_1based,
+                                    ) {
+                                        ui.label(format!(
+                                            "Polypyrimidine tract: {}..{}  pyrimidines={}%",
+                                            tract_start,
+                                            tract_end,
+                                            (signal.polypyrimidine_fraction * 100.0).round()
+                                                as usize
+                                        ));
+                                    } else {
+                                        ui.label(
+                                            "Polypyrimidine tract: none above the current heuristic",
+                                        );
+                                    }
+                                    ui.label(signal.polypyrimidine_annotation.as_str());
                                 } else {
-                                    ui.label(
-                                        "Branchpoint-like site: none above the current heuristic",
-                                    );
+                                    ui.label("No branchpoint/polyY heuristic row is attached yet.");
                                 }
-                                ui.label(signal.branchpoint_annotation.as_str());
-                                if let (Some(tract_start), Some(tract_end)) = (
-                                    signal.polypyrimidine_start_1based,
-                                    signal.polypyrimidine_end_1based,
-                                ) {
-                                    ui.label(format!(
-                                        "Polypyrimidine tract: {}..{}  pyrimidines={}%",
-                                        tract_start,
-                                        tract_end,
-                                        (signal.polypyrimidine_fraction * 100.0).round() as usize
-                                    ));
-                                } else {
-                                    ui.label(
-                                        "Polypyrimidine tract: none above the current heuristic",
-                                    );
-                                }
-                                ui.label(signal.polypyrimidine_annotation.as_str());
                             });
                         }
                     }
@@ -27425,7 +27468,21 @@ impl MainAreaDna {
                     }
                     if response.clicked() {
                         if let Some(pointer_pos) = response.interact_pointer_pos() {
-                            if let Some(lane_idx) = Self::splicing_lane_index_at_y(
+                            if let Some((key, _, _)) = intron_at_pos(pointer_pos) {
+                                let toggle = ui.input(|input| {
+                                    input.modifiers.shift || input.modifiers.command
+                                });
+                                if toggle {
+                                    if !self.splicing_expert_selected_intron_keys.remove(&key) {
+                                        self.splicing_expert_selected_intron_keys
+                                            .insert(key.clone());
+                                    }
+                                } else {
+                                    self.splicing_expert_selected_intron_keys.clear();
+                                    self.splicing_expert_selected_intron_keys.insert(key.clone());
+                                }
+                                self.splicing_expert_selected_intron_signal_key = Some(key);
+                            } else if let Some(lane_idx) = Self::splicing_lane_index_at_y(
                                 pointer_pos.y,
                                 lanes_top,
                                 style.lane_height_px,
@@ -27436,6 +27493,45 @@ impl MainAreaDna {
                             }
                         }
                     }
+                    let context_intron = response.interact_pointer_pos().and_then(intron_at_pos);
+                    response.context_menu(|ui| {
+                        if let Some((key, transcript_id, length_bp)) = context_intron.clone() {
+                            ui.monospace(format!(
+                                "n-{} {}",
+                                key.transcript_feature_id, transcript_id
+                            ));
+                            ui.label(format!(
+                                "Intron {}..{}  len={} bp",
+                                key.donor_position_1based,
+                                key.acceptor_position_1based,
+                                length_bp
+                            ));
+                            if ui.button("Select only this intron").clicked() {
+                                self.splicing_expert_selected_intron_keys.clear();
+                                self.splicing_expert_selected_intron_keys.insert(key.clone());
+                                self.splicing_expert_selected_intron_signal_key = Some(key.clone());
+                                ui.close();
+                            }
+                            if ui.button("Toggle intron selection").clicked() {
+                                if !self.splicing_expert_selected_intron_keys.remove(&key) {
+                                    self.splicing_expert_selected_intron_keys.insert(key.clone());
+                                }
+                                self.splicing_expert_selected_intron_signal_key = Some(key.clone());
+                                ui.close();
+                            }
+                            if ui.button("Clear selected introns").clicked() {
+                                self.splicing_expert_selected_intron_keys.clear();
+                                self.splicing_expert_selected_intron_signal_key = None;
+                                ui.close();
+                            }
+                            ui.small(format!(
+                                "{} intron(s) selected",
+                                self.splicing_expert_selected_intron_keys.len()
+                            ));
+                        } else {
+                            ui.label("Right-click an intron line for intron actions");
+                        }
+                    });
                 }
             });
         clicked_feature_id
@@ -27455,6 +27551,16 @@ impl MainAreaDna {
             transcript_total,
             Self::support_ratio_percent(support_count, transcript_total)
         )
+    }
+
+    fn exon_skip_transcript_position_label(idx: usize, exon_count: usize) -> &'static str {
+        match (idx, exon_count) {
+            (_, 0) => "unknown",
+            (_, 1) => "single",
+            (0, _) => "first",
+            (idx, count) if idx + 1 == count => "last",
+            _ => "internal",
+        }
     }
 
     fn splicing_matrix_should_default_collapsed(row_count: usize, exon_count: usize) -> bool {
@@ -28244,19 +28350,93 @@ impl MainAreaDna {
                         "{} {}..{}",
                         candidate_id, exon.start_1based, exon.end_1based
                     );
-                    if ui
-                        .checkbox(&mut selected, label)
-                        .on_hover_text(format!(
-                            "Select this exon candidate to skip in the materialized isoform.\nlength={} bp; len%3={} ({})\n{}\nCDS entry phase: {} ({})",
+                    let plan_candidate = self.splicing_exon_skip_plan.as_ref().and_then(|plan| {
+                        plan.candidate_exons
+                            .iter()
+                            .find(|candidate| candidate.candidate_id == candidate_id)
+                    });
+                    let support_count = plan_candidate
+                        .map(|candidate| candidate.support_transcript_count)
+                        .or_else(|| {
+                            view.unique_exons
+                                .iter()
+                                .find(|unique| {
+                                    unique.start_1based == exon.start_1based
+                                        && unique.end_1based == exon.end_1based
+                                })
+                                .map(|unique| unique.support_transcript_count)
+                        })
+                        .unwrap_or(0);
+                    let support_total = plan_candidate
+                        .map(|candidate| candidate.support_transcript_total)
+                        .unwrap_or(view.transcript_count.max(1));
+                    let mut hover_lines = vec![
+                        "Select this exon candidate to skip in the materialized isoform."
+                            .to_string(),
+                        format!(
+                            "position: {} of {} ({})",
+                            idx + 1,
+                            lane.exons.len(),
+                            plan_candidate
+                                .map(|candidate| candidate.transcript_position.as_str())
+                                .unwrap_or_else(|| {
+                                    Self::exon_skip_transcript_position_label(idx, lane.exons.len())
+                                })
+                        ),
+                        format!(
+                            "support: {}",
+                            Self::format_support_fraction(support_count, support_total)
+                        ),
+                        format!(
+                            "length={} bp; len%3={} ({})",
                             exon_len,
                             frame_cue.length_mod3,
-                            RenderDna::exon_length_mod3_color_label(frame_cue.length_mod3 as u8),
-                            frame_cue.skip_frame_hint(true),
-                            entry_phase
-                                .map(|phase| phase.to_string())
+                            RenderDna::exon_length_mod3_color_label(frame_cue.length_mod3 as u8)
+                        ),
+                        frame_cue.skip_frame_hint(true).to_string(),
+                    ];
+                    if let Some(candidate) = plan_candidate {
+                        hover_lines.push(format!(
+                            "coding skip={} bp; coding%3={} ({})",
+                            candidate.coding_skip_bp,
+                            candidate.coding_skip_mod3,
+                            candidate.coding_context
+                        ));
+                        hover_lines.push(if candidate.frame_neutral_coding_skip {
+                            "coding skip is frame-neutral".to_string()
+                        } else {
+                            "coding skip changes the coding frame".to_string()
+                        });
+                        hover_lines.push(format!(
+                            "introns: upstream={} downstream={}",
+                            candidate
+                                .upstream_intron_bp
+                                .map(|value| format!("{value} bp"))
                                 .unwrap_or_else(|| "n/a".to_string()),
-                            phase_entry_hint(entry_phase),
-                        ))
+                            candidate
+                                .downstream_intron_bp
+                                .map(|value| format!("{value} bp"))
+                                .unwrap_or_else(|| "n/a".to_string())
+                        ));
+                        if let Some(note) = candidate.coding_frame_note.as_ref() {
+                            hover_lines.push(note.clone());
+                        }
+                    } else {
+                        hover_lines.push(
+                            "Build a plan to compute CDS-only skip length and flanking intron lengths."
+                                .to_string(),
+                        );
+                    }
+                    hover_lines.push(format!(
+                        "CDS entry phase: {} ({})",
+                        entry_phase
+                            .map(|phase| phase.to_string())
+                            .unwrap_or_else(|| "n/a".to_string()),
+                        phase_entry_hint(entry_phase)
+                    ));
+                    if ui
+                        .checkbox(&mut selected, label)
+                        .on_hover_text(hover_lines.join("\n"))
                         .changed()
                     {
                         if selected {
@@ -28319,6 +28499,65 @@ impl MainAreaDna {
                             self.splicing_exon_skip_selected_candidate_ids
                                 .insert(Self::splicing_exon_skip_candidate_id(idx + 1));
                         }
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                for value in 0usize..=2 {
+                    if ui
+                        .button(format!("Add coding%3={value}"))
+                        .on_hover_text(format!(
+                            "Add planned exon candidates whose CDS-overlap skip length modulo 3 is {value}"
+                        ))
+                        .clicked()
+                    {
+                        if let Some(plan) = self.splicing_exon_skip_plan.as_ref() {
+                            for candidate in &plan.candidate_exons {
+                                if candidate.coding_skip_bp > 0
+                                    && candidate.coding_skip_mod3 == value
+                                {
+                                    self.splicing_exon_skip_selected_candidate_ids
+                                        .insert(candidate.candidate_id.clone());
+                                }
+                            }
+                        } else {
+                            self.op_status =
+                                "Build an exon-skip plan before selecting by coding%3".to_string();
+                        }
+                    }
+                }
+                if ui
+                    .button("Add CDS-only")
+                    .on_hover_text("Add planned exon candidates that are fully CDS-overlapping")
+                    .clicked()
+                {
+                    if let Some(plan) = self.splicing_exon_skip_plan.as_ref() {
+                        for candidate in &plan.candidate_exons {
+                            if candidate.coding_context == "cds_only" {
+                                self.splicing_exon_skip_selected_candidate_ids
+                                    .insert(candidate.candidate_id.clone());
+                            }
+                        }
+                    } else {
+                        self.op_status =
+                            "Build an exon-skip plan before selecting by coding context".to_string();
+                    }
+                }
+                if ui
+                    .button("Add UTR-only")
+                    .on_hover_text("Add planned exon candidates with no CDS-overlapping bases")
+                    .clicked()
+                {
+                    if let Some(plan) = self.splicing_exon_skip_plan.as_ref() {
+                        for candidate in &plan.candidate_exons {
+                            if candidate.coding_context == "utr_only" {
+                                self.splicing_exon_skip_selected_candidate_ids
+                                    .insert(candidate.candidate_id.clone());
+                            }
+                        }
+                    } else {
+                        self.op_status =
+                            "Build an exon-skip plan before selecting by coding context".to_string();
                     }
                 }
             });

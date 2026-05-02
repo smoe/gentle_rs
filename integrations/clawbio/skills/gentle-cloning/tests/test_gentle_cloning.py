@@ -701,6 +701,8 @@ def test_exon_skip_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> Non
                     {"start_1based": 100, "end_1based": 150}
                 ],
                 "length_mod3_values": [2, 0],
+                "coding_mod3_values": [0],
+                "coding_contexts": ["mixed-utr-cds"],
                 "cds_phase_entry_kinds": ["codon-boundary", "split-codon"],
                 "plan_id": "skip_tp53_exon7",
             }
@@ -743,6 +745,8 @@ def test_exon_skip_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> Non
     assert "--skip exon_7" in argv[1]
     assert "--overlap 100..150" in argv[1]
     assert "--length-mod3 0 --length-mod3 2" in argv[1]
+    assert "--coding-mod3 0" in argv[1]
+    assert "--coding-context mixed-utr-cds" in argv[1]
     assert "--phase-entry codon-boundary --phase-entry split-codon" in argv[1]
     assert "--plan-id skip_tp53_exon7" in argv[1]
 

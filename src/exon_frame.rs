@@ -22,6 +22,19 @@ pub struct ExonCdsPhaseCue {
     pub right_cds_phase: Option<u8>,
 }
 
+/// Frame consequence from skipping only the coding portion of an exon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExonCodingFrameCue {
+    /// CDS-overlapping base pairs removed by skipping the exon.
+    pub coding_skip_bp: usize,
+    /// `coding_skip_bp % 3`.
+    pub coding_skip_mod3: usize,
+    /// Whether the coding portion removed by the skip preserves frame length.
+    pub frame_neutral_coding_skip: bool,
+    /// Coarse UTR/CDS composition bucket for the exon.
+    pub coding_context: &'static str,
+}
+
 impl ExonLengthFrameCue {
     /// Build a frame cue from a known exon length.
     pub fn from_length(length_bp: usize) -> Self {
@@ -54,15 +67,64 @@ impl ExonLengthFrameCue {
         }
     }
 
-    /// Warning emitted when a CDS-overlapping whole-exon skip changes length modulo 3.
-    pub fn cds_phase_warning(self, cds_overlap: bool) -> Option<String> {
-        (cds_overlap && !self.frame_neutral_length).then(|| {
+    /// Human-facing note when full-exon and CDS-only modulo cues differ.
+    pub fn coding_frame_note(self, coding_cue: ExonCodingFrameCue) -> Option<String> {
+        (coding_cue.coding_skip_bp > 0 && self.length_mod3 != coding_cue.coding_skip_mod3).then(
+            || {
+                format!(
+                    "Whole exon length modulo 3 is {}, but the CDS-overlap skip length modulo 3 is {}; use the coding value for frame consequence.",
+                    self.length_mod3, coding_cue.coding_skip_mod3
+                )
+            },
+        )
+    }
+}
+
+impl ExonCodingFrameCue {
+    /// Build coding-frame skip cues from a 0-based half-open exon range and CDS ranges.
+    pub fn from_exon_and_cds(
+        exon_range_0based: (usize, usize),
+        cds_ranges_0based: &[(usize, usize)],
+    ) -> Self {
+        let exon_len = exon_range_0based.1.saturating_sub(exon_range_0based.0);
+        let coding_skip_bp = coding_overlap_length_0based(exon_range_0based, cds_ranges_0based);
+        let coding_skip_mod3 = coding_skip_bp % 3;
+        Self {
+            coding_skip_bp,
+            coding_skip_mod3,
+            frame_neutral_coding_skip: coding_skip_mod3 == 0,
+            coding_context: coding_context_for_lengths(exon_len, coding_skip_bp),
+        }
+    }
+
+    /// Warning emitted when a CDS-overlapping skip changes coding length modulo 3.
+    pub fn cds_phase_warning(self) -> Option<String> {
+        (self.coding_skip_bp > 0 && !self.frame_neutral_coding_skip).then(|| {
             format!(
-                "Skipping this CDS-overlapping exon changes coding length by {} bp (not divisible by 3).",
-                self.length_bp
+                "Skipping this CDS-overlapping exon removes {} coding bp (not divisible by 3).",
+                self.coding_skip_bp
             )
         })
     }
+
+    /// Human-facing interpretation for coding portion of whole-exon skipping.
+    pub fn coding_skip_hint(self) -> &'static str {
+        match (self.coding_skip_bp, self.frame_neutral_coding_skip) {
+            (0, _) => "exon has no CDS-overlapping bases in this transcript",
+            (_, true) => "CDS-overlap skip length is frame-neutral",
+            (_, false) => "CDS-overlap skip length changes the coding frame",
+        }
+    }
+}
+
+/// Return the intron length between two 0-based half-open exon ranges.
+pub fn intron_length_between_exons_0based(
+    left_exon_0based: (usize, usize),
+    right_exon_0based: (usize, usize),
+) -> usize {
+    let left_end = left_exon_0based.1.min(right_exon_0based.1);
+    let right_start = left_exon_0based.0.max(right_exon_0based.0);
+    right_start.saturating_sub(left_end)
 }
 
 /// Derive exon boundary CDS phases from ordered exon ranges and CDS ranges.
@@ -180,4 +242,37 @@ fn range_intersection_0based(
     let start = left.0.max(right.0);
     let end = left.1.min(right.1);
     (end > start).then_some((start, end))
+}
+
+fn coding_overlap_length_0based(
+    exon_range_0based: (usize, usize),
+    cds_ranges_0based: &[(usize, usize)],
+) -> usize {
+    let mut intersections = cds_ranges_0based
+        .iter()
+        .filter_map(|cds| range_intersection_0based(exon_range_0based, *cds))
+        .collect::<Vec<_>>();
+    if intersections.is_empty() {
+        return 0;
+    }
+    intersections.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+    let mut total = 0usize;
+    let mut current = intersections[0];
+    for next in intersections.into_iter().skip(1) {
+        if next.0 <= current.1 {
+            current.1 = current.1.max(next.1);
+        } else {
+            total += current.1.saturating_sub(current.0);
+            current = next;
+        }
+    }
+    total + current.1.saturating_sub(current.0)
+}
+
+fn coding_context_for_lengths(exon_len: usize, coding_skip_bp: usize) -> &'static str {
+    match (coding_skip_bp, exon_len) {
+        (0, _) => "utr_only",
+        (coding, exon) if coding >= exon => "cds_only",
+        _ => "mixed_utr_cds",
+    }
 }

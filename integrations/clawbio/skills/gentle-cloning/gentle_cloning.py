@@ -163,6 +163,8 @@ class Request:
     skip_intervals_1based: list[Any] | None = None
     overlap_intervals_1based: list[Any] | None = None
     length_mod3_values: list[int] | None = None
+    coding_mod3_values: list[int] | None = None
+    coding_contexts: list[str] | None = None
     cds_phase_entry_kinds: list[str] | None = None
     feature_query: Any = None
     return_items: list[str] | None = None
@@ -578,6 +580,12 @@ def _normalise_exon_skip_request(request: Request) -> None:
         request.length_mod3_values = _normalise_length_mod3_values(
             request.length_mod3_values, "length_mod3_values"
         )
+        request.coding_mod3_values = _normalise_length_mod3_values(
+            request.coding_mod3_values, "coding_mod3_values"
+        )
+        request.coding_contexts = _normalise_optional_string_array(
+            request.coding_contexts, "coding_contexts"
+        )
         request.cds_phase_entry_kinds = _normalise_optional_string_array(
             request.cds_phase_entry_kinds, "cds_phase_entry_kinds"
         )
@@ -943,6 +951,8 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         skip_intervals_1based=payload.get("skip_intervals_1based"),
         overlap_intervals_1based=payload.get("overlap_intervals_1based"),
         length_mod3_values=payload.get("length_mod3_values"),
+        coding_mod3_values=payload.get("coding_mod3_values"),
+        coding_contexts=payload.get("coding_contexts"),
         cds_phase_entry_kinds=payload.get("cds_phase_entry_kinds"),
         feature_query=payload.get("feature_query"),
         return_items=payload.get("return_items", payload.get("return")),
@@ -1392,6 +1402,10 @@ def _build_exon_skip_shell_line(request: Request) -> str:
             )
         for value in request.length_mod3_values or []:
             tokens.extend(["--length-mod3", str(value)])
+        for value in request.coding_mod3_values or []:
+            tokens.extend(["--coding-mod3", str(value)])
+        for context in request.coding_contexts or []:
+            tokens.extend(["--coding-context", context])
         for kind in request.cds_phase_entry_kinds or []:
             tokens.extend(["--phase-entry", kind])
         if request.feature_query is not None:
@@ -2951,6 +2965,8 @@ def _request_payload_for_artifact_continuation(
             "skip_intervals_1based",
             "overlap_intervals_1based",
             "length_mod3_values",
+            "coding_mod3_values",
+            "coding_contexts",
             "cds_phase_entry_kinds",
             "feature_query",
             "plan_id",

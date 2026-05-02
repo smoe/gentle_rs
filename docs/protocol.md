@@ -3254,10 +3254,13 @@ ClawBio/OpenClaw integration scaffold schemas:
     - `exon-skip-plan`: `seq_id`, `transcript_feature_id`, optional
       `skip_candidate_ids[]`, `skip_intervals_1based[]`,
       `overlap_intervals_1based[]`, `length_mod3_values[]`,
+      `coding_mod3_values[]`, `coding_contexts[]`,
       `cds_phase_entry_kinds[]`, `feature_query`, and `plan_id`; stored
-      candidate rows report `length_mod3`, `frame_neutral_length`, optional CDS
-      boundary phases, stable `cds_phase_entry_kind`, and CDS phase warnings
-      when a CDS-overlapping whole-exon skip changes coding length modulo 3
+      candidate rows report transcript position, exon support frequency,
+      flanking intron lengths, full-exon and coding-only modulo-3 frame cues,
+      optional CDS boundary phases, stable `cds_phase_entry_kind`, and CDS
+      phase warnings when a CDS-overlapping whole-exon skip changes coding
+      length modulo 3
     - `exon-skip-materialize`: `plan_id`, optional `candidate_ids[]`,
       optional `output_prefix`, required `confirm=true`, and optional
       `return_items[]` (`genbank`, `cdna_fasta`, `amino_acid_sequence`,

@@ -16,7 +16,8 @@ use crate::{
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
     dna_ladder::default_dna_ladders,
     exon_frame::{
-        ExonLengthFrameCue, exon_cds_phase_cues, phase_entry_kind, transcript_entry_phase,
+        ExonCodingFrameCue, ExonLengthFrameCue, exon_cds_phase_cues,
+        intron_length_between_exons_0based, phase_entry_kind, transcript_entry_phase,
     },
     genomes::{BlastHit, default_catalog_discovery_label, default_catalog_discovery_token},
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
@@ -5513,6 +5514,26 @@ impl GentleEngine {
         }
     }
 
+    fn exon_skip_coding_context_filter_value(raw: &str) -> Option<&'static str> {
+        let token = raw.trim().to_ascii_lowercase().replace(['-', ' '], "_");
+        match token.as_str() {
+            "utr" | "utr_only" | "noncoding" | "non_coding" => Some("utr_only"),
+            "cds" | "cds_only" | "coding" => Some("cds_only"),
+            "mixed" | "mixed_utr_cds" | "utr_cds" | "partial_cds" => Some("mixed_utr_cds"),
+            _ => None,
+        }
+    }
+
+    fn exon_skip_transcript_position(idx: usize, exon_count: usize) -> &'static str {
+        match (idx, exon_count) {
+            (_, 0) => "unknown",
+            (_, 1) => "single",
+            (0, _) => "first",
+            (idx, count) if idx + 1 == count => "last",
+            _ => "internal",
+        }
+    }
+
     fn mark_exon_skip_candidate_selected(
         candidate: &mut ExonSkipCandidateExon,
         source: String,
@@ -5646,6 +5667,7 @@ impl GentleEngine {
             ordered_ranges.reverse();
             ordered_phase_cues.reverse();
         }
+        let transcript_exon_count = ordered_ranges.len();
         let mut candidate_exons = ordered_ranges
             .iter()
             .enumerate()
@@ -5656,6 +5678,8 @@ impl GentleEngine {
                     .count()
                     .max(1);
                 let frame_cue = ExonLengthFrameCue::from_range(*start, *end);
+                let coding_cue =
+                    ExonCodingFrameCue::from_exon_and_cds((*start, *end), &phase_cds_ranges);
                 let length_bp = frame_cue.length_bp;
                 let phase_cue = ordered_phase_cues.get(idx).copied().unwrap_or_default();
                 let entry_phase = transcript_entry_phase(
@@ -5663,10 +5687,16 @@ impl GentleEngine {
                     phase_cue.right_cds_phase,
                     is_reverse,
                 );
-                let cds_overlap = phase_cds_ranges
-                    .iter()
-                    .any(|(cds_start, cds_end)| *cds_end > *start && *cds_start < *end);
-                let cds_phase_warning = frame_cue.cds_phase_warning(cds_overlap);
+                let cds_overlap = coding_cue.coding_skip_bp > 0;
+                let cds_phase_warning = coding_cue.cds_phase_warning();
+                let upstream_intron_bp = idx.checked_sub(1).and_then(|prev_idx| {
+                    ordered_ranges
+                        .get(prev_idx)
+                        .map(|prev| intron_length_between_exons_0based(*prev, (*start, *end)))
+                });
+                let downstream_intron_bp = ordered_ranges
+                    .get(idx + 1)
+                    .map(|next| intron_length_between_exons_0based((*start, *end), *next));
                 ExonSkipCandidateExon {
                     candidate_id: format!("exon_{}", idx + 1),
                     ordinal: idx + 1,
@@ -5675,14 +5705,29 @@ impl GentleEngine {
                     length_bp,
                     length_mod3: frame_cue.length_mod3,
                     frame_neutral_length: frame_cue.frame_neutral_length,
+                    coding_skip_bp: coding_cue.coding_skip_bp,
+                    coding_skip_mod3: coding_cue.coding_skip_mod3,
+                    frame_neutral_coding_skip: coding_cue.frame_neutral_coding_skip,
+                    coding_context: coding_cue.coding_context.to_string(),
                     support_transcript_count,
+                    support_transcript_total: transcript_count,
+                    support_fraction: support_transcript_count as f64 / transcript_count as f64,
                     constitutive: support_transcript_count == transcript_count,
+                    transcript_exon_count,
+                    transcript_position: Self::exon_skip_transcript_position(
+                        idx,
+                        transcript_exon_count,
+                    )
+                    .to_string(),
+                    upstream_intron_bp,
+                    downstream_intron_bp,
                     present_in_base_transcript: true,
                     cds_overlap,
                     left_cds_phase: phase_cue.left_cds_phase,
                     right_cds_phase: phase_cue.right_cds_phase,
                     cds_phase_entry_kind: phase_entry_kind(entry_phase).to_string(),
                     cds_phase_warning,
+                    coding_frame_note: frame_cue.coding_frame_note(coding_cue),
                     selected: false,
                     selection_sources: vec![],
                     matched_feature_ids: vec![],
@@ -5852,6 +5897,78 @@ impl GentleEngine {
                                 candidate,
                                 "length_mod3".to_string(),
                                 format!("Exon length modulo 3 is {}", candidate.length_mod3),
+                                None,
+                            );
+                        }
+                    }
+                }
+                ExonSkipSelectionCriterion::CodingMod3 { values } => {
+                    let mut accepted_values = values
+                        .iter()
+                        .copied()
+                        .filter(|value| *value <= 2)
+                        .collect::<Vec<_>>();
+                    accepted_values.sort_unstable();
+                    accepted_values.dedup();
+                    for value in values.iter().filter(|value| **value > 2) {
+                        warnings.push(format!(
+                            "Ignored invalid coding length modulo 3 filter value '{}'",
+                            value
+                        ));
+                    }
+                    if accepted_values.is_empty() {
+                        warnings.push(
+                            "Ignored coding length modulo 3 criterion without a valid 0, 1, or 2 value"
+                                .to_string(),
+                        );
+                        continue;
+                    }
+                    for candidate in &mut candidate_exons {
+                        if candidate.coding_skip_bp > 0
+                            && accepted_values.contains(&(candidate.coding_skip_mod3 as u8))
+                        {
+                            Self::mark_exon_skip_candidate_selected(
+                                candidate,
+                                "coding_mod3".to_string(),
+                                format!(
+                                    "CDS-overlap skip length modulo 3 is {}",
+                                    candidate.coding_skip_mod3
+                                ),
+                                None,
+                            );
+                        }
+                    }
+                }
+                ExonSkipSelectionCriterion::CodingContext { contexts } => {
+                    let mut accepted_contexts: Vec<&'static str> = vec![];
+                    for context in contexts {
+                        if let Some(value) = Self::exon_skip_coding_context_filter_value(context) {
+                            if !accepted_contexts.contains(&value) {
+                                accepted_contexts.push(value);
+                            }
+                        } else {
+                            warnings.push(format!(
+                                "Ignored unknown exon coding-context filter '{}'",
+                                context
+                            ));
+                        }
+                    }
+                    if accepted_contexts.is_empty() {
+                        warnings.push(
+                            "Ignored exon coding-context criterion without a known context"
+                                .to_string(),
+                        );
+                        continue;
+                    }
+                    for candidate in &mut candidate_exons {
+                        if accepted_contexts
+                            .iter()
+                            .any(|context| *context == candidate.coding_context)
+                        {
+                            Self::mark_exon_skip_candidate_selected(
+                                candidate,
+                                "coding_context".to_string(),
+                                format!("Exon coding context is '{}'", candidate.coding_context),
                                 None,
                             );
                         }

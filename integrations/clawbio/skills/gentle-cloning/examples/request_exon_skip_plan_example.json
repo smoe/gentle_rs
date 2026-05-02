@@ -6,6 +6,8 @@
   "transcript_feature_id": 0,
   "skip_candidate_ids": ["exon_2"],
   "length_mod3_values": [0],
+  "coding_mod3_values": [0],
+  "coding_contexts": ["cds_only"],
   "cds_phase_entry_kinds": ["codon_boundary"],
   "plan_id": "annotated_locus_skip_exon_2"
 }

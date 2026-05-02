@@ -20377,7 +20377,7 @@ fn parse_transcripts_derive_command() {
 #[test]
 fn parse_transcripts_exon_skip_commands() {
     let parsed = parse_shell_line(
-        "transcripts exon-skip-plan seq_a --feature-id 1 --skip exon_2 --overlap 20..30 --length-mod3 0,2 --phase-entry codon-boundary --phase-entry split-codon --plan-id skip_plan",
+        "transcripts exon-skip-plan seq_a --feature-id 1 --skip exon_2 --overlap 20..30 --length-mod3 0,2 --coding-mod3 0 --coding-context mixed-utr-cds --phase-entry codon-boundary --phase-entry split-codon --plan-id skip_plan",
     )
     .expect("parse exon-skip plan");
     match parsed {
@@ -20390,13 +20390,22 @@ fn parse_transcripts_exon_skip_commands() {
             assert_eq!(seq_id, "seq_a");
             assert_eq!(transcript_feature_id, 1);
             assert_eq!(plan_id.as_deref(), Some("skip_plan"));
-            assert_eq!(criteria.len(), 4);
+            assert_eq!(criteria.len(), 6);
             assert!(matches!(
                 &criteria[2],
                 ExonSkipSelectionCriterion::LengthMod3 { values } if values == &vec![0, 2]
             ));
             assert!(matches!(
                 &criteria[3],
+                ExonSkipSelectionCriterion::CodingMod3 { values } if values == &vec![0]
+            ));
+            assert!(matches!(
+                &criteria[4],
+                ExonSkipSelectionCriterion::CodingContext { contexts }
+                    if contexts == &vec!["mixed-utr-cds".to_string()]
+            ));
+            assert!(matches!(
+                &criteria[5],
                 ExonSkipSelectionCriterion::CdsPhaseEntryKind { kinds }
                     if kinds == &vec!["codon-boundary".to_string(), "split-codon".to_string()]
             ));

@@ -874,6 +874,16 @@ fn tool_list() -> Value {
                             "items": { "type": "integer", "minimum": 0, "maximum": 2 },
                             "description": "Select candidate exons whose length modulo 3 is one of these values."
                         },
+                        "coding_mod3_values": {
+                            "type": "array",
+                            "items": { "type": "integer", "minimum": 0, "maximum": 2 },
+                            "description": "Select candidate exons whose CDS-overlap skip length modulo 3 is one of these values."
+                        },
+                        "coding_contexts": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Select candidate exons by UTR/CDS context: utr_only, cds_only, or mixed_utr_cds."
+                        },
                         "cds_phase_entry_kinds": {
                             "type": "array",
                             "items": { "type": "string" },
@@ -1586,6 +1596,14 @@ fn exon_skip_plan_tool_result(default_state_path: &str, arguments: &Value) -> Va
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
     };
+    let coding_mod3_values = match optional_u8_array_arg(&args, "coding_mod3_values") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let coding_contexts = match optional_string_array_arg(&args, "coding_contexts") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
     let cds_phase_entry_kinds = match optional_string_array_arg(&args, "cds_phase_entry_kinds") {
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
@@ -1621,6 +1639,14 @@ fn exon_skip_plan_tool_result(default_state_path: &str, arguments: &Value) -> Va
     for value in length_mod3_values {
         tokens.push("--length-mod3".to_string());
         tokens.push(value.to_string());
+    }
+    for value in coding_mod3_values {
+        tokens.push("--coding-mod3".to_string());
+        tokens.push(value.to_string());
+    }
+    for context in coding_contexts {
+        tokens.push("--coding-context".to_string());
+        tokens.push(context);
     }
     for kind in cds_phase_entry_kinds {
         tokens.push("--phase-entry".to_string());
@@ -3130,6 +3156,16 @@ mod tests {
         assert_eq!(
             plan["inputSchema"]["properties"]["length_mod3_values"]["items"]["maximum"].as_u64(),
             Some(2)
+        );
+        assert_eq!(
+            plan["inputSchema"]["properties"]["coding_mod3_values"]["items"]["maximum"].as_u64(),
+            Some(2)
+        );
+        assert!(
+            plan["inputSchema"]["properties"]["coding_contexts"]["description"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("mixed_utr_cds")
         );
         assert!(
             plan["inputSchema"]["properties"]["cds_phase_entry_kinds"]["description"]

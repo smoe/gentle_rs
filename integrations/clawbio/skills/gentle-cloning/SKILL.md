@@ -1411,8 +1411,9 @@ Apply the following methodology:
 - `exon-skip-plan`: typed wrapper over `transcripts exon-skip-plan`; use it
   when ClawBio has chosen or inferred exons to skip but wants GENtle to store
   an auditable selection plan first. It accepts explicit candidate/interval
-  criteria plus `length_mod3_values[]` and `cds_phase_entry_kinds[]` filters
-  over GENtle's persisted exon-frame attributes.
+  criteria plus `length_mod3_values[]`, `coding_mod3_values[]`,
+  `coding_contexts[]`, and `cds_phase_entry_kinds[]` filters over GENtle's
+  persisted exon-frame attributes.
 - `exon-skip-materialize`: typed wrapper over
   `transcripts exon-skip-materialize`; requires `confirm=true` and accepts
   `return_items[]` (`genbank`, `cdna_fasta`, `amino_acid_sequence`,

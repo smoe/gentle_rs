@@ -10675,6 +10675,17 @@ fn test_exon_skip_plan_manual_selection_and_materialization_creates_cdna_and_gen
     assert_eq!(selected_candidate.length_bp, 8);
     assert_eq!(selected_candidate.length_mod3, 2);
     assert!(!selected_candidate.frame_neutral_length);
+    assert_eq!(selected_candidate.coding_skip_bp, 8);
+    assert_eq!(selected_candidate.coding_skip_mod3, 2);
+    assert!(!selected_candidate.frame_neutral_coding_skip);
+    assert_eq!(selected_candidate.coding_context, "cds_only");
+    assert_eq!(selected_candidate.support_transcript_count, 1);
+    assert_eq!(selected_candidate.support_transcript_total, 2);
+    assert_eq!(selected_candidate.support_fraction, 0.5);
+    assert_eq!(selected_candidate.transcript_exon_count, 3);
+    assert_eq!(selected_candidate.transcript_position, "internal");
+    assert_eq!(selected_candidate.upstream_intron_bp, Some(4));
+    assert_eq!(selected_candidate.downstream_intron_bp, Some(6));
     assert_eq!(selected_candidate.left_cds_phase, Some(0));
     assert_eq!(selected_candidate.right_cds_phase, Some(1));
     assert_eq!(selected_candidate.cds_phase_entry_kind, "codon_boundary");
@@ -10837,6 +10848,68 @@ fn test_exon_skip_plan_selects_by_frame_and_phase_attributes() {
         selected
             .selection_sources
             .contains(&"cds_phase_entry_kind".to_string())
+    );
+}
+
+#[test]
+fn test_exon_skip_plan_reports_coding_skip_context_for_mixed_utr_cds_exon() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(24)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(0, 8),
+        qualifiers: vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            ("transcript_id".into(), Some("TX_MIXED".to_string())),
+            ("label".into(), Some("TX_MIXED".to_string())),
+            ("cds_ranges_1based".into(), Some("3-8".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let plan = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![
+                ExonSkipSelectionCriterion::CodingMod3 { values: vec![0] },
+                ExonSkipSelectionCriterion::CodingContext {
+                    contexts: vec!["mixed-utr-cds".to_string()],
+                },
+            ],
+            plan_id: Some("skip_mixed_coding_context".to_string()),
+        })
+        .expect("plan mixed UTR/CDS exon skip")
+        .exon_skip_selection_plan
+        .expect("mixed coding-context plan");
+    assert_eq!(plan.selected_candidate_ids, vec!["exon_1"]);
+    let candidate = &plan.candidate_exons[0];
+    assert_eq!(candidate.length_bp, 8);
+    assert_eq!(candidate.length_mod3, 2);
+    assert_eq!(candidate.coding_skip_bp, 6);
+    assert_eq!(candidate.coding_skip_mod3, 0);
+    assert!(candidate.frame_neutral_coding_skip);
+    assert_eq!(candidate.coding_context, "mixed_utr_cds");
+    assert_eq!(candidate.transcript_position, "single");
+    assert_eq!(candidate.upstream_intron_bp, None);
+    assert_eq!(candidate.downstream_intron_bp, None);
+    assert!(candidate.cds_phase_warning.is_none());
+    assert!(
+        candidate
+            .coding_frame_note
+            .as_deref()
+            .unwrap_or_default()
+            .contains("CDS-overlap skip length modulo 3 is 0")
+    );
+    assert!(
+        candidate
+            .selection_sources
+            .contains(&"coding_mod3".to_string())
+    );
+    assert!(
+        candidate
+            .selection_sources
+            .contains(&"coding_context".to_string())
     );
 }
 
