@@ -12346,6 +12346,17 @@ fn execute_export_run_bundle_writes_schema_json() {
     );
 }
 
+#[test]
+fn execute_export_run_bundle_writes_schema_json_on_small_stack() {
+    thread::Builder::new()
+        .name("gentle-test-small-stack-export-run-bundle".to_string())
+        .stack_size(256 * 1024)
+        .spawn(assert_export_run_bundle_empty_state_writes_schema_json)
+        .expect("spawn small-stack run-bundle export regression test")
+        .join()
+        .expect("small-stack run-bundle export regression test panicked");
+}
+
 fn execute_export_run_bundle_writes_schema_json_inner() {
     let mut state = ProjectState::default();
     state.sequences.insert(
@@ -12384,6 +12395,34 @@ fn execute_export_run_bundle_writes_schema_json_inner() {
             .and_then(|v| v.as_str())
             .unwrap_or_default(),
         "interactive"
+    );
+}
+
+fn assert_export_run_bundle_empty_state_writes_schema_json() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "seqA".to_string(),
+        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+
+    let tmp = tempfile::NamedTempFile::new().expect("tmp file");
+    let path = tmp.path().with_extension("shell.run_bundle.empty.json");
+    let path_text = path.display().to_string();
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ExportRunBundle {
+            output: path_text.clone(),
+            run_id: None,
+        },
+    )
+    .expect("export empty run bundle");
+    assert!(!out.state_changed);
+    let text = fs::read_to_string(path_text).expect("read empty bundle");
+    let value: serde_json::Value = serde_json::from_str(&text).expect("parse empty bundle");
+    assert_eq!(
+        value.get("schema").and_then(|v| v.as_str()),
+        Some("gentle.process_run_bundle.v1")
     );
 }
 
