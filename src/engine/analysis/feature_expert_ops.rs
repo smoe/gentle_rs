@@ -24,6 +24,7 @@ use crate::ensembl_protein::{
     normalize_entry_id as normalize_ensembl_protein_entry_id,
     resolve_query as resolve_ensembl_query,
 };
+use crate::exon_frame::exon_cds_phase_cues;
 use crate::uniprot::{UniprotFeature, UniprotFeatureProjection};
 use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
 use gentle_protocol::{
@@ -8222,73 +8223,20 @@ impl GentleEngine {
         exon_ranges: &[(usize, usize)],
         is_reverse: bool,
     ) -> Vec<SplicingExonCdsPhase> {
-        let mut phases = exon_ranges
-            .iter()
-            .map(|(start, end)| SplicingExonCdsPhase {
-                start_1based: start + 1,
-                end_1based: *end,
-                left_cds_phase: None,
-                right_cds_phase: None,
-            })
-            .collect::<Vec<_>>();
-        if exon_ranges.is_empty() {
-            return phases;
-        }
         let mut cds_ranges = Self::feature_qualifier_ranges_0based(feature, "cds_ranges_1based");
-        if cds_ranges.is_empty() {
-            return phases;
-        }
         cds_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
         cds_ranges.dedup();
-
-        let mut consumed_cds_bp = 0usize;
-        let exon_indices = if is_reverse {
-            (0..exon_ranges.len()).rev().collect::<Vec<_>>()
-        } else {
-            (0..exon_ranges.len()).collect::<Vec<_>>()
-        };
-
-        for exon_idx in exon_indices {
-            let exon = exon_ranges[exon_idx];
-            let mut coding_segments = cds_ranges
-                .iter()
-                .filter_map(|cds| Self::range_intersection_0based(exon, *cds))
-                .collect::<Vec<_>>();
-            if coding_segments.is_empty() {
-                continue;
-            }
-            if is_reverse {
-                coding_segments.sort_unstable_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
-            } else {
-                coding_segments.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-            }
-
-            for (seg_start, seg_end) in coding_segments {
-                let seg_len = seg_end.saturating_sub(seg_start);
-                if seg_len == 0 {
-                    continue;
-                }
-                let entry_phase = (consumed_cds_bp % 3) as u8;
-                let exit_phase = ((consumed_cds_bp + seg_len - 1) % 3) as u8;
-                if is_reverse {
-                    if seg_end == exon.1 && phases[exon_idx].right_cds_phase.is_none() {
-                        phases[exon_idx].right_cds_phase = Some(entry_phase);
-                    }
-                    if seg_start == exon.0 {
-                        phases[exon_idx].left_cds_phase = Some(exit_phase);
-                    }
-                } else {
-                    if seg_start == exon.0 && phases[exon_idx].left_cds_phase.is_none() {
-                        phases[exon_idx].left_cds_phase = Some(entry_phase);
-                    }
-                    if seg_end == exon.1 {
-                        phases[exon_idx].right_cds_phase = Some(exit_phase);
-                    }
-                }
-                consumed_cds_bp += seg_len;
-            }
-        }
-        phases
+        let phase_cues = exon_cds_phase_cues(exon_ranges, &cds_ranges, is_reverse);
+        exon_ranges
+            .iter()
+            .zip(phase_cues)
+            .map(|((start, end), phase)| SplicingExonCdsPhase {
+                start_1based: start + 1,
+                end_1based: *end,
+                left_cds_phase: phase.left_cds_phase,
+                right_cds_phase: phase.right_cds_phase,
+            })
+            .collect()
     }
 
     pub(super) fn build_splicing_expert_view(

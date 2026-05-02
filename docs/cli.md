@@ -613,13 +613,18 @@ Dotplot/flexibility capability status:
       admitted transcript has resolvable CDS context and translation-table
       metadata
   - exon-skipped isoform creation is a two-phase shared-shell route:
-    - `transcripts exon-skip-plan SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--feature-query-json JSON] [--plan-id ID]`
+    - `transcripts exon-skip-plan SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--length-mod3 0|1|2] [--phase-entry codon-boundary|split-codon|split-codon-1|split-codon-2|unavailable] [--feature-query-json JSON] [--plan-id ID]`
       where exon-skip `START..END` intervals are 1-based inclusive genomic
       coordinates
     - `transcripts exon-skip-materialize PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX] [--return genbank|cdna_fasta|amino_acid_sequence|amino_acid_fasta ...]`
     - phase 1 stores `gentle.exon_skip_selection_plan.v1`; phase 2 consumes the
       stored plan and creates both a genomic annotation product and retained
       exon cDNA/mRNA sequence
+    - phase-1 candidate rows include `length_bp`, `length_mod3`,
+      `frame_neutral_length`, `cds_overlap`, optional `left_cds_phase` /
+      `right_cds_phase`, stable `cds_phase_entry_kind`, and any
+      `cds_phase_warning`; `--length-mod3` and `--phase-entry` select by those
+      same engine-owned attributes
     - `--return` lets automation callers request a compact handoff payload in
       the materialization report, such as the adjusted GenBank entry or just
       the amino-acid sequence

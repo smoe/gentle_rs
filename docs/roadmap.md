@@ -1026,7 +1026,11 @@ without blocking this publication.
     - `PlanExonSkippedIsoform` / `transcripts exon-skip-plan`
     - `MaterializeExonSkippedIsoform` / `transcripts exon-skip-materialize`
     - phase 1 accepts manual exon IDs, interval/map-selection overlap,
-      feature-overlap queries, and reserved reasoning-source IDs
+      feature-overlap queries, `len%3` / CDS-entry-phase attribute filters,
+      and reserved reasoning-source IDs
+    - phase-1 candidate records persist the GUI-facing frame/phase attributes:
+      `length_mod3`, `frame_neutral_length`, CDS boundary phases,
+      `cds_phase_entry_kind`, and CDS phase warnings
     - phase 2 consumes the stored plan and creates both genomic annotation and
       retained-exon cDNA/mRNA products, rejecting stale or all-skipped plans
     - phase 2 now also accepts requested return payloads for adapter handoff:

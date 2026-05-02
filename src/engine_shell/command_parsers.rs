@@ -5027,7 +5027,7 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
         "exon-skip-plan" => {
             if tokens.len() < 3 {
                 return Err(
-                    "transcripts exon-skip-plan requires SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--feature-query-json JSON] [--plan-id ID]"
+                    "transcripts exon-skip-plan requires SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--length-mod3 0|1|2] [--phase-entry codon-boundary|split-codon|split-codon-1|split-codon-2] [--feature-query-json JSON] [--plan-id ID]"
                         .to_string(),
                 );
             }
@@ -5040,6 +5040,8 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
             let mut explicit_intervals: Vec<SplicingRange> = vec![];
             let mut selection_intervals: Vec<SplicingRange> = vec![];
             let mut feature_queries: Vec<SequenceFeatureQuery> = vec![];
+            let mut length_mod3_values: Vec<u8> = vec![];
+            let mut phase_entry_kinds: Vec<String> = vec![];
             let mut plan_id: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -5104,9 +5106,51 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
                                 format!(
                                     "Invalid --feature-query-json for transcripts exon-skip-plan: {e}"
                                 )
-                            })?;
+                        })?;
                         query.seq_id = seq_id.clone();
                         feature_queries.push(query);
+                    }
+                    "--length-mod3" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--length-mod3",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        for value in raw.split(',') {
+                            let value = value.trim();
+                            if value.is_empty() {
+                                continue;
+                            }
+                            let parsed = value.parse::<u8>().map_err(|e| {
+                                format!(
+                                    "Invalid --length-mod3 value '{}' for transcripts exon-skip-plan: {e}",
+                                    value
+                                )
+                            })?;
+                            if parsed > 2 {
+                                return Err(format!(
+                                    "Invalid --length-mod3 value '{}' for transcripts exon-skip-plan: expected 0, 1, or 2",
+                                    value
+                                ));
+                            }
+                            length_mod3_values.push(parsed);
+                        }
+                    }
+                    "--phase-entry" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--phase-entry",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        for value in raw.split(',') {
+                            let trimmed = value.trim();
+                            if trimmed.is_empty() {
+                                continue;
+                            }
+                            phase_entry_kinds.push(trimmed.to_string());
+                        }
                     }
                     "--plan-id" => {
                         let raw = parse_option_path(
@@ -5151,6 +5195,20 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
             }
             for query in feature_queries {
                 criteria.push(ExonSkipSelectionCriterion::FeatureOverlap { query });
+            }
+            if !length_mod3_values.is_empty() {
+                length_mod3_values.sort_unstable();
+                length_mod3_values.dedup();
+                criteria.push(ExonSkipSelectionCriterion::LengthMod3 {
+                    values: length_mod3_values,
+                });
+            }
+            if !phase_entry_kinds.is_empty() {
+                phase_entry_kinds.sort_unstable();
+                phase_entry_kinds.dedup();
+                criteria.push(ExonSkipSelectionCriterion::CdsPhaseEntryKind {
+                    kinds: phase_entry_kinds,
+                });
             }
             Ok(ShellCommand::TranscriptsExonSkipPlan {
                 seq_id,

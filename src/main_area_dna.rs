@@ -125,7 +125,7 @@ use crate::{
         shell_help_text,
     },
     enzymes::active_restriction_enzymes,
-    exon_frame::{ExonLengthFrameCue, phase_entry_hint},
+    exon_frame::{ExonLengthFrameCue, phase_entry_hint, transcript_entry_phase},
     feature_expert::{
         FeatureExpertTarget, FeatureExpertView, IsoformArchitectureExpertView,
         RestrictionSiteExpertView, SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView,
@@ -27325,6 +27325,14 @@ impl MainAreaDna {
                                                 && phase.end_1based == exon.end_1based
                                         })
                                     });
+                                let is_reverse = transcript.strand.trim() == "-";
+                                let entry_phase = phase_info.and_then(|phase| {
+                                    transcript_entry_phase(
+                                        phase.left_cds_phase,
+                                        phase.right_cds_phase,
+                                        is_reverse,
+                                    )
+                                });
                                 hovered_exon = Some((
                                     transcript.transcript_feature_id,
                                     transcript.transcript_id.as_str(),
@@ -27332,6 +27340,7 @@ impl MainAreaDna {
                                     exon.end_1based,
                                     phase_info.and_then(|phase| phase.left_cds_phase),
                                     phase_info.and_then(|phase| phase.right_cds_phase),
+                                    entry_phase,
                                 ));
                                 break;
                             }
@@ -27346,6 +27355,7 @@ impl MainAreaDna {
                             end_1based,
                             left_phase,
                             right_phase,
+                            entry_phase,
                         )) = hovered_exon
                         {
                             has_exon_hover = true;
@@ -27379,7 +27389,7 @@ impl MainAreaDna {
                                         .map(|phase| phase.to_string())
                                         .unwrap_or_else(|| "n/a".to_string()),
                                 ));
-                                ui.label(format!("CDS entry: {}", phase_entry_hint(left_phase)));
+                                ui.label(format!("CDS entry: {}", phase_entry_hint(entry_phase)));
                                 if interactive {
                                     ui.label(
                                     "Click lane to focus this transcript feature in sequence view",
@@ -28207,7 +28217,7 @@ impl MainAreaDna {
                         .saturating_sub(exon.end_1based.min(exon.start_1based))
                         + 1;
                     let frame_cue = ExonLengthFrameCue::from_length(exon_len);
-                    let left_phase = lane
+                    let phase_info = lane
                         .exon_cds_phases
                         .get(idx)
                         .filter(|phase| {
@@ -28219,8 +28229,14 @@ impl MainAreaDna {
                                 phase.start_1based == exon.start_1based
                                     && phase.end_1based == exon.end_1based
                             })
-                        })
-                        .and_then(|phase| phase.left_cds_phase);
+                        });
+                    let entry_phase = phase_info.and_then(|phase| {
+                        transcript_entry_phase(
+                            phase.left_cds_phase,
+                            phase.right_cds_phase,
+                            lane.strand.trim() == "-",
+                        )
+                    });
                     let mut selected = self
                         .splicing_exon_skip_selected_candidate_ids
                         .contains(&candidate_id);
@@ -28236,10 +28252,10 @@ impl MainAreaDna {
                             frame_cue.length_mod3,
                             RenderDna::exon_length_mod3_color_label(frame_cue.length_mod3 as u8),
                             frame_cue.skip_frame_hint(true),
-                            left_phase
+                            entry_phase
                                 .map(|phase| phase.to_string())
                                 .unwrap_or_else(|| "n/a".to_string()),
-                            phase_entry_hint(left_phase),
+                            phase_entry_hint(entry_phase),
                         ))
                         .changed()
                     {
@@ -28310,12 +28326,12 @@ impl MainAreaDna {
                 if ui
                     .button("Add phase 0 starts")
                     .on_hover_text(
-                        "Add exon candidates whose CDS left flank phase is 0: they start at a codon boundary/new amino acid in this transcript",
+                        "Add exon candidates whose CDS entry phase is 0: they start at a codon boundary/new amino acid in this transcript",
                     )
                     .clicked()
                 {
                     for (idx, exon) in lane.exons.iter().enumerate() {
-                        let left_phase = lane
+                        let phase_info = lane
                             .exon_cds_phases
                             .get(idx)
                             .filter(|phase| {
@@ -28327,9 +28343,15 @@ impl MainAreaDna {
                                     phase.start_1based == exon.start_1based
                                         && phase.end_1based == exon.end_1based
                                 })
-                            })
-                            .and_then(|phase| phase.left_cds_phase);
-                        if left_phase.map(|phase| phase % 3) == Some(0) {
+                            });
+                        let entry_phase = phase_info.and_then(|phase| {
+                            transcript_entry_phase(
+                                phase.left_cds_phase,
+                                phase.right_cds_phase,
+                                lane.strand.trim() == "-",
+                            )
+                        });
+                        if entry_phase.map(|phase| phase % 3) == Some(0) {
                             self.splicing_exon_skip_selected_candidate_ids
                                 .insert(Self::splicing_exon_skip_candidate_id(idx + 1));
                         }
@@ -28338,12 +28360,12 @@ impl MainAreaDna {
                 if ui
                     .button("Add split-codon starts")
                     .on_hover_text(
-                        "Add exon candidates whose CDS left flank phase is 1 or 2: they enter within a split codon in this transcript",
+                        "Add exon candidates whose CDS entry phase is 1 or 2: they enter within a split codon in this transcript",
                     )
                     .clicked()
                 {
                     for (idx, exon) in lane.exons.iter().enumerate() {
-                        let left_phase = lane
+                        let phase_info = lane
                             .exon_cds_phases
                             .get(idx)
                             .filter(|phase| {
@@ -28355,9 +28377,15 @@ impl MainAreaDna {
                                     phase.start_1based == exon.start_1based
                                         && phase.end_1based == exon.end_1based
                                 })
-                            })
-                            .and_then(|phase| phase.left_cds_phase);
-                        if matches!(left_phase.map(|phase| phase % 3), Some(1 | 2)) {
+                            });
+                        let entry_phase = phase_info.and_then(|phase| {
+                            transcript_entry_phase(
+                                phase.left_cds_phase,
+                                phase.right_cds_phase,
+                                lane.strand.trim() == "-",
+                            )
+                        });
+                        if matches!(entry_phase.map(|phase| phase % 3), Some(1 | 2)) {
                             self.splicing_exon_skip_selected_candidate_ids
                                 .insert(Self::splicing_exon_skip_candidate_id(idx + 1));
                         }

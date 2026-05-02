@@ -869,6 +869,16 @@ fn tool_list() -> Value {
                                 "additionalProperties": false
                             }
                         },
+                        "length_mod3_values": {
+                            "type": "array",
+                            "items": { "type": "integer", "minimum": 0, "maximum": 2 },
+                            "description": "Select candidate exons whose length modulo 3 is one of these values."
+                        },
+                        "cds_phase_entry_kinds": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Select candidate exons by CDS entry kind: codon_boundary, split_codon_1, split_codon_2, split_codon, or unavailable."
+                        },
                         "feature_query": {
                             "description": "SequenceFeatureQuery object or raw JSON string; seq_id is normalized by the shell parser.",
                             "oneOf": [
@@ -1251,6 +1261,27 @@ fn optional_string_array_arg(args: &Map<String, Value>, key: &str) -> Result<Vec
     }
 }
 
+fn optional_u8_array_arg(args: &Map<String, Value>, key: &str) -> Result<Vec<u8>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(vec![]),
+        Some(Value::Array(items)) => {
+            let mut values = Vec::new();
+            for (idx, item) in items.iter().enumerate() {
+                let Some(raw) = item.as_u64() else {
+                    return Err(format!(
+                        "MCP argument '{key}[{idx}]' must be a non-negative integer"
+                    ));
+                };
+                let parsed = u8::try_from(raw)
+                    .map_err(|_| format!("MCP argument '{key}[{idx}]' is out of u8 range"))?;
+                values.push(parsed);
+            }
+            Ok(values)
+        }
+        Some(_) => Err(format!("MCP argument '{key}' must be an integer array")),
+    }
+}
+
 fn optional_interval_array_arg(
     args: &Map<String, Value>,
     key: &str,
@@ -1551,6 +1582,14 @@ fn exon_skip_plan_tool_result(default_state_path: &str, arguments: &Value) -> Va
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
     };
+    let length_mod3_values = match optional_u8_array_arg(&args, "length_mod3_values") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let cds_phase_entry_kinds = match optional_string_array_arg(&args, "cds_phase_entry_kinds") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
     let feature_query = match optional_json_string_arg(&args, "feature_query") {
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
@@ -1578,6 +1617,14 @@ fn exon_skip_plan_tool_result(default_state_path: &str, arguments: &Value) -> Va
     for (start, end) in overlap_intervals {
         tokens.push("--overlap".to_string());
         tokens.push(format!("{start}..{end}"));
+    }
+    for value in length_mod3_values {
+        tokens.push("--length-mod3".to_string());
+        tokens.push(value.to_string());
+    }
+    for kind in cds_phase_entry_kinds {
+        tokens.push("--phase-entry".to_string());
+        tokens.push(kind);
     }
     append_string_flag(&mut tokens, "--feature-query-json", feature_query);
     append_string_flag(&mut tokens, "--plan-id", plan_id);
@@ -3079,6 +3126,16 @@ mod tests {
         assert_eq!(
             plan["inputSchema"]["properties"]["transcript_feature_id"]["minimum"].as_u64(),
             Some(0)
+        );
+        assert_eq!(
+            plan["inputSchema"]["properties"]["length_mod3_values"]["items"]["maximum"].as_u64(),
+            Some(2)
+        );
+        assert!(
+            plan["inputSchema"]["properties"]["cds_phase_entry_kinds"]["description"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("split_codon")
         );
         let materialize = tools
             .iter()

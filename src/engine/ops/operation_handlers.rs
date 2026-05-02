@@ -15,7 +15,9 @@ use crate::{
     AMINO_ACIDS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
     dna_ladder::default_dna_ladders,
-    exon_frame::ExonLengthFrameCue,
+    exon_frame::{
+        ExonLengthFrameCue, exon_cds_phase_cues, phase_entry_kind, transcript_entry_phase,
+    },
     genomes::{BlastHit, default_catalog_discovery_label, default_catalog_discovery_token},
     gibson_planning::{GibsonAssemblyPlan, derive_gibson_execution_plan},
     protein_gel::{
@@ -5492,6 +5494,25 @@ impl GentleEngine {
         candidate.end_1based >= start_1based && candidate.start_1based <= end_1based
     }
 
+    fn exon_skip_phase_entry_filter_values(raw: &str) -> Option<Vec<&'static str>> {
+        let token = raw.trim().to_ascii_lowercase().replace(['-', ' '], "_");
+        match token.as_str() {
+            "0" | "phase0" | "phase_0" | "boundary" | "codon_boundary" | "new_aa"
+            | "new_amino_acid" => Some(vec!["codon_boundary"]),
+            "1" | "phase1" | "phase_1" | "split1" | "split_1" | "split_codon_1" => {
+                Some(vec!["split_codon_1"])
+            }
+            "2" | "phase2" | "phase_2" | "split2" | "split_2" | "split_codon_2" => {
+                Some(vec!["split_codon_2"])
+            }
+            "split" | "split_codon" | "split_codons" => {
+                Some(vec!["split_codon_1", "split_codon_2"])
+            }
+            "unknown" | "unavailable" | "none" => Some(vec!["unavailable"]),
+            _ => None,
+        }
+    }
+
     fn mark_exon_skip_candidate_selected(
         candidate: &mut ExonSkipCandidateExon,
         source: String,
@@ -5609,9 +5630,21 @@ impl GentleEngine {
                 collect_location_ranges_usize(&feature.location, &mut cds_ranges);
             }
         }
+        cds_ranges.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        cds_ranges.dedup();
+        let transcript_cds_ranges =
+            Self::feature_qualifier_ranges_0based(&source_feature, "cds_ranges_1based");
+        let phase_cds_ranges = if transcript_cds_ranges.is_empty() {
+            cds_ranges.clone()
+        } else {
+            transcript_cds_ranges
+        };
+        let mut ordered_phase_cues =
+            exon_cds_phase_cues(&exon_ranges, &phase_cds_ranges, is_reverse);
         let mut ordered_ranges = exon_ranges.clone();
         if is_reverse {
             ordered_ranges.reverse();
+            ordered_phase_cues.reverse();
         }
         let mut candidate_exons = ordered_ranges
             .iter()
@@ -5624,7 +5657,13 @@ impl GentleEngine {
                     .max(1);
                 let frame_cue = ExonLengthFrameCue::from_range(*start, *end);
                 let length_bp = frame_cue.length_bp;
-                let cds_overlap = cds_ranges
+                let phase_cue = ordered_phase_cues.get(idx).copied().unwrap_or_default();
+                let entry_phase = transcript_entry_phase(
+                    phase_cue.left_cds_phase,
+                    phase_cue.right_cds_phase,
+                    is_reverse,
+                );
+                let cds_overlap = phase_cds_ranges
                     .iter()
                     .any(|(cds_start, cds_end)| *cds_end > *start && *cds_start < *end);
                 let cds_phase_warning = frame_cue.cds_phase_warning(cds_overlap);
@@ -5635,10 +5674,14 @@ impl GentleEngine {
                     end_1based: *end,
                     length_bp,
                     length_mod3: frame_cue.length_mod3,
+                    frame_neutral_length: frame_cue.frame_neutral_length,
                     support_transcript_count,
                     constitutive: support_transcript_count == transcript_count,
                     present_in_base_transcript: true,
                     cds_overlap,
+                    left_cds_phase: phase_cue.left_cds_phase,
+                    right_cds_phase: phase_cue.right_cds_phase,
+                    cds_phase_entry_kind: phase_entry_kind(entry_phase).to_string(),
                     cds_phase_warning,
                     selected: false,
                     selection_sources: vec![],
@@ -5779,6 +5822,76 @@ impl GentleEngine {
                                     Some(row.feature_id),
                                 );
                             }
+                        }
+                    }
+                }
+                ExonSkipSelectionCriterion::LengthMod3 { values } => {
+                    let mut accepted_values = values
+                        .iter()
+                        .copied()
+                        .filter(|value| *value <= 2)
+                        .collect::<Vec<_>>();
+                    accepted_values.sort_unstable();
+                    accepted_values.dedup();
+                    for value in values.iter().filter(|value| **value > 2) {
+                        warnings.push(format!(
+                            "Ignored invalid exon length modulo 3 filter value '{}'",
+                            value
+                        ));
+                    }
+                    if accepted_values.is_empty() {
+                        warnings.push(
+                            "Ignored exon length modulo 3 criterion without a valid 0, 1, or 2 value"
+                                .to_string(),
+                        );
+                        continue;
+                    }
+                    for candidate in &mut candidate_exons {
+                        if accepted_values.contains(&(candidate.length_mod3 as u8)) {
+                            Self::mark_exon_skip_candidate_selected(
+                                candidate,
+                                "length_mod3".to_string(),
+                                format!("Exon length modulo 3 is {}", candidate.length_mod3),
+                                None,
+                            );
+                        }
+                    }
+                }
+                ExonSkipSelectionCriterion::CdsPhaseEntryKind { kinds } => {
+                    let mut accepted_kinds: Vec<&'static str> = vec![];
+                    for kind in kinds {
+                        if let Some(values) = Self::exon_skip_phase_entry_filter_values(kind) {
+                            for value in values {
+                                if !accepted_kinds.contains(&value) {
+                                    accepted_kinds.push(value);
+                                }
+                            }
+                        } else {
+                            warnings
+                                .push(format!("Ignored unknown CDS phase entry filter '{}'", kind));
+                        }
+                    }
+                    if accepted_kinds.is_empty() {
+                        warnings.push(
+                            "Ignored CDS phase entry criterion without a known entry kind"
+                                .to_string(),
+                        );
+                        continue;
+                    }
+                    for candidate in &mut candidate_exons {
+                        if accepted_kinds
+                            .iter()
+                            .any(|kind| *kind == candidate.cds_phase_entry_kind)
+                        {
+                            Self::mark_exon_skip_candidate_selected(
+                                candidate,
+                                "cds_phase_entry_kind".to_string(),
+                                format!(
+                                    "CDS entry phase kind is '{}'",
+                                    candidate.cds_phase_entry_kind
+                                ),
+                                None,
+                            );
                         }
                     }
                 }

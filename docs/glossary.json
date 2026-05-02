@@ -2854,7 +2854,7 @@
          ],
          "path": "transcripts exon-skip-plan",
          "summary": "Build and store an inspectable plan for exon-skipped isoform creation.",
-         "usage": "transcripts exon-skip-plan SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--feature-query-json JSON] [--plan-id ID]"
+         "usage": "transcripts exon-skip-plan SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--length-mod3 0|1|2] [--phase-entry codon-boundary|split-codon|split-codon-1|split-codon-2|unavailable] [--feature-query-json JSON] [--plan-id ID]"
       },
       {
          "aliases": [],

@@ -162,6 +162,8 @@ class Request:
     skip_candidate_ids: list[str] | None = None
     skip_intervals_1based: list[Any] | None = None
     overlap_intervals_1based: list[Any] | None = None
+    length_mod3_values: list[int] | None = None
+    cds_phase_entry_kinds: list[str] | None = None
     feature_query: Any = None
     return_items: list[str] | None = None
     expected_artifacts: list[str] | None = None
@@ -533,6 +535,23 @@ def _normalise_optional_string_array(value: Any, field_name: str) -> list[str]:
     return result
 
 
+def _normalise_length_mod3_values(value: Any, field_name: str) -> list[int]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SkillError(f"{field_name} must be an integer array when present")
+    result: list[int] = []
+    for idx, item in enumerate(value):
+        try:
+            parsed = int(item)
+        except (TypeError, ValueError) as e:
+            raise SkillError(f"{field_name}[{idx}] must be an integer") from e
+        if parsed not in {0, 1, 2}:
+            raise SkillError(f"{field_name}[{idx}] must be one of 0, 1, or 2")
+        result.append(parsed)
+    return sorted(set(result))
+
+
 def _normalise_exon_skip_request(request: Request) -> None:
     if request.mode == "exon-skip-plan":
         if not isinstance(request.seq_id, str) or not request.seq_id.strip():
@@ -555,6 +574,12 @@ def _normalise_exon_skip_request(request: Request) -> None:
         )
         request.overlap_intervals_1based = _normalise_exon_skip_interval_list(
             request.overlap_intervals_1based, "overlap_intervals_1based"
+        )
+        request.length_mod3_values = _normalise_length_mod3_values(
+            request.length_mod3_values, "length_mod3_values"
+        )
+        request.cds_phase_entry_kinds = _normalise_optional_string_array(
+            request.cds_phase_entry_kinds, "cds_phase_entry_kinds"
         )
         if request.plan_id is not None:
             if not isinstance(request.plan_id, str) or not request.plan_id.strip():
@@ -917,6 +942,8 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         skip_candidate_ids=payload.get("skip_candidate_ids"),
         skip_intervals_1based=payload.get("skip_intervals_1based"),
         overlap_intervals_1based=payload.get("overlap_intervals_1based"),
+        length_mod3_values=payload.get("length_mod3_values"),
+        cds_phase_entry_kinds=payload.get("cds_phase_entry_kinds"),
         feature_query=payload.get("feature_query"),
         return_items=payload.get("return_items", payload.get("return")),
         expected_artifacts=payload.get("expected_artifacts"),
@@ -1363,6 +1390,10 @@ def _build_exon_skip_shell_line(request: Request) -> str:
             tokens.extend(
                 ["--overlap", f"{interval['start_1based']}..{interval['end_1based']}"]
             )
+        for value in request.length_mod3_values or []:
+            tokens.extend(["--length-mod3", str(value)])
+        for kind in request.cds_phase_entry_kinds or []:
+            tokens.extend(["--phase-entry", kind])
         if request.feature_query is not None:
             tokens.extend(
                 [
@@ -2919,6 +2950,8 @@ def _request_payload_for_artifact_continuation(
             "skip_candidate_ids",
             "skip_intervals_1based",
             "overlap_intervals_1based",
+            "length_mod3_values",
+            "cds_phase_entry_kinds",
             "feature_query",
             "plan_id",
             "candidate_ids",

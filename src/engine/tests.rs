@@ -10667,6 +10667,24 @@ fn test_exon_skip_plan_manual_selection_and_materialization_creates_cdna_and_gen
     assert_eq!(plan.schema, EXON_SKIP_SELECTION_PLAN_SCHEMA);
     assert_eq!(plan.selected_candidate_ids, vec!["exon_2"]);
     assert_eq!(plan.candidate_exons.len(), 3);
+    let selected_candidate = plan
+        .candidate_exons
+        .iter()
+        .find(|candidate| candidate.candidate_id == "exon_2")
+        .expect("selected exon candidate");
+    assert_eq!(selected_candidate.length_bp, 8);
+    assert_eq!(selected_candidate.length_mod3, 2);
+    assert!(!selected_candidate.frame_neutral_length);
+    assert_eq!(selected_candidate.left_cds_phase, Some(0));
+    assert_eq!(selected_candidate.right_cds_phase, Some(1));
+    assert_eq!(selected_candidate.cds_phase_entry_kind, "codon_boundary");
+    assert!(
+        selected_candidate
+            .cds_phase_warning
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not divisible by 3")
+    );
     assert!(
         engine
             .state()
@@ -10768,6 +10786,105 @@ fn test_exon_skip_plan_selects_exons_by_feature_overlap() {
             .contains(&"feature_overlap".to_string())
     );
     assert!(candidate.matched_feature_ids.contains(&4));
+}
+
+#[test]
+fn test_exon_skip_plan_selects_by_frame_and_phase_attributes() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_seed_feature_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let frame_plan = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::LengthMod3 { values: vec![0] }],
+            plan_id: Some("skip_len_mod0".to_string()),
+        })
+        .expect("plan exon skip by length modulo 3")
+        .exon_skip_selection_plan
+        .expect("frame selection plan");
+    assert_eq!(frame_plan.selected_candidate_ids, vec!["exon_1"]);
+    assert!(frame_plan.candidate_exons.iter().any(|candidate| {
+        candidate.candidate_id == "exon_1"
+            && candidate.frame_neutral_length
+            && candidate
+                .selection_sources
+                .contains(&"length_mod3".to_string())
+    }));
+
+    let phase_plan = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::CdsPhaseEntryKind {
+                kinds: vec!["split-codon".to_string()],
+            }],
+            plan_id: Some("skip_split_entry".to_string()),
+        })
+        .expect("plan exon skip by CDS entry phase")
+        .exon_skip_selection_plan
+        .expect("phase selection plan");
+    assert_eq!(phase_plan.selected_candidate_ids, vec!["exon_3"]);
+    let selected = phase_plan
+        .candidate_exons
+        .iter()
+        .find(|candidate| candidate.candidate_id == "exon_3")
+        .expect("split-codon candidate");
+    assert_eq!(selected.cds_phase_entry_kind, "split_codon_2");
+    assert!(
+        selected
+            .selection_sources
+            .contains(&"cds_phase_entry_kind".to_string())
+    );
+}
+
+#[test]
+fn test_exon_skip_plan_reverse_phase_filter_uses_transcript_entry_boundary() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(64)).expect("sequence");
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 5),
+            gb_io::seq::Location::simple_range(10, 14),
+            gb_io::seq::Location::simple_range(20, 26),
+        ]))),
+        qualifiers: vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            ("transcript_id".into(), Some("TX_PHASE_MINUS".to_string())),
+            ("label".into(), Some("TX_PHASE_MINUS".to_string())),
+            (
+                "cds_ranges_1based".into(),
+                Some("1-5,11-14,21-26".to_string()),
+            ),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let plan = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::CdsPhaseEntryKind {
+                kinds: vec!["split-codon-1".to_string()],
+            }],
+            plan_id: Some("skip_reverse_split_entry".to_string()),
+        })
+        .expect("plan reverse exon skip by CDS entry phase")
+        .exon_skip_selection_plan
+        .expect("reverse phase selection plan");
+    assert_eq!(plan.strand, "-");
+    assert_eq!(plan.selected_candidate_ids, vec!["exon_3"]);
+    let selected = plan
+        .candidate_exons
+        .iter()
+        .find(|candidate| candidate.candidate_id == "exon_3")
+        .expect("reverse split-codon candidate");
+    assert_eq!(selected.left_cds_phase, Some(2));
+    assert_eq!(selected.right_cds_phase, Some(1));
+    assert_eq!(selected.cds_phase_entry_kind, "split_codon_1");
 }
 
 #[test]

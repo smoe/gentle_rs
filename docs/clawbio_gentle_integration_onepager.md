@@ -58,7 +58,8 @@ Request (`gentle.clawbio_skill_request.v1`):
   - `shell`: `shell_line`
   - `op`: `operation`
   - `workflow`: `workflow` or `workflow_path`
-  - `exon-skip-plan`: source sequence/transcript plus selected exon criteria
+  - `exon-skip-plan`: source sequence/transcript plus selected exon criteria,
+    including candidate ids, intervals, `len%3`, and CDS entry-phase filters
   - `exon-skip-materialize`: stored `plan_id`, `confirm=true`, and optional
     `return_items[]` such as `genbank` or `amino_acid_sequence`
   - `agent-plan`: `system_id`, `prompt`, optional planner/runtime overrides
