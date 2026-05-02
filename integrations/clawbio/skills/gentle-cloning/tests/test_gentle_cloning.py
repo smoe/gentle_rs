@@ -268,6 +268,8 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "restriction-cloning-handoff-export",
             "pcr-protocol-cartoon",
             "gene-protein-2d-gel",
+            "exon-skip-plan",
+            "exon-skip-materialize",
             "agent-plan",
             "agent-execute-plan",
             "raw",
@@ -683,6 +685,151 @@ def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
     assert argv[0] == "shell"
     assert "agents plan builtin_echo" in argv[1]
     assert "--no-state-summary" in argv[1]
+
+
+def test_exon_skip_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "exon-skip-plan",
+                "seq_id": "tp53_locus",
+                "transcript_feature_id": 2,
+                "skip_candidate_ids": ["exon_7"],
+                "overlap_intervals_1based": [
+                    {"start_1based": 100, "end_1based": 150}
+                ],
+                "plan_id": "skip_tp53_exon7",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - \"$@\" <<'PY'\n"
+        "import json, sys\n"
+        "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
+        "PY\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+    payload = json.loads(run.stdout)
+    argv = payload["stdout_json"]["argv"]
+    assert argv[0] == "shell"
+    assert "transcripts exon-skip-plan tp53_locus --feature-id 2" in argv[1]
+    assert "--skip exon_7" in argv[1]
+    assert "--overlap 100..150" in argv[1]
+    assert "--plan-id skip_tp53_exon7" in argv[1]
+
+
+def test_exon_skip_materialize_mode_requires_confirm_and_builds_requested_returns(
+    tmp_path: Path,
+) -> None:
+    bad_request = tmp_path / "bad_request.json"
+    bad_request.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "exon-skip-materialize",
+                "plan_id": "skip_tp53_exon7",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bad_out = tmp_path / "bad_out"
+    bad = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(bad_request),
+            "--output",
+            str(bad_out),
+            "--gentle-cli",
+            "true",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert bad.returncode != 0
+    bad_result = json.loads((bad_out / "result.json").read_text(encoding="utf-8"))
+    assert "confirm=true" in bad_result["error"]
+
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema": "gentle.clawbio_skill_request.v1",
+                "mode": "exon-skip-materialize",
+                "plan_id": "skip_tp53_exon7",
+                "candidate_ids": ["exon_7"],
+                "output_prefix": "tp53_skip7",
+                "return_items": ["genbank", "amino_acid_sequence"],
+                "confirm": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "python3 - \"$@\" <<'PY'\n"
+        "import json, sys\n"
+        "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
+        "PY\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    output_dir = tmp_path / "out"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            str(fake_cli),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+    payload = json.loads(run.stdout)
+    argv = payload["stdout_json"]["argv"]
+    assert argv[0] == "shell"
+    assert "transcripts exon-skip-materialize skip_tp53_exon7" in argv[1]
+    assert "--candidate-id exon_7" in argv[1]
+    assert "--output-prefix tp53_skip7" in argv[1]
+    assert "--return genbank" in argv[1]
+    assert "--return amino_acid_sequence" in argv[1]
 
 
 def test_rejects_invalid_request_schema(tmp_path: Path) -> None:

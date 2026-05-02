@@ -1,0 +1,9 @@
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "exon-skip-plan",
+  "state_path": "gentle_project.json",
+  "seq_id": "annotated_locus",
+  "transcript_feature_id": 0,
+  "skip_candidate_ids": ["exon_2"],
+  "plan_id": "annotated_locus_skip_exon_2"
+}

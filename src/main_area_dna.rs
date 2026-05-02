@@ -27813,6 +27813,7 @@ impl MainAreaDna {
                 plan_id: plan.plan_id.clone(),
                 selected_candidate_ids,
                 output_prefix: Some(format!("{}__exon_skip", plan.seq_id)),
+                return_kinds: vec![],
             },
         ) else {
             return;

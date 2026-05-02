@@ -599,7 +599,7 @@ Alternative runtimes:
 ## Request schema
 
 - `schema`: `gentle.clawbio_skill_request.v1`
-- `mode`: `skill-info|version|capabilities|state-summary|shell|op|workflow|raw`
+- `mode`: `skill-info|version|capabilities|state-summary|shell|op|workflow|exon-skip-plan|exon-skip-materialize|raw`
 - optional: `state_path`, `timeout_secs`, `ensure_reference_prepared`
 
 Mode-specific fields:
@@ -614,6 +614,12 @@ Mode-specific fields:
 - `shell`: `shell_line`
 - `op`: `operation`
 - `workflow`: `workflow` or `workflow_path`
+- `exon-skip-plan`: `seq_id`, `transcript_feature_id`, optional
+  `skip_candidate_ids[]`, `skip_intervals_1based[]`,
+  `overlap_intervals_1based[]`, `feature_query`, and `plan_id`
+- `exon-skip-materialize`: `plan_id`, required `confirm=true`, optional
+  `candidate_ids[]`, `output_prefix`, and `return_items[]`
+  (`genbank`, `cdna_fasta`, `amino_acid_sequence`, `amino_acid_fasta`)
 - `raw`: `raw_args[]`
 
 `ensure_reference_prepared` is an opt-in wrapper preflight:
