@@ -7323,8 +7323,7 @@ fn test_fetch_ensembl_gene_live_tp53_skips_without_internet() {
     let _guard = crate::genomes::genbank_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let _ensembl_env =
-        EnvVarGuard::set("GENTLE_ENSEMBL_REST_BASE_URL", "https://rest.ensembl.org");
+    let _ensembl_env = EnvVarGuard::set("GENTLE_ENSEMBL_REST_BASE_URL", "https://rest.ensembl.org");
     if !internet_access_available() {
         eprintln!("Skipping live Ensembl gene fetch test because internet access is unavailable.");
         return;
