@@ -4016,6 +4016,9 @@ How to enlarge the genomic span after extraction:
     interval, score/divergence, clipped status, and UCSC rmsk provenance; raw
     RepeatMasker `milliDiv` is shown with a derived divergence percentage when
     no explicit percent qualifier is present
+  - imported repeat features that carry raw UCSC table-style qualifiers
+    (`genoName` / `genoStart` / `genoEnd`, `repStart` / `repEnd` / `repLeft`,
+    `id`) are summarized through the same selected-feature details path
   - the default index path is `data/resources/ucsc.rmsk.hg38.interval-index.json`;
     prepare it with `resources install-ucsc-rmsk --assembly hg38` or point the
     field at another prepared interval index
