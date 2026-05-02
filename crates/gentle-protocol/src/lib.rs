@@ -1810,6 +1810,12 @@ pub enum ExonSkipSelectionCriterion {
     LengthMod3 {
         values: Vec<u8>,
     },
+    CodingMod3 {
+        values: Vec<u8>,
+    },
+    CodingContext {
+        contexts: Vec<String>,
+    },
     CdsPhaseEntryKind {
         kinds: Vec<String>,
     },
@@ -1829,8 +1835,22 @@ pub struct ExonSkipCandidateExon {
     pub length_bp: usize,
     pub length_mod3: usize,
     pub frame_neutral_length: bool,
+    pub coding_skip_bp: usize,
+    pub coding_skip_mod3: usize,
+    pub frame_neutral_coding_skip: bool,
+    #[serde(default = "default_exon_skip_coding_context")]
+    pub coding_context: String,
     pub support_transcript_count: usize,
+    pub support_transcript_total: usize,
+    pub support_fraction: f64,
     pub constitutive: bool,
+    pub transcript_exon_count: usize,
+    #[serde(default = "default_exon_skip_transcript_position")]
+    pub transcript_position: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_intron_bp: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub downstream_intron_bp: Option<usize>,
     pub present_in_base_transcript: bool,
     pub cds_overlap: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1841,6 +1861,8 @@ pub struct ExonSkipCandidateExon {
     pub cds_phase_entry_kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cds_phase_warning: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coding_frame_note: Option<String>,
     pub selected: bool,
     pub selection_sources: Vec<String>,
     pub matched_feature_ids: Vec<usize>,
@@ -1849,6 +1871,14 @@ pub struct ExonSkipCandidateExon {
 
 fn default_exon_skip_phase_entry_kind() -> String {
     "unavailable".to_string()
+}
+
+fn default_exon_skip_coding_context() -> String {
+    "unknown".to_string()
+}
+
+fn default_exon_skip_transcript_position() -> String {
+    "unknown".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

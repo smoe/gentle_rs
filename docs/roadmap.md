@@ -1026,11 +1026,14 @@ without blocking this publication.
     - `PlanExonSkippedIsoform` / `transcripts exon-skip-plan`
     - `MaterializeExonSkippedIsoform` / `transcripts exon-skip-materialize`
     - phase 1 accepts manual exon IDs, interval/map-selection overlap,
-      feature-overlap queries, `len%3` / CDS-entry-phase attribute filters,
-      and reserved reasoning-source IDs
+      feature-overlap queries, `len%3`, coding-only `CDS%3`,
+      UTR/CDS-context, CDS-entry-phase attribute filters, and reserved
+      reasoning-source IDs
     - phase-1 candidate records persist the GUI-facing frame/phase attributes:
-      `length_mod3`, `frame_neutral_length`, CDS boundary phases,
-      `cds_phase_entry_kind`, and CDS phase warnings
+      transcript exon position, exon support frequency, flanking intron
+      lengths, `length_mod3`, `frame_neutral_length`, coding-only skip length
+      modulo 3, UTR/CDS context, CDS boundary phases, `cds_phase_entry_kind`,
+      and CDS phase warnings
     - phase 2 consumes the stored plan and creates both genomic annotation and
       retained-exon cDNA/mRNA products, rejecting stale or all-skipped plans
     - phase 2 now also accepts requested return payloads for adapter handoff:
@@ -4314,6 +4317,9 @@ Status:
     - intron-signal rows are now clickable so the corresponding intron stays
       highlighted in the lane view and the expert shows a short, selected-signal
       description instead of leaving the heuristics as passive rows
+    - intron lane segments are now independently selectable even without a
+      heuristic signal row; Shift/Command-click toggles multi-selection and the
+      lane context menu exposes intron selection actions
   - Splicing Expert now also surfaces one intron-centered regulatory
     interpretation layer on top of those heuristics:
     - already cached ATtRACT/RBP evidence for the same splicing target is

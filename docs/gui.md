@@ -624,7 +624,9 @@ Feature tree grouping:
   - intron lines can highlight a branchpoint-like site and a pyrimidine-rich
     tract near the acceptor when the simple heuristics find one
   - hovering an intron line reports the current branchpoint-like motif/score
-    and the best detected polypyrimidine tract span
+    and the best detected polypyrimidine tract span; intron lines can now be
+    selected directly, Shift/Command-click toggles multi-selection, and the
+    lane context menu exposes intron selection actions
     - an `Acceptor-proximal intron signals` table summarizes those heuristics
       explicitly and labels them as heuristic evidence rather than a splice
       predictor
@@ -656,8 +658,10 @@ Feature tree grouping:
       value and the same frame-neutral / frame-shifting skip hint used by the
       selected-feature details pane
   - the exon-skip planning checkbox tooltips report each candidate's `len%3`
-    value and CDS entry phase; quick-add buttons can select candidates by
-    `len%3=0/1/2`, codon-boundary starts, or split-codon starts
+    value, coding-only skip length modulo 3, flanking intron lengths,
+    transcript position, exon support frequency, and CDS entry phase; quick-add
+    buttons can select candidates by `len%3=0/1/2`, `coding%3=0/1/2`,
+    coding context, codon-boundary starts, or split-codon starts
   - saved exon-skip plans carry those same frame/phase attributes in candidate
     rows, so GUI, CLI, MCP, and future adapters can inspect the same
     engine-owned facts
