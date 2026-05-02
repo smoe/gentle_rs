@@ -33122,6 +33122,10 @@ Error: `{err}`"
         !cfg!(target_os = "macos")
     }
 
+    fn sequence_viewport_class_has_embedded_shell(class: egui::ViewportClass) -> bool {
+        matches!(class, egui::ViewportClass::EmbeddedWindow)
+    }
+
     fn take_window_close_requested(window: &Arc<RwLock<Window>>) -> bool {
         window
             .write()
@@ -33206,37 +33210,8 @@ Error: `{err}`"
 
                 let update_result = catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut w) = window.write() {
-                        if class == egui::ViewportClass::EmbeddedWindow {
-                            let mut open = true;
-                            let min_size = Vec2::new(820.0, 520.0);
-                            let spec = crate::egui_compat::HostedWindowSpec::new(
-                                window_title.clone(),
-                                egui::Id::new(("hosted_sequence_window", id)),
-                                Vec2::new(1200.0, 860.0),
-                                min_size,
-                            )
-                            .initial_pos(initial_position)
-                            .foreground(render_hosted_sequence_in_foreground)
-                            .legacy_layer_id(egui::LayerId::new(
-                                egui::Order::Middle,
-                                egui::Id::new(id),
-                            ));
-                            crate::egui_compat::show_hosted_window(
-                                ui.ctx(),
-                                &spec,
-                                &mut open,
-                                |ui| {
-                                    w.update_embedded(ui);
-                                },
-                            );
-                            if !open {
-                                w.take_close_requested();
-                                if let Ok(mut to_close) = windows_to_close.write() {
-                                    to_close.push(id);
-                                } else {
-                                    eprintln!("W GENtleApp: close-queue lock poisoned");
-                                }
-                            }
+                        if Self::sequence_viewport_class_has_embedded_shell(class) {
+                            w.update_embedded(ui);
                         } else {
                             w.update(ui.ctx());
                         }
@@ -33285,35 +33260,7 @@ Error: `{err}`"
                 // Draw the window
                 let update_result = catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut w) = window.write() {
-                        if class == egui::ViewportClass::EmbeddedWindow {
-                            let mut open = true;
-                            let min_size = Vec2::new(820.0, 520.0);
-                            let spec = crate::egui_compat::HostedWindowSpec::new(
-                                window_title.clone(),
-                                egui::Id::new(("hosted_sequence_window", id)),
-                                Vec2::new(1200.0, 860.0),
-                                min_size,
-                            )
-                            .initial_pos(initial_position)
-                            .foreground(render_hosted_sequence_in_foreground)
-                            .legacy_layer_id(egui::LayerId::new(
-                                egui::Order::Middle,
-                                egui::Id::new(id),
-                            ));
-                            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
-                                w.update_embedded(ui);
-                            });
-                            if !open {
-                                w.take_close_requested();
-                                if let Ok(mut to_close) = windows_to_close.write() {
-                                    to_close.push(id);
-                                } else {
-                                    eprintln!("W GENtleApp: close-queue lock poisoned");
-                                }
-                            }
-                        } else {
-                            w.update(ctx);
-                        }
+                        w.update(ctx);
                     } else {
                         eprintln!("W GENtleApp: window lock poisoned; skipping update");
                     }
@@ -51477,6 +51424,19 @@ mod tests {
         GENtleApp::configure_platform_viewport_mode(&ctx);
 
         assert!(!ctx.embed_viewports());
+    }
+
+    #[test]
+    fn embedded_sequence_viewport_class_uses_outer_shell_directly() {
+        assert!(GENtleApp::sequence_viewport_class_has_embedded_shell(
+            egui::ViewportClass::EmbeddedWindow
+        ));
+        assert!(!GENtleApp::sequence_viewport_class_has_embedded_shell(
+            egui::ViewportClass::Immediate
+        ));
+        assert!(!GENtleApp::sequence_viewport_class_has_embedded_shell(
+            egui::ViewportClass::Deferred
+        ));
     }
 
     #[test]
