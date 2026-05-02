@@ -62,6 +62,8 @@ SUPPORTED_REQUEST_MODES = (
     "restriction-cloning-handoff-export",
     "pcr-protocol-cartoon",
     "gene-protein-2d-gel",
+    "exon-skip-plan",
+    "exon-skip-materialize",
     "agent-plan",
     "agent-execute-plan",
     "raw",
@@ -152,8 +154,16 @@ class Request:
     allow_mutating_candidates: bool | None = None
     plan: Any = None
     plan_path: str | None = None
+    plan_id: str | None = None
     candidate_id: str | None = None
+    candidate_ids: list[str] | None = None
     confirm: bool | None = None
+    transcript_feature_id: int | None = None
+    skip_candidate_ids: list[str] | None = None
+    skip_intervals_1based: list[Any] | None = None
+    overlap_intervals_1based: list[Any] | None = None
+    feature_query: Any = None
+    return_items: list[str] | None = None
     expected_artifacts: list[str] | None = None
     ensure_reference_prepared: Any = None
     gene_symbol: str | None = None
@@ -186,6 +196,7 @@ class Request:
     reverse_leader_5prime: str | None = None
     protocol_id: str | None = None
     shared_qpcr_report_id: str | None = None
+    output_prefix: str | None = None
     output_path: str | None = None
     svg_path: str | None = None
     materialize_products: bool | None = None
@@ -483,6 +494,96 @@ def _normalise_gene_protein_2d_gel_request(request: Request) -> None:
         raise SkillError(
             "mode=gene-protein-2d-gel expected_artifacts path must end with .svg"
         )
+
+
+def _normalise_exon_skip_interval_list(value: Any, field_name: str) -> list[dict[str, int]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SkillError(f"{field_name} must be an array when present")
+    intervals: list[dict[str, int]] = []
+    for idx, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise SkillError(f"{field_name}[{idx}] must be an object")
+        try:
+            start = int(item.get("start_1based"))
+            end = int(item.get("end_1based"))
+        except (TypeError, ValueError) as e:
+            raise SkillError(
+                f"{field_name}[{idx}] requires integer start_1based/end_1based"
+            ) from e
+        if start <= 0 or end < start:
+            raise SkillError(
+                f"{field_name}[{idx}] must satisfy 1 <= start_1based <= end_1based"
+            )
+        intervals.append({"start_1based": start, "end_1based": end})
+    return intervals
+
+
+def _normalise_optional_string_array(value: Any, field_name: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SkillError(f"{field_name} must be a string array when present")
+    result: list[str] = []
+    for idx, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            raise SkillError(f"{field_name}[{idx}] must be a non-empty string")
+        result.append(item.strip())
+    return result
+
+
+def _normalise_exon_skip_request(request: Request) -> None:
+    if request.mode == "exon-skip-plan":
+        if not isinstance(request.seq_id, str) or not request.seq_id.strip():
+            raise SkillError("mode=exon-skip-plan requires non-empty string field 'seq_id'")
+        request.seq_id = request.seq_id.strip()
+        try:
+            transcript_feature_id = int(request.transcript_feature_id)
+        except (TypeError, ValueError) as e:
+            raise SkillError(
+                "mode=exon-skip-plan requires integer field 'transcript_feature_id'"
+            ) from e
+        if transcript_feature_id < 0:
+            raise SkillError("transcript_feature_id must be >= 0")
+        request.transcript_feature_id = transcript_feature_id
+        request.skip_candidate_ids = _normalise_optional_string_array(
+            request.skip_candidate_ids, "skip_candidate_ids"
+        )
+        request.skip_intervals_1based = _normalise_exon_skip_interval_list(
+            request.skip_intervals_1based, "skip_intervals_1based"
+        )
+        request.overlap_intervals_1based = _normalise_exon_skip_interval_list(
+            request.overlap_intervals_1based, "overlap_intervals_1based"
+        )
+        if request.plan_id is not None:
+            if not isinstance(request.plan_id, str) or not request.plan_id.strip():
+                raise SkillError("plan_id must be a non-empty string when present")
+            request.plan_id = request.plan_id.strip()
+        if request.feature_query is not None and not isinstance(
+            request.feature_query, (dict, str)
+        ):
+            raise SkillError("feature_query must be an object or JSON string when present")
+    elif request.mode == "exon-skip-materialize":
+        if not isinstance(request.plan_id, str) or not request.plan_id.strip():
+            raise SkillError(
+                "mode=exon-skip-materialize requires non-empty string field 'plan_id'"
+            )
+        request.plan_id = request.plan_id.strip()
+        if request.confirm is not True:
+            raise SkillError(
+                "mode=exon-skip-materialize requires confirm=true because it creates derived sequences"
+            )
+        request.candidate_ids = _normalise_optional_string_array(
+            request.candidate_ids, "candidate_ids"
+        )
+        request.return_items = _normalise_optional_string_array(
+            request.return_items, "return_items"
+        )
+        if request.output_prefix is not None:
+            if not isinstance(request.output_prefix, str) or not request.output_prefix.strip():
+                raise SkillError("output_prefix must be a non-empty string when present")
+            request.output_prefix = request.output_prefix.strip()
 
 
 def _normalise_protein_residue_genomic_coordinate_request(request: Request) -> None:
@@ -808,8 +909,16 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         allow_mutating_candidates=payload.get("allow_mutating_candidates"),
         plan=payload.get("plan"),
         plan_path=payload.get("plan_path"),
+        plan_id=payload.get("plan_id"),
         candidate_id=payload.get("candidate_id"),
+        candidate_ids=payload.get("candidate_ids"),
         confirm=payload.get("confirm"),
+        transcript_feature_id=payload.get("transcript_feature_id"),
+        skip_candidate_ids=payload.get("skip_candidate_ids"),
+        skip_intervals_1based=payload.get("skip_intervals_1based"),
+        overlap_intervals_1based=payload.get("overlap_intervals_1based"),
+        feature_query=payload.get("feature_query"),
+        return_items=payload.get("return_items", payload.get("return")),
         expected_artifacts=payload.get("expected_artifacts"),
         ensure_reference_prepared=payload.get("ensure_reference_prepared"),
         gene_symbol=payload.get("gene_symbol"),
@@ -844,6 +953,7 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         reverse_leader_5prime=payload.get("reverse_leader_5prime"),
         protocol_id=payload.get("protocol_id"),
         shared_qpcr_report_id=payload.get("shared_qpcr_report_id"),
+        output_prefix=payload.get("output_prefix"),
         output_path=payload.get("output_path"),
         svg_path=payload.get("svg_path"),
         materialize_products=payload.get("materialize_products"),
@@ -909,6 +1019,8 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         _normalise_pcr_protocol_cartoon_request(request)
     elif request.mode == "gene-protein-2d-gel":
         _normalise_gene_protein_2d_gel_request(request)
+    elif request.mode in {"exon-skip-plan", "exon-skip-materialize"}:
+        _normalise_exon_skip_request(request)
     elif request.mode == "agent-plan":
         if not isinstance(request.system_id, str) or not request.system_id.strip():
             raise SkillError("mode=agent-plan requires non-empty string field 'system_id'")
@@ -927,9 +1039,11 @@ def _coerce_request(payload: dict[str, Any]) -> Request:
         "model",
         "workflow_path",
         "plan_path",
+        "plan_id",
         "system_id",
         "prompt",
         "candidate_id",
+        "output_prefix",
     ):
         value = getattr(request, field_name)
         if value is not None and (not isinstance(value, str) or not value.strip()):
@@ -1227,6 +1341,48 @@ def _build_pcr_protocol_cartoon_shell_line(request: Request) -> str:
         request.protocol_id or "pcr.assay.qpcr",
         request.output_path or "artifacts/pcr.protocol.svg",
     ]
+    return shlex.join(tokens)
+
+
+def _build_exon_skip_shell_line(request: Request) -> str:
+    if request.mode == "exon-skip-plan":
+        tokens = [
+            "transcripts",
+            "exon-skip-plan",
+            request.seq_id or "SEQ_ID",
+            "--feature-id",
+            str(request.transcript_feature_id if request.transcript_feature_id is not None else 0),
+        ]
+        for candidate_id in request.skip_candidate_ids or []:
+            tokens.extend(["--skip", candidate_id])
+        for interval in request.skip_intervals_1based or []:
+            tokens.extend(
+                ["--skip", f"{interval['start_1based']}..{interval['end_1based']}"]
+            )
+        for interval in request.overlap_intervals_1based or []:
+            tokens.extend(
+                ["--overlap", f"{interval['start_1based']}..{interval['end_1based']}"]
+            )
+        if request.feature_query is not None:
+            tokens.extend(
+                [
+                    "--feature-query-json",
+                    request.feature_query
+                    if isinstance(request.feature_query, str)
+                    else json.dumps(request.feature_query, separators=(",", ":")),
+                ]
+            )
+        if request.plan_id:
+            tokens.extend(["--plan-id", request.plan_id])
+        return shlex.join(tokens)
+
+    tokens = ["transcripts", "exon-skip-materialize", request.plan_id or "PLAN_ID"]
+    for candidate_id in request.candidate_ids or []:
+        tokens.extend(["--candidate-id", candidate_id])
+    if request.output_prefix:
+        tokens.extend(["--output-prefix", request.output_prefix])
+    for item in request.return_items or []:
+        tokens.extend(["--return", item])
     return shlex.join(tokens)
 
 
@@ -1971,6 +2127,8 @@ def _build_cli_args(request: Request, script_path: Path) -> list[str]:
         args.extend(["shell", _build_pcr_protocol_cartoon_shell_line(request)])
     elif request.mode == "gene-protein-2d-gel":
         args.extend(["workflow", _json_arg(_gene_protein_2d_gel_workflow(request))])
+    elif request.mode in {"exon-skip-plan", "exon-skip-materialize"}:
+        args.extend(["shell", _build_exon_skip_shell_line(request)])
     elif request.mode == "agent-plan":
         tokens = ["agents", "plan", request.system_id.strip(), "--prompt", request.prompt.strip()]
         if request.catalog_path:
@@ -2652,6 +2810,8 @@ def _request_rerun_shell_line(request: Request | None) -> str:
         species = request.species or "homo_sapiens"
         source = request.source or "ensembl"
         return f"gene-protein-2d-gel {gene} --species {species} --source {source}"
+    if request.mode in {"exon-skip-plan", "exon-skip-materialize"}:
+        return _build_exon_skip_shell_line(request)
     if request.mode == "raw" and request.raw_args:
         return shlex.join(request.raw_args)
     return request.mode
@@ -2730,6 +2890,23 @@ def _request_payload_for_artifact_continuation(
         payload["species"] = request.species
         payload["source"] = request.source
         payload["ladders"] = request.ladders
+    elif request.mode in {"exon-skip-plan", "exon-skip-materialize"}:
+        for key in (
+            "seq_id",
+            "transcript_feature_id",
+            "skip_candidate_ids",
+            "skip_intervals_1based",
+            "overlap_intervals_1based",
+            "feature_query",
+            "plan_id",
+            "candidate_ids",
+            "output_prefix",
+            "return_items",
+            "confirm",
+        ):
+            value = getattr(request, key)
+            if value is not None:
+                payload[key] = value
     elif request.mode == "raw":
         payload["raw_args"] = request.raw_args
     return {key: value for key, value in payload.items() if value is not None}

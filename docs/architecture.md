@@ -1776,6 +1776,9 @@ Architecture constraints for this track:
     selection/planning produces an engine-owned plan record, and
     materialization consumes that stored plan to create genomic annotation and
     cDNA products without silently re-planning.
+  - adapter-facing exon-skip return payloads (GenBank, cDNA FASTA, amino-acid
+    text/FASTA) must be produced by the engine report, not invented by GUI,
+    MCP, or ClawBio wrappers after the fact.
   - `RNA-read Mapping` is the dedicated workspace for
     `InterpretRnaReads`/`AlignRnaReadReport` run configuration, workflow
     staging, live progress, and export actions.

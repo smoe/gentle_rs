@@ -940,6 +940,12 @@ Post-release work includes:
       feature-overlap queries, and reserved reasoning-source IDs
     - phase 2 consumes the stored plan and creates both genomic annotation and
       retained-exon cDNA/mRNA products, rejecting stale or all-skipped plans
+    - phase 2 now also accepts requested return payloads for adapter handoff:
+      adjusted GenBank, retained-exon cDNA FASTA, amino-acid sequence, or
+      amino-acid FASTA
+    - MCP exposes `exon_skip_plan` / `exon_skip_materialize`, and the ClawBio
+      wrapper exposes matching `exon-skip-plan` / `exon-skip-materialize`
+      modes so ClawBio can state exactly what it wants sent back
   - Splicing Expert quick actions in GUI:
     - `Derive group transcripts`
     - `Derive all mRNA`

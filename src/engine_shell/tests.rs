@@ -17,14 +17,14 @@ use crate::engine::{
     BIGWIG_TO_BEDGRAPH_ENV_BIN, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
     ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
-    EditableStatus, PrimerDesignProgress, PromoterTfbsGeneQuery, ProteinExternalOpinionSource,
-    ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack,
-    RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
-    RackOccupant, RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind,
-    RackProfileSnapshot, RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode,
-    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
-    RnaReadOriginClass, SequenceScanTarget, TfThresholdOverride,
-    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+    EditableStatus, ExonSkipReturnKind, PrimerDesignProgress, PromoterTfbsGeneQuery,
+    ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
+    QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
+    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RepeatEnvironmentGeometryMode,
+    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
+    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
+    TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_gene::{
@@ -20145,7 +20145,7 @@ fn parse_transcripts_exon_skip_commands() {
     }
 
     let parsed = parse_shell_line(
-        "transcripts exon-skip-materialize skip_plan --candidate-id exon_2 --output-prefix skipped",
+        "transcripts exon-skip-materialize skip_plan --candidate-id exon_2 --output-prefix skipped --return genbank --return amino-acid-sequence",
     )
     .expect("parse exon-skip materialize");
     match parsed {
@@ -20153,10 +20153,18 @@ fn parse_transcripts_exon_skip_commands() {
             plan_id,
             selected_candidate_ids,
             output_prefix,
+            return_kinds,
         } => {
             assert_eq!(plan_id, "skip_plan");
             assert_eq!(selected_candidate_ids, vec!["exon_2"]);
             assert_eq!(output_prefix.as_deref(), Some("skipped"));
+            assert_eq!(
+                return_kinds,
+                vec![
+                    ExonSkipReturnKind::AminoAcidSequence,
+                    ExonSkipReturnKind::Genbank
+                ]
+            );
         }
         other => panic!("expected TranscriptsExonSkipMaterialize, got {other:?}"),
     }
@@ -20947,6 +20955,7 @@ fn execute_transcripts_exon_skip_plan_and_materialize() {
                     plan_id: "skip_second".to_string(),
                     selected_candidate_ids: vec![],
                     output_prefix: Some("skip_second".to_string()),
+                    return_kinds: vec![ExonSkipReturnKind::CdnaFasta],
                 },
             )
             .expect("execute exon-skip materialize");
@@ -20958,6 +20967,10 @@ fn execute_transcripts_exon_skip_plan_and_materialize() {
             assert_eq!(
                 materialized.output["report"]["retained_exon_count"].as_u64(),
                 Some(1)
+            );
+            assert_eq!(
+                materialized.output["report"]["return_payloads"][0]["kind"].as_str(),
+                Some("cdna_fasta")
             );
         })
         .expect("spawn exon-skip shell test")

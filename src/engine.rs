@@ -94,8 +94,9 @@ use tempfile::NamedTempFile;
 
 pub use gentle_protocol::{
     Arrangement, ArrangementMode, Container, ContainerId, ContainerKind, ContainerState,
-    GelBufferModel, GelRunConditions, GelTopologyForm, LineageEdge, LineageGraph,
-    LineageMacroInstance, LineageMacroPortBinding, LineageNode, MacroInstanceStatus, NodeId, OpId,
+    ExonSkipReturnKind, ExonSkipReturnPayload, ExonSkipSelectionCriterion, GelBufferModel,
+    GelRunConditions, GelTopologyForm, LineageEdge, LineageGraph, LineageMacroInstance,
+    LineageMacroPortBinding, LineageNode, MacroInstanceStatus, NodeId, OpId,
     ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
     RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
     RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
@@ -3365,6 +3366,8 @@ pub enum Operation {
         selected_candidate_ids: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output_prefix: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        return_kinds: Vec<ExonSkipReturnKind>,
     },
     DeriveProteinSequences {
         seq_id: SeqId,

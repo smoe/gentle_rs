@@ -1853,6 +1853,46 @@ pub struct ExonSkipSelectionPlan {
     pub messages: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum ExonSkipReturnKind {
+    Genbank,
+    CdnaFasta,
+    AminoAcidSequence,
+    AminoAcidFasta,
+}
+
+impl ExonSkipReturnKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Genbank => "genbank",
+            Self::CdnaFasta => "cdna_fasta",
+            Self::AminoAcidSequence => "amino_acid_sequence",
+            Self::AminoAcidFasta => "amino_acid_fasta",
+        }
+    }
+}
+
+impl Default for ExonSkipReturnKind {
+    fn default() -> Self {
+        Self::Genbank
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct ExonSkipReturnPayload {
+    pub kind: ExonSkipReturnKind,
+    pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seq_id: Option<SeqId>,
+    pub label: String,
+    pub mime_type: String,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(default)]
 pub struct ExonSkipMaterializationReport {
@@ -1867,6 +1907,10 @@ pub struct ExonSkipMaterializationReport {
     pub genomic_seq_id: Option<SeqId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cdna_seq_id: Option<SeqId>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub requested_returns: Vec<ExonSkipReturnKind>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub return_payloads: Vec<ExonSkipReturnPayload>,
     pub warnings: Vec<String>,
 }
 

@@ -2842,6 +2842,36 @@
          "usage": "transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]"
       },
       {
+         "aliases": [],
+         "engine_operations": [
+            "PlanExonSkippedIsoform"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "transcripts exon-skip-plan",
+         "summary": "Build and store an inspectable plan for exon-skipped isoform creation.",
+         "usage": "transcripts exon-skip-plan SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--feature-query-json JSON] [--plan-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializeExonSkippedIsoform"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "transcripts exon-skip-materialize",
+         "summary": "Materialize a stored exon-skip plan into a genomic annotation product and retained-exon cDNA, optionally returning GenBank/FASTA/protein payloads.",
+         "usage": "transcripts exon-skip-materialize PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX] [--return genbank|cdna_fasta|amino_acid_sequence|amino_acid_fasta ...]"
+      },
+      {
          "aliases": [
             "transcripts residue-coordinates",
             "transcripts protein-residue-coordinates"

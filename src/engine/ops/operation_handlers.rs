@@ -5877,11 +5877,174 @@ impl GentleEngine {
         ));
     }
 
+    fn wrap_sequence_text(sequence: &str, width: usize) -> String {
+        if sequence.is_empty() {
+            return String::new();
+        }
+        let width = width.max(1);
+        let mut out = String::new();
+        for chunk in sequence.as_bytes().chunks(width) {
+            out.push_str(&String::from_utf8_lossy(chunk));
+            out.push('\n');
+        }
+        out
+    }
+
+    fn fasta_payload(seq_id: &str, label: &str, sequence: &str) -> String {
+        let mut header = format!(">{seq_id}");
+        let label = label.trim();
+        if !label.is_empty() {
+            header.push(' ');
+            header.push_str(label);
+        }
+        format!("{header}\n{}", Self::wrap_sequence_text(sequence, 70))
+    }
+
+    fn build_unavailable_exon_skip_payload(
+        kind: ExonSkipReturnKind,
+        label: &str,
+        message: String,
+    ) -> ExonSkipReturnPayload {
+        ExonSkipReturnPayload {
+            kind,
+            available: false,
+            seq_id: None,
+            label: label.to_string(),
+            mime_type: "text/plain".to_string(),
+            text: String::new(),
+            message: Some(message),
+        }
+    }
+
+    fn build_exon_skip_return_payloads(
+        &self,
+        requested: &[ExonSkipReturnKind],
+        plan_id: &str,
+        genomic_seq_id: &str,
+        cdna_seq_id: &str,
+        protein_derivation: Option<&TranscriptProteinDerivation>,
+    ) -> Result<Vec<ExonSkipReturnPayload>, EngineError> {
+        let mut seen = HashSet::new();
+        let mut payloads = Vec::new();
+        for kind in requested {
+            if !seen.insert(*kind) {
+                continue;
+            }
+            match kind {
+                ExonSkipReturnKind::Genbank => {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(genomic_seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Generated genomic annotation sequence '{genomic_seq_id}' not found while building exon-skip return payload"
+                            ),
+                        })?;
+                    let text = dna.to_genbank_string().map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not render exon-skip genomic annotation '{genomic_seq_id}' as GenBank: {e}"
+                        ),
+                    })?;
+                    payloads.push(ExonSkipReturnPayload {
+                        kind: *kind,
+                        available: true,
+                        seq_id: Some(genomic_seq_id.to_string()),
+                        label: "Adjusted genomic GenBank entry".to_string(),
+                        mime_type: "chemical/x-genbank".to_string(),
+                        text,
+                        message: None,
+                    });
+                }
+                ExonSkipReturnKind::CdnaFasta => {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(cdna_seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!(
+                                "Generated cDNA sequence '{cdna_seq_id}' not found while building exon-skip return payload"
+                            ),
+                        })?;
+                    let label = dna
+                        .name()
+                        .as_deref()
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or("exon-skip cDNA");
+                    payloads.push(ExonSkipReturnPayload {
+                        kind: *kind,
+                        available: true,
+                        seq_id: Some(cdna_seq_id.to_string()),
+                        label: "Retained-exon cDNA FASTA".to_string(),
+                        mime_type: "text/x-fasta".to_string(),
+                        text: Self::fasta_payload(cdna_seq_id, label, &dna.get_forward_string()),
+                        message: None,
+                    });
+                }
+                ExonSkipReturnKind::AminoAcidSequence => {
+                    if let Some(derivation) = protein_derivation {
+                        payloads.push(ExonSkipReturnPayload {
+                            kind: *kind,
+                            available: true,
+                            seq_id: Some(cdna_seq_id.to_string()),
+                            label: "Derived amino-acid sequence".to_string(),
+                            mime_type: "text/plain".to_string(),
+                            text: derivation.protein_sequence.clone(),
+                            message: None,
+                        });
+                    } else {
+                        payloads.push(Self::build_unavailable_exon_skip_payload(
+                            *kind,
+                            "Derived amino-acid sequence",
+                            format!(
+                                "Requested exon-skip amino-acid sequence for plan '{plan_id}', but no CDS-derived translation was available."
+                            ),
+                        ));
+                    }
+                }
+                ExonSkipReturnKind::AminoAcidFasta => {
+                    if let Some(derivation) = protein_derivation {
+                        let label = format!(
+                            "{} exon-skip protein plan={plan_id}",
+                            derivation.transcript_label
+                        );
+                        payloads.push(ExonSkipReturnPayload {
+                            kind: *kind,
+                            available: true,
+                            seq_id: Some(cdna_seq_id.to_string()),
+                            label: "Derived amino-acid FASTA".to_string(),
+                            mime_type: "text/x-fasta".to_string(),
+                            text: Self::fasta_payload(
+                                &format!("{cdna_seq_id}__protein"),
+                                &label,
+                                &derivation.protein_sequence,
+                            ),
+                            message: None,
+                        });
+                    } else {
+                        payloads.push(Self::build_unavailable_exon_skip_payload(
+                            *kind,
+                            "Derived amino-acid FASTA",
+                            format!(
+                                "Requested exon-skip amino-acid FASTA for plan '{plan_id}', but no CDS-derived translation was available."
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(payloads)
+    }
+
     fn materialize_exon_skip_plan(
         &mut self,
         plan_id: &str,
         selected_candidate_ids: Vec<String>,
         output_prefix: Option<String>,
+        return_kinds: Vec<ExonSkipReturnKind>,
         result: &mut OpResult,
         parent_seq_ids: &mut Vec<SeqId>,
     ) -> Result<(), EngineError> {
@@ -6023,7 +6186,7 @@ impl GentleEngine {
             transcript_label,
             _is_reverse,
             retained_exon_count,
-            protein_derivation,
+            mut protein_derivation,
         ) = Self::derive_transcript_sequence_from_feature(
             &source_sequence_upper,
             &retained_feature,
@@ -6031,6 +6194,21 @@ impl GentleEngine {
             plan.transcript_feature_id,
             &plan.seq_id,
         )?;
+        let protein_derivation_inferred_without_annotation = if protein_derivation.is_none() {
+            let cdna_sequence_upper = cdna_dna.get_forward_string().to_ascii_uppercase();
+            protein_derivation = Self::infer_transcript_protein_derivation_without_annotation(
+                &cdna_sequence_upper,
+                &retained_feature,
+                plan.transcript_feature_id,
+                &plan.seq_id,
+                &source_features,
+                &plan.transcript_id,
+                &transcript_label,
+            )?;
+            protein_derivation.is_some()
+        } else {
+            false
+        };
         cdna_dna.set_name(format!("{transcript_label} exon-skip cDNA"));
         for feature in cdna_dna.features_mut() {
             Self::add_exon_skip_qualifiers(
@@ -6161,8 +6339,14 @@ impl GentleEngine {
                 warnings.push(format!("{}: {}", candidate.candidate_id, warning));
             }
         }
-        if let Some(derivation) = protein_derivation {
-            for warning in derivation.warnings {
+        if let Some(derivation) = protein_derivation.as_ref() {
+            if protein_derivation_inferred_without_annotation {
+                warnings.push(format!(
+                    "Derived cDNA '{}' had no safely projected CDS feature; protein sequence was inferred from the retained-exon cDNA ORF.",
+                    cdna_seq_id
+                ));
+            }
+            for warning in &derivation.warnings {
                 warnings.push(format!("Derived cDNA '{}': {}", cdna_seq_id, warning));
             }
         } else {
@@ -6170,6 +6354,20 @@ impl GentleEngine {
                 "Derived cDNA '{}' has no CDS annotation; protein translation was not derived.",
                 cdna_seq_id
             ));
+        }
+        let return_payloads = self.build_exon_skip_return_payloads(
+            &return_kinds,
+            &plan.plan_id,
+            &genomic_seq_id,
+            &cdna_seq_id,
+            protein_derivation.as_ref(),
+        )?;
+        for payload in &return_payloads {
+            if !payload.available
+                && let Some(message) = payload.message.as_ref()
+            {
+                warnings.push(message.clone());
+            }
         }
         result.warnings.extend(warnings.clone());
         result.messages.push(format!(
@@ -6186,6 +6384,8 @@ impl GentleEngine {
             skipped_exon_count,
             genomic_seq_id: Some(genomic_seq_id),
             cdna_seq_id: Some(cdna_seq_id),
+            requested_returns: return_kinds,
+            return_payloads,
             warnings,
         });
         Ok(())
@@ -20124,11 +20324,13 @@ impl GentleEngine {
                     plan_id,
                     selected_candidate_ids,
                     output_prefix,
+                    return_kinds,
                 } => {
                     self.materialize_exon_skip_plan(
                         &plan_id,
                         selected_candidate_ids,
                         output_prefix,
+                        return_kinds,
                         &mut result,
                         &mut parent_seq_ids,
                     )?;

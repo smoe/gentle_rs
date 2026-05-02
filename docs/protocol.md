@@ -2475,6 +2475,9 @@ external coding agent runtime, see:
     - `capabilities`
     - `state_summary`
     - `restriction_site_detail` (shared restriction-site expert detail record)
+    - `exon_skip_plan` (shared `transcripts exon-skip-plan` contract)
+    - `exon_skip_materialize` (shared `transcripts exon-skip-materialize`
+      contract; requires explicit `confirm=true`)
     - `op` (apply one `Operation`; requires explicit `confirm=true`)
     - `workflow` (apply one `Workflow`; requires explicit `confirm=true`)
     - `help`
@@ -3204,7 +3207,7 @@ ClawBio/OpenClaw integration scaffold schemas:
   - `gentle_local_checkout_cli.sh` for local editable GENtle checkouts
   - `gentle_apptainer_cli.sh` for Apptainer/Singularity-backed `:cli` images
 - wrapper request schema: `gentle.clawbio_skill_request.v1`
-  - `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|gene-protein-2d-gel|agent-plan|agent-execute-plan|raw`
+  - `mode`: `skill-info|capabilities|state-summary|shell|op|workflow|gene-protein-2d-gel|exon-skip-plan|exon-skip-materialize|agent-plan|agent-execute-plan|raw`
   - optional: `state_path`, `timeout_secs`
   - optional: `expected_artifacts[]`
     - wrapper-declared output files to copy into the ClawBio output bundle
@@ -3233,6 +3236,14 @@ ClawBio/OpenClaw integration scaffold schemas:
       the expanded Ensembl gene record, imports transcript/exon/CDS features,
       derives protein-coding mRNA products, renders a 2D pI-vs-kDa SVG, and
       promotes the declared SVG into the PNG-first artifact bundle
+    - `exon-skip-plan`: `seq_id`, `transcript_feature_id`, optional
+      `skip_candidate_ids[]`, `skip_intervals_1based[]`,
+      `overlap_intervals_1based[]`, `feature_query`, and `plan_id`
+    - `exon-skip-materialize`: `plan_id`, optional `candidate_ids[]`,
+      optional `output_prefix`, required `confirm=true`, and optional
+      `return_items[]` (`genbank`, `cdna_fasta`, `amino_acid_sequence`,
+      `amino_acid_fasta`) so ClawBio can declare exactly what it wants sent
+      back after the reviewed plan is executed
     - `agent-plan`: `system_id`, `prompt`, optional planner/runtime overrides
       such as `catalog_path`, `base_url`, `model`, `max_candidates`,
       `include_state_summary`, and `allow_mutating_candidates`
@@ -4149,7 +4160,9 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     candidate IDs.
 - `MaterializeExonSkippedIsoform` is phase 2 and consumes a stored plan.
   - Inputs: `plan_id`, optional `selected_candidate_ids[]`, optional
-    `output_prefix`.
+    `output_prefix`, optional `return_kinds[]`.
+    - supported return kinds:
+      `genbank|cdna_fasta|amino_acid_sequence|amino_acid_fasta`
   - Output: `gentle.exon_skip_materialization.v1`.
   - Does not re-plan; stale source transcript coordinates are rejected.
   - Rejects empty/all-skipped isoforms.
@@ -4157,6 +4170,10 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     product carrying the exon-skipped transcript model.
   - Generated feature qualifiers record the plan ID, source sequence/feature,
     skipped exon candidate IDs, and synthetic origin.
+  - When `return_kinds[]` is supplied, `return_payloads[]` carries the
+    requested machine-facing handoff text. This is the preferred ClawBio/OpenClaw
+    route for saying whether the caller wants the adjusted GenBank entry, the
+    retained-exon cDNA FASTA, the amino-acid sequence, or amino-acid FASTA.
 
 `DeriveProteinSequences` semantics:
 
