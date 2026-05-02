@@ -6495,6 +6495,10 @@ Current parking-lot ideas:
       shared expert view in the Description panel, and that pinned view now has
       `Copy Summary` / `Copy Detail JSON` actions for protocol notes, bug
       reports, and external-agent handoff
+    - map-context follow-up (2026-05-02): right-clicking a hovered or selected
+      restriction-site label/tick now exposes `Pin Restriction Site Details`,
+      `Copy Restriction Summary`, and `Copy Detail JSON` without changing the
+      existing restriction-site rendering layer
   - if revisited later, likely staged implementation is:
     1. optionally add a floating popover/window variant if the Description
        panel proves too easy to miss during dense plasmid-map work
