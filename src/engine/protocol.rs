@@ -3427,6 +3427,8 @@ pub struct OpResult {
     pub uniprot_projection_audit: Option<Box<UniprotProjectionAuditReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uniprot_projection_audit_parity: Option<Box<UniprotProjectionAuditParityReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lab_assistant_instructions: Option<Box<LabAssistantInstructionsExport>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6126,6 +6128,49 @@ pub struct ProcessRunBundleOutputs {
     pub created_container_ids: Vec<String>,
     pub created_arrangement_ids: Vec<String>,
     pub exported_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LabAssistantMaterialRow {
+    pub material_id: String,
+    pub display_name: String,
+    pub kind: String,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topology: Option<String>,
+    #[serde(default)]
+    pub members: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LabAssistantInstructionSection {
+    pub heading: String,
+    pub steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LabAssistantInstructionsExport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub title: String,
+    pub audience: String,
+    pub output_path: String,
+    pub run_id_filter: Option<String>,
+    pub selected_record_count: usize,
+    pub material_rows: Vec<LabAssistantMaterialRow>,
+    pub step_sections: Vec<LabAssistantInstructionSection>,
+    pub checkpoint_lines: Vec<String>,
+    pub safety_lines: Vec<String>,
+    pub record_keeping_lines: Vec<String>,
+    pub warning_lines: Vec<String>,
+    pub summary_lines: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

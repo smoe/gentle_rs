@@ -42,6 +42,28 @@
       ]
     },
     {
+      "intent_id": "lab_assistant_handoff_export",
+      "description": "Export assistant-ready wet-lab cloning instructions from the current GENtle design/run history as Markdown.",
+      "trigger_terms": [
+        "lab assistant handoff",
+        "lab assistant instructions",
+        "bench handoff",
+        "wet lab instructions",
+        "cloning instructions for lab assistant",
+        "export lab instructions",
+        "prepare lab instructions",
+        "assistant-ready cloning handoff"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_export_lab_assistant_instructions.json"
+        }
+      ]
+    },
+    {
       "intent_id": "skill_info",
       "description": "Report GENtle ClawBio skill metadata without requiring a GENtle runtime.",
       "trigger_terms": [

@@ -14862,6 +14862,7 @@ impl GentleEngine {
                     conditions.as_ref(),
                 )?;
                 let svg = export_pool_gel_svg(&layout);
+                Self::ensure_engine_output_parent_dir(&path, "serial gel SVG")?;
                 std::fs::write(&path, svg).map_err(|e| EngineError {
                     code: ErrorCode::Io,
                     message: format!("Could not write SVG output '{path}': {e}"),
@@ -15740,6 +15741,7 @@ impl GentleEngine {
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
+            lab_assistant_instructions: None,
         };
 
         if matches!(
@@ -16814,6 +16816,34 @@ impl GentleEngine {
                         "Wrote process run bundle '{}' with {} record(s) (run_id={}) to '{}'",
                         bundle.schema, bundle.selected_record_count, run_scope, path
                     ));
+                }
+                Operation::ExportLabAssistantInstructions {
+                    path,
+                    run_id,
+                    title,
+                    audience,
+                } => {
+                    let export = self.export_lab_assistant_instructions_file(
+                        &path,
+                        run_id.as_deref(),
+                        title.as_deref(),
+                        audience.as_deref(),
+                    )?;
+                    let run_scope = export
+                        .run_id_filter
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or("all");
+                    result.messages.push(format!(
+                        "Wrote lab assistant instructions '{}' with {} material row(s) and {} instruction section(s) (run_id={}) to '{}'",
+                        export.schema,
+                        export.material_rows.len(),
+                        export.step_sections.len(),
+                        run_scope,
+                        path
+                    ));
+                    result.lab_assistant_instructions = Some(Box::new(export));
                 }
                 Operation::PrepareGenome {
                     genome_id,

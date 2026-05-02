@@ -53,6 +53,16 @@ use tempfile::tempdir;
 static JASPAR_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
 static ATTRACT_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
+fn run_shell_test_on_large_stack(name: &str, test: fn()) {
+    std::thread::Builder::new()
+        .name(name.to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(test)
+        .unwrap_or_else(|err| panic!("spawn {name} with larger stack: {err}"))
+        .join()
+        .unwrap_or_else(|panic_payload| std::panic::resume_unwind(panic_payload));
+}
+
 struct EnvVarGuard {
     key: String,
     original: Option<String>,
@@ -2127,6 +2137,55 @@ fn parse_render_pool_gel_with_conditions() {
 }
 
 #[test]
+fn execute_render_pool_gel_svg_returns_text_rows_for_chat_surfaces() {
+    let td = tempdir().expect("tempdir");
+    let output = td.path().join("nested").join("pool.gel.svg");
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "frag_40".to_string(),
+        DNAsequence::from_sequence(&"A".repeat(40)).expect("frag 40"),
+    );
+    state.sequences.insert(
+        "frag_80".to_string(),
+        DNAsequence::from_sequence(&"C".repeat(80)).expect("frag 80"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RenderPoolGelSvg {
+            inputs: vec!["frag_40".to_string(), "frag_80".to_string()],
+            output: output.to_string_lossy().to_string(),
+            ladders: None,
+            container_ids: None,
+            arrangement_id: None,
+            conditions: gentle_protocol::GelRunConditions::default(),
+        },
+    )
+    .expect("render pool gel with text rows");
+    assert!(!out.state_changed);
+    assert!(output.exists());
+    assert_eq!(out.output["sample_lane_count"].as_u64(), Some(1));
+    assert!(
+        out.output["gel_summary_lines"]
+            .as_array()
+            .is_some_and(|lines| lines.iter().any(|line| line
+                .as_str()
+                .is_some_and(|text| text.contains("Sample gel lane"))))
+    );
+    assert!(
+        out.output["gel_band_rows"]
+            .as_array()
+            .is_some_and(
+                |rows| rows
+                    .iter()
+                    .any(|row| row["labels"].as_array().is_some_and(|labels| labels
+                        .iter()
+                        .any(|label| label.as_str().is_some_and(|text| text.contains("frag_80")))))
+            )
+    );
+}
+
+#[test]
 fn parse_arrange_serial_command() {
     let cmd = parse_shell_line(
         "arrange-serial container-1,container-2 --id arr-x --name test --ladders 100bp,1kb",
@@ -4087,6 +4146,28 @@ fn parse_export_run_bundle_with_run_id() {
         ShellCommand::ExportRunBundle { output, run_id } => {
             assert_eq!(output, "run_bundle.json");
             assert_eq!(run_id.as_deref(), Some("demo_run"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn parse_export_lab_instructions_with_title_and_run_id() {
+    let cmd = parse_shell_line(
+        "export-lab-instructions handoff.md --run-id demo_run --title 'Assistant Handoff' --audience 'non-IT lab assistant'",
+    )
+    .expect("parse command");
+    match cmd {
+        ShellCommand::ExportLabInstructions {
+            output,
+            run_id,
+            title,
+            audience,
+        } => {
+            assert_eq!(output, "handoff.md");
+            assert_eq!(run_id.as_deref(), Some("demo_run"));
+            assert_eq!(title.as_deref(), Some("Assistant Handoff"));
+            assert_eq!(audience.as_deref(), Some("non-IT lab assistant"));
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -10908,6 +10989,13 @@ fn execute_features_tfbs_scan_matches_inline_and_stored_sequence_targets() {
 
 #[test]
 fn execute_variant_promoter_context_shell_command_returns_report_payload() {
+    run_shell_test_on_large_stack(
+        "execute_variant_promoter_context_shell_command_returns_report_payload",
+        execute_variant_promoter_context_shell_command_returns_report_payload_inner,
+    );
+}
+
+fn execute_variant_promoter_context_shell_command_returns_report_payload_inner() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
     dna.features_mut().push(Feature {
         kind: "mRNA".into(),
@@ -12252,6 +12340,13 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
 
 #[test]
 fn execute_export_run_bundle_writes_schema_json() {
+    run_shell_test_on_large_stack(
+        "execute_export_run_bundle_writes_schema_json",
+        execute_export_run_bundle_writes_schema_json_inner,
+    );
+}
+
+fn execute_export_run_bundle_writes_schema_json_inner() {
     let mut state = ProjectState::default();
     state.sequences.insert(
         "seqA".to_string(),
@@ -12290,6 +12385,61 @@ fn execute_export_run_bundle_writes_schema_json() {
             .unwrap_or_default(),
         "interactive"
     );
+}
+
+#[test]
+fn execute_export_lab_instructions_writes_bench_handoff_markdown() {
+    let mut state = ProjectState::default();
+    state.sequences.insert(
+        "cloning_input".to_string(),
+        DNAsequence::from_sequence("ATGGATCCGCATGGATCCGCATGGATCCGC").expect("sequence"),
+    );
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(crate::engine::Operation::Digest {
+            input: "cloning_input".to_string(),
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("digest_product".to_string()),
+        })
+        .expect("digest");
+
+    let td = tempdir().expect("tempdir");
+    let path = td.path().join("lab_handoff.md");
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ExportLabInstructions {
+            output: path.to_string_lossy().to_string(),
+            run_id: Some("interactive".to_string()),
+            title: Some("Assistant-ready cloning handoff".to_string()),
+            audience: Some("non-IT lab assistant".to_string()),
+        },
+    )
+    .expect("export lab instructions");
+    assert!(!out.state_changed);
+    let export = out
+        .output
+        .get("result")
+        .and_then(|result| result.get("lab_assistant_instructions"))
+        .expect("structured lab assistant instructions");
+    assert_eq!(
+        export.get("schema").and_then(|value| value.as_str()),
+        Some("gentle.lab_assistant_instructions.v1")
+    );
+    assert!(
+        export
+            .get("material_rows")
+            .and_then(|value| value.as_array())
+            .is_some_and(|rows| rows.iter().any(|row| row
+                .get("material_id")
+                .and_then(|value| value.as_str())
+                == Some("cloning_input")))
+    );
+
+    let text = fs::read_to_string(path).expect("read handoff");
+    assert!(text.contains("# Assistant-ready cloning handoff"));
+    assert!(text.contains("Digest `cloning_input` with BamHI"));
+    assert!(text.contains("Safety and Scope"));
+    assert!(text.contains("Record Keeping"));
 }
 
 #[test]
@@ -12345,13 +12495,10 @@ fn execute_export_run_bundle_matches_engine_decision_traces() {
 
 #[test]
 fn execute_export_run_bundle_matches_engine_construct_reasoning_block() {
-    std::thread::Builder::new()
-        .name("execute_export_run_bundle_matches_engine_construct_reasoning_block".to_string())
-        .stack_size(8 * 1024 * 1024)
-        .spawn(execute_export_run_bundle_matches_engine_construct_reasoning_block_inner)
-        .expect("spawn run-bundle shell parity test with larger stack")
-        .join()
-        .expect("run-bundle shell parity test panicked");
+    run_shell_test_on_large_stack(
+        "execute_export_run_bundle_matches_engine_construct_reasoning_block",
+        execute_export_run_bundle_matches_engine_construct_reasoning_block_inner,
+    );
 }
 
 fn execute_export_run_bundle_matches_engine_construct_reasoning_block_inner() {
@@ -19545,13 +19692,10 @@ fn execute_transcript_protein_comparison_expert_without_uniprot() {
 
 #[test]
 fn execute_ensembl_protein_list_show_import_and_compare() {
-    std::thread::Builder::new()
-        .name("execute_ensembl_protein_list_show_import_and_compare".to_string())
-        .stack_size(8 * 1024 * 1024)
-        .spawn(execute_ensembl_protein_list_show_import_and_compare_inner)
-        .expect("spawn Ensembl protein shell parity test with larger stack")
-        .join()
-        .expect("Ensembl protein shell parity test panicked");
+    run_shell_test_on_large_stack(
+        "execute_ensembl_protein_list_show_import_and_compare",
+        execute_ensembl_protein_list_show_import_and_compare_inner,
+    );
 }
 
 fn execute_ensembl_protein_list_show_import_and_compare_inner() {
@@ -21088,13 +21232,10 @@ fn execute_transcripts_exon_skip_plan_and_materialize() {
 
 #[test]
 fn execute_transcripts_residue_genomic_coordinates_reports_codon_bases() {
-    std::thread::Builder::new()
-        .name("execute_transcripts_residue_genomic_coordinates_reports_codon_bases".to_string())
-        .stack_size(8 * 1024 * 1024)
-        .spawn(execute_transcripts_residue_genomic_coordinates_reports_codon_bases_inner)
-        .expect("spawn residue-coordinate shell test with larger stack")
-        .join()
-        .expect("residue-coordinate shell test panicked");
+    run_shell_test_on_large_stack(
+        "execute_transcripts_residue_genomic_coordinates_reports_codon_bases",
+        execute_transcripts_residue_genomic_coordinates_reports_codon_bases_inner,
+    );
 }
 
 fn execute_transcripts_residue_genomic_coordinates_reports_codon_bases_inner() {
@@ -21136,6 +21277,13 @@ fn execute_transcripts_residue_genomic_coordinates_reports_codon_bases_inner() {
 
 #[test]
 fn execute_splicing_refs_and_align_commands() {
+    run_shell_test_on_large_stack(
+        "execute_splicing_refs_and_align_commands",
+        execute_splicing_refs_and_align_commands_inner,
+    );
+}
+
+fn execute_splicing_refs_and_align_commands_inner() {
     let mut state = ProjectState::default();
     state
         .sequences

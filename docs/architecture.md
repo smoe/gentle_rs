@@ -103,6 +103,10 @@ Strategic aims:
 3. Make every process exportable as a human-readable protocol text that a
    technical assistant can follow step by step (inputs, operations, expected
    outputs, and checkpoints).
+   - The first shared implementation is `ExportLabAssistantInstructions`, which
+     turns operation-journal rows plus sequence/container state into a Markdown
+     handoff with material IDs, design-derived steps, checkpoints, safety scope,
+     and record-keeping notes.
 4. Support optional, explicit screenshot artifact generation for documentation
    and progress communication without weakening default safety boundaries
    (compile-time feature gate + explicit runtime opt-in).

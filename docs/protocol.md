@@ -1802,6 +1802,7 @@ Current draft operations:
 - `ExportRnaLadders { path, name_filter? }`
 - `ExportPool { inputs, path, pool_id?, human_id? }`
 - `ExportProcessRunBundle { path, run_id? }`
+- `ExportLabAssistantInstructions { path, run_id?, title?, audience? }`
 - `Digest { input, enzymes, output_prefix? }`
 - `Ligation { inputs, circularize_if_possible, protocol, output_id?, output_prefix?, unique? }`
 - `MergeContainers { inputs, output_prefix? }`
@@ -3717,6 +3718,10 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - topology-form hint
   - estimated mass proxy
   - merged-band annotation when several fragments co-migrate
+- Shared-shell `render-pool-gel-svg` output additionally returns
+  `gel_band_rows[]` and `gel_summary_lines[]`, so text-first frontends such as
+  Telegram can explain lane/band sizes without parsing SVG text or depending on
+  host font rasterization.
   - source fragment labels
 - When serial lanes carry interpretable roles such as `vector`, `insert_*`, and
   `product`, the right-hand detail panel also adds `Comparison hints` for:
@@ -4436,6 +4441,35 @@ Feature-distance geometry controls (candidate generation and distance scoring):
       interpreted growth signals, supported selection rules, and warning lines)
     - `graphs`: the selected stored `gentle.construct_reasoning_graph.v1`
       payloads themselves for full offline inspection
+- Failure modes:
+  - empty `path` => `InvalidInput`
+  - unknown filtered `run_id` (no selected rows) => `NotFound`
+
+`ExportLabAssistantInstructions` semantics:
+
+- Exports a deterministic Markdown bench handoff
+  (`gentle.lab_assistant_instructions.v1`) for non-IT lab assistants from the
+  current operation journal and sequence/container state.
+- Inputs:
+  - `path` (required): output Markdown file
+  - `run_id` (optional): when set, only operation-log rows for that `run_id`
+    are summarized; when omitted, all operation-log rows are summarized
+  - `title` (optional): heading for the handoff; otherwise inferred from the
+    first recognized cloning operation or falls back to "GENtle cloning handoff"
+  - `audience` (optional): human-facing audience label, defaulting to
+    "Lab assistant"
+- Returned `OpResult.lab_assistant_instructions` payload:
+  - `material_rows[]`: sequence, container, and arrangement IDs with display
+    names, source role, length/topology where applicable, members, and notes
+  - `step_sections[]`: "Before starting", "Design-derived bench sequence",
+    and "After the bench work" sections
+  - `checkpoint_lines[]`, `safety_lines[]`, and `record_keeping_lines[]`
+  - `warning_lines[]` when no recorded operations or no cloning-specific
+    operations were available
+- The export names design intent and verification checkpoints. It deliberately
+  does not invent volumes, temperatures, incubation times, kit choices, or
+  biosafety approvals that are not present in GENtle state; local SOPs and
+  supervisor-approved conditions remain authoritative.
 - Failure modes:
   - empty `path` => `InvalidInput`
   - unknown filtered `run_id` (no selected rows) => `NotFound`
