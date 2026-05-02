@@ -2195,6 +2195,42 @@ fn directory_bytes_map(root: &Path) -> Result<BTreeMap<String, Vec<u8>>, String>
     Ok(map)
 }
 
+fn summarize_path_list(paths: Vec<String>) -> String {
+    const MAX_PATHS: usize = 12;
+    if paths.is_empty() {
+        return "none".to_string();
+    }
+    let total = paths.len();
+    let mut listed: Vec<String> = paths.into_iter().take(MAX_PATHS).collect();
+    if total > MAX_PATHS {
+        listed.push(format!("... and {} more", total - MAX_PATHS));
+    }
+    listed.join(", ")
+}
+
+fn tutorial_generated_file_count_mismatch_message(
+    expected: &BTreeMap<String, Vec<u8>>,
+    actual: &BTreeMap<String, Vec<u8>>,
+) -> String {
+    let generated_only: Vec<String> = actual
+        .keys()
+        .filter(|path| !expected.contains_key(*path))
+        .cloned()
+        .collect();
+    let committed_only: Vec<String> = expected
+        .keys()
+        .filter(|path| !actual.contains_key(*path))
+        .cloned()
+        .collect();
+    format!(
+        "Tutorial generated file count mismatch: expected {}, got {}; generated-only files: {}; committed-only files: {}",
+        expected.len(),
+        actual.len(),
+        summarize_path_list(generated_only),
+        summarize_path_list(committed_only)
+    )
+}
+
 pub fn generate_tutorial_docs(
     source_dir: &Path,
     manifest_path: &Path,
@@ -2329,10 +2365,8 @@ pub fn check_tutorial_generated(
     let expected = directory_bytes_map(expected_output_dir)?;
     let actual = directory_bytes_map(&generated_dir)?;
     if expected.len() != actual.len() {
-        return Err(format!(
-            "Tutorial generated file count mismatch: expected {}, got {}",
-            expected.len(),
-            actual.len()
+        return Err(tutorial_generated_file_count_mismatch_message(
+            &expected, &actual,
         ));
     }
     for (path, expected_bytes) in &expected {
@@ -3062,6 +3096,27 @@ mod tests {
         assert!(!normalized.contains("1777756509715"));
         assert!(!normalized.contains("1777756511961"));
         assert!(!normalized.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn tutorial_file_count_mismatch_message_lists_path_delta() {
+        let mut expected = BTreeMap::new();
+        expected.insert("README.md".to_string(), Vec::new());
+        let mut actual = expected.clone();
+        actual.insert(
+            "artifacts/new_demo/artifacts/new_retained_output.md".to_string(),
+            Vec::new(),
+        );
+
+        let message = tutorial_generated_file_count_mismatch_message(&expected, &actual);
+
+        assert!(message.contains("expected 1, got 2"));
+        assert!(
+            message.contains(
+                "generated-only files: artifacts/new_demo/artifacts/new_retained_output.md"
+            )
+        );
+        assert!(message.contains("committed-only files: none"));
     }
 
     #[test]
