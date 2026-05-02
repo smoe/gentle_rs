@@ -1505,6 +1505,25 @@ fn rewrite_example_paths_for_execution(
             ensure_parent_exists(path)?;
             continue;
         }
+        if let Operation::RenderTfbsScoreTrackCorrelationSvg { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
+        if let Operation::SummarizeAlternativePromoterComparison { path, .. } = op {
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::SummarizePromoterEvidenceMatrix { path, .. } = op {
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
         if let Operation::PrepareGenome {
             catalog_path,
             cache_dir,
@@ -1626,14 +1645,76 @@ fn copy_file(src: &Path, dst: &Path) -> Result<(), String> {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Could not create '{}': {e}", display_path(parent)))?;
     }
-    fs::copy(src, dst).map_err(|e| {
-        format!(
-            "Could not copy '{}' to '{}': {e}",
-            display_path(src),
-            display_path(dst)
-        )
-    })?;
+    let bytes =
+        fs::read(src).map_err(|e| format!("Could not read '{}': {e}", display_path(src)))?;
+    if let Ok(text) = std::str::from_utf8(&bytes) {
+        let normalized = normalize_retained_tutorial_artifact_text(text);
+        fs::write(dst, normalized).map_err(|e| {
+            format!(
+                "Could not write normalized retained artifact '{}' to '{}': {e}",
+                display_path(src),
+                display_path(dst)
+            )
+        })?;
+    } else {
+        fs::write(dst, bytes).map_err(|e| {
+            format!(
+                "Could not copy '{}' to '{}': {e}",
+                display_path(src),
+                display_path(dst)
+            )
+        })?;
+    }
     Ok(())
+}
+
+fn normalize_retained_tutorial_artifact_text(text: &str) -> String {
+    let mut lines = text
+        .lines()
+        .map(|line| {
+            if let Some(prefix) = line.strip_suffix('\r') {
+                format!("{}\r", normalize_retained_tutorial_artifact_line(prefix))
+            } else {
+                normalize_retained_tutorial_artifact_line(line)
+            }
+        })
+        .collect::<Vec<_>>();
+    while lines.last().is_some_and(|line| line.trim().is_empty()) {
+        lines.pop();
+    }
+    lines.join("\n") + if text.ends_with('\n') { "\n" } else { "" }
+}
+
+fn normalize_retained_tutorial_artifact_line(line: &str) -> String {
+    if line.contains("\"generated_at_unix_ms\":") {
+        let mut normalized = String::new();
+        let mut replaced = false;
+        for (idx, part) in line.split("\"generated_at_unix_ms\":").enumerate() {
+            if idx == 0 {
+                normalized.push_str(part);
+                continue;
+            }
+            normalized.push_str("\"generated_at_unix_ms\":");
+            let trimmed_start = part.len() - part.trim_start().len();
+            normalized.push_str(&part[..trimmed_start]);
+            normalized.push('0');
+            let rest = &part[trimmed_start..];
+            let suffix_start = rest
+                .find(|ch: char| !ch.is_ascii_digit())
+                .unwrap_or(rest.len());
+            normalized.push_str(&rest[suffix_start..]);
+            replaced = true;
+        }
+        if replaced {
+            return normalized;
+        }
+    }
+    if let Some(prefix) = line.strip_prefix("- Generated (Unix ms): `") {
+        if let Some((_, suffix)) = prefix.split_once('`') {
+            return format!("- Generated (Unix ms): `0`{suffix}");
+        }
+    }
+    line.to_string()
 }
 
 fn copy_directory_recursive(src: &Path, dst: &Path) -> Result<(), String> {
@@ -2913,23 +2994,42 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_example_paths_handles_lab_assistant_instruction_output() {
+    fn rewrite_example_paths_handles_promoter_and_handoff_outputs() {
         let example = WorkflowExample {
             schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
-            id: "lab_assistant_output_path_rewrite_test".to_string(),
-            title: "lab assistant output path rewrite test".to_string(),
+            id: "promoter_output_rewrite_test".to_string(),
+            title: "promoter output rewrite test".to_string(),
             summary: String::new(),
             test_mode: ExampleTestMode::Skip,
             required_files: vec![],
             tags: vec![],
             workflow: Workflow {
-                run_id: "lab_assistant_output_path_rewrite_test".to_string(),
-                ops: vec![Operation::ExportLabAssistantInstructions {
-                    path: "artifacts/handoff.md".to_string(),
-                    run_id: None,
-                    title: None,
-                    audience: None,
-                }],
+                run_id: "promoter_output_rewrite_test".to_string(),
+                ops: vec![
+                    Operation::SummarizeAlternativePromoterComparison {
+                        input: "seq_a".to_string(),
+                        gene_label: Some("TP73".to_string()),
+                        transcript_id: None,
+                        promoter_upstream_bp: 40,
+                        promoter_downstream_bp: 15,
+                        path: Some("artifacts/alt_promoters.json".to_string()),
+                    },
+                    Operation::SummarizePromoterEvidenceMatrix {
+                        input: "seq_a".to_string(),
+                        gene_label: Some("TP73".to_string()),
+                        transcript_id: None,
+                        promoter_upstream_bp: 40,
+                        promoter_downstream_bp: 15,
+                        include_feature_overlaps: true,
+                        path: Some("artifacts/evidence_matrix.json".to_string()),
+                    },
+                    Operation::ExportLabAssistantInstructions {
+                        path: "artifacts/handoff.md".to_string(),
+                        run_id: None,
+                        title: None,
+                        audience: None,
+                    },
+                ],
             },
         };
         let repo_root = std::env::current_dir().expect("cwd");
@@ -2937,15 +3037,31 @@ mod tests {
         let rewritten =
             rewrite_example_paths_for_execution(&example, repo_root.as_path(), run_dir.path())
                 .expect("rewrite should succeed");
-        match &rewritten.workflow.ops[0] {
-            Operation::ExportLabAssistantInstructions { path, .. } => {
-                assert!(
-                    path.starts_with(&display_path(run_dir.path())),
-                    "lab assistant instruction output should be rewritten into run dir"
-                );
-            }
-            other => panic!("unexpected operation: {other:?}"),
+        for op in &rewritten.workflow.ops {
+            let path = match op {
+                Operation::SummarizeAlternativePromoterComparison { path, .. }
+                | Operation::SummarizePromoterEvidenceMatrix { path, .. } => path
+                    .as_deref()
+                    .expect("optional path should remain present"),
+                Operation::ExportLabAssistantInstructions { path, .. } => path.as_str(),
+                other => panic!("unexpected operation: {other:?}"),
+            };
+            assert!(
+                path.starts_with(&display_path(run_dir.path())),
+                "output path should be rewritten into run dir: {path}"
+            );
         }
+    }
+
+    #[test]
+    fn retained_tutorial_artifact_normalization_removes_wall_clock_fields() {
+        let raw = "- Generated (Unix ms): `1777756509715`\n{\n  \"generated_at_unix_ms\": 1777756511961,\n}\n\n";
+        let normalized = normalize_retained_tutorial_artifact_text(raw);
+        assert!(normalized.contains("- Generated (Unix ms): `0`"));
+        assert!(normalized.contains("\"generated_at_unix_ms\": 0,"));
+        assert!(!normalized.contains("1777756509715"));
+        assert!(!normalized.contains("1777756511961"));
+        assert!(!normalized.ends_with("\n\n"));
     }
 
     #[test]

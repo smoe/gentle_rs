@@ -1,0 +1,73 @@
+{
+  "schema": "gentle.tfbs_track_similarity.v1",
+  "target_kind": "seq_id",
+  "target_label": "tp73_promoter_artifact_demo",
+  "seq_id": "tp73_promoter_artifact_demo",
+  "source_sequence_length_bp": 249,
+  "scan_topology": "linear",
+  "generated_at_unix_ms": 0,
+  "op_id": "op-7",
+  "run_id": "example_promoter_design_artifact_slice_offline",
+  "score_kind": "llr_background_tail_log10",
+  "view_start_0based": 60,
+  "view_end_0based_exclusive": 158,
+  "clip_negative": false,
+  "anchor_requested": "SP1",
+  "anchor_tf_id": "MA0079.5",
+  "anchor_tf_name": "SP1",
+  "candidate_scope": "explicit",
+  "candidates_requested": [
+    "TP53",
+    "TP63",
+    "TP73",
+    "CTCF"
+  ],
+  "species_filters": [],
+  "include_remote_metadata": false,
+  "ranking_metric": "smoothed_spearman",
+  "scanned_candidate_count": 4,
+  "returned_candidate_count": 4,
+  "warnings": [],
+  "rows": [
+    {
+      "candidate_tf_id": "MA0139.2",
+      "candidate_tf_name": "CTCF",
+      "overlap_window_count": 84,
+      "raw_pearson": 0.1288730177640396,
+      "smoothed_pearson": 0.7648793464351693,
+      "raw_spearman": 0.11802177207875185,
+      "smoothed_spearman": 0.8103185617426982,
+      "signed_primary_peak_offset_bp": -10
+    },
+    {
+      "candidate_tf_id": "MA0106.3",
+      "candidate_tf_name": "TP53",
+      "overlap_window_count": 81,
+      "raw_pearson": 0.03023517063375898,
+      "smoothed_pearson": 0.2363597430148608,
+      "raw_spearman": 0.016821467530463305,
+      "smoothed_spearman": 0.24205569447873895,
+      "signed_primary_peak_offset_bp": -8
+    },
+    {
+      "candidate_tf_id": "MA0525.2",
+      "candidate_tf_name": "TP63",
+      "overlap_window_count": 81,
+      "raw_pearson": 0.0,
+      "smoothed_pearson": 0.0,
+      "raw_spearman": 0.0,
+      "smoothed_spearman": 0.0,
+      "signed_primary_peak_offset_bp": -20
+    },
+    {
+      "candidate_tf_id": "MA0861.2",
+      "candidate_tf_name": "TP73",
+      "overlap_window_count": 83,
+      "raw_pearson": 0.0,
+      "smoothed_pearson": 0.0,
+      "raw_spearman": 0.0,
+      "smoothed_spearman": 0.0,
+      "signed_primary_peak_offset_bp": -20
+    }
+  ]
+}
