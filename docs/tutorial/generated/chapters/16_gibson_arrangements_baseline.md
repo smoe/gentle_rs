@@ -85,7 +85,7 @@ cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangeme
 
 ## Retained Outputs
 
-- [`artifacts/gibson_lab_assistant_handoff.md`](../artifacts/gibson_lab_assistant_handoff.md)
+- [`artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md`](../artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md)
 
 ## Canonical Source
 
