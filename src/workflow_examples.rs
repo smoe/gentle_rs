@@ -1467,6 +1467,11 @@ fn rewrite_example_paths_for_execution(
             ensure_parent_exists(path)?;
             continue;
         }
+        if let Operation::ExportLabAssistantInstructions { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
         if let Operation::FindRestrictionSites { path, .. } = op {
             rewrite_optional_output_path(path, run_dir);
             if let Some(path) = path.as_deref() {
@@ -2901,6 +2906,42 @@ mod tests {
                 assert!(
                     path.starts_with(&display_path(run_dir.path())),
                     "render output path should be rewritten into run dir"
+                );
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rewrite_example_paths_handles_lab_assistant_instruction_output() {
+        let example = WorkflowExample {
+            schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
+            id: "lab_assistant_output_path_rewrite_test".to_string(),
+            title: "lab assistant output path rewrite test".to_string(),
+            summary: String::new(),
+            test_mode: ExampleTestMode::Skip,
+            required_files: vec![],
+            tags: vec![],
+            workflow: Workflow {
+                run_id: "lab_assistant_output_path_rewrite_test".to_string(),
+                ops: vec![Operation::ExportLabAssistantInstructions {
+                    path: "artifacts/handoff.md".to_string(),
+                    run_id: None,
+                    title: None,
+                    audience: None,
+                }],
+            },
+        };
+        let repo_root = std::env::current_dir().expect("cwd");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let rewritten =
+            rewrite_example_paths_for_execution(&example, repo_root.as_path(), run_dir.path())
+                .expect("rewrite should succeed");
+        match &rewritten.workflow.ops[0] {
+            Operation::ExportLabAssistantInstructions { path, .. } => {
+                assert!(
+                    path.starts_with(&display_path(run_dir.path())),
+                    "lab assistant instruction output should be rewritten into run dir"
                 );
             }
             other => panic!("unexpected operation: {other:?}"),

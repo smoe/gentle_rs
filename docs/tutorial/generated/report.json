@@ -6,6 +6,7 @@
   "online_enabled": false,
   "generated_files": [
     "README.md",
+    "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt",
     "chapters/01_load_branch_reverse_complement_pgex_fasta.md",
@@ -31,6 +32,7 @@
   ],
   "file_checksums": {
     "README.md": "8ddac9d02014b275a4cb000db033d5e25050d217",
+    "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md": "626b8b4161c3fef804546ab1cf36fd3f5e5b4dff",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
     "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "8cb42f3f7e5550581d3e3e3c3821252091f8a1ef",
@@ -48,7 +50,7 @@
     "chapters/13_pcr_selection_batch_primer_pairs_offline.md": "63cb61a92a28c445ce5810f6f2a186ee0216f4d5",
     "chapters/14_tp73_cdna_genomic_dotplot_online.md": "ac2afd635828d8e2e6bbb0e4ef57c22cc440004b",
     "chapters/15_gibson_specialist_testing_baseline.md": "d2e3b339ca0493f7845a8064d4d4e5a3d4dfd10d",
-    "chapters/16_gibson_arrangements_baseline.md": "61c723a2ae467ab111d3ac726b42aab910d07abf",
+    "chapters/16_gibson_arrangements_baseline.md": "80cc60f4f4b4aeb5ad9bbb21d7f17c0ddf21aef0",
     "chapters/17_tp53_uniprot_projection_online.md": "c29e64d3b686bc26c10dfa5aab0e1d8c140d74ed",
     "chapters/18_simple_pcr_selection_gui.md": "4ddcd3e977a30d98729265305aa27b196d677733",
     "chapters/19_tp73_uniprot_projection_audit_cli.md": "60eb489b9d04feeaf510ac112495c9691ae49828"
@@ -299,7 +301,7 @@
       ],
       "executed": true,
       "retained_artifacts": [
-        "artifacts/gibson_lab_assistant_handoff.md"
+        "artifacts/gibson_arrangements_baseline/artifacts/gibson_lab_assistant_handoff.md"
       ]
     },
     {
