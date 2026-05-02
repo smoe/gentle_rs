@@ -3399,9 +3399,12 @@ Notes:
          the same formula path
        - GUI text-entry coverage now drives the same inline control by focusing
          the formula field, injecting text, and resolving with Enter
+       - GUI negative-path coverage now confirms invalid typed formulas
+         submitted with Enter leave the existing selection untouched and surface
+         the parser diagnostic
      - remaining:
-       - broader negative/error-state GUI interaction coverage can be added as
-         formula UI complexity grows
+       - broader multi-field error-state GUI interaction coverage can be added
+         as formula UI complexity grows
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete
