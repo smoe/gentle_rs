@@ -119,6 +119,7 @@ struct FeaturePosition {
     is_reverse: bool,
     rect: Rect,
     exon_rects: Vec<Rect>,
+    exon_length_mod3_cues: Vec<Option<u8>>,
     intron_connectors: Vec<[Pos2; 3]>,
 }
 
@@ -969,6 +970,7 @@ impl RenderDnaLinear {
             from: usize,
             to: usize,
             exon_segments: Vec<(f32, f32)>,
+            exon_length_mod3_cues: Vec<Option<u8>>,
             connector_segments: Vec<(f32, f32)>,
             x1: f32,
             x2: f32,
@@ -1095,6 +1097,7 @@ impl RenderDnaLinear {
             let label = RenderDna::feature_name(feature);
             let is_mcs = RenderDna::is_mcs_feature(feature);
             let is_variation = RenderDna::is_variation_feature(feature);
+            let show_exon_length_cues = RenderDna::is_exon_length_frame_cue_feature(feature);
             let mut exon_ranges: Vec<(usize, usize)> = vec![];
             collect_location_ranges_usize(&feature.location, &mut exon_ranges);
             if exon_ranges.is_empty() {
@@ -1103,6 +1106,7 @@ impl RenderDnaLinear {
             exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
             let mut exon_segments: Vec<(f32, f32)> = Vec::new();
+            let mut exon_length_mod3_cues: Vec<Option<u8>> = Vec::new();
             let mut exon_visibility: Vec<Option<(f32, f32)>> =
                 Vec::with_capacity(exon_ranges.len());
             for (exon_start, exon_end_exclusive) in exon_ranges.iter().copied() {
@@ -1130,9 +1134,24 @@ impl RenderDnaLinear {
                     .max(seg_x1 + 1.0)
                     .min(self.area.right());
                 exon_segments.push((seg_x1, seg_x2));
+                exon_length_mod3_cues.push(show_exon_length_cues.then(|| {
+                    RenderDna::exon_length_mod3_for_range(exon_start, exon_end_exclusive)
+                }));
                 exon_visibility.push(Some((seg_x1, seg_x2)));
             }
-            exon_segments.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+            let mut exon_segments_with_cues: Vec<((f32, f32), Option<u8>)> = exon_segments
+                .into_iter()
+                .zip(exon_length_mod3_cues)
+                .collect();
+            exon_segments_with_cues.sort_by(|left, right| {
+                let ((left_x1, left_x2), _) = left;
+                let ((right_x1, right_x2), _) = right;
+                left_x1
+                    .total_cmp(right_x1)
+                    .then(left_x2.total_cmp(right_x2))
+            });
+            let (mut exon_segments, exon_length_mod3_cues): (Vec<_>, Vec<_>) =
+                exon_segments_with_cues.into_iter().unzip();
 
             let mut connector_segments: Vec<(f32, f32)> = Vec::new();
             for exon_idx in 0..exon_ranges.len().saturating_sub(1) {
@@ -1202,6 +1221,7 @@ impl RenderDnaLinear {
                 from,
                 to,
                 exon_segments,
+                exon_length_mod3_cues,
                 connector_segments,
                 x1,
                 x2,
@@ -1461,6 +1481,7 @@ impl RenderDnaLinear {
                     )
                 })
                 .collect();
+            let exon_length_mod3_cues = seed.exon_length_mod3_cues.clone();
             let rect = if exon_rects.is_empty() {
                 let (min_x, max_x) = seed.connector_segments.iter().fold(
                     (f32::INFINITY, f32::NEG_INFINITY),
@@ -1515,6 +1536,7 @@ impl RenderDnaLinear {
                 is_reverse: seed.is_reverse,
                 rect,
                 exon_rects,
+                exon_length_mod3_cues,
                 intron_connectors,
             });
         }
@@ -2514,6 +2536,36 @@ impl RenderDnaLinear {
             for exon_rect in &feature.exon_rects {
                 painter.rect_filled(*exon_rect, 1.5, feature.color);
             }
+            for (exon_rect, mod3) in feature
+                .exon_rects
+                .iter()
+                .zip(feature.exon_length_mod3_cues.iter())
+            {
+                let Some(mod3) = mod3 else {
+                    continue;
+                };
+                let stripe_h = (exon_rect.height() * 0.22).clamp(1.5, 3.0);
+                let stripe = Rect::from_min_max(
+                    exon_rect.left_top(),
+                    Pos2::new(exon_rect.right(), exon_rect.top() + stripe_h),
+                );
+                let cue_color = RenderDna::exon_length_mod3_color(*mod3);
+                painter.rect_filled(stripe, 0.0, cue_color);
+                if *mod3 != 0 && exon_rect.width() >= 8.0 {
+                    let slash_x = if *mod3 == 1 {
+                        exon_rect.left() + exon_rect.width() * 0.5
+                    } else {
+                        exon_rect.right() - exon_rect.width().min(12.0) * 0.5
+                    };
+                    painter.line_segment(
+                        [
+                            Pos2::new(slash_x - 2.5, exon_rect.bottom() - 1.0),
+                            Pos2::new(slash_x + 2.5, exon_rect.top() + 1.0),
+                        ],
+                        Stroke::new(1.0, cue_color),
+                    );
+                }
+            }
             if feature.is_mcs && !selected && !hovered {
                 let halo_fill = Color32::from_rgba_unmultiplied(
                     feature.color.r(),
@@ -3394,6 +3446,45 @@ mod tests {
         assert_eq!(fp.intron_connectors.len(), 2);
         assert!(fp.exon_rects[0].width() > 0.0);
         assert!(fp.exon_rects[1].left() > fp.exon_rects[0].right());
+    }
+
+    #[test]
+    fn coding_exon_length_mod3_cues_follow_visible_exon_segments() {
+        let feature = make_test_feature(Location::Join(vec![
+            Location::simple_range(100, 160),
+            Location::simple_range(220, 281),
+            Location::simple_range(360, 422),
+        ]));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+
+        let fp = &renderer.features[0];
+        assert_eq!(fp.exon_rects.len(), 3);
+        assert_eq!(fp.exon_length_mod3_cues, vec![Some(0), Some(1), Some(2)]);
+    }
+
+    #[test]
+    fn non_exon_feature_segments_do_not_get_length_mod3_cues() {
+        let feature = make_test_feature_with_kind(
+            "gene",
+            Location::Join(vec![
+                Location::simple_range(100, 160),
+                Location::simple_range(220, 281),
+            ]),
+        );
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+
+        let fp = &renderer.features[0];
+        assert_eq!(fp.exon_length_mod3_cues, vec![None, None]);
     }
 
     #[test]
