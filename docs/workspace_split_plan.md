@@ -46,8 +46,10 @@ Current status:
   `ShellCommand` field contracts into `gentle-protocol`, including render
   mode, prepared-reference extraction policy enums, genome-track
   subscriptions, primer backend selection, qPCR/cDNA transcript-targeting
-  enums, restriction-cloning handoff mode, sequence anchors, and
-  prepared-cache cleanup request/mode;
+  enums, restriction-cloning handoff mode, sequence anchors,
+  prepared-cache cleanup request/mode, protocol-cartoon identifiers,
+  primer-specificity policy, per-TF threshold overrides, and candidate
+  feature/objective/template-parameter vocabulary;
 - the root engine surface currently re-exports those extracted types so
   downstream callers do not need to change all at once.
 - `crates/gentle-render` is no longer only a placeholder:
@@ -60,9 +62,10 @@ Current status:
   the glossary-driven shell help rendering layer, shared shell tokenization,
   UI-intent discoverability vocabulary, shell run-result envelope, and several
   parser-local shell enums now live there; it also owns the prepared-cache
-  scope vocabulary used by cache shell commands. Root-crate shims preserve the
-  old import paths while the full typed `ShellCommand` parser/executor
-  extraction remains staged.
+  scope vocabulary used by cache shell commands and depends directly on
+  `gentle-protocol` for shared shell/engine command vocabulary such as
+  candidate set operators. Root-crate shims preserve the old import paths while
+  the full typed `ShellCommand` parser/executor extraction remains staged.
 - `crates/gentle-gui` is no longer only a placeholder either:
   the window-backdrop configuration/rendering helper and embedded icon/resource
   helper now live there, with root-crate shims preserving the old import paths

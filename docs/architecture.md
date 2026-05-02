@@ -211,6 +211,9 @@ Shell modularisation rule:
 - When a command field type moves to `gentle-protocol`, its stable spelling
   helpers (`as_str`, labels, extension inference, and similar adapter-facing
   methods) move with it; lower adapters must not recreate those mappings.
+- If shell parsing needs aliases for an engine-owned contract enum, those alias
+  parsers should live with the shared contract when they are stable enough for
+  cross-adapter reuse; avoid parallel shell-local and engine-local enums.
 - The executor moves to `gentle-shell` only after `gentle-engine` owns the
   `GentleEngine` type, avoiding a dependency cycle from `gentle-shell` back to
   the root crate.

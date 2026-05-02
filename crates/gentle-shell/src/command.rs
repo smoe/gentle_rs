@@ -3,6 +3,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
+pub use gentle_protocol::CandidateSetOperator;
+
 /// Deterministic result envelope returned after one shell command executes.
 #[derive(Debug, Clone)]
 pub struct ShellRunResult {
@@ -87,36 +89,6 @@ impl BatchEmitMode {
             other => Err(format!(
                 "Unsupported batch emit mode '{other}' (expected local|slurm)"
             )),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-/// Parser-local set-algebra enum for `candidates set-op ...` shell commands.
-///
-/// This stays local to the shell layer because it only exists to parse command
-/// text before converting into engine operations.
-pub enum CandidateSetOperator {
-    Union,
-    Intersect,
-    Subtract,
-}
-
-impl CandidateSetOperator {
-    pub fn parse(raw: &str) -> Option<Self> {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "union" => Some(Self::Union),
-            "intersect" | "intersection" => Some(Self::Intersect),
-            "subtract" | "difference" => Some(Self::Subtract),
-            _ => None,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Union => "union",
-            Self::Intersect => "intersect",
-            Self::Subtract => "subtract",
         }
     }
 }

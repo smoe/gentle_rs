@@ -56,7 +56,7 @@ use crate::{
     methylation_sites::MethylationMode,
     pool_gel::{GelSampleInput, export_pool_gel_svg},
     protease::{Protease, normalize_protease_name_token},
-    protocol_cartoon::{ProtocolCartoonKind, ProtocolCartoonTemplateBindings},
+    protocol_cartoon::ProtocolCartoonTemplateBindings,
     render_export::{export_circular_svg, export_linear_svg},
     render_feature_expert::render_feature_expert_svg,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey},
@@ -1939,13 +1939,6 @@ impl Default for OverlapExtensionMutagenesisConstraints {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TfThresholdOverride {
-    pub tf: String,
-    pub min_llr_bits: Option<f64>,
-    pub min_llr_quantile: Option<f64>,
-}
-
 // Backward-compatible alias kept while adapter/docs migrate to SequenceAnchor.
 pub type AnchoredRegionAnchor = SequenceAnchor;
 
@@ -2031,149 +2024,6 @@ pub struct CandidateMetricSummary {
     pub metric: String,
     pub present_in_candidates: usize,
     pub missing_in_candidates: usize,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// How feature-based candidate queries turn matching annotations into geometry.
-///
-/// Use this when finding intervals around features or feature boundaries.
-pub enum CandidateFeatureGeometryMode {
-    #[default]
-    FeatureSpan,
-    FeatureParts,
-    FeatureBoundaries,
-}
-
-impl CandidateFeatureGeometryMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::FeatureSpan => "feature_span",
-            Self::FeatureParts => "feature_parts",
-            Self::FeatureBoundaries => "feature_boundaries",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Which boundary of a matched feature is eligible when boundary mode is used.
-pub enum CandidateFeatureBoundaryMode {
-    #[default]
-    Any,
-    FivePrime,
-    ThreePrime,
-    Start,
-    End,
-}
-
-impl CandidateFeatureBoundaryMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Any => "any",
-            Self::FivePrime => "five_prime",
-            Self::ThreePrime => "three_prime",
-            Self::Start => "start",
-            Self::End => "end",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Strand relation required between a candidate query and matched feature.
-pub enum CandidateFeatureStrandRelation {
-    #[default]
-    Any,
-    Same,
-    Opposite,
-}
-
-impl CandidateFeatureStrandRelation {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Any => "any",
-            Self::Same => "same",
-            Self::Opposite => "opposite",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-/// Deterministic set algebra supported by candidate-set combination commands.
-pub enum CandidateSetOperator {
-    Union,
-    Intersect,
-    Subtract,
-}
-
-impl CandidateSetOperator {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Union => "union",
-            Self::Intersect => "intersect",
-            Self::Subtract => "subtract",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum CandidateObjectiveDirection {
-    #[default]
-    Maximize,
-    Minimize,
-}
-
-impl CandidateObjectiveDirection {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Maximize => "maximize",
-            Self::Minimize => "minimize",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// One objective dimension for Pareto-frontier ranking.
-pub struct CandidateObjectiveSpec {
-    pub metric: String,
-    #[serde(default)]
-    pub direction: CandidateObjectiveDirection,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Weighted scalar objective term used by `CandidatesScoreWeightedObjective`.
-pub struct CandidateWeightedObjectiveTerm {
-    pub metric: String,
-    pub weight: f64,
-    #[serde(default)]
-    pub direction: CandidateObjectiveDirection,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-/// Stable tie-breaker used after objective scores compare equal.
-pub enum CandidateTieBreakPolicy {
-    #[default]
-    SeqStartEnd,
-    SeqEndStart,
-    LengthAscending,
-    LengthDescending,
-    SequenceLexicographic,
-}
-
-impl CandidateTieBreakPolicy {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::SeqStartEnd => "seq_start_end",
-            Self::SeqEndStart => "seq_end_start",
-            Self::LengthAscending => "length_ascending",
-            Self::LengthDescending => "length_descending",
-            Self::SequenceLexicographic => "sequence_lexicographic",
-        }
-    }
 }
 
 impl GuideU6TerminatorWindow {
