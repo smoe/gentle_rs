@@ -44,14 +44,14 @@ use crate::{
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
-        ExonSkipSelectionCriterion, FeatureBedCoordinateMode, FeatureExpertTarget,
-        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide,
-        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
-        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
-        GuidePracticalFilterConfig, InlineSequenceTopology, LineageMacroInstance,
-        LineageMacroPortBinding, MacroInstanceStatus, Operation, OperationProgress,
-        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
-        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        ExonSkipReturnKind, ExonSkipSelectionCriterion, FeatureBedCoordinateMode,
+        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
+        GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource,
+        GenomeTrackSubscription, GentleEngine, GuideCandidate, GuideOligoExportFormat,
+        GuideOligoPlateFormat, GuidePracticalFilterConfig, InlineSequenceTopology,
+        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
+        OperationProgress, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
@@ -1746,6 +1746,7 @@ pub enum ShellCommand {
         plan_id: String,
         selected_candidate_ids: Vec<String>,
         output_prefix: Option<String>,
+        return_kinds: Vec<ExonSkipReturnKind>,
     },
     TranscriptsResidueGenomicCoordinates {
         seq_id: String,
@@ -8564,8 +8565,9 @@ impl ShellCommand {
                 plan_id,
                 selected_candidate_ids,
                 output_prefix,
+                return_kinds,
             } => format!(
-                "materialize exon-skip plan '{}' (candidate_ids={}, output_prefix='{}')",
+                "materialize exon-skip plan '{}' (candidate_ids={}, output_prefix='{}', returns={})",
                 plan_id,
                 if selected_candidate_ids.is_empty() {
                     "from_plan".to_string()
@@ -8576,6 +8578,15 @@ impl ShellCommand {
                     .as_deref()
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto"),
+                if return_kinds.is_empty() {
+                    "none".to_string()
+                } else {
+                    return_kinds
+                        .iter()
+                        .map(|kind| kind.as_str())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                },
             ),
             Self::TranscriptsResidueGenomicCoordinates {
                 seq_id,
@@ -26618,12 +26629,14 @@ fn execute_sequence_analysis_command(
             plan_id,
             selected_candidate_ids,
             output_prefix,
+            return_kinds,
         } => {
             let op_result = engine
                 .apply(Operation::MaterializeExonSkippedIsoform {
                     plan_id: plan_id.clone(),
                     selected_candidate_ids: selected_candidate_ids.clone(),
                     output_prefix: output_prefix.clone(),
+                    return_kinds: return_kinds.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             let report = op_result.exon_skip_materialization.clone().ok_or_else(|| {
