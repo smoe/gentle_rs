@@ -3874,6 +3874,36 @@ fn transcript_qpcr_panel_test_engine() -> GentleEngine {
     engine
 }
 
+fn transcript_qpcr_single_exon_fallback_engine() -> GentleEngine {
+    let tx_a = "ATGCCGTAGCTTACGATCCGTTAGCGTACCTGATCGGATCCGATTAACGCTAGTCGATCGTACCGTACGATCGTACGAGGCTAACGATCCGATGCTAACG";
+    let tx_b = "CGTACGATTCGGAACCTGATCGATGCTTACGGTACCGATCTAGGCTTATCGGATCGTAGCTAACCGATGCTAGCTTACCGATGCTAGGCTACGATCG";
+    let spacer = "N".repeat(24);
+    let tx_a_start = 0usize;
+    let tx_a_end = tx_a.len();
+    let tx_b_start = tx_a_end + spacer.len();
+    let tx_b_end = tx_b_start + tx_b.len();
+    let mut dna = seq(&format!("{tx_a}{spacer}{tx_b}"));
+    for (transcript_id, start, end) in [
+        ("TX_SINGLE_A", tx_a_start, tx_a_end),
+        ("TX_SINGLE_B", tx_b_start, tx_b_end),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start as i64, end as i64),
+            qualifiers: vec![
+                ("gene".into(), Some("SINGLEEXON1".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(format!("SINGLEEXON1 {transcript_id}"))),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("single_exon_qpcr".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+    engine
+}
+
 #[test]
 fn transcript_qpcr_panel_reports_shared_components_and_characteristic_forward_rows() {
     let mut engine = transcript_qpcr_panel_test_engine();
@@ -4260,6 +4290,83 @@ fn test_design_qpcr_assays_transcript_aware_either_prefers_junction_for_tp73_as3
         QpcrTranscriptSpecificityEvidence::EitherPreferJunction,
         "tp73_as3_nr_187362_1_either_qpcr",
     );
+}
+
+#[test]
+fn test_design_qpcr_assays_transcript_aware_either_falls_back_to_unique_exon_chain() {
+    let mut engine = transcript_qpcr_single_exon_fallback_engine();
+    let seq_len = engine
+        .state()
+        .sequences
+        .get("single_exon_qpcr")
+        .expect("single-exon qPCR source")
+        .len();
+    let side = PrimerDesignSideConstraint {
+        min_length: 18,
+        max_length: 24,
+        min_tm_c: 0.0,
+        max_tm_c: 100.0,
+        min_gc_fraction: 0.0,
+        max_gc_fraction: 1.0,
+        max_anneal_hits: 10_000,
+        ..Default::default()
+    };
+
+    engine
+        .apply(Operation::DesignQpcrAssays {
+            template: "single_exon_qpcr".to_string(),
+            roi_start_0based: 0,
+            roi_end_0based: seq_len,
+            forward: side.clone(),
+            reverse: side.clone(),
+            probe: side,
+            pair_constraints: PrimerDesignPairConstraint::default(),
+            min_amplicon_bp: 60,
+            max_amplicon_bp: 140,
+            max_tm_delta_c: Some(100.0),
+            max_probe_tm_delta_c: Some(100.0),
+            max_assays: Some(8),
+            transcript_targeting: Some(QpcrTranscriptTargeting {
+                source_feature_id: 0,
+                mode: QpcrTranscriptTargetingMode::DistinguishTranscript,
+                transcript_id: Some("TX_SINGLE_A".to_string()),
+                specificity_evidence: Some(QpcrTranscriptSpecificityEvidence::EitherPreferJunction),
+            }),
+            report_id: Some("single_exon_either_qpcr".to_string()),
+        })
+        .expect("single-exon fallback qPCR design");
+
+    let report = engine
+        .get_qpcr_design_report("single_exon_either_qpcr")
+        .expect("single-exon fallback qPCR report");
+    let targeting_result = report
+        .transcript_targeting_result
+        .as_ref()
+        .expect("transcript targeting result");
+    assert_eq!(targeting_result.transcript_count_considered, 2);
+    assert_eq!(
+        targeting_result.transcript_id.as_deref(),
+        Some("TX_SINGLE_A")
+    );
+    assert_eq!(targeting_result.selected_support_transcript_count, 1);
+    assert_eq!(
+        targeting_result.realized_specificity_evidence,
+        Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
+    );
+    assert!(!report.assays.is_empty());
+    assert!(report.assays.iter().all(|assay| {
+        assay.transcript_context.as_ref().is_some_and(|context| {
+            context.design_transcript_id == "TX_SINGLE_A"
+                && context.support_transcript_count == 1
+                && context.satisfies_requested_targeting
+                && context.realized_specificity_evidence
+                    == Some(QpcrTranscriptSpecificityEvidence::UniqueExonOrChain)
+                && context.transcript_distinguishing_primer.is_some()
+                && !context.forward_spans_junction
+                && !context.reverse_spans_junction
+                && context.covered_junction_labels.is_empty()
+        })
+    }));
 }
 
 #[test]

@@ -4857,6 +4857,87 @@ mod tests {
     }
 
     #[test]
+    fn selection_formula_inline_controls_enter_key_preserves_selection_on_invalid_formula() {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(120)).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "CDS".into(),
+            location: Location::simple_range(20, 100),
+            qualifiers: vec![("label".into(), Some("CDS_A".to_string()))],
+        });
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.set_selection_range_0based(5, 15)
+            .expect("initial selection");
+
+        let ctx = egui::Context::default();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(720.0, 180.0));
+        let rects = render_selection_formula_control_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                ..Default::default()
+            },
+        );
+        let formula_field_center = rects
+            .iter()
+            .find_map(|(text, rect)| {
+                text.starts_with("=CDS.start+10")
+                    .then_some(rect.center() + egui::vec2(8.0, 0.0))
+            })
+            .expect("formula hint text should render inside the text field");
+
+        for pressed in [true, false] {
+            render_selection_formula_control_pass(
+                &ctx,
+                &mut area,
+                egui::RawInput {
+                    screen_rect: Some(screen_rect),
+                    events: vec![
+                        egui::Event::PointerMoved(formula_field_center),
+                        egui::Event::PointerButton {
+                            pos: formula_field_center,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::default(),
+                        },
+                    ],
+                    ..Default::default()
+                },
+            );
+        }
+
+        render_selection_formula_control_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                events: vec![egui::Event::Text("=CDS.sideways .. CDS.end".to_string())],
+                ..Default::default()
+            },
+        );
+        assert_eq!(area.selection_formula_text, "=CDS.sideways .. CDS.end");
+
+        render_selection_formula_control_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                events: vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: Some(egui::Key::Enter),
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::default(),
+                }],
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(area.current_selection_range_0based(), Some((5, 15)));
+        assert!(area.op_status.contains("unknown boundary 'sideways'"));
+    }
+
+    #[test]
     fn selection_formula_supports_label_filter_and_occurrence() {
         let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(200)).expect("sequence");
         dna.features_mut().push(Feature {
