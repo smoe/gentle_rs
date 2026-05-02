@@ -651,6 +651,12 @@ Feature tree grouping:
   - ordinary linear sequence-map exon blocks for `mRNA` / `transcript` /
     `exon` / `CDS` features keep their normal feature color but gain a thin
     top stripe using the same modulo palette: blue=`0`, amber=`1`, rose=`2`
+    - hovering a striped exon block reports the specific exon block's `len%3`
+      value and the same frame-neutral / frame-shifting skip hint used by the
+      selected-feature details pane
+  - the exon-skip planning checkbox tooltips report each candidate's `len%3`
+    value and CDS entry phase; quick-add buttons can select candidates by
+    `len%3=0/1/2`, codon-boundary starts, or split-codon starts
   - transcript-vs-exon matrix cells are color-coded by exon support frequency
     (higher support => stronger color intensity)
   - an `Exon -> exon transition matrix` shows predicted transition support

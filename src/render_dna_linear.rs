@@ -9,6 +9,7 @@ use crate::{
     engine::{
         ConstructRole, EvidenceClass, LinearSequenceLetterLayoutMode, RestrictionEnzymeDisplayMode,
     },
+    exon_frame::ExonLengthFrameCue,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
     iupac_code::IupacCode,
@@ -18,7 +19,7 @@ use crate::{
     },
     open_reading_frame::OpenReadingFrame,
     render_dna::RenderDna,
-    render_dna::RestrictionEnzymePosition,
+    render_dna::{HoveredExonFrameCue, RestrictionEnzymePosition},
 };
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, StrokeKind, Vec2,
@@ -127,6 +128,26 @@ impl FeaturePosition {
     fn contains(&self, pos: Pos2) -> bool {
         self.exon_rects.iter().any(|rect| rect.contains(pos))
     }
+
+    fn exon_frame_cue_at(&self, pos: Pos2) -> Option<HoveredExonFrameCue> {
+        for (idx, (rect, cue)) in self
+            .exon_rects
+            .iter()
+            .zip(self.exon_length_mod3_cues.iter())
+            .enumerate()
+        {
+            if !rect.contains(pos) {
+                continue;
+            }
+            let length_mod3 = (*cue)? as usize;
+            return Some(HoveredExonFrameCue {
+                exon_number: idx + 1,
+                length_mod3: length_mod3 as u8,
+                skip_frame_hint: ExonLengthFrameCue::from_length(length_mod3).skip_frame_hint(true),
+            });
+        }
+        None
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -227,6 +248,7 @@ pub struct RenderDnaLinear {
     selected_enzyme: Option<RestrictionEnzymePosition>,
     selected_reasoning_evidence_id: Option<String>,
     hovered_feature_number: Option<usize>,
+    hovered_exon_frame_cue: Option<HoveredExonFrameCue>,
     hover_enzyme: Option<RestrictionEnzymePosition>,
     hovered_reasoning_evidence_id: Option<String>,
     external_labeled_feature_numbers: BTreeSet<usize>,
@@ -314,6 +336,7 @@ impl RenderDnaLinear {
             selected_enzyme: None,
             selected_reasoning_evidence_id: None,
             hovered_feature_number: None,
+            hovered_exon_frame_cue: None,
             hover_enzyme: None,
             hovered_reasoning_evidence_id: None,
             external_labeled_feature_numbers: BTreeSet::new(),
@@ -1572,6 +1595,10 @@ impl RenderDnaLinear {
         self.hovered_feature_number
     }
 
+    pub fn hovered_exon_frame_cue(&self) -> Option<HoveredExonFrameCue> {
+        self.hovered_exon_frame_cue.clone()
+    }
+
     pub fn selected_restriction_enzyme(&self) -> Option<RestrictionEnzymePosition> {
         self.selected_enzyme.clone()
     }
@@ -1642,7 +1669,14 @@ impl RenderDnaLinear {
             }
             self.last_hover_probe_pos = Some(pos);
             self.last_hover_probe_viewport = Some(viewport);
-            self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
+            let (hovered_feature_number, hovered_exon_frame_cue) =
+                if let Some(feature) = self.get_clicked_feature(pos) {
+                    (Some(feature.feature_number), feature.exon_frame_cue_at(pos))
+                } else {
+                    (None, None)
+                };
+            self.hovered_feature_number = hovered_feature_number;
+            self.hovered_exon_frame_cue = hovered_exon_frame_cue;
             self.hovered_reasoning_evidence_id = if self.hovered_feature_number.is_none() {
                 self.get_clicked_construct_reasoning_overlay(pos)
                     .map(|overlay| overlay.evidence_id)
@@ -1656,6 +1690,11 @@ impl RenderDnaLinear {
             } else {
                 None
             };
+        } else {
+            self.hovered_feature_number = None;
+            self.hovered_exon_frame_cue = None;
+            self.hovered_reasoning_evidence_id = None;
+            self.hover_enzyme = None;
         }
     }
 
@@ -3465,6 +3504,12 @@ mod tests {
         let fp = &renderer.features[0];
         assert_eq!(fp.exon_rects.len(), 3);
         assert_eq!(fp.exon_length_mod3_cues, vec![Some(0), Some(1), Some(2)]);
+        let cue = fp
+            .exon_frame_cue_at(fp.exon_rects[1].center())
+            .expect("hover cue");
+        assert_eq!(cue.exon_number, 2);
+        assert_eq!(cue.length_mod3, 1);
+        assert!(cue.skip_frame_hint.contains("changes coding-frame length"));
     }
 
     #[test]
