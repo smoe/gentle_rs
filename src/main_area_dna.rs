@@ -1367,9 +1367,9 @@ mod tests {
         },
         enzymes::active_restriction_enzymes,
         feature_expert::{
-            FeatureExpertView, IsoformArchitectureExpertView, SplicingBoundaryMarker,
-            SplicingExonSummary, SplicingExpertView, SplicingIntronSignal, SplicingJunctionArc,
-            SplicingRange, SplicingTranscriptLane,
+            FeatureExpertView, IsoformArchitectureExpertView, RestrictionSiteExpertView,
+            SplicingBoundaryMarker, SplicingExonSummary, SplicingExpertView, SplicingIntronSignal,
+            SplicingJunctionArc, SplicingRange, SplicingTranscriptLane,
         },
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
         protocol_cartoon::pcr_oe_substitution_geometry_bindings,
@@ -1447,6 +1447,46 @@ mod tests {
         assert!(text.contains("1..10 (10 bp)"));
         assert!(text.contains("product: tumor protein p73, transcript variant 1"));
         assert!(text.contains("gene: TP73"));
+    }
+
+    #[test]
+    fn restriction_site_copy_payloads_use_tooltip_lines_and_shared_json() {
+        let view = RestrictionSiteExpertView {
+            seq_id: "pBR322".to_string(),
+            cut_pos_1based: 410,
+            paired_cut_pos_1based: 416,
+            recognition_start_1based: 410,
+            recognition_end_1based: 417,
+            cut_index_0based: 1,
+            paired_cut_index_0based: 7,
+            end_geometry: "5prime_overhang".to_string(),
+            number_of_cuts_for_enzyme: 1,
+            selected_enzyme: Some("SgrAI".to_string()),
+            enzyme_names: vec!["SgrAI".to_string()],
+            recognition_iupac: Some("CRCCGGYG".to_string()),
+            site_sequence: "CACCGGTG".to_string(),
+            site_sequence_complement: "GTGGCCAC".to_string(),
+            enzyme_cut_offset_0based: Some(1),
+            overlap_bp: Some(6),
+            enzyme_note: Some("Efficient cleavage requires two copies.".to_string()),
+            rebase_url: Some("https://rebase.neb.com/rebase/enz/SgrAI.html".to_string()),
+            tooltip_lines: vec![
+                "SgrAI | 1 site | 5' overhang (6 bp)".to_string(),
+                "pBR322:410..417 | cuts 410|416".to_string(),
+                "5' C^ACCGGTG 3'".to_string(),
+                "3' GTGGCCA^C 5'".to_string(),
+            ],
+            instruction: "Inspect restriction-site cleavage geometry.".to_string(),
+        };
+
+        let summary = MainAreaDna::restriction_site_copy_summary_text(&view);
+        assert!(summary.contains("SgrAI | 1 site | 5' overhang (6 bp)"));
+        assert!(summary.contains("5' C^ACCGGTG 3'"));
+
+        let json = MainAreaDna::restriction_site_copy_json_text(&view);
+        assert!(json.contains("\"kind\": \"restriction_site\""));
+        assert!(json.contains("\"tooltip_lines\""));
+        assert!(json.contains("\"selected_enzyme\": \"SgrAI\""));
     }
 
     fn sanitize_for_path_for_test(s: &str) -> String {
@@ -25492,6 +25532,14 @@ impl MainAreaDna {
         for line in lines.iter().skip(1) {
             ui.label(egui::RichText::new(line).monospace().size(font_size));
         }
+        ui.separator();
+        ui.label(
+            egui::RichText::new(
+                "Click the site to pin details; pinned view can copy summary/JSON.",
+            )
+            .italics()
+            .size((font_size - 1.0).max(8.0)),
+        );
     }
 
     fn tfbs_base_color(base_idx: usize) -> egui::Color32 {
@@ -25649,8 +25697,50 @@ impl MainAreaDna {
         });
     }
 
+    fn restriction_site_copy_summary_text(view: &RestrictionSiteExpertView) -> String {
+        view.tooltip_summary_lines().join("\n")
+    }
+
+    fn restriction_site_copy_json_text(view: &RestrictionSiteExpertView) -> String {
+        let payload = serde_json::json!({
+            "kind": "restriction_site",
+            "data": view,
+        });
+        serde_json::to_string_pretty(&payload).unwrap_or_else(|_| {
+            format!(
+                "{{\"kind\":\"restriction_site\",\"seq_id\":\"{}\",\"cut_pos_1based\":{}}}",
+                view.seq_id, view.cut_pos_1based
+            )
+        })
+    }
+
+    fn copy_restriction_site_payload_to_clipboard(
+        &mut self,
+        ctx: &egui::Context,
+        view: &RestrictionSiteExpertView,
+        label: &str,
+        payload: String,
+    ) {
+        if payload.trim().is_empty() {
+            self.op_status = format!(
+                "Restriction-site {} for {} at {} bp is empty",
+                label,
+                view.enzyme_display_label(),
+                view.cut_pos_1based
+            );
+            return;
+        }
+        ctx.copy_text(payload);
+        self.op_status = format!(
+            "Copied restriction-site {} for {} at {} bp",
+            label,
+            view.enzyme_display_label(),
+            view.cut_pos_1based
+        );
+    }
+
     fn render_restriction_expert_view_ui(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         view: &RestrictionSiteExpertView,
     ) {
@@ -25669,6 +25759,36 @@ impl MainAreaDna {
                 view.paired_cut_index_0based
             };
         let font_size = self.feature_details_font_size();
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .button("Copy Summary")
+                .on_hover_text(
+                    "Copy the same concise restriction-site summary used by the map tooltip",
+                )
+                .clicked()
+            {
+                self.copy_restriction_site_payload_to_clipboard(
+                    ui.ctx(),
+                    view,
+                    "summary",
+                    Self::restriction_site_copy_summary_text(view),
+                );
+            }
+            if ui
+                .button("Copy Detail JSON")
+                .on_hover_text(
+                    "Copy the shared restriction-site expert record as JSON for CLI/MCP/agent handoff",
+                )
+                .clicked()
+            {
+                self.copy_restriction_site_payload_to_clipboard(
+                    ui.ctx(),
+                    view,
+                    "detail JSON",
+                    Self::restriction_site_copy_json_text(view),
+                );
+            }
+        });
         ui.label(
             egui::RichText::new(format!(
                 "{} | cuts={}|{} | {}:{}..{}",
