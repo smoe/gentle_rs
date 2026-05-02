@@ -29336,6 +29336,38 @@ fn execute_sequence_analysis_command_with_expanded_stack(
 }
 
 #[inline(never)]
+fn execute_protein_sequence_command_with_expanded_stack(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    let engine_ptr = engine as *mut GentleEngine as usize;
+    let command = command.clone();
+    let worker = thread::Builder::new()
+        .name("gentle-shell-protein-sequence-command".to_string())
+        .stack_size(SHELL_EXPANDED_STACK_SIZE)
+        .spawn(move || {
+            // SAFETY: the caller synchronously joins this worker before returning
+            // and does not access `engine` while the worker is running. Protein
+            // and projection commands carry rich records that can overflow small
+            // platform test stacks when executed through the monolithic shell
+            // dispatcher frame.
+            let engine = unsafe { &mut *(engine_ptr as *mut GentleEngine) };
+            execute_protein_sequence_command(engine, &command)
+        })
+        .map_err(|error| {
+            format!("Could not start shell protein-sequence worker thread: {error}")
+        })?;
+    worker.join().map_err(|panic_payload| {
+        let message = panic_payload
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_string())
+            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_string());
+        format!("Shell protein-sequence worker thread panicked: {message}")
+    })?
+}
+
+#[inline(never)]
 fn execute_cache_command(
     _engine: &mut GentleEngine,
     command: &ShellCommand,
@@ -30238,7 +30270,7 @@ pub fn execute_shell_command_with_options(
             | ShellCommand::ConstructReasoningWriteAnnotation { .. }
             | ShellCommand::ConstructReasoningExportGraph { .. }
     ) {
-        return execute_protein_sequence_command(engine, command);
+        return execute_protein_sequence_command_with_expanded_stack(engine, command);
     }
     if matches!(
         command,
@@ -30473,7 +30505,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ConstructReasoningSetAnnotationStatus { .. }
         | ShellCommand::ConstructReasoningWriteAnnotation { .. }
         | ShellCommand::ConstructReasoningExportGraph { .. } => {
-            execute_protein_sequence_command(engine, command)?
+            execute_protein_sequence_command_with_expanded_stack(engine, command)?
         }
         ShellCommand::RenderRnaSvg { seq_id, output } => {
             let op_result = engine
