@@ -2039,9 +2039,9 @@ Post-release work includes:
       transcript-specific junction-only success, transcript-specific
       unique-exon/exon-chain success, and `either_prefer_junction` choosing
       junction when both are available
-    - a dedicated fixture where `either_prefer_junction` must fall back from
-      missing junction evidence to unique exon/exon-chain evidence is still not
-      committed
+    - a synthetic single-exon transcript-group fixture now covers
+      `either_prefer_junction` falling back from missing junction evidence to
+      unique exon/exon-chain evidence
   - the PCR Designer now also exposes a cloning-aware
     `Restriction-site cloning handoff` block:
     - choose saved pair rank, destination vector, mode, enzymes, and optional
