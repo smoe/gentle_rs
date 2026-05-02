@@ -2089,6 +2089,9 @@ Sequencing-trace evidence notes:
     without an extra reverse-complement step.
 - `FetchGenBankAccession { accession, as_id? }`
 - `FetchDbSnpRegion { rs_id, genome_id, flank_bp?, output_id?, annotation_scope?, max_annotation_features?, catalog_path?, cache_dir? }`
+- `DeriveTranscriptSequences { seq_id, feature_ids[], scope?, output_prefix? }`
+- `PlanExonSkippedIsoform { seq_id, transcript_feature_id, criteria[], plan_id? }`
+- `MaterializeExonSkippedIsoform { plan_id, selected_candidate_ids[], output_prefix? }`
 - `DeriveProteinSequences { seq_id, feature_ids[], feature_query?, scope?, output_prefix?, report_id? }`
   - this operation is self-sufficient and transcript-first: it does not depend
     on UniProt or any other external protein evidence source to decide what
@@ -4130,6 +4133,30 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - additive sequence creation through regular `OpResult.created_seq_ids`
   - deterministic messages/warnings about CDS absence, translation-table
     fallback, partial codons, ambiguous codons, or internal stops.
+
+`PlanExonSkippedIsoform` / `MaterializeExonSkippedIsoform` semantics:
+
+- `PlanExonSkippedIsoform` is the phase-1 selection surface.
+  - Inputs: `seq_id`, `transcript_feature_id`, typed `criteria[]`, optional
+    `plan_id`.
+  - Output: `gentle.exon_skip_selection_plan.v1`.
+  - Stores the plan under `ProjectState.metadata["exon_skip_selection_plans"]`.
+  - Candidate exons expose stable IDs (`exon_1`, `exon_2`, ...), genomic
+    coordinates, support/constitutive status, selection sources, matched
+    feature IDs, and CDS/frame warnings.
+  - Criteria support manual candidate IDs, explicit intervals, current map
+    selection intervals, feature-overlap queries, and reserved reasoning-source
+    candidate IDs.
+- `MaterializeExonSkippedIsoform` is phase 2 and consumes a stored plan.
+  - Inputs: `plan_id`, optional `selected_candidate_ids[]`, optional
+    `output_prefix`.
+  - Output: `gentle.exon_skip_materialization.v1`.
+  - Does not re-plan; stale source transcript coordinates are rejected.
+  - Rejects empty/all-skipped isoforms.
+  - Creates both a retained-exon cDNA/mRNA sequence and a genomic annotation
+    product carrying the exon-skipped transcript model.
+  - Generated feature qualifiers record the plan ID, source sequence/feature,
+    skipped exon candidate IDs, and synthetic origin.
 
 `DeriveProteinSequences` semantics:
 

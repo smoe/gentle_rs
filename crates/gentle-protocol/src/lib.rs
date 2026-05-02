@@ -1788,6 +1788,88 @@ pub struct SplicingExonSummary {
     pub constitutive: bool,
 }
 
+pub const EXON_SKIP_SELECTION_PLAN_SCHEMA: &str = "gentle.exon_skip_selection_plan.v1";
+pub const EXON_SKIP_MATERIALIZATION_SCHEMA: &str = "gentle.exon_skip_materialization.v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExonSkipSelectionCriterion {
+    ManualExonIds {
+        candidate_ids: Vec<String>,
+    },
+    ExplicitIntervals {
+        intervals_1based: Vec<SplicingRange>,
+    },
+    CurrentMapSelection {
+        start_1based: usize,
+        end_1based: usize,
+    },
+    FeatureOverlap {
+        query: SequenceFeatureQuery,
+    },
+    ReasoningCandidateIds {
+        source_id: String,
+        candidate_ids: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExonSkipCandidateExon {
+    pub candidate_id: String,
+    pub ordinal: usize,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub length_bp: usize,
+    pub length_mod3: usize,
+    pub support_transcript_count: usize,
+    pub constitutive: bool,
+    pub present_in_base_transcript: bool,
+    pub cds_overlap: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cds_phase_warning: Option<String>,
+    pub selected: bool,
+    pub selection_sources: Vec<String>,
+    pub matched_feature_ids: Vec<usize>,
+    pub rationale: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExonSkipSelectionPlan {
+    pub schema: String,
+    pub plan_id: String,
+    pub seq_id: SeqId,
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub region_start_1based: usize,
+    pub region_end_1based: usize,
+    pub criteria: Vec<ExonSkipSelectionCriterion>,
+    pub candidate_exons: Vec<ExonSkipCandidateExon>,
+    pub selected_candidate_ids: Vec<String>,
+    pub warnings: Vec<String>,
+    pub messages: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct ExonSkipMaterializationReport {
+    pub schema: String,
+    pub plan_id: String,
+    pub source_seq_id: SeqId,
+    pub transcript_feature_id: usize,
+    pub skipped_candidate_ids: Vec<String>,
+    pub retained_exon_count: usize,
+    pub skipped_exon_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub genomic_seq_id: Option<SeqId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cdna_seq_id: Option<SeqId>,
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SplicingBoundaryMarker {
     pub transcript_feature_id: usize,

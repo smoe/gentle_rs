@@ -20124,6 +20124,45 @@ fn parse_transcripts_derive_command() {
 }
 
 #[test]
+fn parse_transcripts_exon_skip_commands() {
+    let parsed = parse_shell_line(
+        "transcripts exon-skip-plan seq_a --feature-id 1 --skip exon_2 --overlap 20..30 --plan-id skip_plan",
+    )
+    .expect("parse exon-skip plan");
+    match parsed {
+        ShellCommand::TranscriptsExonSkipPlan {
+            seq_id,
+            transcript_feature_id,
+            criteria,
+            plan_id,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(transcript_feature_id, 1);
+            assert_eq!(plan_id.as_deref(), Some("skip_plan"));
+            assert_eq!(criteria.len(), 2);
+        }
+        other => panic!("expected TranscriptsExonSkipPlan, got {other:?}"),
+    }
+
+    let parsed = parse_shell_line(
+        "transcripts exon-skip-materialize skip_plan --candidate-id exon_2 --output-prefix skipped",
+    )
+    .expect("parse exon-skip materialize");
+    match parsed {
+        ShellCommand::TranscriptsExonSkipMaterialize {
+            plan_id,
+            selected_candidate_ids,
+            output_prefix,
+        } => {
+            assert_eq!(plan_id, "skip_plan");
+            assert_eq!(selected_candidate_ids, vec!["exon_2"]);
+            assert_eq!(output_prefix.as_deref(), Some("skipped"));
+        }
+        other => panic!("expected TranscriptsExonSkipMaterialize, got {other:?}"),
+    }
+}
+
+#[test]
 fn parse_transcripts_residue_genomic_coordinates_command() {
     let parsed =
         parse_shell_line("transcripts residue-genomic-coordinates seq_a 2 4 --transcript TX_SPLIT")
@@ -20871,6 +20910,59 @@ fn execute_transcripts_derive_creates_sequences() {
         .as_array()
         .expect("transcripts array");
     assert_eq!(rows.len() as u64, transcript_count);
+}
+
+#[test]
+fn execute_transcripts_exon_skip_plan_and_materialize() {
+    std::thread::Builder::new()
+        .name("execute_transcripts_exon_skip_plan_and_materialize".to_string())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| {
+            let mut state = ProjectState::default();
+            state
+                .sequences
+                .insert("seq_a".to_string(), split_codon_transcript_test_sequence());
+            let mut engine = GentleEngine::from_state(state);
+            let plan = execute_shell_command(
+                &mut engine,
+                &ShellCommand::TranscriptsExonSkipPlan {
+                    seq_id: "seq_a".to_string(),
+                    transcript_feature_id: 1,
+                    criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                        candidate_ids: vec!["exon_2".to_string()],
+                    }],
+                    plan_id: Some("skip_second".to_string()),
+                },
+            )
+            .expect("execute exon-skip plan");
+            assert!(plan.state_changed);
+            assert_eq!(
+                plan.output["plan"]["selected_candidate_ids"][0].as_str(),
+                Some("exon_2")
+            );
+
+            let materialized = execute_shell_command(
+                &mut engine,
+                &ShellCommand::TranscriptsExonSkipMaterialize {
+                    plan_id: "skip_second".to_string(),
+                    selected_candidate_ids: vec![],
+                    output_prefix: Some("skip_second".to_string()),
+                },
+            )
+            .expect("execute exon-skip materialize");
+            assert!(materialized.state_changed);
+            assert_eq!(
+                materialized.output["report"]["skipped_candidate_ids"][0].as_str(),
+                Some("exon_2")
+            );
+            assert_eq!(
+                materialized.output["report"]["retained_exon_count"].as_u64(),
+                Some(1)
+            );
+        })
+        .expect("spawn exon-skip shell test")
+        .join()
+        .expect("join exon-skip shell test");
 }
 
 #[test]

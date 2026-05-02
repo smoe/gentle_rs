@@ -5384,6 +5384,813 @@ impl GentleEngine {
         Ok(ids)
     }
 
+    fn transcript_exon_ranges_for_feature(
+        feature: &gb_io::seq::Feature,
+        feature_id: usize,
+    ) -> Result<Vec<(usize, usize)>, EngineError> {
+        let mut exon_ranges: Vec<(usize, usize)> = vec![];
+        collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+        if exon_ranges.is_empty() {
+            let (from, to) = feature.location.find_bounds().map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse transcript feature n-{} location: {e}",
+                    feature_id + 1
+                ),
+            })?;
+            if from >= 0 && to >= 0 {
+                exon_ranges.push((from as usize, to as usize));
+            }
+        }
+        exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        exon_ranges.dedup();
+        exon_ranges.retain(|(start, end)| *end > *start);
+        if exon_ranges.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Transcript feature n-{} has no usable exon ranges",
+                    feature_id + 1
+                ),
+            });
+        }
+        Ok(exon_ranges)
+    }
+
+    fn location_from_exon_ranges(
+        ranges: &[(usize, usize)],
+        is_reverse: bool,
+    ) -> gb_io::seq::Location {
+        let mut parts = ranges
+            .iter()
+            .map(|(start, end)| gb_io::seq::Location::simple_range(*start as i64, *end as i64))
+            .collect::<Vec<_>>();
+        let location = if parts.len() == 1 {
+            parts.remove(0)
+        } else {
+            gb_io::seq::Location::Join(parts)
+        };
+        if is_reverse {
+            gb_io::seq::Location::Complement(Box::new(location))
+        } else {
+            location
+        }
+    }
+
+    fn exon_skip_plan_store(&self) -> Result<BTreeMap<String, ExonSkipSelectionPlan>, EngineError> {
+        let Some(value) = self.state.metadata.get(EXON_SKIP_PLANS_METADATA_KEY) else {
+            return Ok(BTreeMap::new());
+        };
+        let plans_value = value.get("plans").cloned().unwrap_or_else(|| value.clone());
+        serde_json::from_value(plans_value).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not parse exon-skip plan store: {e}"),
+        })
+    }
+
+    fn store_exon_skip_plan(&mut self, plan: &ExonSkipSelectionPlan) -> Result<(), EngineError> {
+        let mut plans = self.exon_skip_plan_store()?;
+        plans.insert(plan.plan_id.clone(), plan.clone());
+        self.state.metadata.insert(
+            EXON_SKIP_PLANS_METADATA_KEY.to_string(),
+            json!({
+                "schema": "gentle.exon_skip_selection_plans.v1",
+                "plans": plans,
+            }),
+        );
+        Ok(())
+    }
+
+    fn unique_exon_skip_plan_id(&self, requested: Option<String>, base: &str) -> String {
+        let normalized = requested
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| base.to_string());
+        let Ok(plans) = self.exon_skip_plan_store() else {
+            return normalized;
+        };
+        if !plans.contains_key(&normalized) {
+            return normalized;
+        }
+        for idx in 2usize.. {
+            let candidate = format!("{normalized}_{idx}");
+            if !plans.contains_key(&candidate) {
+                return candidate;
+            }
+        }
+        normalized
+    }
+
+    fn candidate_exon_overlaps_interval(
+        candidate: &ExonSkipCandidateExon,
+        start_1based: usize,
+        end_1based: usize,
+    ) -> bool {
+        candidate.end_1based >= start_1based && candidate.start_1based <= end_1based
+    }
+
+    fn mark_exon_skip_candidate_selected(
+        candidate: &mut ExonSkipCandidateExon,
+        source: String,
+        rationale: String,
+        matched_feature_id: Option<usize>,
+    ) {
+        candidate.selected = true;
+        if !candidate.selection_sources.contains(&source) {
+            candidate.selection_sources.push(source);
+        }
+        if !candidate.rationale.contains(&rationale) {
+            candidate.rationale.push(rationale);
+        }
+        if let Some(feature_id) = matched_feature_id
+            && !candidate.matched_feature_ids.contains(&feature_id)
+        {
+            candidate.matched_feature_ids.push(feature_id);
+            candidate.matched_feature_ids.sort_unstable();
+        }
+    }
+
+    fn build_exon_skip_selection_plan(
+        &mut self,
+        seq_id: &str,
+        transcript_feature_id: usize,
+        criteria: Vec<ExonSkipSelectionCriterion>,
+        plan_id: Option<String>,
+    ) -> Result<ExonSkipSelectionPlan, EngineError> {
+        let (source_feature, source_features) = {
+            let dna = self
+                .state
+                .sequences
+                .get(seq_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!("Sequence '{seq_id}' not found"),
+                })?;
+            let source_features = dna.features().to_vec();
+            let source_feature = source_features
+                .get(transcript_feature_id)
+                .cloned()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Feature id '{}' was not found in sequence '{}'",
+                        transcript_feature_id, seq_id
+                    ),
+                })?;
+            (source_feature, source_features)
+        };
+        if !Self::is_transcript_feature_for_derivation(&source_feature) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Feature n-{} in '{}' is not an mRNA/transcript feature",
+                    transcript_feature_id + 1,
+                    seq_id
+                ),
+            });
+        }
+        let exon_ranges =
+            Self::transcript_exon_ranges_for_feature(&source_feature, transcript_feature_id)?;
+        let is_reverse = feature_is_reverse(&source_feature);
+        let strand = if is_reverse { "-" } else { "+" }.to_string();
+        let transcript_id = Self::first_nonempty_qualifier_for_derivation(
+            &source_feature,
+            &[
+                "transcript_id",
+                "standard_name",
+                "label",
+                "name",
+                "product",
+                "gene",
+            ],
+        )
+        .unwrap_or_else(|| format!("transcript_{}", transcript_feature_id + 1));
+        let transcript_label = Self::first_nonempty_qualifier_for_derivation(
+            &source_feature,
+            &[
+                "label",
+                "name",
+                "standard_name",
+                "product",
+                "transcript_id",
+                "gene",
+            ],
+        )
+        .unwrap_or_else(|| transcript_id.clone());
+        let region_start_1based = exon_ranges
+            .iter()
+            .map(|(start, _)| start.saturating_add(1))
+            .min()
+            .unwrap_or(1);
+        let region_end_1based = exon_ranges.iter().map(|(_, end)| *end).max().unwrap_or(0);
+        let transcript_ranges = source_features
+            .iter()
+            .enumerate()
+            .filter(|(_, feature)| Self::is_transcript_feature_for_derivation(feature))
+            .filter(|(_, feature)| feature_is_reverse(feature) == is_reverse)
+            .filter_map(|(feature_id, feature)| {
+                Self::transcript_exon_ranges_for_feature(feature, feature_id)
+                    .ok()
+                    .map(|ranges| (feature_id, ranges))
+            })
+            .filter(|(_, ranges)| {
+                ranges.iter().any(|(start, end)| {
+                    *end > region_start_1based.saturating_sub(1) && *start < region_end_1based
+                })
+            })
+            .collect::<Vec<_>>();
+        let transcript_count = transcript_ranges.len().max(1);
+        let mut cds_ranges: Vec<(usize, usize)> = vec![];
+        for feature in &source_features {
+            if feature.kind.to_string().eq_ignore_ascii_case("CDS") {
+                collect_location_ranges_usize(&feature.location, &mut cds_ranges);
+            }
+        }
+        let mut ordered_ranges = exon_ranges.clone();
+        if is_reverse {
+            ordered_ranges.reverse();
+        }
+        let mut candidate_exons = ordered_ranges
+            .iter()
+            .enumerate()
+            .map(|(idx, (start, end))| {
+                let support_transcript_count = transcript_ranges
+                    .iter()
+                    .filter(|(_, ranges)| ranges.iter().any(|range| range == &(*start, *end)))
+                    .count()
+                    .max(1);
+                let length_bp = end.saturating_sub(*start);
+                let cds_overlap = cds_ranges
+                    .iter()
+                    .any(|(cds_start, cds_end)| *cds_end > *start && *cds_start < *end);
+                let cds_phase_warning = if cds_overlap && length_bp % 3 != 0 {
+                    Some(format!(
+                        "Skipping this CDS-overlapping exon changes coding length by {} bp (not divisible by 3).",
+                        length_bp
+                    ))
+                } else {
+                    None
+                };
+                ExonSkipCandidateExon {
+                    candidate_id: format!("exon_{}", idx + 1),
+                    ordinal: idx + 1,
+                    start_1based: start.saturating_add(1),
+                    end_1based: *end,
+                    length_bp,
+                    length_mod3: length_bp % 3,
+                    support_transcript_count,
+                    constitutive: support_transcript_count == transcript_count,
+                    present_in_base_transcript: true,
+                    cds_overlap,
+                    cds_phase_warning,
+                    selected: false,
+                    selection_sources: vec![],
+                    matched_feature_ids: vec![],
+                    rationale: vec![],
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut warnings: Vec<String> = vec![];
+        for criterion in &criteria {
+            match criterion {
+                ExonSkipSelectionCriterion::ManualExonIds { candidate_ids } => {
+                    for candidate_id in candidate_ids {
+                        if let Some(candidate) = candidate_exons
+                            .iter_mut()
+                            .find(|candidate| candidate.candidate_id == *candidate_id)
+                        {
+                            Self::mark_exon_skip_candidate_selected(
+                                candidate,
+                                "manual".to_string(),
+                                format!("Selected candidate '{}'", candidate_id),
+                                None,
+                            );
+                        } else {
+                            warnings.push(format!(
+                                "Selection criterion referenced unknown exon candidate '{}'",
+                                candidate_id
+                            ));
+                        }
+                    }
+                }
+                ExonSkipSelectionCriterion::ReasoningCandidateIds {
+                    source_id,
+                    candidate_ids,
+                } => {
+                    for candidate_id in candidate_ids {
+                        if let Some(candidate) = candidate_exons
+                            .iter_mut()
+                            .find(|candidate| candidate.candidate_id == *candidate_id)
+                        {
+                            Self::mark_exon_skip_candidate_selected(
+                                candidate,
+                                format!("reasoning:{source_id}"),
+                                format!(
+                                    "Reasoning source '{}' selected '{}'",
+                                    source_id, candidate_id
+                                ),
+                                None,
+                            );
+                        } else {
+                            warnings.push(format!(
+                                "Reasoning source '{}' referenced unknown exon candidate '{}'",
+                                source_id, candidate_id
+                            ));
+                        }
+                    }
+                }
+                ExonSkipSelectionCriterion::ExplicitIntervals { intervals_1based } => {
+                    for interval in intervals_1based {
+                        if interval.start_1based == 0 || interval.end_1based < interval.start_1based
+                        {
+                            warnings.push(format!(
+                                "Ignored invalid explicit exon-skip interval {}..{}",
+                                interval.start_1based, interval.end_1based
+                            ));
+                            continue;
+                        }
+                        for candidate in &mut candidate_exons {
+                            if Self::candidate_exon_overlaps_interval(
+                                candidate,
+                                interval.start_1based,
+                                interval.end_1based,
+                            ) {
+                                Self::mark_exon_skip_candidate_selected(
+                                    candidate,
+                                    "explicit_interval".to_string(),
+                                    format!(
+                                        "Overlaps explicit interval {}..{}",
+                                        interval.start_1based, interval.end_1based
+                                    ),
+                                    None,
+                                );
+                            }
+                        }
+                    }
+                }
+                ExonSkipSelectionCriterion::CurrentMapSelection {
+                    start_1based,
+                    end_1based,
+                } => {
+                    if *start_1based == 0 || end_1based < start_1based {
+                        warnings.push(format!(
+                            "Ignored invalid map-selection interval {}..{}",
+                            start_1based, end_1based
+                        ));
+                        continue;
+                    }
+                    for candidate in &mut candidate_exons {
+                        if Self::candidate_exon_overlaps_interval(
+                            candidate,
+                            *start_1based,
+                            *end_1based,
+                        ) {
+                            Self::mark_exon_skip_candidate_selected(
+                                candidate,
+                                "current_map_selection".to_string(),
+                                format!(
+                                    "Overlaps current map selection {}..{}",
+                                    start_1based, end_1based
+                                ),
+                                None,
+                            );
+                        }
+                    }
+                }
+                ExonSkipSelectionCriterion::FeatureOverlap { query } => {
+                    let mut query = query.clone();
+                    query.seq_id = seq_id.to_string();
+                    let query_result = self.query_sequence_features(query)?;
+                    for row in query_result.rows {
+                        let start_1based = row.start_0based.saturating_add(1);
+                        let end_1based = row.end_0based_exclusive;
+                        for candidate in &mut candidate_exons {
+                            if Self::candidate_exon_overlaps_interval(
+                                candidate,
+                                start_1based,
+                                end_1based,
+                            ) {
+                                Self::mark_exon_skip_candidate_selected(
+                                    candidate,
+                                    "feature_overlap".to_string(),
+                                    format!(
+                                        "Overlaps feature n-{} '{}' ({})",
+                                        row.feature_id + 1,
+                                        row.label,
+                                        row.kind
+                                    ),
+                                    Some(row.feature_id),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let selected_candidate_ids = candidate_exons
+            .iter()
+            .filter(|candidate| candidate.selected)
+            .map(|candidate| candidate.candidate_id.clone())
+            .collect::<Vec<_>>();
+        if selected_candidate_ids.len() == candidate_exons.len() && !candidate_exons.is_empty() {
+            warnings.push(
+                "All exons are currently selected; materialization will reject an empty isoform."
+                    .to_string(),
+            );
+        }
+        let transcript_token = Self::normalize_id_token(&transcript_id);
+        let transcript_token = if transcript_token.is_empty() {
+            format!("feature_{}", transcript_feature_id + 1)
+        } else {
+            transcript_token
+        };
+        let base_plan_id = format!(
+            "{}__f{}__{}__exon_skip_plan",
+            Self::normalize_id_token(seq_id),
+            transcript_feature_id + 1,
+            transcript_token
+        );
+        let plan_id = self.unique_exon_skip_plan_id(plan_id, &base_plan_id);
+        Ok(ExonSkipSelectionPlan {
+            schema: EXON_SKIP_SELECTION_PLAN_SCHEMA.to_string(),
+            plan_id,
+            seq_id: seq_id.to_string(),
+            transcript_feature_id,
+            transcript_id,
+            transcript_label,
+            strand,
+            region_start_1based,
+            region_end_1based,
+            criteria,
+            candidate_exons,
+            selected_candidate_ids,
+            warnings,
+            messages: vec![format!(
+                "Prepared exon-skip plan for transcript feature n-{} on '{}'.",
+                transcript_feature_id + 1,
+                seq_id
+            )],
+        })
+    }
+
+    fn load_exon_skip_plan(&self, plan_id: &str) -> Result<ExonSkipSelectionPlan, EngineError> {
+        let normalized = plan_id.trim();
+        if normalized.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "MaterializeExonSkippedIsoform requires non-empty plan_id".to_string(),
+            });
+        }
+        self.exon_skip_plan_store()?
+            .remove(normalized)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Exon-skip plan '{normalized}' not found"),
+            })
+    }
+
+    fn add_exon_skip_qualifiers(
+        feature: &mut gb_io::seq::Feature,
+        plan: &ExonSkipSelectionPlan,
+        skipped_candidate_ids: &[String],
+        synthetic_origin: &str,
+    ) {
+        feature
+            .qualifiers
+            .push(("exon_skip_plan_id".into(), Some(plan.plan_id.clone())));
+        feature
+            .qualifiers
+            .push(("source_seq_id".into(), Some(plan.seq_id.clone())));
+        feature.qualifiers.push((
+            "source_feature_id".into(),
+            Some((plan.transcript_feature_id + 1).to_string()),
+        ));
+        feature.qualifiers.push((
+            "skipped_exon_candidate_ids".into(),
+            Some(skipped_candidate_ids.join(",")),
+        ));
+        feature.qualifiers.push((
+            "synthetic_origin".into(),
+            Some(synthetic_origin.to_string()),
+        ));
+    }
+
+    fn materialize_exon_skip_plan(
+        &mut self,
+        plan_id: &str,
+        selected_candidate_ids: Vec<String>,
+        output_prefix: Option<String>,
+        result: &mut OpResult,
+        parent_seq_ids: &mut Vec<SeqId>,
+    ) -> Result<(), EngineError> {
+        let plan = self.load_exon_skip_plan(plan_id)?;
+        let (source_sequence_upper, source_dna, source_features, source_feature) = {
+            let source_dna = self
+                .state
+                .sequences
+                .get(&plan.seq_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!("Sequence '{}' not found", plan.seq_id),
+                })?
+                .clone();
+            let source_features = source_dna.features().to_vec();
+            let source_feature = source_features
+                .get(plan.transcript_feature_id)
+                .cloned()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Feature id '{}' from exon-skip plan '{}' was not found in sequence '{}'",
+                        plan.transcript_feature_id, plan.plan_id, plan.seq_id
+                    ),
+                })?;
+            (
+                source_dna
+                    .get_forward_string()
+                    .to_ascii_uppercase()
+                    .into_bytes(),
+                source_dna,
+                source_features,
+                source_feature,
+            )
+        };
+        if !Self::is_transcript_feature_for_derivation(&source_feature) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Stored exon-skip plan '{}' points at feature n-{}, which is no longer an mRNA/transcript feature",
+                    plan.plan_id,
+                    plan.transcript_feature_id + 1
+                ),
+            });
+        }
+        let current_ranges =
+            Self::transcript_exon_ranges_for_feature(&source_feature, plan.transcript_feature_id)?;
+        let mut planned_ranges = plan
+            .candidate_exons
+            .iter()
+            .map(|candidate| {
+                (
+                    candidate.start_1based.saturating_sub(1),
+                    candidate.end_1based,
+                )
+            })
+            .collect::<Vec<_>>();
+        planned_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        if current_ranges != planned_ranges {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Exon-skip plan '{}' is stale: the source transcript exon coordinates changed; rebuild the plan before materializing.",
+                    plan.plan_id
+                ),
+            });
+        }
+        let mut skipped_candidate_ids = if selected_candidate_ids.is_empty() {
+            plan.selected_candidate_ids.clone()
+        } else {
+            selected_candidate_ids
+        };
+        skipped_candidate_ids.sort();
+        skipped_candidate_ids.dedup();
+        if skipped_candidate_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Exon-skip plan '{}' has no selected exon candidates to materialize",
+                    plan.plan_id
+                ),
+            });
+        }
+        let candidate_by_id = plan
+            .candidate_exons
+            .iter()
+            .map(|candidate| (candidate.candidate_id.as_str(), candidate))
+            .collect::<HashMap<_, _>>();
+        for candidate_id in &skipped_candidate_ids {
+            if !candidate_by_id.contains_key(candidate_id.as_str()) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Selected exon candidate '{}' is not part of exon-skip plan '{}'",
+                        candidate_id, plan.plan_id
+                    ),
+                });
+            }
+        }
+        if skipped_candidate_ids.len() == plan.candidate_exons.len() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Cannot materialize exon-skip isoform with all exons skipped".to_string(),
+            });
+        }
+        let skipped = skipped_candidate_ids.iter().collect::<HashSet<_>>();
+        let skipped_exon_count = skipped.len();
+        let mut retained_ranges = plan
+            .candidate_exons
+            .iter()
+            .filter(|candidate| !skipped.contains(&candidate.candidate_id))
+            .map(|candidate| {
+                (
+                    candidate.start_1based.saturating_sub(1),
+                    candidate.end_1based,
+                )
+            })
+            .collect::<Vec<_>>();
+        retained_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        if retained_ranges.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Cannot materialize exon-skip isoform with no retained exons".to_string(),
+            });
+        }
+        let is_reverse = plan.strand.trim() == "-";
+        let mut retained_feature = source_feature.clone();
+        retained_feature.location = Self::location_from_exon_ranges(&retained_ranges, is_reverse);
+        retained_feature
+            .qualifiers
+            .push(("exon_skip_plan_id".into(), Some(plan.plan_id.clone())));
+        retained_feature.qualifiers.push((
+            "skipped_exon_candidate_ids".into(),
+            Some(skipped_candidate_ids.join(",")),
+        ));
+        let (
+            mut cdna_dna,
+            _transcript_id,
+            transcript_label,
+            _is_reverse,
+            retained_exon_count,
+            protein_derivation,
+        ) = Self::derive_transcript_sequence_from_feature(
+            &source_sequence_upper,
+            &retained_feature,
+            &source_features,
+            plan.transcript_feature_id,
+            &plan.seq_id,
+        )?;
+        cdna_dna.set_name(format!("{transcript_label} exon-skip cDNA"));
+        for feature in cdna_dna.features_mut() {
+            Self::add_exon_skip_qualifiers(
+                feature,
+                &plan,
+                &skipped_candidate_ids,
+                "exon_skip_isoform_cdna",
+            );
+        }
+        Self::prepare_sequence(&mut cdna_dna);
+
+        let normalized_prefix = output_prefix
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| format!("{}__exon_skip", plan.seq_id));
+        let plan_token = Self::normalize_id_token(&plan.plan_id);
+        let cdna_seq_id = self.unique_seq_id(&format!("{normalized_prefix}__cdna__{plan_token}"));
+        self.state.sequences.insert(cdna_seq_id.clone(), cdna_dna);
+        self.add_lineage_node(&cdna_seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+        result.created_seq_ids.push(cdna_seq_id.clone());
+
+        let mut genomic_dna = source_dna.clone();
+        let source_name = source_dna
+            .name()
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(plan.seq_id.as_str());
+        genomic_dna.set_name(format!("{source_name} exon-skip annotation"));
+        let retained_location = Self::location_from_exon_ranges(&retained_ranges, is_reverse);
+        let mut transcript_qualifiers = vec![
+            (
+                "transcript_id".into(),
+                Some(format!("{}_exon_skip", plan.transcript_id)),
+            ),
+            (
+                "label".into(),
+                Some(format!("{} exon-skip", plan.transcript_label)),
+            ),
+            ("exon_skip_plan_id".into(), Some(plan.plan_id.clone())),
+            ("source_seq_id".into(), Some(plan.seq_id.clone())),
+            (
+                "source_feature_id".into(),
+                Some((plan.transcript_feature_id + 1).to_string()),
+            ),
+            (
+                "skipped_exon_candidate_ids".into(),
+                Some(skipped_candidate_ids.join(",")),
+            ),
+            (
+                "synthetic_origin".into(),
+                Some("exon_skip_isoform_genomic_annotation".to_string()),
+            ),
+            ("strand".into(), Some(plan.strand.clone())),
+        ];
+        for key in ["gene", "gene_id", "locus_tag", "note"] {
+            if let Some(value) = Self::qualifier_text_for_derivation(&source_feature, key) {
+                transcript_qualifiers.push((key.into(), Some(value)));
+            }
+        }
+        genomic_dna.features_mut().push(gb_io::seq::Feature {
+            kind: source_feature.kind.clone(),
+            location: retained_location,
+            qualifiers: transcript_qualifiers,
+        });
+        for (idx, (start, end)) in retained_ranges.iter().enumerate() {
+            let mut exon_qualifiers = vec![
+                (
+                    "exon_number".into(),
+                    Some((idx.saturating_add(1)).to_string()),
+                ),
+                (
+                    "transcript_id".into(),
+                    Some(format!("{}_exon_skip", plan.transcript_id)),
+                ),
+                (
+                    "label".into(),
+                    Some(format!("{} exon {}", plan.transcript_label, idx + 1)),
+                ),
+                ("exon_skip_plan_id".into(), Some(plan.plan_id.clone())),
+                ("source_seq_id".into(), Some(plan.seq_id.clone())),
+                (
+                    "source_feature_id".into(),
+                    Some((plan.transcript_feature_id + 1).to_string()),
+                ),
+                (
+                    "skipped_exon_candidate_ids".into(),
+                    Some(skipped_candidate_ids.join(",")),
+                ),
+                (
+                    "synthetic_origin".into(),
+                    Some("exon_skip_isoform_genomic_annotation".to_string()),
+                ),
+                ("strand".into(), Some(plan.strand.clone())),
+            ];
+            for key in ["gene", "gene_id", "locus_tag"] {
+                if let Some(value) = Self::qualifier_text_for_derivation(&source_feature, key) {
+                    exon_qualifiers.push((key.into(), Some(value)));
+                }
+            }
+            genomic_dna.features_mut().push(gb_io::seq::Feature {
+                kind: "exon".into(),
+                location: gb_io::seq::Location::simple_range(*start as i64, *end as i64),
+                qualifiers: exon_qualifiers,
+            });
+        }
+        Self::prepare_sequence(&mut genomic_dna);
+        let genomic_seq_id = self.unique_seq_id(&format!(
+            "{normalized_prefix}__genomic_annotation__{plan_token}"
+        ));
+        self.state
+            .sequences
+            .insert(genomic_seq_id.clone(), genomic_dna);
+        self.add_lineage_node(
+            &genomic_seq_id,
+            SequenceOrigin::Derived,
+            Some(&result.op_id),
+        );
+        result.created_seq_ids.push(genomic_seq_id.clone());
+        parent_seq_ids.push(plan.seq_id.clone());
+
+        let mut warnings = plan.warnings.clone();
+        for candidate_id in &skipped_candidate_ids {
+            if let Some(candidate) = candidate_by_id.get(candidate_id.as_str())
+                && let Some(warning) = candidate.cds_phase_warning.as_ref()
+            {
+                warnings.push(format!("{}: {}", candidate.candidate_id, warning));
+            }
+        }
+        if let Some(derivation) = protein_derivation {
+            for warning in derivation.warnings {
+                warnings.push(format!("Derived cDNA '{}': {}", cdna_seq_id, warning));
+            }
+        } else {
+            warnings.push(format!(
+                "Derived cDNA '{}' has no CDS annotation; protein translation was not derived.",
+                cdna_seq_id
+            ));
+        }
+        result.warnings.extend(warnings.clone());
+        result.messages.push(format!(
+            "Materialized exon-skip plan '{}' as cDNA '{}' and genomic annotation '{}'.",
+            plan.plan_id, cdna_seq_id, genomic_seq_id
+        ));
+        result.exon_skip_materialization = Some(ExonSkipMaterializationReport {
+            schema: EXON_SKIP_MATERIALIZATION_SCHEMA.to_string(),
+            plan_id: plan.plan_id,
+            source_seq_id: plan.seq_id,
+            transcript_feature_id: plan.transcript_feature_id,
+            skipped_candidate_ids,
+            retained_exon_count,
+            skipped_exon_count,
+            genomic_seq_id: Some(genomic_seq_id),
+            cdna_seq_id: Some(cdna_seq_id),
+            warnings,
+        });
+        Ok(())
+    }
+
     pub(crate) fn derive_transcript_sequence_from_feature(
         source_sequence_upper: &[u8],
         source_feature: &gb_io::seq::Feature,
@@ -14297,6 +15104,8 @@ impl GentleEngine {
             reverse_translation_report: None,
             protease_digest_report: None,
             protein_residue_genomic_coordinates: None,
+            exon_skip_selection_plan: None,
+            exon_skip_materialization: None,
             cdna_assay_test_report: None,
             cdna_assay_product_materialization: None,
             transcript_qpcr_panel: None,
@@ -19293,6 +20102,36 @@ impl GentleEngine {
                             ),
                         });
                     }
+                }
+                Operation::PlanExonSkippedIsoform {
+                    seq_id,
+                    transcript_feature_id,
+                    criteria,
+                    plan_id,
+                } => {
+                    let plan = self.build_exon_skip_selection_plan(
+                        &seq_id,
+                        transcript_feature_id,
+                        criteria,
+                        plan_id,
+                    )?;
+                    self.store_exon_skip_plan(&plan)?;
+                    result.messages.extend(plan.messages.clone());
+                    result.warnings.extend(plan.warnings.clone());
+                    result.exon_skip_selection_plan = Some(plan);
+                }
+                Operation::MaterializeExonSkippedIsoform {
+                    plan_id,
+                    selected_candidate_ids,
+                    output_prefix,
+                } => {
+                    self.materialize_exon_skip_plan(
+                        &plan_id,
+                        selected_candidate_ids,
+                        output_prefix,
+                        &mut result,
+                        &mut parent_seq_ids,
+                    )?;
                 }
                 Operation::DeriveProteinSequences {
                     seq_id,
