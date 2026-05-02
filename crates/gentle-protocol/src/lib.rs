@@ -3828,6 +3828,26 @@ impl Default for RnaReadSeedFilterConfig {
     }
 }
 
+impl RnaReadSeedFilterConfig {
+    /// Stable machine token for how input reads are interpreted before scoring.
+    pub fn input_orientation_mode(&self) -> &'static str {
+        if self.cdna_poly_t_flip_enabled {
+            "cdna_oriented"
+        } else {
+            "direct_rna"
+        }
+    }
+
+    /// Short human label matching [`Self::input_orientation_mode`].
+    pub fn input_orientation_label(&self) -> &'static str {
+        if self.cdna_poly_t_flip_enabled {
+            "cDNA-oriented"
+        } else {
+            "direct-RNA"
+        }
+    }
+}
+
 /// Pairwise phase-2 alignment parameters shared by RNA-read mapping reports
 /// and inspection/export adapters.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -6316,6 +6336,10 @@ pub struct RnaReadInterpretationReportSummary {
     pub scope: SplicingScopePreset,
     #[serde(default)]
     pub origin_mode: RnaReadOriginMode,
+    #[serde(default)]
+    pub input_orientation_mode: String,
+    #[serde(default)]
+    pub input_orientation_label: String,
     #[serde(default)]
     pub target_gene_count: usize,
     #[serde(default)]

@@ -352,6 +352,8 @@ impl GentleEngine {
                 seed_feature_id: report.seed_feature_id,
                 scope: report.scope,
                 origin_mode: report.origin_mode,
+                input_orientation_mode: report.seed_filter.input_orientation_mode().to_string(),
+                input_orientation_label: report.seed_filter.input_orientation_label().to_string(),
                 target_gene_count: report.target_gene_ids.len(),
                 roi_seed_capture_enabled: report.roi_seed_capture_enabled,
                 read_count_total: report.read_count_total,
@@ -383,10 +385,12 @@ impl GentleEngine {
             (row.read_count_seed_passed as f64 / row.read_count_total as f64) * 100.0
         };
         format!(
-            "{} seq={} mode={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} msa_eligible(retained)={}",
+            "{} seq={} mode={} input_orientation={} input_orientation_label={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} msa_eligible(retained)={}",
             row.report_id,
             row.seq_id,
             row.report_mode.as_str(),
+            row.input_orientation_mode,
+            row.input_orientation_label,
             row.origin_mode.as_str(),
             row.target_gene_count,
             row.roi_seed_capture_enabled,
@@ -458,11 +462,13 @@ impl GentleEngine {
             8,
         );
         format!(
-            "{} seq={} profile={} mode={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} ({:.2}%) full_length(exact/near/strict)={}/{}/{} ({:.2}%/{:.2}%/{:.2}% aligned) msa_eligible(retained)={} len_bp_bins(all|seed|aligned|exact|near|strict)={} | {} | {} | {} | {} | {}",
+            "{} seq={} profile={} mode={} input_orientation={} input_orientation_label={} origin={} targets={} roi_capture={} reads={} seed_passed={} ({:.2}%) aligned={} ({:.2}%) full_length(exact/near/strict)={}/{}/{} ({:.2}%/{:.2}%/{:.2}% aligned) msa_eligible(retained)={} len_bp_bins(all|seed|aligned|exact|near|strict)={} | {} | {} | {} | {} | {}",
             report.report_id,
             report.seq_id,
             report.profile.as_str(),
             report.report_mode.as_str(),
+            report.seed_filter.input_orientation_mode(),
+            report.seed_filter.input_orientation_label(),
             report.origin_mode.as_str(),
             report.target_gene_ids.len(),
             report.roi_seed_capture_enabled,
@@ -508,18 +514,42 @@ impl GentleEngine {
         path: &str,
     ) -> Result<RnaReadInterpretationReport, EngineError> {
         let report = self.get_rna_read_report(report_id)?;
-        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+        let text = serde_json::to_string_pretty(&Self::rna_read_report_export_value(&report)?)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not serialize RNA-read report '{}': {e}",
+                    report.report_id
+                ),
+            })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write RNA-read report to '{path}': {e}"),
+        })?;
+        Ok(report)
+    }
+
+    pub(crate) fn rna_read_report_export_value(
+        report: &RnaReadInterpretationReport,
+    ) -> Result<serde_json::Value, EngineError> {
+        let mut value = serde_json::to_value(report).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!(
                 "Could not serialize RNA-read report '{}': {e}",
                 report.report_id
             ),
         })?;
-        std::fs::write(path, text).map_err(|e| EngineError {
-            code: ErrorCode::Io,
-            message: format!("Could not write RNA-read report to '{path}': {e}"),
-        })?;
-        Ok(report)
+        if let serde_json::Value::Object(map) = &mut value {
+            map.insert(
+                "input_orientation_mode".to_string(),
+                serde_json::Value::String(report.seed_filter.input_orientation_mode().to_string()),
+            );
+            map.insert(
+                "input_orientation_label".to_string(),
+                serde_json::Value::String(report.seed_filter.input_orientation_label().to_string()),
+            );
+        }
+        Ok(value)
     }
 
     fn normalize_rna_read_gene_support_ids(
@@ -5243,7 +5273,7 @@ impl GentleEngine {
 
     fn rna_read_seed_filter_summary(seed_filter: &RnaReadSeedFilterConfig) -> String {
         format!(
-            "seed_filter: k={} stride={} min_seed_hit_fraction={:.2} min_weighted_seed_hit_fraction={:.2} min_unique_matched_kmers={} max_median_transcript_gap={:.2} min_chain_consistency_fraction={:.2} min_confirmed_exon_transitions={} min_transition_support_fraction={:.2} poly_t_flip={} poly_t_prefix_min_bp={} | {}",
+            "seed_filter: k={} stride={} min_seed_hit_fraction={:.2} min_weighted_seed_hit_fraction={:.2} min_unique_matched_kmers={} max_median_transcript_gap={:.2} min_chain_consistency_fraction={:.2} min_confirmed_exon_transitions={} min_transition_support_fraction={:.2} input_orientation_mode={} input_orientation_label={} poly_t_flip={} poly_t_prefix_min_bp={} | {}",
             seed_filter.kmer_len,
             seed_filter.seed_stride_bp,
             seed_filter.min_seed_hit_fraction,
@@ -5253,6 +5283,8 @@ impl GentleEngine {
             seed_filter.min_chain_consistency_fraction,
             seed_filter.min_confirmed_exon_transitions,
             seed_filter.min_transition_support_fraction,
+            seed_filter.input_orientation_mode(),
+            seed_filter.input_orientation_label(),
             seed_filter.cdna_poly_t_flip_enabled,
             seed_filter.poly_t_prefix_min_bp,
             Self::ordered_window_overlap_summary(
@@ -5303,10 +5335,12 @@ impl GentleEngine {
                 Self::format_subset_spec_for_metadata(subset_spec),
             ),
             format!(
-                "# profile={} report_mode={} input_format={} scope={} origin_mode={} roi_seed_capture_enabled={} target_gene_ids={}",
+                "# profile={} report_mode={} input_format={} input_orientation_mode={} input_orientation_label={} scope={} origin_mode={} roi_seed_capture_enabled={} target_gene_ids={}",
                 report.profile.as_str(),
                 report.report_mode.as_str(),
                 report.input_format.as_str(),
+                report.seed_filter.input_orientation_mode(),
+                report.seed_filter.input_orientation_label(),
                 report.scope.as_str(),
                 report.origin_mode.as_str(),
                 report.roi_seed_capture_enabled,
@@ -5431,7 +5465,7 @@ impl GentleEngine {
         if !existing_nonempty {
             writeln!(
                 writer,
-                "sample_id\tsample_name\tsample_description\treport_id\tseq_id\tseed_feature_id\tgenerated_at_unix_ms\tinput_path\tprofile\tscope\treport_mode\torigin_mode\ttarget_gene_count\ttarget_gene_ids_json\troi_seed_capture_enabled\tread_count_total\tread_count_seed_passed\tread_count_aligned\tseed_pass_fraction\taligned_fraction\tmean_read_length_bp\tgene_support_requested_gene_ids_json\tgene_support_matched_gene_ids_json\tgene_support_missing_gene_ids_json\tgene_support_complete_rule\tgene_support_aligned_base_count\tgene_support_accepted_target_count\tgene_support_accepted_target_fraction_total\tgene_support_accepted_target_fraction_aligned\tgene_support_fragment_count\tgene_support_complete_count\tgene_support_complete_strict_count\tgene_support_complete_exact_count\tgene_support_mean_assigned_read_length_bp\tgene_support_exon_support_json\tgene_support_exon_pair_support_json\tgene_support_direct_transition_support_json\texon_support_frequencies_json\tjunction_support_frequencies_json\torigin_class_counts_json"
+                "sample_id\tsample_name\tsample_description\treport_id\tseq_id\tseed_feature_id\tgenerated_at_unix_ms\tinput_path\tprofile\tinput_orientation_mode\tinput_orientation_label\tscope\treport_mode\torigin_mode\ttarget_gene_count\ttarget_gene_ids_json\troi_seed_capture_enabled\tread_count_total\tread_count_seed_passed\tread_count_aligned\tseed_pass_fraction\taligned_fraction\tmean_read_length_bp\tgene_support_requested_gene_ids_json\tgene_support_matched_gene_ids_json\tgene_support_missing_gene_ids_json\tgene_support_complete_rule\tgene_support_aligned_base_count\tgene_support_accepted_target_count\tgene_support_accepted_target_fraction_total\tgene_support_accepted_target_fraction_aligned\tgene_support_fragment_count\tgene_support_complete_count\tgene_support_complete_strict_count\tgene_support_complete_exact_count\tgene_support_mean_assigned_read_length_bp\tgene_support_exon_support_json\tgene_support_exon_pair_support_json\tgene_support_direct_transition_support_json\texon_support_frequencies_json\tjunction_support_frequencies_json\torigin_class_counts_json"
             )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -5641,7 +5675,7 @@ impl GentleEngine {
                 })?;
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}",
                 Self::sanitize_tsv_cell(&report.report_id),
                 Self::sanitize_tsv_cell(&sample_name),
                 Self::sanitize_tsv_cell(&sample_description),
@@ -5651,6 +5685,8 @@ impl GentleEngine {
                 report.generated_at_unix_ms,
                 Self::sanitize_tsv_cell(&report.input_path),
                 report.profile.as_str(),
+                report.seed_filter.input_orientation_mode(),
+                report.seed_filter.input_orientation_label(),
                 report.scope.as_str(),
                 report.report_mode.as_str(),
                 report.origin_mode.as_str(),

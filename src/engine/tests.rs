@@ -26551,6 +26551,33 @@ fn test_interpret_rna_reads_poly_t_cdna_flip_sets_rc_flag_and_sequence() {
     assert_eq!(direct_report.hits.len(), 1);
     assert!(!direct_report.hits[0].reverse_complement_applied);
     assert_eq!(direct_report.hits[0].sequence, "TTTACGTACGT");
+
+    let direct_summary = engine
+        .list_rna_read_reports(Some("seq_a"))
+        .into_iter()
+        .find(|row| row.report_id == "rna_reads_poly_t_direct")
+        .expect("direct summary row");
+    assert_eq!(direct_summary.input_orientation_mode, "direct_rna");
+    assert_eq!(direct_summary.input_orientation_label, "direct-RNA");
+    let detail_summary = GentleEngine::format_rna_read_report_detail_summary(&direct_report);
+    assert!(detail_summary.contains("input_orientation=direct_rna"));
+    assert!(detail_summary.contains("input_orientation_label=direct-RNA"));
+
+    let direct_sheet_path = td.path().join("direct_sample_sheet.tsv");
+    engine
+        .export_rna_read_sample_sheet(
+            direct_sheet_path.to_str().expect("direct sheet path"),
+            Some("seq_a"),
+            &["rna_reads_poly_t_direct".to_string()],
+            &[],
+            RnaReadGeneSupportCompleteRule::Near,
+            false,
+        )
+        .expect("export direct-RNA sample sheet");
+    let direct_sheet = fs::read_to_string(&direct_sheet_path).expect("read direct sample sheet");
+    assert!(direct_sheet.contains("input_orientation_mode"));
+    assert!(direct_sheet.contains("input_orientation_label"));
+    assert!(direct_sheet.contains("\tdirect_rna\tdirect-RNA\t"));
 }
 
 #[test]
@@ -26916,6 +26943,7 @@ fn test_list_and_show_rna_read_reports_messages_include_origin_provenance() {
         })
         .expect("list rna-read reports");
     let listed_text = listed.messages.join("\n");
+    assert!(listed_text.contains("input_orientation=cdna_oriented"));
     assert!(listed_text.contains("origin=multi_gene_sparse"));
     assert!(listed_text.contains("targets=2"));
     assert!(listed_text.contains("roi_capture=true"));
@@ -26926,6 +26954,7 @@ fn test_list_and_show_rna_read_reports_messages_include_origin_provenance() {
         })
         .expect("show rna-read report");
     let shown_text = shown.messages.join("\n");
+    assert!(shown_text.contains("input_orientation=cdna_oriented"));
     assert!(shown_text.contains("origin=multi_gene_sparse"));
     assert!(shown_text.contains("targets=2"));
     assert!(shown_text.contains("roi_capture=true"));
@@ -30438,6 +30467,8 @@ fn test_export_rna_read_sample_sheet_writes_frequency_columns() {
     assert!(text.contains("exon_support_frequencies_json"));
     assert!(text.contains("junction_support_frequencies_json"));
     assert!(text.contains("origin_mode"));
+    assert!(text.contains("input_orientation_mode"));
+    assert!(text.contains("input_orientation_label"));
     assert!(text.contains("target_gene_ids_json"));
     assert!(text.contains("origin_class_counts_json"));
     assert!(text.contains("rna_reads_sheet"));

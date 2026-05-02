@@ -21106,10 +21106,19 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         listed.output["reports"][0]["roi_seed_capture_enabled"].as_bool(),
         Some(false)
     );
+    assert_eq!(
+        listed.output["reports"][0]["input_orientation_mode"].as_str(),
+        Some("cdna_oriented")
+    );
+    assert_eq!(
+        listed.output["reports"][0]["input_orientation_label"].as_str(),
+        Some("cDNA-oriented")
+    );
     assert!(
         listed.output["summary_rows"][0]
             .as_str()
-            .is_some_and(|line| line.contains("origin=single_gene"))
+            .is_some_and(|line| line.contains("input_orientation=cdna_oriented")
+                && line.contains("origin=single_gene"))
     );
     assert!(
         listed.output["summary_rows"][0]
@@ -21128,10 +21137,20 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         shown.output["report"]["report_id"].as_str(),
         Some(report_id.as_str())
     );
+    assert_eq!(
+        shown.output["input_orientation_mode"].as_str(),
+        Some("cdna_oriented")
+    );
+    assert_eq!(
+        shown.output["input_orientation_label"].as_str(),
+        Some("cDNA-oriented")
+    );
     assert!(
         shown.output["summary"]
             .as_str()
-            .is_some_and(|line| line.contains("mode=full") && line.contains("origin=single_gene"))
+            .is_some_and(|line| line.contains("mode=full")
+                && line.contains("input_orientation=cdna_oriented")
+                && line.contains("origin=single_gene"))
     );
 
     let shown_alignment = execute_shell_command(
@@ -21420,6 +21439,18 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         Some(report_id.as_str())
     );
     assert!(exported_report.exists());
+    let exported_report_json: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&exported_report).expect("read exported RNA-read report"),
+    )
+    .expect("parse exported RNA-read report");
+    assert_eq!(
+        exported_report_json["input_orientation_mode"].as_str(),
+        Some("cdna_oriented")
+    );
+    assert_eq!(
+        exported_report_json["input_orientation_label"].as_str(),
+        Some("cDNA-oriented")
+    );
 
     let exported_hits = fasta_dir.path().join("hits.fa");
     let export_hits_result = execute_shell_command(
@@ -21470,6 +21501,8 @@ fn execute_rna_reads_commands_store_and_export_reports() {
     let sheet_text = fs::read_to_string(exported_sheet).expect("read sample sheet");
     assert!(sheet_text.contains("sample_id"));
     assert!(sheet_text.contains("mean_read_length_bp"));
+    assert!(sheet_text.contains("input_orientation_mode"));
+    assert!(sheet_text.contains("input_orientation_label"));
     assert!(sheet_text.contains("exon_support_frequencies_json"));
     assert!(sheet_text.contains("origin_mode"));
     assert!(sheet_text.contains("target_gene_ids_json"));

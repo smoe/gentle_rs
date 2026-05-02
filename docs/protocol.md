@@ -6571,6 +6571,9 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads list-reports` summary rows include sparse-origin request
     provenance:
     - `origin_mode`
+    - `input_orientation_mode` / `input_orientation_label`
+      (`cdna_oriented` / `cDNA-oriented` or `direct_rna` / `direct-RNA`,
+      derived from `seed_filter.cdna_poly_t_flip_enabled`)
     - `target_gene_count`
     - `roi_seed_capture_enabled`
   - report payload now includes per-report:
@@ -6648,10 +6651,11 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, gene_ids?, complete_rule?, append? }`
   - export schema: `gentle.rna_read_sample_sheet_export.v1`
   - output: TSV with run/read metrics, sparse-origin request provenance
-    (`report_mode`, `origin_mode`, `target_gene_count`,
-    `target_gene_ids_json`, `roi_seed_capture_enabled`), JSON-serialized
-    exon/junction frequency columns, and `origin_class_counts_json` for
-    cohort-level downstream analysis.
+    (`report_mode`, `input_orientation_mode`, `input_orientation_label`,
+    `origin_mode`, `target_gene_count`, `target_gene_ids_json`,
+    `roi_seed_capture_enabled`), JSON-serialized exon/junction frequency
+    columns, and `origin_class_counts_json` for cohort-level downstream
+    analysis.
   - additional per-report columns include `mean_read_length_bp`; when one or
     more `gene_ids[]` are requested the same row also carries
     accepted-target counts/fractions, fragment vs complete counts,
@@ -6845,6 +6849,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `poly_t_prefix_min_bp` (default `18`): minimum T support used by the
     tolerant 5' poly-T-head detector (minor interruptions in the head are
     accepted)
+  - report-list/detail/export surfaces derive stable presentation markers from
+    `cdna_poly_t_flip_enabled`: `input_orientation_mode=cdna_oriented` with
+    label `cDNA-oriented`, or `input_orientation_mode=direct_rna` with label
+    `direct-RNA`
 - Scope/strand semantics for `InterpretRnaReads`:
   - `all_overlapping_any_strand`: all overlapping transcripts on any strand,
     including antisense/opposite-strand genes relative to the selected target
