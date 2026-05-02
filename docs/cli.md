@@ -616,10 +616,13 @@ Dotplot/flexibility capability status:
     - `transcripts exon-skip-plan SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--feature-query-json JSON] [--plan-id ID]`
       where exon-skip `START..END` intervals are 1-based inclusive genomic
       coordinates
-    - `transcripts exon-skip-materialize PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX]`
+    - `transcripts exon-skip-materialize PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX] [--return genbank|cdna_fasta|amino_acid_sequence|amino_acid_fasta ...]`
     - phase 1 stores `gentle.exon_skip_selection_plan.v1`; phase 2 consumes the
       stored plan and creates both a genomic annotation product and retained
       exon cDNA/mRNA sequence
+    - `--return` lets automation callers request a compact handoff payload in
+      the materialization report, such as the adjusted GenBank entry or just
+      the amino-acid sequence
   - `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END]`
     maps transcript-native protein residue(s) back to 1-based genomic codon
     nucleotide positions; `--transcript ID` narrows the query to a transcript
@@ -1230,6 +1233,9 @@ Current tools:
 - `state_summary`
 - `restriction_site_detail` (shared restriction-site expert detail record,
   including `tooltip_lines[]`)
+- `exon_skip_plan` (shared `transcripts exon-skip-plan` contract)
+- `exon_skip_materialize` (shared `transcripts exon-skip-materialize`
+  contract; requires `confirm=true` and accepts requested return payloads)
 - `op` (apply one operation; requires `confirm=true`)
 - `workflow` (apply one workflow; requires `confirm=true`)
 - `help`

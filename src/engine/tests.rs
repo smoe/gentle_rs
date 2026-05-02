@@ -10587,6 +10587,7 @@ fn test_exon_skip_plan_manual_selection_and_materialization_creates_cdna_and_gen
             plan_id: "skip_middle".to_string(),
             selected_candidate_ids: vec![],
             output_prefix: Some("skip_mid".to_string()),
+            return_kinds: vec![ExonSkipReturnKind::Genbank, ExonSkipReturnKind::CdnaFasta],
         })
         .expect("materialize exon skip");
     let report = materialized
@@ -10595,6 +10596,19 @@ fn test_exon_skip_plan_manual_selection_and_materialization_creates_cdna_and_gen
     assert_eq!(report.schema, EXON_SKIP_MATERIALIZATION_SCHEMA);
     assert_eq!(report.skipped_candidate_ids, vec!["exon_2"]);
     assert_eq!(report.retained_exon_count, 2);
+    assert_eq!(
+        report.requested_returns,
+        vec![ExonSkipReturnKind::Genbank, ExonSkipReturnKind::CdnaFasta]
+    );
+    assert_eq!(report.return_payloads.len(), 2);
+    assert!(report.return_payloads.iter().any(|payload| {
+        payload.kind == ExonSkipReturnKind::Genbank && payload.text.contains("LOCUS")
+    }));
+    assert!(report.return_payloads.iter().any(|payload| {
+        payload.kind == ExonSkipReturnKind::CdnaFasta
+            && payload.available
+            && payload.text.starts_with('>')
+    }));
     assert_eq!(materialized.created_seq_ids.len(), 2);
     let cdna_id = report.cdna_seq_id.expect("cdna id");
     let genomic_id = report.genomic_seq_id.expect("genomic id");
@@ -10727,6 +10741,7 @@ fn test_exon_skip_materialization_rejects_all_exons_skipped() {
             plan_id: "skip_all".to_string(),
             selected_candidate_ids: vec![],
             output_prefix: None,
+            return_kinds: vec![],
         })
         .expect_err("skip all should fail");
     assert!(err.message.contains("all exons skipped"));
@@ -10764,6 +10779,7 @@ fn test_exon_skip_materialization_rejects_stale_plan() {
             plan_id: "stale_skip".to_string(),
             selected_candidate_ids: vec![],
             output_prefix: None,
+            return_kinds: vec![],
         })
         .expect_err("stale plan should fail");
     assert!(err.message.contains("stale"));

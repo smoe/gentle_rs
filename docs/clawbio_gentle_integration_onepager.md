@@ -52,12 +52,15 @@ Minimum control baseline for integration:
 ## Request/Result Contract
 
 Request (`gentle.clawbio_skill_request.v1`):
-- `mode`: `capabilities | state-summary | shell | op | workflow | agent-plan | agent-execute-plan | raw`
+- `mode`: `capabilities | state-summary | shell | op | workflow | exon-skip-plan | exon-skip-materialize | agent-plan | agent-execute-plan | raw`
 - Optional controls: `state_path`, `timeout_secs`
 - Mode payload:
   - `shell`: `shell_line`
   - `op`: `operation`
   - `workflow`: `workflow` or `workflow_path`
+  - `exon-skip-plan`: source sequence/transcript plus selected exon criteria
+  - `exon-skip-materialize`: stored `plan_id`, `confirm=true`, and optional
+    `return_items[]` such as `genbank` or `amino_acid_sequence`
   - `agent-plan`: `system_id`, `prompt`, optional planner/runtime overrides
   - `agent-execute-plan`: `plan` or `plan_path`, `candidate_id`, optional `confirm`
   - `raw`: `raw_args[]`

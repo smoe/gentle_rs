@@ -4933,6 +4933,22 @@ fn parse_exon_skip_interval_1based(raw: &str, context: &str) -> Result<SplicingR
     })
 }
 
+fn parse_exon_skip_return_kind(raw: &str) -> Result<ExonSkipReturnKind, String> {
+    match raw.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "genbank" | "gb" | "genbank_entry" | "adjusted_genbank" => Ok(ExonSkipReturnKind::Genbank),
+        "cdna_fasta" | "cdna" | "mrna_fasta" | "transcript_fasta" => {
+            Ok(ExonSkipReturnKind::CdnaFasta)
+        }
+        "amino_acid_sequence" | "amino_acid" | "aa" | "protein_sequence" | "protein" => {
+            Ok(ExonSkipReturnKind::AminoAcidSequence)
+        }
+        "amino_acid_fasta" | "aa_fasta" | "protein_fasta" => Ok(ExonSkipReturnKind::AminoAcidFasta),
+        other => Err(format!(
+            "Unsupported exon-skip --return value '{other}', expected genbank|cdna_fasta|amino_acid_sequence|amino_acid_fasta"
+        )),
+    }
+}
+
 pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -5146,7 +5162,7 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
         "exon-skip-materialize" => {
             if tokens.len() < 3 {
                 return Err(
-                    "transcripts exon-skip-materialize requires PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX]"
+                    "transcripts exon-skip-materialize requires PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX] [--return genbank|cdna_fasta|amino_acid_sequence|amino_acid_fasta ...]"
                         .to_string(),
                 );
             }
@@ -5158,6 +5174,7 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
             }
             let mut selected_candidate_ids: Vec<String> = vec![];
             let mut output_prefix: Option<String> = None;
+            let mut return_kinds: Vec<ExonSkipReturnKind> = vec![];
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -5191,6 +5208,21 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
                             Some(trimmed.to_string())
                         };
                     }
+                    "--return" | "--return-kind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--return",
+                            "transcripts exon-skip-materialize",
+                        )?;
+                        for value in raw.split(',') {
+                            let trimmed = value.trim();
+                            if trimmed.is_empty() {
+                                continue;
+                            }
+                            return_kinds.push(parse_exon_skip_return_kind(trimmed)?);
+                        }
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{}' for transcripts exon-skip-materialize",
@@ -5201,10 +5233,13 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
             }
             selected_candidate_ids.sort();
             selected_candidate_ids.dedup();
+            return_kinds.sort_by_key(|kind| kind.as_str());
+            return_kinds.dedup();
             Ok(ShellCommand::TranscriptsExonSkipMaterialize {
                 plan_id,
                 selected_candidate_ids,
                 output_prefix,
+                return_kinds,
             })
         }
         "residue-genomic-coordinates" | "residue-coordinates" | "protein-residue-coordinates" => {

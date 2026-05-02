@@ -232,6 +232,21 @@ impl DNAsequence {
         Ok(vec![DNAsequence::from_genbank_seq(seq)])
     }
 
+    pub fn to_genbank_string(&self) -> Result<String> {
+        let mut buffer = Vec::new();
+        let mut seq = self.seq.clone();
+        for feature in &mut seq.features {
+            let location_text = feature.location.to_gb_format();
+            feature.location = gb_io::seq::Location::from_gb_format(&location_text).map_err(|e| {
+                anyhow::anyhow!(
+                    "Could not canonicalize feature location '{location_text}' before GenBank write: {e}"
+                )
+            })?;
+        }
+        gb_io::writer::write(&mut buffer, &seq)?;
+        Ok(String::from_utf8(buffer)?)
+    }
+
     pub fn write_genbank_file(&self, filename: &str) -> Result<()> {
         let file = File::create(filename)?;
         let mut seq = self.seq.clone();

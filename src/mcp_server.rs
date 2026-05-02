@@ -824,6 +824,105 @@ fn tool_list() -> Value {
         items.insert(
             2,
             json!({
+                "name": "exon_skip_plan",
+                "title": "Exon Skip Plan",
+                "description": "Build and persist an inspectable exon-skip selection plan through the shared `transcripts exon-skip-plan` shell contract.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "state_path": {
+                            "type": "string",
+                            "description": "Optional project state path. Defaults to server startup state path."
+                        },
+                        "seq_id": { "type": "string" },
+                        "transcript_feature_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Zero-based feature id, matching the shared shell contract."
+                        },
+                        "candidate_ids": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Candidate exon ids to mark for skipping, e.g. exon_2."
+                        },
+                        "skip_intervals_1based": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "start_1based": { "type": "integer", "minimum": 1 },
+                                    "end_1based": { "type": "integer", "minimum": 1 }
+                                },
+                                "required": ["start_1based", "end_1based"],
+                                "additionalProperties": false
+                            }
+                        },
+                        "overlap_intervals_1based": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "start_1based": { "type": "integer", "minimum": 1 },
+                                    "end_1based": { "type": "integer", "minimum": 1 }
+                                },
+                                "required": ["start_1based", "end_1based"],
+                                "additionalProperties": false
+                            }
+                        },
+                        "feature_query": {
+                            "description": "SequenceFeatureQuery object or raw JSON string; seq_id is normalized by the shell parser.",
+                            "oneOf": [
+                                { "type": "object" },
+                                { "type": "string" }
+                            ]
+                        },
+                        "plan_id": { "type": "string" }
+                    },
+                    "required": ["seq_id", "transcript_feature_id"],
+                    "additionalProperties": false
+                }
+            }),
+        );
+        items.insert(
+            3,
+            json!({
+                "name": "exon_skip_materialize",
+                "title": "Exon Skip Materialize",
+                "description": "Materialize one stored exon-skip plan through the shared `transcripts exon-skip-materialize` shell contract and optionally return caller-requested payloads.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Must be true because this tool creates derived sequences."
+                        },
+                        "state_path": {
+                            "type": "string",
+                            "description": "Optional project state path. Defaults to server startup state path."
+                        },
+                        "plan_id": { "type": "string" },
+                        "candidate_ids": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                        },
+                        "output_prefix": { "type": "string" },
+                        "return": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": ["genbank", "cdna_fasta", "amino_acid_sequence", "amino_acid_fasta"]
+                            },
+                            "description": "Optional payloads to include in the materialization report for chat/ClawBio handoff."
+                        }
+                    },
+                    "required": ["confirm", "plan_id"],
+                    "additionalProperties": false
+                }
+            }),
+        );
+        items.insert(
+            4,
+            json!({
                 "name": "restriction_site_detail",
                 "title": "Restriction Site Detail",
                 "description": "Return one restriction-site expert record through the shared `inspect-feature-expert ... restriction` shell contract.",
@@ -1127,6 +1226,58 @@ fn optional_json_string_arg(
     }
 }
 
+fn optional_string_array_arg(args: &Map<String, Value>, key: &str) -> Result<Vec<String>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(vec![]),
+        Some(Value::Array(items)) => {
+            let mut values = Vec::new();
+            for (idx, item) in items.iter().enumerate() {
+                let Value::String(raw) = item else {
+                    return Err(format!(
+                        "MCP argument '{key}[{idx}]' must be a non-empty string"
+                    ));
+                };
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    return Err(format!(
+                        "MCP argument '{key}[{idx}]' must be a non-empty string"
+                    ));
+                }
+                values.push(trimmed.to_string());
+            }
+            Ok(values)
+        }
+        Some(_) => Err(format!("MCP argument '{key}' must be a string array")),
+    }
+}
+
+fn optional_interval_array_arg(
+    args: &Map<String, Value>,
+    key: &str,
+) -> Result<Vec<(usize, usize)>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(vec![]),
+        Some(Value::Array(items)) => {
+            let mut intervals = Vec::new();
+            for (idx, item) in items.iter().enumerate() {
+                let Some(map) = item.as_object() else {
+                    return Err(format!("MCP argument '{key}[{idx}]' must be an object"));
+                };
+                let start = required_usize_arg(map, "start_1based")?;
+                let end = required_usize_arg(map, "end_1based")?;
+                if start == 0 || end < start {
+                    return Err(format!(
+                        "MCP argument '{key}[{idx}]' must satisfy 1 <= start_1based <= end_1based"
+                    ));
+                }
+                intervals.push((start, end));
+            }
+            Ok(intervals)
+        }
+        Some(_) => Err(format!("MCP argument '{key}' must be an array")),
+    }
+}
+
 fn append_string_flag(tokens: &mut Vec<String>, flag: &str, value: Option<String>) {
     if let Some(value) = value {
         tokens.push(flag.to_string());
@@ -1372,6 +1523,111 @@ fn construct_reasoning_write_annotation_tool_result(
             annotation_id,
         ],
         "construct_reasoning_write_annotation",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn exon_skip_plan_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let seq_id = match required_string_arg(&args, "seq_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let transcript_feature_id = match required_usize_arg(&args, "transcript_feature_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let candidate_ids = match optional_string_array_arg(&args, "candidate_ids") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let skip_intervals = match optional_interval_array_arg(&args, "skip_intervals_1based") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let overlap_intervals = match optional_interval_array_arg(&args, "overlap_intervals_1based") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let feature_query = match optional_json_string_arg(&args, "feature_query") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let plan_id = match optional_string_arg(&args, "plan_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+
+    let mut tokens = vec![
+        "transcripts".to_string(),
+        "exon-skip-plan".to_string(),
+        seq_id,
+        "--feature-id".to_string(),
+        transcript_feature_id.to_string(),
+    ];
+    for candidate_id in candidate_ids {
+        tokens.push("--skip".to_string());
+        tokens.push(candidate_id);
+    }
+    for (start, end) in skip_intervals {
+        tokens.push("--skip".to_string());
+        tokens.push(format!("{start}..{end}"));
+    }
+    for (start, end) in overlap_intervals {
+        tokens.push("--overlap".to_string());
+        tokens.push(format!("{start}..{end}"));
+    }
+    append_string_flag(&mut tokens, "--feature-query-json", feature_query);
+    append_string_flag(&mut tokens, "--plan-id", plan_id);
+    match run_shell_tool_with_optional_persist(default_state_path, &args, tokens, "exon_skip_plan")
+    {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn exon_skip_materialize_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    if let Err(err) = require_confirm_true(&args, "exon_skip_materialize") {
+        return tool_result_text(err, "text", true);
+    }
+    let plan_id = match required_string_arg(&args, "plan_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let candidate_ids = match optional_string_array_arg(&args, "candidate_ids") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let output_prefix = match optional_string_arg(&args, "output_prefix") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let return_items = match optional_string_array_arg(&args, "return") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec![
+        "transcripts".to_string(),
+        "exon-skip-materialize".to_string(),
+        plan_id,
+    ];
+    for candidate_id in candidate_ids {
+        tokens.push("--candidate-id".to_string());
+        tokens.push(candidate_id);
+    }
+    append_string_flag(&mut tokens, "--output-prefix", output_prefix);
+    for item in return_items {
+        tokens.push("--return".to_string());
+        tokens.push(item);
+    }
+    match run_shell_tool_with_optional_persist(
+        default_state_path,
+        &args,
+        tokens,
+        "exon_skip_materialize",
     ) {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
@@ -2257,6 +2513,10 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         "restriction_site_detail" => {
             restriction_site_detail_tool_result(default_state_path, &params.arguments)
         }
+        "exon_skip_plan" => exon_skip_plan_tool_result(default_state_path, &params.arguments),
+        "exon_skip_materialize" => {
+            exon_skip_materialize_tool_result(default_state_path, &params.arguments)
+        }
         "agent_systems" => agent_systems_tool_result(default_state_path, &params.arguments),
         "agent_preflight" => agent_preflight_tool_result(default_state_path, &params.arguments),
         "agent_models" => agent_models_tool_result(default_state_path, &params.arguments),
@@ -2647,6 +2907,51 @@ mod tests {
         catalog_path.to_string_lossy().to_string()
     }
 
+    fn exon_skip_mcp_test_sequence() -> DNAsequence {
+        let mut dna = DNAsequence::from_sequence("CCCAAAATGAAAGCCAAATAA").expect("valid DNA");
+        let transcript_location = gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(0, 3),
+            gb_io::seq::Location::simple_range(6, 9),
+            gb_io::seq::Location::simple_range(12, 15),
+            gb_io::seq::Location::simple_range(18, 21),
+        ]);
+        let cds_location = gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(6, 9),
+            gb_io::seq::Location::simple_range(12, 15),
+            gb_io::seq::Location::simple_range(18, 21),
+        ]);
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: transcript_location.clone(),
+            qualifiers: vec![
+                ("gene".into(), Some("toy".to_string())),
+                ("transcript_id".into(), Some("TX_TOY".to_string())),
+                ("label".into(), Some("TX_TOY".to_string())),
+            ],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "CDS".into(),
+            location: cds_location,
+            qualifiers: vec![
+                ("gene".into(), Some("toy".to_string())),
+                ("product".into(), Some("toy protein".to_string())),
+            ],
+        });
+        dna
+    }
+
+    fn write_exon_skip_mcp_state(path: &Path) -> String {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("exon_skip_mcp".to_string(), exon_skip_mcp_test_sequence());
+        let state_path = path.to_string_lossy().to_string();
+        state
+            .save_to_path(&state_path)
+            .expect("save exon-skip state");
+        state_path
+    }
+
     #[test]
     fn read_framed_json_rejects_oversized_content_length() {
         let oversized = MAX_MCP_CONTENT_LENGTH_BYTES + 1;
@@ -2761,6 +3066,32 @@ mod tests {
             restriction_detail["inputSchema"]["properties"]["cut_pos_1based"]["minimum"].as_u64(),
             Some(1)
         );
+    }
+
+    #[test]
+    fn tools_list_includes_exon_skip_schemas() {
+        let tools = tool_list();
+        let tools = tools.as_array().expect("tools array");
+        let plan = tools
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("exon_skip_plan"))
+            .expect("exon_skip_plan tool");
+        assert_eq!(
+            plan["inputSchema"]["properties"]["transcript_feature_id"]["minimum"].as_u64(),
+            Some(0)
+        );
+        let materialize = tools
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("exon_skip_materialize"))
+            .expect("exon_skip_materialize tool");
+        let required = materialize["inputSchema"]["required"]
+            .as_array()
+            .expect("required")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert!(required.contains(&"confirm"));
+        assert!(required.contains(&"plan_id"));
     }
 
     #[test]
@@ -2964,6 +3295,115 @@ mod tests {
             }),
         );
         assert_eq!(response["result"]["structuredContent"], expected);
+    }
+
+    #[test]
+    fn mcp_exon_skip_plan_and_materialize_use_shared_shell_contract() {
+        thread::Builder::new()
+            .name("mcp-exon-skip".to_string())
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let temp = tempdir().expect("tempdir");
+                let shell_state_path =
+                    write_exon_skip_mcp_state(&temp.path().join("exon_skip_shell_state.json"));
+                let mcp_state_path =
+                    write_exon_skip_mcp_state(&temp.path().join("exon_skip_mcp_state.json"));
+
+                let expected_plan = {
+                    let state =
+                        ProjectState::load_from_path(&shell_state_path).expect("load shell state");
+                    let mut engine = GentleEngine::from_state(state);
+                    let command = parse_shell_tokens(&[
+                        "transcripts".to_string(),
+                        "exon-skip-plan".to_string(),
+                        "exon_skip_mcp".to_string(),
+                        "--feature-id".to_string(),
+                        "0".to_string(),
+                        "--skip".to_string(),
+                        "exon_1".to_string(),
+                        "--plan-id".to_string(),
+                        "mcp_skip".to_string(),
+                    ])
+                    .expect("parse shell exon-skip plan");
+                    let run = execute_shell_command(&mut engine, &command).expect("execute plan");
+                    engine
+                        .state()
+                        .save_to_path(&shell_state_path)
+                        .expect("persist shell plan state");
+                    run.output
+                };
+
+                let mcp_plan = run_tool(
+                    DEFAULT_MCP_STATE_PATH,
+                    "exon_skip_plan",
+                    json!({
+                        "state_path": mcp_state_path.clone(),
+                        "seq_id": "exon_skip_mcp",
+                        "transcript_feature_id": 0,
+                        "candidate_ids": ["exon_1"],
+                        "plan_id": "mcp_skip"
+                    }),
+                );
+                assert_eq!(
+                    mcp_plan["result"]["structuredContent"]["plan"]["selected_candidate_ids"],
+                    expected_plan["plan"]["selected_candidate_ids"]
+                );
+
+                let expected_materialized = {
+                    let state = ProjectState::load_from_path(&shell_state_path)
+                        .expect("load shell state with plan");
+                    let mut engine = GentleEngine::from_state(state);
+                    let command = parse_shell_tokens(&[
+                        "transcripts".to_string(),
+                        "exon-skip-materialize".to_string(),
+                        "mcp_skip".to_string(),
+                        "--return".to_string(),
+                        "genbank".to_string(),
+                        "--return".to_string(),
+                        "amino_acid_sequence".to_string(),
+                    ])
+                    .expect("parse shell exon-skip materialize");
+                    execute_shell_command(&mut engine, &command).expect("execute materialize")
+                };
+                let mcp_materialized = run_tool(
+                    DEFAULT_MCP_STATE_PATH,
+                    "exon_skip_materialize",
+                    json!({
+                        "state_path": mcp_state_path,
+                        "plan_id": "mcp_skip",
+                        "confirm": true,
+                        "return": ["genbank", "amino_acid_sequence"]
+                    }),
+                );
+                assert_eq!(
+                    mcp_materialized
+                        .pointer("/result/isError")
+                        .and_then(Value::as_bool),
+                    Some(false)
+                );
+                assert_eq!(
+                    mcp_materialized["result"]["structuredContent"]["report"]
+                        ["skipped_candidate_ids"],
+                    expected_materialized.output["report"]["skipped_candidate_ids"]
+                );
+                let payloads =
+                    mcp_materialized["result"]["structuredContent"]["report"]["return_payloads"]
+                        .as_array()
+                        .expect("return payloads");
+                assert!(payloads.iter().any(|payload| {
+                    payload["kind"].as_str() == Some("genbank")
+                        && payload["text"]
+                            .as_str()
+                            .is_some_and(|text| text.contains("LOCUS"))
+                }));
+                assert!(payloads.iter().any(|payload| {
+                    payload["kind"].as_str() == Some("amino_acid_sequence")
+                        && payload["available"].as_bool() == Some(true)
+                }));
+            })
+            .expect("spawn mcp exon-skip test")
+            .join()
+            .expect("join mcp exon-skip test");
     }
 
     #[test]

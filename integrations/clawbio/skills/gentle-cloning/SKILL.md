@@ -1338,7 +1338,8 @@ Apply the following methodology:
 **Key parameters / control points**:
 
 - `mode`: one of `skill-info`, `version`, `capabilities`, `state-summary`,
-  `shell`, `op`, `workflow`, or `raw`.
+  `shell`, `op`, `workflow`, `exon-skip-plan`, `exon-skip-materialize`,
+  or `raw`.
 - `skill-info`: reports ClawBio skill/catalog schema metadata without invoking
   `gentle_cli`; use it when checking which copied skill scaffold is installed.
 - `capabilities`: runs `gentle_cli capabilities` and then a best-effort shared
@@ -1355,6 +1356,14 @@ Apply the following methodology:
   can prepare it first when that is the only missing step."
 - `workflow_path`: preferred when a saved replayable GENtle workflow already
   exists.
+- `exon-skip-plan`: typed wrapper over `transcripts exon-skip-plan`; use it
+  when ClawBio has chosen or inferred exons to skip but wants GENtle to store
+  an auditable selection plan first.
+- `exon-skip-materialize`: typed wrapper over
+  `transcripts exon-skip-materialize`; requires `confirm=true` and accepts
+  `return_items[]` (`genbank`, `cdna_fasta`, `amino_acid_sequence`,
+  `amino_acid_fasta`) so ClawBio can state whether it wants the adjusted
+  GenBank entry, the cDNA, or just the translated amino-acid sequence.
 - Resolver order: explicit `--gentle-cli`, then Docker/OCI-friendly
   `GENTLE_CLI_CMD`, then `gentle_cli` on `PATH`, then local `cargo run`
   fallback.
