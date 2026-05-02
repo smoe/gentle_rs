@@ -924,10 +924,20 @@ Post-release work includes:
     `human`, `mouse`, `yeast`, `ecoli`
   - shared-shell/CLI command:
     `transcripts derive SEQ_ID [--feature-id N ...] [--scope ...] [--output-prefix PREFIX]`
+  - exon-skipped isoform creation is now implemented as a two-phase,
+    replayable workflow:
+    - `PlanExonSkippedIsoform` / `transcripts exon-skip-plan`
+    - `MaterializeExonSkippedIsoform` / `transcripts exon-skip-materialize`
+    - phase 1 accepts manual exon IDs, interval/map-selection overlap,
+      feature-overlap queries, and reserved reasoning-source IDs
+    - phase 2 consumes the stored plan and creates both genomic annotation and
+      retained-exon cDNA/mRNA products, rejecting stale or all-skipped plans
   - Splicing Expert quick actions in GUI:
     - `Derive group transcripts`
     - `Derive all mRNA`
     - `Derive + Dotplot` (selected transcript; strand-aware pair mode)
+    - `Exon skip planning` (selected transcript lane, current selection,
+      feature-overlap criteria, plan refresh, materialization)
 - RNA secondary-structure rendering now uses a two-tool shared-engine path:
   - `RNAfold --noPS` provides the dot-bracket structure and MFE report fields
   - `rnapkin -o` renders the RNAfold structure input to SVG/PNG output

@@ -612,6 +612,14 @@ Dotplot/flexibility capability status:
     - additive synthetic local `CDS` + translated-protein qualifiers when the
       admitted transcript has resolvable CDS context and translation-table
       metadata
+  - exon-skipped isoform creation is a two-phase shared-shell route:
+    - `transcripts exon-skip-plan SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--feature-query-json JSON] [--plan-id ID]`
+      where exon-skip `START..END` intervals are 1-based inclusive genomic
+      coordinates
+    - `transcripts exon-skip-materialize PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX]`
+    - phase 1 stores `gentle.exon_skip_selection_plan.v1`; phase 2 consumes the
+      stored plan and creates both a genomic annotation product and retained
+      exon cDNA/mRNA sequence
   - `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END]`
     maps transcript-native protein residue(s) back to 1-based genomic codon
     nucleotide positions; `--transcript ID` narrows the query to a transcript

@@ -44,13 +44,14 @@ use crate::{
         DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP, DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP,
         DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, DotplotOverlayAnchorExonRef,
         DotplotOverlayQuerySpec, DotplotOverlayXAxisMode, EditableStatus, Engine,
-        FeatureBedCoordinateMode, FeatureExpertTarget, FeatureExpertView, FlexibilityModel,
-        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
-        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
-        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
-        InlineSequenceTopology, LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus,
-        Operation, OperationProgress, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
-        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        ExonSkipSelectionCriterion, FeatureBedCoordinateMode, FeatureExpertTarget,
+        FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide,
+        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackSource, GenomeTrackSubscription,
+        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
+        GuidePracticalFilterConfig, InlineSequenceTopology, LineageMacroInstance,
+        LineageMacroPortBinding, MacroInstanceStatus, Operation, OperationProgress,
+        PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA, PLANNING_PROFILE_SCHEMA,
+        PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
@@ -70,11 +71,11 @@ use crate::{
         RoutinePreferenceContext, SEQUENCING_CONFIRMATION_SUPPORT_TSV_SCHEMA, SequenceAnchor,
         SequenceFeatureQualifierFilter, SequenceFeatureQuery, SequenceFeatureRangeRelation,
         SequenceFeatureSortBy, SequenceFeatureStrandFilter, SequenceScanTarget,
-        SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsRegionSummaryRequest, TfbsScoreTrackCorrelationMetric,
-        TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
-        TfbsTrackSimilarityRankingMetric, TranslationSpeedMark, TranslationSpeedProfile,
-        UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
+        SequencingConfirmationTargetKind, SequencingConfirmationTargetSpec, SplicingRange,
+        SplicingScopePreset, TfThresholdOverride, TfbsRegionSummaryRequest,
+        TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
+        TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric, TranslationSpeedMark,
+        TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode, VariantAlleleChoice,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
         parse_feature_coordinate_term_on_sequence,
@@ -1733,6 +1734,17 @@ pub enum ShellCommand {
         seq_id: String,
         feature_ids: Vec<usize>,
         scope: Option<SplicingScopePreset>,
+        output_prefix: Option<String>,
+    },
+    TranscriptsExonSkipPlan {
+        seq_id: String,
+        transcript_feature_id: usize,
+        criteria: Vec<ExonSkipSelectionCriterion>,
+        plan_id: Option<String>,
+    },
+    TranscriptsExonSkipMaterialize {
+        plan_id: String,
+        selected_candidate_ids: Vec<String>,
         output_prefix: Option<String>,
     },
     TranscriptsResidueGenomicCoordinates {
@@ -8533,6 +8545,38 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto")
             ),
+            Self::TranscriptsExonSkipPlan {
+                seq_id,
+                transcript_feature_id,
+                criteria,
+                plan_id,
+            } => format!(
+                "plan exon-skipped isoform candidates from '{}' feature n-{} (criteria={}, plan_id='{}')",
+                seq_id,
+                transcript_feature_id + 1,
+                criteria.len(),
+                plan_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+            ),
+            Self::TranscriptsExonSkipMaterialize {
+                plan_id,
+                selected_candidate_ids,
+                output_prefix,
+            } => format!(
+                "materialize exon-skip plan '{}' (candidate_ids={}, output_prefix='{}')",
+                plan_id,
+                if selected_candidate_ids.is_empty() {
+                    "from_plan".to_string()
+                } else {
+                    selected_candidate_ids.join(",")
+                },
+                output_prefix
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+            ),
             Self::TranscriptsResidueGenomicCoordinates {
                 seq_id,
                 transcript_id,
@@ -9867,6 +9911,8 @@ impl ShellCommand {
                 | Self::PrimersShowRestrictionCloningHandoff { .. }
                 | Self::PrimersExportRestrictionCloningHandoff { .. }
                 | Self::TranscriptsDerive { .. }
+                | Self::TranscriptsExonSkipPlan { .. }
+                | Self::TranscriptsExonSkipMaterialize { .. }
                 | Self::DotplotCompute { .. }
                 | Self::DotplotOverlayCompute { .. }
                 | Self::FlexCompute { .. }
@@ -26542,6 +26588,55 @@ fn execute_sequence_analysis_command(
                 }),
             })
         }
+        ShellCommand::TranscriptsExonSkipPlan {
+            seq_id,
+            transcript_feature_id,
+            criteria,
+            plan_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::PlanExonSkippedIsoform {
+                    seq_id: seq_id.clone(),
+                    transcript_feature_id: *transcript_feature_id,
+                    criteria: criteria.clone(),
+                    plan_id: plan_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let plan = op_result
+                .exon_skip_selection_plan
+                .clone()
+                .ok_or_else(|| "Exon-skip planning operation did not return a plan".to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "plan": plan,
+                }),
+            })
+        }
+        ShellCommand::TranscriptsExonSkipMaterialize {
+            plan_id,
+            selected_candidate_ids,
+            output_prefix,
+        } => {
+            let op_result = engine
+                .apply(Operation::MaterializeExonSkippedIsoform {
+                    plan_id: plan_id.clone(),
+                    selected_candidate_ids: selected_candidate_ids.clone(),
+                    output_prefix: output_prefix.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.exon_skip_materialization.clone().ok_or_else(|| {
+                "Exon-skip materialization operation did not return a report".to_string()
+            })?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         ShellCommand::TranscriptsResidueGenomicCoordinates {
             seq_id,
             transcript_id,
@@ -30019,6 +30114,8 @@ pub fn execute_shell_command_with_options(
     if matches!(
         command,
         ShellCommand::TranscriptsDerive { .. }
+            | ShellCommand::TranscriptsExonSkipPlan { .. }
+            | ShellCommand::TranscriptsExonSkipMaterialize { .. }
             | ShellCommand::TranscriptsResidueGenomicCoordinates { .. }
             | ShellCommand::VariantAnnotatePromoterWindows { .. }
             | ShellCommand::VariantPromoterContext { .. }
@@ -30273,6 +30370,8 @@ fn execute_shell_command_with_options_inner(
             execute_feature_scan_command(engine, command)?
         }
         ShellCommand::TranscriptsDerive { .. }
+        | ShellCommand::TranscriptsExonSkipPlan { .. }
+        | ShellCommand::TranscriptsExonSkipMaterialize { .. }
         | ShellCommand::TranscriptsResidueGenomicCoordinates { .. }
         | ShellCommand::VariantAnnotatePromoterWindows { .. }
         | ShellCommand::VariantPromoterContext { .. }

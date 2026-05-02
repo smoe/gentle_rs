@@ -670,6 +670,16 @@ Feature tree grouping:
   - `Window guide [?]` hover tooltip summarizes the whole Splicing Expert:
     annotation structure, transcript quick actions, and report-driven
     RNA-read evidence for the selected locus.
+- The Splicing Expert now also includes `Exon skip planning`:
+  - check exon candidates from the selected transcript lane
+  - add candidates that overlap the active map/text selection
+  - optionally select by overlapping feature kind/label, which can cover
+    imported SNP/variation, antisense RNA, repeat-masker, or other annotation
+    tracks represented as sequence features
+  - `Build / Refresh selection plan` stores a replayable
+    `gentle.exon_skip_selection_plan.v1` in engine state
+  - `Materialize skipped isoform` consumes the stored plan and creates both a
+    genomic annotation product and retained-exon cDNA/mRNA sequence
 - The Splicing Expert now includes a compact `RNA-read evidence` section:
   - `Report` selector filtered to the current `seq_id + seed_feature_id`
   - newest matching report is auto-selected when no explicit report is chosen

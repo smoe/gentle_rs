@@ -328,6 +328,7 @@ const PROTEIN_DERIVATION_REPORTS_SCHEMA: &str = "gentle.protein_derivation_repor
 pub const PROTEIN_DERIVATION_REPORT_SCHEMA: &str = "gentle.protein_derivation_report.v1";
 pub const REVERSE_TRANSLATION_REPORTS_METADATA_KEY: &str = "reverse_translation_reports";
 const REVERSE_TRANSLATION_REPORTS_SCHEMA: &str = "gentle.reverse_translation_reports.v1";
+pub const EXON_SKIP_PLANS_METADATA_KEY: &str = "exon_skip_selection_plans";
 pub const REVERSE_TRANSLATION_REPORT_SCHEMA: &str = "gentle.reverse_translation_report.v1";
 pub const SEQUENCING_TRACES_METADATA_KEY: &str = "sequencing_traces";
 const SEQUENCING_TRACES_SCHEMA: &str = "gentle.sequencing_traces.v1";
@@ -3350,6 +3351,21 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output_prefix: Option<String>,
     },
+    PlanExonSkippedIsoform {
+        seq_id: SeqId,
+        transcript_feature_id: usize,
+        #[serde(default)]
+        criteria: Vec<ExonSkipSelectionCriterion>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plan_id: Option<String>,
+    },
+    MaterializeExonSkippedIsoform {
+        plan_id: String,
+        #[serde(default)]
+        selected_candidate_ids: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_prefix: Option<String>,
+    },
     DeriveProteinSequences {
         seq_id: SeqId,
         #[serde(default)]
@@ -5177,6 +5193,8 @@ impl GentleEngine {
                 "TestCdnaQpcr".to_string(),
                 "TestCdnaQpcrFasta".to_string(),
                 "DeriveTranscriptSequences".to_string(),
+                "PlanExonSkippedIsoform".to_string(),
+                "MaterializeExonSkippedIsoform".to_string(),
                 "DeriveProteinSequences".to_string(),
                 "ReverseTranslateProteinSequence".to_string(),
                 "ProteaseDigestProteinSequence".to_string(),

@@ -4902,10 +4902,41 @@ fn parse_positive_usize_token(raw: &str, label: &str) -> Result<usize, String> {
     Ok(parsed)
 }
 
+fn parse_exon_skip_interval_1based(raw: &str, context: &str) -> Result<SplicingRange, String> {
+    let trimmed = raw.trim();
+    let (left, right) = trimmed
+        .split_once("..")
+        .or_else(|| trimmed.split_once(':'))
+        .ok_or_else(|| {
+            format!(
+                "Invalid interval '{raw}' for {context}; expected START..END (1-based inclusive)"
+            )
+        })?;
+    let start_1based = left.trim().parse::<usize>().map_err(|e| {
+        format!(
+            "Invalid interval start '{}' for {context}: {e}",
+            left.trim()
+        )
+    })?;
+    let end_1based = right
+        .trim()
+        .parse::<usize>()
+        .map_err(|e| format!("Invalid interval end '{}' for {context}: {e}", right.trim()))?;
+    if start_1based == 0 || end_1based < start_1based {
+        return Err(format!(
+            "Invalid interval '{raw}' for {context}: expected 1-based START <= END"
+        ));
+    }
+    Ok(SplicingRange {
+        start_1based,
+        end_1based,
+    })
+}
+
 pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "transcripts requires a subcommand: derive or residue-genomic-coordinates".to_string(),
+            "transcripts requires a subcommand: derive, exon-skip-plan, exon-skip-materialize, or residue-genomic-coordinates".to_string(),
         );
     }
     match tokens[1].as_str() {
@@ -4974,6 +5005,205 @@ pub(super) fn parse_transcripts_command(tokens: &[String]) -> Result<ShellComman
                 seq_id,
                 feature_ids,
                 scope,
+                output_prefix,
+            })
+        }
+        "exon-skip-plan" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "transcripts exon-skip-plan requires SEQ_ID --feature-id N [--skip exon_2|START..END ...] [--overlap START..END ...] [--feature-query-json JSON] [--plan-id ID]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("transcripts exon-skip-plan SEQ_ID must not be empty".to_string());
+            }
+            let mut transcript_feature_id: Option<usize> = None;
+            let mut manual_ids: Vec<String> = vec![];
+            let mut explicit_intervals: Vec<SplicingRange> = vec![];
+            let mut selection_intervals: Vec<SplicingRange> = vec![];
+            let mut feature_queries: Vec<SequenceFeatureQuery> = vec![];
+            let mut plan_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--feature-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-id",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --feature-id value '{}' for transcripts exon-skip-plan: {e}",
+                                raw
+                            )
+                        })?;
+                        transcript_feature_id = Some(parsed);
+                    }
+                    "--skip" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--skip",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        if raw.contains("..") || raw.contains(':') {
+                            explicit_intervals.push(parse_exon_skip_interval_1based(
+                                &raw,
+                                "transcripts exon-skip-plan --skip",
+                            )?);
+                        } else {
+                            let trimmed = raw.trim();
+                            if trimmed.is_empty() {
+                                return Err("transcripts exon-skip-plan --skip must not be empty"
+                                    .to_string());
+                            }
+                            manual_ids.push(trimmed.to_string());
+                        }
+                    }
+                    "--overlap" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--overlap",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        selection_intervals.push(parse_exon_skip_interval_1based(
+                            &raw,
+                            "transcripts exon-skip-plan --overlap",
+                        )?);
+                    }
+                    "--feature-query-json" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-query-json",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        let mut query: SequenceFeatureQuery =
+                            serde_json::from_str(&raw).map_err(|e| {
+                                format!(
+                                    "Invalid --feature-query-json for transcripts exon-skip-plan: {e}"
+                                )
+                            })?;
+                        query.seq_id = seq_id.clone();
+                        feature_queries.push(query);
+                    }
+                    "--plan-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--plan-id",
+                            "transcripts exon-skip-plan",
+                        )?;
+                        let trimmed = raw.trim();
+                        plan_id = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{}' for transcripts exon-skip-plan",
+                            other
+                        ));
+                    }
+                }
+            }
+            let transcript_feature_id = transcript_feature_id
+                .ok_or_else(|| "transcripts exon-skip-plan requires --feature-id N".to_string())?;
+            let mut criteria: Vec<ExonSkipSelectionCriterion> = vec![];
+            if !manual_ids.is_empty() {
+                criteria.push(ExonSkipSelectionCriterion::ManualExonIds {
+                    candidate_ids: manual_ids,
+                });
+            }
+            if !explicit_intervals.is_empty() {
+                criteria.push(ExonSkipSelectionCriterion::ExplicitIntervals {
+                    intervals_1based: explicit_intervals,
+                });
+            }
+            for interval in selection_intervals {
+                criteria.push(ExonSkipSelectionCriterion::CurrentMapSelection {
+                    start_1based: interval.start_1based,
+                    end_1based: interval.end_1based,
+                });
+            }
+            for query in feature_queries {
+                criteria.push(ExonSkipSelectionCriterion::FeatureOverlap { query });
+            }
+            Ok(ShellCommand::TranscriptsExonSkipPlan {
+                seq_id,
+                transcript_feature_id,
+                criteria,
+                plan_id,
+            })
+        }
+        "exon-skip-materialize" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "transcripts exon-skip-materialize requires PLAN_ID [--candidate-id ID ...] [--output-prefix PREFIX]"
+                        .to_string(),
+                );
+            }
+            let plan_id = tokens[2].trim().to_string();
+            if plan_id.is_empty() {
+                return Err(
+                    "transcripts exon-skip-materialize PLAN_ID must not be empty".to_string(),
+                );
+            }
+            let mut selected_candidate_ids: Vec<String> = vec![];
+            let mut output_prefix: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--candidate-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--candidate-id",
+                            "transcripts exon-skip-materialize",
+                        )?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err(
+                                "transcripts exon-skip-materialize --candidate-id must not be empty"
+                                    .to_string(),
+                            );
+                        }
+                        selected_candidate_ids.push(trimmed.to_string());
+                    }
+                    "--output-prefix" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-prefix",
+                            "transcripts exon-skip-materialize",
+                        )?;
+                        let trimmed = raw.trim();
+                        output_prefix = if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        };
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{}' for transcripts exon-skip-materialize",
+                            other
+                        ));
+                    }
+                }
+            }
+            selected_candidate_ids.sort();
+            selected_candidate_ids.dedup();
+            Ok(ShellCommand::TranscriptsExonSkipMaterialize {
+                plan_id,
+                selected_candidate_ids,
                 output_prefix,
             })
         }

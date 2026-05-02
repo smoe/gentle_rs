@@ -44,8 +44,10 @@ pub use gentle_protocol::{
     DotplotMode, DotplotOverlayAnchorExon, DotplotOverlayAnchorExonRef,
     DotplotOverlayAnchorSeriesSupport, DotplotOverlayQuerySpec, DotplotOverlayResolvedAnchorSeries,
     DotplotOverlayXAxisMode, DotplotQuerySeries, DotplotReferenceAnnotationInterval,
-    DotplotReferenceAnnotationTrack, DotplotView, DotplotViewSummary, EditableStatus, EngineError,
-    ErrorCode, EvidenceClass, EvidenceScope, FeatureBedCoordinateMode, FlexibilityModel,
+    DotplotReferenceAnnotationTrack, DotplotView, DotplotViewSummary,
+    EXON_SKIP_MATERIALIZATION_SCHEMA, EXON_SKIP_SELECTION_PLAN_SCHEMA, EditableStatus, EngineError,
+    ErrorCode, EvidenceClass, EvidenceScope, ExonSkipCandidateExon, ExonSkipMaterializationReport,
+    ExonSkipSelectionCriterion, ExonSkipSelectionPlan, FeatureBedCoordinateMode, FlexibilityModel,
     GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress,
     GenomeTrackSource, GenomeTrackSubscription, HOST_PROFILE_CATALOG_SCHEMA,
     HelperConstructProfile, HostLifecycleRole, HostProfileCatalog, HostProfileRecord,
@@ -3325,6 +3327,10 @@ pub struct OpResult {
     pub protease_digest_report: Option<ProteaseDigestReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protein_residue_genomic_coordinates: Option<ProteinResidueGenomicCoordinateReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exon_skip_selection_plan: Option<ExonSkipSelectionPlan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exon_skip_materialization: Option<ExonSkipMaterializationReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cdna_assay_test_report: Option<Box<CdnaAssayTestReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

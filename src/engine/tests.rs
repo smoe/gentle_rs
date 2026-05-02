@@ -10553,6 +10553,223 @@ fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
 }
 
 #[test]
+fn test_exon_skip_plan_manual_selection_and_materialization_creates_cdna_and_genomic_annotation() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_seed_feature_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    let plan_result = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                candidate_ids: vec!["exon_2".to_string()],
+            }],
+            plan_id: Some("skip_middle".to_string()),
+        })
+        .expect("plan exon skip");
+    let plan = plan_result
+        .exon_skip_selection_plan
+        .expect("selection plan");
+    assert_eq!(plan.schema, EXON_SKIP_SELECTION_PLAN_SCHEMA);
+    assert_eq!(plan.selected_candidate_ids, vec!["exon_2"]);
+    assert_eq!(plan.candidate_exons.len(), 3);
+    assert!(
+        engine
+            .state()
+            .metadata
+            .contains_key(EXON_SKIP_PLANS_METADATA_KEY)
+    );
+
+    let materialized = engine
+        .apply(Operation::MaterializeExonSkippedIsoform {
+            plan_id: "skip_middle".to_string(),
+            selected_candidate_ids: vec![],
+            output_prefix: Some("skip_mid".to_string()),
+        })
+        .expect("materialize exon skip");
+    let report = materialized
+        .exon_skip_materialization
+        .expect("materialization report");
+    assert_eq!(report.schema, EXON_SKIP_MATERIALIZATION_SCHEMA);
+    assert_eq!(report.skipped_candidate_ids, vec!["exon_2"]);
+    assert_eq!(report.retained_exon_count, 2);
+    assert_eq!(materialized.created_seq_ids.len(), 2);
+    let cdna_id = report.cdna_seq_id.expect("cdna id");
+    let genomic_id = report.genomic_seq_id.expect("genomic id");
+    let cdna = engine
+        .state()
+        .sequences
+        .get(&cdna_id)
+        .expect("derived cdna");
+    assert_eq!(cdna.len(), 14);
+    assert!(cdna.features().iter().any(|feature| {
+        feature
+            .qualifier_values("exon_skip_plan_id")
+            .any(|value| value == "skip_middle")
+    }));
+    let genomic = engine
+        .state()
+        .sequences
+        .get(&genomic_id)
+        .expect("genomic annotation");
+    assert_eq!(genomic.len(), 40);
+    assert!(genomic.features().iter().any(|feature| {
+        feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+            && feature
+                .qualifier_values("synthetic_origin")
+                .any(|value| value == "exon_skip_isoform_genomic_annotation")
+    }));
+}
+
+#[test]
+fn test_exon_skip_plan_selects_exons_by_feature_overlap() {
+    let mut dna = splicing_seed_feature_sequence();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "variation".into(),
+        location: gb_io::seq::Location::simple_range(14, 15),
+        qualifiers: vec![("label".into(), Some("toy SNP".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let plan_result = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::FeatureOverlap {
+                query: SequenceFeatureQuery {
+                    kind_in: vec!["variation".to_string()],
+                    ..SequenceFeatureQuery::default()
+                },
+            }],
+            plan_id: Some("skip_variant_overlap".to_string()),
+        })
+        .expect("plan exon skip by feature overlap");
+    let plan = plan_result
+        .exon_skip_selection_plan
+        .expect("selection plan");
+    assert_eq!(plan.selected_candidate_ids, vec!["exon_2"]);
+    let candidate = plan
+        .candidate_exons
+        .iter()
+        .find(|candidate| candidate.candidate_id == "exon_2")
+        .expect("selected candidate");
+    assert!(
+        candidate
+            .selection_sources
+            .contains(&"feature_overlap".to_string())
+    );
+    assert!(candidate.matched_feature_ids.contains(&4));
+}
+
+#[test]
+fn test_exon_skip_plan_selects_antisense_rna_and_repeat_overlaps() {
+    let mut dna = splicing_seed_feature_sequence();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "misc_RNA".into(),
+        location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::simple_range(
+            3, 6,
+        ))),
+        qualifiers: vec![("label".into(), Some("antisense RNA".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "repeat_region".into(),
+        location: gb_io::seq::Location::simple_range(28, 31),
+        qualifiers: vec![("label".into(), Some("toy repeat".to_string()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let plan_result = engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::FeatureOverlap {
+                query: SequenceFeatureQuery {
+                    kind_in: vec!["misc_RNA".to_string(), "repeat_region".to_string()],
+                    ..SequenceFeatureQuery::default()
+                },
+            }],
+            plan_id: Some("skip_antisense_repeat_overlap".to_string()),
+        })
+        .expect("plan exon skip by antisense/repeat overlap");
+    let plan = plan_result
+        .exon_skip_selection_plan
+        .expect("selection plan");
+    assert_eq!(plan.selected_candidate_ids, vec!["exon_1", "exon_3"]);
+}
+
+#[test]
+fn test_exon_skip_materialization_rejects_all_exons_skipped() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_seed_feature_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                candidate_ids: vec![
+                    "exon_1".to_string(),
+                    "exon_2".to_string(),
+                    "exon_3".to_string(),
+                ],
+            }],
+            plan_id: Some("skip_all".to_string()),
+        })
+        .expect("plan skip all");
+    let err = engine
+        .apply(Operation::MaterializeExonSkippedIsoform {
+            plan_id: "skip_all".to_string(),
+            selected_candidate_ids: vec![],
+            output_prefix: None,
+        })
+        .expect_err("skip all should fail");
+    assert!(err.message.contains("all exons skipped"));
+}
+
+#[test]
+fn test_exon_skip_materialization_rejects_stale_plan() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".to_string(), splicing_seed_feature_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 0,
+            criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                candidate_ids: vec!["exon_2".to_string()],
+            }],
+            plan_id: Some("stale_skip".to_string()),
+        })
+        .expect("plan exon skip");
+    let dna = engine
+        .state_mut()
+        .sequences
+        .get_mut("s")
+        .expect("source sequence");
+    dna.features_mut()[0].location = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(2, 8),
+        gb_io::seq::Location::simple_range(13, 20),
+        gb_io::seq::Location::simple_range(26, 34),
+    ]);
+    let err = engine
+        .apply(Operation::MaterializeExonSkippedIsoform {
+            plan_id: "stale_skip".to_string(),
+            selected_candidate_ids: vec![],
+            output_prefix: None,
+        })
+        .expect_err("stale plan should fail");
+    assert!(err.message.contains("stale"));
+}
+
+#[test]
 fn test_query_protein_residue_genomic_coordinates_reports_split_forward_codon() {
     let mut state = ProjectState::default();
     state.sequences.insert(

@@ -1772,6 +1772,10 @@ Architecture constraints for this track:
   - transcript derivation and primer/qPCR ROI seeding stay in `Splicing Expert`
     because they are splicing-locus quick actions, not mapping-configuration
     controls.
+  - exon-skipped isoform creation is explicitly two-phase:
+    selection/planning produces an engine-owned plan record, and
+    materialization consumes that stored plan to create genomic annotation and
+    cDNA products without silently re-planning.
   - `RNA-read Mapping` is the dedicated workspace for
     `InterpretRnaReads`/`AlignRnaReadReport` run configuration, workflow
     staging, live progress, and export actions.

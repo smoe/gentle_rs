@@ -78,12 +78,12 @@ use crate::{
         CutRunRegulatoryTfbsConfirmationStatus, CutRunSupportStrength, DecisionMethod,
         DesignDecisionNode, DesignFact, DisplaySettings, DisplayTarget, DotplotMode,
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
-        EngineError, ErrorCode, EvidenceClass, ExportFormat, FlexibilityModel, FlexibilityTrack,
-        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine,
-        JasparCatalogRemoteSummary, LigationProtocol, LinearSequenceLetterLayoutMode,
-        MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation, OperationProgress,
-        PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend, PrimerDesignBaseLock,
-        PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
+        EngineError, ErrorCode, EvidenceClass, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
+        ExportFormat, FlexibilityModel, FlexibilityTrack, GenomeAnchorPreparedFallbackPolicy,
+        GenomeAnchorSide, GentleEngine, JasparCatalogRemoteSummary, LigationProtocol,
+        LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
+        OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
+        PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
         PrimerDesignSideConstraint, PrimerSpecificityPolicy, PromoterEvidenceMatrixReport,
         PromoterEvidenceMatrixRow, PromoterReporterCandidateSet, PromoterWindowCollapseMode,
         ProtocolCartoonPreviewTelemetry, QpcrDesignReport, QpcrTranscriptSpecificityEvidence,
@@ -103,19 +103,20 @@ use crate::{
         RnaReadPairwiseAlignmentDetail, RnaReadReportMode, RnaReadScoreDensityScale,
         RnaReadScoreDensityVariant, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
         RnaSeedHashCatalogEntry, RnaSeedHashTemplateAuditEntry, SequenceAlignmentReport,
-        SequenceGenomeAnchorSummary, SequenceScanTarget, SequencingConfirmationDiscrepancy,
-        SequencingConfirmationReadResult, SequencingConfirmationReport,
-        SequencingConfirmationReportSummary, SequencingConfirmationStatus,
-        SequencingConfirmationTargetKind, SequencingConfirmationTargetResult,
-        SequencingConfirmationTargetSpec, SequencingConfirmationVariantClassification,
-        SequencingConfirmationVariantRow, SequencingPrimerOverlayReport,
-        SequencingPrimerOverlaySuggestion, SequencingPrimerProblemKind,
-        SequencingPrimerProposalRow, SequencingReadOrientation, SequencingTraceRecord,
-        SequencingTraceSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
-        TfbsHitScanReport, TfbsProgress, TfbsScoreTrackCorrelationMetric,
-        TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackReport, TfbsScoreTrackValueKind,
-        TfbsTrackSimilarityRankingMetric, TfbsTrackSimilarityReport, TfbsTrackSimilarityRow,
-        VariantAlleleChoice, VariantPromoterContextReport, Workflow,
+        SequenceFeatureQuery, SequenceGenomeAnchorSummary, SequenceScanTarget,
+        SequencingConfirmationDiscrepancy, SequencingConfirmationReadResult,
+        SequencingConfirmationReport, SequencingConfirmationReportSummary,
+        SequencingConfirmationStatus, SequencingConfirmationTargetKind,
+        SequencingConfirmationTargetResult, SequencingConfirmationTargetSpec,
+        SequencingConfirmationVariantClassification, SequencingConfirmationVariantRow,
+        SequencingPrimerOverlayReport, SequencingPrimerOverlaySuggestion,
+        SequencingPrimerProblemKind, SequencingPrimerProposalRow, SequencingReadOrientation,
+        SequencingTraceRecord, SequencingTraceSummary, SnpMutationSpec, SplicingRange,
+        SplicingScopePreset, TfThresholdOverride, TfbsHitScanReport, TfbsProgress,
+        TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
+        TfbsScoreTrackReport, TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
+        TfbsTrackSimilarityReport, TfbsTrackSimilarityRow, VariantAlleleChoice,
+        VariantPromoterContextReport, Workflow,
         resolve_formula_roi_range_inputs_0based_on_sequence,
         resolve_selection_formula_range_0based_on_sequence,
     },
@@ -1988,6 +1989,8 @@ mod tests {
             reverse_translation_report: None,
             protease_digest_report: None,
             protein_residue_genomic_coordinates: None,
+            exon_skip_selection_plan: None,
+            exon_skip_materialization: None,
             cdna_assay_test_report: None,
             cdna_assay_product_materialization: None,
             transcript_qpcr_panel: None,
@@ -5343,6 +5346,8 @@ mod tests {
                 reverse_translation_report: None,
                 protease_digest_report: None,
                 protein_residue_genomic_coordinates: None,
+                exon_skip_selection_plan: None,
+                exon_skip_materialization: None,
                 cdna_assay_test_report: None,
                 cdna_assay_product_materialization: None,
                 transcript_qpcr_panel: None,
@@ -13855,6 +13860,10 @@ pub struct MainAreaDna {
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<Arc<SplicingExpertView>>,
     splicing_expert_selected_transcript_feature_id: Option<usize>,
+    splicing_exon_skip_selected_candidate_ids: BTreeSet<String>,
+    splicing_exon_skip_overlap_kind: String,
+    splicing_exon_skip_overlap_label: String,
+    splicing_exon_skip_plan: Option<ExonSkipSelectionPlan>,
     splicing_expert_selected_intron_signal_key: Option<SplicingIntronSignalKey>,
     show_rna_read_mapping_window: bool,
     rna_read_mapping_window_pending_initial_render: bool,
@@ -14513,6 +14522,10 @@ impl MainAreaDna {
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
             splicing_expert_selected_transcript_feature_id: None,
+            splicing_exon_skip_selected_candidate_ids: BTreeSet::new(),
+            splicing_exon_skip_overlap_kind: String::new(),
+            splicing_exon_skip_overlap_label: String::new(),
+            splicing_exon_skip_plan: None,
             splicing_expert_selected_intron_signal_key: None,
             show_rna_read_mapping_window: false,
             rna_read_mapping_window_pending_initial_render: false,
@@ -27702,7 +27715,248 @@ impl MainAreaDna {
                     .color(egui::Color32::from_rgb(100, 116, 139)),
             );
         });
+        self.render_splicing_exon_skip_planning_panel(ui, view);
         ui.separator();
+    }
+
+    fn splicing_exon_skip_candidate_id(ordinal: usize) -> String {
+        format!("exon_{ordinal}")
+    }
+
+    fn splicing_exon_skip_selected_ids_sorted(&self) -> Vec<String> {
+        self.splicing_exon_skip_selected_candidate_ids
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+    }
+
+    fn splicing_exon_skip_ui_criteria(
+        &self,
+        seq_id: &str,
+        extra_selection: Option<SplicingRange>,
+    ) -> Vec<ExonSkipSelectionCriterion> {
+        let mut criteria = Vec::new();
+        let manual_ids = self.splicing_exon_skip_selected_ids_sorted();
+        if !manual_ids.is_empty() {
+            criteria.push(ExonSkipSelectionCriterion::ManualExonIds {
+                candidate_ids: manual_ids,
+            });
+        }
+        if let Some(interval) = extra_selection {
+            criteria.push(ExonSkipSelectionCriterion::CurrentMapSelection {
+                start_1based: interval.start_1based,
+                end_1based: interval.end_1based,
+            });
+        }
+        let kind = self.splicing_exon_skip_overlap_kind.trim();
+        let label = self.splicing_exon_skip_overlap_label.trim();
+        if !kind.is_empty() || !label.is_empty() {
+            criteria.push(ExonSkipSelectionCriterion::FeatureOverlap {
+                query: SequenceFeatureQuery {
+                    seq_id: seq_id.to_string(),
+                    kind_in: if kind.is_empty() {
+                        vec![]
+                    } else {
+                        kind.split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(|value| value.to_string())
+                            .collect()
+                    },
+                    label_contains: (!label.is_empty()).then(|| label.to_string()),
+                    ..SequenceFeatureQuery::default()
+                },
+            });
+        }
+        criteria
+    }
+
+    fn build_splicing_exon_skip_plan_from_ui(
+        &mut self,
+        view: &SplicingExpertView,
+        transcript_feature_id: usize,
+        extra_selection: Option<SplicingRange>,
+    ) {
+        let criteria = self.splicing_exon_skip_ui_criteria(&view.seq_id, extra_selection);
+        let Some(result) =
+            self.apply_operation_with_feedback_and_result(Operation::PlanExonSkippedIsoform {
+                seq_id: view.seq_id.clone(),
+                transcript_feature_id,
+                criteria,
+                plan_id: None,
+            })
+        else {
+            return;
+        };
+        let Some(plan) = result.exon_skip_selection_plan else {
+            self.op_status = "Exon-skip planning completed without a plan payload".to_string();
+            return;
+        };
+        self.splicing_exon_skip_selected_candidate_ids =
+            plan.selected_candidate_ids.iter().cloned().collect();
+        self.op_status = format!(
+            "Prepared exon-skip plan '{}' with {} selected exon(s).",
+            plan.plan_id,
+            plan.selected_candidate_ids.len()
+        );
+        self.splicing_exon_skip_plan = Some(plan);
+    }
+
+    fn materialize_splicing_exon_skip_plan_from_ui(&mut self) {
+        let Some(plan) = self.splicing_exon_skip_plan.clone() else {
+            self.op_status = "Build an exon-skip plan before materializing an isoform".to_string();
+            return;
+        };
+        let selected_candidate_ids = self.splicing_exon_skip_selected_ids_sorted();
+        let Some(result) = self.apply_operation_with_feedback_and_result(
+            Operation::MaterializeExonSkippedIsoform {
+                plan_id: plan.plan_id.clone(),
+                selected_candidate_ids,
+                output_prefix: Some(format!("{}__exon_skip", plan.seq_id)),
+            },
+        ) else {
+            return;
+        };
+        self.last_created_seq_ids = result.created_seq_ids.clone();
+        self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
+        let created = if self.last_created_seq_ids.is_empty() {
+            "no sequences".to_string()
+        } else {
+            Self::summarize_status_items(&self.last_created_seq_ids, 4, ", ")
+        };
+        self.op_status = format!(
+            "Materialized exon-skip plan '{}' and created {}.",
+            plan.plan_id, created
+        );
+        self.splicing_exon_skip_plan = None;
+    }
+
+    fn render_splicing_exon_skip_planning_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+    ) {
+        let Some(transcript_feature_id) = self.splicing_selected_transcript_feature_id(view) else {
+            return;
+        };
+        let Some(lane) = view
+            .transcripts
+            .iter()
+            .find(|lane| lane.transcript_feature_id == transcript_feature_id)
+        else {
+            return;
+        };
+        ui.add_space(4.0);
+        ui.group(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new("Exon skip planning")
+                        .strong()
+                        .color(egui::Color32::from_rgb(51, 65, 85)),
+                );
+                ui.small(
+                    "Phase 1 selects exon candidates; phase 2 creates genomic annotation + cDNA.",
+                );
+            });
+            ui.horizontal_wrapped(|ui| {
+                for (idx, exon) in lane.exons.iter().enumerate() {
+                    let candidate_id = Self::splicing_exon_skip_candidate_id(idx + 1);
+                    let mut selected = self
+                        .splicing_exon_skip_selected_candidate_ids
+                        .contains(&candidate_id);
+                    let label = format!(
+                        "{} {}..{}",
+                        candidate_id, exon.start_1based, exon.end_1based
+                    );
+                    if ui
+                        .checkbox(&mut selected, label)
+                        .on_hover_text("Select this exon candidate to skip in the materialized isoform")
+                        .changed()
+                    {
+                        if selected {
+                            self.splicing_exon_skip_selected_candidate_ids
+                                .insert(candidate_id);
+                        } else {
+                            self.splicing_exon_skip_selected_candidate_ids
+                                .remove(&candidate_id);
+                        }
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button("Add current selection")
+                    .on_hover_text("Select any exon candidate that overlaps the active map/text selection")
+                    .clicked()
+                {
+                    if let Some((start, end_exclusive)) = self.current_selection_range_0based() {
+                        let start_1based = start.saturating_add(1);
+                        let end_1based = end_exclusive;
+                        for (idx, exon) in lane.exons.iter().enumerate() {
+                            if exon.end_1based >= start_1based && exon.start_1based <= end_1based {
+                                self.splicing_exon_skip_selected_candidate_ids
+                                    .insert(Self::splicing_exon_skip_candidate_id(idx + 1));
+                            }
+                        }
+                    } else {
+                        self.op_status =
+                            "No active selection to add to exon-skip planning".to_string();
+                    }
+                }
+                if ui
+                    .button("Clear selected exons")
+                    .on_hover_text("Clear the currently checked exon-skip candidates")
+                    .clicked()
+                {
+                    self.splicing_exon_skip_selected_candidate_ids.clear();
+                    self.splicing_exon_skip_plan = None;
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Overlap feature kind");
+                ui.text_edit_singleline(&mut self.splicing_exon_skip_overlap_kind)
+                    .on_hover_text("Optional comma-separated feature kinds, e.g. variation,ncRNA,repeat_region");
+                ui.label("label contains");
+                ui.text_edit_singleline(&mut self.splicing_exon_skip_overlap_label)
+                    .on_hover_text("Optional label text for selecting exons that overlap matching features");
+            });
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button("Build / Refresh selection plan")
+                    .on_hover_text("Create a stored, inspectable exon-skip plan from the selected exons and overlap criteria")
+                    .clicked()
+                {
+                    self.build_splicing_exon_skip_plan_from_ui(view, transcript_feature_id, None);
+                }
+                let selected_count = self.splicing_exon_skip_selected_candidate_ids.len();
+                let materialize_enabled = self.splicing_exon_skip_plan.is_some() && selected_count > 0;
+                if ui
+                    .add_enabled(
+                        materialize_enabled,
+                        egui::Button::new("Materialize skipped isoform"),
+                    )
+                    .on_hover_text("Consume the stored plan and create both genomic annotation and cDNA products")
+                    .clicked()
+                {
+                    self.materialize_splicing_exon_skip_plan_from_ui();
+                }
+                ui.small(format!("{selected_count} exon(s) selected"));
+            });
+            if let Some(plan) = self.splicing_exon_skip_plan.as_ref() {
+                ui.small(format!(
+                    "Plan '{}': {} candidate exon(s), {} selected.",
+                    plan.plan_id,
+                    plan.candidate_exons.len(),
+                    plan.selected_candidate_ids.len()
+                ));
+                if let Some(warning) = plan.warnings.first() {
+                    ui.small(
+                        egui::RichText::new(warning)
+                            .color(egui::Color32::from_rgb(180, 83, 9)),
+                    );
+                }
+            }
+        });
     }
 
     fn render_rna_read_mapping_workspace_controls(
