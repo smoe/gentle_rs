@@ -218,6 +218,12 @@ Shell modularisation rule:
 - If shell parsing needs aliases for an engine-owned contract enum, those alias
   parsers should live with the shared contract when they are stable enough for
   cross-adapter reuse; avoid parallel shell-local and engine-local enums.
+- The public shell executor boundary must remain stack-safe for test harnesses,
+  CLI, GUI, MCP, and agent callers. Until the large root-crate dispatcher is
+  split into smaller crate-owned executors, `execute_shell_command_with_options`
+  runs the typed dispatcher on an explicitly sized worker stack and uses a
+  guard to avoid recursively spawning workers for nested workflow/macro
+  commands.
 - The executor moves to `gentle-shell` only after `gentle-engine` owns the
   `GentleEngine` type, avoiding a dependency cycle from `gentle-shell` back to
   the root crate.

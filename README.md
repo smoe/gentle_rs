@@ -18,7 +18,8 @@ Today, that already means GENtle can:
   lineage-visible outputs, and ordered multi-insert previews
 - execute PCR, advanced PCR, PCR mutagenesis, primer-pair design, and qPCR
   assay design through one shared engine family
-- bring prepared genomes, SnapGene/GenBank/EMBL records, UniProt/Ensembl
+- bring prepared genomes, basic read-only SnapGene `.dna`/GenBank/EMBL
+  records, UniProt/Ensembl
   protein evidence, and RNA-read context into the same project state used for
   cloning decisions
 - render factual protocol cartoons, lineage graphs, dotplots, TFBS tracks,
@@ -54,9 +55,9 @@ menu item is equally mature.
   and want deterministic execution plus an inspectable report trail.
 - Prepared-genome region/gene extraction and the linked visualization/export
   paths once the reference has been prepared locally.
-- SnapGene/GenBank/EMBL import when you need to bring existing plasmid or
-  sequence records into the same deterministic state as newer GENtle-native
-  workflows.
+- Basic read-only SnapGene `.dna` plus GenBank/EMBL import when you need to
+  interpret existing plasmid or sequence records inside the same deterministic
+  state as newer GENtle-native workflows.
 - RNA-read Mapping, dotplot, TFBS track, and isoform/protein interpretation
   routes when the question is about transcript or regulatory context rather
   than only construct assembly.

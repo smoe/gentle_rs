@@ -117,6 +117,7 @@ use std::sync::atomic::AtomicUsize;
 #[cfg(test)]
 use std::time::Duration;
 use std::{
+    cell::Cell,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
@@ -158,6 +159,10 @@ const BLAST_ASYNC_RESTART_INTERRUPTED_ERROR: &str =
     "BLAST async job interrupted by restart/reload before completion";
 static BLAST_ASYNC_JOB_COUNTER: AtomicU64 = AtomicU64::new(1);
 const SHELL_EXPANDED_STACK_SIZE: usize = 8 * 1024 * 1024;
+
+thread_local! {
+    static SHELL_EXPANDED_STACK_ACTIVE: Cell<bool> = const { Cell::new(false) };
+}
 
 pub type ShellProgressCallback = Arc<Mutex<Box<dyn FnMut(OperationProgress) -> bool + Send>>>;
 
@@ -30043,7 +30048,59 @@ fn execute_ui_intent_command(
 /// This is the main adapter-neutral execution entry point for the textual shell
 /// surface. Callers are expected to parse first, then execute here instead of
 /// re-implementing command behavior in frontend code.
+#[inline(never)]
 pub fn execute_shell_command_with_options(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    if SHELL_EXPANDED_STACK_ACTIVE.with(|active| active.get()) {
+        return execute_shell_command_with_options_dispatch(engine, command, options);
+    }
+    execute_shell_command_with_options_on_expanded_stack(engine, command, options)
+}
+
+#[inline(never)]
+fn execute_shell_command_with_options_on_expanded_stack(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let engine_ptr = engine as *mut GentleEngine as usize;
+    let command = command.clone();
+    let options = options.clone();
+    let worker = thread::Builder::new()
+        .name("gentle-shell-command".to_string())
+        .stack_size(SHELL_EXPANDED_STACK_SIZE)
+        .spawn(move || {
+            SHELL_EXPANDED_STACK_ACTIVE.with(|active| {
+                let was_active = active.replace(true);
+                // SAFETY: the caller synchronously joins this worker before
+                // returning and does not access `engine` while the worker runs.
+                // The shell dispatcher intentionally owns a wide command
+                // surface, so the public boundary provides one predictable
+                // stack budget instead of relying on platform test-thread
+                // defaults.
+                let engine = unsafe { &mut *(engine_ptr as *mut GentleEngine) };
+                let result =
+                    execute_shell_command_with_options_dispatch(engine, &command, &options);
+                active.set(was_active);
+                result
+            })
+        })
+        .map_err(|error| format!("Could not start shell command worker thread: {error}"))?;
+    worker.join().map_err(|panic_payload| {
+        let message = panic_payload
+            .downcast_ref::<&str>()
+            .map(|value| (*value).to_string())
+            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_string());
+        format!("Shell command worker thread panicked: {message}")
+    })?
+}
+
+#[inline(never)]
+fn execute_shell_command_with_options_dispatch(
     engine: &mut GentleEngine,
     command: &ShellCommand,
     options: &ShellExecutionOptions,
