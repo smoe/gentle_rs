@@ -1189,7 +1189,10 @@ def test_result_payload_promotes_cdna_product_materialization_summary(
         '"transcript_count":2,"product_count":2},'
         '"materialization":{"schema":"gentle.cdna_assay_product_materialization.v1",'
         '"product_count":2,"product_seq_ids":["p1","p2"],'
+        '"created_product_seq_ids":["p1"],"reused_product_seq_ids":["p2"],'
         '"container_id":"container-7",'
+        '"gel_summary_lines":["Product gel lane \\"cDNA PCR products (GENE1)\\" has 2 band(s).",'
+        '"Band 1: apparent 41 bp, actual 41 bp: p1 (41 bp)."],'
         '"product_gel_svg_path":"artifacts/products.gel.svg"},'
         '"preferred_artifacts":[{"artifact_kind":"cdna_assay_product_gel",'
         '"path":"artifacts/products.gel.svg","is_best_first_artifact":true}]}\n'
@@ -1220,7 +1223,9 @@ def test_result_payload_promotes_cdna_product_materialization_summary(
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["chat_summary_lines"] == [
         "pcr test finished with status 'multiple_products' across 2 transcript template(s) and 2 detected product(s).",
-        "Materialized 2 cDNA assay product sequence(s) into product container 'container-7'.",
+        "Materialized 1 new and reused 1 existing cDNA assay product sequence(s) into product container 'container-7'.",
+        'Product gel lane "cDNA PCR products (GENE1)" has 2 band(s).',
+        "Band 1: apparent 41 bp, actual 41 bp: p1 (41 bp).",
         "Product gel SVG: artifacts/products.gel.svg",
     ]
     assert result["preferred_artifacts"][0]["artifact_kind"] == "cdna_assay_product_gel"

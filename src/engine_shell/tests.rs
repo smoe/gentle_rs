@@ -11889,7 +11889,7 @@ fn execute_primers_test_cdna_pcr_materializes_product_gel_artifact() {
     state.sequences.insert("cdna_nonspecific".to_string(), dna);
     let mut engine = GentleEngine::from_state(state);
     let td = tempdir().expect("tempdir");
-    let gel_path = td.path().join("cdna_products.gel.svg");
+    let gel_path = td.path().join("nested").join("cdna_products.gel.svg");
 
     let run = execute_shell_command(
         &mut engine,
@@ -11926,6 +11926,18 @@ fn execute_primers_test_cdna_pcr_materializes_product_gel_artifact() {
         Some(2)
     );
     assert_eq!(
+        run.output["materialization"]["created_product_seq_ids"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        run.output["materialization"]["gel_summary_lines"]
+            .as_array()
+            .map(Vec::len),
+        Some(3)
+    );
+    assert_eq!(
         run.output["preferred_artifacts"][0]["artifact_kind"].as_str(),
         Some("cdna_assay_product_gel")
     );
@@ -11937,6 +11949,42 @@ fn execute_primers_test_cdna_pcr_materializes_product_gel_artifact() {
     assert!(svg.contains("Serial Gel Preview"));
     assert!(svg.contains("shell_cdna_products_TX_SHORT_p1_21bp"));
     assert!(svg.contains("shell_cdna_products_TX_LONG_p1_41bp"));
+
+    let repeat = execute_shell_command(
+        &mut engine,
+        &ShellCommand::PrimersTestCdnaPcr {
+            seq_id: "cdna_nonspecific".to_string(),
+            feature_id: 0,
+            forward_primer: "AAACCC".to_string(),
+            reverse_primer: "CCCAAA".to_string(),
+            transcript_id: None,
+            min_amplicon_bp: Some(10),
+            max_amplicon_bp: Some(80),
+            max_mismatches: None,
+            require_3prime_exact_bases: Some(4),
+            transcript_order: None,
+            transcript_map_coordinate_mode: None,
+            path: None,
+            svg_path: None,
+            materialize_products: false,
+            product_output_prefix: Some("shell_cdna_products".to_string()),
+            product_gel_svg_path: Some(
+                td.path()
+                    .join("repeat.gel.svg")
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+            product_gel_ladders: None,
+        },
+    )
+    .expect("repeat materialized shell cDNA PCR product gel");
+    assert!(!repeat.state_changed);
+    assert_eq!(
+        repeat.output["materialization"]["reused_product_seq_ids"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
 }
 
 fn write_shell_gzip_fasta_records(path: &Path, records: &[(&str, &str)]) {
@@ -12297,6 +12345,16 @@ fn execute_export_run_bundle_matches_engine_decision_traces() {
 
 #[test]
 fn execute_export_run_bundle_matches_engine_construct_reasoning_block() {
+    std::thread::Builder::new()
+        .name("execute_export_run_bundle_matches_engine_construct_reasoning_block".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(execute_export_run_bundle_matches_engine_construct_reasoning_block_inner)
+        .expect("spawn run-bundle shell parity test with larger stack")
+        .join()
+        .expect("run-bundle shell parity test panicked");
+}
+
+fn execute_export_run_bundle_matches_engine_construct_reasoning_block_inner() {
     let td = tempdir().expect("tempdir");
     let shell_path = td.path().join("shell.run_bundle.reasoning.json");
     let engine_path = td.path().join("engine.run_bundle.reasoning.json");
@@ -19487,6 +19545,16 @@ fn execute_transcript_protein_comparison_expert_without_uniprot() {
 
 #[test]
 fn execute_ensembl_protein_list_show_import_and_compare() {
+    std::thread::Builder::new()
+        .name("execute_ensembl_protein_list_show_import_and_compare".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(execute_ensembl_protein_list_show_import_and_compare_inner)
+        .expect("spawn Ensembl protein shell parity test with larger stack")
+        .join()
+        .expect("Ensembl protein shell parity test panicked");
+}
+
+fn execute_ensembl_protein_list_show_import_and_compare_inner() {
     let mut state = ProjectState::default();
     let mut dna = DNAsequence::from_sequence(&"ATGAAAACC".repeat(20)).expect("valid DNA");
     let dna_len_i64 = i64::try_from(dna.len()).unwrap();
@@ -21020,6 +21088,16 @@ fn execute_transcripts_exon_skip_plan_and_materialize() {
 
 #[test]
 fn execute_transcripts_residue_genomic_coordinates_reports_codon_bases() {
+    std::thread::Builder::new()
+        .name("execute_transcripts_residue_genomic_coordinates_reports_codon_bases".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(execute_transcripts_residue_genomic_coordinates_reports_codon_bases_inner)
+        .expect("spawn residue-coordinate shell test with larger stack")
+        .join()
+        .expect("residue-coordinate shell test panicked");
+}
+
+fn execute_transcripts_residue_genomic_coordinates_reports_codon_bases_inner() {
     let mut state = ProjectState::default();
     state
         .sequences

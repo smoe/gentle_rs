@@ -2542,16 +2542,38 @@ def _summary_lines_from_primer_qpcr_payload(candidate: Any) -> list[str] | None:
             product_count = materialization.get("product_count")
             seq_ids = materialization.get("product_seq_ids")
             seq_count = len(seq_ids) if isinstance(seq_ids, list) else 0
+            created_seq_ids = materialization.get("created_product_seq_ids")
+            reused_seq_ids = materialization.get("reused_product_seq_ids")
+            created_count = len(created_seq_ids) if isinstance(created_seq_ids, list) else 0
+            reused_count = len(reused_seq_ids) if isinstance(reused_seq_ids, list) else 0
             container_id = str(materialization.get("container_id") or "").strip()
             gel_path = str(materialization.get("product_gel_svg_path") or "").strip()
             if seq_count:
-                line = f"Materialized {seq_count} cDNA assay product sequence(s)"
+                if created_count and reused_count:
+                    line = (
+                        f"Materialized {created_count} new and reused {reused_count} existing "
+                        "cDNA assay product sequence(s)"
+                    )
+                elif reused_count and not created_count:
+                    line = f"Reused {reused_count} existing cDNA assay product sequence(s)"
+                else:
+                    line = f"Materialized {seq_count} cDNA assay product sequence(s)"
                 if container_id:
                     line += f" into product container '{container_id}'"
                 line += "."
                 lines.append(line)
             elif product_count == 0:
                 lines.append("No product vial was created because the assay detected 0 products.")
+            gel_summary_lines = materialization.get("gel_summary_lines")
+            if isinstance(gel_summary_lines, list):
+                for gel_line in gel_summary_lines[:6]:
+                    text = str(gel_line or "").strip()
+                    if text:
+                        lines.append(text)
+                if len(gel_summary_lines) > 6:
+                    lines.append(
+                        f"Additional gel rows omitted from chat summary: {len(gel_summary_lines) - 6}."
+                    )
             if gel_path:
                 lines.append(f"Product gel SVG: {gel_path}")
         return lines or None

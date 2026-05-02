@@ -2470,10 +2470,19 @@ Shared shell command:
         non-mutating by default; add `--materialize-products` to turn detected
         products into deterministic linear sequence entries and one
         singleton/pool container
+      - materialization is idempotent: repeating the same assay with the same
+        prefix reuses matching product sequences/container and reports created
+        vs reused ids in the structured result instead of duplicating product
+        vials
       - `--product-gel-svg OUTPUT.svg` implies product materialization and
         renders the product container through the existing pool-gel renderer,
         so non-specific cDNA PCR/qPCR products appear as multiple bands in one
-        lane; repeat `--product-gel-ladder NAME` to add ladder lanes
+        lane; repeat `--product-gel-ladder NAME` to add ladder lanes. The same
+        result includes `gel_band_rows[]` and `gel_summary_lines[]` for
+        terminal/Telegram displays that should not rely on SVG text rendering
+        alone.
+      - report, transcript-map SVG, and product-gel SVG paths create parent
+        directories automatically when needed
       - when no products are detected, the assay still succeeds with
         `not_detected`, writes no product vial/gel, and reports that outcome in
         the materialization summary

@@ -1426,6 +1426,12 @@ inspection/export paths:
     product sequence entries, groups them into one singleton/pool container,
     and renders optional product-gel SVGs through the shared pool-gel renderer
     so non-specific products remain visible as multiple vial/gel bands.
+    Materialization is idempotent: repeat runs with the same assay, transcript,
+    coordinates, and product sequence reuse the existing product sequence ids
+    and matching product container instead of minting duplicate vials.
+    Product-gel layouts also emit engine-owned text band rows/summary lines so
+    Telegram, CLI, ClawBio, JS, and Lua can explain the gel even when an image
+    preview is unavailable or text labels fail to rasterize on a host.
   - cDNA PCR/qPCR reports and transcript-aware qPCR assay contexts carry
     engine-owned genomic-DNA carryover risk classifications. The classification
     uses mapped exon/source ranges, junction-spanning primer/probe evidence, and

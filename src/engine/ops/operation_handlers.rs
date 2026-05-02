@@ -10569,6 +10569,365 @@ impl GentleEngine {
         )
     }
 
+    fn cdna_assay_product_signature(
+        report: &CdnaAssayTestReport,
+        transcript: &CdnaAssayTranscriptResult,
+        product_idx: usize,
+        product: &CdnaAssayProduct,
+        prefix: &str,
+        product_sequence: &str,
+    ) -> String {
+        // FNV-1a keeps the signature deterministic without adding a dependency.
+        let mut hash = 0xcbf29ce484222325u64;
+        let parts = vec![
+            report.assay_kind.clone(),
+            report.source_seq_id.clone(),
+            report.source_feature_id.to_string(),
+            report.group_label.clone(),
+            report.forward_primer.clone(),
+            report.reverse_primer.clone(),
+            report.probe.clone().unwrap_or_default(),
+            transcript.transcript_id.clone(),
+            transcript.transcript_feature_id.to_string(),
+            product_idx.saturating_add(1).to_string(),
+            product.amplicon_start_0based.to_string(),
+            product.amplicon_end_0based_exclusive.to_string(),
+            prefix.to_string(),
+            product_sequence.to_string(),
+        ];
+        for part in parts {
+            for byte in part.as_bytes().iter().chain(std::iter::once(&0xffu8)) {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(0x100000001b3);
+            }
+        }
+        format!("{hash:016x}")
+    }
+
+    fn sequence_cdna_assay_signature(dna: &DNAsequence) -> Option<String> {
+        dna.features().iter().find_map(|feature| {
+            feature
+                .qualifiers
+                .iter()
+                .find(|(key, _)| key.to_string() == "cdna_assay_signature")
+                .and_then(|(_, value)| value.clone())
+        })
+    }
+
+    fn cdna_assay_product_sequence_matches(
+        dna: &DNAsequence,
+        product_sequence: &str,
+        signature: &str,
+    ) -> bool {
+        if dna
+            .get_forward_string()
+            .eq_ignore_ascii_case(product_sequence)
+        {
+            return Self::sequence_cdna_assay_signature(dna)
+                .as_deref()
+                .is_none_or(|existing| existing == signature);
+        }
+        false
+    }
+
+    fn find_reusable_cdna_assay_product_sequence(
+        &self,
+        preferred_seq_id: &str,
+        product_sequence: &str,
+        signature: &str,
+    ) -> Option<SeqId> {
+        if let Some(dna) = self.state.sequences.get(preferred_seq_id) {
+            if Self::cdna_assay_product_sequence_matches(dna, product_sequence, signature) {
+                return Some(preferred_seq_id.to_string());
+            }
+        }
+        let mut matches = self
+            .state
+            .sequences
+            .iter()
+            .filter(|(_, dna)| {
+                dna.get_forward_string()
+                    .eq_ignore_ascii_case(product_sequence)
+                    && Self::sequence_cdna_assay_signature(dna).as_deref() == Some(signature)
+            })
+            .map(|(seq_id, _)| seq_id.clone())
+            .collect::<Vec<_>>();
+        matches.sort();
+        matches.into_iter().next()
+    }
+
+    fn cdna_assay_product_feature(
+        report: &CdnaAssayTestReport,
+        transcript: &CdnaAssayTranscriptResult,
+        product_idx: usize,
+        product: &CdnaAssayProduct,
+        product_sequence_len: usize,
+        signature: &str,
+    ) -> gb_io::seq::Feature {
+        let mut qualifiers = vec![
+            (
+                "label".into(),
+                Some(format!(
+                    "cDNA {} product {} for {}",
+                    report.assay_kind,
+                    product_idx.saturating_add(1),
+                    transcript.transcript_id
+                )),
+            ),
+            ("assay_kind".into(), Some(report.assay_kind.clone())),
+            ("group_label".into(), Some(report.group_label.clone())),
+            ("source_seq_id".into(), Some(report.source_seq_id.clone())),
+            (
+                "source_feature_id".into(),
+                Some(report.source_feature_id.to_string()),
+            ),
+            (
+                "transcript_id".into(),
+                Some(transcript.transcript_id.clone()),
+            ),
+            (
+                "transcript_feature_id".into(),
+                Some(transcript.transcript_feature_id.to_string()),
+            ),
+            (
+                "product_index".into(),
+                Some(product_idx.saturating_add(1).to_string()),
+            ),
+            (
+                "amplicon_length_bp".into(),
+                Some(product.amplicon_length_bp.to_string()),
+            ),
+            (
+                "amplicon_start_0based".into(),
+                Some(product.amplicon_start_0based.to_string()),
+            ),
+            (
+                "amplicon_end_0based_exclusive".into(),
+                Some(product.amplicon_end_0based_exclusive.to_string()),
+            ),
+            ("forward_primer".into(), Some(report.forward_primer.clone())),
+            ("reverse_primer".into(), Some(report.reverse_primer.clone())),
+            (
+                "probe_supported".into(),
+                Some((!product.probe_hit_indices.is_empty()).to_string()),
+            ),
+            (
+                "genomic_carryover_risk".into(),
+                Some(product.genomic_carryover_risk.clone()),
+            ),
+            (
+                "genomic_carryover_rationale".into(),
+                Some(product.genomic_carryover_rationale.clone()),
+            ),
+            ("cdna_assay_signature".into(), Some(signature.to_string())),
+        ];
+        if let Some(probe) = &report.probe {
+            qualifiers.push(("probe".into(), Some(probe.clone())));
+        }
+        for label in &product.covered_junction_labels {
+            qualifiers.push(("covered_junction_label".into(), Some(label.clone())));
+        }
+        gb_io::seq::Feature {
+            kind: "cDNA_assay_product".into(),
+            location: gb_io::seq::Location::simple_range(0, product_sequence_len as i64),
+            qualifiers,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn upsert_cdna_assay_product_sequence(
+        &mut self,
+        result: &mut OpResult,
+        report: &CdnaAssayTestReport,
+        transcript: &CdnaAssayTranscriptResult,
+        product_idx: usize,
+        product: &CdnaAssayProduct,
+        prefix: &str,
+        product_sequence: &str,
+    ) -> Result<(SeqId, bool), EngineError> {
+        let preferred_seq_id = format!(
+            "{}_{}_p{}_{}bp",
+            prefix,
+            Self::cdna_assay_product_id_token(&transcript.transcript_id),
+            product_idx.saturating_add(1),
+            product.amplicon_length_bp
+        );
+        let signature = Self::cdna_assay_product_signature(
+            report,
+            transcript,
+            product_idx,
+            product,
+            prefix,
+            product_sequence,
+        );
+        if let Some(seq_id) = self.find_reusable_cdna_assay_product_sequence(
+            &preferred_seq_id,
+            product_sequence,
+            &signature,
+        ) {
+            return Ok((seq_id, false));
+        }
+
+        let mut dna = DNAsequence::from_sequence(product_sequence).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not create cDNA {} product for transcript '{}': {e}",
+                report.assay_kind, transcript.transcript_id
+            ),
+        })?;
+        dna.set_circular(false);
+        dna.set_name(format!(
+            "cDNA {} product {} for {} ({} bp)",
+            report.assay_kind,
+            product_idx.saturating_add(1),
+            transcript.transcript_id,
+            product.amplicon_length_bp
+        ));
+        dna.features_mut().push(Self::cdna_assay_product_feature(
+            report,
+            transcript,
+            product_idx,
+            product,
+            product_sequence.len(),
+            &signature,
+        ));
+        Self::prepare_sequence(&mut dna);
+        let seq_id = if self.state.sequences.contains_key(&preferred_seq_id) {
+            self.unique_seq_id(&preferred_seq_id)
+        } else {
+            preferred_seq_id
+        };
+        self.state.sequences.insert(seq_id.clone(), dna);
+        self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+        result.created_seq_ids.push(seq_id.clone());
+        Ok((seq_id, true))
+    }
+
+    fn cdna_container_kind_matches(actual: &ContainerKind, expected: &ContainerKind) -> bool {
+        matches!(
+            (actual, expected),
+            (ContainerKind::Singleton, ContainerKind::Singleton)
+                | (ContainerKind::Pool, ContainerKind::Pool)
+                | (ContainerKind::Selection, ContainerKind::Selection)
+        )
+    }
+
+    fn find_reusable_cdna_assay_product_container(
+        &self,
+        members: &[SeqId],
+        kind: &ContainerKind,
+        name: &str,
+    ) -> Option<ContainerId> {
+        let mut matches = self
+            .state
+            .container_state
+            .containers
+            .values()
+            .filter(|container| {
+                Self::cdna_container_kind_matches(&container.kind, kind)
+                    && container.members == members
+                    && container.name.as_deref() == Some(name)
+            })
+            .map(|container| container.container_id.clone())
+            .collect::<Vec<_>>();
+        matches.sort();
+        matches.into_iter().next()
+    }
+
+    fn upsert_cdna_assay_product_container(
+        &mut self,
+        members: &[SeqId],
+        kind: ContainerKind,
+        name: String,
+        op_id: &str,
+    ) -> Result<(ContainerId, bool), EngineError> {
+        if let Some(container_id) =
+            self.find_reusable_cdna_assay_product_container(members, &kind, &name)
+        {
+            for seq_id in members {
+                self.state
+                    .container_state
+                    .seq_to_latest_container
+                    .insert(seq_id.clone(), container_id.clone());
+            }
+            return Ok((container_id, false));
+        }
+        let container_id = self
+            .add_container(members, kind, Some(name), Some(op_id))
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::Internal,
+                message: "Could not create cDNA assay product container".to_string(),
+            })?;
+        Ok((container_id, true))
+    }
+
+    fn cdna_assay_product_gel_text(
+        layout: &crate::pool_gel::PoolGelLayout,
+    ) -> (Vec<CdnaAssayProductGelBandRow>, Vec<String>) {
+        let mut rows = vec![];
+        let mut lines = vec![];
+        for lane in layout.lanes.iter().filter(|lane| !lane.is_ladder) {
+            lines.push(format!(
+                "Product gel lane '{}' has {} band(s).",
+                lane.name,
+                lane.bands.len()
+            ));
+            for (band_idx, band) in lane.bands.iter().enumerate() {
+                let min_bp = band.min_bp.min(band.bp);
+                let max_bp = band.min_bp.max(band.bp);
+                rows.push(CdnaAssayProductGelBandRow {
+                    lane_name: lane.name.clone(),
+                    band_index: band_idx.saturating_add(1),
+                    apparent_bp: band.apparent_bp,
+                    min_bp,
+                    max_bp,
+                    product_count: band.count,
+                    labels: band.labels.clone(),
+                });
+                let labels = if band.labels.is_empty() {
+                    "unlabeled product(s)".to_string()
+                } else {
+                    band.labels.join(", ")
+                };
+                let actual = if min_bp == max_bp {
+                    format!("{min_bp} bp")
+                } else {
+                    format!("{min_bp}..{max_bp} bp")
+                };
+                if band.count > 1 {
+                    lines.push(format!(
+                        "Band {}: apparent {} bp, merged {} products, actual {}: {}.",
+                        band_idx.saturating_add(1),
+                        band.apparent_bp,
+                        band.count,
+                        actual,
+                        labels
+                    ));
+                } else {
+                    lines.push(format!(
+                        "Band {}: apparent {} bp, actual {}: {}.",
+                        band_idx.saturating_add(1),
+                        band.apparent_bp,
+                        actual,
+                        labels
+                    ));
+                }
+            }
+        }
+        (rows, lines)
+    }
+
+    fn ensure_engine_output_parent_dir(path: &str, label: &str) -> Result<(), EngineError> {
+        let parent = Path::new(path)
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(parent).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not create parent directory for {label} '{path}': {e}"),
+        })
+    }
+
     fn cdna_assay_template_sequence_map(
         &self,
         report: &CdnaAssayTestReport,
@@ -10635,7 +10994,9 @@ impl GentleEngine {
         }
 
         let template_sequences = self.cdna_assay_template_sequence_map(report)?;
+        let mut product_seq_ids = vec![];
         let mut created_product_seq_ids = vec![];
+        let mut reused_product_seq_ids = vec![];
         for transcript in &report.transcript_results {
             let Some(template_sequence) = template_sequences.get(&(
                 transcript.transcript_feature_id,
@@ -10663,42 +11024,57 @@ impl GentleEngine {
                 }
                 let product_sequence = &template_sequence
                     [product.amplicon_start_0based..product.amplicon_end_0based_exclusive];
-                let mut dna =
-                    DNAsequence::from_sequence(product_sequence).map_err(|e| EngineError {
-                        code: ErrorCode::Internal,
-                        message: format!(
-                            "Could not create cDNA {} product for transcript '{}': {e}",
-                            report.assay_kind, transcript.transcript_id
-                        ),
-                    })?;
-                dna.set_circular(false);
-                dna.set_name(format!(
-                    "cDNA {} product {} for {} ({} bp)",
-                    report.assay_kind,
-                    product_idx.saturating_add(1),
-                    transcript.transcript_id,
-                    product.amplicon_length_bp
-                ));
-                Self::prepare_sequence(&mut dna);
-                let seq_id = self.unique_seq_id(&format!(
-                    "{}_{}_p{}_{}bp",
-                    prefix,
-                    Self::cdna_assay_product_id_token(&transcript.transcript_id),
-                    product_idx.saturating_add(1),
-                    product.amplicon_length_bp
-                ));
-                self.state.sequences.insert(seq_id.clone(), dna);
-                self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
-                result.created_seq_ids.push(seq_id.clone());
-                created_product_seq_ids.push(seq_id.clone());
-                result.messages.push(format!(
-                    "Materialized cDNA {} product '{}' from transcript '{}' ({} bp).",
-                    report.assay_kind, seq_id, transcript.transcript_id, product.amplicon_length_bp
-                ));
+                let (seq_id, created) = self.upsert_cdna_assay_product_sequence(
+                    result,
+                    report,
+                    transcript,
+                    product_idx,
+                    product,
+                    &prefix,
+                    product_sequence,
+                )?;
+                if created {
+                    created_product_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Materialized cDNA {} product '{}' from transcript '{}' ({} bp).",
+                        report.assay_kind,
+                        seq_id,
+                        transcript.transcript_id,
+                        product.amplicon_length_bp
+                    ));
+                } else {
+                    reused_product_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Reused existing cDNA {} product '{}' from transcript '{}' ({} bp).",
+                        report.assay_kind,
+                        seq_id,
+                        transcript.transcript_id,
+                        product.amplicon_length_bp
+                    ));
+                }
+                product_seq_ids.push(seq_id.clone());
+                summary.product_rows.push(CdnaAssayMaterializedProductRow {
+                    product_seq_id: seq_id,
+                    transcript_id: transcript.transcript_id.clone(),
+                    transcript_feature_id: transcript.transcript_feature_id,
+                    product_index: product_idx.saturating_add(1),
+                    amplicon_length_bp: product.amplicon_length_bp,
+                    amplicon_start_0based: product.amplicon_start_0based,
+                    amplicon_end_0based_exclusive: product.amplicon_end_0based_exclusive,
+                    probe_supported: !product.probe_hit_indices.is_empty(),
+                    covered_junction_labels: product.covered_junction_labels.clone(),
+                    genomic_carryover_risk: product.genomic_carryover_risk.clone(),
+                    genomic_carryover_rationale: product.genomic_carryover_rationale.clone(),
+                    created,
+                });
             }
         }
-        summary.product_seq_ids = created_product_seq_ids.clone();
-        if created_product_seq_ids.is_empty() {
+        summary.product_seq_ids = product_seq_ids.clone();
+        summary.created_product_seq_ids = created_product_seq_ids.clone();
+        summary.reused_product_seq_ids = reused_product_seq_ids.clone();
+        summary.idempotent_reuse = summary.created_product_seq_ids.is_empty()
+            && !summary.reused_product_seq_ids.is_empty();
+        if product_seq_ids.is_empty() {
             summary.warnings.push(format!(
                 "The cDNA {} assay reported products, but none could be materialized.",
                 report.assay_kind
@@ -10706,7 +11082,7 @@ impl GentleEngine {
             return Ok(summary);
         }
 
-        let container_kind = if created_product_seq_ids.len() > 1 {
+        let container_kind = if product_seq_ids.len() > 1 {
             ContainerKind::Pool
         } else {
             ContainerKind::Singleton
@@ -10717,25 +11093,30 @@ impl GentleEngine {
             "PCR"
         };
         let container_name = format!("cDNA {product_label} products ({})", report.group_label);
-        let container_id = self
-            .add_container(
-                &created_product_seq_ids,
-                container_kind.clone(),
-                Some(container_name),
-                Some(&result.op_id),
-            )
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::Internal,
-                message: "Could not create cDNA assay product container".to_string(),
-            })?;
+        let (container_id, container_created) = self.upsert_cdna_assay_product_container(
+            &product_seq_ids,
+            container_kind.clone(),
+            container_name,
+            &result.op_id,
+        )?;
         summary.container_id = Some(container_id.clone());
         summary.container_kind = Some(container_kind);
-        result.messages.push(format!(
-            "Materialized {} cDNA {} product sequence(s) in container '{}'.",
-            created_product_seq_ids.len(),
-            report.assay_kind,
-            container_id
-        ));
+        summary.container_created = container_created;
+        if container_created {
+            result.messages.push(format!(
+                "Materialized {} cDNA {} product sequence(s) in container '{}'.",
+                product_seq_ids.len(),
+                report.assay_kind,
+                container_id
+            ));
+        } else {
+            result.messages.push(format!(
+                "Reused cDNA {} product container '{}' with {} sequence(s).",
+                report.assay_kind,
+                container_id,
+                product_seq_ids.len()
+            ));
+        }
 
         if let Some(path) = product_gel_svg_path
             .map(str::trim)
@@ -10749,12 +11130,16 @@ impl GentleEngine {
                 product_gel_ladders,
                 None,
             )?;
+            let (gel_band_rows, gel_summary_lines) = Self::cdna_assay_product_gel_text(&layout);
             let svg = export_pool_gel_svg(&layout);
+            Self::ensure_engine_output_parent_dir(path, "cDNA assay product gel SVG")?;
             std::fs::write(path, svg).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write cDNA assay product gel SVG '{path}': {e}"),
             })?;
             summary.product_gel_svg_path = Some(path.to_string());
+            summary.gel_band_rows = gel_band_rows;
+            summary.gel_summary_lines = gel_summary_lines;
             result.messages.push(format!(
                 "Wrote cDNA {} product gel SVG to '{}'.",
                 report.assay_kind, path
@@ -10782,6 +11167,7 @@ impl GentleEngine {
             "PCR"
         };
         if let Some(path) = path.map(str::trim).filter(|value| !value.is_empty()) {
+            Self::ensure_engine_output_parent_dir(path, "cDNA assay-test report")?;
             let file = File::create(path).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -10805,6 +11191,7 @@ impl GentleEngine {
                 .as_ref()
                 .map(|map| map.svg.as_str())
                 .unwrap_or_default();
+            Self::ensure_engine_output_parent_dir(svg_path, "cDNA transcript-map SVG")?;
             std::fs::write(svg_path, svg).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -10831,7 +11218,7 @@ impl GentleEngine {
                 result.warnings.push(warning.clone());
                 result.messages.push(warning.clone());
             }
-            result.cdna_assay_product_materialization = Some(materialization);
+            result.cdna_assay_product_materialization = Some(Box::new(materialization));
         }
         result.cdna_assay_test_report = Some(Box::new(report.clone()));
         Ok(())

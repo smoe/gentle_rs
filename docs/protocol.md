@@ -5495,6 +5495,14 @@ Simple PCR constraint handoff:
     derived linear DNA sequence, all products from the assay are grouped into
     one product container, and multiple nonspecific products are represented as
     one pool lane in the existing `RenderPoolGelSvg` renderer.
+  - product materialization is repeat-safe. Product rows carry deterministic
+    assay signatures, repeat runs reuse matching sequence ids and matching
+    product containers, and structured output separates
+    `created_product_seq_ids[]` from `reused_product_seq_ids[]`.
+  - product-gel output includes text-first companion data:
+    `gel_band_rows[]` for machine display and `gel_summary_lines[]` for
+    compact Telegram/terminal narration of lane/band sizes and merged
+    non-specific products.
   - if no products are detected, materialization does not fail the assay; it
     creates no product sequence/container and reports why no product gel was
     written.
@@ -5566,8 +5574,11 @@ Simple PCR constraint handoff:
 - Optional materialization schema:
   - `gentle.cdna_assay_product_materialization.v1`
   - fields include assay kind, source sequence/feature, group label, detected
-    product count, materialized product sequence ids, product container id/kind,
-    optional product gel SVG path, output prefix, and warnings.
+    product count, all product sequence ids, `created_product_seq_ids[]`,
+    `reused_product_seq_ids[]`, per-product transcript/amplicon/probe/carryover
+    rows, product container id/kind plus `container_created`, optional product
+    gel SVG path, `gel_band_rows[]`, `gel_summary_lines[]`, output prefix,
+    `idempotent_reuse`, and warnings.
 
 Primer-design shell command family (implemented):
 

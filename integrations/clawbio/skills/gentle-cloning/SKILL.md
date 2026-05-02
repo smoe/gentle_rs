@@ -675,7 +675,10 @@ Expected outputs:
   `materialize_products` or `product_gel_svg_path` is requested, at which point
   detected products become deterministic sequence entries in one vial/container
   and optional product-gel SVG/PNG artifacts show non-specific products as
-  multiple bands in one lane
+  multiple bands in one lane. Repeated materializing requests reuse matching
+  product sequence ids and the same vial/container, and product-gel results
+  include text band summaries so Telegram replies can explain the gel even
+  before or instead of showing an image.
 - transcript qPCR panel tables with shared reverse/probe plus characteristic
   forward-primer rows when possible
 - PCR-family SVG/PNG protocol cartoons, including `pcr.assay.pair`,
