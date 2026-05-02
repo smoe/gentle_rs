@@ -1,0 +1,56 @@
+LOCUS       TP73_PROMOTER_ARTIFACT_DEMO 249 bp    DNA     linear SYN 02-MAY-2026
+DEFINITION  Synthetic TP73-like promoter artifact-signoff demo locus.
+ACCESSION   GENTLE_TP73_PROMOTER_ARTIFACT_DEMO
+VERSION     GENTLE_TP73_PROMOTER_ARTIFACT_DEMO.1
+KEYWORDS    synthetic construct; promoter design; TFBS; tutorial.
+SOURCE      synthetic DNA construct
+  ORGANISM  synthetic DNA construct
+            other sequences; artificial sequences.
+FEATURES             Location/Qualifiers
+     source          1..249
+                     /organism="synthetic DNA construct"
+                     /mol_type="other DNA"
+     gene            101..240
+                     /gene="TP73"
+                     /label="TP73 synthetic promoter demo gene"
+     mRNA            101..240
+                     /gene="TP73"
+                     /transcript_id="ENSTTP73DEMO1"
+                     /label="TP73-demo-201"
+     mRNA            101..230
+                     /gene="TP73"
+                     /transcript_id="ENSTTP73DEMO2"
+                     /label="TP73-demo-202"
+     mRNA            141..240
+                     /gene="TP73"
+                     /transcript_id="ENSTTP73DEMO3"
+                     /label="TP73-demo-203-altTSS"
+     promoter        61..116
+                     /gene="TP73"
+                     /label="TP73 shared promoter annotation"
+     TFBS            81..89
+                     /gene="TP73"
+                     /label="SP1 synthetic site"
+     variation       95
+                     /gene="TP73"
+                     /label="rsSyntheticPromoter"
+     repeat_region   105..116
+                     /gene="TP73"
+                     /label="L1-demo"
+                     /rmsk_rep_name="L1PA-demo"
+                     /rmsk_rep_class="LINE"
+                     /rmsk_rep_family="L1"
+     TFBS            150..158
+                     /gene="TP73"
+                     /label="TP73-like synthetic site"
+     track           130..152
+                     /gene="TP73"
+                     /label="CUT&RUN TP73 promoter-side peak"
+                     /gentle_track_name="synthetic CUT&RUN demo"
+ORIGIN
+        1 AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA
+       61 CCCCCCCCCC CCCCCCCCCC GGGGCGGGGT TTTTTTTTTA AAAAAAAAAC CCCCCCCCCC
+      121 CCCCCCCCCG GGGGGGGGGG GGGGGGGGGA TGTGTAACTT TTTTTTTTTT TTTTTTTTGG
+      181 GGGGGGGGGG GGGGGGGGCC CCCCCCCCCC CCCCCCCCAA AAAAAAAAAA AAAAAAAAAA
+      241 AAAAAAAAA
+//

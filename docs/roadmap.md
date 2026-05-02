@@ -1556,6 +1556,22 @@ without blocking this publication.
             variant, repeat, enhancer/terminator, external interval, and
             CUT&RUN-tagged interval evidence when such annotations already
             exist on the sequence
+          - one release-signoff slice now exercises that component-artifact
+            boundary end-to-end on a tiny offline synthetic TP73-like locus:
+            - fixture:
+              `docs/examples/assets/tp73_promoter_artifact_demo.gb`
+            - workflow:
+              `docs/examples/workflows/promoter_design_artifact_slice_offline.json`
+            - generated tutorial chapter:
+              `docs/tutorial/generated/chapters/24_promoter_design_artifact_slice_offline.md`
+            - retained outputs include `alternative_promoters.json`,
+              `evidence_matrix.json`, `tfbs_score_tracks.svg`, and
+              `tfbs_similarity.json`
+          - tutorial workflow execution now also rewrites retained-output
+            paths for promoter comparison/evidence reports and
+            `ExportLabAssistantInstructions`, so generated tutorial artifacts
+            stay inside the temp run directory and can be copied into
+            `docs/tutorial/generated/artifacts/` deterministically
           - the evidence matrix intentionally uses string-valued evidence
             kinds and transparent deterministic display ordering, so future
             ortholog promoter similarity, co-regulated/anti-co-regulated gene
@@ -5842,6 +5858,10 @@ Status (2026-03-19):
     as new dotplot operations are added
   - additional overlay controls beyond the current shared-reference multi-series
     baseline
+  - shared-exon-anchor reasoning support: expose a compact eligibility/exclusion
+    report for the exon picker that lists transcript support counts,
+    transcript-local exon starts, the chosen maximal anchor position, and why
+    otherwise visible transcripts are filtered from the anchored overlay
 
 Latest GUI baseline (2026-03-09):
 

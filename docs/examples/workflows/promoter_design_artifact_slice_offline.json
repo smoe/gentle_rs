@@ -1,0 +1,120 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "promoter_design_artifact_slice_offline",
+  "title": "Promoter Design artifact slice (offline synthetic TP73 locus)",
+  "summary": "Loads one tiny TP73-like synthetic promoter locus and emits the release-signoff promoter artifacts GENtle should provide to GUI, CLI, and ClawBio-style consumers: alternative-promoter grouping, promoter evidence matrix, TFBS score-track SVG, and TFBS similarity JSON.",
+  "test_mode": "always",
+  "required_files": [
+    "docs/examples/assets/tp73_promoter_artifact_demo.gb"
+  ],
+  "tags": [
+    "tutorial",
+    "offline",
+    "promoter",
+    "tp73",
+    "tfbs",
+    "similarity",
+    "clawbio",
+    "signoff"
+  ],
+  "workflow": {
+    "run_id": "example_promoter_design_artifact_slice_offline",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "docs/examples/assets/tp73_promoter_artifact_demo.gb",
+          "as_id": "tp73_promoter_artifact_demo"
+        }
+      },
+      {
+        "AnnotatePromoterWindows": {
+          "input": "tp73_promoter_artifact_demo",
+          "gene_label": "TP73",
+          "upstream_bp": 40,
+          "downstream_bp": 15,
+          "collapse_mode": "transcript"
+        }
+      },
+      {
+        "SummarizeAlternativePromoterComparison": {
+          "input": "tp73_promoter_artifact_demo",
+          "gene_label": "TP73",
+          "promoter_upstream_bp": 40,
+          "promoter_downstream_bp": 15,
+          "path": "artifacts/tp73_promoter_artifact_demo.alternative_promoters.json"
+        }
+      },
+      {
+        "SummarizePromoterEvidenceMatrix": {
+          "input": "tp73_promoter_artifact_demo",
+          "gene_label": "TP73",
+          "promoter_upstream_bp": 40,
+          "promoter_downstream_bp": 15,
+          "include_feature_overlaps": true,
+          "path": "artifacts/tp73_promoter_artifact_demo.evidence_matrix.json"
+        }
+      },
+      {
+        "SummarizeTfbsScoreTracks": {
+          "target": {
+            "kind": "seq_id",
+            "seq_id": "tp73_promoter_artifact_demo",
+            "span_start_0based": 60,
+            "span_end_0based_exclusive": 158
+          },
+          "motifs": [
+            "SP1",
+            "TP53",
+            "TP63",
+            "TP73"
+          ],
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": false,
+          "path": "artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.json"
+        }
+      },
+      {
+        "RenderTfbsScoreTracksSvg": {
+          "target": {
+            "kind": "seq_id",
+            "seq_id": "tp73_promoter_artifact_demo",
+            "span_start_0based": 60,
+            "span_end_0based_exclusive": 158
+          },
+          "motifs": [
+            "SP1",
+            "TP53",
+            "TP63",
+            "TP73"
+          ],
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": false,
+          "path": "artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg"
+        }
+      },
+      {
+        "SummarizeTfbsTrackSimilarity": {
+          "target": {
+            "kind": "seq_id",
+            "seq_id": "tp73_promoter_artifact_demo",
+            "span_start_0based": 60,
+            "span_end_0based_exclusive": 158
+          },
+          "anchor_motif": "SP1",
+          "candidate_motifs": [
+            "TP53",
+            "TP63",
+            "TP73",
+            "CTCF"
+          ],
+          "ranking_metric": "smoothed_spearman",
+          "score_kind": "llr_background_tail_log10",
+          "clip_negative": false,
+          "include_remote_metadata": false,
+          "limit": 10,
+          "path": "artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json"
+        }
+      }
+    ]
+  }
+}

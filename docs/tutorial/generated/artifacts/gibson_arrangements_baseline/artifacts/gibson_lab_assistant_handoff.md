@@ -65,4 +65,3 @@
 - Record operator, date, reagent lot numbers, template/vector/insert tube IDs, and plate/tube coordinates.
 - Attach photos or instrument exports for gels, plates, colony PCR, digest checks, and sequencing chromatograms.
 - Store deviations from this handoff together with the GENtle project state or run bundle.
-
