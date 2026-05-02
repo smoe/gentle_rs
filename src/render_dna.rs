@@ -3,6 +3,7 @@
 use crate::{
     dna_display::{DnaDisplay, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
+    feature_location::collect_location_ranges_usize,
     render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
     repeat_features::{is_repeat_feature, repeat_feature_display},
@@ -319,6 +320,27 @@ impl RenderDna {
 
     pub fn is_variation_feature(feature: &Feature) -> bool {
         feature.kind.to_string().to_ascii_uppercase() == "VARIATION"
+    }
+
+    pub fn is_exon_length_frame_cue_feature(feature: &Feature) -> bool {
+        matches!(
+            feature.kind.to_string().to_ascii_uppercase().as_str(),
+            "MRNA" | "TRANSCRIPT" | "EXON" | "CDS"
+        )
+    }
+
+    pub fn exon_length_mod3_for_range(start_0based: usize, end_0based_exclusive: usize) -> u8 {
+        end_0based_exclusive
+            .saturating_sub(start_0based)
+            .rem_euclid(3) as u8
+    }
+
+    pub fn exon_length_mod3_color(mod3: u8) -> Color32 {
+        match mod3 % 3 {
+            0 => Color32::from_rgb(30, 64, 175),
+            1 => Color32::from_rgb(217, 119, 6),
+            _ => Color32::from_rgb(225, 29, 72),
+        }
     }
 
     pub fn feature_color(feature: &Feature) -> Color32 {
@@ -850,6 +872,60 @@ impl RenderDna {
         lines
     }
 
+    fn exon_length_frame_detail_lines(feature: &Feature) -> Vec<String> {
+        if !Self::is_exon_length_frame_cue_feature(feature) {
+            return vec![];
+        }
+        let mut exon_ranges = Vec::new();
+        collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+        if exon_ranges.is_empty() {
+            let Ok((from, to)) = feature.location.find_bounds() else {
+                return vec![];
+            };
+            if from < 0 || to <= from {
+                return vec![];
+            }
+            exon_ranges.push((from as usize, to as usize));
+        }
+        exon_ranges.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        exon_ranges.retain(|(start, end)| end > start);
+        if exon_ranges.is_empty() {
+            return vec![];
+        }
+
+        let mut mod_counts = [0usize; 3];
+        let mut parts = Vec::new();
+        for (idx, (start, end)) in exon_ranges.iter().copied().enumerate() {
+            let len = end.saturating_sub(start);
+            let mod3 = Self::exon_length_mod3_for_range(start, end) as usize;
+            mod_counts[mod3] = mod_counts[mod3].saturating_add(1);
+            if idx < 12 {
+                parts.push(format!("{}bp->{}", len, mod3));
+            }
+        }
+        if exon_ranges.len() > parts.len() {
+            parts.push(format!("+{} more", exon_ranges.len() - parts.len()));
+        }
+
+        let mut lines = Vec::new();
+        lines.push(format!("exon_count: {}", exon_ranges.len()));
+        lines.push(format!(
+            "exon_length_mod3_counts: 0={} 1={} 2={}",
+            mod_counts[0], mod_counts[1], mod_counts[2]
+        ));
+        lines.push(format!("exon_length_mod3_segments: {}", parts.join(", ")));
+        if exon_ranges.len() == 1 {
+            let mod3 = Self::exon_length_mod3_for_range(exon_ranges[0].0, exon_ranges[0].1);
+            let hint = if mod3 == 0 {
+                "length is a multiple of 3; whole-exon omission is length-frame-neutral"
+            } else {
+                "whole-exon omission changes coding-frame length if the exon is coding"
+            };
+            lines.push(format!("exon_skip_frame_hint: {hint}"));
+        }
+        lines
+    }
+
     pub fn is_mcs_feature(feature: &Feature) -> bool {
         if Self::feature_has_qualifier_value(feature, "gentle_generated", "helper_mcs") {
             return true;
@@ -1236,7 +1312,7 @@ impl RenderDna {
             return Self::repeat_feature_detail_lines(feature);
         }
 
-        let mut lines = Vec::new();
+        let mut lines = Self::exon_length_frame_detail_lines(feature);
         let kind = feature.kind.to_string().to_ascii_uppercase();
         let keys = if Self::is_regulatory_feature(feature) {
             vec![
@@ -1513,6 +1589,22 @@ mod tests {
         assert_eq!(
             RenderDna::feature_color(&feature),
             Color32::from_rgb(14, 116, 144)
+        );
+    }
+
+    #[test]
+    fn exon_feature_details_include_length_mod3_frame_hint() {
+        let feature = make_feature("exon", &[("label", "exon 2")]);
+
+        assert_eq!(
+            RenderDna::feature_detail_lines(&feature),
+            vec![
+                "exon_count: 1",
+                "exon_length_mod3_counts: 0=0 1=1 2=0",
+                "exon_length_mod3_segments: 10bp->1",
+                "exon_skip_frame_hint: whole-exon omission changes coding-frame length if the exon is coding",
+                "label: exon 2",
+            ]
         );
     }
 

@@ -3948,6 +3948,9 @@ Status:
    - predicted exon->exon transition matrix is rendered in GUI and SVG, with
      frequency-coded support cells and exon `len%3` header cues (heuristic
      frame signal).
+   - ordinary linear sequence-map exon blocks now show the same exon
+     length-modulo-3 heuristic as a thin top stripe while retaining feature
+     fill colors.
    - CDS-aware exon flank phase coloring (`0/1/2`) is rendered in GUI and SVG
      from shared splicing payload data when transcript `cds_ranges_1based`
      qualifiers are present.

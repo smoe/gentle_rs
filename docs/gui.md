@@ -643,9 +643,14 @@ Feature tree grouping:
 - exon columns include support as `n/N (%)` (plus `const` for constitutive
   exons)
   - exon lane glyphs can show CDS flank phase coloring on the left/right exon
-    edges (`0/1/2`) when transcript `cds_ranges_1based` are available
+    edges (`0/1/2`) when transcript `cds_ranges_1based` are available; a left
+    phase of `0` means the exon starts at a codon boundary/new amino acid in
+    that transcript, while `1`/`2` mark split-codon entry
   - exon columns also expose `len%3` color cues (`0/1/2`) based on genomic
     exon length modulo 3 (heuristic frame cue)
+  - ordinary linear sequence-map exon blocks for `mRNA` / `transcript` /
+    `exon` / `CDS` features keep their normal feature color but gain a thin
+    top stripe using the same modulo palette: blue=`0`, amber=`1`, rose=`2`
   - transcript-vs-exon matrix cells are color-coded by exon support frequency
     (higher support => stronger color intensity)
   - an `Exon -> exon transition matrix` shows predicted transition support
