@@ -21132,15 +21132,7 @@ fn execute_candidates_analysis_command(
                 .cloned();
             let op_result = engine
                 .apply(Operation::CandidateSetOp {
-                    op: match op {
-                        CandidateSetOperator::Union => crate::engine::CandidateSetOperator::Union,
-                        CandidateSetOperator::Intersect => {
-                            crate::engine::CandidateSetOperator::Intersect
-                        }
-                        CandidateSetOperator::Subtract => {
-                            crate::engine::CandidateSetOperator::Subtract
-                        }
-                    },
+                    op: *op,
                     left_set: left_set.clone(),
                     right_set: right_set.clone(),
                     output_set: output_set.clone(),
@@ -31219,15 +31211,7 @@ fn execute_shell_command_with_options_inner(
                 .cloned();
             let op_result = engine
                 .apply(Operation::CandidateSetOp {
-                    op: match op {
-                        CandidateSetOperator::Union => crate::engine::CandidateSetOperator::Union,
-                        CandidateSetOperator::Intersect => {
-                            crate::engine::CandidateSetOperator::Intersect
-                        }
-                        CandidateSetOperator::Subtract => {
-                            crate::engine::CandidateSetOperator::Subtract
-                        }
-                    },
+                    op: *op,
                     left_set: left_set.clone(),
                     right_set: right_set.clone(),
                     output_set: output_set.clone(),

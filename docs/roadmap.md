@@ -153,8 +153,10 @@ Post-release work includes:
       field contracts into `gentle-protocol`:
       render mode, prepared-reference extraction policy enums, genome-track
       subscriptions, primer backend selection, qPCR/cDNA transcript-targeting
-      enums, restriction-cloning handoff mode, sequence anchors, and
-      prepared-cache cleanup request/mode
+      enums, restriction-cloning handoff mode, sequence anchors,
+      prepared-cache cleanup request/mode, protocol-cartoon identifiers,
+      primer-specificity policy, per-TF threshold overrides, and candidate
+      feature/objective/template-parameter vocabulary
     - the portable PCR/primer request/report structs now also live there so
       PCR, mutation-introduction, and primer/qPCR design flows share one
       stable adapter-facing schema layer
@@ -214,7 +216,9 @@ Post-release work includes:
   façade contracts from `crates/gentle-shell` while retaining typed
   `ShellCommand` parsing/execution until the remaining command field types are
   root-independent. `gentle-shell` now also owns the shell-only prepared-cache
-  scope vocabulary used by `cache inspect|clear` parsing.
+  scope vocabulary used by `cache inspect|clear` parsing and directly reuses
+  `gentle-protocol` for candidate set-operator parsing instead of duplicating
+  the engine operation enum.
 - Shared shell/CLI batch helpers now provide manifest-driven workflow
   expansion:
   - `batch plan` binds TSV/CSV rows into an existing workflow template and

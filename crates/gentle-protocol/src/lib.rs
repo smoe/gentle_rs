@@ -51,6 +51,131 @@ pub enum RenderSvgMode {
     Circular,
 }
 
+/// Stable protocol-cartoon identifiers exposed through engine operations.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum ProtocolCartoonKind {
+    #[serde(rename = "gibson.two_fragment")]
+    GibsonTwoFragment,
+    #[serde(rename = "gibson.single_insert_dual_junction")]
+    GibsonSingleInsertDualJunction,
+    #[serde(rename = "pcr.assay.pair")]
+    PcrAssayPair,
+    #[serde(rename = "pcr.assay.pair.no_product")]
+    PcrAssayPairNoProduct,
+    #[serde(rename = "pcr.assay.pair.with_tail")]
+    PcrAssayPairWithTail,
+    #[serde(rename = "pcr.oe.substitution")]
+    PcrOeSubstitution,
+    #[serde(rename = "pcr.assay.qpcr")]
+    PcrAssayQpcr,
+}
+
+impl ProtocolCartoonKind {
+    /// Canonical string identifier used in shell/CLI input and output rows.
+    pub fn id(&self) -> &'static str {
+        match self {
+            Self::GibsonTwoFragment => "gibson.two_fragment",
+            Self::GibsonSingleInsertDualJunction => "gibson.single_insert_dual_junction",
+            Self::PcrAssayPair => "pcr.assay.pair",
+            Self::PcrAssayPairNoProduct => "pcr.assay.pair.no_product",
+            Self::PcrAssayPairWithTail => "pcr.assay.pair.with_tail",
+            Self::PcrOeSubstitution => "pcr.oe.substitution",
+            Self::PcrAssayQpcr => "pcr.assay.qpcr",
+        }
+    }
+
+    /// Human-readable title for UI/help surfaces.
+    pub fn title(&self) -> &'static str {
+        match self {
+            Self::GibsonTwoFragment => "Gibson Assembly (two-fragment conceptual)",
+            Self::GibsonSingleInsertDualJunction => {
+                "Gibson Assembly (single-insert dual-junction mechanism)"
+            }
+            Self::PcrAssayPair => "PCR Assay (pair-primer baseline)",
+            Self::PcrAssayPairNoProduct => "PCR Assay (report-only no-product)",
+            Self::PcrAssayPairWithTail => "PCR Assay (insertion-first tailed pair-PCR)",
+            Self::PcrOeSubstitution => "PCR Mutagenesis (overlap-extension substitution)",
+            Self::PcrAssayQpcr => "qPCR Assay (probe-bearing baseline)",
+        }
+    }
+
+    /// Short semantics summary used in list outputs.
+    pub fn summary(&self) -> &'static str {
+        match self {
+            Self::GibsonTwoFragment => {
+                "Event-sequence cartoon with continuation/sticky/blunt ends and strand-separated DNA glyphs"
+            }
+            Self::GibsonSingleInsertDualJunction => {
+                "Single-insert Gibson cartoon showing both destination-insert junctions explicitly"
+            }
+            Self::PcrAssayPair => {
+                "Mechanism-first pair-PCR strip: template context, ROI, assay setup, amplification, and amplicon/report outcome"
+            }
+            Self::PcrAssayPairNoProduct => {
+                "Pair-PCR report-only strip showing a selected ROI and failed/no-product assay outcome without literal primer glyphs"
+            }
+            Self::PcrAssayPairWithTail => {
+                "Insertion-first pair-PCR strip with anchored 5' extensions and carried-in product tails"
+            }
+            Self::PcrOeSubstitution => {
+                "Six-step overlap-extension substitution strip with primer set a-f and strand-specific anneal/fill states"
+            }
+            Self::PcrAssayQpcr => {
+                "Mechanism-first qPCR strip: template context, ROI, probe-bearing assay setup, amplification, and quantitative readout"
+            }
+        }
+    }
+
+    /// Parse supported shell/CLI aliases into the canonical enum.
+    pub fn parse_id(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "gibson.two_fragment" | "gibson.two-fragment" | "gibson_two_fragment" | "gibson" => {
+                Some(Self::GibsonTwoFragment)
+            }
+            "gibson.single_insert_dual_junction"
+            | "gibson.single-insert-dual-junction"
+            | "gibson_single_insert_dual_junction"
+            | "gibson.single_insert"
+            | "gibson.destination_first_single_insert" => {
+                Some(Self::GibsonSingleInsertDualJunction)
+            }
+            "pcr.assay.pair" | "pcr.assay" | "pcr.pair" | "pcr_pair" | "pcr" => {
+                Some(Self::PcrAssayPair)
+            }
+            "pcr.assay.pair.no_product"
+            | "pcr.assay.pair.report_only"
+            | "pcr.assay.report_only"
+            | "pcr_pair_no_product" => Some(Self::PcrAssayPairNoProduct),
+            "pcr.assay.pair.with_tail"
+            | "pcr.assay.pair.tailed"
+            | "pcr.assay.tailed"
+            | "pcr.tailed"
+            | "tailed_pcr" => Some(Self::PcrAssayPairWithTail),
+            "pcr.oe.substitution"
+            | "pcr.oe"
+            | "oe_pcr"
+            | "oe-pcr"
+            | "overlap_extension_pcr"
+            | "overlap-extension-pcr" => Some(Self::PcrOeSubstitution),
+            "pcr.assay.qpcr" | "pcr.qpcr" | "qpcr" | "q-pcr" => Some(Self::PcrAssayQpcr),
+            _ => None,
+        }
+    }
+
+    /// Deterministic ordered catalog for list commands.
+    pub fn catalog() -> Vec<Self> {
+        vec![
+            Self::GibsonTwoFragment,
+            Self::GibsonSingleInsertDualJunction,
+            Self::PcrAssayPair,
+            Self::PcrAssayPairNoProduct,
+            Self::PcrAssayPairWithTail,
+            Self::PcrOeSubstitution,
+            Self::PcrAssayQpcr,
+        ]
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 /// Strand-contextual anchor extension side.
@@ -180,6 +305,66 @@ impl PrimerDesignBackend {
             Self::Auto => "auto",
             Self::Internal => "internal",
             Self::Primer3 => "primer3",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Whether primer specificity should merely be reported or enforced by a
+/// design operation.
+pub enum PrimerSpecificityCheckMode {
+    #[default]
+    None,
+    ReportOnly,
+    RequirePass,
+}
+
+impl PrimerSpecificityCheckMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::ReportOnly => "report_only",
+            Self::RequirePass => "require_pass",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+/// Local BLAST specificity policy shared by standalone confirmation and future
+/// design-time filtering.
+pub struct PrimerSpecificityPolicy {
+    pub specificity_check: PrimerSpecificityCheckMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specificity_target_genome_id: Option<String>,
+    pub max_target_amplicon_bp: usize,
+    pub min_primer_coverage_fraction: f64,
+    pub max_3prime_mismatches: usize,
+    pub three_prime_window_bp: usize,
+    pub min_total_mismatches_to_unintended_target: usize,
+    pub allow_same_gene_splice_variants: bool,
+    pub max_hits_per_primer: usize,
+    pub avoid_known_variants: bool,
+    pub avoid_rmsk_repeats: bool,
+    pub avoid_low_complexity: bool,
+}
+
+impl Default for PrimerSpecificityPolicy {
+    fn default() -> Self {
+        Self {
+            specificity_check: PrimerSpecificityCheckMode::ReportOnly,
+            specificity_target_genome_id: None,
+            max_target_amplicon_bp: 4_000,
+            min_primer_coverage_fraction: 0.80,
+            max_3prime_mismatches: 0,
+            three_prime_window_bp: 5,
+            min_total_mismatches_to_unintended_target: 2,
+            allow_same_gene_splice_variants: false,
+            max_hits_per_primer: 500,
+            avoid_known_variants: false,
+            avoid_rmsk_repeats: false,
+            avoid_low_complexity: false,
         }
     }
 }
@@ -357,11 +542,183 @@ pub enum SequenceAnchor {
     },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// Per-transcription-factor threshold override used by TFBS shell/operation
+/// contracts.
+pub struct TfThresholdOverride {
+    pub tf: String,
+    pub min_llr_bits: Option<f64>,
+    pub min_llr_quantile: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// How feature-based candidate queries turn matching annotations into geometry.
+///
+/// Use this when finding intervals around features or feature boundaries.
+pub enum CandidateFeatureGeometryMode {
+    #[default]
+    FeatureSpan,
+    FeatureParts,
+    FeatureBoundaries,
+}
+
+impl CandidateFeatureGeometryMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FeatureSpan => "feature_span",
+            Self::FeatureParts => "feature_parts",
+            Self::FeatureBoundaries => "feature_boundaries",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Which boundary of a matched feature is eligible when boundary mode is used.
+pub enum CandidateFeatureBoundaryMode {
+    #[default]
+    Any,
+    FivePrime,
+    ThreePrime,
+    Start,
+    End,
+}
+
+impl CandidateFeatureBoundaryMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Any => "any",
+            Self::FivePrime => "five_prime",
+            Self::ThreePrime => "three_prime",
+            Self::Start => "start",
+            Self::End => "end",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Strand relation required between a candidate query and matched feature.
+pub enum CandidateFeatureStrandRelation {
+    #[default]
+    Any,
+    Same,
+    Opposite,
+}
+
+impl CandidateFeatureStrandRelation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Any => "any",
+            Self::Same => "same",
+            Self::Opposite => "opposite",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Deterministic set algebra supported by candidate-set combination commands.
+pub enum CandidateSetOperator {
+    Union,
+    Intersect,
+    Subtract,
+}
+
+impl CandidateSetOperator {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "union" => Some(Self::Union),
+            "intersect" | "intersection" => Some(Self::Intersect),
+            "subtract" | "difference" => Some(Self::Subtract),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Union => "union",
+            Self::Intersect => "intersect",
+            Self::Subtract => "subtract",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateObjectiveDirection {
+    #[default]
+    Maximize,
+    Minimize,
+}
+
+impl CandidateObjectiveDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Maximize => "maximize",
+            Self::Minimize => "minimize",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// One objective dimension for Pareto-frontier ranking.
+pub struct CandidateObjectiveSpec {
+    pub metric: String,
+    #[serde(default)]
+    pub direction: CandidateObjectiveDirection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Weighted scalar objective term used by candidate objective scoring.
+pub struct CandidateWeightedObjectiveTerm {
+    pub metric: String,
+    pub weight: f64,
+    #[serde(default)]
+    pub direction: CandidateObjectiveDirection,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Stable tie-breaker used after objective scores compare equal.
+pub enum CandidateTieBreakPolicy {
+    #[default]
+    SeqStartEnd,
+    SeqEndStart,
+    LengthAscending,
+    LengthDescending,
+    SequenceLexicographic,
+}
+
+impl CandidateTieBreakPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SeqStartEnd => "seq_start_end",
+            Self::SeqEndStart => "seq_end_start",
+            Self::LengthAscending => "length_ascending",
+            Self::LengthDescending => "length_descending",
+            Self::SequenceLexicographic => "sequence_lexicographic",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One typed parameter exposed by a candidate macro template.
+pub struct CandidateMacroTemplateParam {
+    pub name: String,
+    pub default_value: Option<String>,
+    pub required: bool,
+}
+
 #[cfg(test)]
 mod shell_contract_extraction_tests {
     use super::{
+        CandidateFeatureGeometryMode, CandidateSetOperator, CandidateTieBreakPolicy,
         GenomeAnnotationScope, GenomeTrackSource, PreparedCacheCleanupMode,
-        QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode,
+        PrimerSpecificityCheckMode, ProtocolCartoonKind, QpcrTranscriptSpecificityEvidence,
+        QpcrTranscriptTargetingMode,
     };
 
     #[test]
@@ -379,6 +736,19 @@ mod shell_contract_extraction_tests {
             PreparedCacheCleanupMode::SelectedPreparedInstalls.label(),
             "selected_prepared_installs"
         );
+        assert_eq!(
+            PrimerSpecificityCheckMode::RequirePass.as_str(),
+            "require_pass"
+        );
+        assert_eq!(ProtocolCartoonKind::PcrAssayQpcr.id(), "pcr.assay.qpcr");
+        assert_eq!(
+            CandidateFeatureGeometryMode::FeatureBoundaries.as_str(),
+            "feature_boundaries"
+        );
+        assert_eq!(
+            CandidateTieBreakPolicy::LengthDescending.as_str(),
+            "length_descending"
+        );
     }
 
     #[test]
@@ -392,6 +762,27 @@ mod shell_contract_extraction_tests {
             "VCF"
         );
         assert_eq!(GenomeTrackSource::from_path("peaks.bed").label(), "BED");
+    }
+
+    #[test]
+    fn protocol_cartoon_kind_accepts_shell_aliases() {
+        assert_eq!(
+            ProtocolCartoonKind::parse_id("oe-pcr"),
+            Some(ProtocolCartoonKind::PcrOeSubstitution)
+        );
+        assert!(ProtocolCartoonKind::parse_id("unknown.protocol").is_none());
+    }
+
+    #[test]
+    fn candidate_set_operator_accepts_shell_aliases() {
+        assert_eq!(
+            CandidateSetOperator::parse("intersection"),
+            Some(CandidateSetOperator::Intersect)
+        );
+        assert_eq!(
+            CandidateSetOperator::parse("difference"),
+            Some(CandidateSetOperator::Subtract)
+        );
     }
 }
 

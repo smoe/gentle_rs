@@ -23,11 +23,14 @@ pub use gentle_protocol::{
     AttractSplicingEvidencePolicySummary, AttractSplicingEvidenceSettings,
     AttractSplicingEvidenceSummaryRow, AttractSplicingEvidenceView, CONSTRUCT_CANDIDATE_SCHEMA,
     CONSTRUCT_OBJECTIVE_SCHEMA, CONSTRUCT_REASONING_GRAPH_SCHEMA, CONSTRUCT_REASONING_STORE_SCHEMA,
-    Capabilities, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
-    ConstructCandidate, ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore,
-    ConstructRole, ContainerId, ContainerKind, CutRunAlignConfig, CutRunCatalogEntry,
-    CutRunCatalogListEntry, CutRunCoverageKind, CutRunDatasetListReport,
-    CutRunDatasetProjectionReport, CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
+    CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
+    CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
+    CandidateSetOperator, CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Capabilities,
+    CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, ConstructCandidate,
+    ConstructObjective, ConstructReasoningGraph, ConstructReasoningStore, ConstructRole,
+    ContainerId, ContainerKind, CutRunAlignConfig, CutRunCatalogEntry, CutRunCatalogListEntry,
+    CutRunCoverageKind, CutRunDatasetListReport, CutRunDatasetProjectionReport,
+    CutRunDatasetStatus, CutRunFragmentSpan, CutRunInputFormat,
     CutRunMotifAbsentOccupancyInterpretation, CutRunMotifAbsentSupportWindow,
     CutRunMotifContextHit, CutRunMotifContextScope, CutRunMotifContextSummaryRow,
     CutRunPreparedAssetManifest, CutRunPreparedAssetStatus, CutRunPreparedManifest,
@@ -47,10 +50,11 @@ pub use gentle_protocol::{
     GenomeTrackSource, GenomeTrackSubscription, HOST_PROFILE_CATALOG_SCHEMA,
     HelperConstructProfile, HostLifecycleRole, HostProfileCatalog, HostProfileRecord,
     HostRouteStep, PairwiseAlignmentMode, PreparedCacheCleanupMode, PreparedCacheCleanupRequest,
-    PrimerDesignBackend, ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
+    PrimerDesignBackend, PrimerSpecificityCheckMode, PrimerSpecificityPolicy,
+    ProteinResidueGenomicCoordinateBase, ProteinResidueGenomicCoordinateMatch,
     ProteinResidueGenomicCoordinateReport, ProteinToDnaHandoffCandidate,
     ProteinToDnaHandoffCoverage, ProteinToDnaHandoffRankingGoal, ProteinToDnaHandoffStrategy,
-    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode,
+    ProtocolCartoonKind, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode,
     RNA_READ_BATCH_MAP_REPORT_SCHEMA, RNA_READ_TRANSCRIPT_CATALOG_INDEX_SCHEMA, RenderSvgMode,
     RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadAlignmentBackend,
     RnaReadAlignmentDisplay, RnaReadAlignmentDotplotSvgExport, RnaReadAlignmentEffect,
@@ -81,9 +85,10 @@ pub use gentle_protocol::{
     SequencingPrimerProblemGuidanceRow, SequencingPrimerProblemKind, SequencingPrimerProposalRow,
     SequencingTraceChannelData, SequencingTraceChannelSummary, SequencingTraceFormat,
     SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary,
-    SharedAssetActivityStatus, SplicingScopePreset, TfbsProgress, TranscriptProteinDerivation,
-    TranscriptProteinDerivationMode, TranscriptProteinTranslationTableSource, TranslationSpeedMark,
-    TranslationSpeedProfile, TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
+    SharedAssetActivityStatus, SplicingScopePreset, TfThresholdOverride, TfbsProgress,
+    TranscriptProteinDerivation, TranscriptProteinDerivationMode,
+    TranscriptProteinTranslationTableSource, TranslationSpeedMark, TranslationSpeedProfile,
+    TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
     UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
     UniprotFeatureCodingDnaSegment,
@@ -96,7 +101,7 @@ use crate::genomes::BlastExternalBinaryPreflightReport;
 
 use super::{
     CLONING_MACRO_TEMPLATE_SCHEMA, OpId, Operation, PrepareGenomeProgress,
-    ProtocolCartoonTemplateBindings, RunId, SeqId, TfThresholdOverride,
+    ProtocolCartoonTemplateBindings, RunId, SeqId,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -3781,27 +3786,6 @@ pub struct PrimerDesignPairRecord {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
-/// Whether primer specificity should merely be reported or enforced by a
-/// design operation.
-pub enum PrimerSpecificityCheckMode {
-    #[default]
-    None,
-    ReportOnly,
-    RequirePass,
-}
-
-impl PrimerSpecificityCheckMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::ReportOnly => "report_only",
-            Self::RequirePass => "require_pass",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
 /// Explicit exon-junction placement preference for transcript-aware
 /// PCR/qPCR designs.
 pub enum PrimerExonJunctionPolicy {
@@ -3819,45 +3803,6 @@ pub enum PrimerIntronSeparationPolicy {
     #[default]
     NoPreference,
     MustSeparateByIntron,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-/// Local BLAST specificity policy shared by standalone confirmation and future
-/// design-time filtering.
-pub struct PrimerSpecificityPolicy {
-    pub specificity_check: PrimerSpecificityCheckMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub specificity_target_genome_id: Option<String>,
-    pub max_target_amplicon_bp: usize,
-    pub min_primer_coverage_fraction: f64,
-    pub max_3prime_mismatches: usize,
-    pub three_prime_window_bp: usize,
-    pub min_total_mismatches_to_unintended_target: usize,
-    pub allow_same_gene_splice_variants: bool,
-    pub max_hits_per_primer: usize,
-    pub avoid_known_variants: bool,
-    pub avoid_rmsk_repeats: bool,
-    pub avoid_low_complexity: bool,
-}
-
-impl Default for PrimerSpecificityPolicy {
-    fn default() -> Self {
-        Self {
-            specificity_check: PrimerSpecificityCheckMode::ReportOnly,
-            specificity_target_genome_id: None,
-            max_target_amplicon_bp: 4_000,
-            min_primer_coverage_fraction: 0.80,
-            max_3prime_mismatches: 0,
-            three_prime_window_bp: 5,
-            min_total_mismatches_to_unintended_target: 2,
-            allow_same_gene_splice_variants: false,
-            max_hits_per_primer: 500,
-            avoid_known_variants: false,
-            avoid_rmsk_repeats: false,
-            avoid_low_complexity: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -5870,15 +5815,6 @@ pub struct CandidateMacroTemplate {
     pub script: String,
     pub created_at_unix_ms: u128,
     pub updated_at_unix_ms: u128,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-/// One typed parameter exposed by a candidate macro template.
-pub struct CandidateMacroTemplateParam {
-    pub name: String,
-    pub default_value: Option<String>,
-    pub required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

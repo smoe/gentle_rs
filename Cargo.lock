@@ -2331,6 +2331,7 @@ dependencies = [
 name = "gentle-shell"
 version = "0.1.0-internal.6"
 dependencies = [
+ "gentle-protocol",
  "serde",
  "serde_json",
 ]
