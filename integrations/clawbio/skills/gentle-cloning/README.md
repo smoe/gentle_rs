@@ -616,7 +616,8 @@ Mode-specific fields:
 - `workflow`: `workflow` or `workflow_path`
 - `exon-skip-plan`: `seq_id`, `transcript_feature_id`, optional
   `skip_candidate_ids[]`, `skip_intervals_1based[]`,
-  `overlap_intervals_1based[]`, `feature_query`, and `plan_id`
+  `overlap_intervals_1based[]`, `length_mod3_values[]`,
+  `cds_phase_entry_kinds[]`, `feature_query`, and `plan_id`
 - `exon-skip-materialize`: `plan_id`, required `confirm=true`, optional
   `candidate_ids[]`, `output_prefix`, and `return_items[]`
   (`genbank`, `cdna_fasta`, `amino_acid_sequence`, `amino_acid_fasta`)

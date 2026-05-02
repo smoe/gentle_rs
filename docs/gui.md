@@ -643,9 +643,10 @@ Feature tree grouping:
 - exon columns include support as `n/N (%)` (plus `const` for constitutive
   exons)
   - exon lane glyphs can show CDS flank phase coloring on the left/right exon
-    edges (`0/1/2`) when transcript `cds_ranges_1based` are available; a left
-    phase of `0` means the exon starts at a codon boundary/new amino acid in
-    that transcript, while `1`/`2` mark split-codon entry
+    edges (`0/1/2`) when transcript `cds_ranges_1based` are available; the
+    transcript-entry phase (`left` on forward transcripts, `right` on reverse
+    transcripts) says whether the exon starts at a codon boundary/new amino
+    acid (`0`) or enters a split codon (`1`/`2`)
   - exon columns also expose `len%3` color cues (`0/1/2`) based on genomic
     exon length modulo 3 (heuristic frame cue)
   - ordinary linear sequence-map exon blocks for `mRNA` / `transcript` /
@@ -657,6 +658,9 @@ Feature tree grouping:
   - the exon-skip planning checkbox tooltips report each candidate's `len%3`
     value and CDS entry phase; quick-add buttons can select candidates by
     `len%3=0/1/2`, codon-boundary starts, or split-codon starts
+  - saved exon-skip plans carry those same frame/phase attributes in candidate
+    rows, so GUI, CLI, MCP, and future adapters can inspect the same
+    engine-owned facts
   - transcript-vs-exon matrix cells are color-coded by exon support frequency
     (higher support => stronger color intensity)
   - an `Exon -> exon transition matrix` shows predicted transition support

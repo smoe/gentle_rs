@@ -1807,6 +1807,12 @@ pub enum ExonSkipSelectionCriterion {
     FeatureOverlap {
         query: SequenceFeatureQuery,
     },
+    LengthMod3 {
+        values: Vec<u8>,
+    },
+    CdsPhaseEntryKind {
+        kinds: Vec<String>,
+    },
     ReasoningCandidateIds {
         source_id: String,
         candidate_ids: Vec<String>,
@@ -1822,16 +1828,27 @@ pub struct ExonSkipCandidateExon {
     pub end_1based: usize,
     pub length_bp: usize,
     pub length_mod3: usize,
+    pub frame_neutral_length: bool,
     pub support_transcript_count: usize,
     pub constitutive: bool,
     pub present_in_base_transcript: bool,
     pub cds_overlap: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub left_cds_phase: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub right_cds_phase: Option<u8>,
+    #[serde(default = "default_exon_skip_phase_entry_kind")]
+    pub cds_phase_entry_kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cds_phase_warning: Option<String>,
     pub selected: bool,
     pub selection_sources: Vec<String>,
     pub matched_feature_ids: Vec<usize>,
     pub rationale: Vec<String>,
+}
+
+fn default_exon_skip_phase_entry_kind() -> String {
+    "unavailable".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
