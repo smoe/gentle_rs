@@ -15841,6 +15841,7 @@ Error: `{err}`"
                 promoter_reporter_candidates: None,
                 uniprot_projection_audit: None,
                 uniprot_projection_audit_parity: None,
+                lab_assistant_instructions: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,
@@ -53891,6 +53892,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 promoter_reporter_candidates: None,
                 uniprot_projection_audit: None,
                 uniprot_projection_audit_parity: None,
+                lab_assistant_instructions: None,
             }),
         })
         .expect("send prepare done");
@@ -53995,6 +53997,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 promoter_reporter_candidates: None,
                 uniprot_projection_audit: None,
                 uniprot_projection_audit_parity: None,
+                lab_assistant_instructions: None,
             }),
         })
         .expect("send track import done");
@@ -54084,6 +54087,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 promoter_reporter_candidates: None,
                 uniprot_projection_audit: None,
                 uniprot_projection_audit_parity: None,
+                lab_assistant_instructions: None,
             }),
         })
         .expect("send track import done");
@@ -54178,6 +54182,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
+            lab_assistant_instructions: None,
         });
         assert!(status.contains("annotation: requested=full effective=core"));
         assert!(status.contains("annotation kinds: genes=12 transcripts=26 exons=420 cds=22"));

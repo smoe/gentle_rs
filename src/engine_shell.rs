@@ -833,6 +833,12 @@ pub enum ShellCommand {
         output: String,
         run_id: Option<String>,
     },
+    ExportLabInstructions {
+        output: String,
+        run_id: Option<String>,
+        title: Option<String>,
+        audience: Option<String>,
+    },
     ImportPool {
         input: String,
         prefix: String,
@@ -5991,6 +5997,23 @@ impl ShellCommand {
                     .filter(|value| !value.is_empty())
                     .unwrap_or("all");
                 format!("export process run bundle to '{output}' (run_id={run_id})")
+            }
+            Self::ExportLabInstructions {
+                output,
+                run_id,
+                title,
+                audience,
+            } => {
+                let run_id = run_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("all");
+                format!(
+                    "export lab assistant instructions to '{output}' (run_id={run_id}, title={}, audience={})",
+                    title.as_deref().unwrap_or("-"),
+                    audience.as_deref().unwrap_or("-")
+                )
             }
             Self::ImportPool { input, prefix } => {
                 format!("import pool from '{input}' with prefix '{prefix}'")
@@ -18056,6 +18079,64 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::ExportRunBundle { output, run_id })
         }
+        "export-lab-instructions" | "export-lab-assistant-instructions" => {
+            if tokens.len() < 2 {
+                return Err(
+                    "export-lab-instructions requires: OUTPUT.md [--run-id RUN_ID] [--title TITLE] [--audience TEXT]"
+                        .to_string(),
+                );
+            }
+            let output = tokens[1].clone();
+            let mut run_id: Option<String> = None;
+            let mut title: Option<String> = None;
+            let mut audience: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--run-id" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --run-id".to_string());
+                        }
+                        let value = tokens[idx + 1].trim();
+                        if !value.is_empty() {
+                            run_id = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    "--title" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --title".to_string());
+                        }
+                        let value = tokens[idx + 1].trim();
+                        if !value.is_empty() {
+                            title = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    "--audience" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --audience".to_string());
+                        }
+                        let value = tokens[idx + 1].trim();
+                        if !value.is_empty() {
+                            audience = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown argument '{other}' for export-lab-instructions"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ExportLabInstructions {
+                output,
+                run_id,
+                title,
+                audience,
+            })
+        }
         "import-pool" => {
             if tokens.len() > 3 {
                 return Err(token_error(cmd));
@@ -20097,6 +20178,66 @@ fn cdna_assay_preferred_artifacts(
     artifacts
 }
 
+fn pool_gel_layout_text_payload(
+    layout: &crate::pool_gel::PoolGelLayout,
+) -> (Vec<serde_json::Value>, Vec<String>) {
+    let mut rows = vec![];
+    let mut lines = vec![];
+    for lane in &layout.lanes {
+        let lane_kind = if lane.is_ladder { "Ladder" } else { "Sample" };
+        lines.push(format!(
+            "{lane_kind} gel lane '{}' has {} band(s).",
+            lane.name,
+            lane.bands.len()
+        ));
+        for (band_idx, band) in lane.bands.iter().enumerate() {
+            let min_bp = band.min_bp.min(band.bp);
+            let max_bp = band.min_bp.max(band.bp);
+            rows.push(json!({
+                "lane_name": lane.name.clone(),
+                "lane_kind": lane_kind.to_ascii_lowercase(),
+                "role_label": lane.role_label.clone(),
+                "band_index": band_idx.saturating_add(1),
+                "apparent_bp": band.apparent_bp,
+                "min_bp": min_bp,
+                "max_bp": max_bp,
+                "product_count": band.count,
+                "topology_label": band.topology_label.clone(),
+                "labels": band.labels.clone(),
+            }));
+            let labels = if band.labels.is_empty() {
+                "unlabeled molecule(s)".to_string()
+            } else {
+                band.labels.join(", ")
+            };
+            let actual = if min_bp == max_bp {
+                format!("{min_bp} bp")
+            } else {
+                format!("{min_bp}..{max_bp} bp")
+            };
+            if band.count > 1 {
+                lines.push(format!(
+                    "Band {}: apparent {} bp, merged {} molecule(s), actual {}: {}.",
+                    band_idx.saturating_add(1),
+                    band.apparent_bp,
+                    band.count,
+                    actual,
+                    labels
+                ));
+            } else {
+                lines.push(format!(
+                    "Band {}: apparent {} bp, actual {}: {}.",
+                    band_idx.saturating_add(1),
+                    band.apparent_bp,
+                    actual,
+                    labels
+                ));
+            }
+        }
+    }
+    (rows, lines)
+}
+
 #[inline(never)]
 fn execute_help_command(
     _engine: &mut GentleEngine,
@@ -21440,21 +21581,39 @@ fn execute_pool_gel_and_ladder_command(
             container_ids,
             arrangement_id,
             conditions,
-        } => Ok(ShellRunResult {
-            state_changed: false,
-            output: json!({
-                "result": engine
-                    .apply(Operation::RenderPoolGelSvg {
-                        inputs: inputs.clone(),
-                        path: output.clone(),
-                        ladders: ladders.clone(),
-                        container_ids: container_ids.clone(),
-                        arrangement_id: arrangement_id.clone(),
-                        conditions: Some(conditions.clone()),
-                    })
-                    .map_err(|e| e.to_string())?
-            }),
-        }),
+        } => {
+            let layout = engine
+                .build_serial_gel_layout_for_render(
+                    inputs,
+                    container_ids.as_deref(),
+                    arrangement_id.as_deref(),
+                    ladders.as_deref(),
+                    Some(conditions),
+                )
+                .map_err(|e| e.to_string())?;
+            let (gel_band_rows, gel_summary_lines) = pool_gel_layout_text_payload(&layout);
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": engine
+                        .apply(Operation::RenderPoolGelSvg {
+                            inputs: inputs.clone(),
+                            path: output.clone(),
+                            ladders: ladders.clone(),
+                            container_ids: container_ids.clone(),
+                            arrangement_id: arrangement_id.clone(),
+                            conditions: Some(conditions.clone()),
+                        })
+                        .map_err(|e| e.to_string())?,
+                    "gel_band_rows": gel_band_rows,
+                    "gel_summary_lines": gel_summary_lines,
+                    "lane_count": layout.lanes.len(),
+                    "sample_lane_count": layout.sample_count,
+                    "pool_member_count": layout.pool_member_count,
+                    "selected_ladders": layout.selected_ladders,
+                }),
+            })
+        }
         ShellCommand::LaddersList {
             molecule,
             name_filter,
@@ -21932,6 +22091,25 @@ fn execute_export_import_and_resource_command(
                 .apply(Operation::ExportProcessRunBundle {
                     path: output.clone(),
                     run_id: run_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ExportLabInstructions {
+            output,
+            run_id,
+            title,
+            audience,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportLabAssistantInstructions {
+                    path: output.clone(),
+                    run_id: run_id.clone(),
+                    title: title.clone(),
+                    audience: audience.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             Ok(ShellRunResult {
@@ -30108,6 +30286,7 @@ pub fn execute_shell_command_with_options(
         command,
         ShellCommand::ExportPool { .. }
             | ShellCommand::ExportRunBundle { .. }
+            | ShellCommand::ExportLabInstructions { .. }
             | ShellCommand::ImportPool { .. }
             | ShellCommand::ProteasesList { .. }
             | ShellCommand::ProteasesShow { .. }
@@ -30712,6 +30891,7 @@ fn execute_shell_command_with_options_inner(
         }
         ShellCommand::ExportPool { .. }
         | ShellCommand::ExportRunBundle { .. }
+        | ShellCommand::ExportLabInstructions { .. }
         | ShellCommand::ImportPool { .. }
         | ShellCommand::ProteasesList { .. }
         | ShellCommand::ProteasesShow { .. }

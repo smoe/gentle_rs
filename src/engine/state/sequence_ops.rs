@@ -1359,6 +1359,7 @@ impl GentleEngine {
             | Operation::ExportRnaLadders { path, .. }
             | Operation::ExportPool { path, .. }
             | Operation::ExportProcessRunBundle { path, .. }
+            | Operation::ExportLabAssistantInstructions { path, .. }
             | Operation::ExportGuideOligos { path, .. }
             | Operation::ExportGuideProtocolText { path, .. }
             | Operation::ExportPrimerDesignReport { path, .. }
@@ -2066,6 +2067,752 @@ impl GentleEngine {
             message: format!("Could not write run bundle file '{path}': {e}"),
         })?;
         Ok(bundle)
+    }
+
+    pub(super) fn export_lab_assistant_instructions_file(
+        &self,
+        path: &str,
+        run_id_filter: Option<&str>,
+        title: Option<&str>,
+        audience: Option<&str>,
+    ) -> Result<LabAssistantInstructionsExport, EngineError> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ExportLabAssistantInstructions requires non-empty path".to_string(),
+            });
+        }
+        let normalized_run_id = run_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let selected_records: Vec<&OperationRecord> = self
+            .journal
+            .iter()
+            .filter(|record| {
+                normalized_run_id
+                    .map(|run_id| record.run_id == run_id)
+                    .unwrap_or(true)
+            })
+            .collect();
+        if normalized_run_id.is_some() && selected_records.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No operation records found for run_id '{}'",
+                    normalized_run_id.unwrap_or_default()
+                ),
+            });
+        }
+
+        let op_ids = selected_records
+            .iter()
+            .map(|record| record.result.op_id.clone())
+            .collect::<BTreeSet<_>>();
+        let title = title
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| Self::infer_lab_assistant_title(&selected_records))
+            .unwrap_or_else(|| "GENtle cloning handoff".to_string());
+        let audience = audience
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("Lab assistant")
+            .to_string();
+
+        let material_rows = self.lab_assistant_material_rows(&selected_records, &op_ids);
+        let mut warning_lines = vec![];
+        if selected_records.is_empty() {
+            warning_lines.push(
+                "No recorded operations were available; this export is a general handoff scaffold."
+                    .to_string(),
+            );
+        }
+        let step_sections = Self::lab_assistant_instruction_sections(&selected_records);
+        let no_cloning_specific_steps = step_sections
+            .iter()
+            .find(|section| section.heading == "Design-derived bench sequence")
+            .is_some_and(|section| {
+                section
+                    .steps
+                    .iter()
+                    .any(|step| step.contains("No cloning-specific operations"))
+            });
+        if no_cloning_specific_steps {
+            warning_lines.push(
+                "No cloning-specific operation was recognized in the selected run; review the run bundle or project history before bench work."
+                    .to_string(),
+            );
+        }
+
+        let checkpoint_lines = vec![
+            "Confirm every physical tube label matches the sequence/container IDs listed below."
+                .to_string(),
+            "Verify expected product lengths against the GENtle output and any gel/band summaries before proceeding."
+                .to_string(),
+            "If sequencing, restriction digest, or colony PCR confirmation is planned, keep sample IDs synchronized with this handoff."
+                .to_string(),
+        ];
+        let safety_lines = vec![
+            "Use institution-approved SOPs, kit manuals, and supervisor-approved conditions for all wet-lab execution."
+                .to_string(),
+            "GENtle exports design-derived intent and checkpoints; it does not replace local biosafety, chemical safety, or strain/vector approval."
+                .to_string(),
+            "Do not proceed when material labels, expected lengths, antibiotic/host context, or approval status are ambiguous."
+                .to_string(),
+        ];
+        let record_keeping_lines = vec![
+            "Record operator, date, reagent lot numbers, template/vector/insert tube IDs, and plate/tube coordinates."
+                .to_string(),
+            "Attach photos or instrument exports for gels, plates, colony PCR, digest checks, and sequencing chromatograms."
+                .to_string(),
+            "Store deviations from this handoff together with the GENtle project state or run bundle."
+                .to_string(),
+        ];
+        let summary_lines = vec![
+            format!(
+                "Selected {} operation record(s){}.",
+                selected_records.len(),
+                normalized_run_id
+                    .map(|run_id| format!(" for run_id `{run_id}`"))
+                    .unwrap_or_default()
+            ),
+            format!(
+                "Prepared {} material row(s) and {} instruction section(s).",
+                material_rows.len(),
+                step_sections.len()
+            ),
+        ];
+
+        let export = LabAssistantInstructionsExport {
+            schema: LAB_ASSISTANT_INSTRUCTIONS_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            title,
+            audience,
+            output_path: path.to_string(),
+            run_id_filter: normalized_run_id.map(str::to_string),
+            selected_record_count: selected_records.len(),
+            material_rows,
+            step_sections,
+            checkpoint_lines,
+            safety_lines,
+            record_keeping_lines,
+            warning_lines,
+            summary_lines,
+        };
+
+        let parent = Path::new(path)
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(parent).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create parent directory for lab assistant instructions '{path}': {e}"
+            ),
+        })?;
+        let markdown = Self::render_lab_assistant_instructions_markdown(&export);
+        std::fs::write(path, markdown).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write lab assistant instructions file '{path}': {e}"),
+        })?;
+        Ok(export)
+    }
+
+    fn infer_lab_assistant_title(records: &[&OperationRecord]) -> Option<String> {
+        records.iter().find_map(|record| match &record.op {
+            Operation::ApplyGibsonAssemblyPlan { plan_json } => {
+                let plan: crate::gibson_planning::GibsonAssemblyPlan =
+                    serde_json::from_str(plan_json).ok()?;
+                let title = plan.title.trim();
+                (!title.is_empty()).then(|| format!("Lab handoff: {title}"))
+            }
+            Operation::PrepareRestrictionCloningPcrHandoff { .. } => {
+                Some("Lab handoff: restriction-cloning PCR".to_string())
+            }
+            Operation::Pcr { .. }
+            | Operation::PcrAdvanced { .. }
+            | Operation::PcrMutagenesis { .. } => {
+                Some("Lab handoff: PCR product preparation".to_string())
+            }
+            _ => None,
+        })
+    }
+
+    fn lab_assistant_material_rows(
+        &self,
+        records: &[&OperationRecord],
+        op_ids: &BTreeSet<String>,
+    ) -> Vec<LabAssistantMaterialRow> {
+        let mut referenced_sequence_ids = BTreeSet::new();
+        let mut created_sequence_ids = BTreeSet::new();
+        let mut referenced_container_ids = BTreeSet::new();
+        let mut referenced_arrangement_ids = BTreeSet::new();
+        for (index, record) in records.iter().enumerate() {
+            let summary = Self::summarize_run_bundle_operation_inputs(
+                &record.op,
+                &record.result.op_id,
+                &record.run_id,
+                index + 1,
+            );
+            referenced_sequence_ids.extend(summary.sequence_ids);
+            referenced_container_ids.extend(summary.container_ids);
+            referenced_arrangement_ids.extend(summary.arrangement_ids);
+            created_sequence_ids.extend(record.result.created_seq_ids.iter().cloned());
+        }
+
+        let root_sequence_ids = referenced_sequence_ids
+            .difference(&created_sequence_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut rows = vec![];
+        for seq_id in root_sequence_ids {
+            if let Some(row) = self.lab_assistant_sequence_material_row(&seq_id, "input_sequence") {
+                rows.push(row);
+            }
+        }
+        for seq_id in created_sequence_ids {
+            if let Some(row) = self.lab_assistant_sequence_material_row(&seq_id, "designed_output")
+            {
+                rows.push(row);
+            }
+        }
+
+        let created_container_ids =
+            self.state
+                .container_state
+                .containers
+                .iter()
+                .filter_map(|(container_id, container)| {
+                    container
+                        .created_by_op
+                        .as_deref()
+                        .filter(|op_id| op_ids.contains(*op_id))
+                        .map(|_| container_id.clone())
+                });
+        referenced_container_ids.extend(created_container_ids);
+        for container_id in referenced_container_ids {
+            let Some(container) = self.state.container_state.containers.get(&container_id) else {
+                continue;
+            };
+            rows.push(LabAssistantMaterialRow {
+                material_id: container_id.clone(),
+                display_name: container
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| container_id.clone()),
+                kind: format!("container_{:?}", container.kind).to_ascii_lowercase(),
+                source: "container_state".to_string(),
+                length_bp: None,
+                topology: None,
+                members: container.members.clone(),
+                notes: vec![format!(
+                    "Declared contents are {}.",
+                    if container.declared_contents_exclusive {
+                        "exclusive"
+                    } else {
+                        "not exclusive"
+                    }
+                )],
+            });
+        }
+
+        let created_arrangement_ids = self.state.container_state.arrangements.iter().filter_map(
+            |(arrangement_id, arrangement)| {
+                arrangement
+                    .created_by_op
+                    .as_deref()
+                    .filter(|op_id| op_ids.contains(*op_id))
+                    .map(|_| arrangement_id.clone())
+            },
+        );
+        referenced_arrangement_ids.extend(created_arrangement_ids);
+        for arrangement_id in referenced_arrangement_ids {
+            let Some(arrangement) = self.state.container_state.arrangements.get(&arrangement_id)
+            else {
+                continue;
+            };
+            rows.push(LabAssistantMaterialRow {
+                material_id: arrangement_id.clone(),
+                display_name: arrangement
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| arrangement_id.clone()),
+                kind: "arrangement".to_string(),
+                source: "container_state".to_string(),
+                length_bp: None,
+                topology: Some(format!("{:?}", arrangement.mode).to_ascii_lowercase()),
+                members: arrangement.lane_container_ids.clone(),
+                notes: arrangement
+                    .ladders
+                    .iter()
+                    .map(|ladder| format!("Gel ladder: {ladder}"))
+                    .collect(),
+            });
+        }
+
+        rows.sort_by(|left, right| {
+            left.kind
+                .cmp(&right.kind)
+                .then(left.material_id.cmp(&right.material_id))
+        });
+        rows
+    }
+
+    fn lab_assistant_sequence_material_row(
+        &self,
+        seq_id: &str,
+        source: &str,
+    ) -> Option<LabAssistantMaterialRow> {
+        let dna = self.state.sequences.get(seq_id)?;
+        Some(LabAssistantMaterialRow {
+            material_id: seq_id.to_string(),
+            display_name: dna.name().clone().unwrap_or_else(|| seq_id.to_string()),
+            kind: "sequence".to_string(),
+            source: source.to_string(),
+            length_bp: Some(dna.len()),
+            topology: Some(if dna.is_circular() {
+                "circular".to_string()
+            } else {
+                "linear".to_string()
+            }),
+            members: vec![],
+            notes: vec![],
+        })
+    }
+
+    fn lab_assistant_instruction_sections(
+        records: &[&OperationRecord],
+    ) -> Vec<LabAssistantInstructionSection> {
+        let mut prepare_steps = vec![
+            "Read this handoff completely before touching samples; resolve any unclear material IDs with the designing scientist."
+                .to_string(),
+            "Gather the listed DNA samples, primers/oligos, vectors, enzymes/kits, competent cells, media, antibiotics, and confirmation reagents required by the local SOP."
+                .to_string(),
+            "Create tube/plate labels that exactly match the material IDs and planned output IDs.".to_string(),
+        ];
+        if records.is_empty() {
+            prepare_steps.push(
+                "No recorded design operations were selected; use this export only as a checklist scaffold."
+                    .to_string(),
+            );
+        }
+
+        let mut bench_steps = vec![];
+        for record in records {
+            bench_steps.extend(Self::lab_assistant_steps_for_record(record));
+        }
+        if bench_steps.is_empty() {
+            bench_steps.push(
+                "No cloning-specific operations were recognized in the selected run; ask the designing scientist for the intended bench route before proceeding."
+                    .to_string(),
+            );
+        }
+
+        vec![
+            LabAssistantInstructionSection {
+                heading: "Before starting".to_string(),
+                steps: prepare_steps,
+            },
+            LabAssistantInstructionSection {
+                heading: "Design-derived bench sequence".to_string(),
+                steps: bench_steps,
+            },
+            LabAssistantInstructionSection {
+                heading: "After the bench work".to_string(),
+                steps: vec![
+                    "Compare observed bands, colonies, digests, or sequencing reads with the expected GENtle outputs before declaring success."
+                        .to_string(),
+                    "Keep unsuccessful or ambiguous outcomes; they are useful for redesign and troubleshooting."
+                        .to_string(),
+                ],
+            },
+        ]
+    }
+
+    fn lab_assistant_steps_for_record(record: &OperationRecord) -> Vec<String> {
+        match &record.op {
+            Operation::LoadFile { path, as_id } => vec![format!(
+                "Use design input `{}` from `{path}`.",
+                as_id.as_deref().unwrap_or("derived sequence ID")
+            )],
+            Operation::Digest {
+                input,
+                enzymes,
+                output_prefix,
+            } => vec![format!(
+                "Digest `{input}` with {} and keep fragments under prefix `{}`.",
+                Self::lab_join_or_dash(enzymes),
+                output_prefix.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::DigestContainer {
+                container_id,
+                enzymes,
+                output_prefix,
+            } => vec![format!(
+                "Digest all contents of container `{container_id}` with {} and keep products under prefix `{}`.",
+                Self::lab_join_or_dash(enzymes),
+                output_prefix.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::Pcr {
+                template,
+                forward_primer,
+                reverse_primer,
+                output_id,
+                ..
+            } => vec![format!(
+                "Run PCR from template `{template}` with forward primer `{}` and reverse primer `{}`; expected product ID: `{}`.",
+                Self::lab_oligo_display(forward_primer),
+                Self::lab_oligo_display(reverse_primer),
+                Self::lab_expected_output(output_id.as_deref(), &record.result.created_seq_ids)
+            )],
+            Operation::PcrAdvanced {
+                template,
+                forward_primer,
+                reverse_primer,
+                output_id,
+                ..
+            } => vec![format!(
+                "Run constrained PCR from template `{template}` with forward primer `{}` and reverse primer `{}`; expected product ID: `{}`.",
+                Self::lab_oligo_display(&forward_primer.sequence),
+                Self::lab_oligo_display(&reverse_primer.sequence),
+                Self::lab_expected_output(output_id.as_deref(), &record.result.created_seq_ids)
+            )],
+            Operation::PcrMutagenesis {
+                template,
+                forward_primer,
+                reverse_primer,
+                mutations,
+                output_id,
+                ..
+            } => vec![format!(
+                "Run mutagenic PCR from template `{template}` with {} requested edit(s), forward primer `{}`, reverse primer `{}`, and expected product ID `{}`.",
+                mutations.len(),
+                Self::lab_oligo_display(&forward_primer.sequence),
+                Self::lab_oligo_display(&reverse_primer.sequence),
+                Self::lab_expected_output(output_id.as_deref(), &record.result.created_seq_ids)
+            )],
+            Operation::DesignPrimerPairs {
+                template,
+                report_id,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                ..
+            } => vec![format!(
+                "Use primer-design report `{}` for template `{template}`; expected amplicon window: {min_amplicon_bp}..{max_amplicon_bp} bp. Order or pick primers only after review.",
+                report_id.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::PrepareRestrictionCloningPcrHandoff {
+                template,
+                primer_report_id,
+                pair_index,
+                destination_vector_seq_id,
+                forward_enzyme,
+                reverse_enzyme,
+                ..
+            } => vec![format!(
+                "Prepare restriction-cloning PCR from template `{template}` using primer report `{primer_report_id}` pair {pair_index}; destination vector `{destination_vector_seq_id}`; enzyme setup: {}{}.",
+                forward_enzyme,
+                reverse_enzyme
+                    .as_deref()
+                    .map(|enzyme| format!(" / {enzyme}"))
+                    .unwrap_or_default()
+            )],
+            Operation::ApplyGibsonAssemblyPlan { plan_json } => {
+                Self::lab_steps_for_gibson_plan(plan_json, &record.result.created_seq_ids)
+            }
+            Operation::Ligation {
+                inputs,
+                circularize_if_possible,
+                output_id,
+                protocol,
+                ..
+            } => vec![format!(
+                "Ligate {} using {:?} ligation{}; expected product ID `{}`.",
+                Self::lab_join_or_dash(inputs),
+                protocol,
+                if *circularize_if_possible {
+                    " with circularization allowed"
+                } else {
+                    ""
+                },
+                Self::lab_expected_output(output_id.as_deref(), &record.result.created_seq_ids)
+            )],
+            Operation::LigationContainer {
+                container_id,
+                circularize_if_possible,
+                output_id,
+                protocol,
+                ..
+            } => vec![format!(
+                "Ligate products in container `{container_id}` using {:?} ligation{}; expected product ID `{}`.",
+                protocol,
+                if *circularize_if_possible {
+                    " with circularization allowed"
+                } else {
+                    ""
+                },
+                Self::lab_expected_output(output_id.as_deref(), &record.result.created_seq_ids)
+            )],
+            Operation::MergeContainers {
+                inputs,
+                output_prefix,
+            } => vec![format!(
+                "Pool sequence products {} into a shared container using output prefix `{}`.",
+                Self::lab_join_or_dash(inputs),
+                output_prefix.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::MergeContainersById {
+                container_ids,
+                output_prefix,
+            } => vec![format!(
+                "Pool containers {} using output prefix `{}`.",
+                Self::lab_join_or_dash(container_ids),
+                output_prefix.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::CreateArrangementSerial {
+                container_ids,
+                arrangement_id,
+                ..
+            } => vec![format!(
+                "Arrange containers {} in the listed lane/order sequence; arrangement ID `{}`.",
+                Self::lab_join_or_dash(container_ids),
+                arrangement_id.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::RenderPoolGelSvg {
+                inputs,
+                container_ids,
+                arrangement_id,
+                ..
+            } => vec![format!(
+                "Use the rendered gel plan to verify expected band positions for inputs `{}`{}{}.",
+                Self::lab_join_or_dash(inputs),
+                container_ids
+                    .as_ref()
+                    .map(|ids| format!(", containers `{}`", Self::lab_join_or_dash(ids)))
+                    .unwrap_or_default(),
+                arrangement_id
+                    .as_deref()
+                    .map(|id| format!(", arrangement `{id}`"))
+                    .unwrap_or_default()
+            )],
+            Operation::CreateRackFromArrangement {
+                arrangement_id,
+                rack_id,
+                ..
+            } => vec![format!(
+                "Prepare the physical rack/plate layout from arrangement `{arrangement_id}`; rack ID `{}`.",
+                rack_id.as_deref().unwrap_or("GENtle-generated")
+            )],
+            Operation::ExportRackLabelsSvg {
+                rack_id,
+                arrangement_id,
+                ..
+            } => vec![format!(
+                "Print or copy rack labels for rack `{rack_id}`{} and apply them before sample transfer.",
+                arrangement_id
+                    .as_deref()
+                    .map(|id| format!(" / arrangement `{id}`"))
+                    .unwrap_or_default()
+            )],
+            Operation::SaveFile { seq_id, path, .. } => vec![format!(
+                "Use exported sequence file `{path}` for designed sequence `{seq_id}` as the digital reference."
+            )],
+            _ => vec![],
+        }
+    }
+
+    fn lab_steps_for_gibson_plan(plan_json: &str, created_seq_ids: &[String]) -> Vec<String> {
+        let Ok(plan) =
+            serde_json::from_str::<crate::gibson_planning::GibsonAssemblyPlan>(plan_json)
+        else {
+            return vec![
+                "Run the recorded Gibson assembly plan; the plan JSON could not be summarized, so review the run bundle before bench work."
+                    .to_string(),
+            ];
+        };
+        let fragments = plan
+            .fragments
+            .iter()
+            .map(|fragment| {
+                format!(
+                    "`{}` ({}; {} orientation)",
+                    fragment.seq_id, fragment.role, fragment.orientation
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let order = plan
+            .assembly_order
+            .iter()
+            .map(|member| format!("{} `{}`", member.kind, member.id))
+            .collect::<Vec<_>>()
+            .join(" -> ");
+        let overlaps = plan
+            .junctions
+            .iter()
+            .filter_map(|junction| {
+                junction
+                    .required_overlap_bp
+                    .map(|bp| format!("{}: {bp} bp", junction.id))
+            })
+            .collect::<Vec<_>>();
+        let mut steps = vec![
+            format!(
+                "Prepare Gibson destination `{}` opened at `{}` and fragment(s): {}.",
+                plan.destination.seq_id,
+                plan.destination.opening.label,
+                if fragments.is_empty() {
+                    "none listed".to_string()
+                } else {
+                    fragments
+                }
+            ),
+            format!(
+                "Assemble in the designed order: {}.",
+                if order.is_empty() {
+                    "see GENtle plan".to_string()
+                } else {
+                    order
+                }
+            ),
+        ];
+        if !overlaps.is_empty() {
+            steps.push(format!(
+                "Check that ordered fragments provide the designed Gibson overlaps: {}.",
+                overlaps.join(", ")
+            ));
+        }
+        steps.push(format!(
+            "Expected assembled product ID: `{}` (requested topology: {}).",
+            Self::lab_expected_output(
+                (!plan.product.output_id_hint.trim().is_empty())
+                    .then_some(plan.product.output_id_hint.as_str()),
+                created_seq_ids,
+            ),
+            if plan.product.topology.trim().is_empty() {
+                "not specified"
+            } else {
+                plan.product.topology.trim()
+            }
+        ));
+        steps
+    }
+
+    fn lab_expected_output(explicit: Option<&str>, created_seq_ids: &[String]) -> String {
+        explicit
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| created_seq_ids.first().cloned())
+            .unwrap_or_else(|| "not recorded".to_string())
+    }
+
+    fn lab_join_or_dash(values: &[String]) -> String {
+        if values.is_empty() {
+            "-".to_string()
+        } else {
+            values.join(", ")
+        }
+    }
+
+    fn lab_oligo_display(sequence: &str) -> String {
+        let trimmed = sequence.trim();
+        if trimmed.len() <= 80 {
+            trimmed.to_string()
+        } else {
+            format!("{}... ({} nt)", &trimmed[..80], trimmed.len())
+        }
+    }
+
+    fn render_lab_assistant_instructions_markdown(
+        export: &LabAssistantInstructionsExport,
+    ) -> String {
+        let mut out = String::new();
+        out.push_str(&format!("# {}\n\n", export.title));
+        out.push_str(&format!("- Schema: `{}`\n", export.schema));
+        out.push_str(&format!(
+            "- Audience: {}\n",
+            Self::lab_markdown_escape(&export.audience)
+        ));
+        out.push_str(&format!(
+            "- Generated (Unix ms): `{}`\n",
+            export.generated_at_unix_ms
+        ));
+        if let Some(run_id) = export.run_id_filter.as_deref() {
+            out.push_str(&format!(
+                "- Run ID: `{}`\n",
+                Self::lab_markdown_escape(run_id)
+            ));
+        }
+        out.push('\n');
+
+        Self::push_lab_markdown_list(&mut out, "Summary", &export.summary_lines);
+        Self::push_lab_markdown_list(&mut out, "Safety and Scope", &export.safety_lines);
+
+        out.push_str("## Materials and IDs\n\n");
+        if export.material_rows.is_empty() {
+            out.push_str("- No material rows were available in the selected GENtle state.\n\n");
+        } else {
+            for row in &export.material_rows {
+                let mut detail = format!(
+                    "- `{}`: {} [{}; source={}]",
+                    Self::lab_markdown_escape(&row.material_id),
+                    Self::lab_markdown_escape(&row.display_name),
+                    Self::lab_markdown_escape(&row.kind),
+                    Self::lab_markdown_escape(&row.source)
+                );
+                if let Some(length_bp) = row.length_bp {
+                    detail.push_str(&format!("; {length_bp} bp"));
+                }
+                if let Some(topology) = row.topology.as_deref() {
+                    detail.push_str(&format!("; {}", Self::lab_markdown_escape(topology)));
+                }
+                if !row.members.is_empty() {
+                    detail.push_str(&format!(
+                        "; members: {}",
+                        row.members
+                            .iter()
+                            .map(|value| format!("`{}`", Self::lab_markdown_escape(value)))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+                out.push_str(&detail);
+                out.push('\n');
+                for note in &row.notes {
+                    out.push_str(&format!("  - {}\n", Self::lab_markdown_escape(note)));
+                }
+            }
+            out.push('\n');
+        }
+
+        for section in &export.step_sections {
+            Self::push_lab_markdown_list(&mut out, &section.heading, &section.steps);
+        }
+        Self::push_lab_markdown_list(&mut out, "Checkpoints", &export.checkpoint_lines);
+        Self::push_lab_markdown_list(&mut out, "Record Keeping", &export.record_keeping_lines);
+        if !export.warning_lines.is_empty() {
+            Self::push_lab_markdown_list(&mut out, "Warnings", &export.warning_lines);
+        }
+        out
+    }
+
+    fn push_lab_markdown_list(out: &mut String, heading: &str, lines: &[String]) {
+        out.push_str(&format!("## {heading}\n\n"));
+        if lines.is_empty() {
+            out.push_str("- None recorded.\n\n");
+            return;
+        }
+        for line in lines {
+            out.push_str(&format!("- {}\n", Self::lab_markdown_escape(line)));
+        }
+        out.push('\n');
+    }
+
+    fn lab_markdown_escape(value: &str) -> String {
+        value.replace('\n', " ").replace('\r', " ")
     }
 
     pub(crate) fn reverse_complement(seq: &str) -> String {

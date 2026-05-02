@@ -1887,6 +1887,7 @@ Shared shell command:
     - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
     - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
     - `export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]`
+    - `export-lab-instructions OUTPUT.md [--run-id RUN_ID] [--title TEXT] [--audience TEXT]`
     - `import-pool INPUT.pool.gentle.json [PREFIX]`
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
@@ -2797,6 +2798,20 @@ Pool exchange commands:
     - selected operation log records
     - output summaries (created/changed ids, exported artifact paths)
   - Omitting `--run-id` exports all operation-log rows.
+- `export-lab-instructions OUTPUT.md [--run-id RUN_ID] [--title TEXT] [--audience TEXT]`
+  - Calls engine operation `ExportLabAssistantInstructions`.
+  - Writes a Markdown bench handoff (`gentle.lab_assistant_instructions.v1`)
+    for non-IT lab assistants from recorded design operations and current
+    sequence/container state.
+  - Includes material IDs, designed outputs, container/arrangement/rack/gel
+    references where available, design-derived bench steps, checkpoints, safety
+    scope, and record-keeping notes.
+  - Omitting `--run-id` summarizes all operation-log rows; with an empty or
+    unrelated state, GENtle writes a scaffold and warns that no recorded design
+    operations were available.
+  - GENtle does not invent reagent volumes, incubation temperatures, or
+    kit-specific timings; local SOPs and supervisor-approved conditions remain
+    authoritative.
 
 Rendering export commands:
 
@@ -4577,6 +4592,10 @@ Render pool gel SVG with automatic ladder selection:
 ```json
 {"RenderPoolGelSvg":{"inputs":["frag_1","frag_2","frag_3"],"path":"digest.auto.gel.svg","ladders":null}}
 ```
+
+The shared-shell route `render-pool-gel-svg` returns the SVG result plus
+`gel_band_rows[]` and `gel_summary_lines[]`, giving CLI/Telegram/ClawBio callers
+a text-first lane/band description even when they do not display the SVG.
 
 Persist a ladder pair on an existing arrangement:
 

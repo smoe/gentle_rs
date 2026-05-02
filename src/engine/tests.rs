@@ -15848,6 +15848,58 @@ fn test_export_process_run_bundle_run_id_not_found_fails() {
 }
 
 #[test]
+fn test_export_lab_assistant_instructions_operation_writes_markdown_and_payload() {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("x".to_string(), seq("ATGGATCCGCATGGATCCGCATGGATCCGC"));
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::Digest {
+            input: "x".to_string(),
+            enzymes: vec!["BamHI".to_string()],
+            output_prefix: Some("frag".to_string()),
+        })
+        .expect("digest");
+
+    let tmp = tempfile::NamedTempFile::new().expect("tmp");
+    let path = tmp.path().with_extension("lab_handoff.md");
+    let path_text = path.display().to_string();
+    let res = engine
+        .apply(Operation::ExportLabAssistantInstructions {
+            path: path_text.clone(),
+            run_id: Some("interactive".to_string()),
+            title: Some("BamHI cloning handoff".to_string()),
+            audience: Some("bench assistant".to_string()),
+        })
+        .expect("export lab assistant instructions");
+    let export = res
+        .lab_assistant_instructions
+        .as_ref()
+        .expect("structured lab assistant instructions");
+    assert_eq!(export.schema, LAB_ASSISTANT_INSTRUCTIONS_SCHEMA);
+    assert_eq!(export.run_id_filter.as_deref(), Some("interactive"));
+    assert!(
+        export
+            .step_sections
+            .iter()
+            .flat_map(|section| section.steps.iter())
+            .any(|step| step.contains("Digest `x` with BamHI"))
+    );
+    assert!(
+        export
+            .material_rows
+            .iter()
+            .any(|row| row.material_id == "x" && row.length_bp == Some(30))
+    );
+
+    let text = std::fs::read_to_string(path_text).expect("read handoff markdown");
+    assert!(text.contains("# BamHI cloning handoff"));
+    assert!(text.contains("Use institution-approved SOPs"));
+    assert!(text.contains("Digest `x` with BamHI"));
+}
+
+#[test]
 fn test_inspect_dna_ladders() {
     let catalog = GentleEngine::inspect_dna_ladders(None);
     assert_eq!(catalog.schema, "gentle.dna_ladders.v1");

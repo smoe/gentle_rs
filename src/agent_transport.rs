@@ -691,7 +691,7 @@ pub fn discover_models_for_agent_system(
 mod tests {
     use super::*;
     use std::{
-        io::{Read, Write},
+        io::{ErrorKind, Read, Write},
         net::TcpListener,
         thread,
     };
@@ -709,8 +709,17 @@ mod tests {
         }
     }
 
-    fn spawn_model_list_server(routes: Vec<(&str, u16, &str)>) -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test model server");
+    fn spawn_model_list_server(routes: Vec<(&str, u16, &str)>) -> Option<String> {
+        let listener = match TcpListener::bind("127.0.0.1:0") {
+            Ok(listener) => listener,
+            Err(err) if err.kind() == ErrorKind::PermissionDenied => {
+                eprintln!(
+                    "skipping local live-probe server test because this environment rejects localhost binds: {err}"
+                );
+                return None;
+            }
+            Err(err) => panic!("bind test model server: {err}"),
+        };
         let addr = listener.local_addr().expect("test server addr");
         let routes = routes
             .into_iter()
@@ -746,7 +755,7 @@ mod tests {
                 let _ = stream.write_all(response.as_bytes());
             }
         });
-        format!("http://{addr}")
+        Some(format!("http://{addr}"))
     }
 
     #[test]
@@ -797,11 +806,13 @@ mod tests {
 
     #[test]
     fn live_probe_classifies_auth_failure() {
-        let base_url = spawn_model_list_server(vec![(
+        let Some(base_url) = spawn_model_list_server(vec![(
             "/models",
             401,
             r#"{"error":{"code":"invalid_api_key","message":"bad key"}}"#,
-        )]);
+        )]) else {
+            return;
+        };
         let probe =
             build_model_list_live_probe(&base_url, Some("sk-test"), Some("gpt-5"), &test_runtime());
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::AuthFailed);
@@ -815,11 +826,13 @@ mod tests {
 
     #[test]
     fn live_probe_classifies_insufficient_quota() {
-        let base_url = spawn_model_list_server(vec![(
+        let Some(base_url) = spawn_model_list_server(vec![(
             "/models",
             429,
             r#"{"error":{"type":"insufficient_quota","code":"insufficient_quota"}}"#,
-        )]);
+        )]) else {
+            return;
+        };
         let probe =
             build_model_list_live_probe(&base_url, Some("sk-test"), Some("gpt-5"), &test_runtime());
         assert_eq!(
@@ -835,7 +848,9 @@ mod tests {
 
     #[test]
     fn live_probe_classifies_malformed_model_json() {
-        let base_url = spawn_model_list_server(vec![("/models", 200, "not json")]);
+        let Some(base_url) = spawn_model_list_server(vec![("/models", 200, "not json")]) else {
+            return;
+        };
         let probe = build_model_list_live_probe(&base_url, None, Some("llama3"), &test_runtime());
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::ProviderError);
         assert!(probe.reachable);
@@ -846,11 +861,13 @@ mod tests {
 
     #[test]
     fn live_probe_classifies_selected_model_absent() {
-        let base_url = spawn_model_list_server(vec![(
+        let Some(base_url) = spawn_model_list_server(vec![(
             "/models",
             200,
             r#"{"data":[{"id":"llama3"},{"id":"qwen3"}]}"#,
-        )]);
+        )]) else {
+            return;
+        };
         let probe =
             build_model_list_live_probe(&base_url, None, Some("missing-model"), &test_runtime());
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::ModelMissing);
@@ -860,10 +877,12 @@ mod tests {
 
     #[test]
     fn live_probe_falls_back_to_v1_models_for_compat_roots() {
-        let base_url = spawn_model_list_server(vec![
+        let Some(base_url) = spawn_model_list_server(vec![
             ("/models", 404, r#"{"error":{"code":"not_found"}}"#),
             ("/v1/models", 200, r#"{"data":[{"id":"llama3"}]}"#),
-        ]);
+        ]) else {
+            return;
+        };
         let probe = build_model_list_live_probe(&base_url, None, Some("llama3"), &test_runtime());
         assert_eq!(probe.status_class, AgentLiveProbeStatusClass::Ok);
         assert_eq!(probe.attempted_endpoints.len(), 2);

@@ -2076,6 +2076,7 @@ mod tests {
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
+            lab_assistant_instructions: None,
         });
 
         assert_eq!(area.sequencing_confirmation_ui.selected_trace_id, "trace_b");
@@ -5419,6 +5420,7 @@ mod tests {
                 promoter_reporter_candidates: None,
                 uniprot_projection_audit: None,
                 uniprot_projection_audit_parity: None,
+                lab_assistant_instructions: None,
             },
             Instant::now(),
         );

@@ -3298,7 +3298,7 @@ without blocking this publication.
 | Area | Status |
 |---|---|
 | Core cloning/editing operations across GUI/CLI/JS/Lua | Done |
-| Export/render operations (sequence/lineage/pool gel) | Done |
+| Export/render operations (sequence/lineage/pool gel) | Done; shared-shell pool-gel renders now also expose text band rows for Telegram/CLI surfaces |
 | Reference genome + track import surfaces | Done |
 | Shared shell parity across GUI/CLI | Done |
 | Feature expert views (TFBS/restriction/splicing) via shared engine model | Done |
@@ -3460,8 +3460,10 @@ Notes:
 6. Core architecture parity gaps remain:
    - some utilities are still adapter-level rather than engine operations
      (notably `import-pool` and resource-sync utilities)
-   - no dedicated engine operation yet for exporting a full run/process as a
-     technical-assistant protocol text artifact
+   - first technical-assistant protocol text export is now available through
+     `ExportLabAssistantInstructions` and shared shell
+     `export-lab-instructions`; follow-on work should deepen operation-specific
+     phrasing, vendor/SOP template overlays, and GUI affordances
    - view-model contract is not yet formalized as a frontend-neutral schema
 7. guideRNA workflow remains incomplete (guide-candidate model, oligo
    generation/export, macro template flow; draft in `docs/rna_guides_spec.md`).

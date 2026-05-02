@@ -4806,6 +4806,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     routes = {route["intent_id"]: route for route in intents["routes"]}
     assert set(routes) == {
         "telegram_guide_isoforms_gene",
+        "lab_assistant_handoff_export",
         "skill_info",
         "telegram_guide_overview",
         "telegram_guide_readiness",

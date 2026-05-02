@@ -411,6 +411,7 @@ pub const UNIPROT_ENSEMBL_EXON_COMPARE_SCHEMA: &str = "gentle.uniprot_ensembl_ex
 pub const UNIPROT_ENSEMBL_PEPTIDE_COMPARE_SCHEMA: &str =
     "gentle.uniprot_ensembl_peptide_compare.v1";
 const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
+const LAB_ASSISTANT_INSTRUCTIONS_SCHEMA: &str = "gentle.lab_assistant_instructions.v1";
 pub const ROUTINE_DECISION_TRACES_METADATA_KEY: &str = "routine_decision_traces";
 pub const ROUTINE_DECISION_TRACE_SCHEMA: &str = "gentle.routine_decision_trace.v1";
 pub const ROUTINE_DECISION_TRACE_STORE_SCHEMA: &str = "gentle.routine_decision_trace_store.v1";
@@ -2700,6 +2701,15 @@ pub enum Operation {
         path: String,
         #[serde(default)]
         run_id: Option<RunId>,
+    },
+    ExportLabAssistantInstructions {
+        path: String,
+        #[serde(default)]
+        run_id: Option<RunId>,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        audience: Option<String>,
     },
     PrepareGenome {
         genome_id: String,
@@ -5157,6 +5167,7 @@ impl GentleEngine {
                 "ExportRnaLadders".to_string(),
                 "ExportPool".to_string(),
                 "ExportProcessRunBundle".to_string(),
+                "ExportLabAssistantInstructions".to_string(),
                 "PrepareGenome".to_string(),
                 "ExtractGenomeRegion".to_string(),
                 "ExtractGenomeGene".to_string(),
@@ -7373,6 +7384,7 @@ impl GentleEngine {
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }
                 | Operation::ExportProcessRunBundle { .. }
+                | Operation::ExportLabAssistantInstructions { .. }
                 | Operation::ExportFeaturesBed { .. }
                 | Operation::InspectSequenceContextView { .. }
                 | Operation::ExportSequenceContextBundle { .. }
