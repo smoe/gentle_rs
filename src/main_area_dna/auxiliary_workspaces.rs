@@ -6878,6 +6878,35 @@ impl MainAreaDna {
         let default_size = Self::dotplot_window_default_size(has_loaded_payload);
         let min_size = Self::dotplot_window_min_size(has_loaded_payload);
         let content_min_size = Self::dotplot_window_content_min_size(has_loaded_payload);
+        if ctx.embed_viewports() {
+            let mut open = self.show_dotplot_window;
+            let spec = crate::egui_compat::HostedWindowSpec::new(
+                title.clone(),
+                egui::Id::new(format!("dotplot_window_embedded_{}", viewport_seq_id)),
+                default_size,
+                min_size,
+            );
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                let backdrop_settings = current_window_backdrop_settings();
+                paint_window_backdrop(ui, WindowBackdropKind::Sequence, &backdrop_settings);
+                egui::ScrollArea::both()
+                    .id_salt(format!(
+                        "dotplot_window_scroll_embedded_{}",
+                        viewport_seq_id
+                    ))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        ui.set_min_size(content_min_size);
+                        self.render_dotplot_workspace_ui(ui);
+                    });
+            });
+            self.show_dotplot_window = open;
+            return;
+        }
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
             .with_inner_size([default_size.x, default_size.y])

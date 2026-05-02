@@ -1640,6 +1640,29 @@ mod tests {
         rects
     }
 
+    fn render_feature_tree_pass(
+        ctx: &egui::Context,
+        area: &mut MainAreaDna,
+        raw_input: egui::RawInput,
+    ) -> Vec<(String, egui::Rect)> {
+        ctx.begin_pass(raw_input);
+        crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
+            area.render_features(ui);
+        });
+        let full_output = ctx.end_pass();
+        let mut rects = Vec::new();
+        for clipped in full_output.shapes {
+            collect_rendered_text_rects_from_shape(&clipped.shape, &mut rects);
+        }
+        rects
+    }
+
+    fn center_of_rendered_text(rects: &[(String, egui::Rect)], needle: &str) -> Option<egui::Pos2> {
+        rects
+            .iter()
+            .find_map(|(text, rect)| (text == needle).then_some(rect.center()))
+    }
+
     fn make_area_with_unique_compatible_anchor(
         fallback_policy: &str,
     ) -> (MainAreaDna, TempDir, String, String) {
@@ -7253,6 +7276,116 @@ mod tests {
     }
 
     #[test]
+    fn feature_tree_ui_opens_group_and_subgroup_before_rendering_rows() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(10, 70),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("label".into(), Some("TP73-201".to_string())),
+                ("transcript_id".into(), Some("TX1".to_string())),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: Location::simple_range(90, 150),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("label".into(), Some("TP73-202".to_string())),
+                ("transcript_id".into(), Some("TX2".to_string())),
+            ],
+        });
+        let mut area = MainAreaDna::new(dna, Some("feature_tree_ui".to_string()), None);
+        area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
+
+        let ctx = egui::Context::default();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(720.0, 520.0));
+        let rects = render_feature_tree_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                ..Default::default()
+            },
+        );
+        let mrna_center =
+            center_of_rendered_text(&rects, "mRNA (2)").expect("mRNA group header should render");
+        assert!(
+            center_of_rendered_text(&rects, "TP73 (2)").is_none(),
+            "subgroup should stay hidden while the kind group is collapsed: {rects:?}"
+        );
+
+        for pressed in [true, false] {
+            render_feature_tree_pass(
+                &ctx,
+                &mut area,
+                egui::RawInput {
+                    screen_rect: Some(screen_rect),
+                    events: vec![
+                        egui::Event::PointerMoved(mrna_center),
+                        egui::Event::PointerButton {
+                            pos: mrna_center,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::default(),
+                        },
+                    ],
+                    ..Default::default()
+                },
+            );
+        }
+
+        let rects = render_feature_tree_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                ..Default::default()
+            },
+        );
+        let subgroup_center = center_of_rendered_text(&rects, "TP73 (2)")
+            .expect("TP73 subgroup header should render after opening mRNA group");
+        assert!(
+            center_of_rendered_text(&rects, "TX1").is_none(),
+            "transcript rows should stay hidden while the subgroup is collapsed: {rects:?}"
+        );
+
+        for pressed in [true, false] {
+            render_feature_tree_pass(
+                &ctx,
+                &mut area,
+                egui::RawInput {
+                    screen_rect: Some(screen_rect),
+                    events: vec![
+                        egui::Event::PointerMoved(subgroup_center),
+                        egui::Event::PointerButton {
+                            pos: subgroup_center,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::default(),
+                        },
+                    ],
+                    ..Default::default()
+                },
+            );
+        }
+
+        let rects = render_feature_tree_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(screen_rect),
+                ..Default::default()
+            },
+        );
+        assert!(
+            center_of_rendered_text(&rects, "TX1").is_some(),
+            "first transcript row should render after opening the subgroup: {rects:?}"
+        );
+    }
+
+    #[test]
     fn derive_regulatory_feature_grouping_groups_enhancers_by_marker_and_strips_prefix() {
         let feature = make_feature(
             "regulatory",
@@ -8092,6 +8225,51 @@ mod tests {
     }
 
     #[test]
+    fn isoform_expert_embed_mode_uses_single_hosted_shell_without_viewport_title_layer() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        let view = IsoformArchitectureExpertView {
+            seq_id: "seq1".to_string(),
+            panel_id: "ENSP00000362111".to_string(),
+            gene_symbol: "TP73".to_string(),
+            transcript_geometry_mode: "cds".to_string(),
+            panel_source: Some(
+                "Transcript-native proteins with optional Ensembl opinion ENSP00000362111"
+                    .to_string(),
+            ),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            instruction: "protein".to_string(),
+            transcript_lanes: vec![],
+            protein_lanes: vec![],
+            warnings: vec![],
+        };
+        area.show_isoform_expert_window = true;
+        area.isoform_expert_window_panel_id = Some("ENSP00000362111".to_string());
+        area.isoform_expert_window_view = Some(Arc::new(view));
+        let hosted_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new("isoform_expert_window_embedded_seq1_ENSP00000362111"),
+        );
+        let stale_viewport_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(MainAreaDna::isoform_expert_viewport_id(
+                "seq1",
+                "ENSP00000362111",
+            )),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        area.render_isoform_expert_window(&ctx);
+
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
     fn collect_open_auxiliary_window_entries_includes_rna_read_mapping_window() {
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -8266,6 +8444,76 @@ mod tests {
     }
 
     #[test]
+    fn rna_read_mapping_embed_mode_uses_single_hosted_shell_without_viewport_title_layer() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.seed_rna_read_mapping_window_for_tests("seq1", 17, "TP73");
+        let view = area
+            .rna_read_mapping_window_view
+            .as_deref()
+            .expect("seeded RNA-read Mapping view")
+            .clone();
+        let title = MainAreaDna::rna_read_mapping_window_title(&view);
+        let hosted_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            MainAreaDna::rna_read_mapping_embedded_window_id(&view),
+        );
+        let stale_viewport_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(MainAreaDna::rna_read_mapping_viewport_id(
+                &view.seq_id,
+                view.target_feature_id,
+            )),
+        );
+        let stale_title_layer_id = MainAreaDna::stale_auxiliary_window_title_layer_id(&title);
+
+        ctx.begin_pass(egui::RawInput::default());
+        area.render_rna_read_mapping_window(&ctx);
+
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn splicing_expert_embed_mode_uses_single_hosted_shell_without_viewport_title_layer() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.seed_splicing_expert_window_for_tests("seq1", 17, "TP73");
+        let view = area
+            .splicing_expert_window_view
+            .as_deref()
+            .expect("seeded Splicing Expert view")
+            .clone();
+        let title = MainAreaDna::splicing_expert_window_title(&view);
+        let hosted_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            MainAreaDna::splicing_expert_embedded_window_id(&view),
+        );
+        let stale_viewport_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(MainAreaDna::splicing_expert_viewport_id(
+                &view.seq_id,
+                view.target_feature_id,
+            )),
+        );
+        let stale_title_layer_id = MainAreaDna::stale_auxiliary_window_title_layer_id(&title);
+
+        ctx.begin_pass(egui::RawInput::default());
+        area.render_splicing_expert_window(&ctx);
+
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_title_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
     fn rna_read_mapping_embedded_window_renders_intro_only_once() {
         let ctx = egui::Context::default();
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
@@ -8340,6 +8588,62 @@ mod tests {
             entries[0].1.contains("Dotplot - seq1"),
             "dotplot title should be listed in auxiliary windows"
         );
+    }
+
+    #[test]
+    fn dotplot_embed_mode_uses_single_hosted_shell_without_viewport_title_layer() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.show_dotplot_window = true;
+        let hosted_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new("dotplot_window_embedded_seq1"),
+        );
+        let stale_viewport_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(MainAreaDna::dotplot_viewport_id("seq1")),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        area.render_dotplot_window(&ctx);
+
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        let _ = ctx.end_pass();
+    }
+
+    #[test]
+    fn variant_followup_embed_mode_uses_single_hosted_shell_without_viewport_title_layer() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.show_variant_followup_window = true;
+        area.variant_followup_window_pending_initial_render = false;
+        area.variant_followup_ui.source_seq_id = "seq1".to_string();
+        area.variant_followup_ui.source_feature_id = Some(17);
+        area.variant_followup_ui.gene_label = "TP73".to_string();
+        let hosted_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new("variant_followup_window_embedded_seq1_17"),
+        );
+        let stale_viewport_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(egui::ViewportId::from_hash_of((
+                "variant_followup_viewport",
+                "seq1",
+                17usize,
+            ))),
+        );
+
+        ctx.begin_pass(egui::RawInput::default());
+        area.render_variant_followup_window(&ctx);
+
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&hosted_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        let _ = ctx.end_pass();
     }
 
     #[test]
@@ -16147,6 +16451,18 @@ impl MainAreaDna {
     }
 
     pub fn render_inside(&mut self, ui: &mut egui::Ui) {
+        self.render_inside_with_auxiliary_windows(ui, true);
+    }
+
+    pub fn render_inside_without_auxiliary_windows(&mut self, ui: &mut egui::Ui) {
+        self.render_inside_with_auxiliary_windows(ui, false);
+    }
+
+    fn render_inside_with_auxiliary_windows(
+        &mut self,
+        ui: &mut egui::Ui,
+        render_auxiliary_windows: bool,
+    ) {
         self.prefill_container_ids();
         self.poll_tfbs_task(ui.ctx());
         self.poll_primer_design_task(ui.ctx());
@@ -16212,7 +16528,7 @@ impl MainAreaDna {
                 |ui| {
                     let ctx = ui.ctx().clone();
                     paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
-                    self.render_middle(&ctx, ui);
+                    self.render_middle_with_auxiliary_windows(&ctx, ui, render_auxiliary_windows);
                 },
             );
         } else {
@@ -27280,7 +27596,8 @@ impl MainAreaDna {
                 egui::Order::Foreground,
                 embedded_window_id,
             ));
-            ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, embedded_window_id));
+            ctx.request_repaint();
+            return;
         }
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
@@ -27485,6 +27802,22 @@ impl MainAreaDna {
         let default_size = Self::splicing_expert_window_default_size();
         let min_size = Self::splicing_expert_window_min_size();
         let content_min_size = Self::splicing_expert_window_content_min_size();
+        if ctx.embed_viewports() {
+            self.render_splicing_expert_embedded_window_shell(
+                ctx,
+                title.as_str(),
+                &view,
+                default_size,
+                content_min_size,
+                pending_initial_render,
+                focus_requested,
+            );
+            if self.splicing_expert_window_focus_requested {
+                self.focus_splicing_expert_window_view(ctx, &view);
+                self.splicing_expert_window_focus_requested = false;
+            }
+            return;
+        }
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
             .with_inner_size([default_size.x, default_size.y])
@@ -30732,6 +31065,25 @@ impl MainAreaDna {
         let min_size = Self::rna_read_mapping_window_min_size();
         let content_min_size = Self::rna_read_mapping_window_content_min_size();
         let repaint_delay = Self::async_task_repaint_delay(1, false);
+        if ctx.embed_viewports() {
+            self.render_rna_read_mapping_embedded_window_shell(
+                ctx,
+                &title,
+                &view,
+                default_size,
+                content_min_size,
+                pending_initial_render,
+                self.rna_read_mapping_window_focus_requested,
+            );
+            if self.active_rna_read_task_matches_splicing_view(&view) {
+                ctx.request_repaint_after(repaint_delay);
+            }
+            if self.rna_read_mapping_window_focus_requested {
+                self.focus_rna_read_mapping_workspace_view(ctx, &view);
+                self.rna_read_mapping_window_focus_requested = false;
+            }
+            return;
+        }
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
             .with_inner_size([default_size.x, default_size.y])
@@ -37640,6 +37992,38 @@ impl MainAreaDna {
         let viewport_id = Self::isoform_expert_viewport_id(&view.seq_id, &panel_id);
         let default_size = Vec2::new(1120.0, 700.0);
         let min_size = Vec2::new(840.0, 460.0);
+        if ctx.embed_viewports() {
+            let mut open = self.show_isoform_expert_window;
+            let spec = crate::egui_compat::HostedWindowSpec::new(
+                title.clone(),
+                egui::Id::new(format!(
+                    "isoform_expert_window_embedded_{}_{}",
+                    view.seq_id, panel_id
+                )),
+                default_size,
+                min_size,
+            );
+            crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+                let backdrop_settings = current_window_backdrop_settings();
+                paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                egui::ScrollArea::both()
+                    .id_salt(format!(
+                        "isoform_expert_window_scroll_embedded_{}_{}",
+                        view.seq_id, panel_id
+                    ))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        ui.set_min_size(Vec2::new(1040.0, 620.0));
+                        self.render_isoform_architecture_expert_view_ui(ui, &view);
+                    });
+            });
+            self.show_isoform_expert_window = open;
+            return;
+        }
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
             .with_inner_size([default_size.x, default_size.y])
@@ -54142,6 +54526,15 @@ impl MainAreaDna {
     }
 
     pub fn render_middle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        self.render_middle_with_auxiliary_windows(ctx, ui, true);
+    }
+
+    fn render_middle_with_auxiliary_windows(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        render_auxiliary_windows: bool,
+    ) {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
             self.update_dna_map();
             let side_panel_height = {
@@ -54868,11 +55261,13 @@ impl MainAreaDna {
                 }
             }
         });
-        self.render_dotplot_window(ctx);
-        self.render_splicing_expert_window(ctx);
-        self.render_rna_read_mapping_window(ctx);
-        self.render_variant_followup_window(ctx);
-        self.render_isoform_expert_window(ctx);
+        if render_auxiliary_windows {
+            self.render_dotplot_window(ctx);
+            self.render_splicing_expert_window(ctx);
+            self.render_rna_read_mapping_window(ctx);
+            self.render_variant_followup_window(ctx);
+            self.render_isoform_expert_window(ctx);
+        }
     }
 }
 

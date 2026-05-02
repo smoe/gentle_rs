@@ -88,6 +88,9 @@ macOS auxiliary-window stability note:
 - Hosted project and sequence windows also clamp their initial size to that
   inset-safe workspace so resize handles remain reachable and large panes such
   as arrangements and feature details are not born partly off-screen.
+- Hosted sequence windows reserve explicit drag room inside the root workspace
+  and reset stale over-wide shell state on redraw, so older or over-expanded
+  DNA viewers should not become almost immovable after a title-bar drag.
 - The hosted Configuration window now uses the same safe-area clamping, and
   its Graphics-tab control rows wrap/bound their width instead of expanding
   horizontally without limit.
@@ -133,9 +136,14 @@ macOS auxiliary-window stability note:
   viewport is registered, so opening a sequence from a project/lineage view
   should raise that DNA viewer instead of leaving it behind older windows.
 - Hosted auxiliary workspaces opened from a sequence window, including
-  Splicing Expert and RNA-read Mapping, route `Windows` menu focus through the
-  owning sequence window so the auxiliary workspace is raised above the large
-  DNA viewer instead of remaining hidden behind it.
+  Splicing Expert, RNA-read Mapping, Dotplot, Promoter design, and Isoform /
+  Protein Expert, render in a root-level hosted pass after the owning sequence
+  body. This avoids a second embedded eframe title shell and keeps the
+  auxiliary workspace above the large DNA viewer instead of trapped behind or
+  inside it.
+- In hosted/macOS mode, `Windows` menu focus for a DNA-owned auxiliary
+  workspace keeps the owner visible but does not queue that owner as the
+  foreground shell; the auxiliary target itself gets the foreground layer.
 - Simple one-shot modal prompts such as unsaved-changes, removal confirmation,
   cache cleanup, operation failure, and prepared-genome choice dialogs route
   through `src/egui_compat.rs` `ModalWindowSpec` / `show_modal_window`. The modal
@@ -152,6 +160,9 @@ Manual GUI stability checklist for macOS hosted mode:
 - Open Help, Configuration, a sequence window, and one specialist window; reopen
   each from its menu route and verify the existing window comes forward without
   resetting the current tab/scroll/input state.
+- Drag a large DNA sequence window by its title bar after resizing it close to
+  the root workspace bounds; it should move as a whole shell and still leave
+  visible workspace room on either side.
 - Exercise modal prompts: unsaved-changes, About, removal confirmation,
   operation failure, prepared-genome choice, and cache cleanup close/cancel
   buttons should dismiss the prompt they own.
@@ -2587,6 +2598,9 @@ GENtle tracks open native windows and can raise a selected one to front.
   Planning, Agent Assistant, Protein Evidence, Operation History)
 - In hosted/macOS mode, selecting a listed window now also raises the embedded
   egui child window to the front instead of only requesting viewport focus.
+- For DNA-owned auxiliary windows, the sequence owner is kept visible but the
+  auxiliary shell itself receives the foreground layer so it does not remain
+  hidden behind the DNA viewer.
 - Shortcut: `Cmd+Backtick` focuses the main project window
 - Specialist windows (including DNA sequence windows) include a top-left nav
   strip with:

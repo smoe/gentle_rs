@@ -79,7 +79,8 @@ impl MainAreaDna {
                 egui::Order::Foreground,
                 embedded_window_id,
             ));
-            ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, embedded_window_id));
+            ctx.request_repaint();
+            return;
         }
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
