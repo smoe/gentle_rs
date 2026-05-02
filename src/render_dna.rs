@@ -581,9 +581,17 @@ impl RenderDna {
         }
     }
 
+    fn repeat_divergence_percent_from_milli_div(feature: &Feature) -> Option<String> {
+        let milli_div = Self::first_nonempty_qualifier(feature, &["milliDiv"])?;
+        let value = milli_div.trim().parse::<f64>().ok()?;
+        let percent = value / 10.0;
+        percent.is_finite().then(|| format!("{percent:.1}"))
+    }
+
     fn repeat_feature_detail_lines(feature: &Feature) -> Vec<String> {
         let mut lines = Vec::new();
         let mut seen = BTreeSet::new();
+        let repeat_display = repeat_feature_display(feature);
 
         let source =
             Self::first_nonempty_qualifier(feature, &["gentle_feature_source", "gentle_generated"]);
@@ -606,7 +614,7 @@ impl RenderDna {
             );
         }
 
-        if let Some(repeat) = repeat_feature_display(feature) {
+        if let Some(repeat) = repeat_display.as_ref() {
             Self::push_repeat_detail_once(
                 &mut lines,
                 &mut seen,
@@ -614,10 +622,7 @@ impl RenderDna {
                 repeat.display_label(),
             );
         }
-        Self::push_repeat_qualifier_detail(
-            &mut lines,
-            &mut seen,
-            "repeat_name",
+        let repeat_name = Self::first_nonempty_qualifier(
             feature,
             &[
                 "rmsk_name",
@@ -627,10 +632,7 @@ impl RenderDna {
                 "repeat_id",
             ],
         );
-        Self::push_repeat_qualifier_detail(
-            &mut lines,
-            &mut seen,
-            "repeat_class",
+        let repeat_class = Self::first_nonempty_qualifier(
             feature,
             &[
                 "rmsk_class",
@@ -641,10 +643,7 @@ impl RenderDna {
                 "mobile_element_type",
             ],
         );
-        Self::push_repeat_qualifier_detail(
-            &mut lines,
-            &mut seen,
-            "repeat_family",
+        let repeat_family = Self::first_nonempty_qualifier(
             feature,
             &[
                 "rmsk_family",
@@ -655,6 +654,34 @@ impl RenderDna {
                 "subfamily",
             ],
         );
+        let has_repeat_class = repeat_class.is_some();
+        if let Some(name) = repeat_display
+            .as_ref()
+            .and_then(|repeat| repeat.name.clone())
+            .or(repeat_name)
+        {
+            Self::push_repeat_detail_once(&mut lines, &mut seen, "repeat_name", name);
+        }
+        if let Some(class) = repeat_display
+            .as_ref()
+            .and_then(|repeat| {
+                if has_repeat_class || !repeat.class_label.eq_ignore_ascii_case("Repeat") {
+                    Some(repeat.class_label.clone())
+                } else {
+                    None
+                }
+            })
+            .or(repeat_class)
+        {
+            Self::push_repeat_detail_once(&mut lines, &mut seen, "repeat_class", class);
+        }
+        if let Some(family) = repeat_display
+            .as_ref()
+            .and_then(|repeat| repeat.family.clone())
+            .or(repeat_family)
+        {
+            Self::push_repeat_detail_once(&mut lines, &mut seen, "repeat_family", family);
+        }
         Self::push_repeat_qualifier_detail(
             &mut lines,
             &mut seen,
@@ -722,13 +749,17 @@ impl RenderDna {
             feature,
             &["swScore", "score"],
         );
-        Self::push_repeat_qualifier_detail(
+        if !Self::push_repeat_qualifier_detail(
             &mut lines,
             &mut seen,
             "divergence_percent",
             feature,
             &["rmsk_divergence_percent"],
-        );
+        ) {
+            if let Some(value) = Self::repeat_divergence_percent_from_milli_div(feature) {
+                Self::push_repeat_detail_once(&mut lines, &mut seen, "divergence_percent", value);
+            }
+        }
         Self::push_repeat_qualifier_detail(
             &mut lines,
             &mut seen,
@@ -1435,6 +1466,31 @@ mod tests {
         assert_eq!(
             RenderDna::feature_color(&feature),
             Color32::from_rgb(14, 116, 144)
+        );
+    }
+
+    #[test]
+    fn repeatmasker_feature_details_split_class_family_and_derive_divergence() {
+        let feature = make_feature(
+            "repeat_region",
+            &[
+                ("repName", "L1PA2"),
+                ("repClass", "LINE/L1"),
+                ("milliDiv", "32"),
+            ],
+        );
+
+        let details = RenderDna::feature_detail_lines(&feature);
+        assert_eq!(
+            details,
+            vec![
+                "repeat_summary: L1PA2 (LINE / L1)",
+                "repeat_name: L1PA2",
+                "repeat_class: LINE",
+                "repeat_family: L1",
+                "divergence_percent: 3.2",
+                "milli_div: 32",
+            ]
         );
     }
 

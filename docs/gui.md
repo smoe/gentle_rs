@@ -4013,7 +4013,9 @@ How to enlarge the genomic span after extraction:
     controlled by the existing Repeat layer toggle
   - selecting a materialized repeat shows a compact repeat-details block from
     its qualifiers: class/family/name, local and genomic strands, genomic
-    interval, score/divergence, clipped status, and UCSC rmsk provenance
+    interval, score/divergence, clipped status, and UCSC rmsk provenance; raw
+    RepeatMasker `milliDiv` is shown with a derived divergence percentage when
+    no explicit percent qualifier is present
   - the default index path is `data/resources/ucsc.rmsk.hg38.interval-index.json`;
     prepare it with `resources install-ucsc-rmsk --assembly hg38` or point the
     field at another prepared interval index
