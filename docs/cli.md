@@ -3292,6 +3292,10 @@ Resource sync commands:
   - Default output: `data/resources/jaspar.motifs.json`.
   - `ExtractAnchoredRegion` can resolve TF motifs by ID/name from this local registry.
   - GENtle ships with built-in motifs in `assets/jaspar.motifs.json` (currently generated from JASPAR 2026 CORE non-redundant); this command provides local updates/extensions.
+  - When a compact built-in entry lacks PFM rows, GENtle supplements it from
+    the bundled full-PFM table where an unambiguous ID/name match exists. This
+    keeps score tracks and sequence logos probabilistic instead of collapsing
+    ambiguous positions into a fake consensus.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.

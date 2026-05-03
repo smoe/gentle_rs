@@ -200,6 +200,10 @@ Behavior notes:
   - aliases such as `OCT4`
   - built-in functional groups such as `Yamanaka factors` / `stemness`
   - family-like queries such as `KLF family`
+- compact motif entries without PFM rows are supplemented from the bundled
+  full-PFM table when the match is unambiguous. Consensus-derived matrices are
+  therefore a last-resort fallback, not the normal source for TFBS scoring or
+  sequence-logo display.
 - when the shell command omits an explicit range, the full selected
   `SequenceScanTarget` span is used.
 - when the target is a stored `seq_id`, the same shared report can also carry
@@ -231,6 +235,11 @@ Behavior notes:
     optional `right_tf_name`, `overlap_window_count`, `raw_pearson`,
     `smoothed_pearson`, `raw_spearman`, `smoothed_spearman`, and optional
     `signed_primary_peak_offset_bp`
+- SVG rendering includes a compact per-track sequence-logo preview derived from
+  the resolved JASPAR matrix. Logo glyphs are scaled and clipped like a standard
+  stacked letter logo while the columns remain readable; when a motif is too
+  narrow for legible letters, the renderer switches to colored stacked bars
+  instead of drawing misleading microscopic text.
 - the same report now also carries one explicit
   `cross_strand_correlation_summary` for the correlation-export overview:
   - `pair_count`
