@@ -291,11 +291,11 @@ done
 ```bash
 jq '{
   report_id: .report.report_id,
-  read_count_total: .report.read_count_total,
-  read_count_seed_passed: .report.read_count_seed_passed,
-  read_count_aligned: .report.read_count_aligned,
-  retained_count_msa_eligible: .report.retained_count_msa_eligible,
-  read_lengths: .report.read_length_distributions
+  total_reads: .report.read_count_total,
+  strict_seed_passed_reads: .report.read_count_seed_passed,
+  retained_report_rows: (.report.hits | length),
+  retained_aligned_rows: .report.read_count_aligned,
+  retained_msa_eligible_rows: .report.retained_count_msa_eligible
 }' "$WORK/post_interpret/json/$REPORT_ID.show_report.json" \
   > "$WORK/reports/$REPORT_ID.final_summary.json"
 
@@ -318,5 +318,7 @@ The two most important proof points are:
 
 - the preflight summary shows all TP73 positives pass while TP53/TP63 controls
   stay below the configured pass ceiling
-- the final report shows how many pancreatic cDNA reads seed-pass and align
-  coherently to TP73 under those derived thresholds
+- the final report separates the stringent TP73 seed-pass subset from the wider
+  retained rows that were re-aligned during harvest; the helper script also
+  derives 0/25/50/75/100% read-length quantiles and means from the stored
+  histogram counts

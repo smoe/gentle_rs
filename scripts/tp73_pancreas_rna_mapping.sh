@@ -416,14 +416,76 @@ harvest_run() {
     > "$RUN_WORK/post_interpret/json/$REPORT_ID.$GENE_ID.target_quality.command.json" \
     2> "$RUN_WORK/logs/$REPORT_ID.$GENE_ID.target_quality.stderr.log"
 
-  jq '{
-    report_id: .report.report_id,
-    total: .report.read_count_total,
-    seed_passed: .report.read_count_seed_passed,
-    aligned: .report.read_count_aligned,
-    msa_eligible: .report.retained_count_msa_eligible,
-    read_lengths: .report.read_length_distributions
-  }' "$RUN_WORK/post_interpret/json/$REPORT_ID.show_report.json" \
+  jq '
+    def len_at($counts; $idx): (($counts // [])[$idx] // 0);
+    def count_sum($counts): reduce ($counts // [])[] as $count (0; . + ($count // 0));
+    def weighted_sum($counts):
+      reduce range(0; (($counts // []) | length)) as $idx
+        (0; . + ($idx * len_at($counts; $idx)));
+    def first_observed($counts):
+      reduce range(0; (($counts // []) | length)) as $idx
+        (null; if . == null and len_at($counts; $idx) > 0 then $idx else . end);
+    def last_observed($counts):
+      reduce range(0; (($counts // []) | length)) as $idx
+        (null; if len_at($counts; $idx) > 0 then $idx else . end);
+    def quantile_len($counts; $fraction):
+      (count_sum($counts)) as $total
+      | if $total == 0 then null
+        else ((($total - 1) * $fraction) | floor) as $rank
+        | reduce range(0; (($counts // []) | length)) as $idx
+            ({cumulative: 0, value: null};
+             if .value != null then .
+             else (.cumulative + len_at($counts; $idx)) as $next
+             | if $next > $rank
+               then {cumulative: $next, value: $idx}
+               else {cumulative: $next, value: null}
+               end
+             end)
+        | .value
+        end;
+    def length_summary($counts):
+      (count_sum($counts)) as $total
+      | {
+          sample_count: $total,
+          mean_bp: (if $total == 0 then null else (weighted_sum($counts) / $total) end),
+          quantiles_bp: {
+            q0: first_observed($counts),
+            q25: quantile_len($counts; 0.25),
+            q50: quantile_len($counts; 0.50),
+            q75: quantile_len($counts; 0.75),
+            q100: last_observed($counts)
+          }
+        };
+    .report as $report
+    | ($report.hits // []) as $hits
+    | {
+        report_id: $report.report_id,
+        total_reads: $report.read_count_total,
+        strict_seed_passed_reads: $report.read_count_seed_passed,
+        retained_report_rows: ($hits | length),
+        retained_aligned_rows: $report.read_count_aligned,
+        retained_msa_eligible_rows: $report.retained_count_msa_eligible,
+        strict_seed_passed_aligned_rows: (
+          $hits
+          | map(select((.passed_seed_filter == true) and (.best_mapping != null)))
+          | length
+        ),
+        strict_seed_passed_msa_eligible_rows: (
+          $hits
+          | map(select((.passed_seed_filter == true) and (.msa_eligible == true)))
+          | length
+        ),
+        read_length_summaries: {
+          all_reads: length_summary($report.read_length_counts_all),
+          strict_seed_passed: length_summary($report.read_length_counts_seed_passed),
+          retained_aligned: length_summary($report.read_length_counts_aligned),
+          full_length_exact: length_summary($report.read_length_counts_full_length_exact),
+          full_length_near: length_summary($report.read_length_counts_full_length_near),
+          full_length_strict: length_summary($report.read_length_counts_full_length_strict)
+        },
+        note: "retained_aligned_rows is the alignment count over retained report rows after harvest --selection all; strict_seed_passed_* are the stringent TP73 seed-pass subset."
+      }
+  ' "$RUN_WORK/post_interpret/json/$REPORT_ID.show_report.json" \
     | tee "$RUN_WORK/reports/$REPORT_ID.final_summary.json"
 
   {
