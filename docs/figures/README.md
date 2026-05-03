@@ -617,7 +617,7 @@ cargo run --quiet --bin gentle_cli -- \
   features tfbs-score-tracks-svg \
   tert_promoter_1000up_200down \
   docs/figures/tert_upstream_early_coding_llr_background_tail_log10.svg \
-  "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --motifs "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
   --score-kind llr_background_tail_log10
 
 cargo run --quiet --bin gentle_cli -- \
@@ -625,7 +625,8 @@ cargo run --quiet --bin gentle_cli -- \
   features tfbs-score-track-correlation-svg \
   tert_promoter_1000up_200down \
   docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman.svg \
-  "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --motifs "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --range 0..1201 \
   --score-kind llr_background_tail_log10 \
   --correlation-metric spearman \
   --signal-source max_strands
@@ -635,7 +636,8 @@ cargo run --quiet --bin gentle_cli -- \
   features tfbs-score-track-correlation-svg \
   tert_promoter_1000up_200down \
   docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_forward_only.svg \
-  "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --motifs "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --range 0..1201 \
   --score-kind llr_background_tail_log10 \
   --correlation-metric spearman \
   --signal-source forward_only
@@ -645,7 +647,8 @@ cargo run --quiet --bin gentle_cli -- \
   features tfbs-score-track-correlation-svg \
   tert_promoter_1000up_200down \
   docs/figures/tert_upstream_early_coding_llr_background_tail_log10_correlation_spearman_reverse_only.svg \
-  "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --motifs "POU5F1,SOX2,KLF4,MYC,SP1,BACH2,PATZ1,TP53,TP63,TP73" \
+  --range 0..1201 \
   --score-kind llr_background_tail_log10 \
   --correlation-metric spearman \
   --signal-source reverse_only

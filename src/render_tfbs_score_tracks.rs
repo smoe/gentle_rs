@@ -6,18 +6,23 @@
 
 use crate::engine::{TfbsScoreTrackReport, TfbsScoreTrackValueKind};
 
-const SVG_WIDTH: f64 = 1180.0;
+const SVG_WIDTH: f64 = 1360.0;
 const SVG_MARGIN_LEFT: f64 = 32.0;
 const SVG_MARGIN_RIGHT: f64 = 28.0;
 const SVG_HEADER_HEIGHT: f64 = 82.0;
 const SVG_FOOTER_HEIGHT: f64 = 42.0;
-const SVG_ROW_HEIGHT: f64 = 96.0;
+const SVG_ROW_HEIGHT: f64 = 108.0;
 const SVG_ROW_GAP: f64 = 14.0;
 const SVG_OVERLAY_ROW_HEIGHT: f64 = 34.0;
 const SVG_OVERLAY_ROW_GAP: f64 = 8.0;
-const SVG_LABEL_WIDTH: f64 = 320.0;
-const SVG_LOGO_WIDTH: f64 = 84.0;
-const SVG_LOGO_HEIGHT: f64 = 24.0;
+const SVG_LABEL_WIDTH: f64 = 440.0;
+const SVG_LOGO_MIN_WIDTH: f64 = 84.0;
+const SVG_LOGO_MAX_WIDTH: f64 = 260.0;
+const SVG_LOGO_MIN_COLUMN_WIDTH: f64 = 10.0;
+const SVG_LOGO_MIN_LETTER_HEIGHT: f64 = 44.0;
+const SVG_LOGO_WIDTH_PER_COLUMN: f64 = 11.5;
+const SVG_LOGO_HEIGHT: f64 = 48.0;
+const SVG_LOGO_MIN_READABLE_COMPONENT_HEIGHT: f64 = 7.0;
 const SVG_TRACK_PADDING_X: f64 = 10.0;
 const SVG_TRACK_PADDING_Y: f64 = 8.0;
 const SVG_MAX_POINTS_PER_POLYLINE: usize = 1400;
@@ -95,6 +100,14 @@ fn tfbs_logo_base_color(base: char) -> &'static str {
     }
 }
 
+fn tf_track_logo_width(columns: &[crate::engine::JasparExpertColumn]) -> f64 {
+    if columns.is_empty() {
+        return SVG_LOGO_MIN_WIDTH;
+    }
+    (columns.len() as f64 * SVG_LOGO_WIDTH_PER_COLUMN + 8.0)
+        .clamp(SVG_LOGO_MIN_WIDTH, SVG_LOGO_MAX_WIDTH)
+}
+
 fn render_tf_track_logo_svg(
     columns: &[crate::engine::JasparExpertColumn],
     x: f64,
@@ -115,13 +128,22 @@ fn render_tf_track_logo_svg(
         return svg;
     }
     let margin_x = 4.0_f64;
-    let margin_y = 3.0_f64;
+    let margin_y = 4.0_f64;
     let left = x + margin_x;
     let baseline = y + height - margin_y;
     let usable_width = (width - margin_x * 2.0).max(8.0);
     let usable_height = (height - margin_y * 2.0).max(8.0);
-    let column_width = (usable_width / columns.len() as f64).max(3.0);
+    let column_width = usable_width / columns.len() as f64;
     let bits_to_px = usable_height / 2.0;
+    let draw_letters =
+        column_width >= SVG_LOGO_MIN_COLUMN_WIDTH && height >= SVG_LOGO_MIN_LETTER_HEIGHT;
+    let glyph_font_size = 13.0_f64;
+    let estimated_glyph_width = glyph_font_size * 0.62;
+    let clip_prefix = format!(
+        "tfbs_logo_clip_{}_{}",
+        (x * 10.0).round() as i64,
+        (y * 10.0).round() as i64
+    );
     svg.push_str(&format!(
         "<line x1=\"{left:.1}\" y1=\"{baseline:.1}\" x2=\"{:.1}\" y2=\"{baseline:.1}\" stroke=\"#cbd5e1\" stroke-width=\"0.8\"/>\n",
         x + width - margin_x,
@@ -135,20 +157,6 @@ fn render_tf_track_logo_svg(
     for column in columns {
         let x_left = left + (column.position_1based as f64 - 1.0) * column_width;
         let x_center = x_left + column_width * 0.5;
-        let information_height =
-            (column.information_content_bits * bits_to_px).clamp(0.0, usable_height);
-        if information_height > 0.75 {
-            let alpha =
-                ((column.information_content_bits / 2.0).clamp(0.24, 0.62) * 100.0).round() / 100.0;
-            svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"1.5\" fill=\"#cbd5e1\" fill-opacity=\"{alpha:.2}\" stroke=\"#cbd5e1\" stroke-opacity=\"{:.2}\" stroke-width=\"0.4\"/>\n",
-                x_left + column_width * 0.08,
-                baseline - information_height,
-                (column_width * 0.84).max(1.5),
-                information_height,
-                (alpha * 0.8).clamp(0.12, 0.55),
-            ));
-        }
         let mut rows = vec![
             ('A', column.a_logo_bits),
             ('C', column.c_logo_bits),
@@ -157,7 +165,7 @@ fn render_tf_track_logo_svg(
         ];
         rows.sort_by(|left, right| left.1.total_cmp(&right.1));
         let mut used_height = 0.0_f64;
-        for (base, bits) in rows {
+        for (base_idx, (base, bits)) in rows.into_iter().enumerate() {
             if bits <= 0.0001 {
                 continue;
             }
@@ -165,14 +173,31 @@ fn render_tf_track_logo_svg(
             if letter_height <= 0.75 {
                 continue;
             }
-            svg.push_str(&format!(
-                "<text x=\"{x_center:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"{:.2}\" font-weight=\"700\" fill=\"{}\" data-gentle-role=\"tfbs-score-track-logo-letter\">{}</text>\n",
-                baseline - used_height,
-                letter_height,
-                tfbs_logo_base_color(base),
-                base,
-            ));
-            used_height += letter_height * 0.86;
+            let y_bottom = baseline - used_height;
+            let y_top = y_bottom - letter_height;
+            if draw_letters && letter_height >= SVG_LOGO_MIN_READABLE_COMPONENT_HEIGHT {
+                let clip_id = format!("{clip_prefix}_{}_{}", column.position_1based, base_idx);
+                let clip_x = x_left + column_width * 0.04;
+                let clip_width = (column_width * 0.92).max(1.0);
+                let scale_x = (clip_width / estimated_glyph_width).clamp(0.38, 1.35);
+                let scale_y = (letter_height / glyph_font_size).max(0.08);
+                svg.push_str(&format!(
+                    "<clipPath id=\"{clip_id}\"><rect x=\"{clip_x:.2}\" y=\"{y_top:.2}\" width=\"{clip_width:.2}\" height=\"{letter_height:.2}\"/></clipPath>\n"
+                ));
+                svg.push_str(&format!(
+                    "<g clip-path=\"url(#{clip_id})\"><text x=\"0\" y=\"0\" text-anchor=\"middle\" font-family=\"Arial, Helvetica, sans-serif\" font-size=\"{glyph_font_size:.2}\" font-weight=\"900\" fill=\"{}\" transform=\"translate({x_center:.2} {y_bottom:.2}) scale({scale_x:.3} {scale_y:.3})\" data-gentle-role=\"tfbs-score-track-logo-letter\">{}</text></g>\n",
+                    tfbs_logo_base_color(base),
+                    base,
+                ));
+            } else if !draw_letters {
+                svg.push_str(&format!(
+                    "<rect x=\"{:.2}\" y=\"{y_top:.2}\" width=\"{:.2}\" height=\"{letter_height:.2}\" rx=\"0.7\" fill=\"{}\" data-gentle-role=\"tfbs-score-track-logo-bar\"/>\n",
+                    x_left + column_width * 0.12,
+                    (column_width * 0.76).max(1.0),
+                    tfbs_logo_base_color(base),
+                ));
+            }
+            used_height += letter_height;
         }
     }
     svg
@@ -676,7 +701,8 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
         let title_x = content_left + 12.0;
         let logo_x = content_left + 12.0;
         let logo_y = row_top + 30.0;
-        let meta_x = logo_x + SVG_LOGO_WIDTH + 12.0;
+        let logo_width = tf_track_logo_width(&track.motif_logo_columns);
+        let meta_x = logo_x + logo_width + 12.0;
         let meta = format!(
             "{} bp motif | {} windows | max {:.2}{}",
             track.motif_length_bp, track.scored_window_count, track.max_score, max_position
@@ -701,7 +727,7 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             &track.motif_logo_columns,
             logo_x,
             logo_y,
-            SVG_LOGO_WIDTH,
+            logo_width,
             SVG_LOGO_HEIGHT,
         ));
         svg.push_str(&format!(
@@ -1550,6 +1576,25 @@ mod tests {
     }
 
     #[test]
+    fn render_tf_track_logo_svg_uses_letters_only_when_readable() {
+        let readable = render_tf_track_logo_svg(&sample_logo_columns(10), 0.0, 0.0, 140.0, 56.0);
+        assert!(readable.contains("data-gentle-role=\"tfbs-score-track-logo-letter\""));
+        assert!(!readable.contains("data-gentle-role=\"tfbs-score-track-logo-bar\""));
+        assert!(!readable.contains("fill-opacity"));
+        assert!(readable.contains("font-family=\"Arial, Helvetica, sans-serif\""));
+        assert!(readable.contains("scale("));
+
+        let compact_score_track =
+            render_tf_track_logo_svg(&sample_logo_columns(10), 0.0, 0.0, 140.0, 34.0);
+        assert!(compact_score_track.contains("data-gentle-role=\"tfbs-score-track-logo-bar\""));
+        assert!(!compact_score_track.contains("data-gentle-role=\"tfbs-score-track-logo-letter\""));
+
+        let cramped = render_tf_track_logo_svg(&sample_logo_columns(30), 0.0, 0.0, 84.0, 24.0);
+        assert!(cramped.contains("data-gentle-role=\"tfbs-score-track-logo-bar\""));
+        assert!(!cramped.contains("data-gentle-role=\"tfbs-score-track-logo-letter\""));
+    }
+
+    #[test]
     fn render_tfbs_score_tracks_svg_contains_track_labels_and_axes() {
         let report = TfbsScoreTrackReport {
             schema: "gentle.tfbs_score_tracks.v1".to_string(),
@@ -1682,6 +1727,7 @@ mod tests {
         assert!(svg.contains("SP1 (MA0079.3)"));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-logo\""));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-logo-letter\""));
+        assert!(!svg.contains("fill=\"#cbd5e1\" fill-opacity"));
         assert!(svg.contains("base-pair position in selected span"));
         assert!(svg.contains("#0e7490"));
         assert!(svg.contains("#b45309"));
