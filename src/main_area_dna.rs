@@ -1388,6 +1388,12 @@ mod tests {
     };
     use tempfile::{TempDir, tempdir};
 
+    fn lock_jaspar_registry_for_test() -> std::sync::MutexGuard<'static, ()> {
+        crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn make_feature(kind: &str, qualifiers: Vec<(&str, &str)>) -> Feature {
         Feature {
             kind: kind.to_string().into(),
@@ -3401,6 +3407,8 @@ mod tests {
 
     #[test]
     fn whole_sequence_tfbs_track_similarity_uses_shared_engine_report_path() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let dna = DNAsequence::from_sequence(&"ACGT".repeat(64)).expect("sequence");
         let mut state = ProjectState::default();
         state.sequences.insert("seq1".to_string(), dna.clone());
