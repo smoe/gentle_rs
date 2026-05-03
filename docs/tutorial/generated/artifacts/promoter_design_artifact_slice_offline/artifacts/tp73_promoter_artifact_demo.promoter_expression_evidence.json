@@ -1,0 +1,117 @@
+{
+  "schema": "gentle.promoter_expression_evidence.v1",
+  "seq_id": "tp73_promoter_artifact_demo",
+  "sequence_length_bp": 249,
+  "generated_at_unix_ms": 0,
+  "op_id": "op-6",
+  "run_id": "example_promoter_design_artifact_slice_offline",
+  "gene_label_filter": "TP73",
+  "promoter_upstream_bp": 40,
+  "promoter_downstream_bp": 15,
+  "promoter_group_count": 2,
+  "supplied_expression_record_count": 3,
+  "assigned_expression_record_count": 3,
+  "expression_source_label": "synthetic downstream expression demo",
+  "rows": [
+    {
+      "promoter_group_id": "promoter_tp73promoterwindow2tx_61_116",
+      "label": "TP73 promoter window (2 tx)",
+      "transcript_ids": [
+        "ENSTTP73DEMO1",
+        "ENSTTP73DEMO2"
+      ],
+      "transcript_labels": [
+        "TP73-demo-201",
+        "TP73-demo-202"
+      ],
+      "expression_record_count": 2,
+      "mean_value": 15.5,
+      "max_value": 18.0,
+      "unit": "a.u.",
+      "sample_ids": [
+        "synthetic_case_1"
+      ],
+      "conditions": [
+        "case"
+      ],
+      "records": [
+        {
+          "evidence_id": "promoter_tp73promoterwindow2tx_61_116_expression_1",
+          "gene_label": "TP73",
+          "transcript_id": "ENSTTP73DEMO1",
+          "transcript_label": "TP73-demo-201",
+          "sample_id": "synthetic_case_1",
+          "condition": "case",
+          "value": 18.0,
+          "unit": "a.u.",
+          "source": "synthetic downstream expression demo",
+          "artifact_path": "docs/examples/assets/tp73_promoter_artifact_demo.gb",
+          "matched_by": [
+            "transcript_id",
+            "transcript_label"
+          ]
+        },
+        {
+          "evidence_id": "promoter_tp73promoterwindow2tx_61_116_expression_2",
+          "gene_label": "TP73",
+          "transcript_id": "ENSTTP73DEMO2",
+          "transcript_label": "TP73-demo-202",
+          "sample_id": "synthetic_case_1",
+          "condition": "case",
+          "value": 13.0,
+          "unit": "a.u.",
+          "source": "synthetic downstream expression demo",
+          "artifact_path": "docs/examples/assets/tp73_promoter_artifact_demo.gb",
+          "matched_by": [
+            "transcript_id",
+            "transcript_label"
+          ]
+        }
+      ],
+      "interpretation": "2 expression evidence record(s) assigned to this promoter group."
+    },
+    {
+      "promoter_group_id": "promoter_tp73promoterwindow_101_156",
+      "label": "TP73 promoter window",
+      "transcript_ids": [
+        "ENSTTP73DEMO3"
+      ],
+      "transcript_labels": [
+        "TP73-demo-203-altTSS"
+      ],
+      "expression_record_count": 1,
+      "mean_value": 7.0,
+      "max_value": 7.0,
+      "unit": "a.u.",
+      "sample_ids": [
+        "synthetic_case_1"
+      ],
+      "conditions": [
+        "case"
+      ],
+      "records": [
+        {
+          "evidence_id": "promoter_tp73promoterwindow_101_156_expression_3",
+          "gene_label": "TP73",
+          "transcript_id": "ENSTTP73DEMO3",
+          "transcript_label": "TP73-demo-203-altTSS",
+          "sample_id": "synthetic_case_1",
+          "condition": "case",
+          "value": 7.0,
+          "unit": "a.u.",
+          "source": "synthetic downstream expression demo",
+          "artifact_path": "docs/examples/assets/tp73_promoter_artifact_demo.gb",
+          "matched_by": [
+            "transcript_id",
+            "transcript_label"
+          ]
+        }
+      ],
+      "interpretation": "1 expression evidence record(s) assigned to this promoter group."
+    }
+  ],
+  "unassigned_expression_records": [],
+  "warnings": [
+    "Feature-overlap evidence was not collected because include_feature_overlaps=false."
+  ]
+}

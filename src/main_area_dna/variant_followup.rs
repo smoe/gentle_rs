@@ -293,6 +293,7 @@ impl MainAreaDna {
             cached_report: None,
             cached_alternative_promoter_comparison: None,
             cached_promoter_evidence_matrix: None,
+            cached_isoform_promoter_comparison: None,
             cached_candidates: None,
         };
         Ok(())
@@ -988,6 +989,91 @@ impl MainAreaDna {
         }
     }
 
+    fn summarize_variant_followup_isoform_promoter_comparison(&mut self) {
+        let input = match self.variant_followup_input_seq_id() {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_upstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_upstream_bp,
+            "promoter upstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let promoter_downstream_bp = match Self::parse_positive_usize_text(
+            &self.variant_followup_ui.promoter_downstream_bp,
+            "promoter downstream bp",
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizeIsoformPromoterComparison {
+                input,
+                gene_label: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.gene_label,
+                ),
+                transcript_id: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.transcript_id,
+                ),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                include_feature_overlaps: true,
+                path: None,
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.isoform_promoter_comparison) {
+            self.variant_followup_ui.cached_isoform_promoter_comparison = Some(report);
+        }
+    }
+
+    fn export_variant_followup_isoform_promoter_comparison_json(&mut self) {
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_isoform_promoter_comparison
+            .clone()
+        else {
+            self.op_status =
+                "No cached isoform promoter comparison available for JSON export".to_string();
+            return;
+        };
+        let default_name = format!(
+            "{}_isoform_promoter_comparison.json",
+            Self::sanitize_export_name_component(&report.seq_id, "promoter_design")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            self.op_status = "Isoform promoter comparison export canceled".to_string();
+            return;
+        };
+        let result = self.apply_operation_with_feedback_and_result(
+            Operation::SummarizeIsoformPromoterComparison {
+                input: report.seq_id.clone(),
+                gene_label: report.gene_label_filter.clone(),
+                transcript_id: report.transcript_id_filter.clone(),
+                promoter_upstream_bp: report.promoter_upstream_bp,
+                promoter_downstream_bp: report.promoter_downstream_bp,
+                include_feature_overlaps: true,
+                path: Some(path.display().to_string()),
+            },
+        );
+        if let Some(report) = result.and_then(|row| row.isoform_promoter_comparison) {
+            self.variant_followup_ui.cached_isoform_promoter_comparison = Some(report);
+        }
+    }
+
     pub(super) fn use_variant_followup_alternative_promoter_row(
         &mut self,
         row: &AlternativePromoterComparisonRow,
@@ -1008,6 +1094,7 @@ impl MainAreaDna {
         self.variant_followup_ui.cached_report = None;
         self.variant_followup_ui.cached_candidates = None;
         self.variant_followup_ui.cached_promoter_evidence_matrix = None;
+        self.variant_followup_ui.cached_isoform_promoter_comparison = None;
         self.op_status = format!(
             "Promoter design now targets '{}' at {}..{}",
             row.representative_transcript_id
@@ -1037,9 +1124,38 @@ impl MainAreaDna {
         self.variant_followup_ui.cached_tfbs_track_similarity = None;
         self.variant_followup_ui.cached_report = None;
         self.variant_followup_ui.cached_candidates = None;
+        self.variant_followup_ui.cached_isoform_promoter_comparison = None;
         self.op_status = format!(
             "Promoter design evidence row '{}' selected at {}..{}",
             row.label, row.start_0based, row.end_0based_exclusive
+        );
+    }
+
+    pub(super) fn use_variant_followup_isoform_promoter_group(
+        &mut self,
+        group: &IsoformPromoterComparisonGroup,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+    ) {
+        if let Some(transcript_id) = group.transcript_ids.first() {
+            self.variant_followup_ui.transcript_id = transcript_id.to_string();
+        }
+        if let Some(gene_label) = group.gene_label.as_deref() {
+            self.variant_followup_ui.gene_label = gene_label.to_string();
+        }
+        self.variant_followup_ui.promoter_upstream_bp = promoter_upstream_bp.to_string();
+        self.variant_followup_ui.promoter_downstream_bp = promoter_downstream_bp.to_string();
+        self.variant_followup_ui.score_track_start_0based = group.start_0based.to_string();
+        self.variant_followup_ui.score_track_end_0based_exclusive =
+            group.end_0based_exclusive.to_string();
+        self.variant_followup_ui.cached_score_tracks = None;
+        self.variant_followup_ui.cached_tfbs_track_similarity = None;
+        self.variant_followup_ui.cached_report = None;
+        self.variant_followup_ui.cached_candidates = None;
+        self.variant_followup_ui.cached_promoter_evidence_matrix = None;
+        self.op_status = format!(
+            "Promoter design isoform group '{}' selected at {}..{}",
+            group.label, group.start_0based, group.end_0based_exclusive
         );
     }
 
@@ -3396,6 +3512,203 @@ impl MainAreaDna {
         }
     }
 
+    fn render_variant_followup_isoform_promoter_comparison_summary(&mut self, ui: &mut egui::Ui) {
+        let mut use_group: Option<(IsoformPromoterComparisonGroup, usize, usize)> = None;
+        let Some(report) = self
+            .variant_followup_ui
+            .cached_isoform_promoter_comparison
+            .as_ref()
+        else {
+            ui.small(
+                egui::RichText::new(
+                    "No isoform promoter comparison cached yet. Run `Compare isoform evidence` to separate common promoter evidence from promoter-group-specific differences.",
+                )
+                .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+            return;
+        };
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Isoform promoter evidence").strong());
+            ui.small(
+                egui::RichText::new(format!(
+                    "{} promoter group(s), {} transcript-window interpretation(s), {} comparison evidence item(s); {} common signature(s), {} differential signature(s)",
+                    report.promoter_group_count,
+                    report.transcript_window_count,
+                    report.comparison_evidence_item_count,
+                    report.common_evidence_signatures.len(),
+                    report.differential_evidence.len()
+                ))
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            if !report.comparison_evidence_kinds_observed.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Compared evidence kinds: {}",
+                        report.comparison_evidence_kinds_observed.join(", ")
+                    ))
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+            }
+            for warning in &report.warnings {
+                ui.small(
+                    egui::RichText::new(warning).color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+            let common_preview = report
+                .common_evidence_signatures
+                .iter()
+                .take(4)
+                .map(|signature| format!("{}: {}", signature.kind, signature.label))
+                .collect::<Vec<_>>();
+            if !common_preview.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Common evidence: {}{}",
+                        common_preview.join("; "),
+                        if report.common_evidence_signatures.len() > common_preview.len() {
+                            format!(
+                                "; +{} more",
+                                report
+                                    .common_evidence_signatures
+                                    .len()
+                                    .saturating_sub(common_preview.len())
+                            )
+                        } else {
+                            String::new()
+                        }
+                    ))
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+            }
+            egui::ScrollArea::vertical()
+                .id_salt(("variant_followup_isoform_promoter_scroll", report.seq_id.as_str()))
+                .max_height(260.0)
+                .show(ui, |ui| {
+                    egui::Grid::new((
+                        "variant_followup_isoform_promoter_grid",
+                        report.seq_id.as_str(),
+                    ))
+                    .num_columns(7)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.small(egui::RichText::new("group").strong());
+                        ui.small(egui::RichText::new("tx").strong());
+                        ui.small(egui::RichText::new("span").strong());
+                        ui.small(egui::RichText::new("evidence").strong());
+                        ui.small(egui::RichText::new("common").strong());
+                        ui.small(egui::RichText::new("unique").strong());
+                        ui.small(egui::RichText::new("action").strong());
+                        ui.end_row();
+                        for group in &report.groups {
+                            ui.small(group.label.as_str()).on_hover_text(
+                                if group.transcript_labels.is_empty() {
+                                    group.transcript_ids.join(", ")
+                                } else {
+                                    format!(
+                                        "{}\n{}",
+                                        group.transcript_ids.join(", "),
+                                        group.transcript_labels.join(", ")
+                                    )
+                                },
+                            );
+                            ui.small(group.transcript_count.to_string());
+                            ui.monospace(format!(
+                                "{}..{}",
+                                group.start_0based, group.end_0based_exclusive
+                            ));
+                            let mut kind_summary = group
+                                .evidence_kind_counts
+                                .iter()
+                                .map(|(kind, count)| format!("{kind}={count}"))
+                                .collect::<Vec<_>>();
+                            let kind_overflow = kind_summary.len().saturating_sub(4);
+                            kind_summary.truncate(4);
+                            let kind_label = if kind_overflow == 0 {
+                                kind_summary.join(", ")
+                            } else {
+                                format!("{}, +{} more", kind_summary.join(", "), kind_overflow)
+                            };
+                            ui.small(if kind_label.is_empty() {
+                                "n/a"
+                            } else {
+                                kind_label.as_str()
+                            });
+                            ui.small(group.common_evidence_signatures.len().to_string());
+                            ui.small(group.unique_evidence_signatures.len().to_string())
+                                .on_hover_text(
+                                    group
+                                        .unique_evidence_signatures
+                                        .iter()
+                                        .take(12)
+                                        .map(|signature| {
+                                            format!(
+                                                "{}: {} ({})",
+                                                signature.kind, signature.label, signature.source
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n"),
+                                );
+                            if ui
+                                .small_button("Use")
+                                .on_hover_text(
+                                    "Use this isoform promoter group as the current Promoter design transcript/range seed.",
+                                )
+                                .clicked()
+                            {
+                                use_group = Some((
+                                    group.clone(),
+                                    report.promoter_upstream_bp,
+                                    report.promoter_downstream_bp,
+                                ));
+                            }
+                            ui.end_row();
+                        }
+                    });
+                });
+            let differential_preview = report
+                .differential_evidence
+                .iter()
+                .take(5)
+                .map(|row| {
+                    format!(
+                        "{}: {} | present in {}",
+                        row.signature.kind,
+                        row.signature.label,
+                        row.present_group_ids.join(", ")
+                    )
+                })
+                .collect::<Vec<_>>();
+            if !differential_preview.is_empty() {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Differential evidence preview: {}{}",
+                        differential_preview.join("; "),
+                        if report.differential_evidence.len() > differential_preview.len() {
+                            format!(
+                                "; +{} more",
+                                report
+                                    .differential_evidence
+                                    .len()
+                                    .saturating_sub(differential_preview.len())
+                            )
+                        } else {
+                            String::new()
+                        }
+                    ))
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+            }
+        });
+        if let Some((group, promoter_upstream_bp, promoter_downstream_bp)) = use_group {
+            self.use_variant_followup_isoform_promoter_group(
+                &group,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+            );
+        }
+    }
+
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
@@ -3805,6 +4118,7 @@ impl MainAreaDna {
             self.variant_followup_ui
                 .cached_alternative_promoter_comparison = None;
             self.variant_followup_ui.cached_promoter_evidence_matrix = None;
+            self.variant_followup_ui.cached_isoform_promoter_comparison = None;
         }
 
         ui.separator();
@@ -3899,6 +4213,18 @@ impl MainAreaDna {
             if ui
                 .add_enabled(
                     engine_available && !source_missing,
+                    egui::Button::new("Compare isoform evidence"),
+                )
+                .on_hover_text(
+                    "Compare common and promoter-group-specific evidence across isoform-derived promoter windows.",
+                )
+                .clicked()
+            {
+                self.summarize_variant_followup_isoform_promoter_comparison();
+            }
+            if ui
+                .add_enabled(
+                    engine_available && !source_missing,
                     egui::Button::new("Build evidence matrix"),
                 )
                 .on_hover_text(
@@ -3969,6 +4295,23 @@ impl MainAreaDna {
             {
                 self.export_variant_followup_promoter_evidence_matrix_json();
             }
+            if ui
+                .add_enabled(
+                    engine_available
+                        && !source_missing
+                        && self
+                            .variant_followup_ui
+                            .cached_isoform_promoter_comparison
+                            .is_some(),
+                    egui::Button::new("Export isoform comparison JSON..."),
+                )
+                .on_hover_text(
+                    "Write the currently cached isoform promoter evidence comparison as JSON through the shared engine route.",
+                )
+                .clicked()
+            {
+                self.export_variant_followup_isoform_promoter_comparison_json();
+            }
             let has_candidates = self.variant_followup_ui.cached_candidates.is_some();
             if ui
                 .add_enabled(
@@ -4029,6 +4372,8 @@ impl MainAreaDna {
         self.render_variant_followup_tfbs_track_similarity_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_alternative_promoter_summary(ui);
+        ui.add_space(8.0);
+        self.render_variant_followup_isoform_promoter_comparison_summary(ui);
         ui.add_space(8.0);
         self.render_variant_followup_promoter_evidence_matrix_summary(ui);
         ui.add_space(8.0);

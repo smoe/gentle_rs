@@ -35617,6 +35617,208 @@ fn summarize_promoter_evidence_matrix_collapses_promoters_and_collects_evidence(
 }
 
 #[test]
+fn summarize_isoform_promoter_comparison_reports_common_and_differential_evidence() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(3000)).expect("sequence");
+    for (transcript_id, transcript_label, start) in [
+        ("ENSTTP73A", "TP73-201", 1200_i64),
+        ("ENSTTP73B", "TP73-202", 1200_i64),
+        ("ENSTTP73C", "TP73-203-altTSS", 1500_i64),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start, start + 600),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_label.to_string())),
+            ],
+        });
+    }
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "TFBS".into(),
+        location: gb_io::seq::Location::simple_range(1030, 1040),
+        qualifiers: vec![("label".into(), Some("SP1".to_string()))],
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "track".into(),
+        location: gb_io::seq::Location::simple_range(1320, 1335),
+        qualifiers: vec![
+            ("label".into(), Some("CUT&RUN alt promoter".to_string())),
+            ("gentle_track_name".into(), Some("CUT&RUN demo".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_isoform_promoters".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+
+    let report = engine
+        .summarize_isoform_promoter_comparison(
+            "tp73_isoform_promoters",
+            Some("TP73"),
+            None,
+            200,
+            50,
+            true,
+        )
+        .expect("isoform promoter comparison");
+
+    assert_eq!(report.schema, ISOFORM_PROMOTER_COMPARISON_SCHEMA);
+    assert_eq!(report.transcript_window_count, 3);
+    assert_eq!(report.promoter_group_count, 2);
+    assert_eq!(report.groups[0].transcript_count, 2);
+    assert!(
+        report
+            .comparison_evidence_kinds_observed
+            .iter()
+            .any(|kind| kind == "tfbs_annotation")
+    );
+    assert!(
+        report
+            .differential_evidence
+            .iter()
+            .any(|row| row.signature.label == "SP1"),
+        "differential evidence was: {:?}",
+        report.differential_evidence
+    );
+}
+
+#[test]
+fn summarize_promoter_expression_evidence_assigns_transcript_rows_to_promoter_groups() {
+    let mut dna = DNAsequence::from_sequence(&"A".repeat(3000)).expect("sequence");
+    for (transcript_id, transcript_label, start) in [
+        ("ENSTTP73A", "TP73-201", 1200_i64),
+        ("ENSTTP73B", "TP73-202", 1200_i64),
+        ("ENSTTP73C", "TP73-203-altTSS", 1500_i64),
+    ] {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(start, start + 600),
+            qualifiers: vec![
+                ("gene".into(), Some("TP73".to_string())),
+                ("transcript_id".into(), Some(transcript_id.to_string())),
+                ("label".into(), Some(transcript_label.to_string())),
+            ],
+        });
+    }
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_expression_promoters".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+    let expression_rows = vec![
+        PromoterExpressionEvidenceInput {
+            transcript_id: Some("ENSTTP73A".to_string()),
+            sample_id: Some("case_1".to_string()),
+            condition: Some("case".to_string()),
+            value: 10.0,
+            unit: Some("TPM".to_string()),
+            source: Some("synthetic RNA-seq".to_string()),
+            ..PromoterExpressionEvidenceInput::default()
+        },
+        PromoterExpressionEvidenceInput {
+            transcript_id: Some("ENSTTP73B".to_string()),
+            sample_id: Some("case_1".to_string()),
+            condition: Some("case".to_string()),
+            value: 6.0,
+            unit: Some("TPM".to_string()),
+            source: Some("synthetic RNA-seq".to_string()),
+            ..PromoterExpressionEvidenceInput::default()
+        },
+        PromoterExpressionEvidenceInput {
+            transcript_id: Some("ENSTTP73C".to_string()),
+            sample_id: Some("case_1".to_string()),
+            condition: Some("case".to_string()),
+            value: 24.0,
+            unit: Some("TPM".to_string()),
+            source: Some("synthetic RNA-seq".to_string()),
+            ..PromoterExpressionEvidenceInput::default()
+        },
+        PromoterExpressionEvidenceInput {
+            transcript_id: Some("ENSTUNRELATED".to_string()),
+            value: 99.0,
+            unit: Some("TPM".to_string()),
+            ..PromoterExpressionEvidenceInput::default()
+        },
+    ];
+
+    let report = engine
+        .summarize_promoter_expression_evidence(
+            "tp73_expression_promoters",
+            Some("TP73"),
+            None,
+            200,
+            50,
+            &expression_rows,
+            Some("synthetic expression table"),
+        )
+        .expect("promoter expression evidence");
+
+    assert_eq!(report.schema, PROMOTER_EXPRESSION_EVIDENCE_SCHEMA);
+    assert_eq!(report.promoter_group_count, 2);
+    assert_eq!(report.supplied_expression_record_count, 4);
+    assert_eq!(report.assigned_expression_record_count, 3);
+    assert_eq!(report.unassigned_expression_records.len(), 1);
+    let shared = report
+        .rows
+        .iter()
+        .find(|row| row.transcript_ids.iter().any(|id| id == "ENSTTP73A"))
+        .expect("shared promoter expression row");
+    assert_eq!(shared.expression_record_count, 2);
+    assert_eq!(shared.mean_value, Some(8.0));
+}
+
+#[test]
+fn export_promoter_artifact_manifest_marks_present_and_missing_required_artifacts() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_artifact_manifest".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+    let dir = tempdir().expect("tempdir");
+    let present_path = dir.path().join("present.json");
+    fs::write(&present_path, "{}").expect("write present artifact");
+    let missing_path = dir.path().join("missing.json");
+
+    let report = engine
+        .export_promoter_artifact_manifest(
+            "tp73_artifact_manifest",
+            Some("TP73"),
+            &[
+                PromoterArtifactManifestEntry {
+                    artifact_id: "present".to_string(),
+                    artifact_kind: "promoter_evidence_matrix".to_string(),
+                    path: present_path.to_string_lossy().to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+                PromoterArtifactManifestEntry {
+                    artifact_id: "missing".to_string(),
+                    artifact_kind: "promoter_expression_evidence".to_string(),
+                    path: missing_path.to_string_lossy().to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+            ],
+            None,
+        )
+        .expect("promoter artifact manifest");
+
+    assert_eq!(report.schema, PROMOTER_ARTIFACT_MANIFEST_SCHEMA);
+    assert_eq!(report.artifact_count, 2);
+    assert_eq!(report.present_artifact_count, 1);
+    assert_eq!(report.missing_required_artifact_count, 1);
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("missing"))
+    );
+}
+
+#[test]
 fn build_construct_reasoning_graph_derives_promoter_assay_from_generated_promoter_window() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

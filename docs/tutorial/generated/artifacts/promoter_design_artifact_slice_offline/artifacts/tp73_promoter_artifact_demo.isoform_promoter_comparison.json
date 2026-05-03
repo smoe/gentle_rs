@@ -1,0 +1,406 @@
+{
+  "schema": "gentle.isoform_promoter_comparison.v1",
+  "seq_id": "tp73_promoter_artifact_demo",
+  "sequence_length_bp": 249,
+  "generated_at_unix_ms": 0,
+  "op_id": "op-5",
+  "run_id": "example_promoter_design_artifact_slice_offline",
+  "gene_label_filter": "TP73",
+  "promoter_upstream_bp": 40,
+  "promoter_downstream_bp": 15,
+  "transcript_window_count": 3,
+  "promoter_group_count": 2,
+  "comparison_evidence_item_count": 9,
+  "comparison_evidence_kinds_observed": [
+    "cutrun_peak_overlap",
+    "promoter_annotation",
+    "repeat_context",
+    "tfbs_annotation",
+    "variant_overlap"
+  ],
+  "groups": [
+    {
+      "group_id": "promoter_tp73promoterwindow2tx_61_116",
+      "label": "TP73 promoter window (2 tx)",
+      "gene_label": "TP73",
+      "strand": "+",
+      "start_0based": 60,
+      "end_0based_exclusive": 116,
+      "representative_tss_local_0based": 100,
+      "transcript_count": 2,
+      "transcript_ids": [
+        "ENSTTP73DEMO1",
+        "ENSTTP73DEMO2"
+      ],
+      "transcript_labels": [
+        "TP73-demo-201",
+        "TP73-demo-202"
+      ],
+      "evidence_kind_counts": {
+        "promoter_annotation": 2,
+        "promoter_geometry": 1,
+        "repeat_context": 1,
+        "tfbs_annotation": 1,
+        "transcript_support": 1,
+        "variant_overlap": 1
+      },
+      "evidence_signatures": [
+        {
+          "signature_id": "promoter_annotation_annotation_tp73sharedpromoterannotation_60_116",
+          "kind": "promoter_annotation",
+          "source": "annotation",
+          "label": "TP73 shared promoter annotation",
+          "start_0based": 60,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "summary": "Promoter annotation 'TP73 shared promoter annotation' overlaps this promoter candidate"
+        },
+        {
+          "signature_id": "promoter_annotation_annotate_promoter_windows_tp73promoterwindow2tx_60_116",
+          "kind": "promoter_annotation",
+          "source": "annotate_promoter_windows",
+          "label": "TP73 promoter window (2 tx)",
+          "start_0based": 60,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "summary": "Promoter annotation 'TP73 promoter window (2 tx)' overlaps this promoter candidate"
+        },
+        {
+          "signature_id": "tfbs_annotation_annotation_sp1syntheticsite_80_89",
+          "kind": "tfbs_annotation",
+          "source": "annotation",
+          "label": "SP1 synthetic site",
+          "start_0based": 80,
+          "end_0based_exclusive": 89,
+          "strand": "+",
+          "summary": "SP1 synthetic site overlaps promoter candidate by 9 bp"
+        },
+        {
+          "signature_id": "variant_overlap_annotation_rssyntheticpromoter_94_95",
+          "kind": "variant_overlap",
+          "source": "annotation",
+          "label": "rsSyntheticPromoter",
+          "start_0based": 94,
+          "end_0based_exclusive": 95,
+          "strand": "+",
+          "summary": "rsSyntheticPromoter overlaps promoter candidate by 1 bp"
+        },
+        {
+          "signature_id": "repeat_context_annotation_l1_demo_104_116",
+          "kind": "repeat_context",
+          "source": "annotation",
+          "label": "L1-demo",
+          "start_0based": 104,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "summary": "L1-demo overlaps promoter candidate by 12 bp"
+        }
+      ],
+      "common_evidence_signatures": [
+        {
+          "signature_id": "repeat_context_annotation_l1_demo_104_116",
+          "kind": "repeat_context",
+          "source": "annotation",
+          "label": "L1-demo",
+          "start_0based": 104,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "summary": "L1-demo overlaps promoter candidate by 12 bp"
+        }
+      ],
+      "unique_evidence_signatures": [
+        {
+          "signature_id": "promoter_annotation_annotation_tp73sharedpromoterannotation_60_116",
+          "kind": "promoter_annotation",
+          "source": "annotation",
+          "label": "TP73 shared promoter annotation",
+          "start_0based": 60,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "summary": "Promoter annotation 'TP73 shared promoter annotation' overlaps this promoter candidate"
+        },
+        {
+          "signature_id": "promoter_annotation_annotate_promoter_windows_tp73promoterwindow2tx_60_116",
+          "kind": "promoter_annotation",
+          "source": "annotate_promoter_windows",
+          "label": "TP73 promoter window (2 tx)",
+          "start_0based": 60,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "summary": "Promoter annotation 'TP73 promoter window (2 tx)' overlaps this promoter candidate"
+        },
+        {
+          "signature_id": "tfbs_annotation_annotation_sp1syntheticsite_80_89",
+          "kind": "tfbs_annotation",
+          "source": "annotation",
+          "label": "SP1 synthetic site",
+          "start_0based": 80,
+          "end_0based_exclusive": 89,
+          "strand": "+",
+          "summary": "SP1 synthetic site overlaps promoter candidate by 9 bp"
+        },
+        {
+          "signature_id": "variant_overlap_annotation_rssyntheticpromoter_94_95",
+          "kind": "variant_overlap",
+          "source": "annotation",
+          "label": "rsSyntheticPromoter",
+          "start_0based": 94,
+          "end_0based_exclusive": 95,
+          "strand": "+",
+          "summary": "rsSyntheticPromoter overlaps promoter candidate by 1 bp"
+        }
+      ]
+    },
+    {
+      "group_id": "promoter_tp73promoterwindow_101_156",
+      "label": "TP73 promoter window",
+      "gene_label": "TP73",
+      "strand": "+",
+      "start_0based": 100,
+      "end_0based_exclusive": 156,
+      "representative_tss_local_0based": 140,
+      "transcript_count": 1,
+      "transcript_ids": [
+        "ENSTTP73DEMO3"
+      ],
+      "transcript_labels": [
+        "TP73-demo-203-altTSS"
+      ],
+      "evidence_kind_counts": {
+        "cutrun_peak_overlap": 1,
+        "promoter_annotation": 1,
+        "promoter_geometry": 1,
+        "repeat_context": 1,
+        "tfbs_annotation": 1,
+        "transcript_support": 1
+      },
+      "evidence_signatures": [
+        {
+          "signature_id": "promoter_annotation_annotate_promoter_windows_tp73promoterwindow_100_156",
+          "kind": "promoter_annotation",
+          "source": "annotate_promoter_windows",
+          "label": "TP73 promoter window",
+          "start_0based": 100,
+          "end_0based_exclusive": 156,
+          "strand": "+",
+          "summary": "Promoter annotation 'TP73 promoter window' overlaps this promoter candidate"
+        },
+        {
+          "signature_id": "repeat_context_annotation_l1_demo_104_116",
+          "kind": "repeat_context",
+          "source": "annotation",
+          "label": "L1-demo",
+          "start_0based": 104,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "summary": "L1-demo overlaps promoter candidate by 12 bp"
+        },
+        {
+          "signature_id": "tfbs_annotation_annotation_tp73_likesyntheticsite_149_158",
+          "kind": "tfbs_annotation",
+          "source": "annotation",
+          "label": "TP73-like synthetic site",
+          "start_0based": 149,
+          "end_0based_exclusive": 158,
+          "strand": "+",
+          "summary": "TP73-like synthetic site overlaps promoter candidate by 7 bp"
+        },
+        {
+          "signature_id": "cutrun_peak_overlap_annotation_cutruntp73promoter_sidepeak_129_152",
+          "kind": "cutrun_peak_overlap",
+          "source": "annotation",
+          "label": "CUT&RUN TP73 promoter-side peak",
+          "start_0based": 129,
+          "end_0based_exclusive": 152,
+          "strand": "+",
+          "summary": "CUT&RUN TP73 promoter-side peak overlaps promoter candidate by 23 bp"
+        }
+      ],
+      "common_evidence_signatures": [
+        {
+          "signature_id": "repeat_context_annotation_l1_demo_104_116",
+          "kind": "repeat_context",
+          "source": "annotation",
+          "label": "L1-demo",
+          "start_0based": 104,
+          "end_0based_exclusive": 116,
+          "strand": "+",
+          "summary": "L1-demo overlaps promoter candidate by 12 bp"
+        }
+      ],
+      "unique_evidence_signatures": [
+        {
+          "signature_id": "promoter_annotation_annotate_promoter_windows_tp73promoterwindow_100_156",
+          "kind": "promoter_annotation",
+          "source": "annotate_promoter_windows",
+          "label": "TP73 promoter window",
+          "start_0based": 100,
+          "end_0based_exclusive": 156,
+          "strand": "+",
+          "summary": "Promoter annotation 'TP73 promoter window' overlaps this promoter candidate"
+        },
+        {
+          "signature_id": "tfbs_annotation_annotation_tp73_likesyntheticsite_149_158",
+          "kind": "tfbs_annotation",
+          "source": "annotation",
+          "label": "TP73-like synthetic site",
+          "start_0based": 149,
+          "end_0based_exclusive": 158,
+          "strand": "+",
+          "summary": "TP73-like synthetic site overlaps promoter candidate by 7 bp"
+        },
+        {
+          "signature_id": "cutrun_peak_overlap_annotation_cutruntp73promoter_sidepeak_129_152",
+          "kind": "cutrun_peak_overlap",
+          "source": "annotation",
+          "label": "CUT&RUN TP73 promoter-side peak",
+          "start_0based": 129,
+          "end_0based_exclusive": 152,
+          "strand": "+",
+          "summary": "CUT&RUN TP73 promoter-side peak overlaps promoter candidate by 23 bp"
+        }
+      ]
+    }
+  ],
+  "common_evidence_signatures": [
+    {
+      "signature_id": "repeat_context_annotation_l1_demo_104_116",
+      "kind": "repeat_context",
+      "source": "annotation",
+      "label": "L1-demo",
+      "start_0based": 104,
+      "end_0based_exclusive": 116,
+      "strand": "+",
+      "summary": "L1-demo overlaps promoter candidate by 12 bp"
+    }
+  ],
+  "differential_evidence": [
+    {
+      "signature": {
+        "signature_id": "cutrun_peak_overlap_annotation_cutruntp73promoter_sidepeak_129_152",
+        "kind": "cutrun_peak_overlap",
+        "source": "annotation",
+        "label": "CUT&RUN TP73 promoter-side peak",
+        "start_0based": 129,
+        "end_0based_exclusive": 152,
+        "strand": "+",
+        "summary": "CUT&RUN TP73 promoter-side peak overlaps promoter candidate by 23 bp"
+      },
+      "present_group_ids": [
+        "promoter_tp73promoterwindow_101_156"
+      ],
+      "absent_group_ids": [
+        "promoter_tp73promoterwindow2tx_61_116"
+      ]
+    },
+    {
+      "signature": {
+        "signature_id": "promoter_annotation_annotate_promoter_windows_tp73promoterwindow_100_156",
+        "kind": "promoter_annotation",
+        "source": "annotate_promoter_windows",
+        "label": "TP73 promoter window",
+        "start_0based": 100,
+        "end_0based_exclusive": 156,
+        "strand": "+",
+        "summary": "Promoter annotation 'TP73 promoter window' overlaps this promoter candidate"
+      },
+      "present_group_ids": [
+        "promoter_tp73promoterwindow_101_156"
+      ],
+      "absent_group_ids": [
+        "promoter_tp73promoterwindow2tx_61_116"
+      ]
+    },
+    {
+      "signature": {
+        "signature_id": "promoter_annotation_annotate_promoter_windows_tp73promoterwindow2tx_60_116",
+        "kind": "promoter_annotation",
+        "source": "annotate_promoter_windows",
+        "label": "TP73 promoter window (2 tx)",
+        "start_0based": 60,
+        "end_0based_exclusive": 116,
+        "strand": "+",
+        "summary": "Promoter annotation 'TP73 promoter window (2 tx)' overlaps this promoter candidate"
+      },
+      "present_group_ids": [
+        "promoter_tp73promoterwindow2tx_61_116"
+      ],
+      "absent_group_ids": [
+        "promoter_tp73promoterwindow_101_156"
+      ]
+    },
+    {
+      "signature": {
+        "signature_id": "promoter_annotation_annotation_tp73sharedpromoterannotation_60_116",
+        "kind": "promoter_annotation",
+        "source": "annotation",
+        "label": "TP73 shared promoter annotation",
+        "start_0based": 60,
+        "end_0based_exclusive": 116,
+        "strand": "+",
+        "summary": "Promoter annotation 'TP73 shared promoter annotation' overlaps this promoter candidate"
+      },
+      "present_group_ids": [
+        "promoter_tp73promoterwindow2tx_61_116"
+      ],
+      "absent_group_ids": [
+        "promoter_tp73promoterwindow_101_156"
+      ]
+    },
+    {
+      "signature": {
+        "signature_id": "tfbs_annotation_annotation_sp1syntheticsite_80_89",
+        "kind": "tfbs_annotation",
+        "source": "annotation",
+        "label": "SP1 synthetic site",
+        "start_0based": 80,
+        "end_0based_exclusive": 89,
+        "strand": "+",
+        "summary": "SP1 synthetic site overlaps promoter candidate by 9 bp"
+      },
+      "present_group_ids": [
+        "promoter_tp73promoterwindow2tx_61_116"
+      ],
+      "absent_group_ids": [
+        "promoter_tp73promoterwindow_101_156"
+      ]
+    },
+    {
+      "signature": {
+        "signature_id": "tfbs_annotation_annotation_tp73_likesyntheticsite_149_158",
+        "kind": "tfbs_annotation",
+        "source": "annotation",
+        "label": "TP73-like synthetic site",
+        "start_0based": 149,
+        "end_0based_exclusive": 158,
+        "strand": "+",
+        "summary": "TP73-like synthetic site overlaps promoter candidate by 7 bp"
+      },
+      "present_group_ids": [
+        "promoter_tp73promoterwindow_101_156"
+      ],
+      "absent_group_ids": [
+        "promoter_tp73promoterwindow2tx_61_116"
+      ]
+    },
+    {
+      "signature": {
+        "signature_id": "variant_overlap_annotation_rssyntheticpromoter_94_95",
+        "kind": "variant_overlap",
+        "source": "annotation",
+        "label": "rsSyntheticPromoter",
+        "start_0based": 94,
+        "end_0based_exclusive": 95,
+        "strand": "+",
+        "summary": "rsSyntheticPromoter overlaps promoter candidate by 1 bp"
+      },
+      "present_group_ids": [
+        "promoter_tp73promoterwindow2tx_61_116"
+      ],
+      "absent_group_ids": [
+        "promoter_tp73promoterwindow_101_156"
+      ]
+    }
+  ],
+  "warnings": []
+}

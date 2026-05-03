@@ -513,6 +513,9 @@ const TF_QUERY_RESOLUTION_REPORT_SCHEMA: &str = "gentle.tf_query_resolution.v1";
 const VARIANT_PROMOTER_CONTEXT_SCHEMA: &str = "gentle.variant_promoter_context.v1";
 const ALTERNATIVE_PROMOTER_COMPARISON_SCHEMA: &str = "gentle.alternative_promoter_comparison.v1";
 const PROMOTER_EVIDENCE_MATRIX_SCHEMA: &str = "gentle.promoter_evidence_matrix.v1";
+const ISOFORM_PROMOTER_COMPARISON_SCHEMA: &str = "gentle.isoform_promoter_comparison.v1";
+const PROMOTER_EXPRESSION_EVIDENCE_SCHEMA: &str = "gentle.promoter_expression_evidence.v1";
+const PROMOTER_ARTIFACT_MANIFEST_SCHEMA: &str = "gentle.promoter_artifact_manifest.v1";
 const PROMOTER_REPORTER_CANDIDATES_SCHEMA: &str = "gentle.promoter_reporter_candidates.v1";
 const TFBS_REGION_SUMMARY_DEFAULT_LIMIT: usize = 200;
 const TFBS_REGION_SUMMARY_MAX_LIMIT: usize = 10_000;
@@ -3946,6 +3949,46 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    SummarizeIsoformPromoterComparison {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        promoter_upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        promoter_downstream_bp: usize,
+        #[serde(default = "default_true")]
+        include_feature_overlaps: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    SummarizePromoterExpressionEvidence {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transcript_id: Option<String>,
+        #[serde(default = "default_promoter_window_upstream_bp")]
+        promoter_upstream_bp: usize,
+        #[serde(default = "default_promoter_window_downstream_bp")]
+        promoter_downstream_bp: usize,
+        #[serde(default)]
+        expression_rows: Vec<PromoterExpressionEvidenceInput>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expression_source_label: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
+    ExportPromoterArtifactManifest {
+        input: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gene_label: Option<String>,
+        #[serde(default)]
+        artifacts: Vec<PromoterArtifactManifestEntry>,
+        path: String,
+    },
     SuggestPromoterReporterFragments {
         input: SeqId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5258,6 +5301,9 @@ impl GentleEngine {
                 "SummarizeTfbsTrackSimilarity".to_string(),
                 "SummarizeAlternativePromoterComparison".to_string(),
                 "SummarizePromoterEvidenceMatrix".to_string(),
+                "SummarizeIsoformPromoterComparison".to_string(),
+                "SummarizePromoterExpressionEvidence".to_string(),
+                "ExportPromoterArtifactManifest".to_string(),
                 "SummarizeMultiGenePromoterTfbs".to_string(),
                 "RenderMultiGenePromoterTfbsSvg".to_string(),
                 "ScanTfbsHits".to_string(),
@@ -7409,6 +7455,9 @@ impl GentleEngine {
                 | Operation::SummarizeTfbsTrackSimilarity { .. }
                 | Operation::SummarizeAlternativePromoterComparison { .. }
                 | Operation::SummarizePromoterEvidenceMatrix { .. }
+                | Operation::SummarizeIsoformPromoterComparison { .. }
+                | Operation::SummarizePromoterExpressionEvidence { .. }
+                | Operation::ExportPromoterArtifactManifest { .. }
                 | Operation::SummarizeMultiGenePromoterTfbs { .. }
                 | Operation::RenderMultiGenePromoterTfbsSvg { .. }
                 | Operation::ScanTfbsHits { .. }

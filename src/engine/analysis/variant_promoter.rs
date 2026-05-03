@@ -1475,6 +1475,549 @@ impl GentleEngine {
         .collect()
     }
 
+    fn promoter_isoform_comparison_uses_evidence_kind(kind: &str) -> bool {
+        !matches!(kind, "promoter_geometry" | "transcript_support")
+    }
+
+    fn promoter_isoform_evidence_signature(
+        item: &PromoterEvidenceItem,
+    ) -> IsoformPromoterEvidenceSignature {
+        let label = item
+            .attributes
+            .get("feature_label")
+            .cloned()
+            .unwrap_or_else(|| item.evidence_id.clone());
+        let strand = item.strand.clone();
+        let signature_id = Self::normalize_id_token(&format!(
+            "{}_{}_{}_{}_{}_{}",
+            item.kind,
+            item.source,
+            label,
+            item.start_0based
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "na".to_string()),
+            item.end_0based_exclusive
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "na".to_string()),
+            strand.as_deref().unwrap_or("na")
+        ));
+        IsoformPromoterEvidenceSignature {
+            signature_id,
+            kind: item.kind.clone(),
+            source: item.source.clone(),
+            label,
+            start_0based: item.start_0based,
+            end_0based_exclusive: item.end_0based_exclusive,
+            strand,
+            summary: item.summary.clone(),
+        }
+    }
+
+    fn promoter_expression_values_summary(
+        records: &[PromoterExpressionEvidenceRecord],
+    ) -> (
+        Option<f64>,
+        Option<f64>,
+        Option<String>,
+        Vec<String>,
+        Vec<String>,
+    ) {
+        if records.is_empty() {
+            return (None, None, None, vec![], vec![]);
+        }
+        let sum = records.iter().map(|row| row.value).sum::<f64>();
+        let mean = Some(sum / records.len() as f64);
+        let max = records.iter().map(|row| row.value).reduce(f64::max);
+        let mut units = records
+            .iter()
+            .filter_map(|row| row.unit.clone())
+            .filter(|value| !value.trim().is_empty())
+            .collect::<Vec<_>>();
+        Self::promoter_evidence_sort_dedup(&mut units);
+        let unit = (units.len() == 1).then(|| units[0].clone());
+        let mut sample_ids = records
+            .iter()
+            .filter_map(|row| row.sample_id.clone())
+            .filter(|value| !value.trim().is_empty())
+            .collect::<Vec<_>>();
+        Self::promoter_evidence_sort_dedup(&mut sample_ids);
+        let mut conditions = records
+            .iter()
+            .filter_map(|row| row.condition.clone())
+            .filter(|value| !value.trim().is_empty())
+            .collect::<Vec<_>>();
+        Self::promoter_evidence_sort_dedup(&mut conditions);
+        (mean, max, unit, sample_ids, conditions)
+    }
+
+    fn promoter_expression_row_matches(
+        promoter: &PromoterEvidenceMatrixRow,
+        input: &PromoterExpressionEvidenceInput,
+    ) -> Vec<String> {
+        let mut matched_by = vec![];
+        if let Some(transcript_id) = input
+            .transcript_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if promoter
+                .transcript_ids
+                .iter()
+                .any(|value| value.eq_ignore_ascii_case(transcript_id))
+            {
+                matched_by.push("transcript_id".to_string());
+            }
+        }
+        if let Some(transcript_label) = input
+            .transcript_label
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if promoter
+                .transcript_labels
+                .iter()
+                .any(|value| value.eq_ignore_ascii_case(transcript_label))
+            {
+                matched_by.push("transcript_label".to_string());
+            }
+        }
+        if let Some(promoter_label) = input
+            .promoter_label
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let left = promoter.label.to_ascii_lowercase();
+            let right = promoter_label.to_ascii_lowercase();
+            if left == right || left.contains(&right) || right.contains(&left) {
+                matched_by.push("promoter_label".to_string());
+            }
+        }
+        let explicit_promoter_or_transcript_match_requested = input.transcript_id.is_some()
+            || input.transcript_label.is_some()
+            || input.promoter_label.is_some();
+        if matched_by.is_empty() && !explicit_promoter_or_transcript_match_requested {
+            if let Some(gene_label) = input
+                .gene_label
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                if promoter
+                    .gene_label
+                    .as_deref()
+                    .is_some_and(|value| value.eq_ignore_ascii_case(gene_label))
+                {
+                    matched_by.push("gene_label".to_string());
+                }
+            }
+        }
+        matched_by
+    }
+
+    pub(crate) fn summarize_isoform_promoter_comparison(
+        &self,
+        input: &str,
+        gene_label: Option<&str>,
+        transcript_id: Option<&str>,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+        include_feature_overlaps: bool,
+    ) -> Result<IsoformPromoterComparisonReport, EngineError> {
+        let matrix = self.summarize_promoter_evidence_matrix(
+            input,
+            gene_label,
+            transcript_id,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            include_feature_overlaps,
+        )?;
+        let mut signatures_by_id = BTreeMap::<String, IsoformPromoterEvidenceSignature>::new();
+        let mut group_ids_by_signature = BTreeMap::<String, BTreeSet<String>>::new();
+        let mut groups = matrix
+            .rows
+            .iter()
+            .map(|row| {
+                let evidence_signatures = row
+                    .evidence
+                    .iter()
+                    .filter(|item| Self::promoter_isoform_comparison_uses_evidence_kind(&item.kind))
+                    .map(Self::promoter_isoform_evidence_signature)
+                    .collect::<Vec<_>>();
+                for signature in &evidence_signatures {
+                    signatures_by_id
+                        .entry(signature.signature_id.clone())
+                        .or_insert_with(|| signature.clone());
+                    group_ids_by_signature
+                        .entry(signature.signature_id.clone())
+                        .or_default()
+                        .insert(row.row_id.clone());
+                }
+                IsoformPromoterComparisonGroup {
+                    group_id: row.row_id.clone(),
+                    label: row.label.clone(),
+                    gene_label: row.gene_label.clone(),
+                    gene_id: row.gene_id.clone(),
+                    strand: row.strand.clone(),
+                    start_0based: row.start_0based,
+                    end_0based_exclusive: row.end_0based_exclusive,
+                    representative_tss_local_0based: row.representative_tss_local_0based,
+                    transcript_count: row.transcript_count,
+                    transcript_ids: row.transcript_ids.clone(),
+                    transcript_labels: row.transcript_labels.clone(),
+                    evidence_kind_counts: row.evidence_kind_counts.clone(),
+                    evidence_signatures,
+                    common_evidence_signatures: vec![],
+                    unique_evidence_signatures: vec![],
+                }
+            })
+            .collect::<Vec<_>>();
+        let group_count = groups.len();
+        let common_signature_ids = if group_count >= 2 {
+            group_ids_by_signature
+                .iter()
+                .filter_map(|(signature_id, group_ids)| {
+                    (group_ids.len() == group_count).then_some(signature_id.clone())
+                })
+                .collect::<BTreeSet<_>>()
+        } else {
+            BTreeSet::new()
+        };
+        let unique_signature_ids = group_ids_by_signature
+            .iter()
+            .filter_map(|(signature_id, group_ids)| {
+                (group_ids.len() == 1).then_some((signature_id.clone(), group_ids.clone()))
+            })
+            .collect::<Vec<_>>();
+        for group in &mut groups {
+            let group_signature_ids = group
+                .evidence_signatures
+                .iter()
+                .map(|signature| signature.signature_id.clone())
+                .collect::<BTreeSet<_>>();
+            group.common_evidence_signatures = group
+                .evidence_signatures
+                .iter()
+                .filter(|signature| common_signature_ids.contains(&signature.signature_id))
+                .cloned()
+                .collect();
+            let unique_for_group = unique_signature_ids
+                .iter()
+                .filter_map(|(signature_id, group_ids)| {
+                    (group_ids.contains(&group.group_id)
+                        && group_signature_ids.contains(signature_id))
+                    .then_some(signature_id.clone())
+                })
+                .collect::<BTreeSet<_>>();
+            group.unique_evidence_signatures = group
+                .evidence_signatures
+                .iter()
+                .filter(|signature| unique_for_group.contains(&signature.signature_id))
+                .cloned()
+                .collect();
+        }
+        let all_group_ids = groups
+            .iter()
+            .map(|group| group.group_id.clone())
+            .collect::<BTreeSet<_>>();
+        let mut differential_evidence = group_ids_by_signature
+            .iter()
+            .filter_map(|(signature_id, present_group_ids)| {
+                (group_count >= 2 && present_group_ids.len() < group_count).then(|| {
+                    let absent_group_ids = all_group_ids
+                        .difference(present_group_ids)
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    IsoformPromoterDifferentialEvidence {
+                        signature: signatures_by_id
+                            .get(signature_id)
+                            .cloned()
+                            .unwrap_or_default(),
+                        present_group_ids: present_group_ids.iter().cloned().collect(),
+                        absent_group_ids,
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        differential_evidence.sort_by(|left, right| {
+            left.signature
+                .kind
+                .cmp(&right.signature.kind)
+                .then_with(|| left.signature.label.cmp(&right.signature.label))
+                .then_with(|| {
+                    left.signature
+                        .signature_id
+                        .cmp(&right.signature.signature_id)
+                })
+        });
+        let mut common_evidence_signatures = common_signature_ids
+            .iter()
+            .filter_map(|signature_id| signatures_by_id.get(signature_id).cloned())
+            .collect::<Vec<_>>();
+        common_evidence_signatures.sort_by(|left, right| {
+            left.kind
+                .cmp(&right.kind)
+                .then_with(|| left.label.cmp(&right.label))
+                .then_with(|| left.signature_id.cmp(&right.signature_id))
+        });
+        let comparison_evidence_item_count = groups
+            .iter()
+            .map(|group| group.evidence_signatures.len())
+            .sum::<usize>();
+        let mut comparison_evidence_kinds_observed = groups
+            .iter()
+            .flat_map(|group| group.evidence_signatures.iter().map(|row| row.kind.clone()))
+            .collect::<Vec<_>>();
+        Self::promoter_evidence_sort_dedup(&mut comparison_evidence_kinds_observed);
+        let mut warnings = matrix.warnings.clone();
+        if group_count < 2 {
+            warnings.push(
+                "Isoform promoter comparison has fewer than two promoter groups; common/differential evidence is therefore not biologically comparative.".to_string(),
+            );
+        }
+        if comparison_evidence_item_count == 0 {
+            warnings.push(
+                "No comparison evidence items remained after excluding promoter geometry and transcript-support bookkeeping.".to_string(),
+            );
+        }
+        Ok(IsoformPromoterComparisonReport {
+            schema: ISOFORM_PROMOTER_COMPARISON_SCHEMA.to_string(),
+            seq_id: matrix.seq_id,
+            sequence_length_bp: matrix.sequence_length_bp,
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            gene_label_filter: matrix.gene_label_filter,
+            transcript_id_filter: matrix.transcript_id_filter,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            transcript_window_count: matrix.transcript_window_count,
+            promoter_group_count: group_count,
+            comparison_evidence_item_count,
+            comparison_evidence_kinds_observed,
+            groups,
+            common_evidence_signatures,
+            differential_evidence,
+            warnings,
+        })
+    }
+
+    pub(crate) fn summarize_promoter_expression_evidence(
+        &self,
+        input: &str,
+        gene_label: Option<&str>,
+        transcript_id: Option<&str>,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+        expression_rows: &[PromoterExpressionEvidenceInput],
+        expression_source_label: Option<&str>,
+    ) -> Result<PromoterExpressionEvidenceReport, EngineError> {
+        let matrix = self.summarize_promoter_evidence_matrix(
+            input,
+            gene_label,
+            transcript_id,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            false,
+        )?;
+        let mut matched_input_indices = BTreeSet::new();
+        let rows = matrix
+            .rows
+            .iter()
+            .map(|promoter| {
+                let mut records = vec![];
+                for (idx, input_row) in expression_rows.iter().enumerate() {
+                    let matched_by = Self::promoter_expression_row_matches(promoter, input_row);
+                    if matched_by.is_empty() {
+                        continue;
+                    }
+                    matched_input_indices.insert(idx);
+                    records.push(PromoterExpressionEvidenceRecord {
+                        evidence_id: format!(
+                            "{}_expression_{}",
+                            promoter.row_id,
+                            idx.saturating_add(1)
+                        ),
+                        gene_label: input_row.gene_label.clone(),
+                        transcript_id: input_row.transcript_id.clone(),
+                        transcript_label: input_row.transcript_label.clone(),
+                        sample_id: input_row.sample_id.clone(),
+                        condition: input_row.condition.clone(),
+                        value: input_row.value,
+                        unit: input_row.unit.clone(),
+                        source: input_row
+                            .source
+                            .clone()
+                            .or_else(|| expression_source_label.map(ToOwned::to_owned))
+                            .unwrap_or_else(|| "expression_input".to_string()),
+                        artifact_path: input_row.artifact_path.clone(),
+                        matched_by,
+                    });
+                }
+                records.sort_by(|left, right| {
+                    left.condition
+                        .cmp(&right.condition)
+                        .then_with(|| left.sample_id.cmp(&right.sample_id))
+                        .then_with(|| left.transcript_id.cmp(&right.transcript_id))
+                        .then_with(|| left.value.total_cmp(&right.value))
+                });
+                let (mean_value, max_value, unit, sample_ids, conditions) =
+                    Self::promoter_expression_values_summary(&records);
+                let interpretation = if records.is_empty() {
+                    "No expression evidence was assigned to this promoter group.".to_string()
+                } else {
+                    format!(
+                        "{} expression evidence record(s) assigned to this promoter group.",
+                        records.len()
+                    )
+                };
+                PromoterExpressionEvidenceRow {
+                    promoter_group_id: promoter.row_id.clone(),
+                    label: promoter.label.clone(),
+                    transcript_ids: promoter.transcript_ids.clone(),
+                    transcript_labels: promoter.transcript_labels.clone(),
+                    expression_record_count: records.len(),
+                    mean_value,
+                    max_value,
+                    unit,
+                    sample_ids,
+                    conditions,
+                    records,
+                    interpretation,
+                }
+            })
+            .collect::<Vec<_>>();
+        let assigned_expression_record_count = rows
+            .iter()
+            .map(|row| row.expression_record_count)
+            .sum::<usize>();
+        let unassigned_expression_records = expression_rows
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, row)| (!matched_input_indices.contains(&idx)).then(|| row.clone()))
+            .collect::<Vec<_>>();
+        let mut warnings = matrix.warnings.clone();
+        if expression_rows.is_empty() {
+            warnings.push(
+                "No expression evidence rows were supplied; report records promoter groups with explicit unassessed expression status.".to_string(),
+            );
+        } else if !unassigned_expression_records.is_empty() {
+            warnings.push(format!(
+                "{} supplied expression evidence row(s) could not be assigned to a promoter group by transcript, promoter, or gene label.",
+                unassigned_expression_records.len()
+            ));
+        }
+        Ok(PromoterExpressionEvidenceReport {
+            schema: PROMOTER_EXPRESSION_EVIDENCE_SCHEMA.to_string(),
+            seq_id: matrix.seq_id,
+            sequence_length_bp: matrix.sequence_length_bp,
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            gene_label_filter: matrix.gene_label_filter,
+            transcript_id_filter: matrix.transcript_id_filter,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            promoter_group_count: matrix.promoter_candidate_count,
+            supplied_expression_record_count: expression_rows.len(),
+            assigned_expression_record_count,
+            expression_source_label: expression_source_label
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| "expression_input".to_string()),
+            rows,
+            unassigned_expression_records,
+            warnings,
+        })
+    }
+
+    pub(crate) fn export_promoter_artifact_manifest(
+        &self,
+        input: &str,
+        gene_label: Option<&str>,
+        artifacts: &[PromoterArtifactManifestEntry],
+        artifact_path_base: Option<&std::path::Path>,
+    ) -> Result<PromoterArtifactManifestReport, EngineError> {
+        if !self.state.sequences.contains_key(input) {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", input),
+            });
+        }
+        let mut seen_ids = BTreeSet::new();
+        let mut warnings = vec![];
+        let resolved = artifacts
+            .iter()
+            .map(|artifact| {
+                if !seen_ids.insert(artifact.artifact_id.to_ascii_lowercase()) {
+                    warnings.push(format!(
+                        "Promoter artifact manifest contains duplicate artifact_id '{}'.",
+                        artifact.artifact_id
+                    ));
+                }
+                let artifact_path = std::path::Path::new(&artifact.path);
+                let path_exists = if artifact_path.is_absolute() {
+                    artifact_path.exists()
+                } else {
+                    artifact_path_base
+                        .map(|base| base.join(artifact_path).exists())
+                        .unwrap_or_else(|| artifact_path.exists())
+                };
+                let status = if artifact.path.trim().is_empty() {
+                    "missing_empty_path"
+                } else if path_exists {
+                    "present"
+                } else {
+                    "missing"
+                }
+                .to_string();
+                if artifact.required && status != "present" {
+                    warnings.push(format!(
+                        "Required promoter artifact '{}' is {} at '{}'.",
+                        artifact.artifact_id, status, artifact.path
+                    ));
+                }
+                PromoterArtifactManifestResolvedEntry {
+                    artifact_id: artifact.artifact_id.clone(),
+                    artifact_kind: artifact.artifact_kind.clone(),
+                    path: artifact.path.clone(),
+                    schema_hint: artifact.schema_hint.clone(),
+                    label: artifact.label.clone(),
+                    recommended_use: artifact.recommended_use.clone(),
+                    required: artifact.required,
+                    status,
+                }
+            })
+            .collect::<Vec<_>>();
+        let present_artifact_count = resolved
+            .iter()
+            .filter(|artifact| artifact.status == "present")
+            .count();
+        let missing_required_artifact_count = resolved
+            .iter()
+            .filter(|artifact| artifact.required && artifact.status != "present")
+            .count();
+        Ok(PromoterArtifactManifestReport {
+            schema: PROMOTER_ARTIFACT_MANIFEST_SCHEMA.to_string(),
+            seq_id: input.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            op_id: None,
+            run_id: None,
+            gene_label_filter: gene_label
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
+            artifact_count: resolved.len(),
+            present_artifact_count,
+            missing_required_artifact_count,
+            artifacts: resolved,
+            warnings,
+        })
+    }
+
     fn select_variant_feature<'a>(
         dna: &'a DNAsequence,
         variant_label_or_id: Option<&str>,

@@ -6,13 +6,14 @@
     "order": 24,
     "example_id": "promoter_design_artifact_slice_offline",
     "tier": "core",
-    "summary": "Run a tiny TP73-like promoter locus through the Promoter design artifact set: alternative-promoter grouping, promoter evidence matrix, TFBS score-track SVG, and TFBS similarity JSON.",
+    "summary": "Run a tiny TP73-like promoter locus through the Promoter design artifact set: alternative-promoter grouping, promoter evidence matrix, isoform promoter comparison, promoter expression evidence, TFBS score-track SVG, TFBS similarity JSON, and a component manifest.",
     "narrative": "This chapter is a release-signoff slice rather than a biological claim. The input is a synthetic 249 bp TP73-labeled locus with two transcripts sharing one 5' boundary, one alternative-start transcript, and local annotation evidence. The point is to verify that GENtle produces the portable artifacts a GUI user, CLI user, or ClawBio-style consumer can inspect without requiring an online genome fetch or a hand-built project.",
     "use_cases": [
       "You want a fast offline sanity check for the Promoter design window before an internal release.",
       "You want to verify that transcript-derived promoter windows collapse by DNA span instead of stacking duplicate promoter symbols.",
       "You want a compact promoter evidence matrix with transcript, TFBS, variant, repeat, and CUT&RUN-style interval evidence.",
-      "You want one reproducible artifact bundle that demonstrates what GENtle produces while leaving narrative ordering to downstream tools."
+      "You want to compare common and differential promoter-region evidence between isoform starts of the same gene.",
+      "You want to attach downstream transcript/gene expression evidence to promoter candidates without forcing GENtle to write the final story."
     ],
     "gui_steps": [
       "Open `docs/examples/assets/tp73_promoter_artifact_demo.gb` via `File -> Open Sequence...`.",
@@ -20,13 +21,18 @@
       "Set `Gene label` to `TP73`, `promoter upstream bp` to `40`, and `promoter downstream bp` to `15`.",
       "Click `Annotate promoter windows`, then `Compare alternative promoters`; confirm that three transcript-level interpretations collapse into two DNA-level promoter windows.",
       "Click `Build evidence matrix`; confirm the shared promoter row reports `2 tx` and that evidence kinds include promoter geometry, transcript support, promoter annotation, TFBS, variant, repeat, and CUT&RUN-style overlap evidence.",
+      "Run the isoform promoter comparison; confirm that the shared TSS transcripts and alternative-start transcript are compared as separate promoter groups with differential evidence signatures.",
+      "Load or paste expression rows for the TP73 demo transcripts; confirm that expression evidence attaches to the matching promoter groups rather than becoming a GUI-only note.",
       "Set TF motifs to `SP1,TP53,TP63,TP73`, run `Show TF score tracks`, then export `TF score tracks SVG...` for the visual artifact.",
-      "Set TFBS similarity anchor to `SP1`, compare against `TP53,TP63,TP73,CTCF`, run `Show TFBS similarity ranking`, then export the JSON ranking."
+      "Set TFBS similarity anchor to `SP1`, compare against `TP53,TP63,TP73,CTCF`, run `Show TFBS similarity ranking`, then export the JSON ranking.",
+      "Inspect the component manifest to see which JSON/SVG artifacts were produced; downstream tools can choose their own presentation order."
     ],
     "learning_objectives": [
       "Validate the GUI-facing Promoter design controls against shared engine operations.",
       "Inspect the boundary between GENtle-owned component artifacts and downstream ClawBio/OpenClaw narrative assembly.",
       "Recognize the difference between transcript-level promoter interpretation and collapsed DNA-level promoter candidates.",
+      "Compare common and unique promoter-region evidence between isoforms of the same gene.",
+      "Attach expression-level evidence to promoter groups through a structured report instead of free-text reasoning.",
       "Use one synthetic input to exercise JSON and SVG exports deterministically."
     ],
     "concepts": [
@@ -38,9 +44,15 @@
     "parameter_notes": [
       {
         "parameter": "promoter_upstream_bp=40 / promoter_downstream_bp=15",
-        "where_used": "AnnotatePromoterWindows, SummarizeAlternativePromoterComparison, SummarizePromoterEvidenceMatrix",
+        "where_used": "AnnotatePromoterWindows, SummarizeAlternativePromoterComparison, SummarizePromoterEvidenceMatrix, SummarizeIsoformPromoterComparison, SummarizePromoterExpressionEvidence",
         "why_it_matters": "The synthetic locus is deliberately tiny; these values create readable promoter windows around TSS positions 101 and 141.",
         "how_to_derive": "Use the fixed tutorial values so the shared TSS pair collapses to local span `60..116` and the alternative start produces `100..156`."
+      },
+      {
+        "parameter": "expression rows for `ENSTTP73DEMO1`, `ENSTTP73DEMO2`, and `ENSTTP73DEMO3`",
+        "where_used": "SummarizePromoterExpressionEvidence",
+        "why_it_matters": "Expression evidence is deliberately externalized as rows/artifact references so GENtle can attach it to promoter groups without inventing a biological conclusion.",
+        "how_to_derive": "Use transcript IDs from the synthetic mRNA features; real workflows would supply RNA-seq, qPCR, or ClawBio-provided abundance rows."
       },
       {
         "parameter": "target span `60..158`",
@@ -58,11 +70,16 @@
     "follow_up_commands": [
       "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json",
       "cargo run --bin gentle_cli -- shell 'features promoter-evidence-matrix tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.evidence_matrix.json'",
+      "cargo run --bin gentle_cli -- shell 'features promoter-isoform-comparison tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json'",
+      "cargo run --bin gentle_cli -- shell 'features promoter-expression-evidence tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --source-label synthetic_demo --expression-json {\"transcript_id\":\"ENSTTP73DEMO1\",\"value\":18.0,\"unit\":\"a.u.\"} --path artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json'",
       "cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --anchor SP1 --candidate TP53 --candidate TP63 --candidate TP73 --candidate CTCF --range 60..158 --score-kind llr_background_tail_log10 --path artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json'"
     ],
     "retain_outputs": [
       "artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
       "artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",
+      "artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json",
+      "artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json",
+      "artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json",
       "artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
       "artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json"
     ],
@@ -70,6 +87,9 @@
       "The workflow executes offline without warnings beyond the expected alternative-promoter collapse note.",
       "`alternative_promoters.json` reports `transcript_window_count=3` and `collapsed_window_count=2`.",
       "`evidence_matrix.json` reports two promoter candidates and includes `cutrun_peak_overlap`, `repeat_context`, `tfbs_annotation`, and `variant_overlap` among observed evidence kinds.",
+      "`isoform_promoter_comparison.json` reports two promoter groups and surfaces differential evidence signatures for the shared versus alternative-start promoter.",
+      "`promoter_expression_evidence.json` assigns three synthetic expression rows to the two promoter groups.",
+      "`promoter_artifact_manifest.json` reports all required promoter component artifacts as present.",
       "`tfbs_score_tracks.svg` is written and opens as a compact promoter score-track figure.",
       "`tfbs_similarity.json` ranks four candidates against SP1 using `smoothed_spearman`."
     ]

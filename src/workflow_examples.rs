@@ -1524,6 +1524,36 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
+        if let Operation::SummarizeIsoformPromoterComparison { path, .. }
+        | Operation::SummarizePromoterExpressionEvidence { path, .. } = op
+        {
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
+        if let Operation::ExportPromoterArtifactManifest {
+            artifacts, path, ..
+        } = op
+        {
+            let resolved_manifest_path = resolve_output_path(path, run_dir);
+            let manifest_parent = Path::new(&resolved_manifest_path)
+                .parent()
+                .map(Path::to_path_buf);
+            for artifact in artifacts {
+                let resolved_artifact_path =
+                    PathBuf::from(resolve_output_path(&artifact.path, run_dir));
+                artifact.path = manifest_parent
+                    .as_ref()
+                    .and_then(|parent| resolved_artifact_path.strip_prefix(parent).ok())
+                    .map(display_path)
+                    .unwrap_or_else(|| display_path(&resolved_artifact_path));
+            }
+            *path = resolved_manifest_path;
+            ensure_parent_exists(path)?;
+            continue;
+        }
         if let Operation::PrepareGenome {
             catalog_path,
             cache_dir,
@@ -3069,6 +3099,39 @@ mod tests {
                         include_feature_overlaps: true,
                         path: Some("artifacts/evidence_matrix.json".to_string()),
                     },
+                    Operation::SummarizeIsoformPromoterComparison {
+                        input: "seq_a".to_string(),
+                        gene_label: Some("TP73".to_string()),
+                        transcript_id: None,
+                        promoter_upstream_bp: 40,
+                        promoter_downstream_bp: 15,
+                        include_feature_overlaps: true,
+                        path: Some("artifacts/isoform_promoters.json".to_string()),
+                    },
+                    Operation::SummarizePromoterExpressionEvidence {
+                        input: "seq_a".to_string(),
+                        gene_label: Some("TP73".to_string()),
+                        transcript_id: None,
+                        promoter_upstream_bp: 40,
+                        promoter_downstream_bp: 15,
+                        expression_rows: vec![],
+                        expression_source_label: Some("demo_expression".to_string()),
+                        path: Some("artifacts/expression_evidence.json".to_string()),
+                    },
+                    Operation::ExportPromoterArtifactManifest {
+                        input: "seq_a".to_string(),
+                        gene_label: Some("TP73".to_string()),
+                        artifacts: vec![crate::engine::PromoterArtifactManifestEntry {
+                            artifact_id: "evidence_matrix".to_string(),
+                            artifact_kind: "promoter_evidence_matrix".to_string(),
+                            path: "artifacts/evidence_matrix.json".to_string(),
+                            schema_hint: Some("gentle.promoter_evidence_matrix.v1".to_string()),
+                            label: None,
+                            recommended_use: None,
+                            required: false,
+                        }],
+                        path: "artifacts/promoter_manifest.json".to_string(),
+                    },
                     Operation::ExportLabAssistantInstructions {
                         path: "artifacts/handoff.md".to_string(),
                         run_id: None,
@@ -3086,9 +3149,12 @@ mod tests {
         for op in &rewritten.workflow.ops {
             let path = match op {
                 Operation::SummarizeAlternativePromoterComparison { path, .. }
-                | Operation::SummarizePromoterEvidenceMatrix { path, .. } => path
+                | Operation::SummarizePromoterEvidenceMatrix { path, .. }
+                | Operation::SummarizeIsoformPromoterComparison { path, .. }
+                | Operation::SummarizePromoterExpressionEvidence { path, .. } => path
                     .as_deref()
                     .expect("optional path should remain present"),
+                Operation::ExportPromoterArtifactManifest { path, .. } => path.as_str(),
                 Operation::ExportLabAssistantInstructions { path, .. } => path.as_str(),
                 other => panic!("unexpected operation: {other:?}"),
             };
@@ -3096,6 +3162,15 @@ mod tests {
                 path.starts_with(&display_path(run_dir.path())),
                 "output path should be rewritten into run dir: {path}"
             );
+            if let Operation::ExportPromoterArtifactManifest { artifacts, .. } = op {
+                assert!(
+                    artifacts
+                        .iter()
+                        .all(|artifact| !Path::new(&artifact.path).is_absolute()
+                            && !artifact.path.starts_with(&display_path(run_dir.path()))),
+                    "manifest artifact paths should stay portable relative paths: {artifacts:?}"
+                );
+            }
         }
     }
 

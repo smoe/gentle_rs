@@ -55,7 +55,8 @@ use crate::{
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PairwiseAlignmentMode, PlanningEstimate,
         PlanningObjective, PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus,
         PrimerDesignBackend, PrimerDesignPairConstraint, PrimerDesignReport,
-        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProjectState, PromoterTfbsGeneQuery,
+        PrimerDesignSideConstraint, PrimerSpecificityPolicy, ProjectState,
+        PromoterArtifactManifestEntry, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
         PromoterWindowCollapseMode, ProteinExternalOpinionSource, ProteinFeatureFilter,
         ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
         QpcrTranscriptTargetingMode, RackAuthoringTemplate, RackCarrierLabelPreset,
@@ -1682,6 +1683,31 @@ pub enum ShellCommand {
         promoter_downstream_bp: usize,
         include_feature_overlaps: bool,
         path: Option<String>,
+    },
+    FeaturesPromoterIsoformComparison {
+        seq_id: String,
+        gene_label: Option<String>,
+        transcript_id: Option<String>,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+        include_feature_overlaps: bool,
+        path: Option<String>,
+    },
+    FeaturesPromoterExpressionEvidence {
+        seq_id: String,
+        gene_label: Option<String>,
+        transcript_id: Option<String>,
+        promoter_upstream_bp: usize,
+        promoter_downstream_bp: usize,
+        expression_rows: Vec<PromoterExpressionEvidenceInput>,
+        expression_source_label: Option<String>,
+        path: Option<String>,
+    },
+    FeaturesPromoterArtifactManifest {
+        seq_id: String,
+        gene_label: Option<String>,
+        artifacts: Vec<PromoterArtifactManifestEntry>,
+        path: String,
     },
     VariantAnnotatePromoterWindows {
         seq_id: String,
@@ -8444,6 +8470,56 @@ impl ShellCommand {
                 promoter_downstream_bp,
                 include_feature_overlaps,
                 path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesPromoterIsoformComparison {
+                seq_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                include_feature_overlaps,
+                path,
+            } => format!(
+                "compare isoform promoter evidence on '{}' (gene='{}', transcript='{}', promoter={}up/{}down, feature_overlaps={}, path='{}')",
+                seq_id,
+                gene_label.as_deref().unwrap_or("-"),
+                transcript_id.as_deref().unwrap_or("-"),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                include_feature_overlaps,
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesPromoterExpressionEvidence {
+                seq_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                expression_rows,
+                expression_source_label,
+                path,
+            } => format!(
+                "summarize promoter expression evidence on '{}' (gene='{}', transcript='{}', promoter={}up/{}down, expression_rows={}, source='{}', path='{}')",
+                seq_id,
+                gene_label.as_deref().unwrap_or("-"),
+                transcript_id.as_deref().unwrap_or("-"),
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                expression_rows.len(),
+                expression_source_label.as_deref().unwrap_or("-"),
+                path.as_deref().unwrap_or("-"),
+            ),
+            Self::FeaturesPromoterArtifactManifest {
+                seq_id,
+                gene_label,
+                artifacts,
+                path,
+            } => format!(
+                "export promoter artifact manifest for '{}' (gene='{}', artifacts={}, path='{}')",
+                seq_id,
+                gene_label.as_deref().unwrap_or("-"),
+                artifacts.len(),
+                path,
             ),
             Self::VariantAnnotatePromoterWindows {
                 seq_id,
@@ -26773,6 +26849,89 @@ fn execute_feature_scan_command(
                 }),
             })
         }
+        ShellCommand::FeaturesPromoterIsoformComparison {
+            seq_id,
+            gene_label,
+            transcript_id,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            include_feature_overlaps,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::SummarizeIsoformPromoterComparison {
+                    input: seq_id.clone(),
+                    gene_label: gene_label.clone(),
+                    transcript_id: transcript_id.clone(),
+                    promoter_upstream_bp: *promoter_upstream_bp,
+                    promoter_downstream_bp: *promoter_downstream_bp,
+                    include_feature_overlaps: *include_feature_overlaps,
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.isoform_promoter_comparison.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesPromoterExpressionEvidence {
+            seq_id,
+            gene_label,
+            transcript_id,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            expression_rows,
+            expression_source_label,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::SummarizePromoterExpressionEvidence {
+                    input: seq_id.clone(),
+                    gene_label: gene_label.clone(),
+                    transcript_id: transcript_id.clone(),
+                    promoter_upstream_bp: *promoter_upstream_bp,
+                    promoter_downstream_bp: *promoter_downstream_bp,
+                    expression_rows: expression_rows.clone(),
+                    expression_source_label: expression_source_label.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.promoter_expression_evidence.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
+        ShellCommand::FeaturesPromoterArtifactManifest {
+            seq_id,
+            gene_label,
+            artifacts,
+            path,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportPromoterArtifactManifest {
+                    input: seq_id.clone(),
+                    gene_label: gene_label.clone(),
+                    artifacts: artifacts.clone(),
+                    path: path.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = op_result.promoter_artifact_manifest.clone();
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            })
+        }
         _ => unreachable!("non-feature scan command passed to feature scan helper"),
     }
 }
@@ -30502,6 +30661,9 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::FeaturesRepeatCohort { .. }
             | ShellCommand::FeaturesWindowCohortTfbs { .. }
             | ShellCommand::FeaturesPromoterEvidenceMatrix { .. }
+            | ShellCommand::FeaturesPromoterIsoformComparison { .. }
+            | ShellCommand::FeaturesPromoterExpressionEvidence { .. }
+            | ShellCommand::FeaturesPromoterArtifactManifest { .. }
     ) {
         return execute_feature_scan_command(engine, command);
     }
@@ -30761,7 +30923,10 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::FeaturesMaterializeRepeats { .. }
         | ShellCommand::FeaturesRepeatCohort { .. }
         | ShellCommand::FeaturesWindowCohortTfbs { .. }
-        | ShellCommand::FeaturesPromoterEvidenceMatrix { .. } => {
+        | ShellCommand::FeaturesPromoterEvidenceMatrix { .. }
+        | ShellCommand::FeaturesPromoterIsoformComparison { .. }
+        | ShellCommand::FeaturesPromoterExpressionEvidence { .. }
+        | ShellCommand::FeaturesPromoterArtifactManifest { .. } => {
             execute_feature_scan_command(engine, command)?
         }
         ShellCommand::TranscriptsDerive { .. }
