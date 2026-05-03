@@ -375,26 +375,26 @@ impl TfMotifDb {
             } else {
                 None
             };
-            let (id, consensus, matrix_counts) = match (pfm_matrix, supplement) {
-                (Some(matrix), _) => (original_id.clone(), compact_consensus, matrix),
+            let (consensus, matrix_counts, supplement_id_key) = match (pfm_matrix, supplement) {
+                (Some(matrix), _) => (compact_consensus, matrix, None),
                 (None, Some(supplement)) => (
-                    supplement.id.clone(),
                     supplement.consensus_iupac.clone(),
                     supplement.matrix_counts.clone(),
+                    Some(normalize_lookup_key(&supplement.id)),
                 ),
                 (None, None) => (
-                    original_id.clone(),
                     compact_consensus.clone(),
                     Self::matrix_from_consensus(&compact_consensus),
+                    None,
                 ),
             };
             if matrix_counts.is_empty() {
                 continue;
             }
             let idx = motifs.len();
-            let id_key = normalize_lookup_key(&id);
+            let id_key = normalize_lookup_key(&original_id);
             let motif = TfMotif {
-                id,
+                id: original_id.clone(),
                 name: m.name.as_ref().map(|n| n.trim().to_string()),
                 consensus_iupac: consensus,
                 matrix_counts,
@@ -403,8 +403,10 @@ impl TfMotifDb {
             if !id_key.is_empty() {
                 by_key.insert(id_key.clone(), idx);
             }
-            if original_id_key != id_key && !original_id_key.is_empty() {
-                by_key.entry(original_id_key).or_insert(idx);
+            if let Some(supplement_id_key) = supplement_id_key {
+                if supplement_id_key != id_key && !supplement_id_key.is_empty() {
+                    by_key.entry(supplement_id_key).or_insert(idx);
+                }
             }
             if let Some(name_key) = name_key {
                 if !name_key.is_empty() {
@@ -486,6 +488,12 @@ impl TfMotifDb {
 }
 
 static TF_MOTIFS: LazyLock<RwLock<TfMotifDb>> = LazyLock::new(|| RwLock::new(TfMotifDb::load()));
+
+#[cfg(test)]
+pub fn test_registry_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
 
 pub fn snapshot_db() -> TfMotifDb {
     TF_MOTIFS.read().map(|db| db.clone()).unwrap_or_default()
@@ -719,7 +727,7 @@ mod tests {
     fn builtin_tp73_uses_bundled_pfm_not_consensus_fallback() {
         let db = TfMotifDb::from_json(BUILTIN_TF_MOTIFS_JSON).expect("motif db");
         let resolved = db.resolve("TP73").expect("resolve TP73");
-        assert_eq!(resolved.id, "MA0861.1");
+        assert_eq!(resolved.id, "MA0861.2");
         assert_eq!(resolved.matrix_counts.len(), 18);
         assert_eq!(resolved.consensus_iupac, "GACATGTCTGGACATGTC");
 
@@ -736,7 +744,27 @@ mod tests {
         );
 
         let compact_id_alias = db.resolve("MA0861.2").expect("resolve compact alias");
-        assert_eq!(compact_id_alias.id, "MA0861.1");
+        assert_eq!(compact_id_alias.id, "MA0861.2");
+        let supplement_id_alias = db.resolve("MA0861.1").expect("resolve supplement alias");
+        assert_eq!(supplement_id_alias.id, "MA0861.2");
+    }
+
+    #[test]
+    fn bundled_pfm_supplement_does_not_replace_canonical_catalog_ids() {
+        let db = TfMotifDb::from_json(BUILTIN_TF_MOTIFS_JSON).expect("motif db");
+        let myc = db.resolve("MYC").expect("resolve MYC");
+        assert_eq!(myc.id, "MA0147.4");
+        assert_eq!(
+            db.resolve("MA0147.3").map(|motif| motif.id.as_str()),
+            Some("MA0147.4")
+        );
+        let sp1_ids = db
+            .motif_summaries()
+            .into_iter()
+            .filter(|motif| motif.id == "MA0079.5")
+            .collect::<Vec<_>>();
+        assert_eq!(sp1_ids.len(), 1);
+        assert_eq!(sp1_ids[0].name.as_deref(), Some("SP1"));
     }
 
     #[test]

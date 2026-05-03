@@ -2599,6 +2599,12 @@ mod tests {
         PathBuf::from(DEFAULT_TUTORIAL_OUTPUT_DIR)
     }
 
+    fn lock_jaspar_registry_for_test() -> std::sync::MutexGuard<'static, ()> {
+        crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn markdown_image_targets(markdown: &str) -> Vec<String> {
         let mut targets = Vec::new();
         for line in markdown.lines() {
@@ -2642,6 +2648,8 @@ mod tests {
 
     #[test]
     fn workflow_examples_always_mode_executes() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
         let repo_root = Path::new(".");
         let mut always_count = 0usize;
@@ -2903,6 +2911,8 @@ mod tests {
 
     #[test]
     fn tutorial_generate_is_deterministic() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let source = example_dir();
         let manifest = tutorial_manifest_path();
         let repo_root = Path::new(".");
@@ -2924,6 +2934,8 @@ mod tests {
 
     #[test]
     fn tutorial_generated_chapter_includes_narrative_concepts_and_objectives() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let source = example_dir();
         let manifest = tutorial_manifest_path();
         let repo_root = Path::new(".");
@@ -3121,6 +3133,8 @@ mod tests {
 
     #[test]
     fn tutorial_check_passes_on_committed_tree() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         check_tutorial_generated(
             &example_dir(),
             &tutorial_manifest_path(),
@@ -3132,6 +3146,8 @@ mod tests {
 
     #[test]
     fn tutorial_core_executes_runtime() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let manifest =
             load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");

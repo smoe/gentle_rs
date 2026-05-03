@@ -153,7 +153,7 @@
 <g clip-path="url(#tfbs_logo_clip_440_4960_15_3)"><text x="0" y="0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13.00" font-weight="900" fill="#dc143c" transform="translate(214.75 533.17) scale(1.313 0.747)" data-gentle-role="tfbs-score-track-logo-letter">T</text></g>
 <clipPath id="tfbs_logo_clip_440_4960_16_3"><rect x="220.96" y="503.46" width="10.58" height="36.54"/></clipPath>
 <g clip-path="url(#tfbs_logo_clip_440_4960_16_3)"><text x="0" y="0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13.00" font-weight="900" fill="#ff8c00" transform="translate(226.25 540.00) scale(1.313 2.811)" data-gentle-role="tfbs-score-track-logo-letter">G</text></g>
-<text x="44.0" y="490.0" font-family="monospace" font-size="13" fill="#0f172a">TP73 (MA0861.1)</text>
+<text x="44.0" y="490.0" font-family="monospace" font-size="13" fill="#0f172a">TP73 (MA0861.2)</text>
 <text x="271.0" y="512.0" font-family="monospace" font-size="10" fill="#64748b">18 bp motif | 81 windows | max 1.37 @ 136</text>
 <text x="271.0" y="528.0" font-family="monospace" font-size="10" fill="#64748b">theory max 20.47 | peak q 0.957592 | -log10 tail 1.37</text>
 <rect x="472.0" y="474.0" width="860.0" height="80.0" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
