@@ -2,7 +2,7 @@
   "schema": "gentle.workflow_example.v1",
   "id": "promoter_design_artifact_slice_offline",
   "title": "Promoter Design artifact slice (offline synthetic TP73 locus)",
-  "summary": "Loads one tiny TP73-like synthetic promoter locus and emits the release-signoff promoter artifacts GENtle should provide to GUI, CLI, and ClawBio-style consumers: alternative-promoter grouping, promoter evidence matrix, TFBS score-track SVG, and TFBS similarity JSON.",
+  "summary": "Loads one tiny TP73-like synthetic promoter locus and emits the release-signoff promoter artifacts GENtle should provide to GUI, CLI, and ClawBio-style consumers: alternative-promoter grouping, promoter evidence matrix, isoform promoter comparison, promoter expression evidence, TFBS score-track SVG, TFBS similarity JSON, and a component artifact manifest.",
   "test_mode": "always",
   "required_files": [
     "docs/examples/assets/tp73_promoter_artifact_demo.gb"
@@ -52,6 +52,61 @@
           "promoter_downstream_bp": 15,
           "include_feature_overlaps": true,
           "path": "artifacts/tp73_promoter_artifact_demo.evidence_matrix.json"
+        }
+      },
+      {
+        "SummarizeIsoformPromoterComparison": {
+          "input": "tp73_promoter_artifact_demo",
+          "gene_label": "TP73",
+          "promoter_upstream_bp": 40,
+          "promoter_downstream_bp": 15,
+          "include_feature_overlaps": true,
+          "path": "artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json"
+        }
+      },
+      {
+        "SummarizePromoterExpressionEvidence": {
+          "input": "tp73_promoter_artifact_demo",
+          "gene_label": "TP73",
+          "promoter_upstream_bp": 40,
+          "promoter_downstream_bp": 15,
+          "expression_source_label": "synthetic downstream expression demo",
+          "expression_rows": [
+            {
+              "gene_label": "TP73",
+              "transcript_id": "ENSTTP73DEMO1",
+              "transcript_label": "TP73-demo-201",
+              "sample_id": "synthetic_case_1",
+              "condition": "case",
+              "value": 18.0,
+              "unit": "a.u.",
+              "source": "synthetic downstream expression demo",
+              "artifact_path": "docs/examples/assets/tp73_promoter_artifact_demo.gb"
+            },
+            {
+              "gene_label": "TP73",
+              "transcript_id": "ENSTTP73DEMO2",
+              "transcript_label": "TP73-demo-202",
+              "sample_id": "synthetic_case_1",
+              "condition": "case",
+              "value": 13.0,
+              "unit": "a.u.",
+              "source": "synthetic downstream expression demo",
+              "artifact_path": "docs/examples/assets/tp73_promoter_artifact_demo.gb"
+            },
+            {
+              "gene_label": "TP73",
+              "transcript_id": "ENSTTP73DEMO3",
+              "transcript_label": "TP73-demo-203-altTSS",
+              "sample_id": "synthetic_case_1",
+              "condition": "case",
+              "value": 7.0,
+              "unit": "a.u.",
+              "source": "synthetic downstream expression demo",
+              "artifact_path": "docs/examples/assets/tp73_promoter_artifact_demo.gb"
+            }
+          ],
+          "path": "artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json"
         }
       },
       {
@@ -113,6 +168,69 @@
           "include_remote_metadata": false,
           "limit": 10,
           "path": "artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json"
+        }
+      },
+      {
+        "ExportPromoterArtifactManifest": {
+          "input": "tp73_promoter_artifact_demo",
+          "gene_label": "TP73",
+          "artifacts": [
+            {
+              "artifact_id": "alternative_promoters",
+              "artifact_kind": "alternative_promoter_comparison",
+              "path": "artifacts/tp73_promoter_artifact_demo.alternative_promoters.json",
+              "schema_hint": "gentle.alternative_promoter_comparison.v1",
+              "label": "Alternative promoter grouping",
+              "recommended_use": "Explain transcript-level TSS interpretations collapsed to DNA-level promoter candidates.",
+              "required": true
+            },
+            {
+              "artifact_id": "evidence_matrix",
+              "artifact_kind": "promoter_evidence_matrix",
+              "path": "artifacts/tp73_promoter_artifact_demo.evidence_matrix.json",
+              "schema_hint": "gentle.promoter_evidence_matrix.v1",
+              "label": "Promoter evidence matrix",
+              "recommended_use": "Inspect transcript support, TFBS, variant, repeat, and CUT&RUN-style interval evidence per promoter candidate.",
+              "required": true
+            },
+            {
+              "artifact_id": "isoform_promoter_comparison",
+              "artifact_kind": "isoform_promoter_comparison",
+              "path": "artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json",
+              "schema_hint": "gentle.isoform_promoter_comparison.v1",
+              "label": "Isoform promoter comparison",
+              "recommended_use": "Compare common and promoter-group-specific evidence between TP73 isoform starts.",
+              "required": true
+            },
+            {
+              "artifact_id": "promoter_expression_evidence",
+              "artifact_kind": "promoter_expression_evidence",
+              "path": "artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json",
+              "schema_hint": "gentle.promoter_expression_evidence.v1",
+              "label": "Promoter expression evidence",
+              "recommended_use": "Connect promoter groups to downstream transcript/gene expression evidence without deciding the biological story.",
+              "required": true
+            },
+            {
+              "artifact_id": "tfbs_score_tracks_svg",
+              "artifact_kind": "tfbs_score_tracks_svg",
+              "path": "artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
+              "schema_hint": "image/svg+xml",
+              "label": "TFBS score-track SVG",
+              "recommended_use": "Show promoter-region score traces and compact JASPAR logos.",
+              "required": true
+            },
+            {
+              "artifact_id": "tfbs_similarity",
+              "artifact_kind": "tfbs_track_similarity",
+              "path": "artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json",
+              "schema_hint": "gentle.tfbs_track_similarity.v1",
+              "label": "TFBS similarity ranking",
+              "recommended_use": "Rank TF score-trace similarity against the selected anchor motif.",
+              "required": true
+            }
+          ],
+          "path": "artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json"
         }
       }
     ]

@@ -15963,6 +15963,9 @@ impl GentleEngine {
             variant_promoter_context: None,
             alternative_promoter_comparison: None,
             promoter_evidence_matrix: None,
+            isoform_promoter_comparison: None,
+            promoter_expression_evidence: None,
+            promoter_artifact_manifest: None,
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
@@ -23374,6 +23377,119 @@ impl GentleEngine {
                         report.evidence_item_count
                     ));
                     result.promoter_evidence_matrix = Some(report);
+                }
+                Operation::SummarizeIsoformPromoterComparison {
+                    input,
+                    gene_label,
+                    transcript_id,
+                    promoter_upstream_bp,
+                    promoter_downstream_bp,
+                    include_feature_overlaps,
+                    path,
+                } => {
+                    let mut report = self.summarize_isoform_promoter_comparison(
+                        &input,
+                        gene_label.as_deref(),
+                        transcript_id.as_deref(),
+                        promoter_upstream_bp,
+                        promoter_downstream_bp,
+                        include_feature_overlaps,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "isoform promoter comparison report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote isoform promoter comparison for '{}' to '{}'",
+                            report.seq_id, path
+                        ));
+                    }
+                    for warning in &report.warnings {
+                        result.warnings.push(warning.clone());
+                    }
+                    result.messages.push(format!(
+                        "Isoform promoter comparison for '{}' summarized {} promoter group(s) with {} differential evidence signature(s)",
+                        report.seq_id,
+                        report.promoter_group_count,
+                        report.differential_evidence.len()
+                    ));
+                    result.isoform_promoter_comparison = Some(report);
+                }
+                Operation::SummarizePromoterExpressionEvidence {
+                    input,
+                    gene_label,
+                    transcript_id,
+                    promoter_upstream_bp,
+                    promoter_downstream_bp,
+                    expression_rows,
+                    expression_source_label,
+                    path,
+                } => {
+                    let mut report = self.summarize_promoter_expression_evidence(
+                        &input,
+                        gene_label.as_deref(),
+                        transcript_id.as_deref(),
+                        promoter_upstream_bp,
+                        promoter_downstream_bp,
+                        &expression_rows,
+                        expression_source_label.as_deref(),
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(
+                            &report,
+                            path,
+                            "promoter expression evidence report",
+                        )?;
+                        result.messages.push(format!(
+                            "Wrote promoter expression evidence for '{}' to '{}'",
+                            report.seq_id, path
+                        ));
+                    }
+                    for warning in &report.warnings {
+                        result.warnings.push(warning.clone());
+                    }
+                    result.messages.push(format!(
+                        "Promoter expression evidence for '{}' assigned {} of {} supplied expression row(s)",
+                        report.seq_id,
+                        report.assigned_expression_record_count,
+                        report.supplied_expression_record_count
+                    ));
+                    result.promoter_expression_evidence = Some(report);
+                }
+                Operation::ExportPromoterArtifactManifest {
+                    input,
+                    gene_label,
+                    artifacts,
+                    path,
+                } => {
+                    let artifact_path_base = std::path::Path::new(&path).parent();
+                    let mut report = self.export_promoter_artifact_manifest(
+                        &input,
+                        gene_label.as_deref(),
+                        &artifacts,
+                        artifact_path_base,
+                    )?;
+                    report.op_id = Some(result.op_id.clone());
+                    report.run_id = Some(run_id.to_string());
+                    self.write_pretty_json_file(
+                        &report,
+                        &path,
+                        "promoter artifact manifest report",
+                    )?;
+                    result.messages.push(format!(
+                        "Wrote promoter artifact manifest for '{}' to '{}' ({} present / {} total)",
+                        report.seq_id, path, report.present_artifact_count, report.artifact_count
+                    ));
+                    for warning in &report.warnings {
+                        result.warnings.push(warning.clone());
+                    }
+                    result.promoter_artifact_manifest = Some(report);
                 }
                 Operation::SuggestPromoterReporterFragments {
                     input,

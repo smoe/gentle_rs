@@ -2341,6 +2341,264 @@ pub struct PromoterEvidenceMatrixReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Compact evidence signature used to compare promoter candidates across
+/// transcript/isoform-derived promoter windows.
+pub struct IsoformPromoterEvidenceSignature {
+    pub signature_id: String,
+    pub kind: String,
+    pub source: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_0based: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_0based_exclusive: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strand: Option<String>,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One promoter group in an isoform-aware comparison for a single gene.
+pub struct IsoformPromoterComparisonGroup {
+    pub group_id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_id: Option<String>,
+    pub strand: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub representative_tss_local_0based: Option<usize>,
+    pub transcript_count: usize,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub transcript_labels: Vec<String>,
+    #[serde(default)]
+    pub evidence_kind_counts: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub evidence_signatures: Vec<IsoformPromoterEvidenceSignature>,
+    #[serde(default)]
+    pub common_evidence_signatures: Vec<IsoformPromoterEvidenceSignature>,
+    #[serde(default)]
+    pub unique_evidence_signatures: Vec<IsoformPromoterEvidenceSignature>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One evidence signature that differs between isoform-derived promoter groups.
+pub struct IsoformPromoterDifferentialEvidence {
+    pub signature: IsoformPromoterEvidenceSignature,
+    #[serde(default)]
+    pub present_group_ids: Vec<String>,
+    #[serde(default)]
+    pub absent_group_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Engine-owned comparison of common and differential promoter-region evidence
+/// between isoforms of one gene.
+pub struct IsoformPromoterComparisonReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label_filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    pub promoter_upstream_bp: usize,
+    pub promoter_downstream_bp: usize,
+    pub transcript_window_count: usize,
+    pub promoter_group_count: usize,
+    pub comparison_evidence_item_count: usize,
+    #[serde(default)]
+    pub comparison_evidence_kinds_observed: Vec<String>,
+    #[serde(default)]
+    pub groups: Vec<IsoformPromoterComparisonGroup>,
+    #[serde(default)]
+    pub common_evidence_signatures: Vec<IsoformPromoterEvidenceSignature>,
+    #[serde(default)]
+    pub differential_evidence: Vec<IsoformPromoterDifferentialEvidence>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// User- or workflow-supplied expression evidence row that can be attached to
+/// promoter candidates without making GENtle own a particular RNA-seq pipeline.
+pub struct PromoterExpressionEvidenceInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    pub value: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One expression evidence row after it has been assigned to a promoter group.
+pub struct PromoterExpressionEvidenceRecord {
+    pub evidence_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    pub value: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_path: Option<String>,
+    #[serde(default)]
+    pub matched_by: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Expression evidence summarized for one promoter candidate.
+pub struct PromoterExpressionEvidenceRow {
+    pub promoter_group_id: String,
+    pub label: String,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub transcript_labels: Vec<String>,
+    pub expression_record_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    #[serde(default)]
+    pub sample_ids: Vec<String>,
+    #[serde(default)]
+    pub conditions: Vec<String>,
+    #[serde(default)]
+    pub records: Vec<PromoterExpressionEvidenceRecord>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Engine-owned bridge between promoter candidates and expression-level
+/// evidence supplied by workflows, RNA-read reports, or external artifacts.
+pub struct PromoterExpressionEvidenceReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub sequence_length_bp: usize,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label_filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_id_filter: Option<String>,
+    pub promoter_upstream_bp: usize,
+    pub promoter_downstream_bp: usize,
+    pub promoter_group_count: usize,
+    pub supplied_expression_record_count: usize,
+    pub assigned_expression_record_count: usize,
+    pub expression_source_label: String,
+    #[serde(default)]
+    pub rows: Vec<PromoterExpressionEvidenceRow>,
+    #[serde(default)]
+    pub unassigned_expression_records: Vec<PromoterExpressionEvidenceInput>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One component artifact in a promoter-design handoff index.
+pub struct PromoterArtifactManifestEntry {
+    pub artifact_id: String,
+    pub artifact_kind: String,
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_use: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// One resolved component artifact row in a promoter-design handoff index.
+pub struct PromoterArtifactManifestResolvedEntry {
+    pub artifact_id: String,
+    pub artifact_kind: String,
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_use: Option<String>,
+    pub required: bool,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+/// Lightweight index of promoter-design component artifacts. This is not a
+/// narrative dossier; downstream tools can choose their own ordering/story.
+pub struct PromoterArtifactManifestReport {
+    pub schema: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gene_label_filter: Option<String>,
+    pub artifact_count: usize,
+    pub present_artifact_count: usize,
+    pub missing_required_artifact_count: usize,
+    #[serde(default)]
+    pub artifacts: Vec<PromoterArtifactManifestResolvedEntry>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 /// One overlapping annotation/evidence row surfaced in a variant-promoter
 /// context report.
 pub struct VariantPromoterContextEvidenceRow {
@@ -3421,6 +3679,12 @@ pub struct OpResult {
     pub alternative_promoter_comparison: Option<AlternativePromoterComparisonReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_evidence_matrix: Option<PromoterEvidenceMatrixReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isoform_promoter_comparison: Option<IsoformPromoterComparisonReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_expression_evidence: Option<PromoterExpressionEvidenceReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoter_artifact_manifest: Option<PromoterArtifactManifestReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promoter_reporter_candidates: Option<PromoterReporterCandidateSet>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

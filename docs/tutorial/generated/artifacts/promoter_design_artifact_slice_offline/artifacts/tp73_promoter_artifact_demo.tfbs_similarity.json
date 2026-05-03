@@ -6,7 +6,7 @@
   "source_sequence_length_bp": 249,
   "scan_topology": "linear",
   "generated_at_unix_ms": 0,
-  "op_id": "op-7",
+  "op_id": "op-9",
   "run_id": "example_promoter_design_artifact_slice_offline",
   "score_kind": "llr_background_tail_log10",
   "view_start_0based": 60,

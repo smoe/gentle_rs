@@ -5152,6 +5152,81 @@ fn parse_features_promoter_evidence_matrix_with_filters() {
 }
 
 #[test]
+fn parse_features_promoter_isoform_expression_and_manifest_commands() {
+    let isoform = parse_shell_line(
+        "features promoter-isoform-comparison tp73_context --gene-label TP73 --promoter-upstream-bp 1500 --promoter-downstream-bp 250 --no-feature-overlaps --path /tmp/tp73_isoform_promoters.json",
+    )
+    .expect("parse promoter isoform comparison");
+    match isoform {
+        ShellCommand::FeaturesPromoterIsoformComparison {
+            seq_id,
+            gene_label,
+            promoter_upstream_bp,
+            promoter_downstream_bp,
+            include_feature_overlaps,
+            path,
+            ..
+        } => {
+            assert_eq!(seq_id, "tp73_context");
+            assert_eq!(gene_label.as_deref(), Some("TP73"));
+            assert_eq!(promoter_upstream_bp, 1500);
+            assert_eq!(promoter_downstream_bp, 250);
+            assert!(!include_feature_overlaps);
+            assert_eq!(path.as_deref(), Some("/tmp/tp73_isoform_promoters.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let expression = parse_shell_line(
+        r#"features promoter-expression-evidence tp73_context --gene-label TP73 --source-label rna_seq_demo --expression-json '{"transcript_id":"ENSTTP73A","value":12.5,"unit":"TPM"}' --path /tmp/tp73_expression.json"#,
+    )
+    .expect("parse promoter expression evidence");
+    match expression {
+        ShellCommand::FeaturesPromoterExpressionEvidence {
+            seq_id,
+            gene_label,
+            expression_rows,
+            expression_source_label,
+            path,
+            ..
+        } => {
+            assert_eq!(seq_id, "tp73_context");
+            assert_eq!(gene_label.as_deref(), Some("TP73"));
+            assert_eq!(expression_rows.len(), 1);
+            assert_eq!(
+                expression_rows[0].transcript_id.as_deref(),
+                Some("ENSTTP73A")
+            );
+            assert_eq!(expression_rows[0].value, 12.5);
+            assert_eq!(expression_source_label.as_deref(), Some("rna_seq_demo"));
+            assert_eq!(path.as_deref(), Some("/tmp/tp73_expression.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let manifest = parse_shell_line(
+        r#"features promoter-artifact-manifest tp73_context --gene-label TP73 --artifact-json '{"artifact_id":"evidence","artifact_kind":"promoter_evidence_matrix","path":"/tmp/tp73_evidence.json","required":true}' --path /tmp/tp73_manifest.json"#,
+    )
+    .expect("parse promoter artifact manifest");
+    match manifest {
+        ShellCommand::FeaturesPromoterArtifactManifest {
+            seq_id,
+            gene_label,
+            artifacts,
+            path,
+        } => {
+            assert_eq!(seq_id, "tp73_context");
+            assert_eq!(gene_label.as_deref(), Some("TP73"));
+            assert_eq!(artifacts.len(), 1);
+            assert_eq!(artifacts[0].artifact_id, "evidence");
+            assert!(artifacts[0].required);
+            assert_eq!(path, "/tmp/tp73_manifest.json");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_features_restriction_scan_for_stored_and_inline_targets() {
     let cmd = parse_shell_line(
         "features restriction-scan seq_a --range 10..120 --enzyme EcoRI --enzyme SmaI --max-sites-per-enzyme 3 --no-cut-geometry --path /tmp/seq_a.restriction_scan.json",

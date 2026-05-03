@@ -463,6 +463,9 @@ Shared-shell route:
 
 ```bash
 gentle_cli shell 'features promoter-evidence-matrix SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]'
+gentle_cli shell 'features promoter-isoform-comparison SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]'
+gentle_cli shell 'features promoter-expression-evidence SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--expression-json JSON] [--source-label LABEL] [--path FILE.json]'
+gentle_cli shell 'features promoter-artifact-manifest SEQ_ID --artifact-json JSON --path FILE.json [--gene-label LABEL]'
 ```
 
 First-class operation route:
@@ -471,9 +474,24 @@ First-class operation route:
 {"SummarizePromoterEvidenceMatrix":{"input":"SEQ_ID","gene_label":"TP73","promoter_upstream_bp":1000,"promoter_downstream_bp":200,"include_feature_overlaps":true,"path":"tp73_promoter_evidence.json"}}
 ```
 
+```json
+{"SummarizeIsoformPromoterComparison":{"input":"SEQ_ID","gene_label":"TP73","promoter_upstream_bp":1000,"promoter_downstream_bp":200,"include_feature_overlaps":true,"path":"tp73_isoform_promoter_comparison.json"}}
+```
+
+```json
+{"SummarizePromoterExpressionEvidence":{"input":"SEQ_ID","gene_label":"TP73","promoter_upstream_bp":1000,"promoter_downstream_bp":200,"expression_source_label":"rna_seq_table_1","expression_rows":[{"transcript_id":"ENST...","sample_id":"case_1","condition":"case","value":12.4,"unit":"TPM","artifact_path":"rna_expression.tsv"}],"path":"tp73_promoter_expression.json"}}
+```
+
+```json
+{"ExportPromoterArtifactManifest":{"input":"SEQ_ID","gene_label":"TP73","artifacts":[{"artifact_id":"evidence_matrix","artifact_kind":"promoter_evidence_matrix","path":"tp73_promoter_evidence.json","schema_hint":"gentle.promoter_evidence_matrix.v1","required":true}],"path":"tp73_promoter_artifacts.json"}}
+```
+
 Portable schema:
 
 - `gentle.promoter_evidence_matrix.v1`
+- `gentle.isoform_promoter_comparison.v1`
+- `gentle.promoter_expression_evidence.v1`
+- `gentle.promoter_artifact_manifest.v1`
 
 Behavior notes:
 
@@ -498,6 +516,19 @@ Behavior notes:
   transcript support first, then evidence count, then coordinates and label
 - richer scoring is expected to be additive and method/provenance-tagged rather
   than replacing the evidence ledger
+- `SummarizeIsoformPromoterComparison` consumes the same evidence rows and
+  reports common versus differential evidence signatures between promoter
+  groups for isoforms of the same gene; geometry/support bookkeeping is kept
+  out of the comparison signatures so differences focus on annotated/regulatory
+  features
+- `SummarizePromoterExpressionEvidence` accepts expression rows as external
+  evidence with transcript/gene/promoter labels plus optional artifact paths.
+  GENtle assigns them to promoter groups and reports unassigned rows, but it
+  does not infer causality or perform normalization
+- `ExportPromoterArtifactManifest` is a lightweight component index, not a
+  narrative bundle. It records which JSON/SVG artifacts exist and whether
+  required components are missing so downstream tools can compose their own
+  presentation
 
 ## TF query resolution contract
 

@@ -80,7 +80,8 @@ use crate::{
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, DotplotView, EditableStatus, Engine,
         EngineError, ErrorCode, EvidenceClass, ExonSkipSelectionCriterion, ExonSkipSelectionPlan,
         ExportFormat, FlexibilityModel, FlexibilityTrack, GenomeAnchorPreparedFallbackPolicy,
-        GenomeAnchorSide, GentleEngine, JasparCatalogRemoteSummary, LigationProtocol,
+        GenomeAnchorSide, GentleEngine, IsoformPromoterComparisonGroup,
+        IsoformPromoterComparisonReport, JasparCatalogRemoteSummary, LigationProtocol,
         LinearSequenceLetterLayoutMode, MAX_DOTPLOT_PAIR_EVALUATIONS, OpResult, Operation,
         OperationProgress, PairwiseAlignmentMode, PcrPrimerSpec, PrimerDesignBackend,
         PrimerDesignBaseLock, PrimerDesignPairConstraint, PrimerDesignProgress, PrimerDesignReport,
@@ -2074,6 +2075,9 @@ mod tests {
             alternative_promoter_comparison: None,
             variant_promoter_context: None,
             promoter_evidence_matrix: None,
+            isoform_promoter_comparison: None,
+            promoter_expression_evidence: None,
+            promoter_artifact_manifest: None,
             promoter_reporter_candidates: None,
             uniprot_projection_audit: None,
             uniprot_projection_audit_parity: None,
@@ -5418,6 +5422,9 @@ mod tests {
                 alternative_promoter_comparison: None,
                 variant_promoter_context: None,
                 promoter_evidence_matrix: None,
+                isoform_promoter_comparison: None,
+                promoter_expression_evidence: None,
+                promoter_artifact_manifest: None,
                 promoter_reporter_candidates: None,
                 uniprot_projection_audit: None,
                 uniprot_projection_audit_parity: None,
@@ -9669,6 +9676,69 @@ mod tests {
         assert!(area.variant_followup_ui.cached_candidates.is_none());
         assert!(
             area.op_status.contains("ENSTTP73A"),
+            "status was: {}",
+            area.op_status
+        );
+    }
+
+    #[test]
+    fn use_variant_followup_isoform_promoter_group_retargets_promoter_design_span() {
+        let dna = DNAsequence::from_sequence(&"A".repeat(4000)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("tp73_context".to_string()), None);
+        area.variant_followup_ui.cached_score_tracks = Some(TfbsScoreTrackReport::default());
+        area.variant_followup_ui.cached_tfbs_track_similarity =
+            Some(TfbsTrackSimilarityReport::default());
+        area.variant_followup_ui.cached_report = Some(VariantPromoterContextReport::default());
+        area.variant_followup_ui.cached_candidates = Some(PromoterReporterCandidateSet::default());
+        area.variant_followup_ui.cached_promoter_evidence_matrix =
+            Some(crate::engine::PromoterEvidenceMatrixReport::default());
+        area.variant_followup_ui.cached_isoform_promoter_comparison =
+            Some(crate::engine::IsoformPromoterComparisonReport::default());
+
+        let group = crate::engine::IsoformPromoterComparisonGroup {
+            group_id: "promoter_group_1".to_string(),
+            label: "TP73 promoter group 1".to_string(),
+            gene_label: Some("TP73".to_string()),
+            strand: "+".to_string(),
+            start_0based: 500,
+            end_0based_exclusive: 1700,
+            transcript_count: 2,
+            transcript_ids: vec!["ENSTTP73A".to_string(), "ENSTTP73B".to_string()],
+            transcript_labels: vec!["TP73-201".to_string(), "TP73-202".to_string()],
+            ..crate::engine::IsoformPromoterComparisonGroup::default()
+        };
+
+        area.use_variant_followup_isoform_promoter_group(&group, 1000, 200);
+
+        assert_eq!(area.variant_followup_ui.transcript_id, "ENSTTP73A");
+        assert_eq!(area.variant_followup_ui.gene_label, "TP73");
+        assert_eq!(area.variant_followup_ui.promoter_upstream_bp, "1000");
+        assert_eq!(area.variant_followup_ui.promoter_downstream_bp, "200");
+        assert_eq!(area.variant_followup_ui.score_track_start_0based, "500");
+        assert_eq!(
+            area.variant_followup_ui.score_track_end_0based_exclusive,
+            "1700"
+        );
+        assert!(area.variant_followup_ui.cached_score_tracks.is_none());
+        assert!(
+            area.variant_followup_ui
+                .cached_tfbs_track_similarity
+                .is_none()
+        );
+        assert!(area.variant_followup_ui.cached_report.is_none());
+        assert!(area.variant_followup_ui.cached_candidates.is_none());
+        assert!(
+            area.variant_followup_ui
+                .cached_promoter_evidence_matrix
+                .is_none()
+        );
+        assert!(
+            area.variant_followup_ui
+                .cached_isoform_promoter_comparison
+                .is_some()
+        );
+        assert!(
+            area.op_status.contains("TP73 promoter group 1"),
             "status was: {}",
             area.op_status
         );
@@ -14338,6 +14408,7 @@ struct VariantFollowupUiState {
     cached_report: Option<VariantPromoterContextReport>,
     cached_alternative_promoter_comparison: Option<AlternativePromoterComparisonReport>,
     cached_promoter_evidence_matrix: Option<PromoterEvidenceMatrixReport>,
+    cached_isoform_promoter_comparison: Option<IsoformPromoterComparisonReport>,
     cached_candidates: Option<PromoterReporterCandidateSet>,
 }
 
@@ -14383,6 +14454,7 @@ impl Default for VariantFollowupUiState {
             cached_report: None,
             cached_alternative_promoter_comparison: None,
             cached_promoter_evidence_matrix: None,
+            cached_isoform_promoter_comparison: None,
             cached_candidates: None,
         }
     }

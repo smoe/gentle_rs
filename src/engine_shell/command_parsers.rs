@@ -1824,10 +1824,40 @@ fn parse_repeat_filter_option(
     }
 }
 
+fn parse_promoter_expression_input_json(
+    raw: &str,
+) -> Result<Vec<PromoterExpressionEvidenceInput>, String> {
+    let value: serde_json::Value = serde_json::from_str(raw)
+        .map_err(|e| format!("Invalid promoter expression evidence JSON: {e}"))?;
+    if value.is_array() {
+        serde_json::from_value::<Vec<PromoterExpressionEvidenceInput>>(value)
+            .map_err(|e| format!("Invalid promoter expression evidence JSON array: {e}"))
+    } else {
+        serde_json::from_value::<PromoterExpressionEvidenceInput>(value)
+            .map(|row| vec![row])
+            .map_err(|e| format!("Invalid promoter expression evidence JSON object: {e}"))
+    }
+}
+
+fn parse_promoter_artifact_manifest_entry_json(
+    raw: &str,
+) -> Result<Vec<PromoterArtifactManifestEntry>, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(raw).map_err(|e| format!("Invalid promoter artifact JSON: {e}"))?;
+    if value.is_array() {
+        serde_json::from_value::<Vec<PromoterArtifactManifestEntry>>(value)
+            .map_err(|e| format!("Invalid promoter artifact JSON array: {e}"))
+    } else {
+        serde_json::from_value::<PromoterArtifactManifestEntry>(value)
+            .map(|row| vec![row])
+            .map_err(|e| format!("Invalid promoter artifact JSON object: {e}"))
+    }
+}
+
 pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "features requires a subcommand: formula, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
+            "features requires a subcommand: formula, query, export-bed, repeat-query, repeat-overlaps, materialize-repeats, repeat-cohort, window-cohort-tfbs, promoter-evidence-matrix, promoter-isoform-comparison, promoter-expression-evidence, promoter-artifact-manifest, tfbs-summary, tfbs-score-tracks-svg, tfbs-track-similarity, tfbs-score-track-correlation-svg, tfbs-scan, restriction-scan"
                 .to_string(),
         );
     }
@@ -2237,6 +2267,211 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                 promoter_upstream_bp,
                 promoter_downstream_bp,
                 include_feature_overlaps,
+                path,
+            })
+        }
+        "promoter-isoform-comparison" | "promoter-isoforms" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features promoter-isoform-comparison requires SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--no-feature-overlaps] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(
+                    "features promoter-isoform-comparison SEQ_ID must not be empty".to_string(),
+                );
+            }
+            let mut gene_label: Option<String> = None;
+            let mut transcript_id: Option<String> = None;
+            let mut promoter_upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut promoter_downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut include_feature_overlaps = true;
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene-label" | "--gene" => {
+                        idx += 1;
+                        gene_label = Some(parse_required_value(tokens, &mut idx, "--gene-label")?);
+                    }
+                    "--transcript-id" | "--transcript" => {
+                        idx += 1;
+                        transcript_id =
+                            Some(parse_required_value(tokens, &mut idx, "--transcript-id")?);
+                    }
+                    "--promoter-upstream-bp" | "--upstream-bp" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--promoter-upstream-bp")?;
+                        promoter_upstream_bp =
+                            parse_usize_option_value(&raw, "--promoter-upstream-bp")?;
+                    }
+                    "--promoter-downstream-bp" | "--downstream-bp" => {
+                        idx += 1;
+                        let raw =
+                            parse_required_value(tokens, &mut idx, "--promoter-downstream-bp")?;
+                        promoter_downstream_bp =
+                            parse_usize_option_value(&raw, "--promoter-downstream-bp")?;
+                    }
+                    "--no-feature-overlaps" => {
+                        idx += 1;
+                        include_feature_overlaps = false;
+                    }
+                    "--include-feature-overlaps" => {
+                        idx += 1;
+                        include_feature_overlaps = true;
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features promoter-isoform-comparison"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesPromoterIsoformComparison {
+                seq_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                include_feature_overlaps,
+                path,
+            })
+        }
+        "promoter-expression-evidence" | "promoter-expression" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features promoter-expression-evidence requires SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--expression-json JSON] [--source-label LABEL] [--path FILE.json]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(
+                    "features promoter-expression-evidence SEQ_ID must not be empty".to_string(),
+                );
+            }
+            let mut gene_label: Option<String> = None;
+            let mut transcript_id: Option<String> = None;
+            let mut promoter_upstream_bp = DEFAULT_PROMOTER_WINDOW_UPSTREAM_BP;
+            let mut promoter_downstream_bp = DEFAULT_PROMOTER_WINDOW_DOWNSTREAM_BP;
+            let mut expression_rows: Vec<PromoterExpressionEvidenceInput> = vec![];
+            let mut expression_source_label: Option<String> = None;
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene-label" | "--gene" => {
+                        idx += 1;
+                        gene_label = Some(parse_required_value(tokens, &mut idx, "--gene-label")?);
+                    }
+                    "--transcript-id" | "--transcript" => {
+                        idx += 1;
+                        transcript_id =
+                            Some(parse_required_value(tokens, &mut idx, "--transcript-id")?);
+                    }
+                    "--promoter-upstream-bp" | "--upstream-bp" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--promoter-upstream-bp")?;
+                        promoter_upstream_bp =
+                            parse_usize_option_value(&raw, "--promoter-upstream-bp")?;
+                    }
+                    "--promoter-downstream-bp" | "--downstream-bp" => {
+                        idx += 1;
+                        let raw =
+                            parse_required_value(tokens, &mut idx, "--promoter-downstream-bp")?;
+                        promoter_downstream_bp =
+                            parse_usize_option_value(&raw, "--promoter-downstream-bp")?;
+                    }
+                    "--expression-json" | "--expression-row-json" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--expression-json")?;
+                        expression_rows.extend(parse_promoter_expression_input_json(&raw)?);
+                    }
+                    "--source-label" | "--expression-source-label" => {
+                        idx += 1;
+                        expression_source_label =
+                            Some(parse_required_value(tokens, &mut idx, "--source-label")?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features promoter-expression-evidence"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::FeaturesPromoterExpressionEvidence {
+                seq_id,
+                gene_label,
+                transcript_id,
+                promoter_upstream_bp,
+                promoter_downstream_bp,
+                expression_rows,
+                expression_source_label,
+                path,
+            })
+        }
+        "promoter-artifact-manifest" | "promoter-artifacts" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "features promoter-artifact-manifest requires SEQ_ID --artifact-json JSON --path FILE.json [--gene-label LABEL]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err(
+                    "features promoter-artifact-manifest SEQ_ID must not be empty".to_string(),
+                );
+            }
+            let mut gene_label: Option<String> = None;
+            let mut artifacts: Vec<PromoterArtifactManifestEntry> = vec![];
+            let mut path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--gene-label" | "--gene" => {
+                        idx += 1;
+                        gene_label = Some(parse_required_value(tokens, &mut idx, "--gene-label")?);
+                    }
+                    "--artifact-json" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--artifact-json")?;
+                        artifacts.extend(parse_promoter_artifact_manifest_entry_json(&raw)?);
+                    }
+                    "--path" | "--output" => {
+                        idx += 1;
+                        path = Some(parse_required_value(tokens, &mut idx, "--path")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for features promoter-artifact-manifest"
+                        ));
+                    }
+                }
+            }
+            if artifacts.is_empty() {
+                return Err(
+                    "features promoter-artifact-manifest requires at least one --artifact-json JSON"
+                        .to_string(),
+                );
+            }
+            let path = path.ok_or_else(|| {
+                "features promoter-artifact-manifest requires --path FILE.json".to_string()
+            })?;
+            Ok(ShellCommand::FeaturesPromoterArtifactManifest {
+                seq_id,
+                gene_label,
+                artifacts,
                 path,
             })
         }

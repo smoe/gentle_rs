@@ -4377,6 +4377,17 @@ Tutorial projects:
       identical promoter windows that only differ by downstream splice usage
     - `Use this row` retargets the Promoter design score-track / similarity
       span to that grouped promoter interval and representative transcript
+  - the same window now also exposes `Compare isoform evidence`, which calls
+    the shared `SummarizeIsoformPromoterComparison` route:
+    - rows keep common evidence separate from promoter-group-specific evidence
+      so TP73-style isoform promoter differences are not flattened into one
+      undifferentiated ledger
+    - `Use this row` retargets the Promoter design span to the selected
+      isoform promoter group while leaving the comparison table available for
+      orientation
+    - `Export isoform comparison JSON...` writes the cached
+      `gentle.isoform_promoter_comparison.v1` payload through the same engine
+      operation used by shell/CLI workflows
   - the same window now also exposes `Build evidence matrix`, which calls the
     shared `SummarizePromoterEvidenceMatrix` route and keeps the promoter
     evidence ledger visible in-window:

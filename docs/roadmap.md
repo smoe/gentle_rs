@@ -1556,6 +1556,14 @@ without blocking this publication.
             variant, repeat, enhancer/terminator, external interval, and
             CUT&RUN-tagged interval evidence when such annotations already
             exist on the sequence
+          - Promoter design now also exposes the isoform-level evidence
+            comparison route directly in the GUI:
+            `Compare isoform evidence` runs
+            `SummarizeIsoformPromoterComparison`, keeps common evidence
+            separate from promoter-group-specific signatures, can retarget the
+            score-track span from a selected isoform promoter group, and exports
+            the same `gentle.isoform_promoter_comparison.v1` JSON contract used
+            by CLI/workflow runs
           - one release-signoff slice now exercises that component-artifact
             boundary end-to-end on a tiny offline synthetic TP73-like locus:
             - fixture:
@@ -1565,7 +1573,9 @@ without blocking this publication.
             - generated tutorial chapter:
               `docs/tutorial/generated/chapters/24_promoter_design_artifact_slice_offline.md`
             - retained outputs include `alternative_promoters.json`,
-              `evidence_matrix.json`, `tfbs_score_tracks.svg`, and
+              `evidence_matrix.json`, `isoform_promoter_comparison.json`,
+              `promoter_expression_evidence.json`,
+              `promoter_artifact_manifest.json`, `tfbs_score_tracks.svg`, and
               `tfbs_similarity.json`
           - tutorial workflow execution now also rewrites retained-output
             paths for promoter comparison/evidence reports and
@@ -3832,45 +3842,35 @@ Planned work:
    - treat direct remote Ensembl ROI/region fetch that avoids whole-reference
      preparation as a separate missing capability, not as something the skill
      should imply already exists
-   - next presentation step for promoter-centric ClawBio projects should keep
-     the composition boundary explicit:
+   - promoter-centric ClawBio component-artifact baseline now keeps the
+     composition boundary explicit:
      - GENtle should stop at deterministic component artifacts plus, at most,
        one small artifact manifest that says what was produced
      - ClawBio/OpenClaw should remain responsible for combining those artifacts
        into the user-facing upstream-regulation story
-     - likely component set:
-       - `promoter_context.json`
+     - implemented component set now includes:
        - `alternative_promoters.json`
+       - `evidence_matrix.json`
+       - `isoform_promoter_comparison.json`
+       - `promoter_expression_evidence.json`
        - `tfbs_score_tracks.svg`
-       - `tfbs_correlation.svg`
        - `tfbs_similarity.json`
-     - likely additive manifest shape:
-       ```json
-       {
-         "schema": "gentle.promoter_artifact_manifest.v1",
-         "gene_label": "TP73",
-         "seq_id": "tp73_promoter_slice",
-         "selected_promoter_group": {
-           "label": "TP73 promoter window (6 tx)",
-           "transcript_count": 6
-         },
-         "artifacts": [
-           {"kind": "promoter_context", "path": "promoter_context.json"},
-           {"kind": "alternative_promoters", "path": "alternative_promoters.json"},
-           {"kind": "tfbs_score_tracks", "path": "tfbs_score_tracks.svg"},
-           {"kind": "tfbs_correlation", "path": "tfbs_correlation.svg"},
-           {"kind": "tfbs_similarity", "path": "tfbs_similarity.json"}
-         ],
-         "preferred_interpretation_order": [
-           "promoter_group",
-           "score_traces",
-           "correlation",
-           "similarity"
-         ]
-       }
-       ```
+       - `promoter_artifact_manifest.json`
+     - shared operations/shell routes:
+       - `SummarizeIsoformPromoterComparison` /
+         `features promoter-isoform-comparison`
+       - `SummarizePromoterExpressionEvidence` /
+         `features promoter-expression-evidence`
+       - `ExportPromoterArtifactManifest` /
+         `features promoter-artifact-manifest`
+     - `docs/examples/workflows/promoter_design_artifact_slice_offline.json`
+       now exercises the component set on a synthetic TP73-like locus, and the
+       tutorial retains the JSON/SVG artifacts for sign-off
      - this keeps GENtle adapter-neutral while still giving ClawBio enough
        stable metadata to choose a first figure and a compact narrative
+     - remaining follow-up: add the TFBS correlation SVG to the retained
+       promoter artifact slice once the preferred correlation panel layout is
+       frozen for README/release materials
    - first repeat-cohort foundation for Anze-style TE environment questions is
      now in place as shared engine/shell/CLI contracts rather than a GUI-only
      or ClawBio-specific bundle:
