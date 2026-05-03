@@ -11,6 +11,19 @@ GENtle checkout at `/home/clawbio/GENtle`.
 For a fixed-parameter multi-accession cohort run after this single-run proof,
 see `docs/tp73_pancreas_cohort_batch_runbook.md`.
 
+The preferred execution path is the guarded helper script:
+
+```bash
+cd /home/clawbio/GENtle
+scripts/tp73_pancreas_rna_mapping.sh strict-start
+```
+
+Run it inside `screen` or `tmux`. The script defines all paths, writes
+`run.env`, refuses to start while another RNA-read mapping process is active,
+and refuses to overwrite any state/checkpoint/log/report path that already
+exists for the selected run. The manual blocks below document what the script
+does internally and remain useful for debugging or adapting the workflow.
+
 ## 1. Environment
 
 ```bash
