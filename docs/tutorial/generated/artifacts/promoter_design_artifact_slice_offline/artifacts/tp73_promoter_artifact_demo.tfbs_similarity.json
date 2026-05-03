@@ -40,7 +40,7 @@
       "signed_primary_peak_offset_bp": -10
     },
     {
-      "candidate_tf_id": "MA0861.1",
+      "candidate_tf_id": "MA0861.2",
       "candidate_tf_name": "TP73",
       "overlap_window_count": 81,
       "raw_pearson": 0.1088370369564379,

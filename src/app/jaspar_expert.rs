@@ -891,8 +891,16 @@ mod tests {
     use super::GENtleApp;
     use crate::engine::GentleEngine;
 
+    fn lock_jaspar_registry_for_test() -> std::sync::MutexGuard<'static, ()> {
+        crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn open_jaspar_expert_dialog_seeds_default_selection() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let mut app = GENtleApp::default();
         app.jaspar_expert_selected_motif_id.clear();
         app.open_jaspar_expert_dialog();
@@ -902,6 +910,8 @@ mod tests {
 
     #[test]
     fn refresh_jaspar_expert_view_loads_selected_entry() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let mut app = GENtleApp::default();
         app.jaspar_expert_selected_motif_id = "SP1".to_string();
         app.jaspar_expert_random_length_bp = "512".to_string();
@@ -918,6 +928,8 @@ mod tests {
 
     #[test]
     fn native_request_opens_jaspar_expert_for_requested_motif() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let mut app = GENtleApp::default();
         crate::app::request_open_jaspar_expert_for_motif_from_native_menu("MA0079.5");
         app.consume_native_jaspar_expert_request();
@@ -927,6 +939,8 @@ mod tests {
 
     #[test]
     fn refresh_jaspar_catalog_loads_local_rows() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let mut app = GENtleApp::default();
         app.refresh_jaspar_catalog(true, false);
         let report = app
@@ -944,6 +958,8 @@ mod tests {
 
     #[test]
     fn jaspar_panel_interpretation_reports_extremes_and_hit_rate() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let engine = GentleEngine::new();
         let view = engine
             .inspect_jaspar_entry("SP1", 512, 7, false, false)
@@ -957,6 +973,8 @@ mod tests {
 
     #[test]
     fn jaspar_expert_overview_rows_report_consensus_and_background() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
         let engine = GentleEngine::new();
         let view = engine
             .inspect_jaspar_entry("SP1", 512, 7, false, false)

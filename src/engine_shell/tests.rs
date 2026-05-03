@@ -115,11 +115,6 @@ fn lock_attract_tests() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn jaspar_test_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
 struct JasparReloadResetGuard;
 
 impl Drop for JasparReloadResetGuard {
@@ -129,7 +124,7 @@ impl Drop for JasparReloadResetGuard {
 }
 
 fn lock_jaspar_tests() -> std::sync::MutexGuard<'static, ()> {
-    jaspar_test_lock()
+    crate::tf_motifs::test_registry_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }

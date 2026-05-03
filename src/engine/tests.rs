@@ -74,8 +74,7 @@ fn attract_test_lock() -> &'static Mutex<()> {
 }
 
 fn jaspar_test_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+    crate::tf_motifs::test_registry_lock()
 }
 
 fn internet_access_available() -> bool {
@@ -33418,6 +33417,8 @@ fn summarize_tfbs_score_tracks_uses_promoter_provenance_tss_when_features_are_ab
 
 #[test]
 fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+    crate::tf_motifs::reload();
     let dna = DNAsequence::from_sequence("GGGGCGGGGCACGTGGGGGCGGGGCACGTG".repeat(6).as_str())
         .expect("sequence");
     let mut state = ProjectState::default();
@@ -33532,6 +33533,8 @@ fn summarize_tfbs_score_tracks_reports_raw_and_smoothed_correlations() {
 
 #[test]
 fn summarize_tfbs_track_similarity_ranks_candidates_and_supports_species_filtering() {
+    let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+    crate::tf_motifs::reload();
     let dna = DNAsequence::from_sequence("GGGGCGGGGCACGTGGGGGCGGGGCACGTG".repeat(6).as_str())
         .expect("sequence");
     let mut state = ProjectState::default();
@@ -33965,6 +33968,7 @@ fn apply_summarize_multi_gene_promoter_tfbs_returns_transcription_aligned_report
 #[test]
 fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() {
     let _serial = jaspar_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+    crate::tf_motifs::reload();
     let engine = GentleEngine::new();
     let report = engine
         .summarize_jaspar_entries(&["SP1".to_string()], 10_000, 12345)
@@ -33979,7 +33983,7 @@ fn summarize_jaspar_entries_derives_extreme_sequences_and_random_distribution() 
     assert_eq!(row.consensus_iupac, "GGGGCGGGG");
     assert_eq!(row.motif_length_bp, 9);
     assert_eq!(row.maximizing_sequence, "GGGGCGGGG");
-    assert_eq!(row.minimizing_sequence, "AAAAAAAAA");
+    assert_eq!(row.minimizing_sequence, "AAAAGAATC");
     assert_eq!(
         row.llr_bits_distribution.sample_count,
         2 * (10_000usize - row.motif_length_bp + 1)
