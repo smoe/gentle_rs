@@ -11,6 +11,41 @@ single-run runbook first when validating a new machine. Use this cohort runbook
 once the toolchain, SRA retrieval, FASTA conversion, RNA-read interpretation,
 and phase-2 alignment are known to work for one accession.
 
+## Scripted Path
+
+Prefer the repository helper for the live pancreatic TP73 cohort run:
+
+```bash
+cd /home/clawbio/GENtle
+
+scripts/tp73_pancreas_cohort.sh init
+
+# Optional: fold the already harvested SRR32957126 strict run into the cohort
+# table without rerunning the expensive mapping step.
+scripts/tp73_pancreas_cohort.sh adopt-existing \
+  /home/clawbio/work/tp73_pancreas_benchmark/strict_SRR32957126_20260503T003857Z \
+  SRR32957126 SRR32957126
+
+scripts/tp73_pancreas_cohort.sh status
+scripts/tp73_pancreas_cohort.sh all
+```
+
+The serial `all` path creates or reuses:
+
+- `"$WORK_ROOT/cohort/manifests/pancreas_runs.tsv"` with `SRR32957124` through
+  `SRR32957129`
+- SRA files under `"$PAN_ROOT"`
+- shared FASTA files under `"$WORK_ROOT/fastq"`
+- per-run states/logs under `"$WORK_ROOT/cohort/runs/$RUN"`
+- a figure-ready cohort table at
+  `"$WORK_ROOT/cohort/reports/tp73_pancreas_cohort.summary.tsv"`
+- merged GENtle sample-sheet output at
+  `"$WORK_ROOT/cohort/reports/tp73_pancreas_cohort.sample_sheet.near.tsv"`
+
+The helper keeps the RNA mapping itself serial and deterministic. If disk space
+becomes tight, set `DROP_FASTQ_AFTER_FASTA=1` only after confirming that the
+FASTA conversion and `seqkit` stats are already written for that run.
+
 ## 1. Batch Principle
 
 For abundance variation, do not tune thresholds separately per sample after
