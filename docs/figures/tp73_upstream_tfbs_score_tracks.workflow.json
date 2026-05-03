@@ -9,7 +9,12 @@
     },
     {
       "RenderTfbsScoreTracksSvg": {
-        "seq_id": "tp73_context",
+        "target": {
+          "kind": "seq_id",
+          "seq_id": "tp73_context",
+          "span_start_0based": 15564,
+          "span_end_0based_exclusive": 16764
+        },
         "motifs": [
           "TP53",
           "TP63",
@@ -19,8 +24,7 @@
           "BACH2",
           "REST"
         ],
-        "start_0based": 15564,
-        "end_0based_exclusive": 16764,
+        "score_kind": "llr_bits",
         "clip_negative": false,
         "path": "docs/figures/tp73_upstream_tfbs_score_tracks.svg"
       }

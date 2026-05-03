@@ -9,6 +9,7 @@ use std::{
 
 const RUNTIME_TF_MOTIF_PATH: &str = "data/resources/jaspar.motifs.json";
 const BUILTIN_TF_MOTIFS_JSON: &str = include_str!("../assets/jaspar.motifs.json");
+const BUNDLED_JASPAR_PFM_SUPPLEMENT_JSON: &str = include_str!("../assets/jaspar_2022.json");
 const TF_QUERY_STOP_WORDS: &[&str] = &[
     "tf",
     "tfs",
@@ -119,6 +120,39 @@ struct TfMotifRecord {
     pfm: Option<TfPfmRows>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct BundledJasparPfmRows {
+    #[serde(rename = "A")]
+    a: Vec<String>,
+    #[serde(rename = "C")]
+    c: Vec<String>,
+    #[serde(rename = "G")]
+    g: Vec<String>,
+    #[serde(rename = "T")]
+    t: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct BundledJasparPfmRecord {
+    matrix_id: String,
+    name: Option<String>,
+    pfm: BundledJasparPfmRows,
+}
+
+#[derive(Debug, Clone)]
+struct TfPfmSupplement {
+    id: String,
+    name: Option<String>,
+    consensus_iupac: String,
+    matrix_counts: Vec<[f64; 4]>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TfPfmSupplements {
+    by_id: HashMap<String, TfPfmSupplement>,
+    by_unique_name: HashMap<String, TfPfmSupplement>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TfMotif {
     pub id: String,
@@ -218,7 +252,84 @@ fn iupac_counts(letter: char) -> [f64; 4] {
     }
 }
 
+fn consensus_from_matrix_counts(matrix_counts: &[[f64; 4]]) -> String {
+    const BASES: [char; 4] = ['A', 'C', 'G', 'T'];
+    matrix_counts
+        .iter()
+        .map(|counts| {
+            counts
+                .iter()
+                .copied()
+                .enumerate()
+                .max_by(|left, right| left.1.total_cmp(&right.1))
+                .map(|(idx, _)| BASES[idx])
+                .unwrap_or('N')
+        })
+        .collect()
+}
+
 impl TfMotifDb {
+    fn bundled_jaspar_pfm_matrix(pfm: &BundledJasparPfmRows) -> Option<Vec<[f64; 4]>> {
+        let len = pfm.a.len();
+        if len == 0 || pfm.c.len() != len || pfm.g.len() != len || pfm.t.len() != len {
+            return None;
+        }
+        let mut matrix = Vec::with_capacity(len);
+        for i in 0..len {
+            matrix.push([
+                pfm.a[i].parse::<f64>().ok()?,
+                pfm.c[i].parse::<f64>().ok()?,
+                pfm.g[i].parse::<f64>().ok()?,
+                pfm.t[i].parse::<f64>().ok()?,
+            ]);
+        }
+        Some(matrix)
+    }
+
+    fn bundled_jaspar_pfm_supplements() -> TfPfmSupplements {
+        let records =
+            serde_json::from_str::<Vec<BundledJasparPfmRecord>>(BUNDLED_JASPAR_PFM_SUPPLEMENT_JSON)
+                .unwrap_or_default();
+        let mut by_id = HashMap::new();
+        let mut name_candidates: HashMap<String, Option<TfPfmSupplement>> = HashMap::new();
+        for record in records {
+            let matrix_counts = match Self::bundled_jaspar_pfm_matrix(&record.pfm) {
+                Some(matrix_counts) => matrix_counts,
+                None => continue,
+            };
+            let id = record.matrix_id.trim().to_string();
+            if id.is_empty() {
+                continue;
+            }
+            let supplement = TfPfmSupplement {
+                id: id.clone(),
+                name: record.name.as_ref().map(|name| name.trim().to_string()),
+                consensus_iupac: consensus_from_matrix_counts(&matrix_counts),
+                matrix_counts,
+            };
+            by_id
+                .entry(normalize_lookup_key(&id))
+                .or_insert_with(|| supplement.clone());
+            if let Some(name) = supplement.name.as_deref() {
+                let name_key = normalize_lookup_key(name);
+                if !name_key.is_empty() {
+                    name_candidates
+                        .entry(name_key)
+                        .and_modify(|slot| *slot = None)
+                        .or_insert_with(|| Some(supplement));
+                }
+            }
+        }
+        let by_unique_name = name_candidates
+            .into_iter()
+            .filter_map(|(name, supplement)| supplement.map(|supplement| (name, supplement)))
+            .collect();
+        TfPfmSupplements {
+            by_id,
+            by_unique_name,
+        }
+    }
+
     fn matrix_from_pfm(pfm: &TfPfmRows) -> Option<Vec<[f64; 4]>> {
         let len = pfm.a.len();
         if len == 0 || pfm.c.len() != len || pfm.g.len() != len || pfm.t.len() != len {
@@ -241,33 +352,59 @@ impl TfMotifDb {
             return None;
         }
 
+        static PFM_SUPPLEMENTS: LazyLock<TfPfmSupplements> =
+            LazyLock::new(TfMotifDb::bundled_jaspar_pfm_supplements);
         let mut motifs = Vec::new();
         let mut by_key = HashMap::new();
         let alias_targets = common_alias_targets();
         for m in snapshot.motifs {
-            let consensus = m.consensus_iupac.trim().to_ascii_uppercase();
-            if consensus.is_empty() {
+            let compact_consensus = m.consensus_iupac.trim().to_ascii_uppercase();
+            if compact_consensus.is_empty() {
                 continue;
             }
-            let matrix_counts = match m.pfm.as_ref().and_then(Self::matrix_from_pfm) {
-                Some(matrix) => matrix,
-                None => Self::matrix_from_consensus(&consensus),
+            let original_id = m.id.trim().to_string();
+            let original_id_key = normalize_lookup_key(&original_id);
+            let name_key = m.name.as_ref().map(|name| normalize_lookup_key(name));
+            let pfm_matrix = m.pfm.as_ref().and_then(Self::matrix_from_pfm);
+            let supplement = if pfm_matrix.is_none() {
+                PFM_SUPPLEMENTS.by_id.get(&original_id_key).or_else(|| {
+                    name_key
+                        .as_ref()
+                        .and_then(|name_key| PFM_SUPPLEMENTS.by_unique_name.get(name_key))
+                })
+            } else {
+                None
+            };
+            let (id, consensus, matrix_counts) = match (pfm_matrix, supplement) {
+                (Some(matrix), _) => (original_id.clone(), compact_consensus, matrix),
+                (None, Some(supplement)) => (
+                    supplement.id.clone(),
+                    supplement.consensus_iupac.clone(),
+                    supplement.matrix_counts.clone(),
+                ),
+                (None, None) => (
+                    original_id.clone(),
+                    compact_consensus.clone(),
+                    Self::matrix_from_consensus(&compact_consensus),
+                ),
             };
             if matrix_counts.is_empty() {
                 continue;
             }
             let idx = motifs.len();
-            let id_key = normalize_lookup_key(&m.id);
-            let name_key = m.name.as_ref().map(|n| normalize_lookup_key(n));
+            let id_key = normalize_lookup_key(&id);
             let motif = TfMotif {
-                id: m.id.trim().to_string(),
+                id,
                 name: m.name.as_ref().map(|n| n.trim().to_string()),
                 consensus_iupac: consensus,
                 matrix_counts,
             };
             motifs.push(motif);
             if !id_key.is_empty() {
-                by_key.insert(id_key, idx);
+                by_key.insert(id_key.clone(), idx);
+            }
+            if original_id_key != id_key && !original_id_key.is_empty() {
+                by_key.entry(original_id_key).or_insert(idx);
             }
             if let Some(name_key) = name_key {
                 if !name_key.is_empty() {
@@ -576,6 +713,30 @@ mod tests {
     #[test]
     fn resolve_motif_supports_versioned_jaspar_ids() {
         assert!(resolve_motif("MA0001.3").is_some());
+    }
+
+    #[test]
+    fn builtin_tp73_uses_bundled_pfm_not_consensus_fallback() {
+        let db = TfMotifDb::from_json(BUILTIN_TF_MOTIFS_JSON).expect("motif db");
+        let resolved = db.resolve("TP73").expect("resolve TP73");
+        assert_eq!(resolved.id, "MA0861.1");
+        assert_eq!(resolved.matrix_counts.len(), 18);
+        assert_eq!(resolved.consensus_iupac, "GACATGTCTGGACATGTC");
+
+        let ambiguous_column = resolved.matrix_counts[8];
+        let total = ambiguous_column.iter().sum::<f64>();
+        let max_fraction = ambiguous_column
+            .iter()
+            .copied()
+            .map(|value| value / total)
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_fraction < 0.5,
+            "position 9 should remain mixed, not collapsed to a consensus base"
+        );
+
+        let compact_id_alias = db.resolve("MA0861.2").expect("resolve compact alias");
+        assert_eq!(compact_id_alias.id, "MA0861.1");
     }
 
     #[test]

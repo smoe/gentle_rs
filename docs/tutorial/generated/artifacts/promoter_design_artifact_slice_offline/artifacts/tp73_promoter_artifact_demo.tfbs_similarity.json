@@ -33,41 +33,41 @@
       "candidate_tf_id": "MA0139.2",
       "candidate_tf_name": "CTCF",
       "overlap_window_count": 84,
-      "raw_pearson": 0.1288730177640396,
-      "smoothed_pearson": 0.7648793464351693,
-      "raw_spearman": 0.11802177207875185,
-      "smoothed_spearman": 0.8103185617426982,
+      "raw_pearson": 0.02246690438842764,
+      "smoothed_pearson": 0.725607744441422,
+      "raw_spearman": 0.017342009979940336,
+      "smoothed_spearman": 0.7689691779138529,
       "signed_primary_peak_offset_bp": -10
     },
     {
-      "candidate_tf_id": "MA0106.3",
-      "candidate_tf_name": "TP53",
+      "candidate_tf_id": "MA0861.1",
+      "candidate_tf_name": "TP73",
       "overlap_window_count": 81,
-      "raw_pearson": 0.03023517063375898,
-      "smoothed_pearson": 0.2363597430148608,
-      "raw_spearman": 0.016821467530463305,
-      "smoothed_spearman": 0.24205569447873895,
-      "signed_primary_peak_offset_bp": -8
+      "raw_pearson": 0.1088370369564379,
+      "smoothed_pearson": 0.3591330897190032,
+      "raw_spearman": 0.11077526172808347,
+      "smoothed_spearman": 0.3772269089782447,
+      "signed_primary_peak_offset_bp": 56
     },
     {
       "candidate_tf_id": "MA0525.2",
       "candidate_tf_name": "TP63",
       "overlap_window_count": 81,
-      "raw_pearson": 0.0,
-      "smoothed_pearson": 0.0,
-      "raw_spearman": 0.0,
-      "smoothed_spearman": 0.0,
-      "signed_primary_peak_offset_bp": -20
+      "raw_pearson": 0.07431232904306277,
+      "smoothed_pearson": 0.3108807831459453,
+      "raw_spearman": 0.05620473303905716,
+      "smoothed_spearman": 0.2988140451725271,
+      "signed_primary_peak_offset_bp": 58
     },
     {
-      "candidate_tf_id": "MA0861.2",
-      "candidate_tf_name": "TP73",
-      "overlap_window_count": 83,
-      "raw_pearson": 0.0,
-      "smoothed_pearson": 0.0,
-      "raw_spearman": 0.0,
-      "smoothed_spearman": 0.0,
-      "signed_primary_peak_offset_bp": -20
+      "candidate_tf_id": "MA0106.3",
+      "candidate_tf_name": "TP53",
+      "overlap_window_count": 81,
+      "raw_pearson": -0.1321447243483011,
+      "smoothed_pearson": -0.1383344650516161,
+      "raw_spearman": -0.1313846127472618,
+      "smoothed_spearman": -0.13553288766941915,
+      "signed_primary_peak_offset_bp": -3
     }
   ]
 }
