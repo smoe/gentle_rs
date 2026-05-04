@@ -61,6 +61,15 @@ def parse_args() -> argparse.Namespace:
         help="Column used for x-axis sample labels.",
     )
     parser.add_argument(
+        "--bar-column",
+        default="strict_seed_passed_reads",
+        choices=["strict_seed_passed_reads", "accepted_tp73_reads"],
+        help=(
+            "TP73 count column used for blue bars. The default is the conservative "
+            "strict seed-passed count."
+        ),
+    )
+    parser.add_argument(
         "--title",
         default="TP73 support across pancreatic cancer Nanopore cDNA samples",
         help="Figure title.",
@@ -196,13 +205,26 @@ def render_svg(rows: list[dict[str, str]], args: argparse.Namespace, source_path
     def y_read(value: float) -> float:
         return top_y + top_h - ((math.log10(value) - log_min) / (log_max - log_min)) * top_h
 
-    tp73_counts = [
-        number(row, "accepted_tp73_reads")
-        if number(row, "accepted_tp73_reads") is not None
-        else number(row, "strict_seed_passed_reads") or 0.0
+    tp73_counts = [number(row, args.bar_column) or 0.0 for row in rows]
+    bar_label = (
+        "strict TP73 seed-passed reads"
+        if args.bar_column == "strict_seed_passed_reads"
+        else "accepted TP73 target reads"
+    )
+    if args.bar_column == "strict_seed_passed_reads":
+        max_length_column = "strict_seed_passed_max_read_bp"
+        max_length_fallback = "accepted_tp73_max_read_bp"
+        max_length_label = "max strict TP73 read length (bp)"
+    else:
+        max_length_column = "accepted_tp73_max_read_bp"
+        max_length_fallback = "strict_seed_passed_max_read_bp"
+        max_length_label = "max accepted TP73 read length (bp)"
+    tp73_max_lengths = [
+        number(row, max_length_column)
+        if number(row, max_length_column) is not None
+        else number(row, max_length_fallback)
         for row in rows
     ]
-    tp73_max_lengths = [number(row, "accepted_tp73_max_read_bp") for row in rows]
     count_max = nice_linear_max(max(tp73_counts) * 1.15 if tp73_counts else 1.0)
     length_positive = [value for value in tp73_max_lengths if value is not None and value > 0]
     length_max = nice_linear_max(max(length_positive) * 1.15 if length_positive else 1.0)
@@ -232,7 +254,7 @@ def render_svg(rows: list[dict[str, str]], args: argparse.Namespace, source_path
         svg_text(
             38,
             title_y + 26,
-            "Read-length distribution uses all reads; TP73 bars use accepted target reads, not retained phase-2 working rows.",
+            f"Read-length distribution uses all reads; TP73 bars show {bar_label}, not retained phase-2 working rows.",
             13,
             "#475569",
         )
@@ -265,7 +287,7 @@ def render_svg(rows: list[dict[str, str]], args: argparse.Namespace, source_path
         parts.append(polyline(points, color, dash))
 
     # Bottom chart frame and axes.
-    parts.append(svg_text(top_x, bottom_y - 24, "TP73-positive reads and maximum TP73 read length", 17, "#111827", weight="700"))
+    parts.append(svg_text(top_x, bottom_y - 24, "TP73 seed-positive reads and maximum TP73 read length", 17, "#111827", weight="700"))
     for tick in [0.0, 0.25, 0.5, 0.75, 1.0]:
         value = count_max * tick
         y = y_count(value)
@@ -276,8 +298,8 @@ def render_svg(rows: list[dict[str, str]], args: argparse.Namespace, source_path
     parts.append(f'<line x1="{top_x}" y1="{bottom_y}" x2="{top_x}" y2="{bottom_y + bottom_h}" class="axis"/>')
     parts.append(f'<line x1="{top_x + chart_w}" y1="{bottom_y}" x2="{top_x + chart_w}" y2="{bottom_y + bottom_h}" class="axis"/>')
     parts.append(f'<line x1="{top_x}" y1="{bottom_y + bottom_h}" x2="{top_x + chart_w}" y2="{bottom_y + bottom_h}" class="axis"/>')
-    parts.append(svg_text(28, bottom_y + bottom_h / 2, "accepted TP73 reads", 12, "#475569", "middle", extra='transform="rotate(-90 28 %.1f)"' % (bottom_y + bottom_h / 2)))
-    parts.append(svg_text(top_x + chart_w + 86, bottom_y + bottom_h / 2, "max TP73 read length (bp)", 12, "#c2410c", "middle", extra='transform="rotate(90 %.1f %.1f)"' % (top_x + chart_w + 86, bottom_y + bottom_h / 2)))
+    parts.append(svg_text(28, bottom_y + bottom_h / 2, bar_label, 12, "#475569", "middle", extra='transform="rotate(-90 28 %.1f)"' % (bottom_y + bottom_h / 2)))
+    parts.append(svg_text(top_x + chart_w + 86, bottom_y + bottom_h / 2, max_length_label, 12, "#c2410c", "middle", extra='transform="rotate(90 %.1f %.1f)"' % (top_x + chart_w + 86, bottom_y + bottom_h / 2)))
 
     bar_w = min(34.0, chart_w / max(n, 1) * 0.48)
     for idx, count in enumerate(tp73_counts):
@@ -295,7 +317,7 @@ def render_svg(rows: list[dict[str, str]], args: argparse.Namespace, source_path
     parts.append(polyline(length_points, "#ea580c", ""))
     parts.append(f'<rect x="{top_x + chart_w - 245:.1f}" y="{bottom_y - 45:.1f}" width="236" height="30" rx="8" fill="#ffffff" stroke="#e2e8f0"/>')
     parts.append(f'<rect x="{top_x + chart_w - 232:.1f}" y="{bottom_y - 35:.1f}" width="18" height="12" rx="2" fill="#2563eb" opacity="0.82"/>')
-    parts.append(svg_text(top_x + chart_w - 207, bottom_y - 25, "accepted TP73 reads", 12, "#334155"))
+    parts.append(svg_text(top_x + chart_w - 207, bottom_y - 25, bar_label, 12, "#334155"))
     parts.append(f'<line x1="{top_x + chart_w - 84:.1f}" y1="{bottom_y - 29:.1f}" x2="{top_x + chart_w - 58:.1f}" y2="{bottom_y - 29:.1f}" stroke="#ea580c" stroke-width="2.5"/>')
     parts.append(f'<circle cx="{top_x + chart_w - 71:.1f}" cy="{bottom_y - 29:.1f}" r="4" fill="#ea580c" stroke="white" stroke-width="1.5"/>')
     parts.append(svg_text(top_x + chart_w - 50, bottom_y - 25, "max bp", 12, "#334155"))
