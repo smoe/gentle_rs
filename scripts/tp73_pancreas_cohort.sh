@@ -763,8 +763,6 @@ status_manifest() {
 
 all_steps() {
   init_shared
-  download_manifest
-  prepare_fasta_manifest
   run_manifest
   summarize_outputs
 }
