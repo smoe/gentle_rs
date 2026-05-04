@@ -30,7 +30,8 @@ scripts/tp73_pancreas_cohort.sh status
 scripts/tp73_pancreas_cohort.sh all
 ```
 
-The serial `all` path creates or reuses:
+The serial `all` path walks sample-by-sample. For each manifest row it creates
+or reuses:
 
 - `"$WORK_ROOT/cohort/manifests/pancreas_runs.tsv"` with `SRR32957124` through
   `SRR32957129`
@@ -45,6 +46,52 @@ The serial `all` path creates or reuses:
 The helper keeps the RNA mapping itself serial and deterministic. If disk space
 becomes tight, set `DROP_FASTQ_AFTER_FASTA=1` only after confirming that the
 FASTA conversion and `seqkit` stats are already written for that run.
+
+After `summarize`, create a figure-source TSV and render the cohort overview:
+
+```bash
+COHORT_ROOT="${COHORT_ROOT:-/home/clawbio/work/tp73_pancreas_benchmark/cohort}"
+mkdir -p "$COHORT_ROOT/figures"
+
+jq -r '
+  [
+    "run_accession","sample_id","sample_name",
+    "total_reads",
+    "all_q0_bp","all_q25_bp","all_q50_bp","all_q75_bp","all_q100_bp","all_mean_bp",
+    "strict_seed_passed_reads",
+    "accepted_tp73_reads",
+    "accepted_tp73_per_million",
+    "accepted_tp73_max_read_bp",
+    "accepted_tp73_mean_read_bp"
+  ],
+  (.[] | [
+    .run_accession,
+    .sample_id,
+    .sample_name,
+    .read_count_total,
+    .read_length_summaries.all_reads.quantiles_bp.q0,
+    .read_length_summaries.all_reads.quantiles_bp.q25,
+    .read_length_summaries.all_reads.quantiles_bp.q50,
+    .read_length_summaries.all_reads.quantiles_bp.q75,
+    .read_length_summaries.all_reads.quantiles_bp.q100,
+    .read_length_summaries.all_reads.mean_bp,
+    .strict_seed_passed_reads,
+    .gene_support.accepted_target_count,
+    (if .read_count_total > 0 then (.gene_support.accepted_target_count * 1000000 / .read_count_total) else null end),
+    .gene_support.accepted_target_read_lengths.max_length_bp,
+    .gene_support.accepted_target_read_lengths.mean_length_bp
+  ])
+  | @tsv
+' "$COHORT_ROOT/reports/tp73_pancreas_cohort.final_summaries.json" \
+  > "$COHORT_ROOT/figures/tp73_pancreas_figure_source.tsv"
+
+python3 scripts/plot_tp73_pancreas_cohort.py \
+  "$COHORT_ROOT/figures/tp73_pancreas_figure_source.tsv" \
+  --output "$COHORT_ROOT/figures/tp73_pancreas_cohort_overview.svg"
+```
+
+The SVG plot is dependency-free. If PNG/PDF conversion is needed on Debian,
+install `librsvg2-bin` and run `rsvg-convert`, or use Inkscape.
 
 ## 1. Batch Principle
 
