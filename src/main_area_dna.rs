@@ -1388,12 +1388,6 @@ mod tests {
     };
     use tempfile::{TempDir, tempdir};
 
-    fn lock_jaspar_registry_for_test() -> std::sync::MutexGuard<'static, ()> {
-        crate::tf_motifs::test_registry_lock()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
     fn make_feature(kind: &str, qualifiers: Vec<(&str, &str)>) -> Feature {
         Feature {
             kind: kind.to_string().into(),
@@ -3407,16 +3401,14 @@ mod tests {
 
     #[test]
     fn whole_sequence_tfbs_track_similarity_uses_shared_engine_report_path() {
-        let _serial = lock_jaspar_registry_for_test();
-        crate::tf_motifs::reload();
-        let dna = DNAsequence::from_sequence(&"ACGT".repeat(64)).expect("sequence");
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(16)).expect("sequence");
         let mut state = ProjectState::default();
         state.sequences.insert("seq1".to_string(), dna.clone());
         let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), Some(engine));
-        area.tfbs_track_similarity_anchor_motif = "TP53".to_string();
+        area.tfbs_track_similarity_anchor_motif = "ACGT".to_string();
         area.tfbs_track_similarity_all_candidates = false;
-        area.tfbs_track_similarity_candidate_motifs = "TP63,TP73".to_string();
+        area.tfbs_track_similarity_candidate_motifs = "CGTA,TACG".to_string();
 
         area.show_whole_sequence_tfbs_track_similarity();
         assert!(area.tfbs_task.is_some());
@@ -3443,11 +3435,11 @@ mod tests {
             .as_ref()
             .expect("cached TFBS similarity report");
         assert_eq!(report.view_start_0based, 0);
-        assert_eq!(report.view_end_0based_exclusive, 256);
-        assert_eq!(report.anchor_requested, "TP53");
+        assert_eq!(report.view_end_0based_exclusive, 64);
+        assert_eq!(report.anchor_requested, "ACGT");
         assert_eq!(
             report.candidates_requested,
-            vec!["TP63".to_string(), "TP73".to_string()]
+            vec!["CGTA".to_string(), "TACG".to_string()]
         );
         assert_eq!(
             report.ranking_metric,
