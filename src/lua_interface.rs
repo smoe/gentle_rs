@@ -1948,6 +1948,20 @@ mod tests {
         value
     }
 
+    struct JasparReloadResetGuard;
+
+    impl Drop for JasparReloadResetGuard {
+        fn drop(&mut self) {
+            crate::tf_motifs::reload();
+        }
+    }
+
+    fn lock_jaspar_registry_for_test() -> std::sync::MutexGuard<'static, ()> {
+        crate::tf_motifs::test_registry_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn lua_sync_rebase_wrapper_writes_snapshot() {
         let td = tempdir().expect("tempdir");
@@ -1966,6 +1980,10 @@ mod tests {
 
     #[test]
     fn lua_sync_jaspar_wrapper_writes_snapshot() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
+        let _reset = JasparReloadResetGuard;
+
         let td = tempdir().expect("tempdir");
         let input_path = write_demo_jaspar_pfm(td.path());
         let output_path = td.path().join("motifs.json");
@@ -2037,6 +2055,10 @@ mod tests {
 
     #[test]
     fn lua_sync_jaspar_wrapper_matches_shared_shell_report() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload();
+        let _reset = JasparReloadResetGuard;
+
         let td = tempdir().expect("tempdir");
         let input_path = write_demo_jaspar_pfm(td.path());
         let output_path = td.path().join("motifs.json");
