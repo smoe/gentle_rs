@@ -804,6 +804,15 @@ Feature tree grouping:
     resume, phase-2 alignment controls, workflow staging, and report exports
   - the dedicated workspace now shows its main mapping parameters immediately;
     only optional tuning stays behind `Show advanced`
+  - the compact conceptual diagram below summarizes the current mental model:
+    reads first enter the phase-1 seed filter, only retained rows advance to
+    phase-2 alignment, and only aligned fragments that actually cross one of
+    the characteristic TP73 exon transitions add direct-transition support for
+    an isoform class
+
+![GENtle TP73 RNA-read isoform evidence diagram](figures/tp73_rna_read_isoform_evidence.png)<br>
+*Figure: Compact RNA-read Mapping schematic. GENtle first filters raw reads to a retained report set, then aligns retained fragments and marks only those mapped fragments whose exon transitions support one characteristic TP73 terminal-class pattern.*
+
   - when a saved `Report ID` already exists, reopening the mapping workspace
     hydrates score density, support tables, and read inspection from that
     saved report even if no live task is running
@@ -1086,6 +1095,9 @@ Feature tree grouping:
     - isoform ranking from thresholded cDNA assignments
     - exon/junction/isoform tables now reserve about 8 visible rows before
       scrolling so they stay usable during manual inspection
+    - this is still phase-1 evidence, so it is best read as a thresholded
+      transcript-assignment view rather than as the final mapped fragment
+      support surface
   - the RNA-read mapping panel now shows the currently active RNA-read
     parameter summaries even before export, including explicit overlap/order
     density:
@@ -1113,6 +1125,10 @@ Feature tree grouping:
         - `Tx%` = how much of the transcript template span is covered by that
           alignment
         - `FL` = full-length class (`exact`, `strict_end`, `near`, `partial`)
+      - this is the view where the figure's starred fragments conceptually
+        becomes concrete: aligned reads can be assigned to a TP73 template
+        without yet contributing one of the characteristic direct-transition
+        marks used in isoform-class support summaries
           derived from transcript-template coverage and current alignment
           threshold
       - short local fragment hits are now labeled more honestly in the detail

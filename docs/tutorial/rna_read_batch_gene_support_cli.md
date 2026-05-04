@@ -285,6 +285,31 @@ Important interpretation detail:
 That separation is what lets you distinguish broad exon co-presence from direct
 junction evidence.
 
+One compact way to read the distinction is the TP73 schematic below: GENtle
+may assign a retained fragment to one TP73 transcript template after phase-2
+alignment, but it only adds isoform-class transition support when the aligned
+fragment actually crosses a characteristic direct exon transition for that
+terminal class.
+
+![GENtle TP73 RNA-read isoform evidence diagram](../figures/tp73_rna_read_isoform_evidence.png)
+
+In that figure:
+
+- the top row summarizes the filtering path from raw read to retained report
+  row to aligned fragment
+- the left lower panel shows characteristic TP73 terminal-class transition
+  patterns
+- the right lower panel shows that a mapped fragment can be assigned without a
+  star, while a starred fragment is one that contributes direct-transition
+  evidence
+
+This is the same distinction reflected in the exported columns:
+
+- `gene_support_exon_pair_support_json`
+  - broader ordered exon co-presence
+- `gene_support_direct_transition_support_json`
+  - direct neighboring exon-step evidence only
+
 ## Step 7: Audit One Interesting Sample in Detail
 
 Once the sample sheet tells you which sample is interesting, drill into that
