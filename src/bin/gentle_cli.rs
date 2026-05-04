@@ -1,6 +1,8 @@
 //! CLI binary entry point exposing direct commands and shared shell routing.
 
+#[path = "gentle_cli/args.rs"]
 mod gentle_cli_args;
+#[path = "gentle_cli/reference.rs"]
 mod gentle_cli_reference;
 
 use gentle::{
