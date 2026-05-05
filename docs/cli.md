@@ -3194,7 +3194,7 @@ DNA ladder catalog commands:
   - Calls engine operation `ExportDnaLadders` or `ExportRnaLadders`.
   - Writes structured ladder catalog JSON to disk.
 
-Resource sync commands:
+Service and resource commands:
 
 - `services status`
   - Reports one combined service-readiness snapshot for common GENtle-backed
@@ -3202,6 +3202,9 @@ Resource sync commands:
   - Covers canonical reference genomes (currently `Human GRCh38 Ensembl 116`),
     helper backbones (currently `Plasmid pUC19 (online)`), and active external
     resource snapshots in one record.
+  - Also embeds the external-service provider catalog under
+    `external_providers`, currently with GeneArt as the first quote/handoff
+    provider.
   - Reference/helper rows now expose canonical lifecycle fields:
     - `resource_key`
     - `display_name`
@@ -3220,6 +3223,30 @@ Resource sync commands:
   - Includes compact `summary_lines` that chat/report layers such as
     ClawBio/OpenClaw can surface directly before deciding whether they should
     fetch, prepare, or render.
+- `services providers list`
+  - Returns `gentle.external_service_provider_catalog.v1`.
+  - V1 catalogs `provider = geneart` with DNA fragments, cloned genes,
+    plasmid reorder, mutagenesis, and protein-expression capabilities.
+  - DNA fragment, cloned-gene, and plasmid-reorder rows record documented
+    direct API surfaces as planned, but live ordering is not enabled by this
+    command.
+- `services project-preflight REQUEST_JSON_OR_@FILE`
+  - Parses `gentle.external_service_request.v1` and returns
+    `gentle.external_service_preflight.v1`.
+  - The check is deterministic and local: it validates provider/service
+    support, required source-target fields, quote-handoff availability, and
+    whether direct submission is currently available from GENtle.
+  - Use `@request.json` for realistic requests, especially when
+    `source_target`, `vector_spec`, `delivery_options`, or `return_spec`
+    contain nested JSON.
+- `services project-quote REQUEST_JSON_OR_@FILE`
+  - Builds `gentle.external_service_quote.v1` with dashboard/form links and an
+    inline service-ready handoff bundle.
+  - No vendor order, cart submission, API upload, credential lookup, or
+    purchase/shipping action is performed in this slice.
+  - `return_spec.requested_payloads[]` lets ClawBio/MCP callers state whether
+    they want GenBank/FASTA/protein payloads, quote metadata, vendor ids, or a
+    full artifact bundle as later implementations grow.
 - `services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]`
   - Builds a Telegram-compatible bench-user guide with schema
     `gentle.telegram_guide.v1`.

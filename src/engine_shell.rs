@@ -941,6 +941,13 @@ pub enum ShellCommand {
     },
     ResourcesStatus,
     ServicesStatus,
+    ServicesProvidersList,
+    ServicesProjectPreflight {
+        request_json: String,
+    },
+    ServicesProjectQuote {
+        request_json: String,
+    },
     ServicesHandoff {
         scope: Option<String>,
         output: Option<String>,
@@ -6359,6 +6366,26 @@ impl ShellCommand {
                 "inspect combined service readiness for canonical references/helpers/resources"
                     .to_string()
             }
+            Self::ServicesProvidersList => {
+                "list external-service providers and their current GENtle capability catalog"
+                    .to_string()
+            }
+            Self::ServicesProjectPreflight { request_json } => format!(
+                "preflight external-service request from '{}'",
+                if request_json.trim_start().starts_with('{') {
+                    "inline JSON"
+                } else {
+                    request_json
+                }
+            ),
+            Self::ServicesProjectQuote { request_json } => format!(
+                "build external-service quote/handoff packet from '{}'",
+                if request_json.trim_start().starts_with('{') {
+                    "inline JSON"
+                } else {
+                    request_json
+                }
+            ),
             Self::ServicesHandoff { scope, output } => format!(
                 "build service handoff report for chat gateways (scope='{}', output='{}')",
                 scope.as_deref().unwrap_or("clawbio"),
@@ -19420,7 +19447,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "services" => {
             if tokens.len() < 2 {
                 return Err(
-                    "services requires a subcommand: status, handoff, doctor or guide".to_string(),
+                    "services requires a subcommand: status, providers, project-preflight, project-quote, handoff, doctor or guide".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -19429,6 +19456,45 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         return Err("services status takes no additional arguments".to_string());
                     }
                     Ok(ShellCommand::ServicesStatus)
+                }
+                "providers" => {
+                    if tokens.len() < 3 {
+                        return Err("services providers requires list".to_string());
+                    }
+                    match tokens[2].as_str() {
+                        "list" => {
+                            if tokens.len() != 3 {
+                                return Err(
+                                    "services providers list takes no additional arguments"
+                                        .to_string(),
+                                );
+                            }
+                            Ok(ShellCommand::ServicesProvidersList)
+                        }
+                        other => Err(format!(
+                            "Unknown services providers subcommand '{other}' (expected list)"
+                        )),
+                    }
+                }
+                "project-preflight" => {
+                    if tokens.len() != 3 {
+                        return Err(
+                            "services project-preflight requires REQUEST_JSON_OR_@FILE".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::ServicesProjectPreflight {
+                        request_json: tokens[2].clone(),
+                    })
+                }
+                "project-quote" => {
+                    if tokens.len() != 3 {
+                        return Err(
+                            "services project-quote requires REQUEST_JSON_OR_@FILE".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::ServicesProjectQuote {
+                        request_json: tokens[2].clone(),
+                    })
                 }
                 "handoff" | "doctor" => {
                     let mut scope: Option<String> = None;
@@ -19499,7 +19565,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     })
                 }
                 other => Err(format!(
-                    "Unknown services subcommand '{other}' (expected status, handoff, doctor or guide)"
+                    "Unknown services subcommand '{other}' (expected status, providers, project-preflight, project-quote, handoff, doctor or guide)"
                 )),
             }
         }
@@ -23163,6 +23229,29 @@ fn execute_export_import_and_resource_command(
             output: serde_json::to_value(service_readiness::service_readiness_status()?)
                 .map_err(|e| format!("Could not serialize service readiness: {e}"))?,
         }),
+        ShellCommand::ServicesProvidersList => Ok(ShellRunResult {
+            state_changed: false,
+            output: serde_json::to_value(service_readiness::external_service_provider_catalog())
+                .map_err(|e| format!("Could not serialize service provider catalog: {e}"))?,
+        }),
+        ShellCommand::ServicesProjectPreflight { request_json } => {
+            let request = parse_json_payload(request_json)?;
+            let report = service_readiness::external_service_project_preflight(&request)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize external service preflight: {e}"))?,
+            })
+        }
+        ShellCommand::ServicesProjectQuote { request_json } => {
+            let request = parse_json_payload(request_json)?;
+            let report = service_readiness::external_service_project_quote(&request)?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize external service quote: {e}"))?,
+            })
+        }
         ShellCommand::ServicesHandoff { scope, output } => {
             let report =
                 service_readiness::service_handoff_report(scope.as_deref(), output.clone())?;
@@ -31310,6 +31399,9 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::ProteasesDigestGelSvg { .. }
             | ShellCommand::ResourcesStatus
             | ShellCommand::ServicesStatus
+            | ShellCommand::ServicesProvidersList
+            | ShellCommand::ServicesProjectPreflight { .. }
+            | ShellCommand::ServicesProjectQuote { .. }
             | ShellCommand::ServicesHandoff { .. }
             | ShellCommand::ServicesGuide { .. }
             | ShellCommand::ResourcesSyncRebase { .. }
@@ -31936,6 +32028,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ProteasesDigestGelSvg { .. }
         | ShellCommand::ResourcesStatus
         | ShellCommand::ServicesStatus
+        | ShellCommand::ServicesProvidersList
+        | ShellCommand::ServicesProjectPreflight { .. }
+        | ShellCommand::ServicesProjectQuote { .. }
         | ShellCommand::ServicesHandoff { .. }
         | ShellCommand::ServicesGuide { .. }
         | ShellCommand::ResourcesSyncRebase { .. }

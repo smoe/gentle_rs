@@ -1870,6 +1870,81 @@ mod tests {
     }
 
     #[test]
+    fn feature_tree_filter_matches_focus_terms_for_dense_layers() {
+        let regulatory = make_feature(
+            "regulatory",
+            vec![
+                ("regulatory_class", "enhancer"),
+                ("note", "H3K27ac active region"),
+            ],
+        );
+        assert!(MainAreaDna::feature_tree_matches_filter(
+            &regulatory,
+            "regulatory",
+            "regulatory",
+            "enhancer: H3K27ac active region",
+            "1..10",
+        ));
+        assert!(MainAreaDna::feature_tree_matches_filter(
+            &regulatory,
+            "regulatory:enhancer",
+            "regulatory",
+            "enhancer: H3K27ac active region",
+            "1..10",
+        ));
+
+        let repeat = make_feature(
+            "repeat_region",
+            vec![
+                ("repName", "L1PA2"),
+                ("repClass", "LINE"),
+                ("repFamily", "L1"),
+            ],
+        );
+        assert!(MainAreaDna::feature_tree_matches_filter(
+            &repeat,
+            "repeat",
+            "repeat_region",
+            "L1PA2 (LINE / L1)",
+            "1..10",
+        ));
+
+        let track = make_feature(
+            "track",
+            vec![
+                ("gentle_generated", "genome_bed_track"),
+                ("gentle_track_source", "BED"),
+                ("gentle_track_name", "H3K27ac"),
+                ("gentle_track_file", "/tmp/peaks.bed"),
+                ("label", "peak 1"),
+            ],
+        );
+        assert!(MainAreaDna::feature_tree_matches_filter(
+            &track, "track", "tracks", "peak 1", "1..10",
+        ));
+    }
+
+    #[test]
+    fn feature_tree_focus_preset_sets_filter_and_grouping() {
+        let dna = DNAsequence::from_sequence("AAAAAAAAAA").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("feature_tree_focus".to_string()), None);
+
+        area.apply_feature_tree_focus_preset(super::FeatureTreeFocusPreset::Regulatory);
+        assert_eq!(area.feature_tree_filter, "regulatory");
+        assert_eq!(
+            area.feature_tree_grouping_mode,
+            super::FeatureTreeGroupingMode::Always
+        );
+
+        area.apply_feature_tree_focus_preset(super::FeatureTreeFocusPreset::Cloning);
+        assert!(area.feature_tree_filter.is_empty());
+        assert_eq!(
+            area.feature_tree_grouping_mode,
+            super::FeatureTreeGroupingMode::Auto
+        );
+    }
+
+    #[test]
     fn parse_positive_usize_text_accepts_positive_integer() {
         assert_eq!(
             MainAreaDna::parse_positive_usize_text("250", "extension length").unwrap(),
@@ -7322,6 +7397,176 @@ mod tests {
     }
 
     #[test]
+    fn feature_tree_model_groups_dense_regulatory_repeat_track_and_array_surfaces() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(240).as_str()).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "regulatory".into(),
+            location: Location::simple_range(10, 30),
+            qualifiers: vec![
+                ("regulatory_class".into(), Some("enhancer".to_string())),
+                (
+                    "note".into(),
+                    Some("H3K4me1 active enhancer one".to_string()),
+                ),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: "regulatory".into(),
+            location: Location::simple_range(40, 60),
+            qualifiers: vec![
+                ("regulatory_class".into(), Some("enhancer".to_string())),
+                (
+                    "note".into(),
+                    Some("H3K4me1 active enhancer two".to_string()),
+                ),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: "repeat_region".into(),
+            location: Location::simple_range(70, 90),
+            qualifiers: vec![
+                ("repName".into(), Some("L1PA2".to_string())),
+                ("repClass".into(), Some("LINE".to_string())),
+                ("repFamily".into(), Some("L1".to_string())),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: "track".into(),
+            location: Location::simple_range(100, 120),
+            qualifiers: vec![
+                (
+                    "gentle_generated".into(),
+                    Some("genome_bed_track".to_string()),
+                ),
+                ("gentle_track_source".into(), Some("BED".to_string())),
+                ("gentle_track_name".into(), Some("H3K27ac".to_string())),
+                (
+                    "gentle_track_file".into(),
+                    Some("/tmp/peaks.bed".to_string()),
+                ),
+                ("label".into(), Some("peak one".to_string())),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: "track".into(),
+            location: Location::simple_range(130, 150),
+            qualifiers: vec![
+                (
+                    "gentle_generated".into(),
+                    Some("microarray_track_projection".to_string()),
+                ),
+                ("gentle_track_source".into(), Some("Array".to_string())),
+                (
+                    "gentle_array_platform".into(),
+                    Some("Clariom D".to_string()),
+                ),
+                (
+                    "gentle_array_contrast".into(),
+                    Some("AdTAp73alpha-AdGFP".to_string()),
+                ),
+                ("feature_id".into(), Some("PSR0001".to_string())),
+            ],
+        });
+        let mut area = MainAreaDna::new(dna, Some("dense_tree".to_string()), None);
+        area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
+
+        let key = area.current_feature_tree_cache_key(None);
+        let model = area.build_feature_tree_model(&key);
+
+        let regulatory_group = model
+            .groups
+            .iter()
+            .find(|group| group.kind.eq_ignore_ascii_case("regulatory"))
+            .expect("regulatory group");
+        let enhancer_group = regulatory_group
+            .regulatory_primary_groups
+            .iter()
+            .find(|group| group.label == "enhancer")
+            .expect("enhancer primary group");
+        assert_eq!(enhancer_group.entry_indices.len(), 2);
+        assert_eq!(enhancer_group.secondary_groups[0].label, "H3K4me1");
+
+        let repeat_group = model
+            .groups
+            .iter()
+            .find(|group| group.kind.eq_ignore_ascii_case("repeat_region"))
+            .expect("repeat group");
+        assert_eq!(repeat_group.grouped_entries[0].label, "LINE / L1");
+
+        let track_group = model
+            .groups
+            .iter()
+            .find(|group| group.kind.eq_ignore_ascii_case("tracks"))
+            .expect("generic track group");
+        assert_eq!(
+            track_group.grouped_entries[0].label,
+            "BED: peaks.bed (H3K27ac)"
+        );
+
+        let array_group = model
+            .groups
+            .iter()
+            .find(|group| group.kind.eq_ignore_ascii_case("array"))
+            .expect("array group");
+        assert_eq!(
+            array_group.grouped_entries[0].label,
+            "Array: Clariom D (AdTAp73alpha-AdGFP)"
+        );
+    }
+
+    #[test]
+    fn feature_tree_layer_summary_labels_count_current_model_categories() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(240).as_str()).expect("sequence");
+        dna.features_mut()
+            .push(make_feature("gene", vec![("gene", "TP73")]));
+        dna.features_mut().push(make_feature(
+            "mRNA",
+            vec![("gene", "TP73"), ("transcript_id", "TX1")],
+        ));
+        dna.features_mut().push(make_feature(
+            "regulatory",
+            vec![("regulatory_class", "enhancer"), ("note", "H3K27ac")],
+        ));
+        dna.features_mut().push(make_feature(
+            "repeat_region",
+            vec![
+                ("repName", "AluY"),
+                ("repClass", "SINE"),
+                ("repFamily", "Alu"),
+            ],
+        ));
+        dna.features_mut().push(make_feature(
+            "track",
+            vec![
+                ("gentle_generated", "genome_bed_track"),
+                ("gentle_track_source", "BED"),
+                ("gentle_track_name", "H3K27ac"),
+                ("gentle_track_file", "/tmp/peaks.bed"),
+            ],
+        ));
+        dna.features_mut().push(make_feature(
+            "track",
+            vec![
+                ("gentle_generated", "microarray_track_projection"),
+                ("gentle_track_source", "Array"),
+                ("gentle_array_platform", "Clariom D"),
+                ("gentle_array_contrast", "AdTAp73alpha-AdGFP"),
+            ],
+        ));
+        let area = MainAreaDna::new(dna, Some("summary_tree".to_string()), None);
+        let key = area.current_feature_tree_cache_key(None);
+        let model = area.build_feature_tree_model(&key);
+
+        let labels = MainAreaDna::feature_tree_layer_summary_labels(&model, false);
+
+        assert!(labels.contains(&"core (2)".to_string()));
+        assert!(labels.contains(&"regulatory (1)".to_string()));
+        assert!(labels.contains(&"repeats (1)".to_string()));
+        assert!(labels.contains(&"tracks (1)".to_string()));
+        assert!(labels.contains(&"array (1)".to_string()));
+    }
+
+    #[test]
     fn feature_tree_ui_opens_group_and_subgroup_before_rendering_rows() {
         let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
         dna.features_mut().push(Feature {
@@ -7428,6 +7673,102 @@ mod tests {
         assert!(
             center_of_rendered_text(&rects, "TX1").is_some(),
             "first transcript row should render after opening the subgroup: {rects:?}"
+        );
+    }
+
+    #[test]
+    fn feature_tree_ui_auto_opens_selected_regulatory_nested_group() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "regulatory".into(),
+            location: Location::simple_range(10, 30),
+            qualifiers: vec![
+                ("regulatory_class".into(), Some("enhancer".to_string())),
+                (
+                    "note".into(),
+                    Some("H3K4me1 active enhancer one".to_string()),
+                ),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: "regulatory".into(),
+            location: Location::simple_range(40, 60),
+            qualifiers: vec![
+                ("regulatory_class".into(), Some("enhancer".to_string())),
+                (
+                    "note".into(),
+                    Some("H3K4me1 active enhancer two".to_string()),
+                ),
+            ],
+        });
+        let mut area = MainAreaDna::new(dna, Some("regulatory_tree_ui".to_string()), None);
+        area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
+        area.focus_feature(0);
+
+        let ctx = egui::Context::default();
+        let rects = render_feature_tree_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(720.0, 520.0),
+                )),
+                ..Default::default()
+            },
+        );
+
+        assert!(center_of_rendered_text(&rects, "enhancer (2)").is_some());
+        assert!(center_of_rendered_text(&rects, "H3K4me1 (2)").is_some());
+        assert!(
+            center_of_rendered_text(&rects, "active enhancer one").is_some(),
+            "selected nested regulatory row should render after parent groups auto-open: {rects:?}"
+        );
+    }
+
+    #[test]
+    fn feature_tree_ui_auto_opens_selected_repeat_group() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: "repeat_region".into(),
+            location: Location::simple_range(10, 20),
+            qualifiers: vec![
+                ("repName".into(), Some("L1PA2".to_string())),
+                ("repClass".into(), Some("LINE".to_string())),
+                ("repFamily".into(), Some("L1".to_string())),
+            ],
+        });
+        dna.features_mut().push(Feature {
+            kind: "repeat_region".into(),
+            location: Location::simple_range(40, 55),
+            qualifiers: vec![
+                ("repName".into(), Some("L1PA3".to_string())),
+                ("repClass".into(), Some("LINE".to_string())),
+                ("repFamily".into(), Some("L1".to_string())),
+            ],
+        });
+        let mut area = MainAreaDna::new(dna, Some("repeat_tree_ui".to_string()), None);
+        area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
+        area.focus_feature(0);
+
+        let ctx = egui::Context::default();
+        let rects = render_feature_tree_pass(
+            &ctx,
+            &mut area,
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(720.0, 520.0),
+                )),
+                ..Default::default()
+            },
+        );
+
+        assert!(center_of_rendered_text(&rects, "repeat_region (2)").is_some());
+        assert!(center_of_rendered_text(&rects, "LINE / L1 (2)").is_some());
+        assert!(
+            center_of_rendered_text(&rects, "11..20 (10 bp)").is_some(),
+            "selected repeat row should render after parent group auto-opens: {rects:?}"
         );
     }
 
@@ -13614,6 +13955,58 @@ impl FeatureTreeGroupingMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FeatureTreeFocusPreset {
+    Cloning,
+    Regulatory,
+    Repeats,
+    Tracks,
+}
+
+impl FeatureTreeFocusPreset {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Cloning => "Cloning",
+            Self::Regulatory => "Regulatory",
+            Self::Repeats => "Repeats",
+            Self::Tracks => "Tracks",
+        }
+    }
+
+    fn filter_text(self) -> &'static str {
+        match self {
+            Self::Cloning => "",
+            Self::Regulatory => "regulatory",
+            Self::Repeats => "repeat",
+            Self::Tracks => "track",
+        }
+    }
+
+    fn grouping_mode(self) -> FeatureTreeGroupingMode {
+        match self {
+            Self::Cloning => FeatureTreeGroupingMode::Auto,
+            Self::Regulatory | Self::Repeats | Self::Tracks => FeatureTreeGroupingMode::Always,
+        }
+    }
+
+    fn hover_text(self) -> &'static str {
+        match self {
+            Self::Cloning => {
+                "Clear the tree filter and use automatic grouping for a cloning-oriented feature list"
+            }
+            Self::Regulatory => {
+                "Focus the tree on regulatory annotations and keep nested grouping openable"
+            }
+            Self::Repeats => {
+                "Focus the tree on repeat/rmsk annotations grouped by repeat class and family"
+            }
+            Self::Tracks => {
+                "Focus the tree on imported track and array annotations grouped by source/experiment"
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct SplicingLaneCanvasStyle {
     label_column_width_px: f32,
@@ -13713,7 +14106,10 @@ struct FeatureTreeEntry {
     show_range_inline_when_ungrouped: bool,
     visible_in_view: bool,
     is_regulatory: bool,
+    is_repeat: bool,
+    is_track: bool,
     is_array_track: bool,
+    is_tfbs: bool,
     disable_grouping: bool,
     supports_splicing_expert: bool,
     supports_variant_followup: bool,
@@ -13722,6 +14118,54 @@ struct FeatureTreeEntry {
     regulatory_primary_group_label: Option<String>,
     regulatory_secondary_group_key: Option<String>,
     regulatory_secondary_group_label: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct FeatureTreeLayerSummaryBucket {
+    visible_count: usize,
+    total_count: usize,
+}
+
+impl FeatureTreeLayerSummaryBucket {
+    fn add(&mut self, visible_in_view: bool) {
+        self.total_count = self.total_count.saturating_add(1);
+        if visible_in_view {
+            self.visible_count = self.visible_count.saturating_add(1);
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct FeatureTreeLayerSummary {
+    core: FeatureTreeLayerSummaryBucket,
+    regulatory: FeatureTreeLayerSummaryBucket,
+    repeats: FeatureTreeLayerSummaryBucket,
+    tracks: FeatureTreeLayerSummaryBucket,
+    arrays: FeatureTreeLayerSummaryBucket,
+    tfbs: FeatureTreeLayerSummaryBucket,
+    other: FeatureTreeLayerSummaryBucket,
+}
+
+impl FeatureTreeLayerSummary {
+    fn add_entry(&mut self, kind: &str, entry: &FeatureTreeEntry) {
+        let bucket = if entry.is_array_track {
+            &mut self.arrays
+        } else if entry.is_track {
+            &mut self.tracks
+        } else if entry.is_repeat {
+            &mut self.repeats
+        } else if entry.is_tfbs {
+            &mut self.tfbs
+        } else if entry.is_regulatory {
+            &mut self.regulatory
+        } else {
+            match kind.trim().to_ascii_uppercase().as_str() {
+                "CDS" | "GENE" | "MRNA" => &mut self.core,
+                _ => &mut self.other,
+            }
+        };
+        bucket.add(entry.visible_in_view);
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52737,6 +53181,60 @@ impl MainAreaDna {
         }
     }
 
+    fn format_feature_tree_layer_summary_label(
+        label: &str,
+        bucket: FeatureTreeLayerSummaryBucket,
+        viewport_limited: bool,
+    ) -> Option<String> {
+        if bucket.total_count == 0 {
+            return None;
+        }
+        Some(Self::format_feature_tree_count_label(
+            label,
+            bucket.visible_count,
+            bucket.total_count,
+            viewport_limited,
+        ))
+    }
+
+    fn feature_tree_layer_summary(model: &FeatureTreeComputedModel) -> FeatureTreeLayerSummary {
+        let mut summary = FeatureTreeLayerSummary::default();
+        for group in &model.groups {
+            for entry in &group.entries {
+                summary.add_entry(&group.kind, entry);
+            }
+        }
+        summary
+    }
+
+    fn feature_tree_layer_summary_labels(
+        model: &FeatureTreeComputedModel,
+        viewport_limited: bool,
+    ) -> Vec<String> {
+        let summary = Self::feature_tree_layer_summary(model);
+        [
+            ("core", summary.core),
+            ("regulatory", summary.regulatory),
+            ("repeats", summary.repeats),
+            ("tracks", summary.tracks),
+            ("array", summary.arrays),
+            ("TFBS", summary.tfbs),
+            ("other", summary.other),
+        ]
+        .into_iter()
+        .filter_map(|(label, bucket)| {
+            Self::format_feature_tree_layer_summary_label(label, bucket, viewport_limited)
+        })
+        .collect()
+    }
+
+    fn apply_feature_tree_focus_preset(&mut self, preset: FeatureTreeFocusPreset) {
+        self.feature_tree_filter = preset.filter_text().to_string();
+        self.feature_tree_grouping_mode = preset.grouping_mode();
+        self.pending_feature_tree_scroll_to = None;
+        self.save_engine_ops_state();
+    }
+
     fn feature_tree_subgroup_label(
         feature: &gb_io::seq::Feature,
         feature_label: &str,
@@ -53281,6 +53779,7 @@ impl MainAreaDna {
                 "adj_P_Val",
                 "name",
                 "label",
+                "regulatory_class",
                 "note",
                 "function",
                 "product",
@@ -53308,6 +53807,24 @@ impl MainAreaDna {
                         values.push(trimmed.to_string());
                     }
                 }
+            }
+            if RenderDna::is_repeat_feature(feature) {
+                values.push("repeat".to_string());
+                values.push("rmsk".to_string());
+            }
+            if RenderDna::is_track_feature(feature) {
+                values.push("track".to_string());
+                values.push("tracks".to_string());
+            }
+            if RenderDna::is_array_track_feature(feature) {
+                values.push("array".to_string());
+                values.push("track".to_string());
+            }
+            if RenderDna::is_regulatory_feature(feature)
+                && !RenderDna::is_track_feature(feature)
+                && !RenderDna::is_tfbs_feature(feature)
+            {
+                values.push("regulatory".to_string());
             }
             values
                 .into_iter()
@@ -53348,6 +53865,21 @@ impl MainAreaDna {
             .map(|value| value.trim().to_ascii_lowercase())
             .filter(|value| !value.is_empty())
             .collect::<Vec<_>>();
+        let mut regulatory_terms = feature
+            .qualifier_values("regulatory_class")
+            .chain(feature.qualifier_values("note"))
+            .chain(feature.qualifier_values("function"))
+            .chain(feature.qualifier_values("label"))
+            .chain(feature.qualifier_values("name"))
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if RenderDna::is_regulatory_feature(feature)
+            && !RenderDna::is_track_feature(feature)
+            && !RenderDna::is_tfbs_feature(feature)
+        {
+            regulatory_terms.push("regulatory".to_string());
+        }
         let array_terms = feature
             .qualifier_values("gentle_array_dataset")
             .chain(feature.qualifier_values("gentle_array_platform"))
@@ -53424,6 +53956,7 @@ impl MainAreaDna {
                 Some("track") | Some("name") => &track_terms,
                 Some("path") | Some("file") => &file_terms,
                 Some("note") => &note_terms,
+                Some("regulatory") | Some("reg") => &regulatory_terms,
                 Some("array") => &array_terms,
                 Some("contrast") => &contrast_terms,
                 Some("kind") => &kind_terms,
@@ -53457,7 +53990,7 @@ impl MainAreaDna {
     }
 
     fn feature_tree_filter_help_text() -> &'static str {
-        "Free text matches kind/label/range and qualifiers. Scoped terms: kind:mrna label:tp73 range:6128..16430 track:Clariom contrast:AdTAp73alpha-AdGFP source:array path:peaks.bed note:enhancer repeat_class:line"
+        "Free text matches kind/label/range and qualifiers. Scoped terms: kind:mrna label:tp73 range:6128..16430 regulatory:enhancer track:Clariom contrast:AdTAp73alpha-AdGFP source:array path:peaks.bed note:enhancer repeat_class:line"
     }
 
     fn splicing_expert_window_help_text() -> &'static str {
@@ -53734,11 +54267,15 @@ impl MainAreaDna {
                         None => true,
                     };
                     let kind_upper = feature.kind.to_string().to_ascii_uppercase();
+                    let is_repeat = RenderDna::is_repeat_feature(feature);
+                    let is_track = RenderDna::is_track_feature(feature);
+                    let is_array_track = RenderDna::is_array_track_feature(feature);
+                    let is_tfbs = RenderDna::is_tfbs_feature(feature);
                     let kind_label = if RenderDna::is_repeat_feature(feature) {
                         feature.kind.to_string()
-                    } else if RenderDna::is_array_track_feature(feature) {
+                    } else if is_array_track {
                         "array".to_string()
-                    } else if RenderDna::is_track_feature(feature) {
+                    } else if is_track {
                         "tracks".to_string()
                     } else {
                         feature.kind.to_string()
@@ -53797,7 +54334,10 @@ impl MainAreaDna {
                             ),
                             visible_in_view,
                             is_regulatory: RenderDna::is_regulatory_feature(feature),
-                            is_array_track: RenderDna::is_array_track_feature(feature),
+                            is_repeat,
+                            is_track,
+                            is_array_track,
+                            is_tfbs,
                             disable_grouping,
                             supports_splicing_expert: Self::feature_kind_supports_splicing_expert(
                                 kind_upper.as_str(),
@@ -54137,6 +54677,25 @@ impl MainAreaDna {
             }
         });
         ui.horizontal_wrapped(|ui| {
+            ui.small("Focus:");
+            for preset in [
+                FeatureTreeFocusPreset::Cloning,
+                FeatureTreeFocusPreset::Regulatory,
+                FeatureTreeFocusPreset::Repeats,
+                FeatureTreeFocusPreset::Tracks,
+            ] {
+                let active = self.feature_tree_filter.trim() == preset.filter_text()
+                    && self.feature_tree_grouping_mode == preset.grouping_mode();
+                if ui
+                    .selectable_label(active, preset.label())
+                    .on_hover_text(preset.hover_text())
+                    .clicked()
+                {
+                    self.apply_feature_tree_focus_preset(preset);
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
             ui.small("Presets:");
             let mut presets_changed = false;
             for preset in [
@@ -54168,6 +54727,21 @@ impl MainAreaDna {
                 self.save_engine_ops_state();
             }
         });
+        self.ensure_feature_tree_cache_current(viewport);
+        if let Some(model) = self.feature_tree_cache.as_ref().map(|cache| &cache.model) {
+            let layer_labels = Self::feature_tree_layer_summary_labels(model, viewport_limited);
+            if !layer_labels.is_empty() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.small("Layers:");
+                    for label in layer_labels {
+                        ui.label(egui::RichText::new(label).size(10.5))
+                            .on_hover_text(
+                                "Counts reflect the current feature-tree filter and linear view span",
+                            );
+                    }
+                });
+            }
+        }
         if viewport_limited {
             ui.label(
                 egui::RichText::new("Group counts show visible/total for current linear view span")
@@ -54178,7 +54752,6 @@ impl MainAreaDna {
 
         let selected_feature_ids = self.multi_selected_feature_ids.clone();
         let feature_details_font_size = self.feature_details_font_size();
-        self.ensure_feature_tree_cache_current(viewport);
         let can_fit_linear = !self.is_circular();
         let mut clicked_feature: Option<(usize, bool)> = None;
         let mut fit_feature: Option<usize> = None;
