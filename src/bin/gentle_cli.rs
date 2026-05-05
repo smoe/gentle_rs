@@ -770,7 +770,11 @@ fn usage() {
   gentle_cli resources status-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli resources prepare-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH] [--download-files] [--max-files N] [--category NAME|--categories CSV]\n\n  \
   gentle_cli resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]\n\n  \
-  gentle_cli services status\n\n  \
+  gentle_cli services status\n  \
+  gentle_cli services providers list\n  \
+  gentle_cli services project-preflight REQUEST_JSON_OR_@FILE\n  \
+  gentle_cli services project-quote REQUEST_JSON_OR_@FILE\n\n  \
+  gentle_cli services handoff [--scope NAME] [--output PATH]\n  \
   gentle_cli services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]\n\n  \
   gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
   gentle_cli cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]\n\n  \
@@ -796,6 +800,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "panels",
     "macros",
     "resources",
+    "services",
     "import-pool",
     "ladders",
     "proteases",

@@ -1036,6 +1036,60 @@ Each executable resource reports `support_status`, `available`,
 `error`, and explanatory `notes[]`. In service handoff/readiness views these
 appear as `external_tool:*` rows rather than as normalized data-snapshot rows.
 
+## External service contracts
+
+GENtle exposes vendor/CRO integrations through provider-neutral records owned
+by the engine. GeneArt is the first cataloged provider, but GUI/CLI/MCP and
+ClawBio callers should depend on these schemas rather than GeneArt-specific
+fields.
+
+- `gentle.external_service_provider_catalog.v1`
+  - returned by `services providers list` and embedded in `services status`
+    under `external_providers`
+  - top-level fields: `schema`, `generated_at_unix_ms`, `providers[]`,
+    `summary_lines[]`
+  - each provider row includes `provider`, `display_name`, `support_status`,
+    `website_url`, `dashboard_url`, optional `api_documentation_url`,
+    `capabilities[]`, `account_enablement_notes[]`, and `warnings[]`
+  - each capability includes `service_kind`, `track`, `display_name`,
+    `quote_handoff_supported`, `direct_api_documented`,
+    `direct_api_implemented`, `supported_submission_modes[]`,
+    `status_tracking`, `artifact_kinds[]`, and `notes[]`
+- `gentle.external_service_request.v1`
+  - accepted by `services project-preflight REQUEST_JSON_OR_@FILE` and
+    `services project-quote REQUEST_JSON_OR_@FILE`
+  - fields: `schema`, `provider`, `service_kind`, `source_target`,
+    optional `optimization_target`, optional `vector_spec`, optional
+    `delivery_options`, optional `commercial_context_ref`, `return_spec`,
+    and optional `request_metadata`
+  - `commercial_context_ref` is a caller/session reference only; GENtle does
+    not persist PO, shipping, credential, or account-secret values in project
+    state
+  - `return_spec` contains `requested_payloads[]`, optional
+    `inline_max_bytes`, `redact_commercial_fields`, and
+    `prefer_artifact_bundle` so ClawBio/MCP can request only the payload it
+    needs, such as an amino-acid sequence, adjusted GenBank, quote metadata,
+    or a full handoff bundle
+- `gentle.external_service_preflight.v1`
+  - returned by `services project-preflight`
+  - fields include provider/service capability status, `eligible`,
+    `quote_handoff_available`, `direct_submission_available`,
+    `supported_submission_modes[]`, `blocking_issues[]`, `warnings[]`,
+    optional turnaround/cost hints, `required_followup[]`, `dashboard_links[]`,
+    and `request_summary[]`
+  - in the first GeneArt slice this is local and deterministic; it does not
+    contact Thermo Fisher/GeneArt
+- `gentle.external_service_quote.v1`
+  - returned by `services project-quote`
+  - fields include `quote_status`, `quote_mode`, the embedded preflight
+    report, `dashboard_links[]`, `required_followup[]`,
+    `service_ready_bundle`, `return_spec`, and `warnings[]`
+  - `service_ready_bundle.schema` is
+    `gentle.external_service_artifact_bundle.v1`; V1 uses inline payloads for
+    human-reviewable handoff markdown and redacted request JSON
+  - no vendor order, cart submission, direct API upload, status polling, or QAD
+    retrieval is performed until a later confirmed direct-integration phase
+
 ## JASPAR expert contract
 
 GENtle also exposes a portable single-entry JASPAR expert contract for the

@@ -14398,6 +14398,34 @@ fn parse_services_status() {
 }
 
 #[test]
+fn parse_services_external_provider_commands() {
+    let providers =
+        parse_shell_line("services providers list").expect("parse services providers list");
+    match providers {
+        ShellCommand::ServicesProvidersList => {}
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let preflight = parse_shell_line("services project-preflight @geneart_request.json")
+        .expect("parse services project-preflight");
+    match preflight {
+        ShellCommand::ServicesProjectPreflight { request_json } => {
+            assert_eq!(request_json, "@geneart_request.json");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let quote = parse_shell_line("services project-quote @geneart_request.json")
+        .expect("parse services project-quote");
+    match quote {
+        ShellCommand::ServicesProjectQuote { request_json } => {
+            assert_eq!(request_json, "@geneart_request.json");
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_services_handoff_with_scope_and_output() {
     let cmd = parse_shell_line(
         "services handoff --scope clawbio --output artifacts/service_handoff.json",
@@ -15432,11 +15460,125 @@ fn execute_services_status_reports_combined_readiness() {
         out.output["resources"]["rnapkin"]["display_name"].as_str(),
         Some("rnapkin RNA structure renderer")
     );
+    assert_eq!(
+        out.output["external_providers"]["providers"][0]["provider"].as_str(),
+        Some("geneart")
+    );
     assert!(
         out.output["summary_lines"]
             .as_array()
             .map(|rows| !rows.is_empty())
             .unwrap_or(false)
+    );
+}
+
+#[test]
+fn execute_services_external_provider_catalog_and_geneart_preflight() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let catalog = execute_shell_command(&mut engine, &ShellCommand::ServicesProvidersList)
+        .expect("execute services providers list");
+    assert!(!catalog.state_changed);
+    assert_eq!(
+        catalog.output["schema"].as_str(),
+        Some("gentle.external_service_provider_catalog.v1")
+    );
+    assert_eq!(
+        catalog.output["providers"][0]["provider"].as_str(),
+        Some("geneart")
+    );
+    assert!(
+        catalog.output["providers"][0]["capabilities"]
+            .as_array()
+            .expect("provider capabilities")
+            .iter()
+            .any(|capability| capability["service_kind"].as_str() == Some("cloned_gene"))
+    );
+
+    let request = serde_json::json!({
+        "schema": "gentle.external_service_request.v1",
+        "provider": "geneart",
+        "service_kind": "cloned_gene",
+        "source_target": {
+            "kind": "inline_dna",
+            "sequence": "ATGGCTTAA"
+        },
+        "vector_spec": {
+            "helper_profile_id": "Plasmid pUC19 (online)"
+        },
+        "return_spec": {
+            "requested_payloads": ["genbank", "quote_metadata"]
+        }
+    })
+    .to_string();
+    let preflight = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProjectPreflight {
+            request_json: request,
+        },
+    )
+    .expect("execute services project-preflight");
+    assert!(!preflight.state_changed);
+    assert_eq!(
+        preflight.output["schema"].as_str(),
+        Some("gentle.external_service_preflight.v1")
+    );
+    assert_eq!(preflight.output["provider"].as_str(), Some("geneart"));
+    assert_eq!(
+        preflight.output["service_kind"].as_str(),
+        Some("cloned_gene")
+    );
+    assert_eq!(preflight.output["eligible"].as_bool(), Some(true));
+    assert_eq!(
+        preflight.output["quote_handoff_available"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        preflight.output["direct_submission_available"].as_bool(),
+        Some(false)
+    );
+}
+
+#[test]
+fn execute_services_geneart_quote_reports_handoff_bundle() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let request = serde_json::json!({
+        "schema": "gentle.external_service_request.v1",
+        "provider": "geneart",
+        "service_kind": "protein_expression",
+        "source_target": {
+            "kind": "inline_protein",
+            "protein_sequence": "MSEQUENCE"
+        },
+        "return_spec": {
+            "requested_payloads": ["amino_acid_sequence", "quote_metadata"]
+        }
+    })
+    .to_string();
+
+    let quote = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProjectQuote {
+            request_json: request,
+        },
+    )
+    .expect("execute services project-quote");
+
+    assert!(!quote.state_changed);
+    assert_eq!(
+        quote.output["schema"].as_str(),
+        Some("gentle.external_service_quote.v1")
+    );
+    assert_eq!(quote.output["quote_status"].as_str(), Some("handoff_ready"));
+    assert_eq!(
+        quote.output["preflight"]["direct_submission_available"].as_bool(),
+        Some(false)
+    );
+    assert!(
+        quote.output["service_ready_bundle"]["inline_payloads"]
+            .as_array()
+            .expect("inline payloads")
+            .iter()
+            .any(|payload| payload["payload_kind"].as_str() == Some("handoff_markdown"))
     );
 }
 
@@ -15490,6 +15632,14 @@ fn execute_services_handoff_reports_actions_and_writes_json() {
             .map(|rows| rows
                 .iter()
                 .any(|row| row["resource_key"].as_str() == Some("external_tool:rnapkin")))
+            .unwrap_or(false)
+    );
+    assert!(
+        out.output["readiness"]
+            .as_array()
+            .map(|rows| rows
+                .iter()
+                .any(|row| row["resource_key"].as_str() == Some("external_provider:geneart")))
             .unwrap_or(false)
     );
     assert!(out.output["suggested_actions"].as_array().is_some());

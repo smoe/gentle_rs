@@ -9,6 +9,7 @@ pub mod construct_reasoning;
 pub mod dna_ladder;
 
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap},
     error::Error,
@@ -39,6 +40,194 @@ pub type SeqId = String;
 pub type OpId = String;
 /// Caller-supplied identifier that groups operations into one workflow/run.
 pub type RunId = String;
+
+/// Provider capability catalog for vendor/CRO/eProcurement integrations.
+pub const EXTERNAL_SERVICE_PROVIDER_CATALOG_SCHEMA: &str =
+    "gentle.external_service_provider_catalog.v1";
+/// Portable request contract for external-service preflight and handoff.
+pub const EXTERNAL_SERVICE_REQUEST_SCHEMA: &str = "gentle.external_service_request.v1";
+/// Local capability/eligibility report for an external-service request.
+pub const EXTERNAL_SERVICE_PREFLIGHT_SCHEMA: &str = "gentle.external_service_preflight.v1";
+/// Quote/handoff report for external services that have not been submitted.
+pub const EXTERNAL_SERVICE_QUOTE_SCHEMA: &str = "gentle.external_service_quote.v1";
+
+/// Engine-owned list of external providers and their supported service kinds.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceProviderCatalog {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub providers: Vec<ExternalServiceProviderRecord>,
+    pub summary_lines: Vec<String>,
+}
+
+/// One external provider entry, such as the initial GeneArt capability row.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceProviderRecord {
+    pub provider: String,
+    pub display_name: String,
+    pub support_status: String,
+    pub website_url: String,
+    pub dashboard_url: String,
+    pub api_documentation_url: Option<String>,
+    pub capabilities: Vec<ExternalServiceCapability>,
+    pub account_enablement_notes: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+/// One service kind offered by an external provider.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceCapability {
+    pub service_kind: String,
+    pub track: String,
+    pub display_name: String,
+    pub quote_handoff_supported: bool,
+    pub direct_api_documented: bool,
+    pub direct_api_implemented: bool,
+    pub supported_submission_modes: Vec<String>,
+    pub status_tracking: String,
+    pub artifact_kinds: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+/// Vendor-neutral project request accepted by external-service preflight/quote routes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ExternalServiceRequest {
+    pub schema: String,
+    pub provider: String,
+    pub service_kind: String,
+    pub source_target: Value,
+    pub optimization_target: Option<Value>,
+    pub vector_spec: Option<Value>,
+    pub delivery_options: Option<Value>,
+    pub commercial_context_ref: Option<String>,
+    pub return_spec: ExternalServiceReturnSpec,
+    pub request_metadata: Option<Value>,
+}
+
+impl Default for ExternalServiceRequest {
+    fn default() -> Self {
+        Self {
+            schema: EXTERNAL_SERVICE_REQUEST_SCHEMA.to_string(),
+            provider: String::new(),
+            service_kind: String::new(),
+            source_target: Value::Null,
+            optimization_target: None,
+            vector_spec: None,
+            delivery_options: None,
+            commercial_context_ref: None,
+            return_spec: ExternalServiceReturnSpec::default(),
+            request_metadata: None,
+        }
+    }
+}
+
+/// Caller preferences for the payloads GENtle should return to automation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ExternalServiceReturnSpec {
+    pub requested_payloads: Vec<String>,
+    pub inline_max_bytes: Option<usize>,
+    pub redact_commercial_fields: bool,
+    pub prefer_artifact_bundle: bool,
+}
+
+impl Default for ExternalServiceReturnSpec {
+    fn default() -> Self {
+        Self {
+            requested_payloads: vec!["quote_metadata".to_string(), "handoff_bundle".to_string()],
+            inline_max_bytes: Some(32 * 1024),
+            redact_commercial_fields: true,
+            prefer_artifact_bundle: true,
+        }
+    }
+}
+
+/// Deterministic local eligibility/capability report for one service request.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServicePreflightReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub provider: String,
+    pub provider_display_name: String,
+    pub service_kind: String,
+    pub capability_status: String,
+    pub eligible: bool,
+    pub quote_handoff_available: bool,
+    pub direct_submission_available: bool,
+    pub supported_submission_modes: Vec<String>,
+    pub blocking_issues: Vec<String>,
+    pub warnings: Vec<String>,
+    pub estimated_turnaround: Option<String>,
+    pub estimated_cost_hint: Option<String>,
+    pub required_followup: Vec<String>,
+    pub dashboard_links: Vec<ExternalServiceLink>,
+    pub request_summary: Vec<String>,
+}
+
+/// Service-ready quote/handoff packet; V1 never implies vendor submission.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceQuoteReport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    pub provider: String,
+    pub service_kind: String,
+    pub quote_status: String,
+    pub quote_mode: String,
+    pub preflight: ExternalServicePreflightReport,
+    pub dashboard_links: Vec<ExternalServiceLink>,
+    pub required_followup: Vec<String>,
+    pub service_ready_bundle: ExternalServiceArtifactBundle,
+    pub return_spec: ExternalServiceReturnSpec,
+    pub warnings: Vec<String>,
+}
+
+/// Provider documentation/dashboard link attached to an external-service report.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceLink {
+    pub label: String,
+    pub url: String,
+    pub purpose: String,
+}
+
+/// Bundle of external-service artifacts selected by a request return spec.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceArtifactBundle {
+    pub schema: String,
+    pub provider: String,
+    pub service_kind: String,
+    pub artifact_id: String,
+    pub local_files: Vec<ExternalServiceArtifactRef>,
+    pub inline_payloads: Vec<ExternalServiceInlinePayload>,
+    pub notes: Vec<String>,
+}
+
+/// File-backed artifact reference owned by a GENtle report.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceArtifactRef {
+    pub artifact_kind: String,
+    pub path: String,
+    pub checksum_sha256: Option<String>,
+    pub description: String,
+}
+
+/// Small inline artifact payload for handoff summaries and redacted request JSON.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceInlinePayload {
+    pub payload_kind: String,
+    pub content_type: String,
+    pub text: String,
+    pub description: String,
+}
 /// Stable identifier for one lineage graph node.
 pub type NodeId = String;
 /// Stable identifier for one wet-lab-style container record.
