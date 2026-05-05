@@ -3452,7 +3452,10 @@ ClawBio/OpenClaw integration scaffold schemas:
     - multi-figure runs promote one best-first
       `generated/clawbio_storyboard.png`
     - original SVGs may still remain in the bundle as provenance/supporting
-      artifacts, but messenger-facing consumers should prefer the PNG outputs
+      artifacts, but only the best-first SVG is rasterized immediately so
+      legacy media collectors do not auto-send additional PNGs
+    - additional figures are represented by request-first `continue_artifact`
+      actions whose nested request narrows `expected_artifacts[]`
   - `artifact_summary` may carry
     `gentle.clawbio_artifact_bundle_summary.v1` with:
     - `best_first_artifact`

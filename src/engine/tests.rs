@@ -1972,6 +1972,98 @@ fn test_set_linear_viewport() {
 }
 
 #[test]
+fn test_engine_history_summary_and_multi_step_undo_redo() {
+    let mut engine = GentleEngine::new();
+    assert_eq!(engine.history_summary().undo_count, 0);
+    assert_eq!(engine.history_summary().redo_count, 0);
+    assert_eq!(engine.history_summary().history_limit, 256);
+
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Features,
+            visible: false,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Tfbs,
+            visible: true,
+        })
+        .unwrap();
+
+    let summary = engine.history_summary();
+    assert_eq!(summary.undo_count, 2);
+    assert_eq!(summary.redo_count, 0);
+    assert_eq!(summary.operation_log_count, 2);
+    assert_eq!(
+        summary.next_undo.as_ref().map(|next| next.operation.as_str()),
+        Some("SetDisplayVisibility")
+    );
+    assert!(!engine.state().display.show_features);
+    assert!(engine.state().display.show_tfbs);
+
+    engine.undo_last_operation().unwrap();
+    assert!(!engine.state().display.show_features);
+    assert!(!engine.state().display.show_tfbs);
+    assert_eq!(engine.history_summary().undo_count, 1);
+    assert_eq!(engine.history_summary().redo_count, 1);
+
+    engine.undo_last_operation().unwrap();
+    assert!(engine.state().display.show_features);
+    assert!(!engine.state().display.show_tfbs);
+    assert_eq!(engine.history_summary().undo_count, 0);
+    assert_eq!(engine.history_summary().redo_count, 2);
+
+    engine.redo_last_operation().unwrap();
+    assert!(!engine.state().display.show_features);
+    assert!(!engine.state().display.show_tfbs);
+    assert_eq!(engine.history_summary().undo_count, 1);
+    assert_eq!(engine.history_summary().redo_count, 1);
+    assert_eq!(
+        engine
+            .history_summary()
+            .next_redo
+            .as_ref()
+            .map(|next| next.operation.as_str()),
+        Some("SetDisplayVisibility")
+    );
+}
+
+#[test]
+fn test_engine_history_redo_clears_after_new_mutation() {
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Features,
+            visible: false,
+        })
+        .unwrap();
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Tfbs,
+            visible: true,
+        })
+        .unwrap();
+    engine.undo_last_operation().unwrap();
+    assert_eq!(engine.history_summary().redo_count, 1);
+
+    engine
+        .apply(Operation::SetLinearViewport {
+            start_bp: 10,
+            span_bp: 20,
+        })
+        .unwrap();
+
+    let summary = engine.history_summary();
+    assert_eq!(summary.redo_count, 0);
+    assert_eq!(summary.undo_count, 2);
+    assert_eq!(
+        engine.redo_last_operation().unwrap_err().message,
+        "No operation to redo"
+    );
+}
+
+#[test]
 fn test_extract_region() {
     let mut state = ProjectState::default();
     state

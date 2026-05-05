@@ -7511,6 +7511,49 @@ impl GentleEngine {
         &self.journal
     }
 
+    fn operation_history_name(op: &Operation) -> String {
+        let debug = format!("{op:?}");
+        debug
+            .split([' ', '('])
+            .next()
+            .filter(|value| !value.is_empty())
+            .unwrap_or(debug.as_str())
+            .to_string()
+    }
+
+    fn history_transition_summary_for_record(
+        record: &OperationRecord,
+    ) -> EngineHistoryTransitionSummary {
+        EngineHistoryTransitionSummary {
+            op_id: record.result.op_id.clone(),
+            run_id: record.run_id.clone(),
+            operation: Self::operation_history_name(&record.op),
+        }
+    }
+
+    /// Return session-local multi-level undo/redo availability.
+    ///
+    /// History checkpoints are intentionally not serialized with project state;
+    /// this summary describes only the currently running engine instance.
+    pub fn history_summary(&self) -> EngineHistorySummary {
+        EngineHistorySummary {
+            schema: "gentle.engine_history_summary.v1".to_string(),
+            undo_count: self.undo_stack.len(),
+            redo_count: self.redo_stack.len(),
+            history_limit: self.history_limit_or_default(),
+            operation_log_count: self.journal.len(),
+            next_undo: self
+                .journal
+                .last()
+                .map(Self::history_transition_summary_for_record),
+            next_redo: self
+                .redo_stack
+                .last()
+                .and_then(|checkpoint| checkpoint.journal.last())
+                .map(Self::history_transition_summary_for_record),
+        }
+    }
+
     fn history_limit_or_default(&self) -> usize {
         if self.history_limit == 0 {
             Self::default_history_limit()

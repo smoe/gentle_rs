@@ -1,5 +1,5 @@
 {
-   "command_count": 384,
+   "command_count": 387,
    "commands": [
       {
          "aliases": [
@@ -39,6 +39,39 @@
          "path": "state-summary",
          "summary": "Summarize loaded state (sequences, containers, metadata).",
          "usage": "state-summary"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "history status",
+         "summary": "Inspect session-local multi-level undo/redo availability.",
+         "usage": "history status"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "history undo",
+         "summary": "Undo the most recent operation-level state transition.",
+         "usage": "history undo"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "history redo",
+         "summary": "Redo the most recently undone operation-level state transition.",
+         "usage": "history redo"
       },
       {
          "aliases": [

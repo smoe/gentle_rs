@@ -1783,9 +1783,10 @@ without blocking this publication.
           lifts that into `result.json.preferred_artifacts[]` so chat layers
           can choose a first figure without path heuristics
         - the wrapper now constrains `preferred_artifacts[]` to one best-first
-          PNG when a run produces multiple rasterized figures, while keeping
-          every generated artifact in the bundle and adding `continue_artifact`
-          suggested actions for one-image-per-reply chat surfaces
+          PNG and only rasterizes that immediate display image, while keeping
+          every SVG/JSON artifact in the bundle and adding request-first
+          `continue_artifact` suggested actions for one-image-per-reply chat
+          surfaces
         - the wrapper now also emits `result.json.artifact_summary` with the
           selected best-first artifact, displayable/collected artifact counts,
           and continuation-action count, so ClawBio/OpenClaw gateways can

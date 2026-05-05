@@ -1713,8 +1713,8 @@ For status/readiness outputs, `result.json` may additionally include:
 - `chat_summary_lines[]` for concise first replies
 - `preferred_artifacts[]` for best-first figures
   - graphics now use a PNG-first outward contract for messenger consumers
-  - declared SVG engine outputs are rasterized into deterministic PNG bundle
-    artifacts at fixed scale `2.0`
+  - the best-first declared SVG engine output is rasterized into one
+    deterministic PNG bundle artifact at fixed scale `2.0`
   - text-bearing SVGs require usable fonts during rasterization. If the PNG
     shows bands/shapes but no labels, install a host/container font package
     such as `fonts-dejavu-core` or `fonts-liberation`, or set
@@ -1726,7 +1726,8 @@ For status/readiness outputs, `result.json` may additionally include:
     provenance artifacts
   - one-image-per-reply chat surfaces should treat
     `preferred_artifacts[0]` as the only immediate image and offer any
-    `continue_artifact` suggested actions to page through additional figures
+    request-first `continue_artifact` suggested actions to page through
+    additional SVG figures
 - `suggested_actions[]` with deterministic follow-up commands and nested
   request objects that ClawBio can offer to execute after confirmation
   - those suggestions now follow GENtle's lifecycle state directly:

@@ -462,9 +462,9 @@ cargo run --locked --bin gentle_cli -- --version
     `result.json.preferred_artifacts[]`, so ClawBio can choose the best first
     figure without ad hoc path guessing
   - graphics-facing requests now use a PNG-first outward contract:
-    declared SVG engine outputs are rasterized into deterministic PNG bundle
-    artifacts, while the original SVGs remain available as provenance/supporting
-    files when useful
+    the best-first declared SVG engine output is rasterized into one
+    deterministic PNG bundle artifact for the immediate reply, while the
+    original SVGs remain available as provenance/supporting files when useful
   - text-bearing SVGs need usable fonts during rasterization. If the PNG shows
     bands/shapes but no labels, install a host/container font package such as
     `fonts-dejavu-core` or `fonts-liberation`, or set `GENTLE_SVG_FONT_FILE` /
@@ -473,8 +473,9 @@ cargo run --locked --bin gentle_cli -- --version
     producing label-free PNGs.
   - when a run produces multiple displayable figures, the wrapper promotes only
     one PNG in `result.json.preferred_artifacts[]` and emits
-    `continue_artifact` suggested actions for the remaining figures so
-    one-image-per-reply chat surfaces can page through them
+    request-first `continue_artifact` suggested actions for the remaining SVG
+    figures so one-image-per-reply chat surfaces can page through them without
+    older media collectors seeing extra PNG files
   - browser/OpenClaw inline image rendering is still a later ClawBio-side
     attachment/UI step; this repo phase is only about producing the PNG-first
     bundle outputs
