@@ -5401,7 +5401,9 @@ impl ShellCommand {
             Self::StateSummary => "show sequence/container state summary".to_string(),
             Self::HistoryStatus => "show session-local undo/redo history status".to_string(),
             Self::HistoryUndo => "undo the most recent operation-level state change".to_string(),
-            Self::HistoryRedo => "redo the most recently undone operation-level state change".to_string(),
+            Self::HistoryRedo => {
+                "redo the most recently undone operation-level state change".to_string()
+            }
             Self::LoadProject { path } => format!("load project state from '{path}'"),
             Self::SaveProject { path } => format!("save current project state to '{path}'"),
             Self::ScreenshotWindow { output } => {
@@ -16824,9 +16826,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "history" => {
             if tokens.len() != 2 {
-                return Err(
-                    "history requires one subcommand: status, undo, or redo".to_string()
-                );
+                return Err("history requires one subcommand: status, undo, or redo".to_string());
             }
             match tokens[1].as_str() {
                 "status" => Ok(ShellCommand::HistoryStatus),

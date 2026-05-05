@@ -15,8 +15,8 @@ use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
     ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
     BIGWIG_TO_BEDGRAPH_ENV_BIN, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
-    ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig, DisplayTarget,
-    CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
+    ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig,
+    CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig, DisplayTarget,
     EditableStatus, ExonSkipReturnKind, PrimerDesignProgress, PromoterTfbsGeneQuery,
     ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
     QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
@@ -656,8 +656,8 @@ fn parse_history_commands() {
 #[test]
 fn execute_history_commands_report_and_transition_state() {
     let mut engine = GentleEngine::new();
-    let status = execute_shell_command(&mut engine, &ShellCommand::HistoryStatus)
-        .expect("history status");
+    let status =
+        execute_shell_command(&mut engine, &ShellCommand::HistoryStatus).expect("history status");
     assert!(!status.state_changed);
     assert_eq!(status.output["schema"], "gentle.engine_history_summary.v1");
     assert_eq!(status.output["undo_count"], 0);

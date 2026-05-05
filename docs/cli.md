@@ -30,6 +30,19 @@ Structured command glossary:
   - `gentle_cli shell 'genomes preview-ensembl-specs --catalog assets/genomes.json'`
   - `gentle_cli shell 'helpers preview-ensembl-specs --catalog assets/helper_genomes.json'`
 
+Session-local operation history:
+
+- `gentle_cli shell 'history status'`
+  - returns the engine-owned multi-level undo/redo summary:
+    `undo_count`, `redo_count`, `history_limit`, `operation_log_count`, and
+    optional next undo/redo transition labels.
+- `gentle_cli shell 'history undo'`
+  - restores the previous operation-level engine checkpoint.
+- `gentle_cli shell 'history redo'`
+  - reapplies the most recently undone operation-level checkpoint.
+- Undo/redo history is intentionally session-local and is not persisted into
+  `.gentle.json` project files.
+
 Structured workflow examples:
 
 - canonical source files: `docs/examples/workflows/*.json`
