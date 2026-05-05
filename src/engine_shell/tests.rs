@@ -15281,7 +15281,12 @@ fn execute_publication_dataset_prepare_plans_rostock_cutrun_fastq_urls() {
             && row["url"]
                 .as_str()
                 .is_some_and(|url| url.starts_with("https://ftp.sra.ebi.ac.uk/"))
+            && row["expected_checksum_md5"].as_str().is_some()
     }));
+    assert_eq!(
+        files[0]["expected_checksum_md5"].as_str(),
+        Some("9bf39f108c617747d99479ad3162a6e1")
+    );
 }
 
 #[test]

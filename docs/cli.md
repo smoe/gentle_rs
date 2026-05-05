@@ -3326,8 +3326,9 @@ Service and resource commands:
       with ENA paired FASTQ URLs declared as `raw_cutrun_fastq`
     - Rostock p73 Co-IP/MS proteomics data: `PXD058816`
     - `resources prepare-publication-dataset` writes `manifest.json`,
-      `download_manifest.tsv`, and `download.sh`; large file download happens
-      only with `--download-files`.
+      `download_manifest.tsv`, and `download.sh`; declared sizes and optional
+      archive MD5 checksums are preserved, and large file download happens only
+      with `--download-files`.
     - The built-in Rostock p73 entries already ship with those no-byte-download
       manifests and scripts prepared.
   - RNA secondary-structure executable resources are reported as first-class
@@ -3398,6 +3399,8 @@ Service and resource commands:
 - `resources prepare-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH] [--download-files] [--max-files N] [--category NAME|--categories CSV]`
   - Writes a deterministic `manifest.json`, `download_manifest.tsv`, and
     executable `download.sh` under `data/publication_resources/DATASET_ID`.
+    `download_manifest.tsv` includes declared file sizes plus optional
+    `checksum_md5` values when the source archive reports them.
   - Without `--download-files`, no raw bytes are fetched; this is the safe
     default for multi-GB PRIDE and sequencing datasets.
   - With `--download-files`, GENtle downloads the declared file URLs directly

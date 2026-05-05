@@ -1,25 +1,25 @@
-file_name	category	size_label	size_bytes	url
-ERR15695857_1.fastq.gz	raw_cutrun_fastq	591M	591249078	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/057/ERR15695857/ERR15695857_1.fastq.gz
-ERR15695857_2.fastq.gz	raw_cutrun_fastq	612M	612347258	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/057/ERR15695857/ERR15695857_2.fastq.gz
-ERR15695855_1.fastq.gz	raw_cutrun_fastq	628M	628012125	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/055/ERR15695855/ERR15695855_1.fastq.gz
-ERR15695855_2.fastq.gz	raw_cutrun_fastq	646M	645979529	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/055/ERR15695855/ERR15695855_2.fastq.gz
-ERR15695856_1.fastq.gz	raw_cutrun_fastq	562M	561939584	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/056/ERR15695856/ERR15695856_1.fastq.gz
-ERR15695856_2.fastq.gz	raw_cutrun_fastq	571M	570726652	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/056/ERR15695856/ERR15695856_2.fastq.gz
-ERR15695854_1.fastq.gz	raw_cutrun_fastq	479M	479304832	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/054/ERR15695854/ERR15695854_1.fastq.gz
-ERR15695854_2.fastq.gz	raw_cutrun_fastq	487M	487084234	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/054/ERR15695854/ERR15695854_2.fastq.gz
-ERR15695852_1.fastq.gz	raw_cutrun_fastq	575M	574598631	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/052/ERR15695852/ERR15695852_1.fastq.gz
-ERR15695852_2.fastq.gz	raw_cutrun_fastq	586M	586123551	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/052/ERR15695852/ERR15695852_2.fastq.gz
-ERR15695853_1.fastq.gz	raw_cutrun_fastq	538M	538065978	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/053/ERR15695853/ERR15695853_1.fastq.gz
-ERR15695853_2.fastq.gz	raw_cutrun_fastq	549M	549147756	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/053/ERR15695853/ERR15695853_2.fastq.gz
-ERR15695860_1.fastq.gz	raw_cutrun_fastq	551M	551080498	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/060/ERR15695860/ERR15695860_1.fastq.gz
-ERR15695860_2.fastq.gz	raw_cutrun_fastq	573M	573307451	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/060/ERR15695860/ERR15695860_2.fastq.gz
-ERR15695858_1.fastq.gz	raw_cutrun_fastq	685M	684643378	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/058/ERR15695858/ERR15695858_1.fastq.gz
-ERR15695858_2.fastq.gz	raw_cutrun_fastq	712M	712348044	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/058/ERR15695858/ERR15695858_2.fastq.gz
-ERR15695859_1.fastq.gz	raw_cutrun_fastq	654M	653837270	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/059/ERR15695859/ERR15695859_1.fastq.gz
-ERR15695859_2.fastq.gz	raw_cutrun_fastq	685M	684627974	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/059/ERR15695859/ERR15695859_2.fastq.gz
-ERR15695851_1.fastq.gz	raw_cutrun_fastq	587M	587479370	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/051/ERR15695851/ERR15695851_1.fastq.gz
-ERR15695851_2.fastq.gz	raw_cutrun_fastq	613M	612549726	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/051/ERR15695851/ERR15695851_2.fastq.gz
-ERR15695849_1.fastq.gz	raw_cutrun_fastq	615M	614533988	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/049/ERR15695849/ERR15695849_1.fastq.gz
-ERR15695849_2.fastq.gz	raw_cutrun_fastq	645M	645193844	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/049/ERR15695849/ERR15695849_2.fastq.gz
-ERR15695850_1.fastq.gz	raw_cutrun_fastq	611M	610569864	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/050/ERR15695850/ERR15695850_1.fastq.gz
-ERR15695850_2.fastq.gz	raw_cutrun_fastq	640M	640063808	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/050/ERR15695850/ERR15695850_2.fastq.gz
+file_name	category	size_label	size_bytes	checksum_md5	url
+ERR15695857_1.fastq.gz	raw_cutrun_fastq	591M	591249078	9bf39f108c617747d99479ad3162a6e1	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/057/ERR15695857/ERR15695857_1.fastq.gz
+ERR15695857_2.fastq.gz	raw_cutrun_fastq	612M	612347258	9bc090058e78801e55449e46be70f5b3	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/057/ERR15695857/ERR15695857_2.fastq.gz
+ERR15695855_1.fastq.gz	raw_cutrun_fastq	628M	628012125	6dcd3848d325115a99c6451fa322bf63	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/055/ERR15695855/ERR15695855_1.fastq.gz
+ERR15695855_2.fastq.gz	raw_cutrun_fastq	646M	645979529	bb765e2bc856ba46ad0dcfda3d4a00b9	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/055/ERR15695855/ERR15695855_2.fastq.gz
+ERR15695856_1.fastq.gz	raw_cutrun_fastq	562M	561939584	c614d709a0ce26a1ca9a5aa99f8f02af	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/056/ERR15695856/ERR15695856_1.fastq.gz
+ERR15695856_2.fastq.gz	raw_cutrun_fastq	571M	570726652	d21750204769eaa55739a5066cfa4857	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/056/ERR15695856/ERR15695856_2.fastq.gz
+ERR15695854_1.fastq.gz	raw_cutrun_fastq	479M	479304832	00db2d8d40a3f5a01cebc6e3dc15df25	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/054/ERR15695854/ERR15695854_1.fastq.gz
+ERR15695854_2.fastq.gz	raw_cutrun_fastq	487M	487084234	2b09d6077f093813f437019724198f8c	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/054/ERR15695854/ERR15695854_2.fastq.gz
+ERR15695852_1.fastq.gz	raw_cutrun_fastq	575M	574598631	5bf17c6d4dc196f8d4e6478bd7897e13	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/052/ERR15695852/ERR15695852_1.fastq.gz
+ERR15695852_2.fastq.gz	raw_cutrun_fastq	586M	586123551	cfc481fc95b1b52e4cf61609ad3ae6a7	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/052/ERR15695852/ERR15695852_2.fastq.gz
+ERR15695853_1.fastq.gz	raw_cutrun_fastq	538M	538065978	1730276a7ede5739fb00e9288d92d2cc	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/053/ERR15695853/ERR15695853_1.fastq.gz
+ERR15695853_2.fastq.gz	raw_cutrun_fastq	549M	549147756	82c4fd8968f99dc118169f9ba2d76a67	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/053/ERR15695853/ERR15695853_2.fastq.gz
+ERR15695860_1.fastq.gz	raw_cutrun_fastq	551M	551080498	3cbed19d13548b7c737aa70066e2423f	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/060/ERR15695860/ERR15695860_1.fastq.gz
+ERR15695860_2.fastq.gz	raw_cutrun_fastq	573M	573307451	20adc7e1c5173c9a8da3c861d8b7b70a	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/060/ERR15695860/ERR15695860_2.fastq.gz
+ERR15695858_1.fastq.gz	raw_cutrun_fastq	685M	684643378	b7568a89f8bcc4a5dfa815bdbfb872cb	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/058/ERR15695858/ERR15695858_1.fastq.gz
+ERR15695858_2.fastq.gz	raw_cutrun_fastq	712M	712348044	74592ff0a9a9f8048ecf1042ab06d681	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/058/ERR15695858/ERR15695858_2.fastq.gz
+ERR15695859_1.fastq.gz	raw_cutrun_fastq	654M	653837270	cc1d05d27ff67698fdd82aa6561051e2	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/059/ERR15695859/ERR15695859_1.fastq.gz
+ERR15695859_2.fastq.gz	raw_cutrun_fastq	685M	684627974	e5a6b05ae1d5f5c27d94e8cbcc173dd9	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/059/ERR15695859/ERR15695859_2.fastq.gz
+ERR15695851_1.fastq.gz	raw_cutrun_fastq	587M	587479370	30b5c7f6488ea4b7105ee37c95cb5d33	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/051/ERR15695851/ERR15695851_1.fastq.gz
+ERR15695851_2.fastq.gz	raw_cutrun_fastq	613M	612549726	36322957cee39d5919e1bf66a1aba256	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/051/ERR15695851/ERR15695851_2.fastq.gz
+ERR15695849_1.fastq.gz	raw_cutrun_fastq	615M	614533988	0c8b80e31436e93b1a66774053df5a41	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/049/ERR15695849/ERR15695849_1.fastq.gz
+ERR15695849_2.fastq.gz	raw_cutrun_fastq	645M	645193844	4afcd0686ed595980b50aa44f6c9b886	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/049/ERR15695849/ERR15695849_2.fastq.gz
+ERR15695850_1.fastq.gz	raw_cutrun_fastq	611M	610569864	21ea1724783be0dde5bd3290c00d5d0c	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/050/ERR15695850/ERR15695850_1.fastq.gz
+ERR15695850_2.fastq.gz	raw_cutrun_fastq	640M	640063808	f5bd3d3957e60d6a7d1079b0bb4461c6	https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/050/ERR15695850/ERR15695850_2.fastq.gz

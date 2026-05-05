@@ -988,9 +988,11 @@ Behavior notes:
 - `resources status` includes a compact `publication_datasets` block that
   reports catalog validity, dataset count, declared file count, and how many
   datasets already have prepared manifests
-- `resources prepare-publication-dataset` is manifest-first:
-  - always writes `manifest.json`, `download_manifest.tsv`, and `download.sh`
-  - does not download raw files unless `--download-files` is explicit
+  - `resources prepare-publication-dataset` is manifest-first:
+    - always writes `manifest.json`, `download_manifest.tsv`, and `download.sh`
+      with declared file sizes and optional archive checksums when the catalog
+      records them
+    - does not download raw files unless `--download-files` is explicit
   - accepts `--max-files N` for smoke checks and small staged fetches
   - accepts `--category NAME` or `--categories CSV` to restrict planned files
     before download; this is the preferred way to fetch Clariom D CEL files
