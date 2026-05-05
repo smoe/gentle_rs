@@ -949,6 +949,33 @@ without blocking this publication.
     run the same materialization via `Load Repeats`; the selected-feature
     details pane summarizes materialized UCSC-rmsk qualifier fields without
     reopening the upstream table
+- Publication-associated dataset resources now have a manifest-first baseline:
+  - `assets/publication_resources.json` records the Rostock p73 multimodal
+    paper and its external accessions (`E-MTAB-14704`, `E-MTAB-15709`,
+    `PXD058816`)
+  - `resources list-publication-datasets`,
+    `resources status-publication-dataset`, and
+    `resources prepare-publication-dataset` expose the catalog through the
+    shared shell/CLI resource surface
+  - prepare writes `manifest.json`, `download_manifest.tsv`, and `download.sh`
+    under `data/publication_resources` without downloading large raw files
+    unless `--download-files` is explicit
+  - the current Rostock p73 entries ship with those prepared no-download
+    manifests/scripts checked in
+  - `prepare-publication-dataset` can now restrict planned/downloaded files by
+    category, enabling a practical CEL-only `E-MTAB-14704` fetch while keeping
+    CUT&RUN/proteomics payloads opt-in
+  - `scripts/analyze_p73_clariomd_probe_level.R` provides the first
+    R/Bioconductor bridge for transcript-cluster/probeset-level Clariom D
+    outputs and splice-variant triage tables
+  - the Clariom D bridge now also writes a conservative
+    `gentle.microarray_track_manifest.v1` plus per-contrast projected TSVs;
+    `arrays inspect-microarray-track` and `arrays project-microarray-track`
+    project verified probeset-level rows onto genome-anchored DNA sequences as
+    array heat-lane features while refusing unverified coordinate builds
+  - E-MTAB-15709 remains tracked as an accession with archive-resolution
+    warnings until BioStudies/ENA exposes concrete file URLs for the CUT&RUN
+    raw data
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
 - Shared engine/shell TFBS region summary path now reports grouped factor

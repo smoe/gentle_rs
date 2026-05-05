@@ -1842,6 +1842,34 @@ mod tests {
     }
 
     #[test]
+    fn feature_tree_filter_matches_array_scopes() {
+        let feature = make_feature(
+            "track",
+            vec![
+                ("gentle_track_source", "Array"),
+                ("gentle_array_platform", "Clariom D human"),
+                ("gentle_array_contrast", "AdTAp73alpha-AdGFP"),
+                ("gene", "TP73"),
+                ("feature_id", "PSR0001"),
+            ],
+        );
+        assert!(MainAreaDna::feature_tree_matches_filter(
+            &feature,
+            "source:array track:Clariom contrast:AdTAp73alpha-AdGFP gene:TP73",
+            "array",
+            "AdTAp73alpha-AdGFP PSR0001",
+            "10..20",
+        ));
+        assert!(!MainAreaDna::feature_tree_matches_filter(
+            &feature,
+            "contrast:missing",
+            "array",
+            "AdTAp73alpha-AdGFP PSR0001",
+            "10..20",
+        ));
+    }
+
+    #[test]
     fn parse_positive_usize_text_accepts_positive_integer() {
         assert_eq!(
             MainAreaDna::parse_positive_usize_text("250", "extension length").unwrap(),
@@ -2049,6 +2077,7 @@ mod tests {
             cutrun_read_coverage_export: None,
             cutrun_regulatory_support: None,
             read_acquisition_report: None,
+            microarray_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
@@ -5397,6 +5426,7 @@ mod tests {
                 cutrun_read_coverage_export: None,
                 cutrun_regulatory_support: None,
                 read_acquisition_report: None,
+                microarray_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 rna_read_target_quality_export: None,
@@ -13681,6 +13711,7 @@ struct FeatureTreeEntry {
     show_range_inline_when_ungrouped: bool,
     visible_in_view: bool,
     is_regulatory: bool,
+    is_array_track: bool,
     disable_grouping: bool,
     supports_splicing_expert: bool,
     supports_variant_followup: bool,
@@ -13769,6 +13800,7 @@ struct FeatureTreeCacheKey {
     show_gene_features: bool,
     show_mrna_features: bool,
     show_repeat_features: bool,
+    show_array_features: bool,
     show_contextual_transcript_features: bool,
     show_tfbs: bool,
     tfbs_display_criteria: TfbsDisplayCriteria,
@@ -13803,6 +13835,7 @@ struct LayerVisibilityCounts {
     feature_kind_counts: HashMap<String, usize>,
     repeat_feature_kind_counts: HashMap<String, usize>,
     repeat_feature_count: usize,
+    array_feature_count: usize,
     construct_reasoning_evidence_count: usize,
     contextual_transcript_feature_count: usize,
     regulatory_feature_count: usize,
@@ -13833,6 +13866,10 @@ impl LayerVisibilityCounts {
         self.repeat_feature_count
     }
 
+    fn array_count(&self) -> usize {
+        self.array_feature_count
+    }
+
     fn construct_reasoning_evidence_count(&self) -> usize {
         self.construct_reasoning_evidence_count
     }
@@ -13850,6 +13887,7 @@ impl LayerVisibilityCounts {
 struct DeclutterSnapshot {
     show_tfbs: bool,
     show_repeat_features: bool,
+    show_array_features: bool,
     show_restriction_enzymes: bool,
     show_gc_contents: bool,
     show_open_reading_frames: bool,
@@ -15934,6 +15972,9 @@ impl MainAreaDna {
                         .entry(kind.clone())
                         .or_insert(0) += 1;
                 }
+                if RenderDna::is_array_track_feature(feature) {
+                    counts.array_feature_count = counts.array_feature_count.saturating_add(1);
+                }
                 let is_contextual_transcript = RenderDna::is_contextual_transcript_feature(feature);
                 if is_contextual_transcript {
                     counts.contextual_transcript_feature_count =
@@ -16057,6 +16098,7 @@ impl MainAreaDna {
         show_gene_features: bool,
         show_mrna_features: bool,
         show_repeat_features: bool,
+        show_array_features: bool,
         show_tfbs: bool,
         show_restriction_enzymes: bool,
         show_gc_contents: bool,
@@ -16071,6 +16113,7 @@ impl MainAreaDna {
             display.set_show_gene_features(show_gene_features);
             display.set_show_mrna_features(show_mrna_features);
             display.set_show_repeat_features(show_repeat_features);
+            display.set_show_array_features(show_array_features);
             display.set_show_tfbs(show_tfbs);
             display.set_show_restriction_enzyme_sites(show_restriction_enzymes);
             display.set_show_gc_contents(show_gc_contents);
@@ -16084,6 +16127,7 @@ impl MainAreaDna {
         self.set_display_visibility(DisplayTarget::GeneFeatures, show_gene_features);
         self.set_display_visibility(DisplayTarget::MrnaFeatures, show_mrna_features);
         self.set_display_visibility(DisplayTarget::RepeatFeatures, show_repeat_features);
+        self.set_display_visibility(DisplayTarget::ArrayFeatures, show_array_features);
         self.set_display_visibility(DisplayTarget::Tfbs, show_tfbs);
         self.set_display_visibility(DisplayTarget::RestrictionEnzymes, show_restriction_enzymes);
         self.set_display_visibility(DisplayTarget::GcContents, show_gc_contents);
@@ -16134,6 +16178,7 @@ impl MainAreaDna {
                 true,
                 true,
                 true,
+                true,
                 false,
                 false,
                 true,
@@ -16143,6 +16188,7 @@ impl MainAreaDna {
                 hidden_feature_kinds,
             ),
             MapViewPreset::Cloning => self.apply_display_preset_visibility(
+                true,
                 true,
                 true,
                 true,
@@ -16163,6 +16209,7 @@ impl MainAreaDna {
                 true,
                 true,
                 true,
+                true,
                 false,
                 false,
                 false,
@@ -16175,6 +16222,7 @@ impl MainAreaDna {
                 false,
                 true,
                 false,
+                true,
                 true,
                 false,
                 false,
@@ -16217,6 +16265,7 @@ impl MainAreaDna {
             show_gene,
             show_mrna,
             show_repeat,
+            show_array,
             show_tfbs,
             show_restriction_enzymes,
             show_open_reading_frames,
@@ -16234,6 +16283,7 @@ impl MainAreaDna {
                     display.show_gene_features(),
                     display.show_mrna_features(),
                     display.show_repeat_features(),
+                    display.show_array_features(),
                     display.show_tfbs(),
                     display.show_restriction_enzyme_sites(),
                     display.show_open_reading_frames(),
@@ -16244,6 +16294,7 @@ impl MainAreaDna {
                 )
             })
             .unwrap_or((
+                true,
                 true,
                 true,
                 true,
@@ -16285,6 +16336,7 @@ impl MainAreaDna {
                 "GENE" => show_gene,
                 "MRNA" => show_mrna,
                 "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => show_tfbs,
+                "TRACKS" | "ARRAY" => show_array,
                 _ => true,
             };
             if !visible {
@@ -16302,6 +16354,9 @@ impl MainAreaDna {
         }
         if show_repeat {
             noise_score = noise_score.saturating_add(counts.repeat_count() / 2);
+        }
+        if show_array {
+            noise_score = noise_score.saturating_add(counts.array_count() / 2);
         }
         if show_restriction_enzymes {
             noise_score = noise_score.saturating_add(counts.restriction_site_count / 2);
@@ -16323,6 +16378,7 @@ impl MainAreaDna {
             if let Ok(mut display) = self.dna_display.write() {
                 display.set_show_tfbs(snapshot.show_tfbs);
                 display.set_show_repeat_features(snapshot.show_repeat_features);
+                display.set_show_array_features(snapshot.show_array_features);
                 display.set_show_restriction_enzyme_sites(snapshot.show_restriction_enzymes);
                 display.set_show_gc_contents(snapshot.show_gc_contents);
                 display.set_show_open_reading_frames(snapshot.show_open_reading_frames);
@@ -16336,6 +16392,7 @@ impl MainAreaDna {
                 DisplayTarget::RepeatFeatures,
                 snapshot.show_repeat_features,
             );
+            self.set_display_visibility(DisplayTarget::ArrayFeatures, snapshot.show_array_features);
             self.set_display_visibility(
                 DisplayTarget::RestrictionEnzymes,
                 snapshot.show_restriction_enzymes,
@@ -16375,6 +16432,7 @@ impl MainAreaDna {
             .map(|display| DeclutterSnapshot {
                 show_tfbs: display.show_tfbs(),
                 show_repeat_features: display.show_repeat_features(),
+                show_array_features: display.show_array_features(),
                 show_restriction_enzymes: display.show_restriction_enzyme_sites(),
                 show_gc_contents: display.show_gc_contents(),
                 show_open_reading_frames: display.show_open_reading_frames(),
@@ -16396,6 +16454,7 @@ impl MainAreaDna {
         if let Ok(mut display) = self.dna_display.write() {
             display.set_show_tfbs(false);
             display.set_show_repeat_features(false);
+            display.set_show_array_features(false);
             display.set_show_restriction_enzyme_sites(false);
             display.set_show_open_reading_frames(false);
             display.set_show_methylation_sites(false);
@@ -16404,6 +16463,7 @@ impl MainAreaDna {
         }
         self.set_display_visibility(DisplayTarget::Tfbs, false);
         self.set_display_visibility(DisplayTarget::RepeatFeatures, false);
+        self.set_display_visibility(DisplayTarget::ArrayFeatures, false);
         self.set_display_visibility(DisplayTarget::RestrictionEnzymes, false);
         self.set_display_visibility(DisplayTarget::OpenReadingFrames, false);
         self.set_display_visibility(DisplayTarget::MethylationSites, false);
@@ -17473,6 +17533,29 @@ impl MainAreaDna {
                     .expect("DNA display lock poisoned")
                     .set_show_repeat_features(visible);
                 self.set_display_visibility(DisplayTarget::RepeatFeatures, visible);
+            }
+
+            let array_active = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_array_features();
+            let array_count = layer_counts.array_count();
+            let array_response = ui
+                .selectable_label(array_active, format!("Array ({array_count})"))
+                .on_hover_text(format!(
+                    "Show or hide genome-projected microarray contrast features ({array_count} in current view)"
+                ));
+            if array_response.clicked() {
+                let visible = {
+                    let display = self.dna_display.read().expect("DNA display lock poisoned");
+                    !display.show_array_features()
+                };
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .set_show_array_features(visible);
+                self.set_display_visibility(DisplayTarget::ArrayFeatures, visible);
             }
 
             let construct_reasoning_active = self
@@ -20848,6 +20931,7 @@ impl MainAreaDna {
         display.set_show_gene_features(settings.show_gene_features);
         display.set_show_mrna_features(settings.show_mrna_features);
         display.set_show_repeat_features(settings.show_repeat_features);
+        display.set_show_array_features(settings.show_array_features);
         display.set_show_construct_reasoning_overlay(settings.show_construct_reasoning_overlay);
         display.set_show_tfbs(settings.show_tfbs);
         display.set_tfbs_display_criteria(TfbsDisplayCriteria {
@@ -24266,6 +24350,60 @@ impl MainAreaDna {
         self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = Some(feature_id);
         self.apply_feature_selection_range(feature_id, false);
+    }
+
+    fn array_feature_match_key(feature: &gb_io::seq::Feature) -> Option<String> {
+        if !RenderDna::is_array_track_feature(feature) {
+            return None;
+        }
+        Self::feature_tree_first_nonempty_qualifier(
+            feature,
+            &[
+                "feature_id",
+                "gentle_array_feature_id",
+                "transcript_cluster_id",
+                "exon_id",
+            ],
+        )
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+    }
+
+    fn focus_matching_array_features(&mut self, feature_id: usize) {
+        let (match_key, matching_ids) = {
+            let dna = self.dna.read().expect("DNA lock poisoned");
+            let Some(feature) = dna.features().get(feature_id) else {
+                return;
+            };
+            let Some(match_key) = Self::array_feature_match_key(feature) else {
+                return;
+            };
+            let matching_ids = dna
+                .features()
+                .iter()
+                .enumerate()
+                .filter_map(|(id, candidate)| {
+                    (Self::array_feature_match_key(candidate).as_deref()
+                        == Some(match_key.as_str()))
+                    .then_some(id)
+                })
+                .collect::<BTreeSet<_>>();
+            (match_key, matching_ids)
+        };
+        if matching_ids.is_empty() {
+            return;
+        }
+        self.focused_feature_id = Some(feature_id);
+        self.multi_selected_feature_ids = matching_ids;
+        self.map_dna.select_feature(Some(feature_id));
+        self.sync_linear_external_feature_labels();
+        self.pending_feature_tree_scroll_to = Some(feature_id);
+        self.apply_feature_selection_range(feature_id, true);
+        self.op_status = format!(
+            "Focused {} matching array feature(s) for '{}'",
+            self.multi_selected_feature_ids.len(),
+            match_key
+        );
     }
 
     fn clear_multi_select_keep_primary(&mut self) {
@@ -53121,6 +53259,21 @@ impl MainAreaDna {
                 "gentle_track_source",
                 "gentle_track_name",
                 "gentle_track_file",
+                "gentle_array_dataset",
+                "gentle_array_platform",
+                "gentle_array_coordinate_system",
+                "gentle_array_supported_genome_ids",
+                "gentle_array_anchor_genome_id",
+                "gentle_array_assembly_check",
+                "gentle_array_contrast",
+                "gentle_array_level",
+                "gentle_array_feature_id",
+                "gentle_array_value_summary",
+                "feature_id",
+                "transcript_cluster_id",
+                "exon_id",
+                "logFC",
+                "adj_P_Val",
                 "name",
                 "label",
                 "note",
@@ -53163,6 +53316,7 @@ impl MainAreaDna {
             .collect::<Vec<_>>();
         let track_terms = feature
             .qualifier_values("gentle_track_name")
+            .chain(feature.qualifier_values("gentle_array_platform"))
             .chain(feature.qualifier_values("name"))
             .chain(feature.qualifier_values("label"))
             .map(|value| value.trim().to_ascii_lowercase())
@@ -53186,6 +53340,29 @@ impl MainAreaDna {
         let note_terms = feature
             .qualifier_values("note")
             .chain(feature.qualifier_values("function"))
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        let array_terms = feature
+            .qualifier_values("gentle_array_dataset")
+            .chain(feature.qualifier_values("gentle_array_platform"))
+            .chain(feature.qualifier_values("gentle_array_coordinate_system"))
+            .chain(feature.qualifier_values("gentle_array_supported_genome_ids"))
+            .chain(feature.qualifier_values("gentle_array_anchor_genome_id"))
+            .chain(feature.qualifier_values("gentle_array_assembly_check"))
+            .chain(feature.qualifier_values("gentle_array_contrast"))
+            .chain(feature.qualifier_values("gentle_array_level"))
+            .chain(feature.qualifier_values("gentle_array_feature_id"))
+            .chain(feature.qualifier_values("gentle_array_value_summary"))
+            .chain(feature.qualifier_values("feature_id"))
+            .chain(feature.qualifier_values("transcript_cluster_id"))
+            .chain(feature.qualifier_values("exon_id"))
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        let contrast_terms = feature
+            .qualifier_values("gentle_array_contrast")
+            .chain(feature.qualifier_values("gentle_array_value_summary"))
             .map(|value| value.trim().to_ascii_lowercase())
             .filter(|value| !value.is_empty())
             .collect::<Vec<_>>();
@@ -53239,6 +53416,8 @@ impl MainAreaDna {
                 Some("track") | Some("name") => &track_terms,
                 Some("path") | Some("file") => &file_terms,
                 Some("note") => &note_terms,
+                Some("array") => &array_terms,
+                Some("contrast") => &contrast_terms,
                 Some("kind") => &kind_terms,
                 Some("label") => &label_terms,
                 Some("range") => &range_terms,
@@ -53270,7 +53449,7 @@ impl MainAreaDna {
     }
 
     fn feature_tree_filter_help_text() -> &'static str {
-        "Free text matches kind/label/range and qualifiers. Scoped terms: kind:mrna label:tp73 range:6128..16430 track:chip path:peaks.bed note:enhancer repeat_class:line"
+        "Free text matches kind/label/range and qualifiers. Scoped terms: kind:mrna label:tp73 range:6128..16430 track:Clariom contrast:AdTAp73alpha-AdGFP source:array path:peaks.bed note:enhancer repeat_class:line"
     }
 
     fn splicing_expert_window_help_text() -> &'static str {
@@ -53435,6 +53614,7 @@ impl MainAreaDna {
             show_gene_features,
             show_mrna_features,
             show_repeat_features,
+            show_array_features,
             show_contextual_transcript_features,
             show_tfbs,
             tfbs_display_criteria,
@@ -53447,6 +53627,7 @@ impl MainAreaDna {
                 display.show_gene_features(),
                 display.show_mrna_features(),
                 display.show_repeat_features(),
+                display.show_array_features(),
                 display.show_contextual_transcript_features(),
                 display.show_tfbs(),
                 display.tfbs_display_criteria(),
@@ -53464,6 +53645,7 @@ impl MainAreaDna {
             show_gene_features,
             show_mrna_features,
             show_repeat_features,
+            show_array_features,
             show_contextual_transcript_features,
             show_tfbs,
             tfbs_display_criteria,
@@ -53500,6 +53682,9 @@ impl MainAreaDna {
                         return None;
                     }
                     if !key.show_repeat_features && RenderDna::is_repeat_feature(feature) {
+                        return None;
+                    }
+                    if !key.show_array_features && RenderDna::is_array_track_feature(feature) {
                         return None;
                     }
                     if key
@@ -53543,6 +53728,8 @@ impl MainAreaDna {
                     let kind_upper = feature.kind.to_string().to_ascii_uppercase();
                     let kind_label = if RenderDna::is_repeat_feature(feature) {
                         feature.kind.to_string()
+                    } else if RenderDna::is_array_track_feature(feature) {
+                        "array".to_string()
                     } else if RenderDna::is_track_feature(feature) {
                         "tracks".to_string()
                     } else {
@@ -53602,6 +53789,7 @@ impl MainAreaDna {
                             ),
                             visible_in_view,
                             is_regulatory: RenderDna::is_regulatory_feature(feature),
+                            is_array_track: RenderDna::is_array_track_feature(feature),
                             disable_grouping,
                             supports_splicing_expert: Self::feature_kind_supports_splicing_expert(
                                 kind_upper.as_str(),
@@ -53945,8 +54133,11 @@ impl MainAreaDna {
             let mut presets_changed = false;
             for preset in [
                 "kind:tracks",
+                "kind:array",
+                "source:array",
                 "source:bed",
                 "source:vcf",
+                "track:Clariom",
                 "path:.bed",
                 "note:enhancer",
                 "label:tp73",
@@ -53989,6 +54180,7 @@ impl MainAreaDna {
         let mut open_rna_read_mapping_feature: Option<usize> = None;
         let mut open_dotplot_feature: Option<usize> = None;
         let mut copy_feature_payload: Option<(usize, FeatureCopyPayloadKind)> = None;
+        let mut focus_matching_array_feature: Option<usize> = None;
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
         {
@@ -54123,6 +54315,33 @@ impl MainAreaDna {
                                         ui.close();
                                     }
                                     ui.separator();
+                                    if entry.is_array_track {
+                                        if ui
+                                            .button("Copy array value table")
+                                            .on_hover_text(
+                                                "Copy the projected array values and metadata for this probeset",
+                                            )
+                                            .clicked()
+                                        {
+                                            copy_feature_payload =
+                                                Some((entry.id, FeatureCopyPayloadKind::PopupText));
+                                            ui.close();
+                                            return;
+                                        }
+                                        if ui
+                                            .button("Focus matching probesets")
+                                            .on_hover_text(
+                                                "Select matching probeset intervals across all contrast lanes",
+                                            )
+                                            .clicked()
+                                        {
+                                            clicked_feature = Some((entry.id, false));
+                                            focus_matching_array_feature = Some(entry.id);
+                                            ui.close();
+                                            return;
+                                        }
+                                        ui.separator();
+                                    }
                                     for kind in [
                                         FeatureCopyPayloadKind::Identifier,
                                         FeatureCopyPayloadKind::Description,
@@ -54354,6 +54573,9 @@ impl MainAreaDna {
         }
         if let Some(feature_id) = open_dotplot_feature {
             self.open_dotplot_for_feature(feature_id, "feature tree action");
+        }
+        if let Some(feature_id) = focus_matching_array_feature {
+            self.focus_matching_array_features(feature_id);
         }
     }
 

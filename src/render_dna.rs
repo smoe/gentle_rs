@@ -10,7 +10,7 @@ use crate::{
     repeat_features::{is_repeat_feature, repeat_feature_display},
     restriction_enzyme::RestrictionEnzymeKey,
 };
-use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Vec2, Widget};
+use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Stroke, Ui, Vec2, Widget};
 use gb_io::seq::Feature;
 use std::{
     collections::BTreeSet,
@@ -368,6 +368,9 @@ impl RenderDna {
     }
 
     pub fn feature_color(feature: &Feature) -> Color32 {
+        if Self::is_array_track_feature(feature) {
+            return Self::array_feature_color(feature);
+        }
         if Self::is_vcf_track_feature(feature) {
             let class = Self::vcf_variant_class(feature)
                 .unwrap_or_else(|| "OTHER".to_string())
@@ -493,9 +496,24 @@ impl RenderDna {
         feature.qualifier_values("gentle_generated").any(|value| {
             matches!(
                 value.trim().to_ascii_lowercase().as_str(),
-                "genome_bed_track" | "genome_bigwig_track" | "genome_vcf_track" | "blast_hit_track"
+                "genome_bed_track"
+                    | "genome_bigwig_track"
+                    | "genome_vcf_track"
+                    | "blast_hit_track"
+                    | "microarray_track_projection"
             )
         })
+    }
+
+    pub fn is_array_track_feature(feature: &Feature) -> bool {
+        feature
+            .qualifier_values("gentle_track_source")
+            .any(|value| value.trim().eq_ignore_ascii_case("Array"))
+            || feature.qualifier_values("gentle_generated").any(|value| {
+                value
+                    .trim()
+                    .eq_ignore_ascii_case("microarray_track_projection")
+            })
     }
 
     pub fn is_vcf_track_feature(feature: &Feature) -> bool {
@@ -896,6 +914,96 @@ impl RenderDna {
         lines
     }
 
+    fn push_first_feature_detail_line(
+        lines: &mut Vec<String>,
+        seen: &mut BTreeSet<String>,
+        feature: &Feature,
+        label: &str,
+        keys: &[&str],
+    ) {
+        for key in keys {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                let line = format!("{label}: {value}");
+                if seen.insert(line.clone()) {
+                    lines.push(line);
+                }
+                break;
+            }
+        }
+    }
+
+    fn array_feature_detail_lines(feature: &Feature) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut seen = BTreeSet::new();
+        for (label, keys) in [
+            ("array_dataset", &["gentle_array_dataset"][..]),
+            ("array_platform", &["gentle_array_platform"][..]),
+            (
+                "array_coordinate_system",
+                &["gentle_array_coordinate_system"][..],
+            ),
+            (
+                "array_supported_genomes",
+                &["gentle_array_supported_genome_ids"][..],
+            ),
+            (
+                "sequence_anchor_genome",
+                &["gentle_array_anchor_genome_id"][..],
+            ),
+            ("assembly_check", &["gentle_array_assembly_check"][..]),
+            ("contrast", &["gentle_array_contrast"][..]),
+            ("level", &["gentle_array_level"][..]),
+            ("feature_id", &["feature_id", "gentle_array_feature_id"][..]),
+            ("transcript_cluster", &["transcript_cluster_id"][..]),
+            ("exon_id", &["exon_id"][..]),
+            ("probe_type", &["gentle_array_probe_type"][..]),
+            ("logFC", &["logFC"][..]),
+            ("adj.P.Val", &["adj_P_Val"][..]),
+            ("AveExpr", &["AveExpr"][..]),
+            ("P.Value", &["P_Value"][..]),
+            ("all_contrast_values", &["gentle_array_value_summary"][..]),
+            ("gene", &["gene", "gene_symbol"][..]),
+            ("junction_start_edge", &["junction_start_edge"][..]),
+            ("junction_stop_edge", &["junction_stop_edge"][..]),
+            ("junction_sequence", &["junction_sequence"][..]),
+            ("has_cds", &["has_cds"][..]),
+        ] {
+            Self::push_first_feature_detail_line(&mut lines, &mut seen, feature, label, keys);
+        }
+        let chrom = Self::feature_qualifier_text(feature, "chromosome");
+        let start = Self::feature_qualifier_text(feature, "start_1based")
+            .or_else(|| Self::feature_qualifier_text(feature, "genomic_start_1based"));
+        let end = Self::feature_qualifier_text(feature, "end_1based")
+            .or_else(|| Self::feature_qualifier_text(feature, "genomic_end_1based"));
+        if let (Some(chrom), Some(start), Some(end)) = (chrom, start, end) {
+            let line = format!("genomic_interval: {chrom}:{start}..{end}");
+            if seen.insert(line.clone()) {
+                lines.push(line);
+            }
+        }
+        let anchor_chrom = Self::feature_qualifier_text(feature, "gentle_array_anchor_chromosome");
+        let anchor_start =
+            Self::feature_qualifier_text(feature, "gentle_array_anchor_start_1based");
+        let anchor_end = Self::feature_qualifier_text(feature, "gentle_array_anchor_end_1based");
+        let anchor_strand = Self::feature_qualifier_text(feature, "gentle_array_anchor_strand")
+            .unwrap_or_else(|| "+".to_string());
+        if let (Some(chrom), Some(start), Some(end)) = (anchor_chrom, anchor_start, anchor_end) {
+            let line = format!("sequence_anchor_interval: {chrom}:{start}..{end} {anchor_strand}");
+            if seen.insert(line.clone()) {
+                lines.push(line);
+            }
+        }
+        for (label, keys) in [
+            ("local_strand", &["strand"][..]),
+            ("array_strand", &["array_strand"][..]),
+            ("track_file", &["gentle_track_file"][..]),
+            ("note", &["note"][..]),
+        ] {
+            Self::push_first_feature_detail_line(&mut lines, &mut seen, feature, label, keys);
+        }
+        lines
+    }
+
     fn exon_length_frame_detail_lines(feature: &Feature) -> Vec<String> {
         if !Self::is_exon_length_frame_cue_feature(feature) {
             return vec![];
@@ -1054,6 +1162,9 @@ impl RenderDna {
         if !Self::is_track_feature(feature) {
             return None;
         }
+        if Self::is_array_track_feature(feature) {
+            return Self::array_group_label(feature);
+        }
         let source = Self::feature_qualifier_text(feature, "gentle_track_source");
         let file_name = Self::feature_qualifier_text(feature, "gentle_track_file").and_then(|v| {
             Path::new(v.trim())
@@ -1076,6 +1187,20 @@ impl RenderDna {
             (_, _, Some(track_name), _) => Some(track_name),
             (_, _, None, Some(label)) => Some(label),
             _ => Some("Unnamed track".to_string()),
+        }
+    }
+
+    pub fn array_group_label(feature: &Feature) -> Option<String> {
+        if !Self::is_array_track_feature(feature) {
+            return None;
+        }
+        let platform = Self::feature_qualifier_text(feature, "gentle_array_platform")
+            .or_else(|| Self::feature_qualifier_text(feature, "gentle_track_name"))
+            .unwrap_or_else(|| "microarray".to_string());
+        let contrast = Self::feature_qualifier_text(feature, "gentle_array_contrast");
+        match contrast {
+            Some(contrast) => Some(format!("Array: {platform} ({contrast})")),
+            None => Some(format!("Array: {platform}")),
         }
     }
 
@@ -1114,6 +1239,47 @@ impl RenderDna {
             .qualifier_values(key)
             .next()
             .and_then(|v| v.trim().parse::<f64>().ok())
+    }
+
+    pub fn array_feature_color(feature: &Feature) -> Color32 {
+        let logfc = Self::feature_qualifier_f64(feature, "logFC").unwrap_or(0.0);
+        let adj_p = Self::feature_qualifier_f64(feature, "adj_P_Val");
+        let strength = (logfc.abs() / 3.0).clamp(0.0, 1.0);
+        let alpha = match adj_p {
+            Some(value) if value <= 0.01 => 235,
+            Some(value) if value <= 0.05 => 205,
+            Some(value) if value <= 0.10 => 170,
+            Some(_) => 115,
+            None => 135,
+        };
+        let neutral = (1.0 - strength) * 158.0;
+        if logfc > 0.05 {
+            Color32::from_rgba_unmultiplied(
+                (neutral + strength * 220.0).round() as u8,
+                (neutral + strength * 38.0).round() as u8,
+                (neutral + strength * 38.0).round() as u8,
+                alpha,
+            )
+        } else if logfc < -0.05 {
+            Color32::from_rgba_unmultiplied(
+                (neutral + strength * 37.0).round() as u8,
+                (neutral + strength * 99.0).round() as u8,
+                (neutral + strength * 235.0).round() as u8,
+                alpha,
+            )
+        } else {
+            Color32::from_rgba_unmultiplied(150, 150, 150, alpha)
+        }
+    }
+
+    pub fn array_feature_confidence_stroke(feature: &Feature) -> Option<Stroke> {
+        let adj_p = Self::feature_qualifier_f64(feature, "adj_P_Val")?;
+        let color = if adj_p <= 0.05 {
+            Color32::from_rgba_unmultiplied(20, 20, 20, 210)
+        } else {
+            Color32::from_rgba_unmultiplied(20, 20, 20, 90)
+        };
+        Some(Stroke::new(if adj_p <= 0.05 { 1.2 } else { 0.6 }, color))
     }
 
     pub fn vcf_feature_passes_display_filter(
@@ -1329,6 +1495,9 @@ impl RenderDna {
     }
 
     pub fn feature_detail_lines(feature: &Feature) -> Vec<String> {
+        if Self::is_array_track_feature(feature) {
+            return Self::array_feature_detail_lines(feature);
+        }
         if Self::is_repeat_feature(feature) {
             return Self::repeat_feature_detail_lines(feature);
         }
@@ -1767,5 +1936,67 @@ mod tests {
         );
         assert!(!details.iter().any(|line| line.starts_with("repName:")));
         assert!(!details.iter().any(|line| line.starts_with("rmsk_name:")));
+    }
+
+    #[test]
+    fn array_feature_details_include_values_and_probe_metadata() {
+        let feature = make_feature(
+            "track",
+            &[
+                ("gentle_generated", "microarray_track_projection"),
+                ("gentle_track_source", "Array"),
+                ("gentle_array_dataset", "E-MTAB-14704"),
+                ("gentle_array_platform", "Clariom D human"),
+                ("gentle_array_coordinate_system", "hg19"),
+                ("gentle_array_supported_genome_ids", "hg19,GRCh37"),
+                ("gentle_array_anchor_genome_id", "Human GRCh37"),
+                ("gentle_array_anchor_chromosome", "chr1"),
+                ("gentle_array_anchor_start_1based", "1001"),
+                ("gentle_array_anchor_end_1based", "1100"),
+                ("gentle_array_anchor_strand", "+"),
+                (
+                    "gentle_array_assembly_check",
+                    "supported_genome_id_alias_matches_anchor",
+                ),
+                ("gentle_array_contrast", "AdTAp73alpha-AdGFP"),
+                ("gentle_array_level", "probeset"),
+                ("feature_id", "PSR0001"),
+                ("transcript_cluster_id", "TC0001"),
+                ("exon_id", "EX0001"),
+                ("gentle_array_probe_type", "main"),
+                ("logFC", "1.500000"),
+                ("adj_P_Val", "0.020000"),
+                ("AveExpr", "8.250000"),
+                (
+                    "gentle_array_value_summary",
+                    "AdTAp73alpha-AdGFP logFC=1.500000 adj.P.Val=0.020000; AdTAp73beta-AdGFP logFC=-0.750000 adj.P.Val=0.120000",
+                ),
+            ],
+        );
+        assert!(RenderDna::is_array_track_feature(&feature));
+        assert_eq!(
+            RenderDna::array_group_label(&feature).as_deref(),
+            Some("Array: Clariom D human (AdTAp73alpha-AdGFP)")
+        );
+        let details = RenderDna::feature_detail_lines(&feature);
+        assert!(details.contains(&"array_dataset: E-MTAB-14704".to_string()));
+        assert!(details.contains(&"array_coordinate_system: hg19".to_string()));
+        assert!(details.contains(&"array_supported_genomes: hg19,GRCh37".to_string()));
+        assert!(details.contains(&"sequence_anchor_genome: Human GRCh37".to_string()));
+        assert!(
+            details
+                .contains(&"assembly_check: supported_genome_id_alias_matches_anchor".to_string())
+        );
+        assert!(details.contains(&"sequence_anchor_interval: chr1:1001..1100 +".to_string()));
+        assert!(details.contains(&"contrast: AdTAp73alpha-AdGFP".to_string()));
+        assert!(details.contains(&"logFC: 1.500000".to_string()));
+        assert!(details.contains(&"adj.P.Val: 0.020000".to_string()));
+        assert!(details.contains(&"feature_id: PSR0001".to_string()));
+        assert!(details.contains(&"transcript_cluster: TC0001".to_string()));
+        assert!(details.contains(&"exon_id: EX0001".to_string()));
+        assert!(details.iter().any(|line| {
+            line.starts_with("all_contrast_values:")
+                && line.contains("AdTAp73beta-AdGFP logFC=-0.750000")
+        }));
     }
 }

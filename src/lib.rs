@@ -88,6 +88,8 @@ pub mod protein_gel;
 pub mod protocol_cartoon;
 /// Position-specific scoring matrix (motif) primitives.
 pub mod pssm;
+/// Publication-associated external dataset catalog and download preparation.
+pub mod publication_resources;
 /// Shared DNA rendering entry points.
 pub mod render_dna;
 /// Circular-map DNA renderer.

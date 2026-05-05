@@ -621,6 +621,8 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
+  gentle_cli [--state PATH|--project PATH] arrays inspect-microarray-track MANIFEST\n\n  \
+  gentle_cli [--state PATH|--project PATH] arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]\n\n  \
   gentle_cli agents list [--catalog PATH]\n  \
   gentle_cli [--state PATH|--project PATH] agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]\n\n  \
   gentle_cli ui intents\n  \
@@ -764,6 +766,9 @@ fn usage() {
   gentle_cli shell 'resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]'\n\n  \
   gentle_cli resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]\n\n  \
   gentle_cli resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]\n\n  \
+  gentle_cli resources list-publication-datasets [--filter TEXT] [--catalog PATH] [--output OUTPUT.json]\n  \
+  gentle_cli resources status-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli resources prepare-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH] [--download-files] [--max-files N] [--category NAME|--categories CSV]\n\n  \
   gentle_cli resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]\n\n  \
   gentle_cli services status\n\n  \
   gentle_cli services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]\n\n  \
@@ -807,6 +812,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "rna-reads",
     "cutrun",
     "tracks",
+    "arrays",
     "genbank",
     "dbsnp",
     "variant",

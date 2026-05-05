@@ -371,6 +371,9 @@ const CANDIDATE_MACRO_TEMPLATES_SCHEMA: &str = "gentle.candidate_macro_templates
 const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
 const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
+pub const MICROARRAY_TRACK_MANIFEST_SCHEMA: &str = "gentle.microarray_track_manifest.v1";
+pub const MICROARRAY_PROJECTION_REPORT_SCHEMA: &str = "gentle.microarray_projection_report.v1";
+const MICROARRAY_TRACK_GENERATED_TAG: &str = "microarray_track_projection";
 const DBSNP_VARIANT_MARKER_GENERATED_TAG: &str = "dbsnp_variant_marker";
 const BLAST_HIT_TRACK_GENERATED_TAG: &str = "blast_hit_track";
 const GENOME_ANNOTATION_PROJECTION_GENERATED_TAG: &str = "genome_annotation_projection";
@@ -636,6 +639,8 @@ mod import_anchors;
 mod jaspar;
 #[path = "engine/state/lineage_containers.rs"]
 mod lineage_containers;
+#[path = "engine/io/microarray_tracks.rs"]
+mod microarray_tracks;
 #[path = "engine/analysis/motif_statistics.rs"]
 mod motif_statistics;
 #[path = "engine/ops/operation_handlers.rs"]
@@ -2821,6 +2826,22 @@ pub enum Operation {
         max_score: Option<f64>,
         clear_existing: Option<bool>,
     },
+    ProjectMicroarrayTrack {
+        seq_id: SeqId,
+        manifest_path: String,
+        #[serde(default)]
+        contrasts: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        level: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_abs_logfc: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_adj_p: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_features: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clear_existing: Option<bool>,
+    },
     ListCutRunDatasets {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<String>,
@@ -4536,6 +4557,36 @@ struct GenomeBedTrackImportReport {
     skipped_wrong_chromosome_examples: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct MicroarrayTrackRow {
+    chromosome: String,
+    start_1based: usize,
+    end_1based: usize,
+    strand: Option<char>,
+    feature_id: String,
+    transcript_cluster_id: Option<String>,
+    exon_id: Option<String>,
+    probe_type: Option<String>,
+    logfc: Option<f64>,
+    ave_expr: Option<f64>,
+    p_value: Option<f64>,
+    adj_p_value: Option<f64>,
+    junction_start_edge: Option<String>,
+    junction_stop_edge: Option<String>,
+    junction_sequence: Option<String>,
+    gene_symbol: Option<String>,
+    has_cds: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingMicroarrayFeature {
+    feature: gb_io::seq::Feature,
+    group_key: String,
+    contrast: String,
+    logfc: Option<f64>,
+    adj_p_value: Option<f64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VcfVariantClass {
     Snp,
@@ -5259,6 +5310,7 @@ impl GentleEngine {
                 "ImportGenomeBedTrack".to_string(),
                 "ImportGenomeBigWigTrack".to_string(),
                 "ImportGenomeVcfTrack".to_string(),
+                "ProjectMicroarrayTrack".to_string(),
                 "ListCutRunDatasets".to_string(),
                 "ShowCutRunDatasetStatus".to_string(),
                 "PrepareCutRunDataset".to_string(),

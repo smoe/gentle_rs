@@ -2302,6 +2302,10 @@ Common examples:
 - `render-svg SEQ_ID linear|circular OUTPUT.svg` — export map SVG.
 - `genomes prepare GENOME_ID ...` — prepare reference genome cache/index.
 - `tracks import-bed SEQ_ID PATH ...` — project BED track onto anchored sequence.
+- `arrays inspect-microarray-track MANIFEST` — inspect a prepared Clariom D
+  array-track manifest without changing state.
+- `arrays project-microarray-track SEQ_ID MANIFEST --contrasts CSV --level probeset`
+  — project verified genome-anchored array intervals into the active sequence.
 - `candidates generate SET_NAME SEQ_ID --length N ...` — create candidate set.
 - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH ...` — export guide oligo set.
 - `planning profile show --scope effective` — inspect merged planning profile
@@ -2676,6 +2680,27 @@ The `Help` menu now includes:
   - `CLI direct`
   - `JS`
   - `Lua`
+
+## Array Tracks In DNA Viewer
+
+- Prepared Clariom D array output can be projected with
+  `arrays project-microarray-track`. The command validates that the manifest
+  coordinate system matches the open sequence's genome anchor before adding any
+  features.
+- Projected rows become ordinary `track` features with
+  `gentle_track_source=Array` plus dataset, platform, contrast, `logFC`,
+  `adj_P_Val`, probeset, transcript-cluster, exon, and optional junction
+  qualifiers.
+- The linear DNA viewer has an `Array` layer toggle. Array intervals draw as
+  contrast heat lanes near regulatory tracks: red for positive `logFC`, blue
+  for negative `logFC`, grey near zero, and confidence styling from
+  `adj.P.Val`.
+- Selected-feature details and copied tooltip text include all projected values
+  stored for a probeset via `gentle_array_value_summary`. The feature tree
+  accepts scoped filters such as `source:array`, `track:Clariom`,
+  `contrast:AdTAp73alpha-AdGFP`, and `gene:TP73`.
+- Array feature context menus include copying the array value table and
+  focusing matching probesets across all contrast lanes.
 
 Help content loading behavior:
 

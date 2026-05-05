@@ -531,7 +531,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -1756,6 +1756,8 @@ cargo run --bin gentle_cli -- helpers vocabulary doctor --routine-catalog assets
 cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.bed.gz --name H3K27ac --min-score 10 --clear-existing
 cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/signal.bw --name ATAC --min-score 0.2 --clear-existing
 cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample.vcf.gz --name Variants --min-score 20 --clear-existing
+cargo run --bin gentle_cli -- arrays inspect-microarray-track data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json
+cargo run --bin gentle_cli -- arrays project-microarray-track grch38_tp73 data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json --contrasts AdTAp73alpha-AdGFP,AdTAp73beta-AdGFP --level probeset --max-features 5000 --clear-existing
 cargo run --bin gentle_cli -- cutrun list --catalog assets/cutrun.json --filter CTCF
 cargo run --bin gentle_cli -- cutrun status toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
 cargo run --bin gentle_cli -- cutrun prepare toy_ctcf --catalog assets/cutrun.json --cache-dir data/cutrun
@@ -1964,6 +1966,8 @@ Shared shell command:
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+    - `arrays inspect-microarray-track MANIFEST`
+    - `arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]`
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros instance-list`
     - `macros instance-show MACRO_INSTANCE_ID`
@@ -3264,6 +3268,17 @@ Resource sync commands:
     default normalized snapshot path `data/resources/ucsc.rmsk.hg38.json`,
     whether that snapshot exists and validates, and the embedded index
     recommendations used by `resources suggest-ucsc-rmsk-index`.
+  - Publication-associated datasets are tracked through
+    `assets/publication_resources.json` and default prepared manifests under
+    `data/publication_resources`:
+    - Rostock p73 Clariom D transcriptome data: `E-MTAB-14704`
+    - Rostock p73 CUT&RUN sequencing data: `E-MTAB-15709`
+    - Rostock p73 Co-IP/MS proteomics data: `PXD058816`
+    - `resources prepare-publication-dataset` writes `manifest.json`,
+      `download_manifest.tsv`, and `download.sh`; large file download happens
+      only with `--download-files`.
+    - The built-in Rostock p73 entries already ship with those no-byte-download
+      manifests and scripts prepared.
   - RNA secondary-structure executable resources are reported as first-class
     readiness entries:
     - `vienna_rna`: resolves `GENTLE_RNAFOLD_BIN` or `RNAfold` and probes
@@ -3317,6 +3332,37 @@ Resource sync commands:
     the bundled full-PFM table where an unambiguous ID/name match exists. This
     keeps score tracks and sequence logos probabilistic instead of collapsing
     ambiguous positions into a fake consensus.
+- `resources list-publication-datasets [--filter TEXT] [--catalog PATH] [--output OUTPUT.json]`
+  - Lists literature-associated external datasets from
+    `assets/publication_resources.json` or an override catalog.
+  - The built-in catalog currently describes the Rostock p73 multimodal paper
+    datasets and records which accessions have concrete downloadable file URLs.
+- `resources status-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH]`
+  - Inspects the local prepared-manifest/cache state for one publication
+    dataset id or accession.
+  - Reports concrete file URLs, local paths, size checks when known, and
+    warnings for accessions whose public archive file list still needs
+    refreshing.
+- `resources prepare-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH] [--download-files] [--max-files N] [--category NAME|--categories CSV]`
+  - Writes a deterministic `manifest.json`, `download_manifest.tsv`, and
+    executable `download.sh` under `data/publication_resources/DATASET_ID`.
+  - Without `--download-files`, no raw bytes are fetched; this is the safe
+    default for multi-GB PRIDE and sequencing datasets.
+  - With `--download-files`, GENtle downloads the declared file URLs directly
+    into the prepared dataset directory. `--max-files N` limits both manifests
+    and downloads for smoke checks.
+  - `--category`/`--categories` restrict the planned files before download;
+    for the Rostock Clariom D data, `raw_microarray` selects just the CEL
+    payloads and `metadata` selects the MAGE-TAB files.
+- `Rscript scripts/analyze_p73_clariomd_probe_level.R [DATASET_DIR] [OUTPUT_DIR]`
+  - External-analysis helper for the Rostock `E-MTAB-14704` Clariom D CEL
+    resource.
+  - Requires R/Bioconductor packages `oligo`, `limma`, and
+    `pd.clariom.d.human`.
+  - Reads the prepared SDRF/CEL files, exports sample metadata,
+    transcript-cluster RMA matrices, probeset-level RMA matrices when
+    supported by the platform design package, limma contrasts, and first-pass
+    probeset heterogeneity tables for splice-variant triage.
 - `resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]`
   - Normalizes the UCSC RepeatMasker `rmsk` table into
     `gentle.ucsc_rmsk_resource.v1`.
@@ -4701,6 +4747,12 @@ Import VCF variants (`.vcf` / `.vcf.gz`) onto a genome-anchored sequence:
 {"ImportGenomeVcfTrack":{"seq_id":"grch38_tp53","path":"data/variants/sample.vcf.gz","track_name":"Variants","min_score":20.0,"max_score":null,"clear_existing":false}}
 ```
 
+Project prepared microarray contrast tracks onto a genome-anchored sequence:
+
+```json
+{"ProjectMicroarrayTrack":{"seq_id":"grch38_tp73","manifest_path":"data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json","contrasts":["AdTAp73alpha-AdGFP","AdTAp73beta-AdGFP"],"level":"probeset","min_abs_logfc":0.5,"max_adj_p":0.05,"max_features":5000,"clear_existing":true}}
+```
+
 Notes:
 
 - `PrepareGenome` is intended as a one-time setup step per genome and cache
@@ -4754,6 +4806,10 @@ Notes:
   (genome-anchored provenance).
 - `ImportGenomeBigWigTrack` expects the same genome-anchored `seq_id`.
 - `ImportGenomeVcfTrack` expects the same genome-anchored `seq_id`.
+- `ProjectMicroarrayTrack` expects the same genome-anchored `seq_id` and a
+  `gentle.microarray_track_manifest.v1` manifest. Projection is refused unless
+  the manifest `coordinate_system` / `supported_genome_ids` match the sequence
+  anchor `genome_id`; GENtle does not guess array coordinate builds.
 - BED import accepts local `.bed` and `.bed.gz` files.
 - Concatenated gzip members are accepted for `.bed.gz` track input.
 - BigWig import accepts local `.bw` and `.bigWig` files and uses

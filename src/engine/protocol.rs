@@ -3301,6 +3301,7 @@ pub enum DisplayTarget {
     GeneFeatures,
     MrnaFeatures,
     RepeatFeatures,
+    ArrayFeatures,
     ConstructReasoningOverlay,
     Tfbs,
     RestrictionEnzymes,
@@ -3397,6 +3398,8 @@ pub struct DisplaySettings {
     pub show_mrna_features: bool,
     #[serde(default = "DisplaySettings::default_show_repeat_features")]
     pub show_repeat_features: bool,
+    #[serde(default = "DisplaySettings::default_show_array_features")]
+    pub show_array_features: bool,
     #[serde(default = "DisplaySettings::default_show_construct_reasoning_overlay")]
     pub show_construct_reasoning_overlay: bool,
     pub show_tfbs: bool,
@@ -3460,6 +3463,10 @@ impl DisplaySettings {
         true
     }
 
+    pub const fn default_show_array_features() -> bool {
+        true
+    }
+
     pub const fn default_show_construct_reasoning_overlay() -> bool {
         true
     }
@@ -3502,6 +3509,7 @@ impl Default for DisplaySettings {
             show_gene_features: true,
             show_mrna_features: true,
             show_repeat_features: Self::default_show_repeat_features(),
+            show_array_features: Self::default_show_array_features(),
             show_construct_reasoning_overlay: Self::default_show_construct_reasoning_overlay(),
             show_tfbs: false,
             regulatory_tracks_near_baseline: false,
@@ -3632,6 +3640,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub read_acquisition_report: Option<ReadAcquisitionReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub microarray_projection: Option<MicroarrayProjectionReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_audit: Option<RnaReadGeneSupportAudit>,
@@ -3698,6 +3708,72 @@ pub struct OpResult {
     pub uniprot_projection_audit_parity: Option<Box<UniprotProjectionAuditParityReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lab_assistant_instructions: Option<Box<LabAssistantInstructionsExport>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Compact manifest for genome-anchored microarray projection tracks.
+///
+/// The manifest is intentionally small: it records the coordinate contract and
+/// points at per-contrast TSVs so projection can stream only intervals
+/// overlapping the current sequence anchor.
+pub struct MicroarrayTrackManifest {
+    pub schema: String,
+    #[serde(alias = "dataset_id")]
+    pub dataset: String,
+    pub platform: String,
+    #[serde(alias = "normalization_method")]
+    pub normalization: String,
+    pub coordinate_system: String,
+    pub supported_genome_ids: Vec<String>,
+    pub contrast_order: Vec<String>,
+    #[serde(alias = "tracks")]
+    pub contrasts: Vec<MicroarrayTrackContrast>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One per-contrast projected TSV entry in a microarray track manifest.
+pub struct MicroarrayTrackContrast {
+    #[serde(alias = "name")]
+    pub contrast: String,
+    pub level: String,
+    #[serde(alias = "tsv_path")]
+    pub path: String,
+    pub row_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+/// Structured result emitted by `ProjectMicroarrayTrack`.
+pub struct MicroarrayProjectionReport {
+    pub schema: String,
+    pub seq_id: SeqId,
+    pub manifest_path: String,
+    pub dataset: String,
+    pub platform: String,
+    pub normalization: String,
+    pub coordinate_system: String,
+    pub anchor_genome_id: String,
+    pub anchor_chromosome: String,
+    pub anchor_start_1based: usize,
+    pub anchor_end_1based: usize,
+    pub anchor_strand: String,
+    pub requested_contrasts: Vec<String>,
+    pub projected_contrasts: Vec<String>,
+    pub level: String,
+    pub parsed_rows: usize,
+    pub imported_features: usize,
+    pub skipped_rows: usize,
+    pub skipped_invalid: usize,
+    pub skipped_wrong_chromosome: usize,
+    pub skipped_non_overlap: usize,
+    pub skipped_filter: usize,
+    pub truncated_at_limit: bool,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

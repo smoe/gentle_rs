@@ -5890,6 +5890,74 @@ fn parse_tracks_import_vcf() {
 }
 
 #[test]
+fn parse_arrays_microarray_track_commands() {
+    let inspect = parse_shell_line(
+        "arrays inspect-microarray-track test_files/fixtures/microarray_tracks/clariomd.synthetic.manifest.json",
+    )
+    .expect("parse inspect");
+    assert!(matches!(
+        inspect,
+        ShellCommand::ArraysInspectMicroarrayTrack { manifest_path }
+            if manifest_path.ends_with("clariomd.synthetic.manifest.json")
+    ));
+
+    let project = parse_shell_line(
+        "arrays project-microarray-track array_slice test_files/fixtures/microarray_tracks/clariomd.synthetic.manifest.json --contrasts AdTAp73alpha-AdGFP,AdTAp73beta-AdGFP --level probeset --min-abs-logfc 0.5 --max-adj-p 0.05 --max-features 25 --clear-existing",
+    )
+    .expect("parse project");
+    match project {
+        ShellCommand::ArraysProjectMicroarrayTrack {
+            seq_id,
+            manifest_path,
+            contrasts,
+            level,
+            min_abs_logfc,
+            max_adj_p,
+            max_features,
+            clear_existing,
+        } => {
+            assert_eq!(seq_id, "array_slice");
+            assert!(manifest_path.ends_with("clariomd.synthetic.manifest.json"));
+            assert_eq!(
+                contrasts,
+                vec![
+                    "AdTAp73alpha-AdGFP".to_string(),
+                    "AdTAp73beta-AdGFP".to_string()
+                ]
+            );
+            assert_eq!(level, "probeset");
+            assert_eq!(min_abs_logfc, Some(0.5));
+            assert_eq!(max_adj_p, Some(0.05));
+            assert_eq!(max_features, Some(25));
+            assert!(clear_existing);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_arrays_inspect_microarray_track_returns_manifest() {
+    let mut engine = GentleEngine::default();
+    let run = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ArraysInspectMicroarrayTrack {
+            manifest_path: "test_files/fixtures/microarray_tracks/clariomd.synthetic.manifest.json"
+                .to_string(),
+        },
+    )
+    .expect("inspect manifest");
+    assert!(!run.state_changed);
+    assert_eq!(
+        run.output["manifest"]["schema"].as_str(),
+        Some("gentle.microarray_track_manifest.v1")
+    );
+    assert_eq!(
+        run.output["manifest"]["contrast_order"][0].as_str(),
+        Some("AdTAp73alpha-AdGFP")
+    );
+}
+
+#[test]
 fn parse_tracks_tracked_add_with_options() {
     let cmd = parse_shell_line(
             "tracks tracked add test_files/data/signal.bw --source bed --name ChIP --min-score 0.5 --max-score 2.5 --clear-existing",
@@ -14159,6 +14227,73 @@ fn parse_resources_list_jaspar_with_options() {
 }
 
 #[test]
+fn parse_resources_publication_dataset_commands() {
+    let list = parse_shell_line(
+        "resources list-publication-datasets --filter p73 --catalog assets/publication_resources.json --output publication.datasets.json",
+    )
+    .expect("parse resources list-publication-datasets");
+    match list {
+        ShellCommand::ResourcesListPublicationDatasets {
+            filter,
+            catalog_path,
+            output,
+        } => {
+            assert_eq!(filter.as_deref(), Some("p73"));
+            assert_eq!(
+                catalog_path.as_deref(),
+                Some("assets/publication_resources.json")
+            );
+            assert_eq!(output.as_deref(), Some("publication.datasets.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let status = parse_shell_line(
+        "resources status-publication-dataset E-MTAB-14704 --cache-dir data/paper",
+    )
+    .expect("parse resources status-publication-dataset");
+    match status {
+        ShellCommand::ResourcesPublicationDatasetStatus {
+            dataset_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            assert_eq!(dataset_id, "E-MTAB-14704");
+            assert_eq!(catalog_path, None);
+            assert_eq!(cache_dir.as_deref(), Some("data/paper"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let prepare = parse_shell_line(
+        "resources prepare-publication-dataset rostock_p73_proteomics_pxd058816 --download-files --max-files 1 --category raw_mass_spectrometry --categories checksum,reference_database",
+    )
+    .expect("parse resources prepare-publication-dataset");
+    match prepare {
+        ShellCommand::ResourcesPreparePublicationDataset {
+            dataset_id,
+            download_files,
+            max_files,
+            category_filters,
+            ..
+        } => {
+            assert_eq!(dataset_id, "rostock_p73_proteomics_pxd058816");
+            assert!(download_files);
+            assert_eq!(max_files, Some(1));
+            assert_eq!(
+                category_filters,
+                vec![
+                    "raw_mass_spectrometry".to_string(),
+                    "checksum".to_string(),
+                    "reference_database".to_string()
+                ]
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
 fn parse_resources_sync_jaspar_remote_metadata_with_options() {
     let cmd = parse_shell_line(
         "resources sync-jaspar-remote-metadata --motif SP1 --motif REST --limit 20 --output jaspar.remote.json",
@@ -14893,6 +15028,14 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
         out.output["attract"]["display_name"].as_str(),
         Some("ATtRACT")
     );
+    assert_eq!(
+        out.output["publication_datasets"]["resource_id"].as_str(),
+        Some("publication_datasets")
+    );
+    assert_eq!(
+        out.output["publication_datasets"]["dataset_count"].as_u64(),
+        Some(3)
+    );
     if out.output["attract"]["support_status"].as_str() == Some("runtime_snapshot") {
         assert!(
             out.output["attract"]["active_pwm_row_count"]
@@ -14946,6 +15089,73 @@ fn execute_resources_status_reports_builtin_or_runtime_sources() {
         out.output["rnapkin"]["env_var"].as_str(),
         Some("GENTLE_RNAPKIN_BIN")
     );
+}
+
+#[test]
+fn execute_publication_dataset_prepare_writes_manifest_without_downloading() {
+    let td = tempdir().expect("tempdir");
+    let cache_dir = td.path().join("publication_resources");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesPreparePublicationDataset {
+            dataset_id: "E-MTAB-14704".to_string(),
+            catalog_path: None,
+            cache_dir: Some(cache_dir.to_string_lossy().to_string()),
+            download_files: false,
+            max_files: Some(2),
+            category_filters: vec![],
+        },
+    )
+    .expect("execute prepare publication dataset");
+    assert!(!out.state_changed);
+    assert_eq!(
+        out.output["schema"].as_str(),
+        Some("gentle.publication_dataset_prepare.v1")
+    );
+    assert_eq!(out.output["planned_file_count"].as_u64(), Some(2));
+    assert_eq!(out.output["downloaded_file_count"].as_u64(), Some(0));
+    let manifest_path = out.output["manifest_path"].as_str().expect("manifest path");
+    let tsv_path = out.output["tsv_path"].as_str().expect("tsv path");
+    let script_path = out.output["download_script_path"]
+        .as_str()
+        .expect("download script path");
+    assert!(std::path::Path::new(manifest_path).is_file());
+    assert!(std::path::Path::new(tsv_path).is_file());
+    assert!(std::path::Path::new(script_path).is_file());
+}
+
+#[test]
+fn execute_publication_dataset_prepare_filters_file_categories() {
+    let td = tempdir().expect("tempdir");
+    let cache_dir = td.path().join("publication_resources");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesPreparePublicationDataset {
+            dataset_id: "E-MTAB-14704".to_string(),
+            catalog_path: None,
+            cache_dir: Some(cache_dir.to_string_lossy().to_string()),
+            download_files: false,
+            max_files: None,
+            category_filters: vec!["raw_microarray".to_string()],
+        },
+    )
+    .expect("execute filtered prepare publication dataset");
+    assert_eq!(out.output["declared_file_count"].as_u64(), Some(11));
+    assert_eq!(out.output["eligible_file_count"].as_u64(), Some(9));
+    assert_eq!(out.output["planned_file_count"].as_u64(), Some(9));
+    assert_eq!(
+        out.output["category_filters"].as_array().map(Vec::len),
+        Some(1)
+    );
+    let files = out.output["files"].as_array().expect("files");
+    assert!(files.iter().all(|row| {
+        row["category"].as_str() == Some("raw_microarray")
+            && row["file_name"]
+                .as_str()
+                .is_some_and(|name| name.ends_with(".CEL"))
+    }));
 }
 
 #[test]

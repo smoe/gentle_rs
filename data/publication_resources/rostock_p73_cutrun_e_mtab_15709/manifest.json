@@ -1,0 +1,40 @@
+{
+  "schema": "gentle.publication_dataset_download_manifest.v1",
+  "publication": {
+    "id": "rostock_p73_multimodal_2026",
+    "title": "Integrative Multimodal Profiling of TAp73 and DNp73 Reveals Isoform-Specific Transcriptomic Coregulator Landscapes in Cancer Programs",
+    "doi": "10.3390/biom16010063",
+    "article_url": "https://www.mdpi.com/2218-273X/16/1/63",
+    "code_url": "https://github.com/IEGT/jaspar-mapping",
+    "authors": [
+      "Steffen Möller",
+      "Alf Spitschak",
+      "Nico Murr",
+      "Brigitte M. Pützer"
+    ]
+  },
+  "dataset": {
+    "dataset_id": "rostock_p73_cutrun_e_mtab_15709",
+    "accession": "E-MTAB-15709",
+    "repository": "ArrayExpress/BioStudies",
+    "assay_kind": "CUT&RUN sequencing",
+    "title": "SK-Mel-29 p73 isoform CUT&RUN sequencing data",
+    "description": "CUT&RUN sequencing data for SK-Mel-29 cells expressing TAp73alpha, DNp73beta, or control, associated with the p73 multimodal profiling study.",
+    "landing_url": "https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-15709",
+    "api_url": "https://www.ebi.ac.uk/biostudies/api/v1/studies/E-MTAB-15709",
+    "file_listing_url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/709/E-MTAB-15709/Files/",
+    "declared_file_count": 0,
+    "categories": [],
+    "notes": [
+      "The publication records E-MTAB-15709 as the CUT&RUN ArrayExpress accession.",
+      "During local verification on 2026-05-03, the BioStudies API returned an EBI 500 page and the guessed public FTP Files directory returned 404.",
+      "GENtle tracks the accession and writes a metadata/download-planning manifest, but the raw file URLs should be refreshed from BioStudies/ENA once the archive exposes them."
+    ]
+  },
+  "files": [],
+  "notes": [
+    "The publication records E-MTAB-15709 as the CUT&RUN ArrayExpress accession.",
+    "During local verification on 2026-05-03, the BioStudies API returned an EBI 500 page and the guessed public FTP Files directory returned 404.",
+    "GENtle tracks the accession and writes a metadata/download-planning manifest, but the raw file URLs should be refreshed from BioStudies/ENA once the archive exposes them."
+  ]
+}

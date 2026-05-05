@@ -30,6 +30,11 @@ checks.
   - `ensembl_mouse_trp73_all.fasta`
 - `sequencing_confirmation/`
   - `README.md`
+- `microarray_tracks/`
+  - `README.md`
+  - `clariomd.synthetic.manifest.json`
+  - `clariomd.synthetic.AdTAp73alpha-AdGFP.tsv`
+  - `clariomd.synthetic.AdTAp73beta-AdGFP.tsv`
 
 ## Provenance and usage
 

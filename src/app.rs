@@ -3247,6 +3247,7 @@ impl GENtleApp {
         target.show_gene_features = source.show_gene_features;
         target.show_mrna_features = source.show_mrna_features;
         target.show_repeat_features = source.show_repeat_features;
+        target.show_array_features = source.show_array_features;
         target.show_tfbs = source.show_tfbs;
         target.regulatory_tracks_near_baseline = source.regulatory_tracks_near_baseline;
         target.regulatory_feature_max_view_span_bp = source.regulatory_feature_max_view_span_bp;
@@ -6441,6 +6442,7 @@ Error: `{err}`"
         display.show_gene_features.hash(&mut hasher);
         display.show_mrna_features.hash(&mut hasher);
         display.show_repeat_features.hash(&mut hasher);
+        display.show_array_features.hash(&mut hasher);
         display.show_tfbs.hash(&mut hasher);
         display.regulatory_tracks_near_baseline.hash(&mut hasher);
         display
@@ -15812,6 +15814,7 @@ Error: `{err}`"
                 cutrun_regulatory_support: None,
                 read_acquisition_report: None,
                 cutrun_dataset_projection: None,
+                microarray_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 rna_read_target_quality_export: None,
@@ -40883,6 +40886,7 @@ Error: `{err}`"
         self.configuration_graphics.show_gene_features = defaults.show_gene_features;
         self.configuration_graphics.show_mrna_features = defaults.show_mrna_features;
         self.configuration_graphics.show_repeat_features = defaults.show_repeat_features;
+        self.configuration_graphics.show_array_features = defaults.show_array_features;
         self.configuration_graphics.show_tfbs = defaults.show_tfbs;
         self.configuration_graphics.regulatory_tracks_near_baseline =
             defaults.regulatory_tracks_near_baseline;
@@ -41712,6 +41716,13 @@ Error: `{err}`"
             .on_hover_text(
                 "Show RepeatMasker/rmsk-derived repeat_region and mobile-element features",
             )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_array_features,
+                "Show array tracks",
+            )
+            .on_hover_text("Show genome-projected microarray contrast features")
             .changed();
         changed |= ui
             .checkbox(
@@ -44025,6 +44036,7 @@ Error: `{err}`"
                     DisplayTarget::GeneFeatures => "Gene features",
                     DisplayTarget::MrnaFeatures => "mRNA features",
                     DisplayTarget::RepeatFeatures => "Repeat features",
+                    DisplayTarget::ArrayFeatures => "Array features",
                     DisplayTarget::ConstructReasoningOverlay => "Construct reasoning overlay",
                     DisplayTarget::Tfbs => "TFBS",
                     DisplayTarget::RestrictionEnzymes => "Restriction enzymes",
@@ -44717,6 +44729,30 @@ Error: `{err}`"
                 track_name.clone().unwrap_or_else(|| "-".to_string()),
                 min_score,
                 max_score,
+                clear_existing.unwrap_or(false)
+            ),
+            Operation::ProjectMicroarrayTrack {
+                seq_id,
+                manifest_path,
+                contrasts,
+                level,
+                min_abs_logfc,
+                max_adj_p,
+                max_features,
+                clear_existing,
+            } => format!(
+                "Project microarray track: seq_id={}, manifest={}, contrasts={}, level={}, min_abs_logfc={:?}, max_adj_p={:?}, max_features={:?}, clear_existing={}",
+                seq_id,
+                manifest_path,
+                if contrasts.is_empty() {
+                    "manifest-order".to_string()
+                } else {
+                    contrasts.join(",")
+                },
+                level.clone().unwrap_or_else(|| "probeset".to_string()),
+                min_abs_logfc,
+                max_adj_p,
+                max_features,
                 clear_existing.unwrap_or(false)
             ),
             Operation::ImportBlastHitsTrack {
@@ -53867,6 +53903,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 cutrun_read_coverage_export: None,
                 cutrun_regulatory_support: None,
                 read_acquisition_report: None,
+                microarray_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 rna_read_target_quality_export: None,
@@ -53976,6 +54013,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 cutrun_read_coverage_export: None,
                 cutrun_regulatory_support: None,
                 read_acquisition_report: None,
+                microarray_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 rna_read_target_quality_export: None,
@@ -54070,6 +54108,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 cutrun_read_coverage_export: None,
                 cutrun_regulatory_support: None,
                 read_acquisition_report: None,
+                microarray_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 rna_read_target_quality_export: None,
@@ -54169,6 +54208,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             cutrun_read_coverage_export: None,
             cutrun_regulatory_support: None,
             read_acquisition_report: None,
+            microarray_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,

@@ -94,7 +94,7 @@ use crate::{
     },
     gibson_planning::{GIBSON_ASSEMBLY_PREVIEW_SCHEMA, GibsonAssemblyPlan},
     protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
-    resource_status, resource_sync, service_readiness,
+    publication_resources, resource_status, resource_sync, service_readiness,
     shell_docs::{
         HelpOutputFormat, shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
@@ -911,6 +911,24 @@ pub enum ShellCommand {
         queries: Vec<String>,
         output: Option<String>,
     },
+    ResourcesListPublicationDatasets {
+        filter: Option<String>,
+        catalog_path: Option<String>,
+        output: Option<String>,
+    },
+    ResourcesPublicationDatasetStatus {
+        dataset_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ResourcesPreparePublicationDataset {
+        dataset_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        download_files: bool,
+        max_files: Option<usize>,
+        category_filters: Vec<String>,
+    },
     ResourcesInspectJaspar {
         motif: String,
         random_sequence_length_bp: usize,
@@ -1369,6 +1387,19 @@ pub enum ShellCommand {
         track_name: Option<String>,
         min_score: Option<f64>,
         max_score: Option<f64>,
+        clear_existing: bool,
+    },
+    ArraysInspectMicroarrayTrack {
+        manifest_path: String,
+    },
+    ArraysProjectMicroarrayTrack {
+        seq_id: String,
+        manifest_path: String,
+        contrasts: Vec<String>,
+        level: String,
+        min_abs_logfc: Option<f64>,
+        max_adj_p: Option<f64>,
+        max_features: Option<usize>,
         clear_existing: bool,
     },
     TracksTrackedList,
@@ -6233,6 +6264,61 @@ impl ShellCommand {
                 if queries.len() == 1 { "y" } else { "ies" },
                 output.as_deref().unwrap_or("-"),
             ),
+            Self::ResourcesListPublicationDatasets {
+                filter,
+                catalog_path,
+                output,
+            } => format!(
+                "list publication-associated datasets{} (catalog='{}', output='{}')",
+                filter
+                    .as_deref()
+                    .map(|value| format!(" for filter '{}'", value))
+                    .unwrap_or_default(),
+                catalog_path
+                    .as_deref()
+                    .unwrap_or(publication_resources::DEFAULT_PUBLICATION_RESOURCE_CATALOG_PATH),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::ResourcesPublicationDatasetStatus {
+                dataset_id,
+                catalog_path,
+                cache_dir,
+            } => format!(
+                "inspect publication dataset '{}' (catalog='{}', cache='{}')",
+                dataset_id,
+                catalog_path
+                    .as_deref()
+                    .unwrap_or(publication_resources::DEFAULT_PUBLICATION_RESOURCE_CATALOG_PATH),
+                cache_dir
+                    .as_deref()
+                    .unwrap_or(publication_resources::DEFAULT_PUBLICATION_RESOURCE_CACHE_DIR),
+            ),
+            Self::ResourcesPreparePublicationDataset {
+                dataset_id,
+                catalog_path,
+                cache_dir,
+                download_files,
+                max_files,
+                category_filters,
+            } => format!(
+                "prepare publication dataset '{}' (catalog='{}', cache='{}', download_files={}, max_files={}, categories='{}')",
+                dataset_id,
+                catalog_path
+                    .as_deref()
+                    .unwrap_or(publication_resources::DEFAULT_PUBLICATION_RESOURCE_CATALOG_PATH),
+                cache_dir
+                    .as_deref()
+                    .unwrap_or(publication_resources::DEFAULT_PUBLICATION_RESOURCE_CACHE_DIR),
+                download_files,
+                max_files
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                if category_filters.is_empty() {
+                    "-".to_string()
+                } else {
+                    category_filters.join(",")
+                },
+            ),
             Self::ResourcesSyncAttract { input, output } => {
                 let output = output.clone().unwrap_or_else(|| {
                     crate::attract_motifs::DEFAULT_ATTRACT_RESOURCE_PATH.to_string()
@@ -7536,6 +7622,38 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string()),
                 max_score
                     .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                clear_existing
+            ),
+            Self::ArraysInspectMicroarrayTrack { manifest_path } => {
+                format!("inspect microarray track manifest '{}'", manifest_path)
+            }
+            Self::ArraysProjectMicroarrayTrack {
+                seq_id,
+                manifest_path,
+                contrasts,
+                level,
+                min_abs_logfc,
+                max_adj_p,
+                max_features,
+                clear_existing,
+            } => format!(
+                "project microarray track for '{seq_id}' from '{}' (contrasts={}, level={}, min_abs_logfc={}, max_adj_p={}, max_features={}, clear_existing={})",
+                manifest_path,
+                if contrasts.is_empty() {
+                    "manifest-order".to_string()
+                } else {
+                    contrasts.join(",")
+                },
+                level,
+                min_abs_logfc
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "-".to_string()),
+                max_adj_p
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "-".to_string()),
+                max_features
+                    .map(|value| value.to_string())
                     .unwrap_or_else(|| "-".to_string()),
                 clear_existing
             ),
@@ -10083,6 +10201,7 @@ impl ShellCommand {
                 | Self::ReferenceBlastTrack { .. }
                 | Self::TracksImportBed { .. }
                 | Self::TracksImportBigWig { .. }
+                | Self::ArraysProjectMicroarrayTrack { .. }
                 | Self::CutRunProject { .. }
                 | Self::CutRunInterpret { .. }
                 | Self::TracksImportVcf { .. }
@@ -18335,7 +18454,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
-                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, inspect-jaspar, sync-attract, or status".to_string(),
+                    "resources requires a subcommand: sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, inspect-jaspar, sync-attract, or status".to_string(),
                 );
             }
             match tokens[1].as_str() {
@@ -19045,6 +19164,213 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                     Ok(ShellCommand::ResourcesResolveTfQuery { queries, output })
                 }
+                "list-publication-datasets" | "publication-datasets" => {
+                    let mut filter: Option<String> = None;
+                    let mut catalog_path: Option<String> = None;
+                    let mut output: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--filter" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing TEXT after --filter for resources list-publication-datasets"
+                                            .to_string(),
+                                    );
+                                }
+                                filter = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--catalog" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --catalog for resources list-publication-datasets"
+                                            .to_string(),
+                                    );
+                                }
+                                catalog_path = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --output for resources list-publication-datasets"
+                                            .to_string(),
+                                    );
+                                }
+                                output = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources list-publication-datasets"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesListPublicationDatasets {
+                        filter,
+                        catalog_path,
+                        output,
+                    })
+                }
+                "status-publication-dataset" | "publication-dataset-status" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources status-publication-dataset requires DATASET_ID [--catalog PATH] [--cache-dir PATH]"
+                                .to_string(),
+                        );
+                    }
+                    let dataset_id = tokens[2].trim().to_string();
+                    if dataset_id.is_empty() {
+                        return Err(
+                            "resources status-publication-dataset requires a non-empty DATASET_ID"
+                                .to_string(),
+                        );
+                    }
+                    let mut catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --catalog for resources status-publication-dataset"
+                                            .to_string(),
+                                    );
+                                }
+                                catalog_path = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--cache-dir" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --cache-dir for resources status-publication-dataset"
+                                            .to_string(),
+                                    );
+                                }
+                                cache_dir = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources status-publication-dataset"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesPublicationDatasetStatus {
+                        dataset_id,
+                        catalog_path,
+                        cache_dir,
+                    })
+                }
+                "prepare-publication-dataset" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources prepare-publication-dataset requires DATASET_ID [--catalog PATH] [--cache-dir PATH] [--download-files] [--max-files N] [--category NAME|--categories CSV]"
+                                .to_string(),
+                        );
+                    }
+                    let dataset_id = tokens[2].trim().to_string();
+                    if dataset_id.is_empty() {
+                        return Err(
+                            "resources prepare-publication-dataset requires a non-empty DATASET_ID"
+                                .to_string(),
+                        );
+                    }
+                    let mut catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut download_files = false;
+                    let mut max_files: Option<usize> = None;
+                    let mut category_filters: Vec<String> = Vec::new();
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --catalog for resources prepare-publication-dataset"
+                                            .to_string(),
+                                    );
+                                }
+                                catalog_path = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--cache-dir" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing PATH after --cache-dir for resources prepare-publication-dataset"
+                                            .to_string(),
+                                    );
+                                }
+                                cache_dir = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--download-files" => {
+                                download_files = true;
+                                idx += 1;
+                            }
+                            "--max-files" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing N after --max-files for resources prepare-publication-dataset"
+                                            .to_string(),
+                                    );
+                                }
+                                max_files = Some(tokens[idx + 1].parse().map_err(|e| {
+                                    format!(
+                                        "Invalid --max-files '{}' for resources prepare-publication-dataset: {e}",
+                                        tokens[idx + 1]
+                                    )
+                                })?);
+                                idx += 2;
+                            }
+                            "--category" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing NAME after --category for resources prepare-publication-dataset"
+                                            .to_string(),
+                                    );
+                                }
+                                let value = tokens[idx + 1].trim();
+                                if value.is_empty() {
+                                    return Err(
+                                        "--category for resources prepare-publication-dataset must not be empty"
+                                            .to_string(),
+                                    );
+                                }
+                                category_filters.push(value.to_string());
+                                idx += 2;
+                            }
+                            "--categories" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing CSV after --categories for resources prepare-publication-dataset"
+                                            .to_string(),
+                                    );
+                                }
+                                category_filters
+                                    .extend(split_csv_tokens_with_empty_error(&tokens[idx + 1])?);
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for resources prepare-publication-dataset"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesPreparePublicationDataset {
+                        dataset_id,
+                        catalog_path,
+                        cache_dir,
+                        download_files,
+                        max_files,
+                        category_filters,
+                    })
+                }
                 "status" => {
                     if tokens.len() != 2 {
                         return Err("resources status takes no additional arguments".to_string());
@@ -19052,7 +19378,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     Ok(ShellCommand::ResourcesStatus)
                 }
                 other => Err(format!(
-                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, resolve-tf-query, inspect-jaspar or sync-attract)"
+                    "Unknown resources subcommand '{other}' (expected status, sync-rebase, sync-jaspar, sync-ucsc-rmsk, install-ucsc-rmsk, prepare-ucsc-rmsk-index, suggest-ucsc-rmsk-index, sync-jaspar-remote-metadata, summarize-jaspar, benchmark-jaspar, list-jaspar, list-publication-datasets, status-publication-dataset, prepare-publication-dataset, resolve-tf-query, inspect-jaspar or sync-attract)"
                 )),
             }
         }
@@ -19538,6 +19864,141 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
                 other => Err(format!(
                     "Unknown tracks subcommand '{other}' (expected import-bed, import-bigwig, import-vcf, or tracked)"
+                )),
+            }
+        }
+        "arrays" => {
+            if tokens.len() < 2 {
+                return Err(
+                    "arrays requires a subcommand: inspect-microarray-track or project-microarray-track"
+                        .to_string(),
+                );
+            }
+            match tokens[1].as_str() {
+                "inspect-microarray-track" | "inspect-track" => {
+                    if tokens.len() != 3 {
+                        return Err("arrays inspect-microarray-track requires MANIFEST".to_string());
+                    }
+                    Ok(ShellCommand::ArraysInspectMicroarrayTrack {
+                        manifest_path: tokens[2].clone(),
+                    })
+                }
+                "project-microarray-track" | "project-track" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "arrays project-microarray-track requires SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]"
+                                .to_string(),
+                        );
+                    }
+                    let seq_id = tokens[2].trim().to_string();
+                    if seq_id.is_empty() {
+                        return Err(
+                            "arrays project-microarray-track SEQ_ID must not be empty".to_string()
+                        );
+                    }
+                    let manifest_path = tokens[3].clone();
+                    let mut contrasts: Vec<String> = Vec::new();
+                    let mut level = "probeset".to_string();
+                    let mut min_abs_logfc: Option<f64> = None;
+                    let mut max_adj_p: Option<f64> = None;
+                    let mut max_features: Option<usize> = None;
+                    let mut clear_existing = false;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--contrasts" | "--contrast" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing CSV after --contrasts".to_string());
+                                }
+                                contrasts.extend(split_csv_tokens_with_empty_error(&tokens[idx])?);
+                                idx += 1;
+                            }
+                            "--level" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing LEVEL after --level".to_string());
+                                }
+                                level = tokens[idx].trim().to_string();
+                                if level.is_empty() {
+                                    return Err("--level must not be empty".to_string());
+                                }
+                                idx += 1;
+                            }
+                            "--min-abs-logfc" | "--min-abs-logFC" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing N after --min-abs-logfc".to_string());
+                                }
+                                let raw = tokens[idx].clone();
+                                let value = raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --min-abs-logfc value '{raw}': {e}")
+                                })?;
+                                if !value.is_finite() || value < 0.0 {
+                                    return Err(
+                                        "--min-abs-logfc must be a finite value >= 0".to_string()
+                                    );
+                                }
+                                min_abs_logfc = Some(value);
+                                idx += 1;
+                            }
+                            "--max-adj-p" | "--max-adj-p-val" | "--max-adj-p-value" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing N after --max-adj-p".to_string());
+                                }
+                                let raw = tokens[idx].clone();
+                                let value = raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --max-adj-p value '{raw}': {e}")
+                                })?;
+                                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                                    return Err("--max-adj-p must be a finite value within 0..=1"
+                                        .to_string());
+                                }
+                                max_adj_p = Some(value);
+                                idx += 1;
+                            }
+                            "--max-features" => {
+                                idx += 1;
+                                if idx >= tokens.len() {
+                                    return Err("Missing N after --max-features".to_string());
+                                }
+                                let raw = tokens[idx].clone();
+                                let value = raw.parse::<usize>().map_err(|e| {
+                                    format!("Invalid --max-features value '{raw}': {e}")
+                                })?;
+                                if value == 0 {
+                                    return Err(
+                                        "--max-features must be greater than zero".to_string()
+                                    );
+                                }
+                                max_features = Some(value);
+                                idx += 1;
+                            }
+                            "--clear-existing" => {
+                                clear_existing = true;
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for arrays project-microarray-track"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ArraysProjectMicroarrayTrack {
+                        seq_id,
+                        manifest_path,
+                        contrasts,
+                        level,
+                        min_abs_logfc,
+                        max_adj_p,
+                        max_features,
+                        clear_existing,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown arrays subcommand '{other}' (expected inspect-microarray-track or project-microarray-track)"
                 )),
             }
         }
@@ -20209,6 +20670,8 @@ fn is_reference_or_track_command(command: &ShellCommand) -> bool {
             | ShellCommand::TracksImportBed { .. }
             | ShellCommand::TracksImportBigWig { .. }
             | ShellCommand::TracksImportVcf { .. }
+            | ShellCommand::ArraysInspectMicroarrayTrack { .. }
+            | ShellCommand::ArraysProjectMicroarrayTrack { .. }
             | ShellCommand::TracksTrackedList
             | ShellCommand::TracksTrackedAdd { .. }
             | ShellCommand::TracksTrackedRemove { .. }
@@ -22522,6 +22985,68 @@ fn execute_export_import_and_resource_command(
                 output: json!({ "result": op_result }),
             })
         }
+        ShellCommand::ResourcesListPublicationDatasets {
+            filter,
+            catalog_path,
+            output,
+        } => {
+            let report = publication_resources::list_publication_datasets(
+                filter.as_deref(),
+                catalog_path.as_deref(),
+            )?;
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&report)
+                    .map_err(|e| format!("Could not serialize publication dataset list: {e}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write publication dataset list: {e}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize publication dataset list: {e}"))?,
+            })
+        }
+        ShellCommand::ResourcesPublicationDatasetStatus {
+            dataset_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let report = publication_resources::publication_dataset_status(
+                dataset_id,
+                catalog_path.as_deref(),
+                cache_dir.as_deref(),
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report)
+                    .map_err(|e| format!("Could not serialize publication dataset status: {e}"))?,
+            })
+        }
+        ShellCommand::ResourcesPreparePublicationDataset {
+            dataset_id,
+            catalog_path,
+            cache_dir,
+            download_files,
+            max_files,
+            category_filters,
+        } => {
+            let report = publication_resources::prepare_publication_dataset(
+                dataset_id,
+                catalog_path.as_deref(),
+                cache_dir.as_deref(),
+                *download_files,
+                *max_files,
+                category_filters,
+            )?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&report).map_err(|e| {
+                    format!("Could not serialize publication dataset prepare report: {e}")
+                })?,
+            })
+        }
         ShellCommand::ResourcesSyncAttract { input, output } => {
             let report = resource_sync::sync_attract(input, output.as_deref())?;
             attract_motifs::reload_from_path(Some(report.output.as_str()));
@@ -24162,6 +24687,44 @@ fn execute_reference_and_track_command(
                     track_name: track_name.clone(),
                     min_score: *min_score,
                     max_score: *max_score,
+                    clear_existing: Some(*clear_existing),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            Ok(ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::ArraysInspectMicroarrayTrack { manifest_path } => {
+            let manifest = engine
+                .inspect_microarray_track_manifest(manifest_path)
+                .map_err(|e| e.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({ "manifest": manifest }),
+            })
+        }
+        ShellCommand::ArraysProjectMicroarrayTrack {
+            seq_id,
+            manifest_path,
+            contrasts,
+            level,
+            min_abs_logfc,
+            max_adj_p,
+            max_features,
+            clear_existing,
+        } => {
+            let op_result = engine
+                .apply(Operation::ProjectMicroarrayTrack {
+                    seq_id: seq_id.clone(),
+                    manifest_path: manifest_path.clone(),
+                    contrasts: contrasts.clone(),
+                    level: Some(level.clone()),
+                    min_abs_logfc: *min_abs_logfc,
+                    max_adj_p: *max_adj_p,
+                    max_features: *max_features,
                     clear_existing: Some(*clear_existing),
                 })
                 .map_err(|e| e.to_string())?;
@@ -30667,6 +31230,9 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::ResourcesBenchmarkJaspar { .. }
             | ShellCommand::ResourcesListJaspar { .. }
             | ShellCommand::ResourcesResolveTfQuery { .. }
+            | ShellCommand::ResourcesListPublicationDatasets { .. }
+            | ShellCommand::ResourcesPublicationDatasetStatus { .. }
+            | ShellCommand::ResourcesPreparePublicationDataset { .. }
             | ShellCommand::ResourcesInspectJaspar { .. }
             | ShellCommand::ResourcesSummarizeJaspar { .. }
             | ShellCommand::ResourcesSyncAttract { .. }
@@ -31286,6 +31852,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesBenchmarkJaspar { .. }
         | ShellCommand::ResourcesListJaspar { .. }
         | ShellCommand::ResourcesResolveTfQuery { .. }
+        | ShellCommand::ResourcesListPublicationDatasets { .. }
+        | ShellCommand::ResourcesPublicationDatasetStatus { .. }
+        | ShellCommand::ResourcesPreparePublicationDataset { .. }
         | ShellCommand::ResourcesInspectJaspar { .. }
         | ShellCommand::ResourcesSummarizeJaspar { .. }
         | ShellCommand::ResourcesSyncAttract { .. } => {
@@ -31535,6 +32104,8 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::TracksImportBed { .. }
         | ShellCommand::TracksImportBigWig { .. }
         | ShellCommand::TracksImportVcf { .. }
+        | ShellCommand::ArraysInspectMicroarrayTrack { .. }
+        | ShellCommand::ArraysProjectMicroarrayTrack { .. }
         | ShellCommand::TracksTrackedList
         | ShellCommand::TracksTrackedAdd { .. }
         | ShellCommand::TracksTrackedRemove { .. }

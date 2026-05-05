@@ -1,5 +1,5 @@
 {
-   "command_count": 379,
+   "command_count": 384,
    "commands": [
       {
          "aliases": [
@@ -1442,6 +1442,46 @@
          "usage": "resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]"
       },
       {
+         "aliases": [
+            "resources publication-datasets"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources list-publication-datasets",
+         "summary": "List publication-associated external datasets and declared download files from the GENtle resource catalog.",
+         "usage": "resources list-publication-datasets [--filter TEXT] [--catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "resources publication-dataset-status"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources status-publication-dataset",
+         "summary": "Inspect local manifest/cache status for one publication-associated dataset accession.",
+         "usage": "resources status-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "resources prepare-publication-dataset",
+         "summary": "Prepare a manifest, TSV, and download script for one publication-associated dataset, with optional category filtering and explicit opt-in raw-file download.",
+         "usage": "resources prepare-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH] [--download-files] [--max-files N] [--category NAME|--categories CSV]"
+      },
+      {
          "aliases": [],
          "engine_operations": [
             "InspectJasparEntry"
@@ -2214,6 +2254,36 @@
          "path": "tracks import-vcf",
          "summary": "Import VCF variants aligned to an anchored sequence.",
          "usage": "tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]"
+      },
+      {
+         "aliases": [
+            "arrays inspect-track"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays inspect-microarray-track",
+         "summary": "Inspect a prepared microarray track manifest without changing state.",
+         "usage": "arrays inspect-microarray-track MANIFEST"
+      },
+      {
+         "aliases": [
+            "arrays project-track"
+         ],
+         "engine_operations": [
+            "ProjectMicroarrayTrack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "arrays project-microarray-track",
+         "summary": "Project verified genome-anchored microarray contrast tracks onto an anchored sequence.",
+         "usage": "arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]"
       },
       {
          "aliases": [],
