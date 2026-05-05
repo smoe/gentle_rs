@@ -202,6 +202,26 @@ Internal-first execution rule:
   - but do not silently let the external workaround become the de facto
     product behavior.
 
+External-service integration rule:
+
+- Vendor/CRO/eProcurement integrations must enter GENtle through provider-
+  neutral, engine-owned service request/status/artifact contracts.
+- Provider-specific adapters (for example GeneArt) translate those contracts to
+  official APIs or dashboard handoff packets; GUI/CLI/MCP/ClawBio must not
+  hard-code vendor-specific biology or commerce behavior.
+- Credentials, purchase-order values, shipping details, and account enablement
+  state stay out of project state. Project state may retain only explicit
+  provider project/order identifiers, redacted receipts, lineage links, and
+  user-approved artifacts needed for replay/audit.
+- Direct vendor submission or ordering is mutating external behavior and must
+  require explicit confirmation, stronger than ordinary local project
+  mutations. Quote/dashboard handoff remains the safe default when API support
+  or account enablement is uncertain.
+- External-service operations that wait on remote processing should use the
+  same inspectable progress/status/cancel/artifact posture as other
+  long-running GENtle work, even if provider-side cancellation is represented
+  only as a local "cancel polling / mark abandoned" action.
+
 Shell modularisation rule:
 
 - Shared shell syntax and discoverability contracts should move into

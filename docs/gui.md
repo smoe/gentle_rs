@@ -489,6 +489,16 @@ Feature tree grouping:
   feature-kind section depending on that mode.
 - `Auto (duplicates)` flattens singleton subgroups and only keeps grouped
   branches where duplicate labels exist.
+- The feature-tree header includes focus presets:
+  - `Cloning`: clears the tree filter and returns grouping to `Auto (duplicates)`
+  - `Regulatory`: filters to regulatory annotations and uses `Always` grouping
+  - `Repeats`: filters to repeat/rmsk annotations and uses `Always` grouping
+  - `Tracks`: filters to imported track/array annotations and uses `Always`
+    grouping
+- A compact `Layers:` summary shows the current tree/filter mix (`core`,
+  `regulatory`, `repeats`, `tracks`, `array`, `TFBS`, and `other` when present).
+  In linear mode, those chips use the same `visible/total` convention as group
+  headers.
 - `gene` entries remain ungrouped (flat rows), even in grouped modes, because
   identifiers are expected to be unique.
 - `mRNA` rows are grouped by their associated gene (when gene qualifiers are
@@ -558,7 +568,10 @@ Feature tree grouping:
     - `track:chip`
     - `path:peaks.bed` or `file:peaks.bed`
     - `note:enhancer`
+    - `regulatory:enhancer`
     - `repeat_class:LINE` for RepeatMasker/UCSC `rmsk`-style repeat features
+  - free-text `regulatory`, `repeat`, and `track` terms match their respective
+    dense-layer families for quick focus presets
   - preset terms below the filter box are on/off toggle buttons
 - Selecting a restriction-site marker keeps the inline restriction expert view
   and now shows the active enzyme's raw catalog metadata
