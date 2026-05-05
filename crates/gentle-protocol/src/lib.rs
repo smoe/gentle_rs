@@ -2863,6 +2863,8 @@ pub struct ReadAcquisitionReport {
     pub ready_count: usize,
     pub running_count: usize,
     pub failed_count: usize,
+    pub cancelled_count: usize,
+    pub stale_count: usize,
     pub missing_count: usize,
     #[serde(default)]
     pub rows: Vec<ReadAcquisitionRunReport>,
@@ -5161,6 +5163,8 @@ pub struct SharedAssetActivityStatus {
     pub status_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lock_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancel_path: Option<String>,
     pub lifecycle_status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<String>,
@@ -5172,6 +5176,10 @@ pub struct SharedAssetActivityStatus {
     pub bytes_total: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub percent: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitored_free_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_free_bytes: Option<u64>,
     pub started_at_unix_ms: u128,
     pub updated_at_unix_ms: u128,
     #[serde(default, skip_serializing_if = "Option::is_none")]

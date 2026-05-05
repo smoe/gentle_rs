@@ -14,7 +14,7 @@ use gentle::{
         GelBufferModel, GelRunConditions, GelTopologyForm, GenomeAnnotationScope,
         GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine, Operation,
         OperationProgress, PrimerDesignProgress, ProjectState, RenderSvgMode,
-        RnaReadInterpretProgress, TfbsProgress,
+        RnaReadInterpretProgress, SharedAssetActivityStatus, TfbsProgress,
     },
     engine_shell::{
         DEFAULT_CLONING_ROUTINE_CATALOG_PATH, ShellCommand, ShellExecutionOptions,
@@ -1205,6 +1205,31 @@ impl ProgressPrinter {
         self.print_line(&parts.join(" "));
     }
 
+    fn on_read_acquisition_progress(&mut self, p: SharedAssetActivityStatus) {
+        let mut parts = vec![
+            "progress read-acquisition".to_string(),
+            format!("resource={}", p.resource_key),
+            format!("status={}", p.lifecycle_status),
+        ];
+        if let Some(phase) = p.phase {
+            parts.push(format!("phase={phase}"));
+        }
+        if let Some(item) = p.item {
+            parts.push(format!("item={item}"));
+        }
+        parts.push(format!("bytes_done={}", p.bytes_done));
+        if let Some(free) = p.monitored_free_bytes {
+            parts.push(format!("monitored_free_bytes={free}"));
+        }
+        if let Some(minimum) = p.minimum_free_bytes {
+            parts.push(format!("minimum_free_bytes={minimum}"));
+        }
+        if let Some(cancel_path) = p.cancel_path {
+            parts.push(format!("cancel_path={cancel_path}"));
+        }
+        self.print_line(&parts.join(" "));
+    }
+
     fn on_progress(&mut self, progress: OperationProgress) {
         match progress {
             OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
@@ -1212,6 +1237,7 @@ impl ProgressPrinter {
             OperationProgress::GenomeTrackImport(p) => self.on_genome_track_import_progress(p),
             OperationProgress::DbSnpFetch(p) => self.on_dbsnp_fetch_progress(p),
             OperationProgress::PrimerDesign(p) => self.on_primer_design_progress(p),
+            OperationProgress::ReadAcquisition(p) => self.on_read_acquisition_progress(p),
             OperationProgress::RnaReadInterpret(p) => self.on_rna_read_interpret_progress(p),
         }
     }

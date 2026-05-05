@@ -6969,6 +6969,18 @@ Error: `{err}`"
                 &format!("dbSNP {}: {}", p.stage.as_str(), p.detail),
                 None,
             ),
+            OperationProgress::ReadAcquisition(p) => {
+                let phase = p.phase.as_deref().unwrap_or(&p.lifecycle_status);
+                let item = p.item.as_deref().unwrap_or(&p.display_name);
+                Self::tutorial_project_progress_message(
+                    chapter_id,
+                    chapter_title,
+                    "execute_workflow",
+                    &format!("Read acquisition: {phase} ({item})"),
+                    p.percent
+                        .map(|value| (value as f32 / 100.0).clamp(0.0, 1.0)),
+                )
+            }
             OperationProgress::RnaReadInterpret(p) => {
                 let percent = if p.reads_total > 0 {
                     Some((p.reads_processed as f32 / p.reads_total as f32).clamp(0.0, 1.0))
