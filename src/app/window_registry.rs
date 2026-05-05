@@ -173,7 +173,7 @@ impl GENtleApp {
                 detail: "Action launcher".to_string(),
             });
         }
-        if self.show_history_panel {
+        if self.history_ui.show_panel {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::history_viewport_id()),
                 viewport_id: Self::history_viewport_id(),
@@ -603,7 +603,7 @@ impl GENtleApp {
             self.show_command_palette_dialog = true;
             self.command_palette_focus_query = true;
         } else if viewport_id == Self::history_viewport_id() {
-            self.show_history_panel = true;
+            self.history_ui.show_panel = true;
         } else if viewport_id == Self::prepare_genome_viewport_id() {
             self.show_reference_genome_prepare_dialog = true;
         } else if viewport_id == Self::retrieve_genome_viewport_id() {

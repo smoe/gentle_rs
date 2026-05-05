@@ -1409,7 +1409,11 @@ Global productivity controls:
     focus-acquisition latency, first-frame render, total open latency, and
     native window-menu sync when those exceed threshold)
 - `Edit -> Undo` / `Redo` and `Window -> Show Operation History` expose
-  operation-level history controls.
+  operation-level, multi-level history controls.
+  - The history stack is session-local: it is not written into project files
+    and is reset after restart/reload.
+  - Undo/redo remains disabled while background jobs are active, so long-running
+    imports or analyses cannot race against state restoration.
 - `Window -> Show Background Jobs` opens a centralized progress panel for
   long-running tasks (prepare/import/BLAST).
 - `Cmd/Ctrl+K` opens the Command Palette.
@@ -2845,7 +2849,10 @@ In `Main window -> Graph` view:
   - supports keyboard navigation (`Up`/`Down`, `Enter`, `Esc`)
 - Operation History panel:
   - open via `Edit -> Operation History...` or `Window -> Show Operation History`
-  - includes undo/redo buttons and recent operation summaries
+  - includes undo/redo buttons, available counts, history limit, next transition
+    labels, and recent operation summaries
+  - uses the same engine-owned history summary surfaced by shell/CLI
+    `history status`
 - Background Jobs panel:
   - open via `Window -> Show Background Jobs`
   - central place for progress, cancel/retry actions, and recent completion/error events

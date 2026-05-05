@@ -3245,14 +3245,9 @@ mod tests {
             .get("commands")
             .and_then(|value| value.as_array())
             .expect("glossary commands array");
-        let declared_count = glossary
-            .get("command_count")
-            .and_then(|value| value.as_u64())
-            .expect("glossary command_count") as usize;
-        assert_eq!(
-            declared_count,
-            commands.len(),
-            "docs/glossary.json command_count does not match commands length"
+        assert!(
+            glossary.get("command_count").is_none(),
+            "docs/glossary.json should not carry a hand-maintained command_count; derive it from commands.len() when needed"
         );
         let paths: Vec<&str> = commands
             .iter()

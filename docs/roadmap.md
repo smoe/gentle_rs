@@ -327,6 +327,12 @@ without blocking this publication.
 - GUI module decomposition is now underway:
   - `src/app/help_docs.rs` (help/tutorial markdown loading and rewrite helpers extracted from `src/app.rs`)
   - `src/app/window_registry.rs` (open-window listing/focus helpers plus deferred child-window placement extracted from `src/app.rs`)
+  - `src/app/root_ui.rs` (root keyboard-shortcut dispatch extracted from
+    `render_root_ui` without changing render order)
+  - `src/app/history_ui.rs` (Operation History window extracted and wired to
+    the shared engine history summary)
+  - `src/app/configuration_ui.rs` (Configuration dialog shell/tab dispatcher
+    extracted while detailed tab controls remain in `src/app.rs`)
   - `src/main_area_dna/feature_actions.rs` (feature-linked splicing/RNA-mapping/dotplot launcher helpers extracted from `src/main_area_dna.rs`)
   - `src/main_area_dna/formula_controls.rs` (selection/ROI formula parsing/apply helpers plus shared numeric field parsers extracted from `src/main_area_dna.rs`)
   - `src/main_area_dna/rna_read_support.rs` (RNA-read report/cache/inspection helper routines extracted from `src/main_area_dna.rs`)
@@ -6054,6 +6060,11 @@ Post-baseline follow-ups:
   - Keep strict `REG@DNA` mode enforcing DNA-level placement only (never
     intruding into gene lanes) and add focused visual regression fixtures.
 - Undo/redo reliability hardening:
+  - Engine-owned multi-level history now exposes a portable summary with
+    undo/redo counts, history limit, operation-log count, and next transition
+    labels for GUI and shared-shell inspection.
+  - Shared shell now provides `history status`, `history undo`, and
+    `history redo` routes over the same session-local engine stacks.
   - Expand operation-level history tests around mixed GUI workflows and
     background-job gating.
   - Keep visible history and transitions consistent after imports/retries.

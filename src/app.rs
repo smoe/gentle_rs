@@ -5247,7 +5247,7 @@ Error: `{err}`"
                 self.toggle_background_jobs_panel();
             }
             CommandPaletteAction::ToggleHistoryPanel => {
-                self.show_history_panel = !self.show_history_panel;
+                self.history_ui.show_panel = !self.history_ui.show_panel;
             }
             CommandPaletteAction::Undo => self.undo_last_operation(),
             CommandPaletteAction::Redo => self.redo_last_operation(),
@@ -32694,7 +32694,7 @@ Error: `{err}`"
                     "Edit > Operation History",
                 );
                 if history_resp.clicked() {
-                    self.show_history_panel = true;
+                    self.history_ui.show_panel = true;
                     ui.close();
                 }
             });
@@ -33017,7 +33017,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 let history_panel_resp = self.track_hover_status(
-                    ui.button(if self.show_history_panel {
+                    ui.button(if self.history_ui.show_panel {
                         "Hide Operation History"
                     } else {
                         "Show Operation History"
@@ -33026,7 +33026,7 @@ Error: `{err}`"
                     "Window > History Panel",
                 );
                 if history_panel_resp.clicked() {
-                    self.show_history_panel = !self.show_history_panel;
+                    self.history_ui.show_panel = !self.history_ui.show_panel;
                     ui.close();
                 }
                 ui.separator();

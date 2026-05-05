@@ -1996,7 +1996,10 @@ fn test_engine_history_summary_and_multi_step_undo_redo() {
     assert_eq!(summary.redo_count, 0);
     assert_eq!(summary.operation_log_count, 2);
     assert_eq!(
-        summary.next_undo.as_ref().map(|next| next.operation.as_str()),
+        summary
+            .next_undo
+            .as_ref()
+            .map(|next| next.operation.as_str()),
         Some("SetDisplayVisibility")
     );
     assert!(!engine.state().display.show_features);
