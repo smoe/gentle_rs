@@ -3935,6 +3935,7 @@ pub enum OperationProgress {
     GenomePrepare(PrepareGenomeProgress),
     GenomeTrackImport(GenomeTrackImportProgress),
     DbSnpFetch(DbSnpFetchProgress),
+    ReadAcquisition(SharedAssetActivityStatus),
     RnaReadInterpret(RnaReadInterpretProgress),
 }
 

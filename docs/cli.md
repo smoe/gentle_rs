@@ -705,6 +705,12 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   one GENtle-owned manifest/status/log contract. RNA and CUT&RUN consume the
   prepared FASTA/FASTQ paths from that shared layer instead of each workflow
   inventing its own downloader.
+  `reads acquire prepare` is explicit setup work, emits live
+  `progress read-acquisition ...` lines when the global `--progress-stderr`
+  option is enabled, records the cooperative cancel-marker path in its activity
+  JSON, and re-checks `--min-free-gb` while external SRA Toolkit phases are
+  running. Use `reads acquire cancel RUN_ACCESSION ...` to request cancellation
+  of an active run from another shell/session.
   Phase split:
   - `interpret`: seed-filter pass (Nanopore phase-1)
   - `batch-map`: manifest-driven wrapper over the same per-sample
@@ -2111,6 +2117,7 @@ Shared shell command:
     - `reads acquire status MANIFEST.tsv --cache-dir DIR --work-dir DIR`
     - `reads acquire prepare MANIFEST.tsv --cache-dir DIR --work-dir DIR [--analysis-format fasta|fastq] [--read-layout single_end|paired_end|split_spot] [--threads N] [--max-size SIZE] [--min-free-gb N] [--drop-intermediate-fastq] [--continue-on-error]`
     - `reads acquire inspect RUN_ACCESSION --cache-dir DIR --work-dir DIR`
+    - `reads acquire cancel RUN_ACCESSION --cache-dir DIR --work-dir DIR`
     - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--prepare-sra] [--read-cache-dir DIR] [--read-work-dir DIR] [--drop-intermediate-fastq] [--transcript-fasta PATH]... [--transcript-index PATH]...`
     - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`

@@ -6629,7 +6629,7 @@ impl GentleEngine {
                 .filter(|value| !value.trim().is_empty())
                 .map(PathBuf::from)
                 .unwrap_or_else(|| out_root.join("read_work"));
-            let acquisition = self.read_acquisition_prepare(
+            let acquisition = self.read_acquisition_prepare_with_progress(
                 manifest_path,
                 &Self::rna_read_batch_path_string(&cache_dir),
                 &Self::rna_read_batch_path_string(&work_dir),
@@ -6640,6 +6640,7 @@ impl GentleEngine {
                 None,
                 drop_intermediate_fastq,
                 continue_on_error,
+                on_progress,
             )?;
             for row in &mut manifest_rows {
                 if row.input_path.is_some() {

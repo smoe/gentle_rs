@@ -519,10 +519,15 @@ Progress/cancellation contract:
 - `true` continues the running operation.
 - `false` requests cancellation.
 - Long-running operations that support this contract (genome-track imports and
-  genome-prepare flow) can stop early while returning warnings/progress
-  summaries.
+  genome-prepare flow, plus shared read acquisition) can stop early while
+  returning warnings/progress summaries.
 - Genome-prepare additionally supports explicit timeboxing (`timeout_seconds`
   in operation payload, `--timeout-secs` in CLI/shell, `timeout_sec` in GUI).
+- Shared read acquisition must treat SRA Toolkit downloads/dumps as explicit
+  cancellable setup work: write activity JSON with the cancel-marker path,
+  emit progress snapshots, terminate the external child process group on
+  cancellation, and keep monitoring configured disk-space thresholds while the
+  child process is running.
 - Annotation parsing during genome preparation is fault-tolerant: malformed
   tabular annotation lines are skipped, summarized, and reported with capped
   file/line examples in warnings.

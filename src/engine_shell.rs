@@ -2134,6 +2134,11 @@ pub enum ShellCommand {
         cache_dir: String,
         work_dir: String,
     },
+    ReadsAcquireCancel {
+        sra_accession: String,
+        cache_dir: String,
+        work_dir: String,
+    },
     RnaReadsInterpret {
         seq_id: String,
         seed_feature_id: usize,
@@ -9626,6 +9631,14 @@ impl ShellCommand {
                 "inspect SRA read-acquisition run '{}' (cache='{}', work='{}')",
                 sra_accession, cache_dir, work_dir
             ),
+            Self::ReadsAcquireCancel {
+                sra_accession,
+                cache_dir,
+                work_dir,
+            } => format!(
+                "request cancellation for SRA read-acquisition run '{}' (cache='{}', work='{}')",
+                sra_accession, cache_dir, work_dir
+            ),
             Self::RnaReadsInterpret {
                 seq_id,
                 seed_feature_id,
@@ -10269,6 +10282,7 @@ impl ShellCommand {
                 | Self::ConstructReasoningBuildProteinDnaHandoff { .. }
                 | Self::ConstructReasoningSetAnnotationStatus { .. }
                 | Self::ReadsAcquirePrepare { .. }
+                | Self::ReadsAcquireCancel { .. }
                 | Self::RnaReadsInterpret { .. }
                 | Self::RnaReadsBatchMap { .. }
                 | Self::RnaReadsAlignReport { .. }
@@ -23263,6 +23277,7 @@ fn execute_protocol_cartoon_command(
 fn execute_reads_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
+    options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     let op_result = match command {
         ShellCommand::ReadsAcquireStatus {
@@ -23285,23 +23300,41 @@ fn execute_reads_command(
             min_free_gb,
             drop_intermediate_fastq,
             continue_on_error,
-        } => engine.apply(Operation::ReadAcquirePrepare {
-            manifest_path: manifest_path.clone(),
-            cache_dir: cache_dir.clone(),
-            work_dir: work_dir.clone(),
-            analysis_format: *analysis_format,
-            read_layout: *read_layout,
-            threads: *threads,
-            max_size: max_size.clone(),
-            min_free_gb: *min_free_gb,
-            drop_intermediate_fastq: *drop_intermediate_fastq,
-            continue_on_error: *continue_on_error,
-        }),
+        } => {
+            let op = Operation::ReadAcquirePrepare {
+                manifest_path: manifest_path.clone(),
+                cache_dir: cache_dir.clone(),
+                work_dir: work_dir.clone(),
+                analysis_format: *analysis_format,
+                read_layout: *read_layout,
+                threads: *threads,
+                max_size: max_size.clone(),
+                min_free_gb: *min_free_gb,
+                drop_intermediate_fastq: *drop_intermediate_fastq,
+                continue_on_error: *continue_on_error,
+            };
+            if options.progress_callback.is_some() {
+                engine.apply_with_progress(op, |progress| {
+                    forward_shell_progress(options, progress).unwrap_or(false)
+                })
+            } else {
+                engine.apply(op)
+            }
+        }
         ShellCommand::ReadsAcquireInspect {
             sra_accession,
             cache_dir,
             work_dir,
         } => engine.apply(Operation::ReadAcquireInspect {
+            sra_accession: sra_accession.clone(),
+            cache_dir: cache_dir.clone(),
+            work_dir: work_dir.clone(),
+        }),
+        ShellCommand::ReadsAcquireCancel {
+            sra_accession,
+            cache_dir,
+            work_dir,
+        } => engine.apply(Operation::ReadAcquireCancel {
             sra_accession: sra_accession.clone(),
             cache_dir: cache_dir.clone(),
             work_dir: work_dir.clone(),
@@ -31275,8 +31308,9 @@ fn execute_shell_command_with_options_dispatch(
         ShellCommand::ReadsAcquireStatus { .. }
             | ShellCommand::ReadsAcquirePrepare { .. }
             | ShellCommand::ReadsAcquireInspect { .. }
+            | ShellCommand::ReadsAcquireCancel { .. }
     ) {
-        return execute_reads_command(engine, command);
+        return execute_reads_command(engine, command, options);
     }
     if is_reference_or_track_command(command) {
         return execute_reference_and_track_command_with_expanded_stack(engine, command);
@@ -32959,7 +32993,10 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::SeqPrimerSuggest { .. } => execute_sequencing_command(engine, command)?,
         ShellCommand::ReadsAcquireStatus { .. }
         | ShellCommand::ReadsAcquirePrepare { .. }
-        | ShellCommand::ReadsAcquireInspect { .. } => execute_reads_command(engine, command)?,
+        | ShellCommand::ReadsAcquireInspect { .. }
+        | ShellCommand::ReadsAcquireCancel { .. } => {
+            execute_reads_command(engine, command, options)?
+        }
         ShellCommand::RnaReadsInterpret { .. }
         | ShellCommand::RnaReadsBatchMap { .. }
         | ShellCommand::RnaReadsAlignReport { .. }

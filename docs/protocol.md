@@ -1923,6 +1923,7 @@ Current draft operations:
 - `ReadAcquireStatus { manifest_path, cache_dir, work_dir }`
 - `ReadAcquirePrepare { manifest_path, cache_dir, work_dir, analysis_format, read_layout, threads?, max_size?, min_free_gb?, drop_intermediate_fastq, continue_on_error }`
 - `ReadAcquireInspect { sra_accession, cache_dir, work_dir }`
+- `ReadAcquireCancel { sra_accession, cache_dir, work_dir }`
   - shared SRA-backed read acquisition uses external `prefetch`,
     `vdb-validate`, and `fasterq-dump`, but reports through
     `gentle.read_acquisition_report.v1`.
@@ -1932,8 +1933,16 @@ Current draft operations:
   - per-run lifecycle uses
     `resource_key = "read_acquisition:<SRA_ACCESSION>"` and
     `lifecycle_status = missing|running|ready|failed|cancelled|stale`.
+  - running activity JSON includes a cooperative `cancel_path`, phase/item,
+    produced-byte estimate, and `monitored_free_bytes` /
+    `minimum_free_bytes` when `min_free_gb` is configured.
   - activity JSON phases are `prefetch`, `validate_sra`, `dump_fastq`,
     `convert_fasta`, `verify_output`, and `complete`.
+  - `ReadAcquireCancel` writes the run cancel marker; the active prepare loop
+    terminates the external child process group and records
+    `lifecycle_status = cancelled`.
+  - `ReadAcquirePrepare` rechecks available disk while external SRA Toolkit
+    phases run and fails early if free space drops below `min_free_gb`.
   - final `.sra` and prepared FASTA/FASTQ outputs are never deleted
     automatically; `drop_intermediate_fastq` only applies to FASTQ files that
     were converted into FASTA outputs.
@@ -5036,7 +5045,7 @@ Operation progress/cancellation semantics:
   - `GenomePrepare`
   - `GenomeTrackImport`
   - `DbSnpFetch`
-  - `PrimerDesign`
+  - `ReadAcquisition`
   - `RnaReadInterpret`
 - Current cancellation support:
   - internal pair-PCR/qPCR design now emits staged `PrimerDesign` snapshots
@@ -5046,6 +5055,12 @@ Operation progress/cancellation semantics:
   - genome preparation supports cooperative cancellation plus optional
     `timeout_seconds` timeboxing and reports deterministic cancellation/timeout
     outcomes.
+  - read acquisition supports cooperative cancellation through the progress
+    callback and explicit cancel-marker requests (`ReadAcquireCancel` /
+    `reads acquire cancel`); while an external SRA Toolkit process is running,
+    GENtle emits `ReadAcquisition` snapshots, updates the activity JSON, checks
+    available disk against `min_free_gb`, and terminates the child process group
+    on cancellation or disk-threshold failure.
   - shared reference/helper prepare is now duplicate-safe at the semantic
     target level:
     - one target may actively prepare at a time
@@ -6961,6 +6976,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `reads acquire status MANIFEST.tsv --cache-dir DIR --work-dir DIR`
   - `reads acquire prepare MANIFEST.tsv --cache-dir DIR --work-dir DIR [--analysis-format fasta|fastq] [--read-layout single_end|paired_end|split_spot] [--threads N] [--max-size SIZE] [--min-free-gb N] [--drop-intermediate-fastq] [--continue-on-error]`
   - `reads acquire inspect RUN_ACCESSION --cache-dir DIR --work-dir DIR`
+  - `reads acquire cancel RUN_ACCESSION --cache-dir DIR --work-dir DIR`
   - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--prepare-sra] [--read-cache-dir DIR] [--read-work-dir DIR] [--drop-intermediate-fastq] [--transcript-fasta PATH]... [--transcript-index PATH]...`
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`

@@ -3282,6 +3282,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ReadAcquireCancel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reads acquire cancel",
+         "summary": "Request cooperative cancellation of one running SRA read acquisition.",
+         "usage": "reads acquire cancel RUN_ACCESSION --cache-dir DIR --work-dir DIR"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "InterpretRnaReads"
          ],
          "interfaces": [

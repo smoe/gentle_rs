@@ -8,10 +8,14 @@
 use super::*;
 use sha1::{Digest, Sha1};
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 const READ_ACQUIRE_ACTIVITY_STATUS_FILE: &str = ".read_acquisition_activity.json";
 const READ_ACQUIRE_ACTIVITY_LOCK_FILE: &str = ".read_acquisition_activity.lock";
+const READ_ACQUIRE_CANCEL_FILE: &str = ".read_acquisition_cancel";
 const READ_ACQUIRE_ACTIVITY_STALE_AFTER_MS: u128 = 6 * 60 * 60 * 1000;
+const READ_ACQUIRE_MONITOR_INTERVAL_MS: u64 = 500;
 
 #[derive(Debug, Clone)]
 struct ReadAcquisitionEffectiveRow {
@@ -28,6 +32,7 @@ enum ReadAcquisitionActivityStart {
 struct ReadAcquisitionActivityTracker {
     status_path: PathBuf,
     lock_path: PathBuf,
+    cancel_path: PathBuf,
     status: SharedAssetActivityStatus,
 }
 
@@ -41,6 +46,7 @@ impl ReadAcquisitionActivityTracker {
         })?;
         let status_path = read_acquire_activity_status_path(run_dir);
         let lock_path = read_acquire_activity_lock_path(run_dir);
+        let cancel_path = read_acquire_cancel_path(run_dir);
         if let Some(existing) =
             inspect_read_acquire_activity_status_paths(&status_path, &lock_path)?
         {
@@ -55,6 +61,7 @@ impl ReadAcquisitionActivityTracker {
             display_name: sra_accession.to_string(),
             status_path: read_acquisition_path_string(&status_path),
             lock_path: Some(read_acquisition_path_string(&lock_path)),
+            cancel_path: Some(read_acquisition_path_string(&cancel_path)),
             lifecycle_status: "running".to_string(),
             phase: Some("prefetch".to_string()),
             item: Some(sra_accession.to_string()),
@@ -66,6 +73,7 @@ impl ReadAcquisitionActivityTracker {
         let tracker = Self {
             status_path,
             lock_path,
+            cancel_path,
             status,
         };
         if !create_read_acquire_activity_lock(&tracker.lock_path, &tracker.status)? {
@@ -82,6 +90,7 @@ impl ReadAcquisitionActivityTracker {
                 tracker.lock_path.display()
             ));
         }
+        remove_read_acquire_cancel_marker(&tracker.cancel_path);
         tracker.write_status();
         Ok(ReadAcquisitionActivityStart::Acquired(tracker))
     }
@@ -89,6 +98,26 @@ impl ReadAcquisitionActivityTracker {
     fn update_phase(&mut self, phase: &str) {
         self.status.lifecycle_status = "running".to_string();
         self.status.phase = Some(phase.to_string());
+        self.status.cancel_path = Some(read_acquisition_path_string(&self.cancel_path));
+        self.status.updated_at_unix_ms = GentleEngine::now_unix_ms();
+        self.write_status();
+    }
+
+    fn update_monitor(
+        &mut self,
+        phase: &str,
+        produced_bytes: u64,
+        monitored_free_bytes: Option<u64>,
+        minimum_free_bytes: Option<u64>,
+    ) {
+        self.status.lifecycle_status = "running".to_string();
+        self.status.phase = Some(phase.to_string());
+        self.status.bytes_done = produced_bytes;
+        self.status.bytes_total = None;
+        self.status.percent = None;
+        self.status.monitored_free_bytes = monitored_free_bytes;
+        self.status.minimum_free_bytes = minimum_free_bytes;
+        self.status.cancel_path = Some(read_acquisition_path_string(&self.cancel_path));
         self.status.updated_at_unix_ms = GentleEngine::now_unix_ms();
         self.write_status();
     }
@@ -96,15 +125,28 @@ impl ReadAcquisitionActivityTracker {
     fn finish_failure(&mut self, message: &str) {
         self.status.lifecycle_status = "failed".to_string();
         self.status.last_error = Some(message.to_string());
+        self.status.cancel_path = Some(read_acquisition_path_string(&self.cancel_path));
         self.status.updated_at_unix_ms = GentleEngine::now_unix_ms();
         self.status.finished_at_unix_ms = Some(GentleEngine::now_unix_ms());
         self.write_status();
         remove_read_acquire_activity_lock(&self.lock_path);
     }
 
+    fn finish_cancelled(&mut self, message: &str) {
+        self.status.lifecycle_status = "cancelled".to_string();
+        self.status.last_error = Some(message.to_string());
+        self.status.cancel_path = Some(read_acquisition_path_string(&self.cancel_path));
+        self.status.updated_at_unix_ms = GentleEngine::now_unix_ms();
+        self.status.finished_at_unix_ms = Some(GentleEngine::now_unix_ms());
+        self.write_status();
+        remove_read_acquire_activity_lock(&self.lock_path);
+        remove_read_acquire_cancel_marker(&self.cancel_path);
+    }
+
     fn finish_success(&self) {
         remove_read_acquire_activity_status(&self.status_path);
         remove_read_acquire_activity_lock(&self.lock_path);
+        remove_read_acquire_cancel_marker(&self.cancel_path);
     }
 
     fn write_status(&self) {
@@ -184,6 +226,110 @@ mod tests {
         assert_eq!(report.sample_count, 1);
         assert_eq!(report.missing_count, 1);
         assert_eq!(report.rows[0].resource_key, "read_acquisition:SRRFAKE001");
+    }
+
+    #[test]
+    fn read_acquisition_cancel_writes_marker_for_running_activity() {
+        let td = tempdir().expect("tempdir");
+        let cache_dir = td.path().join("cache");
+        let work_dir = td.path().join("work");
+        let run_dir = read_acquire_run_dir(&work_dir, "SRRFAKE001");
+        fs::create_dir_all(&run_dir).expect("create run dir");
+        let status_path = read_acquire_activity_status_path(&run_dir);
+        let lock_path = read_acquire_activity_lock_path(&run_dir);
+        let cancel_path = read_acquire_cancel_path(&run_dir);
+        let status = SharedAssetActivityStatus {
+            resource_key: read_acquisition_resource_key("SRRFAKE001"),
+            display_name: "SRRFAKE001".to_string(),
+            status_path: read_acquisition_path_string(&status_path),
+            lock_path: Some(read_acquisition_path_string(&lock_path)),
+            cancel_path: Some(read_acquisition_path_string(&cancel_path)),
+            lifecycle_status: "running".to_string(),
+            phase: Some("prefetch".to_string()),
+            item: Some("SRRFAKE001".to_string()),
+            started_at_unix_ms: GentleEngine::now_unix_ms(),
+            updated_at_unix_ms: GentleEngine::now_unix_ms(),
+            owner_pid: Some(std::process::id()),
+            ..Default::default()
+        };
+        write_read_acquire_activity_status(&status_path, &status).expect("write status");
+        write_read_acquire_activity_status(&lock_path, &status).expect("write lock");
+        let engine = GentleEngine::default();
+
+        let report = engine
+            .read_acquisition_cancel(
+                "SRRFAKE001",
+                &cache_dir.display().to_string(),
+                &work_dir.display().to_string(),
+            )
+            .expect("cancel running acquisition");
+
+        assert!(cancel_path.exists(), "cancel marker should be written");
+        assert_eq!(report.lifecycle_status, "running");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("Cancellation requested")),
+            "cancel report should tell the user cancellation was requested"
+        );
+    }
+
+    #[test]
+    fn read_acquisition_monitor_rejects_disk_space_drop() {
+        let td = tempdir().expect("tempdir");
+        if available_disk_bytes(td.path()).is_none() {
+            return;
+        }
+        let cache_dir = td.path().join("cache");
+        let work_dir = td.path().join("work");
+        let run_dir = read_acquire_run_dir(&work_dir, "SRRFAKE001");
+        fs::create_dir_all(&run_dir).expect("create run dir");
+        let mut tracker = ReadAcquisitionActivityTracker {
+            status_path: read_acquire_activity_status_path(&run_dir),
+            lock_path: read_acquire_activity_lock_path(&run_dir),
+            cancel_path: read_acquire_cancel_path(&run_dir),
+            status: SharedAssetActivityStatus {
+                resource_key: read_acquisition_resource_key("SRRFAKE001"),
+                display_name: "SRRFAKE001".to_string(),
+                status_path: read_acquisition_path_string(&read_acquire_activity_status_path(
+                    &run_dir,
+                )),
+                lock_path: Some(read_acquisition_path_string(
+                    &read_acquire_activity_lock_path(&run_dir),
+                )),
+                cancel_path: Some(read_acquisition_path_string(&read_acquire_cancel_path(
+                    &run_dir,
+                ))),
+                lifecycle_status: "running".to_string(),
+                phase: Some("prefetch".to_string()),
+                item: Some("SRRFAKE001".to_string()),
+                started_at_unix_ms: GentleEngine::now_unix_ms(),
+                updated_at_unix_ms: GentleEngine::now_unix_ms(),
+                owner_pid: Some(std::process::id()),
+                ..Default::default()
+            },
+        };
+        let mut progress_called = false;
+
+        let error = update_read_acquisition_command_monitor(
+            &mut tracker,
+            "prefetch",
+            &cache_dir,
+            &work_dir,
+            std::slice::from_ref(&run_dir),
+            Some(u64::MAX),
+            &mut |_progress| {
+                progress_called = true;
+                true
+            },
+        )
+        .expect_err("huge min-free-gb should trip monitored disk threshold");
+
+        assert!(!progress_called, "disk failure should stop before progress");
+        assert!(error.message.contains("free disk dropped"));
+        assert!(tracker.status.monitored_free_bytes.is_some());
+        assert_eq!(tracker.status.minimum_free_bytes, Some(u64::MAX));
     }
 
     #[test]
@@ -276,6 +422,10 @@ fn read_acquire_activity_lock_path(run_dir: &Path) -> PathBuf {
     run_dir.join(READ_ACQUIRE_ACTIVITY_LOCK_FILE)
 }
 
+fn read_acquire_cancel_path(run_dir: &Path) -> PathBuf {
+    run_dir.join(READ_ACQUIRE_CANCEL_FILE)
+}
+
 fn load_read_acquire_activity_status(path: &Path) -> Result<SharedAssetActivityStatus, String> {
     let text = fs::read_to_string(path).map_err(|e| {
         format!(
@@ -352,6 +502,12 @@ fn remove_read_acquire_activity_status(path: &Path) {
 }
 
 fn remove_read_acquire_activity_lock(path: &Path) {
+    if path.exists() {
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn remove_read_acquire_cancel_marker(path: &Path) {
     if path.exists() {
         let _ = fs::remove_file(path);
     }
@@ -669,11 +825,151 @@ fn shell_join(program: &str, args: &[String]) -> String {
         .join(" ")
 }
 
+fn directory_size_bytes(path: &Path) -> u64 {
+    let Ok(metadata) = fs::metadata(path) else {
+        return 0;
+    };
+    if metadata.is_file() {
+        return metadata.len();
+    }
+    let Ok(read_dir) = fs::read_dir(path) else {
+        return 0;
+    };
+    read_dir
+        .flatten()
+        .map(|entry| directory_size_bytes(&entry.path()))
+        .sum()
+}
+
+fn min_free_bytes(min_free_gb: Option<u64>) -> Option<u64> {
+    min_free_gb.and_then(|value| {
+        if value == 0 {
+            None
+        } else {
+            Some(value.saturating_mul(1024 * 1024 * 1024))
+        }
+    })
+}
+
+fn monitored_free_bytes(cache_dir: &Path, work_dir: &Path) -> Option<u64> {
+    [
+        available_disk_bytes(cache_dir),
+        available_disk_bytes(work_dir),
+    ]
+    .into_iter()
+    .flatten()
+    .min()
+}
+
+fn produced_progress_bytes(paths: &[PathBuf]) -> u64 {
+    paths.iter().map(|path| directory_size_bytes(path)).sum()
+}
+
+fn spawn_read_acquisition_log_copy<R>(
+    mut reader: R,
+    path: PathBuf,
+) -> std::thread::JoinHandle<Result<(), String>>
+where
+    R: Read + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| {
+                format!(
+                    "Could not open read-acquisition stream log '{}': {e}",
+                    path.display()
+                )
+            })?;
+        std::io::copy(&mut reader, &mut file).map_err(|e| {
+            format!(
+                "Could not write read-acquisition stream log '{}': {e}",
+                path.display()
+            )
+        })?;
+        Ok(())
+    })
+}
+
+fn join_read_acquisition_log_copy(
+    handle: std::thread::JoinHandle<Result<(), String>>,
+) -> Result<(), EngineError> {
+    handle
+        .join()
+        .map_err(|_| EngineError {
+            code: ErrorCode::Io,
+            message: "Read-acquisition log-copy worker panicked".to_string(),
+        })?
+        .map_err(|message| EngineError {
+            code: ErrorCode::Io,
+            message,
+        })
+}
+
+fn terminate_read_acquisition_child(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        let process_group = format!("-{}", child.id());
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(&process_group)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        if child.try_wait().ok().flatten().is_none() {
+            let _ = Command::new("kill")
+                .arg("-KILL")
+                .arg(&process_group)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn update_read_acquisition_command_monitor(
+    tracker: &mut ReadAcquisitionActivityTracker,
+    phase: &str,
+    cache_dir: &Path,
+    work_dir: &Path,
+    progress_paths: &[PathBuf],
+    min_free_gb: Option<u64>,
+    on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+) -> Result<bool, EngineError> {
+    let produced_bytes = produced_progress_bytes(progress_paths);
+    let monitored_free = monitored_free_bytes(cache_dir, work_dir);
+    let minimum_free = min_free_bytes(min_free_gb);
+    tracker.update_monitor(phase, produced_bytes, monitored_free, minimum_free);
+    if let (Some(available), Some(required)) = (monitored_free, minimum_free) {
+        if available < required {
+            return Err(read_acquisition_invalid_input(format!(
+                "Read acquisition free disk dropped below the configured minimum during phase '{phase}': required {:.2} GB, available {:.2} GB",
+                required as f64 / 1024.0 / 1024.0 / 1024.0,
+                available as f64 / 1024.0 / 1024.0 / 1024.0
+            )));
+        }
+    }
+    Ok(on_progress(OperationProgress::ReadAcquisition(
+        tracker.status.clone(),
+    )))
+}
+
 fn run_read_acquisition_command(
     log_dir: &Path,
     phase: &str,
     program: &str,
     args: &[String],
+    tracker: &mut ReadAcquisitionActivityTracker,
+    cache_dir: &Path,
+    work_dir: &Path,
+    progress_paths: &[PathBuf],
+    min_free_gb: Option<u64>,
+    on_progress: &mut dyn FnMut(OperationProgress) -> bool,
 ) -> Result<ReadAcquisitionCommandProvenance, EngineError> {
     fs::create_dir_all(log_dir)
         .map_err(|e| read_acquisition_io_error(log_dir, "create read-acquisition log dir", e))?;
@@ -684,35 +980,98 @@ fn run_read_acquisition_command(
     fs::write(&command_log_path, format!("{command}\n")).map_err(|e| {
         read_acquisition_io_error(&command_log_path, "write read-acquisition command log", e)
     })?;
-    let output = Command::new(program)
+    let mut command_builder = Command::new(program);
+    command_builder
         .args(args)
-        .output()
-        .map_err(|e| EngineError {
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        command_builder.process_group(0);
+    }
+    let mut child = command_builder.spawn().map_err(|e| EngineError {
+        code: ErrorCode::Io,
+        message: format!("Could not run SRA Toolkit command for phase '{phase}': {command}: {e}"),
+    })?;
+    let stdout_handle = child
+        .stdout
+        .take()
+        .map(|stdout| spawn_read_acquisition_log_copy(stdout, stdout_log_path.clone()));
+    let stderr_handle = child
+        .stderr
+        .take()
+        .map(|stderr| spawn_read_acquisition_log_copy(stderr, stderr_log_path.clone()));
+    let mut last_monitor = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_millis(
+            READ_ACQUIRE_MONITOR_INTERVAL_MS,
+        ))
+        .unwrap_or_else(std::time::Instant::now);
+    let status = loop {
+        if tracker.cancel_path.exists() {
+            terminate_read_acquisition_child(&mut child);
+            break Err(EngineError {
+                code: ErrorCode::Io,
+                message: format!("Read acquisition cancelled during phase '{phase}'"),
+            });
+        }
+        if last_monitor.elapsed()
+            >= std::time::Duration::from_millis(READ_ACQUIRE_MONITOR_INTERVAL_MS)
+        {
+            last_monitor = std::time::Instant::now();
+            match update_read_acquisition_command_monitor(
+                tracker,
+                phase,
+                cache_dir,
+                work_dir,
+                progress_paths,
+                min_free_gb,
+                on_progress,
+            ) {
+                Ok(true) => {}
+                Ok(false) => {
+                    terminate_read_acquisition_child(&mut child);
+                    break Err(EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Read acquisition cancelled by progress callback during phase '{phase}'"
+                        ),
+                    });
+                }
+                Err(error) => {
+                    terminate_read_acquisition_child(&mut child);
+                    break Err(error);
+                }
+            }
+        }
+        match child.try_wait().map_err(|e| EngineError {
             code: ErrorCode::Io,
-            message: format!(
-                "Could not run SRA Toolkit command for phase '{phase}': {command}: {e}"
-            ),
-        })?;
-    fs::write(&stdout_log_path, &output.stdout).map_err(|e| {
-        read_acquisition_io_error(&stdout_log_path, "write read-acquisition stdout log", e)
-    })?;
-    fs::write(&stderr_log_path, &output.stderr).map_err(|e| {
-        read_acquisition_io_error(&stderr_log_path, "write read-acquisition stderr log", e)
-    })?;
+            message: format!("Could not poll SRA Toolkit command '{command}': {e}"),
+        })? {
+            Some(status) => break Ok(status),
+            None => std::thread::sleep(std::time::Duration::from_millis(100)),
+        }
+    };
+    if let Some(handle) = stdout_handle {
+        join_read_acquisition_log_copy(handle)?;
+    }
+    if let Some(handle) = stderr_handle {
+        join_read_acquisition_log_copy(handle)?;
+    }
+    let status = status?;
     let provenance = ReadAcquisitionCommandProvenance {
         phase: phase.to_string(),
         command,
-        exit_code: output.status.code(),
+        exit_code: status.code(),
         stdout_log_path: read_acquisition_path_string(&stdout_log_path),
         stderr_log_path: read_acquisition_path_string(&stderr_log_path),
     };
-    if !output.status.success() {
+    if !status.success() {
         return Err(EngineError {
             code: ErrorCode::Io,
             message: format!(
                 "SRA Toolkit command failed in phase '{}' with exit_code={:?}; see '{}'",
                 phase,
-                output.status.code(),
+                status.code(),
                 stderr_log_path.display()
             ),
         });
@@ -963,6 +1322,10 @@ fn read_acquisition_report_status(rows: &[ReadAcquisitionRunReport]) -> String {
         "running".to_string()
     } else if rows.iter().any(|row| row.lifecycle_status == "failed") {
         "failed".to_string()
+    } else if rows.iter().any(|row| row.lifecycle_status == "cancelled") {
+        "cancelled".to_string()
+    } else if rows.iter().any(|row| row.lifecycle_status == "stale") {
+        "stale".to_string()
     } else if rows.iter().all(|row| row.lifecycle_status == "ready") && !rows.is_empty() {
         "ready".to_string()
     } else {
@@ -989,9 +1352,17 @@ fn build_read_acquisition_report(
         .iter()
         .filter(|row| row.lifecycle_status == "failed")
         .count();
+    let cancelled_count = rows
+        .iter()
+        .filter(|row| row.lifecycle_status == "cancelled")
+        .count();
+    let stale_count = rows
+        .iter()
+        .filter(|row| row.lifecycle_status == "stale")
+        .count();
     let missing_count = rows
         .iter()
-        .filter(|row| row.lifecycle_status == "missing" || row.lifecycle_status == "stale")
+        .filter(|row| row.lifecycle_status == "missing")
         .count();
     let lifecycle_status = read_acquisition_report_status(&rows);
     ReadAcquisitionReport {
@@ -1005,6 +1376,8 @@ fn build_read_acquisition_report(
         ready_count,
         running_count,
         failed_count,
+        cancelled_count,
+        stale_count,
         missing_count,
         rows,
         warnings,
@@ -1087,6 +1460,7 @@ impl GentleEngine {
         max_size: Option<&str>,
         min_free_gb: Option<u64>,
         drop_intermediate_fastq: bool,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
     ) -> Result<ReadAcquisitionRunReport, EngineError> {
         let accession = row.manifest.sra_accession.trim();
         let run_dir = read_acquire_run_dir(work_dir, accession);
@@ -1138,6 +1512,12 @@ impl GentleEngine {
                 "prefetch",
                 "prefetch",
                 &prefetch_args,
+                &mut tracker,
+                cache_dir,
+                work_dir,
+                &[sra_dir.clone(), run_dir.clone()],
+                min_free_gb,
+                on_progress,
             )?);
             let sra_path = ensure_sra_at_expected_path(&sra_dir, accession)?;
 
@@ -1147,6 +1527,12 @@ impl GentleEngine {
                 "validate_sra",
                 "vdb-validate",
                 &[read_acquisition_path_string(&sra_path)],
+                &mut tracker,
+                cache_dir,
+                work_dir,
+                &[sra_dir.clone(), run_dir.clone()],
+                min_free_gb,
+                on_progress,
             )?);
 
             tracker.update_phase("dump_fastq");
@@ -1176,6 +1562,12 @@ impl GentleEngine {
                 "dump_fastq",
                 "fasterq-dump",
                 &dump_args,
+                &mut tracker,
+                cache_dir,
+                work_dir,
+                &[sra_dir.clone(), run_dir.clone()],
+                min_free_gb,
+                on_progress,
             )?);
             let fastq_paths = expected_fastq_paths(&dump_dir, accession, row.read_layout);
             for (_, path) in &fastq_paths {
@@ -1255,18 +1647,31 @@ impl GentleEngine {
                 Ok(report)
             }
             Err(error) => {
-                tracker.finish_failure(&error.message);
+                let cancelled = error.message.to_ascii_lowercase().contains("cancel");
+                if cancelled {
+                    tracker.finish_cancelled(&error.message);
+                } else {
+                    tracker.finish_failure(&error.message);
+                }
                 let mut failed = Self::read_acquisition_status_for_row(row, cache_dir, work_dir)
                     .unwrap_or_else(|_| ReadAcquisitionRunReport {
                         sample_id: row.manifest.sample_id.clone(),
                         sra_accession: accession.to_string(),
                         resource_key: read_acquisition_resource_key(accession),
-                        lifecycle_status: "failed".to_string(),
+                        lifecycle_status: if cancelled {
+                            "cancelled".to_string()
+                        } else {
+                            "failed".to_string()
+                        },
                         read_layout: row.read_layout,
                         analysis_format: row.analysis_format,
                         ..Default::default()
                     });
-                failed.lifecycle_status = "failed".to_string();
+                failed.lifecycle_status = if cancelled {
+                    "cancelled".to_string()
+                } else {
+                    "failed".to_string()
+                };
                 failed.error = Some(error.message.clone());
                 Err(EngineError {
                     code: error.code,
@@ -1368,7 +1773,7 @@ impl GentleEngine {
                 reports.iter().find(|report| {
                     matches!(
                         report.lifecycle_status.as_str(),
-                        "running" | "failed" | "stale"
+                        "running" | "failed" | "cancelled" | "stale"
                     )
                 })
             })
@@ -1383,6 +1788,60 @@ impl GentleEngine {
         ))
     }
 
+    pub fn read_acquisition_cancel(
+        &self,
+        sra_accession: &str,
+        cache_dir: &str,
+        work_dir: &str,
+    ) -> Result<ReadAcquisitionReport, EngineError> {
+        let accession = sra_accession.trim();
+        if accession.is_empty() {
+            return Err(read_acquisition_invalid_input(
+                "reads acquire cancel requires a non-empty RUN_ACCESSION",
+            ));
+        }
+        let run_dir = read_acquire_run_dir(&PathBuf::from(work_dir), accession);
+        let status = inspect_read_acquire_activity_status_paths(
+            &read_acquire_activity_status_path(&run_dir),
+            &read_acquire_activity_lock_path(&run_dir),
+        )
+        .map_err(|message| EngineError {
+            code: ErrorCode::Io,
+            message,
+        })?;
+        let mut report = self.read_acquisition_inspect(accession, cache_dir, work_dir)?;
+        if status
+            .as_ref()
+            .is_some_and(|status| status.lifecycle_status == "running")
+        {
+            fs::create_dir_all(&run_dir).map_err(|e| {
+                read_acquisition_io_error(&run_dir, "create read-acquisition run dir", e)
+            })?;
+            let cancel_path = read_acquire_cancel_path(&run_dir);
+            fs::write(
+                &cancel_path,
+                format!(
+                    "cancel requested at {}\n",
+                    read_acquisition_path_string(&cancel_path)
+                ),
+            )
+            .map_err(|e| {
+                read_acquisition_io_error(&cancel_path, "write read-acquisition cancel marker", e)
+            })?;
+            report.warnings.push(format!(
+                "Cancellation requested for SRA run '{}' via '{}'",
+                accession,
+                cancel_path.display()
+            ));
+        } else {
+            report.warnings.push(format!(
+                "No running read acquisition was found for SRA run '{}'",
+                accession
+            ));
+        }
+        Ok(report)
+    }
+
     pub fn read_acquisition_prepare(
         &self,
         manifest_path: &str,
@@ -1395,6 +1854,36 @@ impl GentleEngine {
         min_free_gb: Option<u64>,
         drop_intermediate_fastq: bool,
         continue_on_error: bool,
+    ) -> Result<ReadAcquisitionReport, EngineError> {
+        let mut on_progress = |_progress: OperationProgress| true;
+        self.read_acquisition_prepare_with_progress(
+            manifest_path,
+            cache_dir,
+            work_dir,
+            analysis_format,
+            read_layout,
+            threads,
+            max_size,
+            min_free_gb,
+            drop_intermediate_fastq,
+            continue_on_error,
+            &mut on_progress,
+        )
+    }
+
+    pub fn read_acquisition_prepare_with_progress(
+        &self,
+        manifest_path: &str,
+        cache_dir: &str,
+        work_dir: &str,
+        analysis_format: ReadAcquisitionAnalysisFormat,
+        read_layout: ReadAcquisitionReadLayout,
+        threads: Option<usize>,
+        max_size: Option<&str>,
+        min_free_gb: Option<u64>,
+        drop_intermediate_fastq: bool,
+        continue_on_error: bool,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
     ) -> Result<ReadAcquisitionReport, EngineError> {
         let cache_dir = PathBuf::from(cache_dir);
         let work_dir = PathBuf::from(work_dir);
@@ -1443,6 +1932,7 @@ impl GentleEngine {
                     max_size,
                     min_free_gb,
                     drop_intermediate_fastq,
+                    on_progress,
                 ) {
                     Ok(report) => {
                         reports_by_accession.insert(key, report.clone());
@@ -1452,9 +1942,14 @@ impl GentleEngine {
                         if !continue_on_error {
                             return Err(error);
                         }
+                        let cancelled = error.message.to_ascii_lowercase().contains("cancel");
+                        let lifecycle_status = if cancelled { "cancelled" } else { "failed" };
                         warnings.push(format!(
-                            "sample '{}' accession '{}' failed but continue-on-error is enabled: {}",
-                            row.manifest.sample_id, row.manifest.sra_accession, error.message
+                            "sample '{}' accession '{}' {} but continue-on-error is enabled: {}",
+                            row.manifest.sample_id,
+                            row.manifest.sra_accession,
+                            if cancelled { "was cancelled" } else { "failed" },
+                            error.message
                         ));
                         ReadAcquisitionRunReport {
                             sample_id: row.manifest.sample_id.clone(),
@@ -1465,7 +1960,7 @@ impl GentleEngine {
                             resource_key: read_acquisition_resource_key(
                                 &row.manifest.sra_accession,
                             ),
-                            lifecycle_status: "failed".to_string(),
+                            lifecycle_status: lifecycle_status.to_string(),
                             read_layout: row.read_layout,
                             analysis_format: row.analysis_format,
                             sra_path: read_acquisition_path_string(&read_acquire_sra_path(
@@ -1507,6 +2002,30 @@ impl GentleEngine {
         read_layout: ReadAcquisitionReadLayout,
         drop_intermediate_fastq: bool,
     ) -> Result<ReadAcquisitionRunReport, EngineError> {
+        let mut on_progress = |_progress: OperationProgress| true;
+        self.read_acquisition_prepare_single_accession_with_progress(
+            sample_id,
+            sra_accession,
+            cache_dir,
+            work_dir,
+            analysis_format,
+            read_layout,
+            drop_intermediate_fastq,
+            &mut on_progress,
+        )
+    }
+
+    pub(crate) fn read_acquisition_prepare_single_accession_with_progress(
+        &self,
+        sample_id: &str,
+        sra_accession: &str,
+        cache_dir: &Path,
+        work_dir: &Path,
+        analysis_format: ReadAcquisitionAnalysisFormat,
+        read_layout: ReadAcquisitionReadLayout,
+        drop_intermediate_fastq: bool,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<ReadAcquisitionRunReport, EngineError> {
         let row = ReadAcquisitionEffectiveRow {
             manifest: ReadAcquisitionManifestRow {
                 row_number: 1,
@@ -1525,6 +2044,7 @@ impl GentleEngine {
             None,
             None,
             drop_intermediate_fastq,
+            on_progress,
         )
     }
 }

@@ -3675,6 +3675,11 @@ pub enum Operation {
         cache_dir: String,
         work_dir: String,
     },
+    ReadAcquireCancel {
+        sra_accession: String,
+        cache_dir: String,
+        work_dir: String,
+    },
     InterpretRnaReads {
         seq_id: SeqId,
         seed_feature_id: usize,
@@ -5421,6 +5426,7 @@ impl GentleEngine {
                 "ReadAcquireStatus".to_string(),
                 "ReadAcquirePrepare".to_string(),
                 "ReadAcquireInspect".to_string(),
+                "ReadAcquireCancel".to_string(),
                 "InterpretRnaReads".to_string(),
                 "AlignRnaReadReport".to_string(),
                 "PreflightRnaReadIsoforms".to_string(),
@@ -7576,6 +7582,7 @@ impl GentleEngine {
                 | Operation::ReadAcquireStatus { .. }
                 | Operation::ReadAcquirePrepare { .. }
                 | Operation::ReadAcquireInspect { .. }
+                | Operation::ReadAcquireCancel { .. }
                 | Operation::PreflightRnaReadIsoforms { .. }
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }

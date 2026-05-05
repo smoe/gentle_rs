@@ -223,6 +223,9 @@ while [ "$#" -gt 0 ]; do
   shift || true
 done
 mkdir -p "$out"
+if [ -n "${GENTLE_FAKE_SRA_PREFETCH_SLEEP_SECONDS:-}" ]; then
+  sleep "$GENTLE_FAKE_SRA_PREFETCH_SLEEP_SECONDS"
+fi
 printf 'synthetic sra for %s\n' "$acc" > "$out/$acc.sra"
 "#,
         ),
@@ -465,12 +468,15 @@ fn write_cutrun_shell_prepare_activity(
         display_name: dataset_id.to_string(),
         status_path: status_path.display().to_string(),
         lock_path: Some(lock_path.display().to_string()),
+        cancel_path: None,
         lifecycle_status: lifecycle_status.to_string(),
         phase: Some("materializing_asset".to_string()),
         item: Some("toy_peaks.bed".to_string()),
         bytes_done: 64,
         bytes_total: Some(256),
         percent: Some(25.0),
+        monitored_free_bytes: None,
+        minimum_free_bytes: None,
         started_at_unix_ms: updated_at_unix_ms.saturating_sub(1000),
         updated_at_unix_ms,
         finished_at_unix_ms: None,
@@ -20967,6 +20973,23 @@ fn parse_reads_acquire_commands() {
         }
         other => panic!("expected ReadsAcquireInspect, got {other:?}"),
     }
+
+    let cancel = parse_shell_line(
+        "reads acquire cancel SRR000001 --cache-dir data/read_cache --work-dir out/read_work",
+    )
+    .expect("parse reads acquire cancel");
+    match cancel {
+        ShellCommand::ReadsAcquireCancel {
+            sra_accession,
+            cache_dir,
+            work_dir,
+        } => {
+            assert_eq!(sra_accession, "SRR000001");
+            assert_eq!(cache_dir, "data/read_cache");
+            assert_eq!(work_dir, "out/read_work");
+        }
+        other => panic!("expected ReadsAcquireCancel, got {other:?}"),
+    }
 }
 
 #[test]
@@ -23040,6 +23063,119 @@ fn execute_reads_acquire_prepare_with_fake_sra_toolkit_reports_outputs() {
     assert_eq!(
         status.output["result"]["read_acquisition_report"]["ready_count"].as_u64(),
         Some(2)
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn execute_reads_acquire_prepare_can_be_cancelled_from_progress_callback() {
+    let _env_guard = read_acquisition_test_env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let td = tempdir().expect("tempdir");
+    let bin_dir = td.path().join("fake_sra_toolkit_bin");
+    write_fake_sra_toolkit_bin(&bin_dir);
+    let previous_path = env::var("PATH").unwrap_or_default();
+    let path = if previous_path.is_empty() {
+        bin_dir.display().to_string()
+    } else {
+        format!("{}:{previous_path}", bin_dir.display())
+    };
+    let _path_guard = EnvVarGuard::set("PATH", &path);
+    let _sleep_guard = EnvVarGuard::set("GENTLE_FAKE_SRA_PREFETCH_SLEEP_SECONDS", "5");
+
+    let manifest_path = td.path().join("reads.tsv");
+    fs::write(
+        &manifest_path,
+        "sample_id\tsra_accession\tread_layout\tanalysis_format\nsample_a\tSRRFAKECANCEL\tsingle_end\tfastq\n",
+    )
+    .expect("write read acquisition manifest");
+    let cache_dir = td.path().join("cache");
+    let work_dir = td.path().join("work");
+    let mut engine = GentleEngine::default();
+    let progress_phases = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
+    let callback_phases = std::sync::Arc::clone(&progress_phases);
+    let progress_callback: ShellProgressCallback =
+        std::sync::Arc::new(Mutex::new(Box::new(move |progress: OperationProgress| {
+            if let OperationProgress::ReadAcquisition(status) = progress {
+                callback_phases
+                    .lock()
+                    .expect("progress phases lock")
+                    .push(status.phase.unwrap_or_default());
+                return false;
+            }
+            true
+        })));
+
+    let err = execute_shell_command_with_options(
+        &mut engine,
+        &ShellCommand::ReadsAcquirePrepare {
+            manifest_path: manifest_path.display().to_string(),
+            cache_dir: cache_dir.display().to_string(),
+            work_dir: work_dir.display().to_string(),
+            analysis_format: ReadAcquisitionAnalysisFormat::Fastq,
+            read_layout: ReadAcquisitionReadLayout::SingleEnd,
+            threads: Some(1),
+            max_size: None,
+            min_free_gb: None,
+            drop_intermediate_fastq: false,
+            continue_on_error: false,
+        },
+        &ShellExecutionOptions {
+            allow_screenshots: false,
+            allow_agent_commands: true,
+            progress_callback: Some(progress_callback),
+        },
+    )
+    .expect_err("progress callback should cancel read acquisition");
+
+    assert!(
+        err.to_ascii_lowercase().contains("cancel"),
+        "expected cancellation error, got {err}"
+    );
+    assert!(
+        progress_phases
+            .lock()
+            .expect("progress phases lock")
+            .iter()
+            .any(|phase| phase == "prefetch"),
+        "prefetch progress should be emitted before cancellation"
+    );
+    let inspect = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReadsAcquireInspect {
+            sra_accession: "SRRFAKECANCEL".to_string(),
+            cache_dir: cache_dir.display().to_string(),
+            work_dir: work_dir.display().to_string(),
+        },
+    )
+    .expect("inspect cancelled acquisition");
+    assert_eq!(
+        inspect.output["result"]["read_acquisition_report"]["cancelled_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        inspect.output["result"]["read_acquisition_report"]["rows"][0]["lifecycle_status"].as_str(),
+        Some("cancelled")
+    );
+    let cancel_again = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReadsAcquireCancel {
+            sra_accession: "SRRFAKECANCEL".to_string(),
+            cache_dir: cache_dir.display().to_string(),
+            work_dir: work_dir.display().to_string(),
+        },
+    )
+    .expect("execute cancel command for non-running acquisition");
+    assert!(
+        cancel_again.output["result"]["read_acquisition_report"]["warnings"]
+            .as_array()
+            .expect("cancel warnings")
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .is_some_and(|text| text.contains("No running read acquisition"))),
+        "cancel command should report when there is nothing active to cancel"
     );
 }
 

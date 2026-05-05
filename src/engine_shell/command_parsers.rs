@@ -51,7 +51,7 @@ pub(super) fn parse_reads_command(tokens: &[String]) -> Result<ShellCommand, Str
     match tokens[1].as_str() {
         "acquire" => {
             if tokens.len() < 3 {
-                return Err("reads acquire requires status|prepare|inspect".to_string());
+                return Err("reads acquire requires status|prepare|inspect|cancel".to_string());
             }
             match tokens[2].as_str() {
                 "status" => {
@@ -276,8 +276,54 @@ pub(super) fn parse_reads_command(tokens: &[String]) -> Result<ShellCommand, Str
                         })?,
                     })
                 }
+                "cancel" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "reads acquire cancel requires RUN_ACCESSION --cache-dir DIR --work-dir DIR"
+                                .to_string(),
+                        );
+                    }
+                    let sra_accession = tokens[3].trim().to_string();
+                    let mut cache_dir: Option<String> = None;
+                    let mut work_dir: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache-dir" => {
+                                cache_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--cache-dir",
+                                    "reads acquire cancel",
+                                )?);
+                            }
+                            "--work-dir" => {
+                                work_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--work-dir",
+                                    "reads acquire cancel",
+                                )?);
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for reads acquire cancel"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ReadsAcquireCancel {
+                        sra_accession,
+                        cache_dir: cache_dir.ok_or_else(|| {
+                            "reads acquire cancel requires --cache-dir DIR".to_string()
+                        })?,
+                        work_dir: work_dir.ok_or_else(|| {
+                            "reads acquire cancel requires --work-dir DIR".to_string()
+                        })?,
+                    })
+                }
                 other => Err(format!(
-                    "Unknown reads acquire subcommand '{other}' (expected status|prepare|inspect)"
+                    "Unknown reads acquire subcommand '{other}' (expected status|prepare|inspect|cancel)"
                 )),
             }
         }

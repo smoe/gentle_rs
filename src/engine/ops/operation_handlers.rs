@@ -22762,7 +22762,7 @@ impl GentleEngine {
                     drop_intermediate_fastq,
                     continue_on_error,
                 } => {
-                    let report = self.read_acquisition_prepare(
+                    let report = self.read_acquisition_prepare_with_progress(
                         &manifest_path,
                         &cache_dir,
                         &work_dir,
@@ -22773,6 +22773,7 @@ impl GentleEngine {
                         min_free_gb,
                         drop_intermediate_fastq,
                         continue_on_error,
+                        on_progress,
                     )?;
                     result.messages.push(format!(
                         "Read acquisition prepare for '{}' processed {} row(s): ready={}, running={}, failed={}, missing={}",
@@ -22797,6 +22798,20 @@ impl GentleEngine {
                         "Read acquisition inspect for '{}' reported lifecycle_status={}",
                         sra_accession, report.lifecycle_status
                     ));
+                    result.read_acquisition_report = Some(report);
+                }
+                Operation::ReadAcquireCancel {
+                    sra_accession,
+                    cache_dir,
+                    work_dir,
+                } => {
+                    let report =
+                        self.read_acquisition_cancel(&sra_accession, &cache_dir, &work_dir)?;
+                    result.messages.push(format!(
+                        "Read acquisition cancel requested for '{}'",
+                        sra_accession
+                    ));
+                    result.warnings.extend(report.warnings.iter().cloned());
                     result.read_acquisition_report = Some(report);
                 }
                 Operation::InterpretRnaReads {

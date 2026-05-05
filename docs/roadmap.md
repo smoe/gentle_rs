@@ -4599,6 +4599,10 @@ Track boundaries:
    - shared lifecycle/status records use
      `resource_key = "read_acquisition:<SRA_ACCESSION>"` with
      `missing|running|ready|failed|cancelled|stale` states and per-phase logs
+   - live safety affordances are now part of the baseline: prepare emits shared
+     `ReadAcquisition` progress snapshots, records a cancel-marker path for
+     `reads acquire cancel`, terminates active SRA Toolkit child processes on
+     cancellation, and monitors `--min-free-gb` while external phases run
    - record observed storage behavior in design assumptions:
      raw FASTA can be larger than `.sra` (for example, a ~9.4 GB `.sra` to
      ~11 GB FASTA conversion), so disk planning is mandatory
