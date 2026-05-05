@@ -1980,6 +1980,7 @@ Current draft operations:
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `ProjectMicroarrayTrack { seq_id, manifest_path, contrasts, level, min_abs_logfc?, max_adj_p?, max_features?, clear_existing }`
+- `ProjectGenomeInterval { source_genome_id, target_genome_id, projection_path, chrom, start_1based, end_1based, strand? }`
 - `ListCutRunDatasets { filter?, catalog_path? }`
 - `ShowCutRunDatasetStatus { dataset_id, catalog_path?, cache_dir? }`
 - `PrepareCutRunDataset { dataset_id, catalog_path?, cache_dir? }`
@@ -2047,20 +2048,32 @@ Microarray track projection notes:
   `{"ProjectMicroarrayTrack":{"seq_id":"grch38_tp73","manifest_path":"data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json","contrasts":["AdTAp73alpha-AdGFP","AdTAp73beta-AdGFP"],"level":"probeset","min_abs_logfc":0.5,"max_adj_p":0.05,"max_features":5000,"clear_existing":true}}`
 - manifest schema: `gentle.microarray_track_manifest.v1`
 - projection report schema: `gentle.microarray_projection_report.v1`
+- explicit interval-map projection report schema:
+  `gentle.genome_coordinate_projection_report.v1`
 - the manifest records dataset id, platform, normalization method, contrast
   order, coordinate system, supported `genome_id` aliases, and per-contrast TSV
   paths.
+- manifests may also include `coordinate_projections[]` entries with
+  `source_genome_id`, `target_genome_id`, `method`, and `path`. These paths
+  point at tab-delimited interval maps for build-to-build projection, currently
+  intended for audited GRCh37/hg19 to GRCh38/hg38 array-track display.
 - per-row TSV fields include `chrom`, `start_1based`, `end_1based`, `strand`,
   `feature_id`, `transcript_cluster_id`, `exon_id`, `probe_type`, `logFC`,
   `AveExpr`, `P.Value`, `adj.P.Val`, and optional junction/gene metadata.
 - projection is strict: the target sequence must have `GenomeSequenceAnchor`
-  provenance and the manifest coordinate system or supported aliases must match
-  the anchor `genome_id`; non-projectable/unverified array builds are rejected.
+  provenance and either the manifest coordinate system/supported aliases must
+  match the anchor `genome_id`, or a declared coordinate projection must map
+  the manifest build into that anchor build; non-projectable/unverified array
+  builds are rejected.
 - GENtle streams only rows overlapping the anchored interval and materializes
   them as ordinary `track` features with `gentle_track_source=Array`,
   `gentle_array_dataset`, `gentle_array_platform`, `gentle_array_contrast`,
   `logFC`, `adj_P_Val`, `AveExpr`, `feature_id`,
   `transcript_cluster_id`, and `exon_id` qualifiers.
+- projected rows retain both native and display coordinates in qualifiers:
+  `gentle_array_native_*` records the original manifest build, while
+  `genomic_*` and `chromosome/start_1based/end_1based` record the displayed
+  anchor-build interval.
 
 Catalog-backed reference/helper discovery notes:
 

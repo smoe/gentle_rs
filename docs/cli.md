@@ -4753,6 +4753,12 @@ Project prepared microarray contrast tracks onto a genome-anchored sequence:
 {"ProjectMicroarrayTrack":{"seq_id":"grch38_tp73","manifest_path":"data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json","contrasts":["AdTAp73alpha-AdGFP","AdTAp73beta-AdGFP"],"level":"probeset","min_abs_logfc":0.5,"max_adj_p":0.05,"max_features":5000,"clear_existing":true}}
 ```
 
+Project one interval through an explicit build-to-build interval map:
+
+```json
+{"ProjectGenomeInterval":{"source_genome_id":"hg19","target_genome_id":"hg38","projection_path":"data/projections/hg19-to-hg38.interval-map.tsv","chrom":"chr1","start_1based":1010,"end_1based":1020,"strand":"+"}}
+```
+
 Notes:
 
 - `PrepareGenome` is intended as a one-time setup step per genome and cache
@@ -4809,7 +4815,13 @@ Notes:
 - `ProjectMicroarrayTrack` expects the same genome-anchored `seq_id` and a
   `gentle.microarray_track_manifest.v1` manifest. Projection is refused unless
   the manifest `coordinate_system` / `supported_genome_ids` match the sequence
-  anchor `genome_id`; GENtle does not guess array coordinate builds.
+  anchor `genome_id` or the manifest declares an explicit
+  `coordinate_projections[]` map into that anchor build; GENtle does not guess
+  array coordinate builds.
+- The built-in genome catalog includes both `Human GRCh38 Ensembl 116` and
+  `Human GRCh37 Ensembl 87` (`hg19`/`GRCh37.p13` aliases), so direct native
+  extraction can use either build when the corresponding cache has been
+  prepared.
 - BED import accepts local `.bed` and `.bed.gz` files.
 - Concatenated gzip members are accepted for `.bed.gz` track input.
 - BigWig import accepts local `.bw` and `.bigWig` files and uses

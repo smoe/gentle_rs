@@ -15938,6 +15938,7 @@ impl GentleEngine {
             read_acquisition_report: None,
             cutrun_dataset_projection: None,
             microarray_projection: None,
+            genome_coordinate_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
@@ -18783,6 +18784,46 @@ impl GentleEngine {
                         report.skipped_rows
                     ));
                     result.microarray_projection = Some(report);
+                }
+                Operation::ProjectGenomeInterval {
+                    source_genome_id,
+                    target_genome_id,
+                    projection_path,
+                    chrom,
+                    start_1based,
+                    end_1based,
+                    strand,
+                } => {
+                    let strand = strand
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .and_then(|value| value.chars().next())
+                        .filter(|value| matches!(value, '+' | '-'));
+                    let report = Self::project_genome_interval_from_map(
+                        &source_genome_id,
+                        &target_genome_id,
+                        &projection_path,
+                        "interval_map",
+                        &chrom,
+                        start_1based,
+                        end_1based,
+                        strand,
+                    )?;
+                    if report.mapped {
+                        result.messages.push(format!(
+                            "Projected {}:{}-{} from '{}' to '{}' with {} interval(s)",
+                            chrom,
+                            start_1based,
+                            end_1based,
+                            source_genome_id,
+                            target_genome_id,
+                            report.intervals.len()
+                        ));
+                    } else {
+                        result.warnings.extend(report.warnings.clone());
+                    }
+                    result.genome_coordinate_projection = Some(report);
                 }
                 Operation::ListCutRunDatasets {
                     filter,

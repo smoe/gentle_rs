@@ -973,6 +973,10 @@ without blocking this publication.
     `arrays inspect-microarray-track` and `arrays project-microarray-track`
     project verified probeset-level rows onto genome-anchored DNA sequences as
     array heat-lane features while refusing unverified coordinate builds
+  - GRCh37/hg19 is now a first-class human genome catalog entry alongside
+    GRCh38; microarray manifests can declare explicit interval-map projections
+    so native GRCh37 array rows can be displayed on GRCh38 anchored sequences
+    with tooltip-visible native/display coordinates and projection status
   - E-MTAB-15709 remains tracked as an accession with archive-resolution
     warnings until BioStudies/ENA exposes concrete file URLs for the CUT&RUN
     raw data

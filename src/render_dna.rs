@@ -951,6 +951,8 @@ impl RenderDna {
                 &["gentle_array_anchor_genome_id"][..],
             ),
             ("assembly_check", &["gentle_array_assembly_check"][..]),
+            ("projection_method", &["gentle_array_projection_method"][..]),
+            ("projection_status", &["gentle_array_projection_status"][..]),
             ("contrast", &["gentle_array_contrast"][..]),
             ("level", &["gentle_array_level"][..]),
             ("feature_id", &["feature_id", "gentle_array_feature_id"][..]),
@@ -977,6 +979,16 @@ impl RenderDna {
             .or_else(|| Self::feature_qualifier_text(feature, "genomic_end_1based"));
         if let (Some(chrom), Some(start), Some(end)) = (chrom, start, end) {
             let line = format!("genomic_interval: {chrom}:{start}..{end}");
+            if seen.insert(line.clone()) {
+                lines.push(line);
+            }
+        }
+        let native_chrom = Self::feature_qualifier_text(feature, "gentle_array_native_chromosome");
+        let native_start =
+            Self::feature_qualifier_text(feature, "gentle_array_native_start_1based");
+        let native_end = Self::feature_qualifier_text(feature, "gentle_array_native_end_1based");
+        if let (Some(chrom), Some(start), Some(end)) = (native_chrom, native_start, native_end) {
+            let line = format!("native_array_interval: {chrom}:{start}..{end}");
             if seen.insert(line.clone()) {
                 lines.push(line);
             }
@@ -1958,6 +1970,14 @@ mod tests {
                     "gentle_array_assembly_check",
                     "supported_genome_id_alias_matches_anchor",
                 ),
+                ("gentle_array_projection_method", "synthetic_interval_map"),
+                (
+                    "gentle_array_projection_status",
+                    "mapped_unique_interval_block",
+                ),
+                ("gentle_array_native_chromosome", "chr1"),
+                ("gentle_array_native_start_1based", "1010"),
+                ("gentle_array_native_end_1based", "1020"),
                 ("gentle_array_contrast", "AdTAp73alpha-AdGFP"),
                 ("gentle_array_level", "probeset"),
                 ("feature_id", "PSR0001"),
@@ -1987,6 +2007,9 @@ mod tests {
             details
                 .contains(&"assembly_check: supported_genome_id_alias_matches_anchor".to_string())
         );
+        assert!(details.contains(&"projection_method: synthetic_interval_map".to_string()));
+        assert!(details.contains(&"projection_status: mapped_unique_interval_block".to_string()));
+        assert!(details.contains(&"native_array_interval: chr1:1010..1020".to_string()));
         assert!(details.contains(&"sequence_anchor_interval: chr1:1001..1100 +".to_string()));
         assert!(details.contains(&"contrast: AdTAp73alpha-AdGFP".to_string()));
         assert!(details.contains(&"logFC: 1.500000".to_string()));

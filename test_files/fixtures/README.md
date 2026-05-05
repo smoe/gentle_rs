@@ -33,6 +33,8 @@ checks.
 - `microarray_tracks/`
   - `README.md`
   - `clariomd.synthetic.manifest.json`
+  - `clariomd.synthetic.hg19_projected.manifest.json`
+  - `clariomd.synthetic.hg19-to-hg38.tsv`
   - `clariomd.synthetic.AdTAp73alpha-AdGFP.tsv`
   - `clariomd.synthetic.AdTAp73beta-AdGFP.tsv`
 

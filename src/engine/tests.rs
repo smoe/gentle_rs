@@ -106,7 +106,33 @@ fn microarray_track_fixture_manifest() -> String {
         .to_string()
 }
 
+fn microarray_projected_track_fixture_manifest() -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(
+            "test_files/fixtures/microarray_tracks/clariomd.synthetic.hg19_projected.manifest.json",
+        )
+        .to_string_lossy()
+        .to_string()
+}
+
+fn microarray_projection_fixture_map() -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/microarray_tracks/clariomd.synthetic.hg19-to-hg38.tsv")
+        .to_string_lossy()
+        .to_string()
+}
+
 fn microarray_anchored_engine(genome_id: &str, anchor_strand: &str) -> GentleEngine {
+    microarray_anchored_engine_at(genome_id, "chr1", 1001, 1100, anchor_strand)
+}
+
+fn microarray_anchored_engine_at(
+    genome_id: &str,
+    chromosome: &str,
+    start_1based: usize,
+    end_1based: usize,
+    anchor_strand: &str,
+) -> GentleEngine {
     let mut engine = GentleEngine::default();
     engine.state_mut().sequences.insert(
         "array_slice".to_string(),
@@ -119,9 +145,9 @@ fn microarray_anchored_engine(genome_id: &str, anchor_strand: &str) -> GentleEng
                 {
                     "seq_id": "array_slice",
                     "genome_id": genome_id,
-                    "chromosome": "chr1",
-                    "start_1based": 1001,
-                    "end_1based": 1100,
+                    "chromosome": chromosome,
+                    "start_1based": start_1based,
+                    "end_1based": end_1based,
                     "anchor_strand": anchor_strand,
                     "anchor_verified": true,
                     "recorded_at_unix_ms": 123
@@ -364,6 +390,88 @@ fn project_microarray_track_reverse_anchor_flips_coordinates_and_strand() {
         .expect("PSR0002 feature");
     assert_eq!(psr2.location.find_bounds().unwrap(), (40, 51));
     assert_eq!(first_qualifier(psr2, "strand").as_deref(), Some("+"));
+}
+
+#[test]
+fn project_microarray_track_uses_declared_coordinate_projection_map() {
+    let mut engine = microarray_anchored_engine_at("hg38", "chr1", 2001, 2100, "+");
+    let result = engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: microarray_projected_track_fixture_manifest(),
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: Some(1.0),
+            max_adj_p: Some(0.05),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project through coordinate map");
+    let report = result.microarray_projection.expect("projection report");
+    assert!(report.coordinate_projection_used);
+    assert_eq!(
+        report.coordinate_projection_method.as_deref(),
+        Some("synthetic_interval_map")
+    );
+    assert_eq!(report.imported_features, 2);
+    assert_eq!(report.skipped_projection_unmapped, 1);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    let psr1 = dna
+        .features()
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("PSR0001"))
+        .expect("PSR0001 feature");
+    assert_eq!(psr1.location.find_bounds().unwrap(), (9, 20));
+    assert_eq!(
+        first_qualifier(psr1, "gentle_array_coordinate_system").as_deref(),
+        Some("hg19")
+    );
+    assert_eq!(
+        first_qualifier(psr1, "gentle_array_anchor_genome_id").as_deref(),
+        Some("hg38")
+    );
+    assert_eq!(
+        first_qualifier(psr1, "gentle_array_assembly_check").as_deref(),
+        Some("projected_from_native_coordinate_system")
+    );
+    assert_eq!(
+        first_qualifier(psr1, "gentle_array_projection_method").as_deref(),
+        Some("synthetic_interval_map")
+    );
+    assert_eq!(
+        first_qualifier(psr1, "gentle_array_native_start_1based").as_deref(),
+        Some("1010")
+    );
+    assert_eq!(
+        first_qualifier(psr1, "genomic_start_1based").as_deref(),
+        Some("2010")
+    );
+}
+
+#[test]
+fn project_genome_interval_from_map_reports_projected_interval() {
+    let mut engine = GentleEngine::default();
+    let result = engine
+        .apply(Operation::ProjectGenomeInterval {
+            source_genome_id: "hg19".to_string(),
+            target_genome_id: "hg38".to_string(),
+            projection_path: microarray_projection_fixture_map(),
+            chrom: "chr1".to_string(),
+            start_1based: 1010,
+            end_1based: 1020,
+            strand: Some("+".to_string()),
+        })
+        .expect("project interval");
+    let report = result
+        .genome_coordinate_projection
+        .expect("coordinate projection report");
+    assert_eq!(report.schema, GENOME_COORDINATE_PROJECTION_REPORT_SCHEMA);
+    assert!(report.mapped);
+    assert_eq!(report.intervals.len(), 1);
+    assert_eq!(report.intervals[0].target_chrom, "chr1");
+    assert_eq!(report.intervals[0].target_start_1based, 2010);
+    assert_eq!(report.intervals[0].target_end_1based, 2020);
 }
 
 fn restriction_cloning_vector(sequence: &str, mcs_expected_sites: Option<&str>) -> DNAsequence {
