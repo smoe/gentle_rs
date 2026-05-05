@@ -61,8 +61,9 @@ use crate::{
         ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
         QpcrTranscriptTargetingMode, RackAuthoringTemplate, RackCarrierLabelPreset,
         RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-        RackProfileKind, RenderSvgMode, RepeatAnnotationFilter, RepeatEnvironmentCohortReport,
-        RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
+        RackProfileKind, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RenderSvgMode,
+        RepeatAnnotationFilter, RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
+        RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
         ReverseTranslationReportSummary, RnaReadAlignConfig,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
@@ -2080,6 +2081,28 @@ pub enum ShellCommand {
         graph_id: String,
         path: String,
     },
+    ReadsAcquireStatus {
+        manifest_path: String,
+        cache_dir: String,
+        work_dir: String,
+    },
+    ReadsAcquirePrepare {
+        manifest_path: String,
+        cache_dir: String,
+        work_dir: String,
+        analysis_format: ReadAcquisitionAnalysisFormat,
+        read_layout: ReadAcquisitionReadLayout,
+        threads: Option<usize>,
+        max_size: Option<String>,
+        min_free_gb: Option<u64>,
+        drop_intermediate_fastq: bool,
+        continue_on_error: bool,
+    },
+    ReadsAcquireInspect {
+        sra_accession: String,
+        cache_dir: String,
+        work_dir: String,
+    },
     RnaReadsInterpret {
         seq_id: String,
         seed_feature_id: usize,
@@ -2118,6 +2141,10 @@ pub enum ShellCommand {
         concatemer_settings: RnaReadConcatemerInspectionSettings,
         concatemer_limit: usize,
         continue_on_error: bool,
+        prepare_sra: bool,
+        read_cache_dir: Option<String>,
+        read_work_dir: Option<String>,
+        drop_intermediate_fastq: bool,
     },
     RnaReadsAlignReport {
         report_id: String,
@@ -9437,6 +9464,50 @@ impl ShellCommand {
                 "export construct-reasoning graph '{}' to '{}'",
                 graph_id, path
             ),
+            Self::ReadsAcquireStatus {
+                manifest_path,
+                cache_dir,
+                work_dir,
+            } => format!(
+                "inspect SRA read-acquisition status from manifest '{}' (cache='{}', work='{}')",
+                manifest_path, cache_dir, work_dir
+            ),
+            Self::ReadsAcquirePrepare {
+                manifest_path,
+                cache_dir,
+                work_dir,
+                analysis_format,
+                read_layout,
+                threads,
+                max_size,
+                min_free_gb,
+                drop_intermediate_fastq,
+                continue_on_error,
+            } => format!(
+                "prepare SRA reads from manifest '{}' (cache='{}', work='{}', format={}, layout={}, threads={}, max_size='{}', min_free_gb={}, drop_intermediate_fastq={}, continue_on_error={})",
+                manifest_path,
+                cache_dir,
+                work_dir,
+                analysis_format.as_str(),
+                read_layout.as_str(),
+                threads
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "auto".to_string()),
+                max_size.as_deref().unwrap_or("-"),
+                min_free_gb
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+                drop_intermediate_fastq,
+                continue_on_error
+            ),
+            Self::ReadsAcquireInspect {
+                sra_accession,
+                cache_dir,
+                work_dir,
+            } => format!(
+                "inspect SRA read-acquisition run '{}' (cache='{}', work='{}')",
+                sra_accession, cache_dir, work_dir
+            ),
             Self::RnaReadsInterpret {
                 seq_id,
                 seed_feature_id,
@@ -9510,9 +9581,13 @@ impl ShellCommand {
                 complete_rule,
                 concatemer_limit,
                 continue_on_error,
+                prepare_sra,
+                read_cache_dir,
+                read_work_dir,
+                drop_intermediate_fastq,
                 ..
             } => format!(
-                "batch-map RNA reads from manifest '{}' for '{}' feature={} into '{}' (genes={}, target_genes={}, profile={}, format={}, scope={}, origin_mode={}, report_mode={}, align_selection={}, complete_rule={}, roi_seed_capture={}, k={}, seed_stride_bp={}, align_band={}, align_min_identity={:.2}, max_secondary={}, concatemer_limit={}, continue_on_error={})",
+                "batch-map RNA reads from manifest '{}' for '{}' feature={} into '{}' (genes={}, target_genes={}, profile={}, format={}, scope={}, origin_mode={}, report_mode={}, align_selection={}, complete_rule={}, roi_seed_capture={}, k={}, seed_stride_bp={}, align_band={}, align_min_identity={:.2}, max_secondary={}, concatemer_limit={}, continue_on_error={}, prepare_sra={}, read_cache='{}', read_work='{}', drop_intermediate_fastq={})",
                 manifest_path,
                 seq_id,
                 seed_feature_id,
@@ -9536,6 +9611,10 @@ impl ShellCommand {
                 align_config.max_secondary_mappings,
                 concatemer_limit,
                 continue_on_error,
+                prepare_sra,
+                read_cache_dir.as_deref().unwrap_or("out/read_cache"),
+                read_work_dir.as_deref().unwrap_or("out/read_work"),
+                drop_intermediate_fastq,
             ),
             Self::RnaReadsAlignReport {
                 report_id,
@@ -10070,6 +10149,7 @@ impl ShellCommand {
                 | Self::ReverseTranslateRun { .. }
                 | Self::ConstructReasoningBuildProteinDnaHandoff { .. }
                 | Self::ConstructReasoningSetAnnotationStatus { .. }
+                | Self::ReadsAcquirePrepare { .. }
                 | Self::RnaReadsInterpret { .. }
                 | Self::RnaReadsBatchMap { .. }
                 | Self::RnaReadsAlignReport { .. }
@@ -18245,6 +18325,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "construct-reasoning" | "construct_reasoning" | "constructreasoning" => {
             parse_construct_reasoning_command(tokens)
         }
+        "reads" => parse_reads_command(tokens),
         "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
         "cutrun" => parse_cutrun_command(tokens),
         "attract" => parse_attract_command(tokens),
@@ -22651,6 +22732,62 @@ fn execute_protocol_cartoon_command(
         }
         _ => unreachable!("non-protocol-cartoon command passed to protocol-cartoon helper"),
     }
+}
+
+#[inline(never)]
+fn execute_reads_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    let op_result = match command {
+        ShellCommand::ReadsAcquireStatus {
+            manifest_path,
+            cache_dir,
+            work_dir,
+        } => engine.apply(Operation::ReadAcquireStatus {
+            manifest_path: manifest_path.clone(),
+            cache_dir: cache_dir.clone(),
+            work_dir: work_dir.clone(),
+        }),
+        ShellCommand::ReadsAcquirePrepare {
+            manifest_path,
+            cache_dir,
+            work_dir,
+            analysis_format,
+            read_layout,
+            threads,
+            max_size,
+            min_free_gb,
+            drop_intermediate_fastq,
+            continue_on_error,
+        } => engine.apply(Operation::ReadAcquirePrepare {
+            manifest_path: manifest_path.clone(),
+            cache_dir: cache_dir.clone(),
+            work_dir: work_dir.clone(),
+            analysis_format: *analysis_format,
+            read_layout: *read_layout,
+            threads: *threads,
+            max_size: max_size.clone(),
+            min_free_gb: *min_free_gb,
+            drop_intermediate_fastq: *drop_intermediate_fastq,
+            continue_on_error: *continue_on_error,
+        }),
+        ShellCommand::ReadsAcquireInspect {
+            sra_accession,
+            cache_dir,
+            work_dir,
+        } => engine.apply(Operation::ReadAcquireInspect {
+            sra_accession: sra_accession.clone(),
+            cache_dir: cache_dir.clone(),
+            work_dir: work_dir.clone(),
+        }),
+        _ => unreachable!("non-reads command passed to reads helper"),
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(ShellRunResult {
+        state_changed: false,
+        output: json!({ "result": op_result }),
+    })
 }
 
 #[inline(never)]
@@ -29107,6 +29244,10 @@ fn execute_rna_reads_command(
             concatemer_settings,
             concatemer_limit,
             continue_on_error,
+            prepare_sra,
+            read_cache_dir,
+            read_work_dir,
+            drop_intermediate_fastq,
         } => {
             let result = engine
                 .apply(Operation::RunRnaReadBatchMap {
@@ -29129,6 +29270,10 @@ fn execute_rna_reads_command(
                     concatemer_settings: concatemer_settings.clone(),
                     concatemer_limit: *concatemer_limit,
                     continue_on_error: *continue_on_error,
+                    prepare_sra: *prepare_sra,
+                    read_cache_dir: read_cache_dir.clone(),
+                    read_work_dir: read_work_dir.clone(),
+                    drop_intermediate_fastq: *drop_intermediate_fastq,
                 })
                 .map_err(|e| e.to_string())?;
             let report = result.rna_read_batch_map_report.clone().ok_or_else(|| {
@@ -30558,6 +30703,14 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::CutRunInspectRegulatorySupport { .. }
     ) {
         return execute_cutrun_command(engine, command);
+    }
+    if matches!(
+        command,
+        ShellCommand::ReadsAcquireStatus { .. }
+            | ShellCommand::ReadsAcquirePrepare { .. }
+            | ShellCommand::ReadsAcquireInspect { .. }
+    ) {
+        return execute_reads_command(engine, command);
     }
     if is_reference_or_track_command(command) {
         return execute_reference_and_track_command_with_expanded_stack(engine, command);
@@ -32233,6 +32386,9 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::SeqConfirmExportReport { .. }
         | ShellCommand::SeqConfirmExportSupportTsv { .. }
         | ShellCommand::SeqPrimerSuggest { .. } => execute_sequencing_command(engine, command)?,
+        ShellCommand::ReadsAcquireStatus { .. }
+        | ShellCommand::ReadsAcquirePrepare { .. }
+        | ShellCommand::ReadsAcquireInspect { .. } => execute_reads_command(engine, command)?,
         ShellCommand::RnaReadsInterpret { .. }
         | ShellCommand::RnaReadsBatchMap { .. }
         | ShellCommand::RnaReadsAlignReport { .. }

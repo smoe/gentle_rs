@@ -124,6 +124,9 @@ Catalog path note:
     engine-owned read report for later inspection/export
   - the same `cutrun interpret` route can also resolve prepared raw reads from
     `cutrun prepare` via `--dataset DATASET_ID [--catalog PATH] [--cache-dir PATH]`
+  - catalog entries may declare raw reads with `reads_sra_accession`;
+    `cutrun prepare` runs the shared read-acquisition layer first, then writes
+    the existing prepared manifest shape for `cutrun interpret --dataset ...`
   - `cutrun export-coverage` writes TSV summaries for per-base coverage,
     cut-site density, or derived fragment spans from one saved CUT&RUN read
     report
@@ -697,6 +700,11 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   The fixed-parameter multi-accession cohort variant for comparing TP73
   abundance across pancreatic cancer runs is maintained in
   `docs/tp73_pancreas_cohort_batch_runbook.md`.
+  Shared SRA-backed setup is now available through `reads acquire ...` and uses
+  the external SRA Toolkit (`prefetch`, `vdb-validate`, `fasterq-dump`) behind
+  one GENtle-owned manifest/status/log contract. RNA and CUT&RUN consume the
+  prepared FASTA/FASTQ paths from that shared layer instead of each workflow
+  inventing its own downloader.
   Phase split:
   - `interpret`: seed-filter pass (Nanopore phase-1)
   - `batch-map`: manifest-driven wrapper over the same per-sample
@@ -707,9 +715,13 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
       `batch_report.json`, `batch_summary.tsv`, `sample_sheet.tsv`,
       `isoform_support.tsv`, `concatemer_partner_summary.tsv`, and per-sample
       gene-support/concatemer JSON artifacts under `--out-dir`.
-    - SRA-only rows are planned, not fetched: they are marked
+    - by default, SRA-only rows are planned, not fetched: they are marked
       `needs_preparation` and written to `sra_preparation_plan.tsv` plus
       `sra_preparation_commands.sh`.
+    - with `--prepare-sra --read-cache-dir DIR --read-work-dir DIR`,
+      `batch-map` runs the shared read-acquisition prepare first and maps from
+      the prepared FASTA path; `--drop-intermediate-fastq` may remove only the
+      conversion FASTQ when the final analysis input is FASTA.
     - default batch settings are `report_mode=full`, `align-selection=all`,
       `complete-rule=near`, `max-secondary-mappings=5`, and
       `continue-on-error=true`.
@@ -2092,8 +2104,11 @@ Shared shell command:
     - `flex show TRACK_ID`
     - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
     - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
+    - `reads acquire status MANIFEST.tsv --cache-dir DIR --work-dir DIR`
+    - `reads acquire prepare MANIFEST.tsv --cache-dir DIR --work-dir DIR [--analysis-format fasta|fastq] [--read-layout single_end|paired_end|split_spot] [--threads N] [--max-size SIZE] [--min-free-gb N] [--drop-intermediate-fastq] [--continue-on-error]`
+    - `reads acquire inspect RUN_ACCESSION --cache-dir DIR --work-dir DIR`
     - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
-    - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--transcript-fasta PATH]... [--transcript-index PATH]...`
+    - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--prepare-sra] [--read-cache-dir DIR] [--read-work-dir DIR] [--drop-intermediate-fastq] [--transcript-fasta PATH]... [--transcript-index PATH]...`
     - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads preflight-isoforms SEQ_ID FEATURE_ID [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--positive-transcript-fasta PATH ...] [--must-pass-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]`
     - `rna-reads list-reports [SEQ_ID]`

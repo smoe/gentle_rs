@@ -280,7 +280,11 @@ impl CutRunCatalog {
                             entry.reads_r2_local.as_deref(),
                             entry.reads_r2_remote.as_deref(),
                         )
-                        .is_some(),
+                        .is_some()
+                        || entry
+                            .reads_sra_accession
+                            .as_deref()
+                            .is_some_and(|value| !value.trim().is_empty()),
                     read_layout: entry.read_layout,
                 })
             })
@@ -1054,10 +1058,16 @@ impl GentleEngine {
             entry.reads_r2_local.as_deref(),
             entry.reads_r2_remote.as_deref(),
         );
+        let reads_sra_accession = entry
+            .reads_sra_accession
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         if peaks_source.is_none()
             && signal_source.is_none()
             && reads_r1_source.is_none()
             && reads_r2_source.is_none()
+            && reads_sra_accession.is_none()
         {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -1116,6 +1126,36 @@ impl GentleEngine {
                     )
                 })
                 .transpose()?;
+            let (reads_r1, reads_r2) = if reads_r1.is_none() && reads_sra_accession.is_some() {
+                activity_tracker.update_progress("prepare_sra_reads", None, 0, None);
+                let acquisition = self.read_acquisition_prepare_single_accession(
+                    &resolved_dataset_id,
+                    reads_sra_accession.unwrap(),
+                    &effective_cache_dir.join("sra"),
+                    &install_dir.join("read_acquisition"),
+                    ReadAcquisitionAnalysisFormat::Fastq,
+                    match entry.read_layout {
+                        CutRunReadLayout::PairedEnd => ReadAcquisitionReadLayout::PairedEnd,
+                        CutRunReadLayout::SingleEnd => ReadAcquisitionReadLayout::SingleEnd,
+                    },
+                    false,
+                )?;
+                let r1 = acquisition.output_paths.first().map(|output| {
+                    Self::cutrun_prepared_asset_from_read_output(
+                        output,
+                        &format!("read_acquisition:{}", acquisition.sra_accession),
+                    )
+                });
+                let r2 = acquisition.output_paths.get(1).map(|output| {
+                    Self::cutrun_prepared_asset_from_read_output(
+                        output,
+                        &format!("read_acquisition:{}", acquisition.sra_accession),
+                    )
+                });
+                (r1, r2)
+            } else {
+                (reads_r1, reads_r2)
+            };
 
             activity_tracker.update_progress("write_manifest", None, 0, None);
             let manifest = CutRunPreparedManifest {
@@ -1322,6 +1362,20 @@ impl GentleEngine {
             entry.reads_r2_local.as_deref(),
             entry.reads_r2_remote.as_deref(),
         );
+        let reads_sra_source = entry
+            .reads_sra_accession
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("read_acquisition:{value}"));
+        let reads_r1_source = reads_r1_source.or_else(|| reads_sra_source.clone());
+        let reads_r2_source = reads_r2_source.or_else(|| {
+            if matches!(entry.read_layout, CutRunReadLayout::PairedEnd) {
+                reads_sra_source.clone()
+            } else {
+                None
+            }
+        });
         let peaks_status = Self::cutrun_asset_status_from_manifest(
             "peaks",
             peaks_source,
@@ -1474,6 +1528,24 @@ impl GentleEngine {
             });
         }
         Ok(manifest)
+    }
+
+    fn cutrun_prepared_asset_from_read_output(
+        output: &ReadAcquisitionOutputPath,
+        source: &str,
+    ) -> CutRunPreparedAssetManifest {
+        let local_path = PathBuf::from(&output.path);
+        CutRunPreparedAssetManifest {
+            source: source.to_string(),
+            local_path: output.path.clone(),
+            file_name: local_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("reads.fastq")
+                .to_string(),
+            file_size_bytes: output.file_size_bytes,
+            checksum_sha1: output.checksum_sha1.clone(),
+        }
     }
 
     fn materialize_cutrun_asset(

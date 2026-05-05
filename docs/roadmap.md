@@ -4523,23 +4523,23 @@ Status:
     - shell, serialized `op`, CLI shell help, GUI help, and MCP help now share
       the same documented batch-map contract through `docs/glossary.json`; a
       regression test exercises shell-vs-operation parity for the batch route
-    - manifest v1 accepts `sample_id` plus FASTA `input_path` rows, and marks
-      SRA-only rows as `needs_preparation` instead of attempting network or
-      conversion work
+    - manifest v1 accepts `sample_id` plus FASTA `input_path` rows; SRA-only
+      rows still default to `needs_preparation`, but `--prepare-sra` now runs
+      the shared `reads acquire` layer before mapping from prepared FASTA
     - successful rows reuse the single-sample interpretation, phase-2
       alignment, gene-support, audit, sample-sheet, and concatemer-inspection
       engine paths rather than duplicating biology in the batch wrapper
     - each bundle writes `batch_report.json`, `batch_summary.tsv`,
       `sample_sheet.tsv`, `isoform_support.tsv`,
-      `concatemer_partner_summary.tsv`, optional SRA preparation artifacts, and
-      per-sample gene-support/concatemer JSON
+      `concatemer_partner_summary.tsv`, optional SRA preparation/read
+      acquisition artifacts, and per-sample gene-support/concatemer JSON
     - the TSVs are intentionally figure-ready but figure-free: sample-level
       dashboards, isoform completeness/fragment plots, partner-gene bars, and
       suspicious-fusion heatmaps can now be derived later without rerunning
       mapping
-    - remaining gap: FASTQ/SRA streaming conversion and graphical dashboards
-      are still deferred; SRA preparation is currently emitted as a deterministic
-      plan/commands file
+    - remaining gap: graphical dashboards, direct ENA/HTTP retrieval, and true
+      streaming conversion are still deferred; V1 standardizes on external SRA
+      Toolkit commands with GENtle-owned manifests/status/logs
 
 Track boundaries:
 
@@ -4562,13 +4562,17 @@ Track boundaries:
    - evolve toward SNR-normalized acceptance thresholds with report-level
      diagnostics and deterministic cross-adapter parity.
 6. Add SRA/FASTA ingestion + storage strategy subtrack:
-   - baseline phase-1 contract remains external SRA conversion and FASTA ingest
-     (`.sra` is not parsed directly by GENtle in phase 1)
+   - baseline phase-1 contract is now implemented through `reads acquire`:
+     external SRA Toolkit conversion plus FASTA/FASTQ ingest; `.sra` is not
+     parsed directly by GENtle in phase 1
+   - shared lifecycle/status records use
+     `resource_key = "read_acquisition:<SRA_ACCESSION>"` with
+     `missing|running|ready|failed|cancelled|stale` states and per-phase logs
    - record observed storage behavior in design assumptions:
      raw FASTA can be larger than `.sra` (for example, a ~9.4 GB `.sra` to
      ~11 GB FASTA conversion), so disk planning is mandatory
-   - evaluate a streaming ingestion path via `fasterq-dump --fasta --stdout`
-     as an optional execution mode for large runs
+   - evaluate direct ENA/HTTP retrieval and a streaming ingestion path via
+     `fasterq-dump --fasta --stdout` as optional later backends for large runs
    - because the Nanopore flow is two-pass (seed filter then alignment),
      define deterministic replay/spool rules up front:
      - stream mode: keep deterministic shortlisted-hit spool entries
@@ -4694,6 +4698,9 @@ Status:
    - the same V2 path now accepts either explicit raw-read file paths or
      prepared raw reads linked from a CUT&RUN catalog entry after
      `PrepareCutRunDataset`.
+   - SRA-backed catalog raw reads (`reads_sra_accession`) now flow through the
+     shared read-acquisition layer before the existing prepared manifest is
+     written.
 
 3. Implemented baseline V3:
    - shared engine-owned reasoning report:

@@ -16,10 +16,276 @@ use crate::engine::{
     CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
     QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting, QpcrTranscriptTargetingMode,
-    RepeatEnvironmentGeometryMode, TfbsScoreTrackCorrelationMetric,
-    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
-    TfbsTrackSimilarityRankingMetric,
+    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
+    TfbsScoreTrackCorrelationMetric, TfbsScoreTrackCorrelationSignalSource,
+    TfbsScoreTrackValueKind, TfbsTrackSimilarityRankingMetric,
 };
+
+fn parse_read_acquisition_analysis_format(
+    raw: &str,
+) -> Result<ReadAcquisitionAnalysisFormat, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "fasta" | "fa" => Ok(ReadAcquisitionAnalysisFormat::Fasta),
+        "fastq" | "fq" => Ok(ReadAcquisitionAnalysisFormat::Fastq),
+        other => Err(format!(
+            "Unknown read acquisition analysis format '{other}' (expected fasta|fastq)"
+        )),
+    }
+}
+
+fn parse_read_acquisition_read_layout(raw: &str) -> Result<ReadAcquisitionReadLayout, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "single_end" | "single-end" | "single" | "se" => Ok(ReadAcquisitionReadLayout::SingleEnd),
+        "paired_end" | "paired-end" | "paired" | "pe" => Ok(ReadAcquisitionReadLayout::PairedEnd),
+        "split_spot" | "split-spot" | "splitspot" => Ok(ReadAcquisitionReadLayout::SplitSpot),
+        other => Err(format!(
+            "Unknown read acquisition layout '{other}' (expected single_end|paired_end|split_spot)"
+        )),
+    }
+}
+
+pub(super) fn parse_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("reads requires a subcommand: acquire".to_string());
+    }
+    match tokens[1].as_str() {
+        "acquire" => {
+            if tokens.len() < 3 {
+                return Err("reads acquire requires status|prepare|inspect".to_string());
+            }
+            match tokens[2].as_str() {
+                "status" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "reads acquire status requires MANIFEST.tsv --cache-dir DIR --work-dir DIR"
+                                .to_string(),
+                        );
+                    }
+                    let manifest_path = tokens[3].trim().to_string();
+                    let mut cache_dir: Option<String> = None;
+                    let mut work_dir: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache-dir" => {
+                                cache_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--cache-dir",
+                                    "reads acquire status",
+                                )?);
+                            }
+                            "--work-dir" => {
+                                work_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--work-dir",
+                                    "reads acquire status",
+                                )?);
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for reads acquire status"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ReadsAcquireStatus {
+                        manifest_path,
+                        cache_dir: cache_dir.ok_or_else(|| {
+                            "reads acquire status requires --cache-dir DIR".to_string()
+                        })?,
+                        work_dir: work_dir.ok_or_else(|| {
+                            "reads acquire status requires --work-dir DIR".to_string()
+                        })?,
+                    })
+                }
+                "prepare" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "reads acquire prepare requires MANIFEST.tsv --cache-dir DIR --work-dir DIR [--analysis-format fasta|fastq] [--read-layout single_end|paired_end|split_spot] [--threads N] [--max-size SIZE] [--min-free-gb N] [--drop-intermediate-fastq] [--continue-on-error]"
+                                .to_string(),
+                        );
+                    }
+                    let manifest_path = tokens[3].trim().to_string();
+                    let mut cache_dir: Option<String> = None;
+                    let mut work_dir: Option<String> = None;
+                    let mut analysis_format = ReadAcquisitionAnalysisFormat::Fasta;
+                    let mut read_layout = ReadAcquisitionReadLayout::SingleEnd;
+                    let mut threads: Option<usize> = None;
+                    let mut max_size: Option<String> = None;
+                    let mut min_free_gb: Option<u64> = None;
+                    let mut drop_intermediate_fastq = false;
+                    let mut continue_on_error = false;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache-dir" => {
+                                cache_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--cache-dir",
+                                    "reads acquire prepare",
+                                )?);
+                            }
+                            "--work-dir" => {
+                                work_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--work-dir",
+                                    "reads acquire prepare",
+                                )?);
+                            }
+                            "--analysis-format" | "--format" => {
+                                let flag = tokens[idx].clone();
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    &flag,
+                                    "reads acquire prepare",
+                                )?;
+                                analysis_format = parse_read_acquisition_analysis_format(&raw)?;
+                            }
+                            "--read-layout" | "--layout" => {
+                                let flag = tokens[idx].clone();
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    &flag,
+                                    "reads acquire prepare",
+                                )?;
+                                read_layout = parse_read_acquisition_read_layout(&raw)?;
+                            }
+                            "--threads" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--threads",
+                                    "reads acquire prepare",
+                                )?;
+                                threads = Some(raw.parse::<usize>().map_err(|e| {
+                                    format!(
+                                        "Invalid --threads value '{raw}' for reads acquire prepare: {e}"
+                                    )
+                                })?);
+                            }
+                            "--max-size" => {
+                                max_size = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--max-size",
+                                    "reads acquire prepare",
+                                )?);
+                            }
+                            "--min-free-gb" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--min-free-gb",
+                                    "reads acquire prepare",
+                                )?;
+                                min_free_gb = Some(raw.parse::<u64>().map_err(|e| {
+                                    format!(
+                                        "Invalid --min-free-gb value '{raw}' for reads acquire prepare: {e}"
+                                    )
+                                })?);
+                            }
+                            "--drop-intermediate-fastq" => {
+                                drop_intermediate_fastq = true;
+                                idx += 1;
+                            }
+                            "--keep-intermediate-fastq" | "--no-drop-intermediate-fastq" => {
+                                drop_intermediate_fastq = false;
+                                idx += 1;
+                            }
+                            "--continue-on-error" => {
+                                continue_on_error = true;
+                                idx += 1;
+                            }
+                            "--fail-fast" | "--no-continue-on-error" => {
+                                continue_on_error = false;
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for reads acquire prepare"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ReadsAcquirePrepare {
+                        manifest_path,
+                        cache_dir: cache_dir.ok_or_else(|| {
+                            "reads acquire prepare requires --cache-dir DIR".to_string()
+                        })?,
+                        work_dir: work_dir.ok_or_else(|| {
+                            "reads acquire prepare requires --work-dir DIR".to_string()
+                        })?,
+                        analysis_format,
+                        read_layout,
+                        threads,
+                        max_size,
+                        min_free_gb,
+                        drop_intermediate_fastq,
+                        continue_on_error,
+                    })
+                }
+                "inspect" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "reads acquire inspect requires RUN_ACCESSION --cache-dir DIR --work-dir DIR"
+                                .to_string(),
+                        );
+                    }
+                    let sra_accession = tokens[3].trim().to_string();
+                    let mut cache_dir: Option<String> = None;
+                    let mut work_dir: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--cache-dir" => {
+                                cache_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--cache-dir",
+                                    "reads acquire inspect",
+                                )?);
+                            }
+                            "--work-dir" => {
+                                work_dir = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--work-dir",
+                                    "reads acquire inspect",
+                                )?);
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for reads acquire inspect"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ReadsAcquireInspect {
+                        sra_accession,
+                        cache_dir: cache_dir.ok_or_else(|| {
+                            "reads acquire inspect requires --cache-dir DIR".to_string()
+                        })?,
+                        work_dir: work_dir.ok_or_else(|| {
+                            "reads acquire inspect requires --work-dir DIR".to_string()
+                        })?,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown reads acquire subcommand '{other}' (expected status|prepare|inspect)"
+                )),
+            }
+        }
+        other => Err(format!(
+            "Unknown reads subcommand '{other}' (expected acquire)"
+        )),
+    }
+}
 
 pub(super) fn parse_containers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
@@ -8682,6 +8948,10 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
             let mut concatemer_settings = RnaReadConcatemerInspectionSettings::default();
             let mut concatemer_limit = 5_000usize;
             let mut continue_on_error = true;
+            let mut prepare_sra = false;
+            let mut read_cache_dir: Option<String> = None;
+            let mut read_work_dir: Option<String> = None;
+            let mut drop_intermediate_fastq = false;
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -8802,6 +9072,40 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                     }
                     "--fail-fast" | "--no-continue-on-error" => {
                         continue_on_error = false;
+                        idx += 1;
+                    }
+                    "--prepare-sra" => {
+                        prepare_sra = true;
+                        idx += 1;
+                    }
+                    "--no-prepare-sra" => {
+                        prepare_sra = false;
+                        idx += 1;
+                    }
+                    "--read-cache-dir" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-cache-dir",
+                            "rna-reads batch-map",
+                        )?;
+                        read_cache_dir = Some(raw);
+                    }
+                    "--read-work-dir" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-work-dir",
+                            "rna-reads batch-map",
+                        )?;
+                        read_work_dir = Some(raw);
+                    }
+                    "--drop-intermediate-fastq" => {
+                        drop_intermediate_fastq = true;
+                        idx += 1;
+                    }
+                    "--keep-intermediate-fastq" | "--no-drop-intermediate-fastq" => {
+                        drop_intermediate_fastq = false;
                         idx += 1;
                     }
                     "--kmer-len" => {
@@ -9112,6 +9416,10 @@ pub(super) fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand,
                 concatemer_settings,
                 concatemer_limit,
                 continue_on_error,
+                prepare_sra,
+                read_cache_dir,
+                read_work_dir,
+                drop_intermediate_fastq,
             })
         }
         "align-report" => {

@@ -1817,6 +1817,10 @@ Architecture constraints for this track:
 - Batch-oriented outputs must remain engine-owned: sample-sheet export contracts
   (TSV + machine-readable frequency columns) are shared across GUI/CLI/agents
   and derived from persisted RNA-read reports.
+- SRA-backed read preparation must stay in a shared, headless acquisition layer:
+  RNA expression and CUT&RUN consume prepared FASTA/FASTQ outputs plus
+  `gentle.read_acquisition_report.v1` records rather than embedding separate
+  downloader/conversion logic in each workflow.
 - Per-read exon-path and exon/transition abundance TSV exports should remain
   first-class engine contracts (not GUI-only derivations) so downstream cohort
   analysis is adapter-equivalent.
