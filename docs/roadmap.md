@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-05-02
+Last updated: 2026-05-05
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -47,6 +47,12 @@ one persuasive end-to-end proof path.
   `docs/tp73_pancreas_cohort_batch_runbook.md`: one preflight-derived seed
   filter, one method across all runs, per-run state copies for cluster safety,
   and a merged sample sheet for comparison.
+- For quick follow-on expression screens beyond TP73, use the gene-agnostic
+  `scripts/pancreas_gene_rna_screen.sh` helper rather than adding new
+  per-gene wrappers. It resolves a HUGO symbol to a compact NCBI GenBank locus,
+  keeps per-sample GENtle states isolated, runs samples in parallel via
+  `--jobs`, and writes interim checkpoints/logs plus summary and figure-source
+  TSVs for TP53/TP63/E2F1/POU2F1-style cohort triage.
 - Keep CUT&RUN pre-release work to a small TP73-adjacent smoke/proof slice:
   reuse existing prepared-dataset projection, ROI read interpretation,
   regulatory-support inspection, existing TFBS scan/score-track surfaces, and
@@ -3814,6 +3820,15 @@ Planned work:
        isoform curation surface
      - E2F transcription-factor family membership/aliases and motif/regulatory
        interpretation notes as family knowledge, not as an isoform panel
+   - Post-release RNA-read follow-up: add a gene-agnostic terminal-variant
+     discriminator for short, biased cDNA reads. Given any curated/public
+     isoform panel, GENtle should derive transcript regions or exon/junction
+     combinations that uniquely separate terminal isoform classes, then report
+     per-read support as `class-specific`, `shared-terminal`, or
+     `unresolved-upstream` instead of letting deterministic best-template
+     tie-breaks masquerade as isoform assignments. TP73 alpha/beta/gamma and
+     DeltaN/Ex2-3 variants should remain only the benchmark case for this
+     generic mechanism, not hard-coded mapper behavior.
 5. Broaden the ClawBio/agent example pack beyond first-run bootstrap into
    richer inspect/extract/BLAST, planning, and graphics/export workflows.
    - Bootstrap plus first follow-on examples are now in place; keep expanding
