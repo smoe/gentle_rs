@@ -1,0 +1,11 @@
+file_name	category	size_label	size_bytes	url
+190607_HFx_UL_BMFZ_Ctrl_1.msf	search_output	928M		https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_1.msf
+190607_HFx_UL_BMFZ_Ctrl_1.raw	raw_mass_spectrometry	2.5G		https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_1.raw
+190607_HFx_UL_BMFZ_Ctrl_2.msf	search_output	754M	790822912	https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_2.msf
+190607_HFx_UL_BMFZ_Ctrl_2.raw	raw_mass_spectrometry	2.2G		https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_2.raw
+190607_HFx_UL_BMFZ_TAp73_1.msf	search_output	904M		https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_1.msf
+190607_HFx_UL_BMFZ_TAp73_1.raw	raw_mass_spectrometry	2.5G		https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_1.raw
+190607_HFx_UL_BMFZ_TAp73_2.msf	search_output	1.0G	1113673728	https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_2.msf
+190607_HFx_UL_BMFZ_TAp73_2.raw	raw_mass_spectrometry	2.8G		https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_2.raw
+Human_uniprot_01_2017.fasta	reference_database	13M		https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/Human_uniprot_01_2017.fasta
+checksum.txt	checksum	1.2K		https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/checksum.txt

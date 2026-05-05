@@ -1,0 +1,12 @@
+file_name	category	size_label	size_bytes	url
+E-MTAB-14704.idf.txt	metadata	2.5K		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/E-MTAB-14704.idf.txt
+E-MTAB-14704.sdrf.txt	metadata	3.4K		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/E-MTAB-14704.sdrf.txt
+P_SKMel29_AdDNp73beta_1.CEL	raw_microarray	66M		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_1.CEL
+P_SKMel29_AdDNp73beta_2.CEL	raw_microarray	66M		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_2.CEL
+P_SKMel29_AdDNp73beta_3.CEL	raw_microarray	66M		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_3.CEL
+P_SKMel29_AdGFP_1.CEL	raw_microarray	66M		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_1.CEL
+P_SKMel29_AdGFP_2.CEL	raw_microarray	66M		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_2.CEL
+P_SKMel29_AdGFP_3.CEL	raw_microarray	66M		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_3.CEL
+P_SKMel29_AdTAp73alpha_1.CEL	raw_microarray	66M		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_1.CEL
+P_SKMel29_AdTAp73alpha_2.CEL	raw_microarray	66M		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_2.CEL
+P_SKMel29_AdTAp73alpha_3.CEL	raw_microarray	66M		https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_3.CEL

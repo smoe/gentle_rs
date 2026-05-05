@@ -1,0 +1,119 @@
+{
+  "schema": "gentle.publication_dataset_download_manifest.v1",
+  "publication": {
+    "id": "rostock_p73_multimodal_2026",
+    "title": "Integrative Multimodal Profiling of TAp73 and DNp73 Reveals Isoform-Specific Transcriptomic Coregulator Landscapes in Cancer Programs",
+    "doi": "10.3390/biom16010063",
+    "article_url": "https://www.mdpi.com/2218-273X/16/1/63",
+    "code_url": "https://github.com/IEGT/jaspar-mapping",
+    "authors": [
+      "Steffen Möller",
+      "Alf Spitschak",
+      "Nico Murr",
+      "Brigitte M. Pützer"
+    ]
+  },
+  "dataset": {
+    "dataset_id": "rostock_p73_clariomd_e_mtab_14704",
+    "accession": "E-MTAB-14704",
+    "repository": "ArrayExpress/BioStudies",
+    "assay_kind": "Affymetrix Clariom D transcriptome microarray",
+    "title": "SK-Mel-29 p73 isoform Clariom D transcriptome data",
+    "description": "Affymetrix Clariom D CEL files and MAGE-TAB metadata for SK-Mel-29 AdGFP, AdTAp73alpha, and AdDNp73beta transcriptome profiling.",
+    "landing_url": "https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14704",
+    "api_url": "https://www.ebi.ac.uk/biostudies/api/v1/studies/E-MTAB-14704",
+    "file_listing_url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/",
+    "declared_file_count": 11,
+    "categories": [
+      "metadata",
+      "raw_microarray"
+    ],
+    "notes": [
+      "Public BioStudies FTP directory verified on 2026-05-03.",
+      "The BioStudies study API returned an EBI 500 page during local verification; the FTP directory is therefore the deterministic download source in this catalog."
+    ]
+  },
+  "files": [
+    {
+      "file_name": "E-MTAB-14704.idf.txt",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/E-MTAB-14704.idf.txt",
+      "category": "metadata",
+      "size_label": "2.5K",
+      "size_bytes": null
+    },
+    {
+      "file_name": "E-MTAB-14704.sdrf.txt",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/E-MTAB-14704.sdrf.txt",
+      "category": "metadata",
+      "size_label": "3.4K",
+      "size_bytes": null
+    },
+    {
+      "file_name": "P_SKMel29_AdDNp73beta_1.CEL",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_1.CEL",
+      "category": "raw_microarray",
+      "size_label": "66M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "P_SKMel29_AdDNp73beta_2.CEL",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_2.CEL",
+      "category": "raw_microarray",
+      "size_label": "66M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "P_SKMel29_AdDNp73beta_3.CEL",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_3.CEL",
+      "category": "raw_microarray",
+      "size_label": "66M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "P_SKMel29_AdGFP_1.CEL",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_1.CEL",
+      "category": "raw_microarray",
+      "size_label": "66M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "P_SKMel29_AdGFP_2.CEL",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_2.CEL",
+      "category": "raw_microarray",
+      "size_label": "66M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "P_SKMel29_AdGFP_3.CEL",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_3.CEL",
+      "category": "raw_microarray",
+      "size_label": "66M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "P_SKMel29_AdTAp73alpha_1.CEL",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_1.CEL",
+      "category": "raw_microarray",
+      "size_label": "66M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "P_SKMel29_AdTAp73alpha_2.CEL",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_2.CEL",
+      "category": "raw_microarray",
+      "size_label": "66M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "P_SKMel29_AdTAp73alpha_3.CEL",
+      "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_3.CEL",
+      "category": "raw_microarray",
+      "size_label": "66M",
+      "size_bytes": null
+    }
+  ],
+  "notes": [
+    "Public BioStudies FTP directory verified on 2026-05-03.",
+    "The BioStudies study API returned an EBI 500 page during local verification; the FTP directory is therefore the deterministic download source in this catalog."
+  ]
+}

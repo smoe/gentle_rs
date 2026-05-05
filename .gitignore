@@ -6,6 +6,11 @@ assets/data/
 docs/examples/generated/
 slides/
 target/
+.r-lib/
 *.gz
 assets/cache/
 .gentle_state.json
+data/publication_resources/*/*
+!data/publication_resources/*/manifest.json
+!data/publication_resources/*/download_manifest.tsv
+!data/publication_resources/*/download.sh

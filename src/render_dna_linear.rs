@@ -114,6 +114,8 @@ struct FeaturePosition {
     kind_upper: String,
     color: Color32,
     is_regulatory: bool,
+    is_array_track: bool,
+    array_stroke: Option<Stroke>,
     is_mcs: bool,
     is_variation: bool,
     is_pointy: bool,
@@ -816,6 +818,7 @@ impl RenderDnaLinear {
         show_gene_features: bool,
         show_mrna_features: bool,
         show_repeat_features: bool,
+        show_array_features: bool,
         show_contextual_transcript_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
@@ -844,6 +847,9 @@ impl RenderDnaLinear {
             return false;
         }
         if !show_repeat_features && RenderDna::is_repeat_feature(feature) {
+            return false;
+        }
+        if !show_array_features && RenderDna::is_array_track_feature(feature) {
             return false;
         }
         if RenderDna::is_tfbs_feature(feature) {
@@ -1003,6 +1009,8 @@ impl RenderDnaLinear {
             is_pointy: bool,
             is_reverse: bool,
             is_regulatory: bool,
+            is_array_track: bool,
+            array_stroke: Option<Stroke>,
             is_mcs: bool,
             is_variation: bool,
         }
@@ -1028,6 +1036,7 @@ impl RenderDnaLinear {
             show_gene_features,
             show_mrna_features,
             show_repeat_features,
+            show_array_features,
             show_contextual_transcript_features,
             show_tfbs,
             tfbs_display_criteria,
@@ -1044,6 +1053,7 @@ impl RenderDnaLinear {
                     display.show_gene_features(),
                     display.show_mrna_features(),
                     display.show_repeat_features(),
+                    display.show_array_features(),
                     display.show_contextual_transcript_features(),
                     display.show_tfbs(),
                     display.tfbs_display_criteria(),
@@ -1054,6 +1064,7 @@ impl RenderDnaLinear {
                 )
             })
             .unwrap_or((
+                true,
                 true,
                 true,
                 true,
@@ -1078,6 +1089,7 @@ impl RenderDnaLinear {
                 show_gene_features,
                 show_mrna_features,
                 show_repeat_features,
+                show_array_features,
                 show_contextual_transcript_features,
                 show_tfbs,
                 tfbs_display_criteria,
@@ -1233,8 +1245,11 @@ impl RenderDnaLinear {
                 x2 = expanded_right.max(expanded_left + 1.0);
             }
             let kind = feature.kind.to_string().to_ascii_uppercase();
-            let is_high_priority_feature =
-                is_mcs || is_variation || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
+            let is_array_track = RenderDna::is_array_track_feature(feature);
+            let is_high_priority_feature = is_mcs
+                || is_variation
+                || is_array_track
+                || matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
             if !is_high_priority_feature && (x2 - x1) < low_value_feature_min_width_px {
                 continue;
             }
@@ -1253,7 +1268,9 @@ impl RenderDnaLinear {
                 color: RenderDna::feature_color(feature),
                 is_pointy: RenderDna::is_feature_pointy(feature),
                 is_reverse: feature_is_reverse(feature),
-                is_regulatory: RenderDna::is_regulatory_feature(feature),
+                is_regulatory: RenderDna::is_regulatory_feature(feature) || is_array_track,
+                is_array_track,
+                array_stroke: RenderDna::array_feature_confidence_stroke(feature),
                 is_mcs,
                 is_variation,
             });
@@ -1493,7 +1510,8 @@ impl RenderDnaLinear {
                 LaneSide::RegulatoryNearBaseline => self.baseline_y() - side_style.margin,
             };
             let lane_is_bottom_side = matches!(item.lane_side, LaneSide::Bottom);
-            let suppress_introns = matches!(item.lane_side, LaneSide::RegulatoryNearBaseline);
+            let suppress_introns =
+                seed.is_array_track || matches!(item.lane_side, LaneSide::RegulatoryNearBaseline);
             let exon_rects: Vec<Rect> = seed
                 .exon_segments
                 .iter()
@@ -1553,6 +1571,8 @@ impl RenderDnaLinear {
                 kind_upper: seed.kind_upper,
                 color: seed.color,
                 is_regulatory: seed.is_regulatory,
+                is_array_track: seed.is_array_track,
+                array_stroke: seed.array_stroke,
                 is_mcs: seed.is_mcs,
                 is_variation: seed.is_variation,
                 is_pointy: seed.is_pointy && !seed.is_regulatory,
@@ -2574,35 +2594,40 @@ impl RenderDnaLinear {
 
             for exon_rect in &feature.exon_rects {
                 painter.rect_filled(*exon_rect, 1.5, feature.color);
+                if let Some(stroke) = feature.array_stroke.filter(|_| feature.is_array_track) {
+                    painter.rect_stroke(*exon_rect, 1.5, stroke, StrokeKind::Inside);
+                }
             }
-            for (exon_rect, mod3) in feature
-                .exon_rects
-                .iter()
-                .zip(feature.exon_length_mod3_cues.iter())
-            {
-                let Some(mod3) = mod3 else {
-                    continue;
-                };
-                let stripe_h = (exon_rect.height() * 0.22).clamp(1.5, 3.0);
-                let stripe = Rect::from_min_max(
-                    exon_rect.left_top(),
-                    Pos2::new(exon_rect.right(), exon_rect.top() + stripe_h),
-                );
-                let cue_color = RenderDna::exon_length_mod3_color(*mod3);
-                painter.rect_filled(stripe, 0.0, cue_color);
-                if *mod3 != 0 && exon_rect.width() >= 8.0 {
-                    let slash_x = if *mod3 == 1 {
-                        exon_rect.left() + exon_rect.width() * 0.5
-                    } else {
-                        exon_rect.right() - exon_rect.width().min(12.0) * 0.5
+            if !feature.is_array_track {
+                for (exon_rect, mod3) in feature
+                    .exon_rects
+                    .iter()
+                    .zip(feature.exon_length_mod3_cues.iter())
+                {
+                    let Some(mod3) = mod3 else {
+                        continue;
                     };
-                    painter.line_segment(
-                        [
-                            Pos2::new(slash_x - 2.5, exon_rect.bottom() - 1.0),
-                            Pos2::new(slash_x + 2.5, exon_rect.top() + 1.0),
-                        ],
-                        Stroke::new(1.0, cue_color),
+                    let stripe_h = (exon_rect.height() * 0.22).clamp(1.5, 3.0);
+                    let stripe = Rect::from_min_max(
+                        exon_rect.left_top(),
+                        Pos2::new(exon_rect.right(), exon_rect.top() + stripe_h),
                     );
+                    let cue_color = RenderDna::exon_length_mod3_color(*mod3);
+                    painter.rect_filled(stripe, 0.0, cue_color);
+                    if *mod3 != 0 && exon_rect.width() >= 8.0 {
+                        let slash_x = if *mod3 == 1 {
+                            exon_rect.left() + exon_rect.width() * 0.5
+                        } else {
+                            exon_rect.right() - exon_rect.width().min(12.0) * 0.5
+                        };
+                        painter.line_segment(
+                            [
+                                Pos2::new(slash_x - 2.5, exon_rect.bottom() - 1.0),
+                                Pos2::new(slash_x + 2.5, exon_rect.top() + 1.0),
+                            ],
+                            Stroke::new(1.0, cue_color),
+                        );
+                    }
                 }
             }
             if feature.is_mcs && !selected && !hovered {
@@ -2683,6 +2708,9 @@ impl RenderDnaLinear {
             }
 
             let is_gene_feature = feature.kind_upper.as_str() == "GENE";
+            if feature.is_array_track {
+                continue;
+            }
             if !Self::should_render_feature_label(detail, &feature.kind_upper, feature.is_mcs) {
                 continue;
             }

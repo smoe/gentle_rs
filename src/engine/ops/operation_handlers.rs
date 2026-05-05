@@ -15937,6 +15937,7 @@ impl GentleEngine {
             cutrun_regulatory_support: None,
             read_acquisition_report: None,
             cutrun_dataset_projection: None,
+            microarray_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
@@ -18721,6 +18722,67 @@ impl GentleEngine {
                             report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
                         ));
                     }
+                }
+                Operation::ProjectMicroarrayTrack {
+                    seq_id,
+                    manifest_path,
+                    contrasts,
+                    level,
+                    min_abs_logfc,
+                    max_adj_p,
+                    max_features,
+                    clear_existing,
+                } => {
+                    if manifest_path.trim().is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "ProjectMicroarrayTrack requires a non-empty manifest_path"
+                                .to_string(),
+                        });
+                    }
+                    let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                    let _ = self.ensure_lineage_node(&seq_id);
+                    let dna = self
+                        .state
+                        .sequences
+                        .get_mut(&seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    let level = level.unwrap_or_else(|| "probeset".to_string());
+                    let report = Self::project_microarray_track(
+                        dna,
+                        &anchor,
+                        &seq_id,
+                        &manifest_path,
+                        &contrasts,
+                        &level,
+                        min_abs_logfc,
+                        max_adj_p,
+                        max_features,
+                        clear_existing.unwrap_or(false),
+                    )?;
+
+                    result.changed_seq_ids.push(seq_id.clone());
+                    result.warnings.extend(report.warnings.clone());
+                    result.messages.push(format!(
+                        "Projected {} microarray feature(s) into '{}' from '{}' (dataset={}, platform={}, contrasts={}, anchor={} {}:{}-{} strand {}, parsed={}, skipped={})",
+                        report.imported_features,
+                        seq_id,
+                        manifest_path,
+                        report.dataset,
+                        report.platform,
+                        report.projected_contrasts.join(","),
+                        report.anchor_genome_id,
+                        report.anchor_chromosome,
+                        report.anchor_start_1based,
+                        report.anchor_end_1based,
+                        report.anchor_strand,
+                        report.parsed_rows,
+                        report.skipped_rows
+                    ));
+                    result.microarray_projection = Some(report);
                 }
                 Operation::ListCutRunDatasets {
                     filter,
@@ -25018,6 +25080,10 @@ impl GentleEngine {
                         DisplayTarget::RepeatFeatures => (
                             "repeat_features",
                             &mut self.state.display.show_repeat_features,
+                        ),
+                        DisplayTarget::ArrayFeatures => (
+                            "array_features",
+                            &mut self.state.display.show_array_features,
                         ),
                         DisplayTarget::ConstructReasoningOverlay => (
                             "construct_reasoning_overlay",

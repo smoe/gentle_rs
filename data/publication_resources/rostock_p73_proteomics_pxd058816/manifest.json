@@ -1,0 +1,114 @@
+{
+  "schema": "gentle.publication_dataset_download_manifest.v1",
+  "publication": {
+    "id": "rostock_p73_multimodal_2026",
+    "title": "Integrative Multimodal Profiling of TAp73 and DNp73 Reveals Isoform-Specific Transcriptomic Coregulator Landscapes in Cancer Programs",
+    "doi": "10.3390/biom16010063",
+    "article_url": "https://www.mdpi.com/2218-273X/16/1/63",
+    "code_url": "https://github.com/IEGT/jaspar-mapping",
+    "authors": [
+      "Steffen Möller",
+      "Alf Spitschak",
+      "Nico Murr",
+      "Brigitte M. Pützer"
+    ]
+  },
+  "dataset": {
+    "dataset_id": "rostock_p73_proteomics_pxd058816",
+    "accession": "PXD058816",
+    "repository": "PRIDE",
+    "assay_kind": "Co-IP LC-MS/MS proteomics",
+    "title": "Characterization of TAp73alpha protein interaction partners",
+    "description": "PRIDE raw and search-output files for Co-IP/MS characterization of TAp73alpha protein interaction partners.",
+    "landing_url": "https://www.ebi.ac.uk/pride/archive/projects/PXD058816",
+    "api_url": "https://www.ebi.ac.uk/pride/ws/archive/v2/projects/PXD058816",
+    "file_listing_url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/",
+    "declared_file_count": 10,
+    "categories": [
+      "checksum",
+      "raw_mass_spectrometry",
+      "reference_database",
+      "search_output"
+    ],
+    "notes": [
+      "Public PRIDE FTP directory and PRIDE v2 project/files API verified on 2026-05-03.",
+      "Raw files are large; use the prepared download script or --download-files deliberately."
+    ]
+  },
+  "files": [
+    {
+      "file_name": "190607_HFx_UL_BMFZ_Ctrl_1.msf",
+      "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_1.msf",
+      "category": "search_output",
+      "size_label": "928M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "190607_HFx_UL_BMFZ_Ctrl_1.raw",
+      "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_1.raw",
+      "category": "raw_mass_spectrometry",
+      "size_label": "2.5G",
+      "size_bytes": null
+    },
+    {
+      "file_name": "190607_HFx_UL_BMFZ_Ctrl_2.msf",
+      "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_2.msf",
+      "category": "search_output",
+      "size_label": "754M",
+      "size_bytes": 790822912
+    },
+    {
+      "file_name": "190607_HFx_UL_BMFZ_Ctrl_2.raw",
+      "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_2.raw",
+      "category": "raw_mass_spectrometry",
+      "size_label": "2.2G",
+      "size_bytes": null
+    },
+    {
+      "file_name": "190607_HFx_UL_BMFZ_TAp73_1.msf",
+      "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_1.msf",
+      "category": "search_output",
+      "size_label": "904M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "190607_HFx_UL_BMFZ_TAp73_1.raw",
+      "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_1.raw",
+      "category": "raw_mass_spectrometry",
+      "size_label": "2.5G",
+      "size_bytes": null
+    },
+    {
+      "file_name": "190607_HFx_UL_BMFZ_TAp73_2.msf",
+      "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_2.msf",
+      "category": "search_output",
+      "size_label": "1.0G",
+      "size_bytes": 1113673728
+    },
+    {
+      "file_name": "190607_HFx_UL_BMFZ_TAp73_2.raw",
+      "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_2.raw",
+      "category": "raw_mass_spectrometry",
+      "size_label": "2.8G",
+      "size_bytes": null
+    },
+    {
+      "file_name": "Human_uniprot_01_2017.fasta",
+      "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/Human_uniprot_01_2017.fasta",
+      "category": "reference_database",
+      "size_label": "13M",
+      "size_bytes": null
+    },
+    {
+      "file_name": "checksum.txt",
+      "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/checksum.txt",
+      "category": "checksum",
+      "size_label": "1.2K",
+      "size_bytes": null
+    }
+  ],
+  "notes": [
+    "Public PRIDE FTP directory and PRIDE v2 project/files API verified on 2026-05-03.",
+    "Raw files are large; use the prepared download script or --download-files deliberately."
+  ]
+}

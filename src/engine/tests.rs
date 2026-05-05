@@ -99,6 +99,273 @@ fn seq(s: &str) -> DNAsequence {
     DNAsequence::from_sequence(s).unwrap()
 }
 
+fn microarray_track_fixture_manifest() -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test_files/fixtures/microarray_tracks/clariomd.synthetic.manifest.json")
+        .to_string_lossy()
+        .to_string()
+}
+
+fn microarray_anchored_engine(genome_id: &str, anchor_strand: &str) -> GentleEngine {
+    let mut engine = GentleEngine::default();
+    engine.state_mut().sequences.insert(
+        "array_slice".to_string(),
+        DNAsequence::from_sequence(&"A".repeat(100)).expect("valid anchored sequence"),
+    );
+    engine.state_mut().metadata.insert(
+        PROVENANCE_METADATA_KEY.to_string(),
+        serde_json::json!({
+            "genome_extractions": [
+                {
+                    "seq_id": "array_slice",
+                    "genome_id": genome_id,
+                    "chromosome": "chr1",
+                    "start_1based": 1001,
+                    "end_1based": 1100,
+                    "anchor_strand": anchor_strand,
+                    "anchor_verified": true,
+                    "recorded_at_unix_ms": 123
+                }
+            ]
+        }),
+    );
+    engine
+}
+
+fn first_qualifier(feature: &gb_io::seq::Feature, key: &str) -> Option<String> {
+    feature
+        .qualifier_values(key)
+        .next()
+        .map(|value| value.to_string())
+}
+
+#[test]
+fn microarray_track_manifest_parses_contrast_order() {
+    let manifest_path = microarray_track_fixture_manifest();
+    let manifest =
+        GentleEngine::load_microarray_track_manifest(&manifest_path).expect("parse manifest");
+    assert_eq!(manifest.schema, MICROARRAY_TRACK_MANIFEST_SCHEMA);
+    assert_eq!(manifest.dataset, "E-MTAB-14704");
+    assert_eq!(manifest.platform, "Clariom D human");
+    assert_eq!(
+        manifest.contrast_order,
+        vec![
+            "AdTAp73alpha-AdGFP".to_string(),
+            "AdTAp73beta-AdGFP".to_string()
+        ]
+    );
+    assert_eq!(manifest.contrasts.len(), 2);
+    assert_eq!(manifest.contrasts[0].level, "probeset");
+}
+
+#[test]
+fn project_microarray_track_rejects_coordinate_mismatch() {
+    let mut engine = microarray_anchored_engine("mm10", "+");
+    let err = engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: microarray_track_fixture_manifest(),
+            contrasts: vec![],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: None,
+            max_adj_p: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect_err("mismatched coordinate system must be rejected");
+    assert_eq!(err.code, ErrorCode::InvalidInput);
+    assert!(err.message.contains("coordinate system"));
+    assert!(err.message.contains("mm10"));
+}
+
+#[test]
+fn project_microarray_track_clear_existing_waits_until_rows_are_read() {
+    let mut engine = microarray_anchored_engine("hg38", "+");
+    engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: microarray_track_fixture_manifest(),
+            contrasts: vec![],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: None,
+            max_adj_p: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("initial projection");
+
+    let original_feature_count = engine
+        .state()
+        .sequences
+        .get("array_slice")
+        .unwrap()
+        .features()
+        .len();
+    assert_eq!(original_feature_count, 4);
+
+    let temp = tempdir().expect("tempdir");
+    let bad_manifest_path = temp.path().join("missing-track.manifest.json");
+    fs::write(
+        &bad_manifest_path,
+        r#"{
+  "schema": "gentle.microarray_track_manifest.v1",
+  "dataset": "E-MTAB-14704",
+  "platform": "Clariom D human",
+  "normalization": "RMA",
+  "coordinate_system": "hg38",
+  "supported_genome_ids": ["hg38"],
+  "contrast_order": ["missing"],
+  "contrasts": [
+    {"contrast": "missing", "level": "probeset", "path": "missing.tsv", "row_count": 1}
+  ],
+  "warnings": []
+}"#,
+    )
+    .expect("write bad manifest");
+
+    let err = engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: bad_manifest_path.to_string_lossy().to_string(),
+            contrasts: vec![],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: None,
+            max_adj_p: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect_err("missing TSV should fail");
+    assert_eq!(err.code, ErrorCode::Io);
+    assert_eq!(
+        engine
+            .state()
+            .sequences
+            .get("array_slice")
+            .unwrap()
+            .features()
+            .len(),
+        original_feature_count
+    );
+}
+
+#[test]
+fn project_microarray_track_forward_anchor_materializes_array_features() {
+    let mut engine = microarray_anchored_engine("hg38", "+");
+    let result = engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: microarray_track_fixture_manifest(),
+            contrasts: vec![],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: None,
+            max_adj_p: None,
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project microarray track");
+    let report = result.microarray_projection.expect("projection report");
+    assert_eq!(report.schema, MICROARRAY_PROJECTION_REPORT_SCHEMA);
+    assert_eq!(
+        report.projected_contrasts,
+        vec![
+            "AdTAp73alpha-AdGFP".to_string(),
+            "AdTAp73beta-AdGFP".to_string()
+        ]
+    );
+    assert_eq!(report.parsed_rows, 6);
+    assert_eq!(report.imported_features, 4);
+    assert_eq!(report.skipped_non_overlap, 1);
+    assert_eq!(report.skipped_wrong_chromosome, 1);
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    assert_eq!(dna.features().len(), 4);
+    let feature = dna
+        .features()
+        .iter()
+        .find(|feature| {
+            first_qualifier(feature, "feature_id").as_deref() == Some("PSR0001")
+                && first_qualifier(feature, "gentle_array_contrast").as_deref()
+                    == Some("AdTAp73alpha-AdGFP")
+        })
+        .expect("PSR0001 alpha feature");
+    assert_eq!(
+        first_qualifier(feature, "gentle_track_source").as_deref(),
+        Some("Array")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_dataset").as_deref(),
+        Some("E-MTAB-14704")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_coordinate_system").as_deref(),
+        Some("hg38")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_anchor_genome_id").as_deref(),
+        Some("hg38")
+    );
+    assert_eq!(
+        first_qualifier(feature, "gentle_array_assembly_check").as_deref(),
+        Some("coordinate_system_matches_anchor")
+    );
+    assert_eq!(
+        first_qualifier(feature, "transcript_cluster_id").as_deref(),
+        Some("TC0001")
+    );
+    assert_eq!(
+        first_qualifier(feature, "exon_id").as_deref(),
+        Some("EX0001")
+    );
+    assert_eq!(
+        first_qualifier(feature, "logFC").as_deref(),
+        Some("1.500000")
+    );
+    assert_eq!(
+        first_qualifier(feature, "adj_P_Val").as_deref(),
+        Some("0.020000")
+    );
+    assert!(
+        first_qualifier(feature, "gentle_array_value_summary")
+            .unwrap()
+            .contains("AdTAp73beta-AdGFP logFC=-0.750000")
+    );
+    assert_eq!(feature.location.find_bounds().unwrap(), (9, 20));
+}
+
+#[test]
+fn project_microarray_track_reverse_anchor_flips_coordinates_and_strand() {
+    let mut engine = microarray_anchored_engine("GRCh38", "-");
+    engine
+        .apply(Operation::ProjectMicroarrayTrack {
+            seq_id: "array_slice".to_string(),
+            manifest_path: microarray_track_fixture_manifest(),
+            contrasts: vec!["AdTAp73alpha-AdGFP".to_string()],
+            level: Some("probeset".to_string()),
+            min_abs_logfc: Some(1.0),
+            max_adj_p: Some(0.05),
+            max_features: Some(10),
+            clear_existing: Some(true),
+        })
+        .expect("project microarray track");
+
+    let dna = engine.state().sequences.get("array_slice").unwrap();
+    assert_eq!(dna.features().len(), 2);
+    let psr1 = dna
+        .features()
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("PSR0001"))
+        .expect("PSR0001 feature");
+    assert_eq!(psr1.location.find_bounds().unwrap(), (80, 91));
+    assert_eq!(first_qualifier(psr1, "strand").as_deref(), Some("-"));
+    let psr2 = dna
+        .features()
+        .iter()
+        .find(|feature| first_qualifier(feature, "feature_id").as_deref() == Some("PSR0002"))
+        .expect("PSR0002 feature");
+    assert_eq!(psr2.location.find_bounds().unwrap(), (40, 51));
+    assert_eq!(first_qualifier(psr2, "strand").as_deref(), Some("+"));
+}
+
 fn restriction_cloning_vector(sequence: &str, mcs_expected_sites: Option<&str>) -> DNAsequence {
     let mut dna = DNAsequence::from_sequence(sequence).expect("vector sequence");
     *dna.restriction_enzymes_mut() = crate::enzymes::active_restriction_enzymes();

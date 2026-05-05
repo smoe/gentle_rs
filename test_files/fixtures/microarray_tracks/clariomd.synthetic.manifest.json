@@ -1,0 +1,24 @@
+{
+  "schema": "gentle.microarray_track_manifest.v1",
+  "dataset": "E-MTAB-14704",
+  "platform": "Clariom D human",
+  "normalization": "RMA",
+  "coordinate_system": "hg38",
+  "supported_genome_ids": ["hg38", "GRCh38"],
+  "contrast_order": ["AdTAp73alpha-AdGFP", "AdTAp73beta-AdGFP"],
+  "contrasts": [
+    {
+      "contrast": "AdTAp73alpha-AdGFP",
+      "level": "probeset",
+      "path": "clariomd.synthetic.AdTAp73alpha-AdGFP.tsv",
+      "row_count": 4
+    },
+    {
+      "contrast": "AdTAp73beta-AdGFP",
+      "level": "probeset",
+      "path": "clariomd.synthetic.AdTAp73beta-AdGFP.tsv",
+      "row_count": 2
+    }
+  ],
+  "warnings": []
+}

@@ -957,6 +957,61 @@ Indexing guidance:
   and `milliIns` columnar by row offset so divergence/quality shading can be
   added without changing the interval index
 
+## Publication dataset resource contract
+
+GENtle now has a small built-in catalog for publication-associated external
+datasets whose raw files should not be committed to the repository but should
+be easy to inspect and fetch reproducibly.
+
+Current shared-shell routes:
+
+```bash
+gentle_cli shell 'resources list-publication-datasets --filter p73'
+gentle_cli shell 'resources status-publication-dataset E-MTAB-14704'
+gentle_cli shell 'resources prepare-publication-dataset E-MTAB-14704'
+gentle_cli shell 'resources prepare-publication-dataset PXD058816 --download-files --max-files 1'
+```
+
+Portable schemas:
+
+- `gentle.publication_dataset_list.v1`
+- `gentle.publication_dataset_status.v1`
+- `gentle.publication_dataset_prepare.v1`
+- `gentle.publication_dataset_download_manifest.v1`
+
+Behavior notes:
+
+- default catalog: `assets/publication_resources.json`
+- default prepared-manifest/cache root: `data/publication_resources`
+- the built-in catalog ships with checked-in, no-byte-download prepared
+  manifests/download scripts for the current Rostock p73 entries
+- `resources status` includes a compact `publication_datasets` block that
+  reports catalog validity, dataset count, declared file count, and how many
+  datasets already have prepared manifests
+- `resources prepare-publication-dataset` is manifest-first:
+  - always writes `manifest.json`, `download_manifest.tsv`, and `download.sh`
+  - does not download raw files unless `--download-files` is explicit
+  - accepts `--max-files N` for smoke checks and small staged fetches
+  - accepts `--category NAME` or `--categories CSV` to restrict planned files
+    before download; this is the preferred way to fetch Clariom D CEL files
+    without touching multi-GB PRIDE or unresolved CUT&RUN payloads
+- built-in Rostock p73 multimodal entries:
+  - `E-MTAB-14704`: Affymetrix Clariom D transcriptome CEL files and MAGE-TAB
+    metadata; concrete BioStudies FTP file URLs are declared
+  - `E-MTAB-15709`: CUT&RUN sequencing accession; tracked as a first-class
+    publication dataset, but concrete file URLs are intentionally not invented
+    while the BioStudies API/file directory is not resolving
+  - `PXD058816`: PRIDE Co-IP/MS raw/search files; concrete PRIDE archive URLs
+    are declared
+- entries with no concrete file URLs still produce a metadata manifest and
+  warning, so agents can report the accession cleanly and refresh the catalog
+  later instead of failing with an opaque missing-path error
+- `scripts/analyze_p73_clariomd_probe_level.R` is the first external-analysis
+  bridge for `E-MTAB-14704`; it keeps R/Bioconductor use outside the core
+  engine while producing deterministic TSV outputs suitable for later GENtle
+  panels. It expects `oligo`, `limma`, and the Clariom D platform design
+  package `pd.clariom.d.human`.
+
 ## RNA structure executable resources
 
 `resources status` and `services status` also expose the executable resources
@@ -1924,6 +1979,7 @@ Current draft operations:
     when feature projection was intentionally disabled.
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
+- `ProjectMicroarrayTrack { seq_id, manifest_path, contrasts, level, min_abs_logfc?, max_adj_p?, max_features?, clear_existing }`
 - `ListCutRunDatasets { filter?, catalog_path? }`
 - `ShowCutRunDatasetStatus { dataset_id, catalog_path?, cache_dir? }`
 - `PrepareCutRunDataset { dataset_id, catalog_path?, cache_dir? }`
@@ -1982,6 +2038,29 @@ Current draft operations:
     `gentle.cutrun_read_reports.v1`,
     `gentle.cutrun_read_coverage_export.v1`,
     `gentle.cutrun_regulatory_support.v1`.
+
+Microarray track projection notes:
+
+- `ProjectMicroarrayTrack` projects prepared Clariom D/microarray contrast rows
+  onto an existing genome-anchored sequence.
+- raw operation example:
+  `{"ProjectMicroarrayTrack":{"seq_id":"grch38_tp73","manifest_path":"data/publication_resources/rostock_p73_clariomd_e_mtab_14704/analysis/clariomd_probe_level/clariomd_microarray_track_manifest.json","contrasts":["AdTAp73alpha-AdGFP","AdTAp73beta-AdGFP"],"level":"probeset","min_abs_logfc":0.5,"max_adj_p":0.05,"max_features":5000,"clear_existing":true}}`
+- manifest schema: `gentle.microarray_track_manifest.v1`
+- projection report schema: `gentle.microarray_projection_report.v1`
+- the manifest records dataset id, platform, normalization method, contrast
+  order, coordinate system, supported `genome_id` aliases, and per-contrast TSV
+  paths.
+- per-row TSV fields include `chrom`, `start_1based`, `end_1based`, `strand`,
+  `feature_id`, `transcript_cluster_id`, `exon_id`, `probe_type`, `logFC`,
+  `AveExpr`, `P.Value`, `adj.P.Val`, and optional junction/gene metadata.
+- projection is strict: the target sequence must have `GenomeSequenceAnchor`
+  provenance and the manifest coordinate system or supported aliases must match
+  the anchor `genome_id`; non-projectable/unverified array builds are rejected.
+- GENtle streams only rows overlapping the anchored interval and materializes
+  them as ordinary `track` features with `gentle_track_source=Array`,
+  `gentle_array_dataset`, `gentle_array_platform`, `gentle_array_contrast`,
+  `logFC`, `adj_P_Val`, `AveExpr`, `feature_id`,
+  `transcript_cluster_id`, and `exon_id` qualifiers.
 
 Catalog-backed reference/helper discovery notes:
 
@@ -3565,6 +3644,9 @@ Current parameter support:
 - Repeat display parameter (shared GUI/SVG state):
   - `show_repeat_features`
   - equivalent visibility target: `SetDisplayVisibility { target: "RepeatFeatures", visible }`
+- Microarray-array display parameter (shared GUI/SVG state):
+  - `show_array_features`
+  - equivalent visibility target: `SetDisplayVisibility { target: "ArrayFeatures", visible }`
 - Restriction-enzyme display parameters (shared GUI/SVG state):
   - `show_restriction_enzymes`
   - `show_restriction_enzyme_sites` (bool alias)
