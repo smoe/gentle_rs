@@ -998,14 +998,14 @@ Behavior notes:
 - built-in Rostock p73 multimodal entries:
   - `E-MTAB-14704`: Affymetrix Clariom D transcriptome CEL files and MAGE-TAB
     metadata; concrete BioStudies FTP file URLs are declared
-  - `E-MTAB-15709`: CUT&RUN sequencing accession; tracked as a first-class
-    publication dataset, but concrete file URLs are intentionally not invented
-    while the BioStudies API/file directory is not resolving
+  - `E-MTAB-15709`: CUT&RUN sequencing accession; resolved through SRA/ENA as
+    `PRJEB100610` / `ERP182066`, with concrete paired FASTQ URLs and byte counts
+    declared while keeping full raw-read download explicit
   - `PXD058816`: PRIDE Co-IP/MS raw/search files; concrete PRIDE archive URLs
     are declared
 - entries with no concrete file URLs still produce a metadata manifest and
-  warning, so agents can report the accession cleanly and refresh the catalog
-  later instead of failing with an opaque missing-path error
+  warning, so agents can report unresolved accessions cleanly and refresh the
+  catalog later instead of failing with an opaque missing-path error
 - `scripts/analyze_p73_clariomd_probe_level.R` is the first external-analysis
   bridge for `E-MTAB-14704`; it keeps R/Bioconductor use outside the core
   engine while producing deterministic TSV outputs suitable for later GENtle
@@ -2071,6 +2071,11 @@ Current draft operations:
   - when `dataset_id` is provided, the engine resolves `reads_r1` / `reads_r2`
     from the prepared CUT&RUN manifest and infers the raw-read format from the
     prepared file names.
+  - CUT&RUN catalog entries may declare `reads_sra_accession`; preparation then
+    delegates acquisition/conversion to the shared read-acquisition SRA path
+    before writing the prepared CUT&RUN manifest. The built-in Rostock p73
+    `E-MTAB-15709` shard uses this route, so full read downloads are deliberate
+    `cutrun prepare` actions rather than routine status/list operations.
   - `ExportCutRunReadCoverage` writes TSV summaries for one saved read report:
     `coverage`, `cut_sites`, or `fragments`.
   - `InspectCutRunRegulatorySupport` is the first shared V3 reasoning surface:

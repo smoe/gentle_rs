@@ -11,6 +11,7 @@ enzymes.json:: List of DNA restriction enzymes (endonucleases) and proteases
 genomes.json::
 helper_genomes.json::
 cutrun.json:: Starter CUT&RUN dataset catalog for processed evidence (BED/BigWig) and future raw-read reuse.
+cutrun.d/:: Additional built-in CUT&RUN catalog shards. The Rostock p73 `E-MTAB-15709` shard records SRA-backed paired-end runs and keeps full raw-read acquisition explicit.
 host_profiles.json:: Starter host/strain catalog for construct-reasoning inspection in GUI/agent-facing workflows.
 blast_defaults.json:: Default BLAST option layer (`task`, `max_hits`, optional thresholds) used when no project/request override is provided.
 panels/tp53_isoforms_v1.json:: Curated TP53 isoform architecture panel used by isoform expert and protein-gel examples.
@@ -40,6 +41,11 @@ Data notes:
   Entries can point at prepared/local or remote peaks/signal assets and are
   discoverable through the same built-in/system/project overlay chain as other
   shared catalogs.
+- `cutrun.d/` contains additional built-in CUT&RUN catalog shards. The
+  `rostock_p73_sra.json` shard maps `E-MTAB-15709` / `PRJEB100610` SRA runs to
+  GENtle dataset IDs, while `cutrun/rostock_p73_sra/` documents ENA FASTQ URLs,
+  byte counts, and checksums used to keep the raw sequences reproducible without
+  committing them.
 - `host_profiles.json` is the starter host-profile catalog used by construct
   reasoning and the Planning-window host browser. It is intentionally
   human-editable and source-noted rather than hidden inside compiled logic.

@@ -52,19 +52,21 @@ STATE=release_cutrun_tp73.gentle.json
 GENOME_ID="Human GRCh38 Ensembl 116"
 SEQ_ID=release_tp73_roi
 TARGET_GENE=TP73
-CUTRUN_CATALOG=assets/cutrun.json
+CUTRUN_CATALOG=assets/cutrun.d
 CUTRUN_CACHE=data/cutrun
 CUTRUN_DATASET_ID=replace_with_catalog_dataset_id
-CUTRUN_READ_DATASET_ID=replace_with_optional_raw_read_dataset_id
+CUTRUN_READ_DATASET_ID=rostock_p73_sra_err15695857_p73_tap73alpha
 TARGET_MOTIF=CTCF
 OUT=exports/release_cutrun_tp73
 mkdir -p "$OUT"
 ```
 
 The same commands work for any other target by changing those variables.
-The built-in CUT&RUN catalog is currently a starter catalog; near-term release
-proof data can be supplied by a catalog overlay or explicit raw-read paths
-without changing GENtle source.
+The built-in CUT&RUN shard `assets/cutrun.d/rostock_p73_sra.json` records the
+public `E-MTAB-15709` / `PRJEB100610` paired-end SRA runs. `cutrun status` is
+safe for release smoke checks; `cutrun prepare` for these entries intentionally
+acquires full raw reads through the shared SRA/read-acquisition path and should
+only be run when disk and SRA Toolkit availability are explicit.
 
 ## Generic Smoke Path
 
@@ -242,7 +244,9 @@ gentle_cli --state "$STATE" features tfbs-score-tracks-svg "$SEQ_ID" \
 ## Deterministic Test Coverage
 
 The committed deterministic tests use synthetic catalogs and toy anchored
-sequences rather than a large real CUT&RUN fixture. The release smoke should run:
+sequences for read/projection behavior, plus a metadata-only assertion that the
+built-in Rostock p73 SRA catalog shard is discoverable. The release smoke should
+run:
 
 ```bash
 cargo test -q cutrun
@@ -253,5 +257,5 @@ cargo check -q
 These tests exercise catalog discovery/status/prepare, stale prepare recovery,
 anchored peaks/signal projection, ROI read interpretation, coverage export,
 regulatory-support inspection, and the TFBS score surfaces used by this
-runbook. A curated TP73 proof dataset remains release proof data, not
-gene-specific implementation.
+runbook. A tiny TP73 raw-read subset should only be committed later if it is
+derived directly from the public SRA runs with provenance.

@@ -15251,6 +15251,40 @@ fn execute_publication_dataset_prepare_filters_file_categories() {
 }
 
 #[test]
+fn execute_publication_dataset_prepare_plans_rostock_cutrun_fastq_urls() {
+    let td = tempdir().expect("tempdir");
+    let cache_dir = td.path().join("publication_resources");
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ResourcesPreparePublicationDataset {
+            dataset_id: "E-MTAB-15709".to_string(),
+            catalog_path: None,
+            cache_dir: Some(cache_dir.to_string_lossy().to_string()),
+            download_files: false,
+            max_files: Some(2),
+            category_filters: vec!["raw_cutrun_fastq".to_string()],
+        },
+    )
+    .expect("execute filtered Rostock CUT&RUN publication dataset prepare");
+    assert_eq!(out.output["declared_file_count"].as_u64(), Some(24));
+    assert_eq!(out.output["eligible_file_count"].as_u64(), Some(24));
+    assert_eq!(out.output["planned_file_count"].as_u64(), Some(2));
+    assert_eq!(out.output["downloaded_file_count"].as_u64(), Some(0));
+    let files = out.output["files"].as_array().expect("files");
+    assert_eq!(files.len(), 2);
+    assert!(files.iter().all(|row| {
+        row["category"].as_str() == Some("raw_cutrun_fastq")
+            && row["file_name"]
+                .as_str()
+                .is_some_and(|name| name.starts_with("ERR15695857_"))
+            && row["url"]
+                .as_str()
+                .is_some_and(|url| url.starts_with("https://ftp.sra.ebi.ac.uk/"))
+    }));
+}
+
+#[test]
 fn execute_proteases_list_writes_catalog_json() {
     let td = tempdir().expect("tempdir");
     let output_path = td.path().join("proteases.catalog.json");

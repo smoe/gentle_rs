@@ -989,9 +989,11 @@ without blocking this publication.
     GRCh38; microarray manifests can declare explicit interval-map projections
     so native GRCh37 array rows can be displayed on GRCh38 anchored sequences
     with tooltip-visible native/display coordinates and projection status
-  - E-MTAB-15709 remains tracked as an accession with archive-resolution
-    warnings until BioStudies/ENA exposes concrete file URLs for the CUT&RUN
-    raw data
+  - E-MTAB-15709 now has SRA/ENA-backed CUT&RUN resource wiring:
+    `assets/cutrun.d/rostock_p73_sra.json` records twelve paired-end SRA runs
+    as raw-read CUT&RUN catalog entries, and the publication-resource catalog
+    declares the corresponding ENA paired FASTQ URLs/byte counts while keeping
+    full downloads opt-in
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
 - Shared engine/shell TFBS region summary path now reports grouped factor
@@ -5049,7 +5051,8 @@ Status:
    - TP73 is treated only as a suggested proof target in runbook wording and
      release proof data, not as implementation behavior.
    - deterministic synthetic tests already cover the generic CUT&RUN engine and
-     shell path; no committed large TP73 CUT&RUN fixture is bundled yet.
+     shell path; built-in Rostock p73 SRA catalog metadata is covered without
+     downloading reads, and no committed large TP73 CUT&RUN fixture is bundled.
 
 Release cut for the requested CUT&RUN analysis layers:
 
@@ -5083,9 +5086,9 @@ Release cut for the requested CUT&RUN analysis layers:
 
 Remaining CUT&RUN follow-up:
 
-- decide whether to commit one tiny curated public CUT&RUN proof fixture, or to
-  keep TP73-adjacent release evidence as external proof data referenced from
-  release notes
+- derive, document, and commit at most one tiny TP73-focused proof subset from
+  the public `E-MTAB-15709` / `PRJEB100610` SRA runs if release testing needs an
+  internal raw-read fraction; full CUT&RUN datasets remain external/opt-in
 - broaden GUI support from report inspection to richer dashboards/figures once
   real proof data has clarified the most useful visualization shape
 - consider richer support-window strength tuning and/or user-configurable
