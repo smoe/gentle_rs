@@ -41,70 +41,80 @@
       "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_1.msf",
       "category": "search_output",
       "size_label": "928M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "190607_HFx_UL_BMFZ_Ctrl_1.raw",
       "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_1.raw",
       "category": "raw_mass_spectrometry",
       "size_label": "2.5G",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "190607_HFx_UL_BMFZ_Ctrl_2.msf",
       "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_2.msf",
       "category": "search_output",
       "size_label": "754M",
-      "size_bytes": 790822912
+      "size_bytes": 790822912,
+      "checksum_md5": null
     },
     {
       "file_name": "190607_HFx_UL_BMFZ_Ctrl_2.raw",
       "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_Ctrl_2.raw",
       "category": "raw_mass_spectrometry",
       "size_label": "2.2G",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "190607_HFx_UL_BMFZ_TAp73_1.msf",
       "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_1.msf",
       "category": "search_output",
       "size_label": "904M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "190607_HFx_UL_BMFZ_TAp73_1.raw",
       "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_1.raw",
       "category": "raw_mass_spectrometry",
       "size_label": "2.5G",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "190607_HFx_UL_BMFZ_TAp73_2.msf",
       "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_2.msf",
       "category": "search_output",
       "size_label": "1.0G",
-      "size_bytes": 1113673728
+      "size_bytes": 1113673728,
+      "checksum_md5": null
     },
     {
       "file_name": "190607_HFx_UL_BMFZ_TAp73_2.raw",
       "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/190607_HFx_UL_BMFZ_TAp73_2.raw",
       "category": "raw_mass_spectrometry",
       "size_label": "2.8G",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "Human_uniprot_01_2017.fasta",
       "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/Human_uniprot_01_2017.fasta",
       "category": "reference_database",
       "size_label": "13M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "checksum.txt",
       "url": "https://ftp.pride.ebi.ac.uk/pride/data/archive/2025/08/PXD058816/checksum.txt",
       "category": "checksum",
       "size_label": "1.2K",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     }
   ],
   "notes": [

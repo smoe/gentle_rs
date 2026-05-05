@@ -971,7 +971,8 @@ without blocking this publication.
     shared shell/CLI resource surface
   - prepare writes `manifest.json`, `download_manifest.tsv`, and `download.sh`
     under `data/publication_resources` without downloading large raw files
-    unless `--download-files` is explicit
+    unless `--download-files` is explicit; declared file sizes and optional
+    source MD5 checksums are preserved in the prepared reports/manifests
   - the current Rostock p73 entries ship with those prepared no-download
     manifests/scripts checked in
   - `prepare-publication-dataset` can now restrict planned/downloaded files by

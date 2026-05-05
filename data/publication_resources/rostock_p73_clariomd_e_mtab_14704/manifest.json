@@ -39,77 +39,88 @@
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/E-MTAB-14704.idf.txt",
       "category": "metadata",
       "size_label": "2.5K",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "E-MTAB-14704.sdrf.txt",
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/E-MTAB-14704.sdrf.txt",
       "category": "metadata",
       "size_label": "3.4K",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "P_SKMel29_AdDNp73beta_1.CEL",
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_1.CEL",
       "category": "raw_microarray",
       "size_label": "66M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "P_SKMel29_AdDNp73beta_2.CEL",
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_2.CEL",
       "category": "raw_microarray",
       "size_label": "66M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "P_SKMel29_AdDNp73beta_3.CEL",
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdDNp73beta_3.CEL",
       "category": "raw_microarray",
       "size_label": "66M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "P_SKMel29_AdGFP_1.CEL",
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_1.CEL",
       "category": "raw_microarray",
       "size_label": "66M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "P_SKMel29_AdGFP_2.CEL",
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_2.CEL",
       "category": "raw_microarray",
       "size_label": "66M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "P_SKMel29_AdGFP_3.CEL",
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdGFP_3.CEL",
       "category": "raw_microarray",
       "size_label": "66M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "P_SKMel29_AdTAp73alpha_1.CEL",
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_1.CEL",
       "category": "raw_microarray",
       "size_label": "66M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "P_SKMel29_AdTAp73alpha_2.CEL",
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_2.CEL",
       "category": "raw_microarray",
       "size_label": "66M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     },
     {
       "file_name": "P_SKMel29_AdTAp73alpha_3.CEL",
       "url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/704/E-MTAB-14704/Files/P_SKMel29_AdTAp73alpha_3.CEL",
       "category": "raw_microarray",
       "size_label": "66M",
-      "size_bytes": null
+      "size_bytes": null,
+      "checksum_md5": null
     }
   ],
   "notes": [

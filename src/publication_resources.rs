@@ -67,6 +67,7 @@ pub struct PublicationDatasetFile {
     pub category: String,
     pub size_label: Option<String>,
     pub size_bytes: Option<u64>,
+    pub checksum_md5: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -102,6 +103,7 @@ pub struct PublicationDatasetFileStatus {
     pub category: String,
     pub size_label: Option<String>,
     pub expected_size_bytes: Option<u64>,
+    pub expected_checksum_md5: Option<String>,
     pub local_path: String,
     pub exists: bool,
     pub local_size_bytes: Option<u64>,
@@ -582,6 +584,7 @@ fn file_statuses_for_files(
                 category: file.category.clone(),
                 size_label: file.size_label.clone(),
                 expected_size_bytes: file.size_bytes,
+                expected_checksum_md5: file.checksum_md5.clone(),
                 local_path: destination.display().to_string(),
                 exists,
                 local_size_bytes,
@@ -645,16 +648,17 @@ fn write_download_manifest_tsv(
     path: &Path,
     files: &[PublicationDatasetFile],
 ) -> Result<(), String> {
-    let mut text = String::from("file_name\tcategory\tsize_label\tsize_bytes\turl\n");
+    let mut text = String::from("file_name\tcategory\tsize_label\tsize_bytes\tchecksum_md5\turl\n");
     for file in files {
         text.push_str(&format!(
-            "{}\t{}\t{}\t{}\t{}\n",
+            "{}\t{}\t{}\t{}\t{}\t{}\n",
             file.file_name,
             file.category,
             file.size_label.as_deref().unwrap_or(""),
             file.size_bytes
                 .map(|value| value.to_string())
                 .unwrap_or_default(),
+            file.checksum_md5.as_deref().unwrap_or(""),
             file.url
         ));
     }
