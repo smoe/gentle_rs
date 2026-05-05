@@ -15935,6 +15935,7 @@ impl GentleEngine {
             cutrun_read_report_summaries: None,
             cutrun_read_coverage_export: None,
             cutrun_regulatory_support: None,
+            read_acquisition_report: None,
             cutrun_dataset_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
@@ -22628,6 +22629,73 @@ impl GentleEngine {
                         report.report_id, path
                     ));
                 }
+                Operation::ReadAcquireStatus {
+                    manifest_path,
+                    cache_dir,
+                    work_dir,
+                } => {
+                    let report =
+                        self.read_acquisition_status(&manifest_path, &cache_dir, &work_dir)?;
+                    result.messages.push(format!(
+                        "Read acquisition status for '{}' reported {} row(s): ready={}, running={}, failed={}, missing={}",
+                        manifest_path,
+                        report.sample_count,
+                        report.ready_count,
+                        report.running_count,
+                        report.failed_count,
+                        report.missing_count
+                    ));
+                    result.read_acquisition_report = Some(report);
+                }
+                Operation::ReadAcquirePrepare {
+                    manifest_path,
+                    cache_dir,
+                    work_dir,
+                    analysis_format,
+                    read_layout,
+                    threads,
+                    max_size,
+                    min_free_gb,
+                    drop_intermediate_fastq,
+                    continue_on_error,
+                } => {
+                    let report = self.read_acquisition_prepare(
+                        &manifest_path,
+                        &cache_dir,
+                        &work_dir,
+                        analysis_format,
+                        read_layout,
+                        threads,
+                        max_size.as_deref(),
+                        min_free_gb,
+                        drop_intermediate_fastq,
+                        continue_on_error,
+                    )?;
+                    result.messages.push(format!(
+                        "Read acquisition prepare for '{}' processed {} row(s): ready={}, running={}, failed={}, missing={}",
+                        manifest_path,
+                        report.sample_count,
+                        report.ready_count,
+                        report.running_count,
+                        report.failed_count,
+                        report.missing_count
+                    ));
+                    result.warnings.extend(report.warnings.iter().cloned());
+                    result.read_acquisition_report = Some(report);
+                }
+                Operation::ReadAcquireInspect {
+                    sra_accession,
+                    cache_dir,
+                    work_dir,
+                } => {
+                    let report =
+                        self.read_acquisition_inspect(&sra_accession, &cache_dir, &work_dir)?;
+                    result.messages.push(format!(
+                        "Read acquisition inspect for '{}' reported lifecycle_status={}",
+                        sra_accession, report.lifecycle_status
+                    ));
+                    result.read_acquisition_report = Some(report);
+                }
                 Operation::InterpretRnaReads {
                     seq_id,
                     seed_feature_id,
@@ -22888,6 +22956,10 @@ impl GentleEngine {
                     concatemer_settings,
                     concatemer_limit,
                     continue_on_error,
+                    prepare_sra,
+                    read_cache_dir,
+                    read_work_dir,
+                    drop_intermediate_fastq,
                 } => {
                     let report = self.run_rna_read_batch_map(
                         &manifest_path,
@@ -22909,6 +22981,10 @@ impl GentleEngine {
                         &concatemer_settings,
                         concatemer_limit,
                         continue_on_error,
+                        prepare_sra,
+                        read_cache_dir.as_deref(),
+                        read_work_dir.as_deref(),
+                        drop_intermediate_fastq,
                         &result.op_id,
                         run_id,
                         on_progress,

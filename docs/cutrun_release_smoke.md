@@ -11,6 +11,8 @@ convenient for the near-term release.
 Use only existing contracts:
 
 - `genomes status|prepare|extract-gene|extract-region`
+- `reads acquire status|prepare|inspect` when a CUT&RUN catalog entry declares
+  `reads_sra_accession`
 - `cutrun list|status|prepare|project`
 - `cutrun interpret|list-read-reports|show-read-report|export-coverage`
 - `cutrun inspect-regulatory-support`
@@ -22,6 +24,11 @@ Do not treat this runbook as a place to add de-novo motif discovery, new motif
 scoring models, expression-stratified comparisons, or GUI-only biology logic.
 Those are post-release work. The GUI path is limited to viewing/exporting the
 engine-owned `gentle.cutrun_regulatory_support.v1` report.
+
+If a catalog smoke dataset is SRA-backed, keep the smoke deterministic by
+running `cutrun prepare` or `reads acquire prepare` explicitly;
+`cutrun interpret --dataset ...` should consume the prepared manifest and not
+perform surprise downloads during interpretation.
 
 ## Inputs
 

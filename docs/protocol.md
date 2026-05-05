@@ -1865,6 +1865,23 @@ Current draft operations:
 - `ListSequencingTraces { seq_id? }`
 - `ShowSequencingTrace { trace_id }`
 - `ConfirmConstructReads { expected_seq_id, baseline_seq_id?, read_seq_ids?, trace_ids?, targets?, alignment_mode?, match_score?, mismatch_score?, gap_open?, gap_extend?, min_identity_fraction?, min_target_coverage_fraction?, allow_reverse_complement?, report_id? }` (implemented baseline; accepts already-loaded read sequences and/or imported sequencing traces as evidence inputs into one shared confirmation report, with optional baseline context for intended-edit vs reversion classification)
+- `ReadAcquireStatus { manifest_path, cache_dir, work_dir }`
+- `ReadAcquirePrepare { manifest_path, cache_dir, work_dir, analysis_format, read_layout, threads?, max_size?, min_free_gb?, drop_intermediate_fastq, continue_on_error }`
+- `ReadAcquireInspect { sra_accession, cache_dir, work_dir }`
+  - shared SRA-backed read acquisition uses external `prefetch`,
+    `vdb-validate`, and `fasterq-dump`, but reports through
+    `gentle.read_acquisition_report.v1`.
+  - manifest TSV rows require `sample_id` and `sra_accession`; optional fields
+    are `sample_name`, `assay_kind`, `read_layout`, `analysis_format`, and
+    `note`.
+  - per-run lifecycle uses
+    `resource_key = "read_acquisition:<SRA_ACCESSION>"` and
+    `lifecycle_status = missing|running|ready|failed|cancelled|stale`.
+  - activity JSON phases are `prefetch`, `validate_sra`, `dump_fastq`,
+    `convert_fasta`, `verify_output`, and `complete`.
+  - final `.sra` and prepared FASTA/FASTQ outputs are never deleted
+    automatically; `drop_intermediate_fastq` only applies to FASTQ files that
+    were converted into FASTA outputs.
 - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA phase-1 seed-filter pass; `multi_gene_sparse` expands local transcript-template indexing, while ROI capture remains planned)
 - `AlignRnaReadReport { report_id, selection, align_config_override?, selected_record_indices? }` (Nanopore cDNA phase-2 retained-hit alignment pass; updates mapping/MSA/abundance report fields and re-ranks retained hits by alignment-aware retention rank)
 - `PreflightRnaReadIsoforms { seq_id, seed_feature_id, scope?, seed_filter?, optimize_parameters?, positive_transcript_fasta_paths?, control_transcript_fasta_paths?, max_control_match_probability? }` (non-mutating target-transcript seed representation preflight; repeated positive FASTAs are hard must-pass transcript variants, repeated negative control FASTAs are grouped by inferred gene/symbol, and optimizer candidates are rejected when any positive transcript fails or any control group exceeds the configured match-probability ceiling)
@@ -6431,9 +6448,12 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `input_path` rows currently accept FASTA only (`.fa`, `.fasta`,
       `.fa.gz`, `.fasta.gz`) and run the same engine `InterpretRnaReads` plus
       `AlignRnaReadReport` paths as manual single-sample workflows
-    - rows with only `sra_accession` are not fetched in v1; the batch report
-      marks them `needs_preparation` and writes `sra_preparation_plan.tsv` plus
-      `sra_preparation_commands.sh`
+    - rows with only `sra_accession` are not fetched by default; the batch
+      report marks them `needs_preparation` and writes
+      `sra_preparation_plan.tsv` plus `sra_preparation_commands.sh`
+    - with `prepare_sra=true`, GENtle runs `ReadAcquirePrepare` first, stores
+      the nested `read_acquisition_report`, and maps from the prepared FASTA
+      path
     - default batch settings are `report_mode=full`, `align_selection=all`,
       `complete_rule=near`, `max_secondary_mappings=5`, and
       `continue_on_error=true`
@@ -6442,7 +6462,8 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - `RunRnaReadBatchMap` writes one bundle under `out_dir`:
       `batch_report.json`, `batch_summary.tsv`, `sample_sheet.tsv`,
       `isoform_support.tsv`, `concatemer_partner_summary.tsv`, optional SRA
-      preparation files, and per-sample gene-support / concatemer JSON
+      preparation/read-acquisition files, and per-sample gene-support /
+      concatemer JSON
     - `batch_summary.tsv` is the sample-level dashboard substrate; it includes
       status/error/warning fields, read counts/fractions, origin-class counts,
       requested/matched/missing genes, accepted-target and other-gene metrics,
@@ -6842,8 +6863,11 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       sidecar bundle, the export preserves that file and writes a sibling
       `*_compare.svg` plus sidecar instead of overwriting
 - Shared-shell command family:
+  - `reads acquire status MANIFEST.tsv --cache-dir DIR --work-dir DIR`
+  - `reads acquire prepare MANIFEST.tsv --cache-dir DIR --work-dir DIR [--analysis-format fasta|fastq] [--read-layout single_end|paired_end|split_spot] [--threads N] [--max-size SIZE] [--min-free-gb N] [--drop-intermediate-fastq] [--continue-on-error]`
+  - `reads acquire inspect RUN_ACCESSION --cache-dir DIR --work-dir DIR`
   - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
-  - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--transcript-fasta PATH]... [--transcript-index PATH]...`
+  - `rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--prepare-sra] [--read-cache-dir DIR] [--read-work-dir DIR] [--drop-intermediate-fastq] [--transcript-fasta PATH]... [--transcript-index PATH]...`
   - `rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads preflight-isoforms SEQ_ID FEATURE_ID [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--positive-transcript-fasta PATH ...] [--must-pass-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]`
   - `rna-reads list-reports [SEQ_ID]`

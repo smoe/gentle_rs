@@ -21,10 +21,11 @@ use crate::engine::{
     ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
     QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
     RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RepeatEnvironmentGeometryMode,
-    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
-    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
-    TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
+    ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode,
+    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
+    RnaReadOriginClass, SequenceScanTarget, TfThresholdOverride,
+    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_gene::{
@@ -100,6 +101,11 @@ fn cache_dir_env_lock() -> &'static Mutex<()> {
 }
 
 fn cutrun_test_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn read_acquisition_test_env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
 }
@@ -187,6 +193,109 @@ fn write_ucsc_rmsk_interval_index_fixture(root: &Path) -> std::path::PathBuf {
     )
     .expect("write rmsk interval index");
     index_path
+}
+
+#[cfg(unix)]
+fn write_fake_sra_toolkit_bin(bin_dir: &Path) {
+    fs::create_dir_all(bin_dir).expect("create fake SRA Toolkit bin dir");
+    let scripts = [
+        (
+            "prefetch",
+            r#"#!/bin/sh
+set -eu
+acc=""
+out="."
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -O)
+      shift
+      out="$1"
+      ;;
+    --*)
+      shift || true
+      ;;
+    *)
+      if [ -z "$acc" ]; then
+        acc="$1"
+      fi
+      ;;
+  esac
+  shift || true
+done
+mkdir -p "$out"
+printf 'synthetic sra for %s\n' "$acc" > "$out/$acc.sra"
+"#,
+        ),
+        (
+            "vdb-validate",
+            r#"#!/bin/sh
+set -eu
+test -f "$1"
+"#,
+        ),
+        (
+            "fasterq-dump",
+            r#"#!/bin/sh
+set -eu
+sra=""
+out="."
+split_files=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --outdir)
+      shift
+      out="$1"
+      ;;
+    --split-files)
+      split_files=1
+      ;;
+    --split-spot)
+      ;;
+    --threads)
+      shift || true
+      ;;
+    --*)
+      ;;
+    *)
+      if [ -z "$sra" ]; then
+        sra="$1"
+      fi
+      ;;
+  esac
+  shift || true
+done
+acc="$(basename "$sra" .sra)"
+mkdir -p "$out"
+if [ "$split_files" = "1" ]; then
+  printf '@%s/1\nACGTAC\n+\n!!!!!!\n' "$acc" > "$out/${acc}_1.fastq"
+  printf '@%s/2\nTGCATG\n+\n!!!!!!\n' "$acc" > "$out/${acc}_2.fastq"
+else
+  printf '@%s\nACGTAC\n+\n!!!!!!\n' "$acc" > "$out/${acc}.fastq"
+fi
+"#,
+        ),
+    ];
+    for (name, text) in scripts {
+        let path = bin_dir.join(name);
+        fs::write(&path, text).unwrap_or_else(|err| {
+            panic!("write fake SRA Toolkit script '{}': {err}", path.display())
+        });
+        let mut permissions = fs::metadata(&path)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "read fake SRA Toolkit script permissions '{}': {err}",
+                    path.display()
+                )
+            })
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).unwrap_or_else(|err| {
+            panic!(
+                "mark fake SRA Toolkit script executable '{}': {err}",
+                path.display()
+            )
+        });
+    }
 }
 
 fn rmsk_anchored_state(seq_id: &str, anchor_strand: &str) -> ProjectState {
@@ -16863,6 +16972,58 @@ fn execute_cutrun_status_reports_running_lifecycle_from_active_prepare_marker() 
 }
 
 #[test]
+fn execute_cutrun_status_treats_sra_backed_reads_as_configured_assets() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let cutrun_catalog = td.path().join("cutrun.catalog.json");
+    fs::write(
+        &cutrun_catalog,
+        r#"{
+  "toy_sra_reads": {
+    "summary": "Toy SRA-backed CUT&RUN reads",
+    "target_factor": "CTCF",
+    "reads_sra_accession": "SRRFAKE001",
+    "read_layout": "paired_end"
+  }
+}"#,
+    )
+    .expect("write CUT&RUN SRA catalog");
+    let cutrun_cache = td.path().join("cutrun_cache");
+
+    let mut engine = GentleEngine::new();
+    let status = execute_shell_command(
+        &mut engine,
+        &ShellCommand::CutRunStatus {
+            dataset_id: "toy_sra_reads".to_string(),
+            catalog_path: Some(cutrun_catalog.to_string_lossy().to_string()),
+            cache_dir: Some(cutrun_cache.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute CUT&RUN status");
+
+    assert!(!status.state_changed);
+    assert_eq!(status.output["prepared"].as_bool(), Some(false));
+    assert_eq!(
+        status.output["reads_r1"]["source"].as_str(),
+        Some("read_acquisition:SRRFAKE001")
+    );
+    assert_eq!(
+        status.output["reads_r2"]["source"].as_str(),
+        Some("read_acquisition:SRRFAKE001")
+    );
+    assert_eq!(
+        status.output["reads_r1"]["configured"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        status.output["reads_r2"]["configured"].as_bool(),
+        Some(true)
+    );
+}
+
+#[test]
 fn execute_cutrun_interpret_list_show_and_export_coverage() {
     let _serial = cutrun_test_env_lock()
         .lock()
@@ -20531,6 +20692,74 @@ fn parse_transcripts_residue_genomic_coordinates_command() {
 }
 
 #[test]
+fn parse_reads_acquire_commands() {
+    let status = parse_shell_line(
+        "reads acquire status samples.tsv --cache-dir data/read_cache --work-dir out/read_work",
+    )
+    .expect("parse reads acquire status");
+    match status {
+        ShellCommand::ReadsAcquireStatus {
+            manifest_path,
+            cache_dir,
+            work_dir,
+        } => {
+            assert_eq!(manifest_path, "samples.tsv");
+            assert_eq!(cache_dir, "data/read_cache");
+            assert_eq!(work_dir, "out/read_work");
+        }
+        other => panic!("expected ReadsAcquireStatus, got {other:?}"),
+    }
+
+    let prepare = parse_shell_line(
+        "reads acquire prepare samples.tsv --cache-dir data/read_cache --work-dir out/read_work --analysis-format fastq --read-layout paired_end --threads 6 --max-size 20G --min-free-gb 5 --drop-intermediate-fastq --continue-on-error",
+    )
+    .expect("parse reads acquire prepare");
+    match prepare {
+        ShellCommand::ReadsAcquirePrepare {
+            manifest_path,
+            cache_dir,
+            work_dir,
+            analysis_format,
+            read_layout,
+            threads,
+            max_size,
+            min_free_gb,
+            drop_intermediate_fastq,
+            continue_on_error,
+        } => {
+            assert_eq!(manifest_path, "samples.tsv");
+            assert_eq!(cache_dir, "data/read_cache");
+            assert_eq!(work_dir, "out/read_work");
+            assert_eq!(analysis_format, ReadAcquisitionAnalysisFormat::Fastq);
+            assert_eq!(read_layout, ReadAcquisitionReadLayout::PairedEnd);
+            assert_eq!(threads, Some(6));
+            assert_eq!(max_size.as_deref(), Some("20G"));
+            assert_eq!(min_free_gb, Some(5));
+            assert!(drop_intermediate_fastq);
+            assert!(continue_on_error);
+        }
+        other => panic!("expected ReadsAcquirePrepare, got {other:?}"),
+    }
+
+    let inspect = parse_shell_line(
+        "reads acquire inspect SRR000001 --cache-dir data/read_cache --work-dir out/read_work",
+    )
+    .expect("parse reads acquire inspect");
+    match inspect {
+        ShellCommand::ReadsAcquireInspect {
+            sra_accession,
+            cache_dir,
+            work_dir,
+        } => {
+            assert_eq!(sra_accession, "SRR000001");
+            assert_eq!(cache_dir, "data/read_cache");
+            assert_eq!(work_dir, "out/read_work");
+        }
+        other => panic!("expected ReadsAcquireInspect, got {other:?}"),
+    }
+}
+
+#[test]
 fn parse_rna_reads_commands() {
     let interpret = parse_shell_line(
             "rna-reads interpret seq_a 7 reads.fa --report-id tp73_reads --scope target_group_any_strand --kmer-len 9 --seed-stride-bp 1 --min-seed-hit-fraction 0.30 --min-weighted-seed-hit-fraction 0.05 --min-unique-matched-kmers 12 --min-chain-consistency-fraction 0.55 --max-median-transcript-gap 4.0 --min-confirmed-transitions 1 --min-transition-support-fraction 0.20 --no-cdna-poly-t-flip --poly-t-prefix-min-bp 20 --align-band-bp 24 --align-min-identity 0.60 --max-secondary-mappings 2",
@@ -20606,7 +20835,7 @@ fn parse_rna_reads_commands() {
     }
 
     let batch_map = parse_shell_line(
-        "rna-reads batch-map samples.tsv --seq-id seq_a --seed-feature-id 7 --gene TP53 --gene TP73 --target-gene TP53 --out-dir out/rna_batch --origin-mode multi_gene_sparse --report-mode full --align-selection all --complete-rule strict --max-secondary-mappings 5 --transcript-fasta transcripts.fa --transcript-index transcripts.index.json --fail-fast",
+        "rna-reads batch-map samples.tsv --seq-id seq_a --seed-feature-id 7 --gene TP53 --gene TP73 --target-gene TP53 --out-dir out/rna_batch --origin-mode multi_gene_sparse --report-mode full --align-selection all --complete-rule strict --max-secondary-mappings 5 --transcript-fasta transcripts.fa --transcript-index transcripts.index.json --fail-fast --prepare-sra --read-cache-dir data/read_cache --read-work-dir out/read_work --drop-intermediate-fastq",
     )
     .expect("parse rna-reads batch-map");
     match batch_map {
@@ -20624,6 +20853,10 @@ fn parse_rna_reads_commands() {
             align_config,
             concatemer_settings,
             continue_on_error,
+            prepare_sra,
+            read_cache_dir,
+            read_work_dir,
+            drop_intermediate_fastq,
             ..
         } => {
             assert_eq!(manifest_path, "samples.tsv");
@@ -20646,6 +20879,10 @@ fn parse_rna_reads_commands() {
                 vec!["transcripts.index.json".to_string()]
             );
             assert!(!continue_on_error);
+            assert!(prepare_sra);
+            assert_eq!(read_cache_dir.as_deref(), Some("data/read_cache"));
+            assert_eq!(read_work_dir.as_deref(), Some("out/read_work"));
+            assert!(drop_intermediate_fastq);
         }
         other => panic!("expected RnaReadsBatchMap, got {other:?}"),
     }
@@ -22451,6 +22688,10 @@ fn execute_rna_reads_batch_map_writes_bundle_and_sra_plan() {
             concatemer_settings: RnaReadConcatemerInspectionSettings::default(),
             concatemer_limit: 250,
             continue_on_error: true,
+            prepare_sra: false,
+            read_cache_dir: None,
+            read_work_dir: None,
+            drop_intermediate_fastq: false,
         },
     )
     .expect("execute rna-reads batch-map");
@@ -22492,6 +22733,104 @@ fn execute_rna_reads_batch_map_writes_bundle_and_sra_plan() {
     let sra_plan_text = fs::read_to_string(sra_plan).expect("read SRA plan");
     assert!(sra_plan_text.contains("SRR000001"));
     assert!(sra_plan_text.contains("planned_fasta_path"));
+}
+
+#[test]
+#[cfg(unix)]
+fn execute_reads_acquire_prepare_with_fake_sra_toolkit_reports_outputs() {
+    let _env_guard = read_acquisition_test_env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let td = tempdir().expect("tempdir");
+    let bin_dir = td.path().join("fake_sra_toolkit_bin");
+    write_fake_sra_toolkit_bin(&bin_dir);
+    let previous_path = env::var("PATH").unwrap_or_default();
+    let path = if previous_path.is_empty() {
+        bin_dir.display().to_string()
+    } else {
+        format!("{}:{previous_path}", bin_dir.display())
+    };
+    let _path_guard = EnvVarGuard::set("PATH", &path);
+
+    let manifest_path = td.path().join("reads.tsv");
+    fs::write(
+        &manifest_path,
+        "sample_id\tsra_accession\tread_layout\tanalysis_format\tnote\nsample_a\tSRRFAKE001\tsingle_end\tfasta\tprimary\nsample_dup\tSRRFAKE001\tsingle_end\tfasta\tduplicate\n",
+    )
+    .expect("write read acquisition manifest");
+    let cache_dir = td.path().join("cache");
+    let work_dir = td.path().join("work");
+    let mut engine = GentleEngine::default();
+
+    let prepare = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReadsAcquirePrepare {
+            manifest_path: manifest_path.display().to_string(),
+            cache_dir: cache_dir.display().to_string(),
+            work_dir: work_dir.display().to_string(),
+            analysis_format: ReadAcquisitionAnalysisFormat::Fasta,
+            read_layout: ReadAcquisitionReadLayout::SingleEnd,
+            threads: Some(2),
+            max_size: Some("1G".to_string()),
+            min_free_gb: None,
+            drop_intermediate_fastq: true,
+            continue_on_error: false,
+        },
+    )
+    .expect("execute reads acquire prepare with fake SRA Toolkit");
+
+    assert!(!prepare.state_changed);
+    let report = &prepare.output["result"]["read_acquisition_report"];
+    assert_eq!(
+        report["schema"].as_str(),
+        Some("gentle.read_acquisition_report.v1")
+    );
+    assert_eq!(report["sample_count"].as_u64(), Some(2));
+    assert_eq!(report["ready_count"].as_u64(), Some(2));
+    assert_eq!(report["lifecycle_status"].as_str(), Some("ready"));
+    let rows = report["rows"].as_array().expect("read acquisition rows");
+    assert_eq!(rows[0]["lifecycle_status"].as_str(), Some("ready"));
+    assert_eq!(rows[0]["output_paths"][0]["role"].as_str(), Some("single"));
+    assert_eq!(
+        rows[0]["output_paths"][0]["analysis_format"].as_str(),
+        Some("fasta")
+    );
+    let fasta_path = rows[0]["output_paths"][0]["path"]
+        .as_str()
+        .expect("prepared FASTA path");
+    assert!(Path::new(fasta_path).exists());
+    assert!(!work_dir.join("SRRFAKE001/fastq/SRRFAKE001.fastq").exists());
+    let phases: Vec<_> = rows[0]["command_provenance"]
+        .as_array()
+        .expect("command provenance")
+        .iter()
+        .filter_map(|entry| entry["phase"].as_str())
+        .collect();
+    assert_eq!(phases, vec!["prefetch", "validate_sra", "dump_fastq"]);
+    assert!(
+        rows[1]["warnings"]
+            .as_array()
+            .expect("duplicate warnings")
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .is_some_and(|text| text.contains("duplicate accession"))),
+        "duplicate accession should reuse prepared output"
+    );
+
+    let status = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ReadsAcquireStatus {
+            manifest_path: manifest_path.display().to_string(),
+            cache_dir: cache_dir.display().to_string(),
+            work_dir: work_dir.display().to_string(),
+        },
+    )
+    .expect("execute reads acquire status");
+    assert_eq!(
+        status.output["result"]["read_acquisition_report"]["ready_count"].as_u64(),
+        Some(2)
+    );
 }
 
 #[test]
@@ -22558,6 +22897,10 @@ fn execute_rna_reads_batch_map_shell_and_op_routes_have_parity() {
         concatemer_settings: RnaReadConcatemerInspectionSettings::default(),
         concatemer_limit: 250,
         continue_on_error: true,
+        prepare_sra: false,
+        read_cache_dir: None,
+        read_work_dir: None,
+        drop_intermediate_fastq: false,
     };
 
     let shell_out_dir = td.path().join("shell_batch_out");
@@ -22592,6 +22935,10 @@ fn execute_rna_reads_batch_map_shell_and_op_routes_have_parity() {
         concatemer_settings: RnaReadConcatemerInspectionSettings::default(),
         concatemer_limit: 250,
         continue_on_error: true,
+        prepare_sra: false,
+        read_cache_dir: None,
+        read_work_dir: None,
+        drop_intermediate_fastq: false,
     };
     let op_payload = serde_json::to_string(&op).expect("serialize batch operation");
     let mut op_engine = GentleEngine::from_state(state);

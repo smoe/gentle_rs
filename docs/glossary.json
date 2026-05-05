@@ -3170,6 +3170,48 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ReadAcquireStatus"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reads acquire status",
+         "summary": "Inspect shared SRA read-acquisition status for every row in a manifest.",
+         "usage": "reads acquire status MANIFEST.tsv --cache-dir DIR --work-dir DIR"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ReadAcquirePrepare"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reads acquire prepare",
+         "summary": "Prepare SRA-backed reads with the external SRA Toolkit and GENtle-owned logs/status.",
+         "usage": "reads acquire prepare MANIFEST.tsv --cache-dir DIR --work-dir DIR [--analysis-format fasta|fastq] [--read-layout single_end|paired_end|split_spot] [--threads N] [--max-size SIZE] [--min-free-gb N] [--drop-intermediate-fastq] [--continue-on-error]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ReadAcquireInspect"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "reads acquire inspect",
+         "summary": "Inspect one SRA run's shared acquisition cache/work status.",
+         "usage": "reads acquire inspect RUN_ACCESSION --cache-dir DIR --work-dir DIR"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "InterpretRnaReads"
          ],
          "interfaces": [
@@ -3193,7 +3235,7 @@
          ],
          "path": "rna-reads batch-map",
          "summary": "Run manifest-driven RNA-read interpretation, alignment refresh, gene-support, isoform, and concatemer summaries for one or more samples.",
-         "usage": "rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--transcript-fasta PATH]... [--transcript-index PATH]..."
+         "usage": "rna-reads batch-map MANIFEST.tsv --seq-id SEQ_ID --seed-feature-id FEATURE_ID --gene GENE_ID [--gene GENE_ID ...] --out-dir OUT [--target-gene GENE_ID]... [--origin-mode single_gene|multi_gene_sparse] [--report-mode full|seed_passed_only] [--align-selection all|seed_passed|aligned] [--complete-rule near|strict|exact] [--max-secondary-mappings N] [--continue-on-error|--fail-fast] [--prepare-sra] [--read-cache-dir DIR] [--read-work-dir DIR] [--drop-intermediate-fastq] [--transcript-fasta PATH]... [--transcript-index PATH]..."
       },
       {
          "aliases": [],

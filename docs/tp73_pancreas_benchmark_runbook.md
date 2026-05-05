@@ -59,6 +59,12 @@ done
 On Debian, `prefetch`, `vdb-validate`, and `fasterq-dump` are from
 `sra-toolkit`; `pigz` and `time` may need explicit installation.
 
+GENtle now also exposes the native shared route:
+`reads acquire prepare MANIFEST.tsv --cache-dir "$PAN_ROOT" --work-dir "$WORK/read_acquisition"`.
+Use that route when you want RNA and CUT&RUN workflows to share the same
+prepared-read status/log contract. The explicit commands below remain a
+transparent manual equivalent for one-run benchmarking.
+
 ## 2. Retrieve And Validate SRA
 
 ```bash

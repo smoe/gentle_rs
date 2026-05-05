@@ -164,6 +164,13 @@ If one accession is still partially downloaded or locked, remove it from the
 first manifest and add it back later. A smaller completed cohort is better than
 a blocked batch.
 
+For new GENtle-native preparation runs, prefer the shared acquisition contract:
+make a TSV with `sample_id` and `sra_accession`, then run
+`reads acquire prepare MANIFEST.tsv --cache-dir "$PAN_ROOT" --work-dir "$WORK/read_acquisition"`.
+`rna-reads batch-map --prepare-sra --read-cache-dir "$PAN_ROOT" --read-work-dir "$WORK/read_acquisition"`
+uses the same layer before mapping. The older shell snippets below remain useful
+when a cluster already has bespoke SRA/FASTQ/FASTA staging.
+
 ## 4. Prepare One Base State And One Seed Filter
 
 The base state contains only the target sequence and shared preflight result.

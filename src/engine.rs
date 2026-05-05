@@ -100,7 +100,8 @@ pub use gentle_protocol::{
     ProteinExternalOpinionSource, ProteinFeatureFilter, Rack, RackAuthoringTemplate,
     RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
     RackPhysicalTemplateFamily, RackPhysicalTemplateKind, RackPhysicalTemplateSpec,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, RunId, SeqId, SequenceOrigin,
+    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
+    ReadAcquisitionReadLayout, RunId, SeqId, SequenceOrigin,
 };
 
 pub const DEFAULT_HOST_PROFILE_CATALOG_PATH: &str = "assets/host_profiles.json";
@@ -643,6 +644,8 @@ mod operation_handlers;
 mod promoter_design;
 #[path = "engine/analysis/protein_handoff.rs"]
 mod protein_handoff;
+#[path = "engine/io/read_acquisition.rs"]
+mod read_acquisition;
 #[path = "engine/analysis/repeat_cohort.rs"]
 mod repeat_cohort;
 #[path = "engine/analysis/rna_reads.rs"]
@@ -3610,6 +3613,35 @@ pub enum Operation {
         report_id: String,
         path: String,
     },
+    ReadAcquireStatus {
+        manifest_path: String,
+        cache_dir: String,
+        work_dir: String,
+    },
+    ReadAcquirePrepare {
+        manifest_path: String,
+        cache_dir: String,
+        work_dir: String,
+        #[serde(default)]
+        analysis_format: ReadAcquisitionAnalysisFormat,
+        #[serde(default)]
+        read_layout: ReadAcquisitionReadLayout,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        threads: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_size: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min_free_gb: Option<u64>,
+        #[serde(default)]
+        drop_intermediate_fastq: bool,
+        #[serde(default)]
+        continue_on_error: bool,
+    },
+    ReadAcquireInspect {
+        sra_accession: String,
+        cache_dir: String,
+        work_dir: String,
+    },
     InterpretRnaReads {
         seq_id: SeqId,
         seed_feature_id: usize,
@@ -3730,6 +3762,14 @@ pub enum Operation {
         concatemer_limit: usize,
         #[serde(default = "default_true")]
         continue_on_error: bool,
+        #[serde(default)]
+        prepare_sra: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        read_cache_dir: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        read_work_dir: Option<String>,
+        #[serde(default)]
+        drop_intermediate_fastq: bool,
     },
     SummarizeTfbsRegion {
         seq_id: String,
@@ -5288,6 +5328,9 @@ impl GentleEngine {
                 "ShowSequencingConfirmationReport".to_string(),
                 "ExportSequencingConfirmationReport".to_string(),
                 "ExportSequencingConfirmationSupportTsv".to_string(),
+                "ReadAcquireStatus".to_string(),
+                "ReadAcquirePrepare".to_string(),
+                "ReadAcquireInspect".to_string(),
                 "InterpretRnaReads".to_string(),
                 "AlignRnaReadReport".to_string(),
                 "PreflightRnaReadIsoforms".to_string(),
@@ -7440,6 +7483,9 @@ impl GentleEngine {
                 | Operation::ShowCutRunReadReport { .. }
                 | Operation::ExportCutRunReadCoverage { .. }
                 | Operation::InspectCutRunRegulatorySupport { .. }
+                | Operation::ReadAcquireStatus { .. }
+                | Operation::ReadAcquirePrepare { .. }
+                | Operation::ReadAcquireInspect { .. }
                 | Operation::PreflightRnaReadIsoforms { .. }
                 | Operation::ListRnaReadReports { .. }
                 | Operation::ShowRnaReadReport { .. }

@@ -6547,6 +6547,10 @@ impl GentleEngine {
         concatemer_settings: &RnaReadConcatemerInspectionSettings,
         concatemer_limit: usize,
         continue_on_error: bool,
+        prepare_sra: bool,
+        read_cache_dir: Option<&str>,
+        read_work_dir: Option<&str>,
+        drop_intermediate_fastq: bool,
         op_id: &str,
         run_id: &str,
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
@@ -6572,7 +6576,7 @@ impl GentleEngine {
                 "rna-reads batch-map requires --concatemer-limit >= 1",
             ));
         }
-        let manifest_rows = Self::parse_rna_read_batch_manifest(manifest_path)?;
+        let mut manifest_rows = Self::parse_rna_read_batch_manifest(manifest_path)?;
         let out_root = PathBuf::from(out_dir);
         std::fs::create_dir_all(&out_root)
             .map_err(|e| Self::rna_read_batch_io_error(&out_root, "create batch output dir", e))?;
@@ -6612,6 +6616,52 @@ impl GentleEngine {
         let concatemer_partner_summary_tsv_path = out_root.join("concatemer_partner_summary.tsv");
         let sra_preparation_plan_tsv_path = out_root.join("sra_preparation_plan.tsv");
         let sra_preparation_commands_sh_path = out_root.join("sra_preparation_commands.sh");
+        let read_acquisition_report = if prepare_sra
+            && manifest_rows
+                .iter()
+                .any(|row| row.input_path.is_none() && row.sra_accession.is_some())
+        {
+            let cache_dir = read_cache_dir
+                .filter(|value| !value.trim().is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| out_root.join("read_cache"));
+            let work_dir = read_work_dir
+                .filter(|value| !value.trim().is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| out_root.join("read_work"));
+            let acquisition = self.read_acquisition_prepare(
+                manifest_path,
+                &Self::rna_read_batch_path_string(&cache_dir),
+                &Self::rna_read_batch_path_string(&work_dir),
+                ReadAcquisitionAnalysisFormat::Fasta,
+                ReadAcquisitionReadLayout::SingleEnd,
+                None,
+                None,
+                None,
+                drop_intermediate_fastq,
+                continue_on_error,
+            )?;
+            for row in &mut manifest_rows {
+                if row.input_path.is_some() {
+                    continue;
+                }
+                let Some(accession) = row.sra_accession.as_deref() else {
+                    continue;
+                };
+                if let Some(prepared) = acquisition.rows.iter().find(|prepared| {
+                    prepared.sample_id == row.sample_id && prepared.sra_accession == accession
+                }) {
+                    if prepared.lifecycle_status == "ready" {
+                        if let Some(first_output) = prepared.output_paths.first() {
+                            row.input_path = Some(first_output.path.clone());
+                        }
+                    }
+                }
+            }
+            Some(acquisition)
+        } else {
+            None
+        };
 
         let mut rows = Vec::<RnaReadBatchMapSampleRow>::new();
         let mut isoform_support_rows = Vec::<RnaReadBatchIsoformSupportRow>::new();
@@ -6926,6 +6976,7 @@ impl GentleEngine {
             ),
             sra_preparation_plan_tsv_path: sra_plan_path,
             sra_preparation_commands_sh_path: sra_commands_path,
+            read_acquisition_report,
             sample_count: rows.len(),
             ok_count,
             failed_count,
@@ -12064,6 +12115,7 @@ impl GentleEngine {
             cutrun_read_report_summaries: None,
             cutrun_read_coverage_export: None,
             cutrun_regulatory_support: None,
+            read_acquisition_report: None,
             cutrun_dataset_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
@@ -12160,6 +12212,7 @@ impl GentleEngine {
             cutrun_read_report_summaries: None,
             cutrun_read_coverage_export: None,
             cutrun_regulatory_support: None,
+            read_acquisition_report: None,
             cutrun_dataset_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,

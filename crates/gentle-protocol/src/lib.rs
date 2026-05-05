@@ -2731,6 +2731,145 @@ impl RnaReadInputFormat {
     }
 }
 
+pub const READ_ACQUISITION_REPORT_SCHEMA: &str = "gentle.read_acquisition_report.v1";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadAcquisitionAnalysisFormat {
+    #[default]
+    Fasta,
+    Fastq,
+}
+
+impl ReadAcquisitionAnalysisFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fasta => "fasta",
+            Self::Fastq => "fastq",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadAcquisitionReadLayout {
+    #[default]
+    SingleEnd,
+    PairedEnd,
+    SplitSpot,
+}
+
+impl ReadAcquisitionReadLayout {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleEnd => "single_end",
+            Self::PairedEnd => "paired_end",
+            Self::SplitSpot => "split_spot",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ReadAcquisitionManifestRow {
+    pub row_number: usize,
+    pub sample_id: String,
+    pub sra_accession: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assay_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_layout: Option<ReadAcquisitionReadLayout>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis_format: Option<ReadAcquisitionAnalysisFormat>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ReadAcquisitionReadLengthStats {
+    pub read_count: usize,
+    pub total_bases: usize,
+    pub min_length_bp: usize,
+    pub max_length_bp: usize,
+    pub mean_length_bp: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ReadAcquisitionOutputPath {
+    pub role: String,
+    pub path: String,
+    pub analysis_format: ReadAcquisitionAnalysisFormat,
+    pub file_size_bytes: u64,
+    pub checksum_sha1: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_length_stats: Option<ReadAcquisitionReadLengthStats>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ReadAcquisitionCommandProvenance {
+    pub phase: String,
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    pub stdout_log_path: String,
+    pub stderr_log_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ReadAcquisitionRunReport {
+    pub sample_id: String,
+    pub sra_accession: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assay_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    pub resource_key: String,
+    pub lifecycle_status: String,
+    pub read_layout: ReadAcquisitionReadLayout,
+    pub analysis_format: ReadAcquisitionAnalysisFormat,
+    pub sra_path: String,
+    pub run_dir: String,
+    #[serde(default)]
+    pub output_paths: Vec<ReadAcquisitionOutputPath>,
+    #[serde(default)]
+    pub command_provenance: Vec<ReadAcquisitionCommandProvenance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_activity: Option<SharedAssetActivityStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ReadAcquisitionReport {
+    pub schema: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_path: Option<String>,
+    pub cache_dir: String,
+    pub work_dir: String,
+    pub generated_at_unix_ms: u128,
+    pub lifecycle_status: String,
+    pub sample_count: usize,
+    pub ready_count: usize,
+    pub running_count: usize,
+    pub failed_count: usize,
+    pub missing_count: usize,
+    #[serde(default)]
+    pub rows: Vec<ReadAcquisitionRunReport>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RnaReadInterpretationProfile {
@@ -4615,6 +4754,8 @@ pub struct RnaReadBatchMapReport {
     pub sra_preparation_plan_tsv_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sra_preparation_commands_sh_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_acquisition_report: Option<ReadAcquisitionReport>,
     pub sample_count: usize,
     pub ok_count: usize,
     pub failed_count: usize,
@@ -4915,6 +5056,7 @@ pub struct CutRunCatalogEntry {
     pub reads_r1_local: Option<String>,
     pub reads_r2_remote: Option<String>,
     pub reads_r2_local: Option<String>,
+    pub reads_sra_accession: Option<String>,
     #[serde(default)]
     pub read_layout: CutRunReadLayout,
     pub cache_dir: Option<String>,
