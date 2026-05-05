@@ -2243,6 +2243,7 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
         "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_reporter_alternate.svg",
     ]:
         assert expected_svg in collected_declared
+        assert expected_svg.replace(".svg", ".png") not in collected_declared
 
     preferred = result["preferred_artifacts"]
     assert preferred[0]["artifact_id"] == "clawbio_storyboard_png"
@@ -2265,6 +2266,10 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     ]
     assert continue_actions[0]["label"] == "Continue: show next figure"
     assert continue_actions[0]["requires_confirmation"] is False
+    assert "shell_line" not in continue_actions[0]
+    assert continue_actions[0]["source_shell_line"] == (
+        "workflow @variant_luciferase_storyboard_demo.json"
+    )
     assert continue_actions[0]["request"]["mode"] == "workflow"
     assert continue_actions[0]["request"]["expected_artifacts"] == [
         "docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg"
@@ -2275,7 +2280,7 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     assert result["artifact_summary"]["best_first_artifact"]["path"] == (
         "generated/clawbio_storyboard.png"
     )
-    assert result["artifact_summary"]["displayable_artifact_count"] == 8
+    assert result["artifact_summary"]["displayable_artifact_count"] == 5
     assert result["artifact_summary"]["continuation_action_count"] == len(
         continue_actions
     )
@@ -2287,6 +2292,15 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     storyboard_path = output_dir / "generated" / "clawbio_storyboard.svg"
     assert storyboard_path.exists()
     assert (output_dir / "generated" / "clawbio_storyboard.png").exists()
+    assert not (
+        output_dir
+        / "generated"
+        / "docs"
+        / "tutorial"
+        / "reproducibility"
+        / "vkorc1_rs9923231_promoter_reporter"
+        / "vkorc1_rs9923231_promoter_context.png"
+    ).exists()
     storyboard = storyboard_path.read_text(encoding="utf-8")
     assert "Variant-to-Synthetic-Biology assay storyboard" in storyboard
     assert "Genomic context" in storyboard
@@ -2294,6 +2308,8 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
     assert "Alternate allele reporter" in storyboard
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "generated/clawbio_storyboard.png" in report
+    assert "use nested request payload for docs/tutorial/reproducibility" in report
+    assert "`Continue: show next figure`: `(unknown)`" not in report
     assert "## Artifact Bundle Summary" in report
 
 
@@ -5085,6 +5101,12 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     assert "continue cloning" in routes["telegram_guide_cloning"]["trigger_terms"]
     assert "continue isoforms" in routes["telegram_guide_isoforms"]["trigger_terms"]
     assert "isoforms guide" in routes["telegram_guide_isoforms"]["trigger_terms"]
+    assert "show me the gentle isoforms guide" in routes["telegram_guide_isoforms"][
+        "trigger_terms"
+    ]
+    assert "show me the gentle isoforms guide" not in routes[
+        "telegram_guide_isoforms_gene"
+    ]["trigger_terms"]
     assert "gentle isoforms guide for" in routes["telegram_guide_isoforms_gene"][
         "trigger_terms"
     ]

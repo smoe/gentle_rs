@@ -3947,6 +3947,28 @@ pub struct OperationRecord {
     pub result: OpResult,
 }
 
+/// Compact one-row summary for a history transition exposed to adapters.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct EngineHistoryTransitionSummary {
+    pub op_id: OpId,
+    pub run_id: RunId,
+    pub operation: String,
+}
+
+/// Session-local undo/redo availability summary.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct EngineHistorySummary {
+    pub schema: String,
+    pub undo_count: usize,
+    pub redo_count: usize,
+    pub history_limit: usize,
+    pub operation_log_count: usize,
+    pub next_undo: Option<EngineHistoryTransitionSummary>,
+    pub next_redo: Option<EngineHistoryTransitionSummary>,
+}
+
 /// Compact sequence row used by state-summary style adapter surfaces.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineSequenceSummary {

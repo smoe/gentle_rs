@@ -459,6 +459,9 @@ pub enum ShellCommand {
     },
     Capabilities,
     StateSummary,
+    HistoryStatus,
+    HistoryUndo,
+    HistoryRedo,
     LoadProject {
         path: String,
     },
@@ -5396,6 +5399,9 @@ impl ShellCommand {
             }
             Self::Capabilities => "inspect engine capabilities".to_string(),
             Self::StateSummary => "show sequence/container state summary".to_string(),
+            Self::HistoryStatus => "show session-local undo/redo history status".to_string(),
+            Self::HistoryUndo => "undo the most recent operation-level state change".to_string(),
+            Self::HistoryRedo => "redo the most recently undone operation-level state change".to_string(),
             Self::LoadProject { path } => format!("load project state from '{path}'"),
             Self::SaveProject { path } => format!("save current project state to '{path}'"),
             Self::ScreenshotWindow { output } => {
@@ -16816,6 +16822,21 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 Err(token_error(cmd))
             }
         }
+        "history" => {
+            if tokens.len() != 2 {
+                return Err(
+                    "history requires one subcommand: status, undo, or redo".to_string()
+                );
+            }
+            match tokens[1].as_str() {
+                "status" => Ok(ShellCommand::HistoryStatus),
+                "undo" => Ok(ShellCommand::HistoryUndo),
+                "redo" => Ok(ShellCommand::HistoryRedo),
+                other => Err(format!(
+                    "Unknown history subcommand '{other}' (expected status, undo, or redo)"
+                )),
+            }
+        }
         "load-project" | "import-state" => {
             if tokens.len() == 2 {
                 Ok(ShellCommand::LoadProject {
@@ -20919,6 +20940,44 @@ fn execute_help_command(
             })
         }
         _ => unreachable!("non-help command passed to help helper"),
+    }
+}
+
+fn execute_history_command(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+) -> Result<ShellRunResult, String> {
+    match command {
+        ShellCommand::HistoryStatus => Ok(ShellRunResult {
+            state_changed: false,
+            output: serde_json::to_value(engine.history_summary())
+                .map_err(|e| format!("Could not serialize history summary: {e}"))?,
+        }),
+        ShellCommand::HistoryUndo => {
+            engine
+                .undo_last_operation()
+                .map_err(|e| e.message.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "message": "Undo applied",
+                    "summary": engine.history_summary(),
+                }),
+            })
+        }
+        ShellCommand::HistoryRedo => {
+            engine
+                .redo_last_operation()
+                .map_err(|e| e.message.to_string())?;
+            Ok(ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "message": "Redo applied",
+                    "summary": engine.history_summary(),
+                }),
+            })
+        }
+        _ => Err("execute_history_command called with unsupported command".to_string()),
     }
 }
 
@@ -31581,6 +31640,9 @@ fn execute_shell_command_with_options_inner(
         ShellCommand::Help { .. } => execute_help_command(engine, command)?,
         ShellCommand::Capabilities | ShellCommand::StateSummary => {
             execute_agent_meta_command(engine, command)?
+        }
+        ShellCommand::HistoryStatus | ShellCommand::HistoryUndo | ShellCommand::HistoryRedo => {
+            execute_history_command(engine, command)?
         }
         ShellCommand::LoadProject { path } => {
             let state = ProjectState::load_from_path(path).map_err(|e| e.to_string())?;

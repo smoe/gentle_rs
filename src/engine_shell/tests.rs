@@ -15,7 +15,7 @@ use crate::engine::{
     AdapterCaptureProtectionMode, AdapterCaptureStyle, AdapterRestrictionCapturePlan, Arrangement,
     ArrangementMode, AttractPwmMappingPolicy, AttractSplicingEvidenceSettings,
     BIGWIG_TO_BEDGRAPH_ENV_BIN, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
-    ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig,
+    ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig, DisplayTarget,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,
     EditableStatus, ExonSkipReturnKind, PrimerDesignProgress, PromoterTfbsGeneQuery,
     ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
@@ -633,6 +633,64 @@ fn parse_help_with_topic_and_options() {
         }
         other => panic!("unexpected command: {other:?}"),
     }
+}
+
+#[test]
+fn parse_history_commands() {
+    assert!(matches!(
+        parse_shell_line("history status").expect("parse history status"),
+        ShellCommand::HistoryStatus
+    ));
+    assert!(matches!(
+        parse_shell_line("history undo").expect("parse history undo"),
+        ShellCommand::HistoryUndo
+    ));
+    assert!(matches!(
+        parse_shell_line("history redo").expect("parse history redo"),
+        ShellCommand::HistoryRedo
+    ));
+    assert!(parse_shell_line("history").is_err());
+    assert!(parse_shell_line("history rewind").is_err());
+}
+
+#[test]
+fn execute_history_commands_report_and_transition_state() {
+    let mut engine = GentleEngine::new();
+    let status = execute_shell_command(&mut engine, &ShellCommand::HistoryStatus)
+        .expect("history status");
+    assert!(!status.state_changed);
+    assert_eq!(status.output["schema"], "gentle.engine_history_summary.v1");
+    assert_eq!(status.output["undo_count"], 0);
+
+    engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::Features,
+            visible: false,
+        })
+        .expect("apply visibility change");
+    assert!(!engine.state().display.show_features);
+
+    let status = execute_shell_command(&mut engine, &ShellCommand::HistoryStatus)
+        .expect("history status after mutation");
+    assert_eq!(status.output["undo_count"], 1);
+    assert_eq!(
+        status.output["next_undo"]["operation"],
+        "SetDisplayVisibility"
+    );
+
+    let undo =
+        execute_shell_command(&mut engine, &ShellCommand::HistoryUndo).expect("history undo");
+    assert!(undo.state_changed);
+    assert!(engine.state().display.show_features);
+    assert_eq!(undo.output["summary"]["undo_count"], 0);
+    assert_eq!(undo.output["summary"]["redo_count"], 1);
+
+    let redo =
+        execute_shell_command(&mut engine, &ShellCommand::HistoryRedo).expect("history redo");
+    assert!(redo.state_changed);
+    assert!(!engine.state().display.show_features);
+    assert_eq!(redo.output["summary"]["undo_count"], 1);
+    assert_eq!(redo.output["summary"]["redo_count"], 0);
 }
 
 #[test]

@@ -1681,11 +1681,70 @@ def _preferred_artifact_id_for_png(raw_id: str | None, bundle_path: str) -> str:
     return stem if stem.endswith("_png") else stem + "_png"
 
 
+def _artifact_reference_keys(artifact: dict[str, Any]) -> set[str]:
+    keys = set()
+    for key in ("declared_path", "bundle_path", "path", "derived_from"):
+        value = artifact.get(key)
+        if isinstance(value, str) and value.strip():
+            keys.add(value.strip())
+    return keys
+
+
+def _collected_svg_artifacts(
+    collected_artifacts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        artifact
+        for artifact in collected_artifacts
+        if isinstance(artifact, dict)
+        and Path(str(artifact.get("copied_path", ""))).suffix.lower() == ".svg"
+        and isinstance(artifact.get("declared_path"), str)
+        and str(artifact["declared_path"]).strip()
+    ]
+
+
+def _best_first_svg_declared_paths(
+    collected_artifacts: list[dict[str, Any]],
+    preferred_artifacts: list[dict[str, Any]] | None,
+) -> set[str]:
+    svg_artifacts = _collected_svg_artifacts(collected_artifacts)
+    if not svg_artifacts:
+        return set()
+    if len(svg_artifacts) == 1:
+        return {str(svg_artifacts[0]["declared_path"]).strip()}
+
+    preferred = [
+        dict(artifact)
+        for artifact in (preferred_artifacts or [])
+        if isinstance(artifact, dict)
+        and isinstance(artifact.get("path"), str)
+        and str(artifact["path"]).strip().lower().endswith(".svg")
+    ]
+    preferred.sort(
+        key=lambda artifact: (
+            int(artifact.get("presentation_rank", 10**9))
+            if isinstance(artifact.get("presentation_rank"), int)
+            else 10**9,
+            str(artifact.get("artifact_id", "")),
+        )
+    )
+    for preferred_artifact in preferred:
+        preferred_path = str(preferred_artifact["path"]).strip()
+        for artifact in svg_artifacts:
+            if preferred_path in _artifact_reference_keys(artifact):
+                return {str(artifact["declared_path"]).strip()}
+
+    if preferred_artifacts:
+        return set()
+    return {str(svg_artifacts[0]["declared_path"]).strip()}
+
+
 def _rasterize_collected_svg_artifacts(
     collected_artifacts: list[dict[str, Any]],
     resolution: CliResolution,
     execution_cwd: Path,
     output_dir: Path,
+    rasterize_declared_paths: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     updated_collected = list(collected_artifacts)
     rasterized_pngs: list[dict[str, Any]] = []
@@ -1693,6 +1752,14 @@ def _rasterize_collected_svg_artifacts(
         copied_path = Path(str(artifact.get("copied_path", "")))
         if copied_path.suffix.lower() != ".svg":
             continue
+        if rasterize_declared_paths is not None:
+            declared_path = str(artifact.get("declared_path", "")).strip()
+            bundle_path = str(artifact.get("bundle_path", "")).strip()
+            if (
+                declared_path not in rasterize_declared_paths
+                and bundle_path not in rasterize_declared_paths
+            ):
+                continue
         png_path = copied_path.with_suffix(".png")
         run_result, step = _run_cli_command(
             resolution,
@@ -3047,21 +3114,26 @@ def _suggested_action(
 
 def _continue_artifact_suggested_actions(
     request: Request | None,
-    rasterized_pngs: list[dict[str, Any]],
+    collected_artifacts: list[dict[str, Any]],
     preferred_artifacts: list[dict[str, Any]] | None,
 ) -> list[dict[str, Any]] | None:
-    if len(rasterized_pngs) < 2:
+    svg_artifacts = _collected_svg_artifacts(collected_artifacts)
+    if len(svg_artifacts) < 2:
         return None
-    best_derived_from = {
-        str(artifact.get("derived_from") or "").strip()
-        for artifact in (preferred_artifacts or [])
-        if isinstance(artifact, dict)
-    }
+
+    best_references: set[str] = set()
+    for artifact in preferred_artifacts or []:
+        if not isinstance(artifact, dict):
+            continue
+        if artifact.get("is_best_first_artifact") is True:
+            best_references.update(_artifact_reference_keys(artifact))
+    if not best_references and preferred_artifacts:
+        best_references.update(_artifact_reference_keys(preferred_artifacts[0]))
+
     remaining = [
         artifact
-        for artifact in rasterized_pngs
-        if str(artifact.get("derived_from") or "").strip()
-        and str(artifact.get("derived_from") or "").strip() not in best_derived_from
+        for artifact in svg_artifacts
+        if not (_artifact_reference_keys(artifact) & best_references)
     ]
     if not remaining:
         return None
@@ -3070,13 +3142,15 @@ def _continue_artifact_suggested_actions(
     timeout_secs = request.timeout_secs if request is not None else 180
     actions: list[dict[str, Any]] = []
     for idx, artifact in enumerate(remaining, start=1):
-        source_svg = str(artifact.get("derived_from") or "").strip()
+        source_svg = str(artifact.get("declared_path") or "").strip()
+        if not source_svg:
+            continue
         label = "Continue: show next figure" if idx == 1 else f"Continue: show figure {idx + 1}"
         action = {
             "action_id": f"continue_show_figure_{idx}",
             "label": label,
             "kind": "continue_artifact",
-            "shell_line": shell_line,
+            "source_shell_line": shell_line,
             "timeout_secs": timeout_secs,
             "request": _request_payload_for_artifact_continuation(
                 request,
@@ -3084,13 +3158,13 @@ def _continue_artifact_suggested_actions(
             ),
             "rationale": (
                 "This run generated more than one displayable figure. Re-run the "
-                "same GENtle request while collecting only this next figure."
+                "nested request payload while collecting only this next figure."
             ),
             "requires_confirmation": False,
             "expected_artifacts": [source_svg],
             "artifact": {
                 "declared_path": source_svg,
-                "png_bundle_path": artifact.get("bundle_path"),
+                "svg_bundle_path": artifact.get("bundle_path"),
             },
         }
         actions.append(action)
@@ -3696,6 +3770,26 @@ def _artifact_bundle_summary(
     }
 
 
+def _suggested_action_command_text(action: dict[str, Any]) -> str:
+    shell_line = str(action.get("shell_line") or "").strip()
+    if shell_line:
+        return shell_line
+    request_payload = action.get("request")
+    if isinstance(request_payload, dict):
+        expected_artifacts = request_payload.get("expected_artifacts")
+        if (
+            action.get("kind") == "continue_artifact"
+            and isinstance(expected_artifacts, list)
+            and expected_artifacts
+        ):
+            return (
+                "use nested request payload for "
+                + ", ".join(str(path) for path in expected_artifacts)
+            )
+        return "use nested request payload"
+    return "(unknown)"
+
+
 def _ensure_default_demo_suggested_action(
     request: Request | None,
     suggested_actions: list[dict[str, Any]] | None,
@@ -3924,7 +4018,7 @@ def _write_report(
                 [
                     "",
                     "```bash",
-                    str(action.get("shell_line", "(unknown)")),
+                    _suggested_action_command_text(action),
                     "```",
                 ]
             )
@@ -3940,7 +4034,7 @@ def _write_report(
             lines.extend(["", "## Suggested Actions", ""])
             for action in suggested_actions:
                 lines.append(
-                    f"- `{action.get('label', 'Action')}`: `{action.get('shell_line', '(unknown)')}`"
+                    f"- `{action.get('label', 'Action')}`: `{_suggested_action_command_text(action)}`"
                 )
                 if action.get("rationale"):
                     lines.append(f"  Why: `{action['rationale']}`")
@@ -4258,11 +4352,16 @@ def main() -> int:
                 collected_artifacts,
                 preferred_artifacts,
             )
+            rasterize_declared_paths = _best_first_svg_declared_paths(
+                collected_artifacts,
+                preferred_artifacts,
+            )
             collected_artifacts, rasterized_pngs = _rasterize_collected_svg_artifacts(
                 collected_artifacts,
                 resolution,
                 execution_cwd,
                 output_dir,
+                rasterize_declared_paths,
             )
             preferred_artifacts = _rewrite_preferred_artifacts_for_png(
                 collected_artifacts,
@@ -4271,7 +4370,7 @@ def main() -> int:
             )
             continue_artifact_actions = _continue_artifact_suggested_actions(
                 request,
-                rasterized_pngs,
+                collected_artifacts,
                 preferred_artifacts,
             )
             suggested_actions = _merge_suggested_actions(

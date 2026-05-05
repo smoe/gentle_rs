@@ -306,16 +306,17 @@ Notes:
   rendered expert SVG into the output bundle
 - graphics contract for ClawBio/OpenClaw:
   - graphics requests still declare SVG engine outputs in `expected_artifacts[]`
-  - the wrapper now rasterizes those SVGs into deterministic PNG bundle
-    artifacts at fixed scale `2.0`
+  - the wrapper rasterizes the best-first SVG into one deterministic PNG bundle
+    artifact at fixed scale `2.0`
   - `result.json.preferred_artifacts[]` now points at the PNG bundle paths for
     figures, including `generated/clawbio_storyboard.png` when one run yields
     multiple related graphics
   - `result.json.artifact_summary` summarizes the best-first artifact,
     displayable/collected artifact counts, and continuation actions for
     one-image-per-reply chat gateways
-  - the source SVGs may still remain in the bundle as provenance/supporting
-    artifacts
+  - remaining SVG figures stay in the bundle as provenance/supporting artifacts
+    and are exposed through request-first `continue_artifact` actions rather
+    than immediate extra PNG files
   - browser/OpenClaw inline image rendering remains a later ClawBio-side
     attachment/UI task
 - capabilities/interaction contract for ClawBio/OpenClaw:

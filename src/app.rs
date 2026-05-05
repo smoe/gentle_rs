@@ -37,6 +37,15 @@ mod window_registry;
 #[path = "app/jaspar_expert.rs"]
 mod jaspar_expert;
 
+#[path = "app/history_ui.rs"]
+mod history_ui;
+
+#[path = "app/root_ui.rs"]
+mod root_ui;
+
+#[path = "app/configuration_ui.rs"]
+mod configuration_ui;
+
 use std::{
     collections::hash_map::DefaultHasher,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -1080,7 +1089,7 @@ pub struct GENtleApp {
     command_palette_selected: usize,
     command_palette_focus_query: bool,
     show_jobs_panel: bool,
-    show_history_panel: bool,
+    history_ui: HistoryUiState,
     hover_status_name: String,
     app_status: String,
     routine_assistant_stage: RoutineAssistantStage,
@@ -1258,6 +1267,11 @@ struct RenderedHelpMarkdownEntry {
 enum ConfigurationTab {
     ExternalApplications,
     Graphics,
+}
+
+#[derive(Clone, Debug, Default)]
+struct HistoryUiState {
+    show_panel: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2816,7 +2830,7 @@ impl Default for GENtleApp {
             command_palette_selected: 0,
             command_palette_focus_query: false,
             show_jobs_panel: false,
-            show_history_panel: false,
+            history_ui: HistoryUiState::default(),
             hover_status_name: String::new(),
             app_status: String::new(),
             routine_assistant_stage: RoutineAssistantStage::GoalAndCandidates,
@@ -32352,10 +32366,13 @@ Error: `{err}`"
                 self.last_native_active_window_key = active_window_key;
             }
         }
-        let (undo_count, redo_count) = {
-            let engine = self.engine.read().expect("Engine lock poisoned");
-            (engine.undo_available(), engine.redo_available())
-        };
+        let history_summary = self
+            .engine
+            .read()
+            .map(|engine| engine.history_summary())
+            .unwrap_or_default();
+        let undo_count = history_summary.undo_count;
+        let redo_count = history_summary.redo_count;
         let history_ops_enabled = !self.has_active_background_jobs();
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
@@ -32656,7 +32673,10 @@ Error: `{err}`"
                 if !history_ops_enabled {
                     ui.small("Undo/redo disabled while background jobs are running.");
                 } else {
-                    ui.small(format!("Undo {undo_count} | Redo {redo_count}"));
+                    ui.small(format!(
+                        "Undo {undo_count} | Redo {redo_count} | limit {}",
+                        history_summary.history_limit
+                    ));
                 }
                 ui.separator();
                 let palette_resp = self.track_hover_status(
@@ -42047,170 +42067,6 @@ Error: `{err}`"
         });
     }
 
-    fn render_configuration_contents(&mut self, ui: &mut Ui) {
-        let has_unapplied_changes = self.configuration_has_unapplied_changes();
-        window_backdrop::paint_window_backdrop(
-            ui,
-            WindowBackdropKind::Configuration,
-            &self.window_backdrops,
-        );
-        with_window_content_inset(ui, |ui| {
-            self.render_specialist_window_nav(ui);
-            ui.horizontal_wrapped(|ui| {
-                if ui
-                    .selectable_label(
-                        self.configuration_tab == ConfigurationTab::ExternalApplications,
-                        "External Applications",
-                    )
-                    .clicked()
-                {
-                    self.configuration_tab = ConfigurationTab::ExternalApplications;
-                }
-                if ui
-                    .selectable_label(
-                        self.configuration_tab == ConfigurationTab::Graphics,
-                        "Graphics",
-                    )
-                    .clicked()
-                {
-                    self.configuration_tab = ConfigurationTab::Graphics;
-                }
-                ui.separator();
-                if has_unapplied_changes {
-                    ui.colored_label(egui::Color32::from_rgb(185, 95, 25), "Unapplied changes");
-                }
-                if ui
-                    .button("Close")
-                    .on_hover_text(if has_unapplied_changes {
-                        "Close configuration dialog (unapplied changes will be discarded)"
-                    } else {
-                        "Close configuration dialog"
-                    })
-                    .clicked()
-                {
-                    self.show_configuration_dialog = false;
-                }
-            });
-            ui.separator();
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                ui.horizontal(|ui| {
-                    if has_unapplied_changes {
-                        ui.colored_label(egui::Color32::from_rgb(185, 95, 25), "Unapplied changes");
-                    }
-                    if ui
-                        .button("Cancel")
-                        .on_hover_text(if has_unapplied_changes {
-                            "Discard unapplied configuration changes and close"
-                        } else {
-                            "Close configuration dialog"
-                        })
-                        .clicked()
-                    {
-                        self.sync_configuration_from_runtime();
-                        self.configuration_status = if has_unapplied_changes {
-                            "Discarded unapplied configuration changes".to_string()
-                        } else {
-                            "Closed configuration dialog".to_string()
-                        };
-                        self.show_configuration_dialog = false;
-                    }
-                    if ui
-                        .add_enabled(has_unapplied_changes, egui::Button::new("Apply"))
-                        .on_hover_text("Apply all unapplied configuration changes")
-                        .clicked()
-                    {
-                        self.apply_pending_configuration_changes();
-                    }
-                });
-                if !self.configuration_status.trim().is_empty() {
-                    ui.separator();
-                    ui.monospace(self.configuration_status.clone());
-                }
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .id_salt("configuration_dialog_scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                            ui,
-                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                        );
-                        match self.configuration_tab {
-                            ConfigurationTab::ExternalApplications => {
-                                self.render_configuration_external_tab(ui);
-                            }
-                            ConfigurationTab::Graphics => {
-                                self.render_configuration_graphics_tab(ui);
-                            }
-                        }
-                    });
-            });
-        });
-    }
-
-    fn render_configuration_dialog(&mut self, ctx: &egui::Context) {
-        if !self.show_configuration_dialog {
-            return;
-        }
-        let viewport_id = Self::configuration_viewport_id();
-        let builder = egui::ViewportBuilder::default()
-            .with_title("Configuration")
-            .with_inner_size([720.0, 540.0])
-            .with_min_inner_size([460.0, 320.0]);
-        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, viewport_id);
-            if class == egui::ViewportClass::EmbeddedWindow {
-                let mut open = self.show_configuration_dialog;
-                let render_started = Instant::now();
-                let min_size = Vec2::new(460.0, 320.0);
-                let spec = crate::egui_compat::HostedWindowSpec::new(
-                    "Configuration",
-                    Self::hosted_configuration_window_id(),
-                    Vec2::new(720.0, 540.0),
-                    min_size,
-                )
-                .foreground(
-                    self.pending_focus_viewports.contains(&viewport_id)
-                        || self
-                            .pending_viewport_focus_timestamps
-                            .contains_key(&viewport_id),
-                );
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
-                    self.render_configuration_contents(ui)
-                });
-                self.note_slow_open_phase(
-                    viewport_id,
-                    "Configuration first-frame render",
-                    render_started.elapsed().as_millis(),
-                );
-                self.show_configuration_dialog = Self::reconcile_embedded_window_open_state(
-                    self.show_configuration_dialog,
-                    open,
-                );
-                return;
-            }
-
-            let render_started = Instant::now();
-            crate::egui_compat::show_central_panel(
-                ctx,
-                egui::CentralPanel::default().frame(egui::Frame::NONE),
-                |ui| {
-                    self.render_configuration_contents(ui);
-                },
-            );
-            self.note_slow_open_phase(
-                viewport_id,
-                "Configuration first-frame render",
-                render_started.elapsed().as_millis(),
-            );
-
-            if Self::viewport_close_requested_or_shortcut(ctx) {
-                self.show_configuration_dialog = false;
-            }
-        });
-        self.finalize_viewport_open_probe(viewport_id, "Configuration");
-    }
-
     fn render_unsaved_changes_dialog(&mut self, ctx: &egui::Context) {
         if self.pending_project_action.is_none() {
             return;
@@ -43253,107 +43109,12 @@ Error: `{err}`"
         self.show_jobs_panel = open;
     }
 
-    fn render_history_panel(&mut self, ctx: &egui::Context) {
-        if !self.show_history_panel {
-            return;
-        }
-        let mut open = self.show_history_panel;
-        let (undo_count, redo_count, history_rows) = {
-            let engine = self.engine.read().unwrap();
-            let rows = engine
-                .operation_log()
-                .iter()
-                .rev()
-                .take(120)
-                .map(|record| {
-                    (
-                        record.result.op_id.clone(),
-                        record.run_id.clone(),
-                        Self::summarize_operation(&record.op),
-                    )
-                })
-                .collect::<Vec<_>>();
-            (engine.undo_available(), engine.redo_available(), rows)
-        };
-
-        let builder = egui::ViewportBuilder::default()
-            .with_title("Operation History")
-            .with_inner_size([820.0, 520.0])
-            .with_min_inner_size([560.0, 320.0]);
-        let viewport_id = Self::history_viewport_id();
-        let render_history_in_foreground = self.viewport_foreground_requested(viewport_id);
-        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, viewport_id);
-            let mut render_contents = |ui: &mut Ui| {
-                ui.label("Operation-level history with undo/redo");
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(undo_count > 0, egui::Button::new("Undo"))
-                        .on_hover_text("Undo the most recent operation-level state transition")
-                        .clicked()
-                    {
-                        self.undo_last_operation();
-                    }
-                    if ui
-                        .add_enabled(redo_count > 0, egui::Button::new("Redo"))
-                        .on_hover_text("Redo the most recently undone operation-level transition")
-                        .clicked()
-                    {
-                        self.redo_last_operation();
-                    }
-                    ui.small(format!(
-                        "undo available: {} | redo available: {}",
-                        undo_count, redo_count
-                    ));
-                });
-                ui.separator();
-                if history_rows.is_empty() {
-                    ui.small("No operations recorded yet.");
-                } else {
-                    egui::ScrollArea::vertical()
-                        .id_salt(OPERATION_HISTORY_SCROLL_ID)
-                        .show(ui, |ui| {
-                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                ui,
-                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                            );
-                            for (op_id, run_id, summary) in &history_rows {
-                                ui.monospace(format!("[{op_id}] run={run_id}"));
-                                ui.small(summary);
-                                ui.separator();
-                            }
-                        });
-                }
-            };
-
-            if class == egui::ViewportClass::EmbeddedWindow {
-                let spec = crate::egui_compat::HostedWindowSpec::new(
-                    "Operation History",
-                    egui::Id::new("Operation History"),
-                    Vec2::new(820.0, 520.0),
-                    Vec2::new(560.0, 320.0),
-                )
-                .foreground(render_history_in_foreground);
-                crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
-                    render_contents(ui)
-                });
-            } else {
-                crate::egui_compat::show_central_panel(ctx, egui::CentralPanel::default(), |ui| {
-                    render_contents(ui);
-                });
-                if Self::viewport_close_requested_or_shortcut(ctx) {
-                    open = false;
-                }
-            }
-        });
-        self.show_history_panel = open;
-    }
-
     fn render_status_bar(&mut self, ctx: &egui::Context) {
-        let (undo_count, redo_count) = {
-            let engine = self.engine.read().unwrap();
-            (engine.undo_available(), engine.redo_available())
-        };
+        let history_summary = self
+            .engine
+            .read()
+            .map(|engine| engine.history_summary())
+            .unwrap_or_default();
         crate::egui_compat::show_bottom_panel(
             ctx,
             egui::Id::new("gentle_status_bar"),
@@ -43367,7 +43128,10 @@ Error: `{err}`"
                     };
                     ui.monospace(hover_text);
                     ui.separator();
-                    ui.small(format!("Undo {undo_count} / Redo {redo_count}"));
+                    ui.small(format!(
+                        "Undo {} / Redo {}",
+                        history_summary.undo_count, history_summary.redo_count
+                    ));
                     if !self.app_status.trim().is_empty() {
                         ui.separator();
                         ui.small(self.app_status.clone());
@@ -44868,93 +44632,7 @@ impl GENtleApp {
                 self.last_applied_window_title = window_title;
             }
 
-            let open_project = KeyboardShortcut::new(Modifiers::COMMAND, Key::O);
-            let new_project = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
-            let open_sequence =
-                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::O);
-            let open_retrieve_genome =
-                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::G);
-            let open_prepare_genome =
-                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::P);
-            let open_blast_genome =
-                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::L);
-            let open_import_bed_track =
-                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::B);
-            let open_agent_assistant =
-                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::A);
-            let save_project = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
-            let close_project =
-                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::W);
-            let quit_application = KeyboardShortcut::new(Modifiers::COMMAND, Key::Q);
-            let open_configuration = KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma);
-            let focus_main_window = KeyboardShortcut::new(Modifiers::COMMAND, Key::Backtick);
-            let open_command_palette = KeyboardShortcut::new(Modifiers::COMMAND, Key::K);
-            let open_help_f1 = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
-            let open_help_ctrl_f1 = KeyboardShortcut::new(Modifiers::CTRL, Key::F1);
-            let open_help_cmd_shift_slash =
-                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::Slash);
-            let undo_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
-            let redo_shortcut_shift =
-                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
-            let redo_shortcut_y = KeyboardShortcut::new(Modifiers::COMMAND, Key::Y);
-            if ctx.input_mut(|i| i.consume_shortcut(&new_project)) {
-                self.request_project_action(ProjectAction::New);
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_project)) {
-                self.request_project_action(ProjectAction::Open);
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_sequence)) {
-                self.prompt_open_sequence();
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_retrieve_genome)) {
-                self.open_reference_genome_retrieve_dialog();
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_prepare_genome)) {
-                self.open_reference_genome_prepare_dialog();
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_blast_genome)) {
-                self.open_reference_genome_blast_dialog();
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_import_bed_track)) {
-                self.open_genome_bed_track_dialog();
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_agent_assistant)) {
-                self.open_agent_assistant_dialog();
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&save_project)) {
-                let _ = self.save_current_project();
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&close_project)) {
-                self.request_project_action(ProjectAction::Close);
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&quit_application))
-                || Self::consume_command_or_ctrl_shortcut(ctx, Key::Q)
-            {
-                self.request_project_action(ProjectAction::Quit);
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_configuration)) {
-                self.open_configuration_dialog();
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&focus_main_window)) {
-                self.queue_focus_viewport(ViewportId::ROOT);
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_command_palette)) {
-                self.open_command_palette_dialog();
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_help_f1))
-                || ctx.input_mut(|i| i.consume_shortcut(&open_help_ctrl_f1))
-                || ctx.input_mut(|i| i.consume_shortcut(&open_help_cmd_shift_slash))
-            {
-                self.open_help_doc(HelpDoc::Gui);
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&undo_shortcut)) {
-                self.undo_last_operation();
-            }
-            if ctx.input_mut(|i| i.consume_shortcut(&redo_shortcut_shift))
-                || ctx.input_mut(|i| i.consume_shortcut(&redo_shortcut_y))
-            {
-                self.redo_last_operation();
-            }
+            self.handle_root_keyboard_shortcuts(ctx);
 
             self.poll_prepare_reference_genome_task(ctx);
             self.poll_tutorial_project_task(ctx);
