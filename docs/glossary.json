@@ -1535,6 +1535,78 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "services status",
+         "summary": "Inspect combined GENtle service readiness for references, helpers, resources, and external-service providers.",
+         "usage": "services status"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services providers list",
+         "summary": "List external-service providers and their deterministic capability catalog.",
+         "usage": "services providers list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services project-preflight",
+         "summary": "Validate one vendor-neutral external-service request and report GeneArt quote/direct-submission capability.",
+         "usage": "services project-preflight REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services project-quote",
+         "summary": "Build a service-ready external handoff bundle for a preflightable GeneArt request without submitting an order.",
+         "usage": "services project-quote REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services handoff",
+         "summary": "Build a chat/agent handoff report with readiness rows, suggested setup actions, blocked actions, and preferred artifacts.",
+         "usage": "services handoff [--scope NAME] [--output PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services guide",
+         "summary": "Build a compact bench-user guide for readiness, gene context, TFBS, cloning, isoforms, and follow-up navigation.",
+         "usage": "services guide [--channel telegram] [--section SECTION] [--gene SYMBOL]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "genomes list",
          "summary": "List/search reference catalog entries.",
          "usage": "genomes list [--catalog PATH] [--filter TEXT]"

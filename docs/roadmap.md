@@ -3602,8 +3602,16 @@ Notes:
      - an egui interaction regression now opens an `mRNA` kind group, then its
        `TP73` subgroup, and confirms transcript rows render only after the
        expected collapse path
-     - broader snapshot coverage for regulatory/repeat/track grouping and
-       selected-row auto-open behavior is still pending
+     - follow-on coverage now exercises regulatory nested grouping,
+       RepeatMasker/rmsk repeat grouping, generic track grouping, array-track
+       grouping, and selected-row auto-open for nested regulatory/repeat rows
+     - feature-tree readability aids now include tree-focus presets
+       (`Cloning`, `Regulatory`, `Repeats`, `Tracks`) plus compact layer-count
+       chips for the current tree/filter mix
+     - postponed before the upcoming release: dedicated dense benchmark
+       scenario packs for sparse/dense regulatory/repeat/track loci; keep this
+       with the visual benchmark fixture track rather than blocking the
+       feature-tree polish
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete
    - optional all-open-window refresh behavior for applied display changes
@@ -3954,6 +3962,239 @@ Planned work:
    - use that review to decide which community resource families should become
      first-class demo/catalog targets beyond the current pUC19- and
      luciferase-centered examples
+
+### External-service / GeneArt integration track (planned post-release)
+
+Goal: build a vendor-neutral external-service layer in GENtle, with GeneArt as
+the first concrete provider, without turning helper/planning/protein workflows
+into a GeneArt-only island.
+
+Grounding checked on 2026-05-05:
+
+- Thermo Fisher's GeneArt Services Dashboard guide describes one dashboard for
+  construct design, templates, vector selection/onboarding, estimates/quotes,
+  order tracking, plasmid prep/reorder, protein-expression quote requests, DNA
+  library quote requests, and retained project documentation:
+  <https://www.thermofisher.com/fr/fr/home/life-science/cloning/gene-synthesis/gene-synthesis-dashboard-guide.html>
+- Thermo Fisher's GeneArt services overview currently presents GeneArt as DNA
+  and protein-expression services with GeneOptimizer-backed design:
+  <https://www.thermofisher.com/us/en/home/life-science/cloning/gene-synthesis.html>
+- The February 2025 GeneArt Gene Synthesis API deck documents design/
+  diagnostic APIs, optimization, validation, upload, cart submission, direct
+  ordering, status tracking, and QAD download for clones/fragments/plasmid
+  reorder; it also notes manual API enablement and Swagger/Postman onboarding:
+  <https://assets.thermofisher.com/TFS-Assets/BID/Reference-Materials/geneart-gene-synthesis-api-presentation.pdf>
+- The current mutagenesis page documents quote/form/email/portal routes and
+  production-service details, but not a matched public API surface; treat
+  mutagenesis as quote/handoff first unless official API docs confirm parity:
+  <https://www.thermofisher.com/us/en/home/life-science/cloning/gene-synthesis/directed-evolution/geneart-mutagenesis-service.html>
+- The current protein-expression page documents request-a-quote and dashboard/
+  service workflows, but not a protein-order API; treat protein as
+  quote/handoff/status first until official API docs are available:
+  <https://www.thermofisher.com/tr/en/home/life-science/cloning/gene-synthesis/geneart-protein-expression-purification-services.html>
+
+Architecture position:
+
+- Add a generic external-service contract layer; do not add GeneArt-shaped
+  fields directly to GUI, shell parser, MCP, or ClawBio wrappers.
+- Keep provider credentials, PO/shipping details, account enablement, and API
+  tokens outside project state. Only redacted receipts, provider project/order
+  ids, lineage links, and user-approved artifacts may be persisted.
+- Use official APIs or user-directed dashboard/form handoff only. Do not add
+  scraping/browser automation against vendor dashboards.
+- Direct ordering is an external mutating action and must require explicit
+  confirmation, distinct from local project mutation confirmation.
+- Provider operations should expose progress/status/artifact records and a
+  local cancel/abandon-polling path; true provider-side cancellation is
+  capability-gated and must not be implied unless supported by official docs.
+- ClawBio/OpenClaw integration should be explicit about return payloads:
+  callers should provide a `return_spec` describing whether they want GenBank,
+  FASTA, amino-acid sequence, quote metadata, status, vendor ids, or a full
+  artifact bundle back from GENtle.
+
+Implementation status as of 2026-05-05:
+
+- First vendor-neutral contracts are present in `gentle-protocol`:
+  `gentle.external_service_provider_catalog.v1`,
+  `gentle.external_service_request.v1`,
+  `gentle.external_service_preflight.v1`, and
+  `gentle.external_service_quote.v1`.
+- `services status` now includes `external_providers`, and
+  `services handoff` exposes `external_provider:*` readiness rows so ClawBio
+  can see provider capability state alongside references, helpers, and local
+  resource tools.
+- `services providers list`, `services project-preflight`, and
+  `services project-quote` are implemented as deterministic local shared-shell
+  routes. They do not contact GeneArt, submit carts/orders, poll status, fetch
+  QAD, or persist credentials.
+- The first GeneArt catalog records:
+  - API-documented but not yet implemented direct tracks for
+    `dna_fragment`, `cloned_gene`, and `plasmid_reorder`
+  - quote/handoff-first tracks for `mutagenesis` and `protein_expression`
+  - provider dashboard/API/service documentation links and explicit account
+    enablement warnings
+
+Portable schemas:
+
+- `gentle.external_service_request.v1`
+  - `provider`
+  - `service_kind`
+  - `source_target`
+  - `optimization_target`
+  - `vector_spec`
+  - `delivery_options`
+  - `commercial_context_ref` for user/session-held PO or shipping references
+  - `return_spec` with desired payload families and redaction/inline-size
+    preferences for ClawBio/MCP callers
+- `gentle.external_service_preflight.v1`
+  - provider capability match
+  - account/API enablement state where checkable
+  - service eligibility, blocking issues, warnings
+  - estimated turnaround/cost hints when available
+- `gentle.external_service_quote.v1`
+  - quote-mode payloads
+  - dashboard/form deep links
+  - vendor-side required follow-up
+  - reproducible local service-ready bundle references
+- `gentle.external_service_submission.v1`
+  - `mode = cart|direct`
+  - provider project/order identifiers
+  - submission receipt metadata
+  - explicit confirmation/consent record
+- `gentle.external_service_status.v1`
+  - provider status, timestamps, stage text
+  - local polling/cancel/abandon status
+  - capability note when only manual/imported status is available
+- `gentle.external_service_artifact_bundle.v1`
+  - quote PDFs/receipts/QAD/download links/checksums/local copies
+  - GenBank/FASTA/protein payloads selected by `return_spec`
+  - provider-native raw responses preserved as structured, redacted artifacts
+
+Shared command family:
+
+- Extend the existing `services` family instead of inventing a parallel CLI:
+  - `services providers list`
+  - `services project-preflight REQUEST_JSON_OR_@FILE`
+  - `services project-quote REQUEST_JSON_OR_@FILE`
+  - later: `services project-submit REQUEST_JSON_OR_@FILE [--mode cart|direct]`
+  - later: `services project-status PROVIDER PROJECT_ID`
+  - later: `services project-artifacts PROVIDER PROJECT_ID`
+- CLI/shared-shell/GUI/MCP/JS/Lua/ClawBio should call the same engine
+  operations; unsupported provider/service/mode combinations fail
+  deterministically with capability explanations.
+
+GeneArt provider split:
+
+- DNA direct-integration track:
+  - initial direct candidates: `dna_fragment`, `cloned_gene`,
+    `plasmid_reorder`
+  - lifecycle: diagnostics/acceptance check, optimization, project
+    validation, upload, cart submission, direct order, status, QAD retrieval
+  - direct API enablement must be preflighted and reported; no direct order
+    path should appear as available until account/API setup is confirmed
+  - preserve provider project ids and local lineage links back to the source
+    sequence/construct/handoff request
+- Mutagenesis track:
+  - first implementation is quote/handoff/service-ready packet export from
+    existing `PcrMutagenesis` and `PcrOverlapExtensionMutagenesis` outputs
+  - direct API mode remains deferred unless official API documentation confirms
+    mutagenesis parity
+- Protein expression track:
+  - first implementation is preflight + quote packet + dashboard/form handoff
+    + manual/imported status linkage
+  - `protein_to_dna_handoff` is the primary source for codon-targeted DNA
+    candidates and protein-service packets
+  - direct protein ordering remains deferred until official protein API docs
+    exist
+
+Reuse existing GENtle strengths:
+
+- Helper semantics and `helper_profile_id` drive vector selection, custom-vector
+  onboarding, host-system matching, promoter/marker metadata, and procurement
+  channels.
+- Planning profiles/objectives gain external-service scoring so routine
+  ranking can compare local build vs GeneArt/CRO outsourcing using turnaround,
+  cost hints, local material availability, and confidence.
+- `protein_to_dna_handoff` becomes the main entry into gene-synthesis and
+  protein-service project generation.
+- Existing mutagenesis operations generate service-ready bundles instead of
+  forcing users to rebuild vendor requests manually.
+- `services status/handoff` expands to include provider readiness, enabled API
+  scopes, pending projects, and downloadable external artifacts.
+
+Roadmap phases:
+
+1. Vendor-neutral groundwork:
+   - add schemas, provider traits, mocked provider adapter, and provider
+     capability catalog
+   - extend `services status/handoff` with provider readiness and API/account
+     enablement checks
+   - add lineage-safe artifact storage for quotes, receipts, QAD, vendor
+     project ids, and return payloads
+   - add `return_spec` handling for ClawBio/MCP so the caller can request only
+     the amino-acid sequence, adjusted GenBank, quote/status, or full bundle
+2. Low-hanging fruits with immediate GENtle payoff:
+   - service-ready construct export bundle: FASTA/GenBank, helper/vector
+     summary, host/selection metadata, delivery/quantity options, bench notes
+   - shared synthesisability/complexity doctor: GC extremes, homopolymers,
+     repeat burden, simple construct complexity flags
+   - vector onboarding packets from helper profiles: annotated vector export,
+     insertion-site summary, marker/promoter/host notes
+   - mutagenesis packet export from PCR-mutagenesis flows
+   - protein-service handoff generation from `protein_to_dna_handoff`
+   - external-service planning estimates for routine ranking
+3. GeneArt DNA direct integration:
+   - implement diagnostics/optimization/validation against official GeneArt API
+   - implement upload, cart submission, and direct-order modes for supported
+     DNA project types
+   - import provider project IDs, status, and QAD into structured GENtle
+     artifacts
+   - add GUI/MCP surfaces only after CLI/shell contracts are stable
+4. GeneArt protein operational integration:
+   - implement quote packet generation and dashboard/form handoff for protein
+     expression
+   - add manual/imported status reconciliation into GENtle
+   - if Thermo Fisher later exposes a protein API, add direct submission on
+     top of the same generic service interface
+5. Higher-level planning and automation:
+   - let routine suggestions and construct reasoning emit best-external-path
+     recommendations automatically
+   - add ClawBio/OpenClaw-ready service artifacts for vendor handoff and
+     tracking
+   - add provider-comparison support later without changing GeneArt-facing
+     schemas
+
+Test plan:
+
+- Contract tests for every portable schema plus round-trip/reopen of stored
+  quote/status/QAD/artifact bundles.
+- CLI/shared-shell/MCP parity tests for provider listing, preflight, quote,
+  submit, status, and artifact retrieval.
+- Mocked provider-adapter tests for GeneArt-like preflight, diagnostics,
+  optimization, validation, upload, cart submission, direct submission, status,
+  and QAD retrieval without live vendor calls in CI.
+- Deterministic mapping tests from helper profiles, mutagenesis reports, and
+  protein-to-DNA handoff records into service requests.
+- Confirmation-policy tests: direct order and commercial/shipping fields cannot
+  execute without explicit confirmation and never persist secrets in project
+  state.
+- Unsupported-combination tests: protein direct API and mutagenesis direct API
+  remain unavailable until capability catalog/API docs say otherwise.
+- ClawBio return-spec tests: request adjusted GenBank, amino-acid-only payload,
+  quote/status-only payload, or full artifact bundle and verify the returned
+  payload matches the requested shape.
+
+Assumptions:
+
+- This remains post-first-release work; only vendor-neutral export/doctor
+  groundwork is eligible for pull-forward.
+- GeneArt is the first provider, not the schema owner.
+- DNA gets direct API integration where official docs and account enablement
+  support it; protein and mutagenesis start as quote/handoff/status workflows.
+- CI must never depend on live GeneArt/Thermo Fisher network access.
+- GENtle should preserve provider-native responses as redacted structured
+  artifacts, but should not become the source of truth for commercial account
+  state.
 
 ### MCP server communication track (UI-intent parity baseline implemented)
 
