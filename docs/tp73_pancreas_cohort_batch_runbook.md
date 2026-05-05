@@ -97,6 +97,64 @@ python3 scripts/plot_tp73_pancreas_cohort.py \
 The SVG plot is dependency-free. If PNG/PDF conversion is needed on Debian,
 install `librsvg2-bin` and run `rsvg-convert`, or use Inkscape.
 
+## Generic Follow-On Gene Screens
+
+Once the shared pancreatic FASTA files already exist, use the gene-agnostic
+helper for TP53/TP63/E2F1/POU2F1-style follow-up screens instead of cloning the
+TP73 wrapper again. It resolves the HUGO symbol through NCBI Gene, downloads a
+compact GenBank locus, loads that locus into a base GENtle state, then copies
+that state per sample so independent workers can run safely in parallel.
+
+```bash
+cd /home/clawbio/GENtle
+
+scripts/pancreas_gene_rna_screen.sh run E2F1 --jobs 4
+scripts/pancreas_gene_rna_screen.sh run POU2F1 --jobs 4
+```
+
+The helper prints a monitor command as soon as the run directory is initialized.
+The same status table can also be queried manually:
+
+```bash
+RUN_ROOT=/home/clawbio/work/tp73_pancreas_benchmark/gene_screens/e2f1_pancreas_screen_YYYYMMDDTHHMMSSZ
+
+scripts/pancreas_gene_rna_screen.sh status "$RUN_ROOT" | column -t -s $'\t'
+scripts/pancreas_gene_rna_screen.sh monitor "$RUN_ROOT" 120
+scripts/pancreas_gene_rna_screen.sh summarize "$RUN_ROOT"
+
+python3 scripts/plot_pancreas_gene_screen.py \
+  "$RUN_ROOT/figures/e2f1_pancreas_figure_source.tsv" \
+  --gene E2F1 \
+  --output "$RUN_ROOT/figures/e2f1_pancreas_overview.svg"
+```
+
+Useful defaults:
+
+- `--jobs N` runs up to `N` sample workers at once; one worker is one
+  single-core `gentle_cli` RNA-read mapping process.
+- `--genbank-path PATH` bypasses NCBI if a curated locus file is already
+  available.
+- `--must-pass-transcript-fasta`, `--positive-transcript-fasta`, and
+  `--control-transcript-fasta` are repeatable and feed the same isoform
+  preflight contract used for TP73 controls.
+- If no gene-specific transcript fixture exists, the helper still records the
+  preflight report but falls back to the conservative default seed-filter
+  fragment.
+- `--concatemer-limit N` is off by default because first-pass abundance screens
+  should not spend hours on transcriptome-scale concatemer audits unless that
+  evidence is specifically needed.
+
+Primary outputs live under the timestamped run root:
+
+- `manifests/*_pancreas_inputs.tsv`
+- `reports/*.preflight.json` and `reports/*.preflight.summary.json`
+- per-sample `runs/$RUN/checkpoints/*.checkpoint.json`
+- per-sample `runs/$RUN/post_interpret/{json,tsv,svg}/...`
+- `reports/*_pancreas.summary.tsv`
+- `figures/*_pancreas_figure_source.tsv`
+- `figures/*_pancreas_overview.svg` when rendered with
+  `scripts/plot_pancreas_gene_screen.py`
+
 ## 1. Batch Principle
 
 For abundance variation, do not tune thresholds separately per sample after
