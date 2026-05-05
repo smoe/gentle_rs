@@ -3642,6 +3642,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub microarray_projection: Option<MicroarrayProjectionReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_coordinate_projection: Option<GenomeCoordinateProjectionReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_summary: Option<RnaReadGeneSupportSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rna_read_gene_support_audit: Option<RnaReadGeneSupportAudit>,
@@ -3729,6 +3731,8 @@ pub struct MicroarrayTrackManifest {
     pub contrast_order: Vec<String>,
     #[serde(alias = "tracks")]
     pub contrasts: Vec<MicroarrayTrackContrast>,
+    #[serde(default, alias = "projection_maps")]
+    pub coordinate_projections: Vec<GenomeCoordinateProjectionSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_path: Option<String>,
     pub warnings: Vec<String>,
@@ -3746,6 +3750,55 @@ pub struct MicroarrayTrackContrast {
     pub row_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Describes an explicit coordinate-projection map between two genome builds.
+pub struct GenomeCoordinateProjectionSpec {
+    pub source_genome_id: String,
+    pub target_genome_id: String,
+    pub method: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// One projected interval emitted by the shared genome-coordinate projection path.
+pub struct GenomeCoordinateProjectionInterval {
+    pub source_chrom: String,
+    pub source_start_1based: usize,
+    pub source_end_1based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_strand: Option<String>,
+    pub target_chrom: String,
+    pub target_start_1based: usize,
+    pub target_end_1based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_strand: Option<String>,
+    pub method: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+/// Structured result emitted by genome-coordinate interval projection.
+pub struct GenomeCoordinateProjectionReport {
+    pub schema: String,
+    pub source_genome_id: String,
+    pub target_genome_id: String,
+    pub projection_path: String,
+    pub method: String,
+    pub input_chrom: String,
+    pub input_start_1based: usize,
+    pub input_end_1based: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_strand: Option<String>,
+    pub mapped: bool,
+    #[serde(default)]
+    pub intervals: Vec<GenomeCoordinateProjectionInterval>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 /// Structured result emitted by `ProjectMicroarrayTrack`.
@@ -3757,6 +3810,11 @@ pub struct MicroarrayProjectionReport {
     pub platform: String,
     pub normalization: String,
     pub coordinate_system: String,
+    pub coordinate_projection_used: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinate_projection_method: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinate_projection_path: Option<String>,
     pub anchor_genome_id: String,
     pub anchor_chromosome: String,
     pub anchor_start_1based: usize,
@@ -3772,6 +3830,7 @@ pub struct MicroarrayProjectionReport {
     pub skipped_wrong_chromosome: usize,
     pub skipped_non_overlap: usize,
     pub skipped_filter: usize,
+    pub skipped_projection_unmapped: usize,
     pub truncated_at_limit: bool,
     pub warnings: Vec<String>,
 }

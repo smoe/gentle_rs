@@ -373,6 +373,8 @@ const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
 const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
 pub const MICROARRAY_TRACK_MANIFEST_SCHEMA: &str = "gentle.microarray_track_manifest.v1";
 pub const MICROARRAY_PROJECTION_REPORT_SCHEMA: &str = "gentle.microarray_projection_report.v1";
+pub const GENOME_COORDINATE_PROJECTION_REPORT_SCHEMA: &str =
+    "gentle.genome_coordinate_projection_report.v1";
 const MICROARRAY_TRACK_GENERATED_TAG: &str = "microarray_track_projection";
 const DBSNP_VARIANT_MARKER_GENERATED_TAG: &str = "dbsnp_variant_marker";
 const BLAST_HIT_TRACK_GENERATED_TAG: &str = "blast_hit_track";
@@ -2842,6 +2844,16 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         clear_existing: Option<bool>,
     },
+    ProjectGenomeInterval {
+        source_genome_id: String,
+        target_genome_id: String,
+        projection_path: String,
+        chrom: String,
+        start_1based: usize,
+        end_1based: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        strand: Option<String>,
+    },
     ListCutRunDatasets {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<String>,
@@ -4579,6 +4591,31 @@ struct MicroarrayTrackRow {
 }
 
 #[derive(Debug, Clone)]
+struct GenomeCoordinateProjectionBlock {
+    source_genome_id: String,
+    target_genome_id: String,
+    source_chrom: String,
+    source_start_1based: usize,
+    source_end_1based: usize,
+    source_strand: Option<char>,
+    target_chrom: String,
+    target_start_1based: usize,
+    target_end_1based: usize,
+    target_strand: Option<char>,
+    method: String,
+}
+
+#[derive(Debug, Clone)]
+struct ProjectedGenomeInterval {
+    target_chrom: String,
+    target_start_1based: usize,
+    target_end_1based: usize,
+    target_strand: Option<char>,
+    method: String,
+    status: String,
+}
+
+#[derive(Debug, Clone)]
 struct PendingMicroarrayFeature {
     feature: gb_io::seq::Feature,
     group_key: String,
@@ -5311,6 +5348,7 @@ impl GentleEngine {
                 "ImportGenomeBigWigTrack".to_string(),
                 "ImportGenomeVcfTrack".to_string(),
                 "ProjectMicroarrayTrack".to_string(),
+                "ProjectGenomeInterval".to_string(),
                 "ListCutRunDatasets".to_string(),
                 "ShowCutRunDatasetStatus".to_string(),
                 "PrepareCutRunDataset".to_string(),

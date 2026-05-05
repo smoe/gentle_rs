@@ -19,3 +19,20 @@
   - GUI helper tests for array tooltip/detail text and feature-tree filters
 - Runtime relevance: mirrors the compact TSV contract produced by the Rostock
   Clariom D analysis script without committing raw CEL data.
+
+## `clariomd.synthetic.hg19_projected.manifest.json`
+
+- Origin: hand-crafted companion manifest using the same synthetic probeset TSVs
+  as native `hg19` / `GRCh37` coordinates.
+- Deterministic recreation:
+  - copy the direct synthetic manifest
+  - set `coordinate_system` to `hg19`
+  - add `clariomd.synthetic.hg19-to-hg38.tsv`, a one-block interval projection
+    from `hg19 chr1:1001..1100` to `hg38 chr1:2001..2100`
+  - anchor the target test sequence to `hg38 chr1:2001..2100`
+- Primary usage:
+  - engine tests for build-mismatched microarray projection through an explicit
+    coordinate map
+  - tooltip/detail tests for native interval versus displayed interval
+- Runtime relevance: models the intended GRCh37-to-GRCh38 array-track path
+  without committing large chain files or raw array data.

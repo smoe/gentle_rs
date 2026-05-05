@@ -75,6 +75,17 @@ impl GentleEngine {
         manifest.contrasts.retain(|contrast| {
             !contrast.contrast.is_empty() && !contrast.level.is_empty() && !contrast.path.is_empty()
         });
+        for projection in &mut manifest.coordinate_projections {
+            projection.source_genome_id = projection.source_genome_id.trim().to_string();
+            projection.target_genome_id = projection.target_genome_id.trim().to_string();
+            projection.method = projection.method.trim().to_string();
+            projection.path = projection.path.trim().to_string();
+        }
+        manifest.coordinate_projections.retain(|projection| {
+            !projection.source_genome_id.is_empty()
+                && !projection.target_genome_id.is_empty()
+                && !projection.path.is_empty()
+        });
         if manifest.dataset.is_empty() {
             manifest.dataset = "unknown".to_string();
         }
@@ -120,6 +131,322 @@ impl GentleEngine {
             .supported_genome_ids
             .iter()
             .any(|id| id.trim().eq_ignore_ascii_case(anchor_id))
+    }
+
+    fn normalize_genome_build_token(value: &str) -> String {
+        value
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .flat_map(|ch| ch.to_lowercase())
+            .collect()
+    }
+
+    fn genome_build_tokens_match(left: &str, right: &str) -> bool {
+        let left = Self::normalize_genome_build_token(left);
+        let right = Self::normalize_genome_build_token(right);
+        !left.is_empty() && left == right
+    }
+
+    fn resolve_coordinate_projection_spec<'a>(
+        manifest: &'a MicroarrayTrackManifest,
+        anchor: &GenomeSequenceAnchor,
+    ) -> Option<&'a GenomeCoordinateProjectionSpec> {
+        manifest.coordinate_projections.iter().find(|projection| {
+            Self::genome_build_tokens_match(
+                &projection.source_genome_id,
+                &manifest.coordinate_system,
+            ) && Self::genome_build_tokens_match(&projection.target_genome_id, &anchor.genome_id)
+        })
+    }
+
+    fn parse_projection_optional_strand(value: Option<&str>) -> Option<char> {
+        value
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|value| value.chars().next())
+            .filter(|strand| matches!(strand, '+' | '-'))
+    }
+
+    fn parse_projection_usize(value: Option<&str>, label: &str) -> Result<usize, String> {
+        value
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| format!("missing {label}"))?
+            .parse::<usize>()
+            .map_err(|_| format!("invalid {label}"))
+    }
+
+    fn parse_genome_projection_block(
+        line: &str,
+        header: &HashMap<String, usize>,
+        default_method: &str,
+    ) -> Result<GenomeCoordinateProjectionBlock, String> {
+        let fields = line.split('\t').collect::<Vec<_>>();
+        let source_genome_id = Self::microarray_tsv_field(
+            &fields,
+            header,
+            &["source_genome_id", "source_genome", "from_genome_id"],
+        )
+        .unwrap_or("")
+        .trim()
+        .to_string();
+        let target_genome_id = Self::microarray_tsv_field(
+            &fields,
+            header,
+            &["target_genome_id", "target_genome", "to_genome_id"],
+        )
+        .unwrap_or("")
+        .trim()
+        .to_string();
+        let source_chrom = Self::microarray_tsv_field(
+            &fields,
+            header,
+            &["source_chrom", "source_chromosome", "chrom", "chromosome"],
+        )
+        .unwrap_or("")
+        .trim()
+        .to_string();
+        let target_chrom =
+            Self::microarray_tsv_field(&fields, header, &["target_chrom", "target_chromosome"])
+                .unwrap_or("")
+                .trim()
+                .to_string();
+        if source_genome_id.is_empty() {
+            return Err("missing source_genome_id".to_string());
+        }
+        if target_genome_id.is_empty() {
+            return Err("missing target_genome_id".to_string());
+        }
+        if source_chrom.is_empty() {
+            return Err("missing source_chrom".to_string());
+        }
+        if target_chrom.is_empty() {
+            return Err("missing target_chrom".to_string());
+        }
+        let source_start_1based = Self::parse_projection_usize(
+            Self::microarray_tsv_field(&fields, header, &["source_start_1based", "source_start"]),
+            "source_start_1based",
+        )?;
+        let source_end_1based = Self::parse_projection_usize(
+            Self::microarray_tsv_field(&fields, header, &["source_end_1based", "source_end"]),
+            "source_end_1based",
+        )?;
+        let target_start_1based = Self::parse_projection_usize(
+            Self::microarray_tsv_field(&fields, header, &["target_start_1based", "target_start"]),
+            "target_start_1based",
+        )?;
+        let target_end_1based = Self::parse_projection_usize(
+            Self::microarray_tsv_field(&fields, header, &["target_end_1based", "target_end"]),
+            "target_end_1based",
+        )?;
+        if source_start_1based == 0
+            || target_start_1based == 0
+            || source_end_1based < source_start_1based
+            || target_end_1based < target_start_1based
+        {
+            return Err("invalid projection interval".to_string());
+        }
+        let method = Self::microarray_tsv_field(&fields, header, &["method"])
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(default_method)
+            .to_string();
+        Ok(GenomeCoordinateProjectionBlock {
+            source_genome_id,
+            target_genome_id,
+            source_chrom,
+            source_start_1based,
+            source_end_1based,
+            source_strand: Self::parse_projection_optional_strand(Self::microarray_tsv_field(
+                &fields,
+                header,
+                &["source_strand"],
+            )),
+            target_chrom,
+            target_start_1based,
+            target_end_1based,
+            target_strand: Self::parse_projection_optional_strand(Self::microarray_tsv_field(
+                &fields,
+                header,
+                &["target_strand"],
+            )),
+            method,
+        })
+    }
+
+    fn load_genome_coordinate_projection_blocks(
+        projection_path: &str,
+        default_method: &str,
+        source_genome_id: &str,
+        target_genome_id: &str,
+    ) -> Result<Vec<GenomeCoordinateProjectionBlock>, EngineError> {
+        let mut reader = Self::open_text_reader(projection_path)?;
+        let mut line = String::new();
+        let mut header: Option<HashMap<String, usize>> = None;
+        let mut blocks = Vec::new();
+        let mut line_no = 0usize;
+        while {
+            line.clear();
+            reader.read_line(&mut line).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read genome projection map '{projection_path}': {e}"),
+            })? > 0
+        } {
+            line_no += 1;
+            let trimmed = line.trim_end_matches(['\r', '\n']);
+            if trimmed.trim().is_empty() || trimmed.trim_start().starts_with('#') {
+                continue;
+            }
+            if header.is_none() {
+                header = Some(
+                    trimmed
+                        .split('\t')
+                        .enumerate()
+                        .map(|(idx, key)| (Self::normalized_microarray_header_key(key), idx))
+                        .collect(),
+                );
+                continue;
+            }
+            let block = Self::parse_genome_projection_block(
+                trimmed,
+                header.as_ref().expect("header set"),
+                default_method,
+            )
+            .map_err(|err| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Genome projection map '{}' line {} skipped: {}",
+                    projection_path, line_no, err
+                ),
+            })?;
+            if Self::genome_build_tokens_match(&block.source_genome_id, source_genome_id)
+                && Self::genome_build_tokens_match(&block.target_genome_id, target_genome_id)
+            {
+                blocks.push(block);
+            }
+        }
+        if blocks.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Genome projection map '{}' contains no blocks for {} -> {}",
+                    projection_path, source_genome_id, target_genome_id
+                ),
+            });
+        }
+        Ok(blocks)
+    }
+
+    fn project_genome_interval_with_blocks(
+        blocks: &[GenomeCoordinateProjectionBlock],
+        chrom: &str,
+        start_1based: usize,
+        end_1based: usize,
+        strand: Option<char>,
+    ) -> Option<ProjectedGenomeInterval> {
+        let block = blocks.iter().find(|block| {
+            Self::chromosomes_match(&block.source_chrom, chrom)
+                && start_1based >= block.source_start_1based
+                && end_1based <= block.source_end_1based
+        })?;
+        let source_len = block.source_end_1based - block.source_start_1based + 1;
+        let target_len = block.target_end_1based - block.target_start_1based + 1;
+        if source_len != target_len {
+            return None;
+        }
+        let left_offset = start_1based - block.source_start_1based;
+        let right_offset = end_1based - block.source_start_1based;
+        let target_reverse = block.target_strand == Some('-');
+        let (target_start_1based, target_end_1based) = if target_reverse {
+            (
+                block.target_end_1based.saturating_sub(right_offset),
+                block.target_end_1based.saturating_sub(left_offset),
+            )
+        } else {
+            (
+                block.target_start_1based + left_offset,
+                block.target_start_1based + right_offset,
+            )
+        };
+        let target_strand = match (strand, target_reverse) {
+            (Some('+'), true) => Some('-'),
+            (Some('-'), true) => Some('+'),
+            (Some(value), false) => Some(value),
+            _ => block.source_strand.or(strand),
+        };
+        Some(ProjectedGenomeInterval {
+            target_chrom: block.target_chrom.clone(),
+            target_start_1based,
+            target_end_1based,
+            target_strand,
+            method: block.method.clone(),
+            status: "mapped_unique_interval_block".to_string(),
+        })
+    }
+
+    pub(super) fn project_genome_interval_from_map(
+        source_genome_id: &str,
+        target_genome_id: &str,
+        projection_path: &str,
+        method: &str,
+        chrom: &str,
+        start_1based: usize,
+        end_1based: usize,
+        strand: Option<char>,
+    ) -> Result<GenomeCoordinateProjectionReport, EngineError> {
+        if start_1based == 0 || end_1based < start_1based {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ProjectGenomeInterval requires a valid 1-based inclusive interval"
+                    .to_string(),
+            });
+        }
+        let blocks = Self::load_genome_coordinate_projection_blocks(
+            projection_path,
+            method,
+            source_genome_id,
+            target_genome_id,
+        )?;
+        let projected = Self::project_genome_interval_with_blocks(
+            &blocks,
+            chrom,
+            start_1based,
+            end_1based,
+            strand,
+        );
+        let mut report = GenomeCoordinateProjectionReport {
+            schema: GENOME_COORDINATE_PROJECTION_REPORT_SCHEMA.to_string(),
+            source_genome_id: source_genome_id.to_string(),
+            target_genome_id: target_genome_id.to_string(),
+            projection_path: projection_path.to_string(),
+            method: method.to_string(),
+            input_chrom: chrom.to_string(),
+            input_start_1based: start_1based,
+            input_end_1based: end_1based,
+            input_strand: strand.map(|value| value.to_string()),
+            mapped: projected.is_some(),
+            ..Default::default()
+        };
+        if let Some(projected) = projected {
+            report.intervals.push(GenomeCoordinateProjectionInterval {
+                source_chrom: chrom.to_string(),
+                source_start_1based: start_1based,
+                source_end_1based: end_1based,
+                source_strand: strand.map(|value| value.to_string()),
+                target_chrom: projected.target_chrom,
+                target_start_1based: projected.target_start_1based,
+                target_end_1based: projected.target_end_1based,
+                target_strand: projected.target_strand.map(|value| value.to_string()),
+                method: projected.method,
+                status: projected.status,
+            });
+        } else {
+            report.warnings.push(format!(
+                "No projection block mapped {}:{}-{} from {} to {}",
+                chrom, start_1based, end_1based, source_genome_id, target_genome_id
+            ));
+        }
+        Ok(report)
     }
 
     fn resolve_microarray_contrasts(
@@ -390,17 +717,22 @@ impl GentleEngine {
         contrast: &str,
         level: &str,
         row: &MicroarrayTrackRow,
+        native_row: Option<&MicroarrayTrackRow>,
+        projection: Option<&ProjectedGenomeInterval>,
         local_start_0based: usize,
         local_end_0based_exclusive: usize,
         local_strand: Option<char>,
     ) -> gb_io::seq::Feature {
-        let group_key = Self::microarray_feature_group_key(row);
+        let native_row = native_row.unwrap_or(row);
+        let group_key = Self::microarray_feature_group_key(native_row);
         let label = if group_key.trim().is_empty() {
             contrast.to_string()
         } else {
             format!("{contrast} {group_key}")
         };
-        let assembly_check = if manifest
+        let assembly_check = if projection.is_some() {
+            "projected_from_native_coordinate_system"
+        } else if manifest
             .coordinate_system
             .trim()
             .eq_ignore_ascii_case(anchor.genome_id.trim())
@@ -485,8 +817,30 @@ impl GentleEngine {
                 "genomic_end_1based".into(),
                 Some(row.end_1based.to_string()),
             ),
+            (
+                "gentle_array_native_chromosome".into(),
+                Some(native_row.chromosome.clone()),
+            ),
+            (
+                "gentle_array_native_start_1based".into(),
+                Some(native_row.start_1based.to_string()),
+            ),
+            (
+                "gentle_array_native_end_1based".into(),
+                Some(native_row.end_1based.to_string()),
+            ),
         ];
-        if let Some(strand) = row.strand {
+        if let Some(projection) = projection {
+            qualifiers.push((
+                "gentle_array_projection_method".into(),
+                Some(projection.method.clone()),
+            ));
+            qualifiers.push((
+                "gentle_array_projection_status".into(),
+                Some(projection.status.clone()),
+            ));
+        }
+        if let Some(strand) = native_row.strand {
             qualifiers.push(("array_strand".into(), Some(strand.to_string())));
         }
         if let Some(strand) = local_strand {
@@ -578,11 +932,30 @@ impl GentleEngine {
         clear_existing: bool,
     ) -> Result<MicroarrayProjectionReport, EngineError> {
         let manifest = Self::load_microarray_track_manifest(manifest_path)?;
-        if !Self::microarray_manifest_supports_anchor(&manifest, anchor) {
+        let direct_coordinate_match = Self::microarray_manifest_supports_anchor(&manifest, anchor);
+        let projection_spec = if direct_coordinate_match {
+            None
+        } else {
+            Self::resolve_coordinate_projection_spec(&manifest, anchor)
+        };
+        let projection_path = projection_spec
+            .map(|spec| Self::resolve_microarray_track_path(manifest_path, &spec.path));
+        let projection_blocks =
+            if let (Some(spec), Some(path)) = (projection_spec, &projection_path) {
+                Some(Self::load_genome_coordinate_projection_blocks(
+                    path,
+                    &spec.method,
+                    &spec.source_genome_id,
+                    &spec.target_genome_id,
+                )?)
+            } else {
+                None
+            };
+        if !direct_coordinate_match && projection_blocks.is_none() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "Microarray track manifest '{}' coordinate system '{}' is not declared compatible with sequence anchor genome_id '{}' (supported: {})",
+                    "Microarray track manifest '{}' coordinate system '{}' is not declared compatible with sequence anchor genome_id '{}' (supported: {}; projection maps: {})",
                     manifest_path,
                     manifest.coordinate_system,
                     anchor.genome_id,
@@ -590,6 +963,21 @@ impl GentleEngine {
                         "none".to_string()
                     } else {
                         manifest.supported_genome_ids.join(", ")
+                    },
+                    if manifest.coordinate_projections.is_empty() {
+                        "none".to_string()
+                    } else {
+                        manifest
+                            .coordinate_projections
+                            .iter()
+                            .map(|projection| {
+                                format!(
+                                    "{}->{}",
+                                    projection.source_genome_id, projection.target_genome_id
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     }
                 ),
             });
@@ -633,6 +1021,9 @@ impl GentleEngine {
             platform: manifest.platform.clone(),
             normalization: manifest.normalization.clone(),
             coordinate_system: manifest.coordinate_system.clone(),
+            coordinate_projection_used: projection_blocks.is_some(),
+            coordinate_projection_method: projection_spec.map(|spec| spec.method.clone()),
+            coordinate_projection_path: projection_path.clone(),
             anchor_genome_id: anchor.genome_id.clone(),
             anchor_chromosome: anchor.chromosome.clone(),
             anchor_start_1based: anchor.start_1based,
@@ -685,7 +1076,7 @@ impl GentleEngine {
                     continue;
                 }
                 report.parsed_rows += 1;
-                let row = match Self::parse_microarray_track_row(
+                let mut row = match Self::parse_microarray_track_row(
                     trimmed,
                     header.as_ref().expect("header set"),
                 ) {
@@ -702,18 +1093,8 @@ impl GentleEngine {
                         continue;
                     }
                 };
+                let native_row = row.clone();
 
-                if !Self::chromosomes_match(&row.chromosome, &anchor.chromosome) {
-                    report.skipped_rows += 1;
-                    report.skipped_wrong_chromosome += 1;
-                    *mismatch_counts.entry(row.chromosome.clone()).or_insert(0) += 1;
-                    continue;
-                }
-                if row.end_1based < anchor.start_1based || row.start_1based > anchor.end_1based {
-                    report.skipped_rows += 1;
-                    report.skipped_non_overlap += 1;
-                    continue;
-                }
                 if min_abs_logfc
                     .map(|threshold| {
                         row.logfc
@@ -739,6 +1120,42 @@ impl GentleEngine {
                     continue;
                 }
 
+                let projected_interval = if let Some(blocks) = projection_blocks.as_deref() {
+                    match Self::project_genome_interval_with_blocks(
+                        blocks,
+                        &native_row.chromosome,
+                        native_row.start_1based,
+                        native_row.end_1based,
+                        native_row.strand,
+                    ) {
+                        Some(projected) => {
+                            row.chromosome = projected.target_chrom.clone();
+                            row.start_1based = projected.target_start_1based;
+                            row.end_1based = projected.target_end_1based;
+                            row.strand = projected.target_strand;
+                            Some(projected)
+                        }
+                        None => {
+                            report.skipped_rows += 1;
+                            report.skipped_projection_unmapped += 1;
+                            continue;
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                if !Self::chromosomes_match(&row.chromosome, &anchor.chromosome) {
+                    report.skipped_rows += 1;
+                    report.skipped_wrong_chromosome += 1;
+                    *mismatch_counts.entry(row.chromosome.clone()).or_insert(0) += 1;
+                    continue;
+                }
+                if row.end_1based < anchor.start_1based || row.start_1based > anchor.end_1based {
+                    report.skipped_rows += 1;
+                    report.skipped_non_overlap += 1;
+                    continue;
+                }
                 let overlap_start_1based = row.start_1based.max(anchor.start_1based);
                 let overlap_end_1based = row.end_1based.min(anchor.end_1based);
                 if overlap_end_1based < overlap_start_1based {
@@ -776,13 +1193,15 @@ impl GentleEngine {
                     &contrast_entry.contrast,
                     level,
                     &row,
+                    Some(&native_row),
+                    projected_interval.as_ref(),
                     local_start_0based,
                     local_end_0based_exclusive,
                     local_strand,
                 );
                 pending_features.push(PendingMicroarrayFeature {
                     feature,
-                    group_key: Self::microarray_feature_group_key(&row),
+                    group_key: Self::microarray_feature_group_key(&native_row),
                     contrast: contrast_entry.contrast.clone(),
                     logfc: row.logfc,
                     adj_p_value: row.adj_p_value,

@@ -2078,6 +2078,7 @@ mod tests {
             cutrun_regulatory_support: None,
             read_acquisition_report: None,
             microarray_projection: None,
+            genome_coordinate_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,
@@ -5427,6 +5428,7 @@ mod tests {
                 cutrun_regulatory_support: None,
                 read_acquisition_report: None,
                 microarray_projection: None,
+                genome_coordinate_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 rna_read_target_quality_export: None,
@@ -53265,6 +53267,9 @@ impl MainAreaDna {
                 "gentle_array_supported_genome_ids",
                 "gentle_array_anchor_genome_id",
                 "gentle_array_assembly_check",
+                "gentle_array_projection_method",
+                "gentle_array_projection_status",
+                "gentle_array_native_chromosome",
                 "gentle_array_contrast",
                 "gentle_array_level",
                 "gentle_array_feature_id",
@@ -53350,6 +53355,9 @@ impl MainAreaDna {
             .chain(feature.qualifier_values("gentle_array_supported_genome_ids"))
             .chain(feature.qualifier_values("gentle_array_anchor_genome_id"))
             .chain(feature.qualifier_values("gentle_array_assembly_check"))
+            .chain(feature.qualifier_values("gentle_array_projection_method"))
+            .chain(feature.qualifier_values("gentle_array_projection_status"))
+            .chain(feature.qualifier_values("gentle_array_native_chromosome"))
             .chain(feature.qualifier_values("gentle_array_contrast"))
             .chain(feature.qualifier_values("gentle_array_level"))
             .chain(feature.qualifier_values("gentle_array_feature_id"))

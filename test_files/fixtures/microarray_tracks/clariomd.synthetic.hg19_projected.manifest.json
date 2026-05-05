@@ -1,0 +1,32 @@
+{
+  "schema": "gentle.microarray_track_manifest.v1",
+  "dataset": "E-MTAB-14704",
+  "platform": "Clariom D human",
+  "normalization": "RMA",
+  "coordinate_system": "hg19",
+  "supported_genome_ids": ["hg19", "GRCh37"],
+  "contrast_order": ["AdTAp73alpha-AdGFP", "AdTAp73beta-AdGFP"],
+  "coordinate_projections": [
+    {
+      "source_genome_id": "hg19",
+      "target_genome_id": "hg38",
+      "method": "synthetic_interval_map",
+      "path": "clariomd.synthetic.hg19-to-hg38.tsv"
+    }
+  ],
+  "contrasts": [
+    {
+      "contrast": "AdTAp73alpha-AdGFP",
+      "level": "probeset",
+      "path": "clariomd.synthetic.AdTAp73alpha-AdGFP.tsv",
+      "row_count": 4
+    },
+    {
+      "contrast": "AdTAp73beta-AdGFP",
+      "level": "probeset",
+      "path": "clariomd.synthetic.AdTAp73beta-AdGFP.tsv",
+      "row_count": 2
+    }
+  ],
+  "warnings": []
+}

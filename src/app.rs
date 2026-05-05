@@ -15815,6 +15815,7 @@ Error: `{err}`"
                 read_acquisition_report: None,
                 cutrun_dataset_projection: None,
                 microarray_projection: None,
+                genome_coordinate_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 rna_read_target_quality_export: None,
@@ -44755,6 +44756,27 @@ Error: `{err}`"
                 max_features,
                 clear_existing.unwrap_or(false)
             ),
+            Operation::ProjectGenomeInterval {
+                source_genome_id,
+                target_genome_id,
+                projection_path,
+                chrom,
+                start_1based,
+                end_1based,
+                strand,
+            } => format!(
+                "Project genome interval: {}:{}-{}{} from {} to {} via {}",
+                chrom,
+                start_1based,
+                end_1based,
+                strand
+                    .as_ref()
+                    .map(|value| format!(" {value}"))
+                    .unwrap_or_default(),
+                source_genome_id,
+                target_genome_id,
+                projection_path
+            ),
             Operation::ImportBlastHitsTrack {
                 seq_id,
                 hits,
@@ -53904,6 +53926,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 cutrun_regulatory_support: None,
                 read_acquisition_report: None,
                 microarray_projection: None,
+                genome_coordinate_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 rna_read_target_quality_export: None,
@@ -54014,6 +54037,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 cutrun_regulatory_support: None,
                 read_acquisition_report: None,
                 microarray_projection: None,
+                genome_coordinate_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 rna_read_target_quality_export: None,
@@ -54109,6 +54133,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 cutrun_regulatory_support: None,
                 read_acquisition_report: None,
                 microarray_projection: None,
+                genome_coordinate_projection: None,
                 rna_read_gene_support_summary: None,
                 rna_read_gene_support_audit: None,
                 rna_read_target_quality_export: None,
@@ -54209,6 +54234,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             cutrun_regulatory_support: None,
             read_acquisition_report: None,
             microarray_projection: None,
+            genome_coordinate_projection: None,
             rna_read_gene_support_summary: None,
             rna_read_gene_support_audit: None,
             rna_read_target_quality_export: None,

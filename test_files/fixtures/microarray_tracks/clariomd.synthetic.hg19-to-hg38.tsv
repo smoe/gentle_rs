@@ -1,0 +1,2 @@
+source_genome_id	target_genome_id	source_chrom	source_start_1based	source_end_1based	source_strand	target_chrom	target_start_1based	target_end_1based	target_strand	method
+hg19	hg38	chr1	1001	1100	+	chr1	2001	2100	+	synthetic_interval_map

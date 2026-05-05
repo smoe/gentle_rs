@@ -2685,8 +2685,9 @@ The `Help` menu now includes:
 
 - Prepared Clariom D array output can be projected with
   `arrays project-microarray-track`. The command validates that the manifest
-  coordinate system matches the open sequence's genome anchor before adding any
-  features.
+  coordinate system matches the open sequence's genome anchor, or that the
+  manifest declares an explicit coordinate projection into that anchor build,
+  before adding any features.
 - Projected rows become ordinary `track` features with
   `gentle_track_source=Array` plus dataset, platform, contrast, `logFC`,
   `adj_P_Val`, probeset, transcript-cluster, exon, and optional junction
@@ -2699,6 +2700,9 @@ The `Help` menu now includes:
   stored for a probeset via `gentle_array_value_summary`. The feature tree
   accepts scoped filters such as `source:array`, `track:Clariom`,
   `contrast:AdTAp73alpha-AdGFP`, and `gene:TP73`.
+- Array details also expose the native array coordinate system, the open
+  sequence anchor genome, any build-projection method/status, and both native
+  and displayed genomic intervals for assembly cross-checks.
 - Array feature context menus include copying the array value table and
   focusing matching probesets across all contrast lanes.
 
