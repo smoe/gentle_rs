@@ -20090,6 +20090,62 @@ fn test_list_cutrun_datasets_discovers_overlay_catalogs() {
 }
 
 #[test]
+fn test_builtin_rostock_p73_cutrun_sra_entries_are_discoverable() {
+    let _serial = cutrun_test_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let catalog_dir = repo_root.join("assets/cutrun.d");
+    let catalog_path = catalog_dir.to_string_lossy().to_string();
+
+    let report = GentleEngine::list_cutrun_datasets(Some("E-MTAB-15709"), Some(&catalog_path))
+        .expect("list Rostock p73 CUT&RUN SRA entries");
+    assert_eq!(report.dataset_count, 12);
+    let p73 = report
+        .datasets
+        .iter()
+        .find(|row| row.dataset_id == "rostock_p73_sra_err15695857_p73_tap73alpha")
+        .expect("TAp73alpha p73 antibody run entry");
+    assert!(p73.has_raw_reads);
+    assert!(!p73.has_peaks_asset);
+    assert!(!p73.has_signal_asset);
+    assert_eq!(p73.read_layout, CutRunReadLayout::PairedEnd);
+    assert_eq!(p73.source_accession.as_deref(), Some("ERR15695857"));
+    assert!(
+        p73.supported_reference_genome_ids
+            .iter()
+            .any(|id| id == "GRCh38")
+    );
+
+    let engine = GentleEngine::new();
+    let cache_dir = td.path().join("cutrun_cache");
+    let cache_path = cache_dir.to_string_lossy().to_string();
+    let status = engine
+        .show_cutrun_dataset_status(
+            "rostock_p73_sra_err15695857_p73_tap73alpha",
+            Some(&catalog_path),
+            Some(&cache_path),
+        )
+        .expect("show SRA-backed CUT&RUN status without preparing reads");
+    assert!(!status.prepared);
+    assert_eq!(status.lifecycle_status, "missing");
+    assert_eq!(status.read_layout, CutRunReadLayout::PairedEnd);
+    assert!(status.reads_r1.configured);
+    assert!(status.reads_r2.configured);
+    assert!(!status.reads_r1.prepared);
+    assert!(!status.reads_r2.prepared);
+    assert_eq!(
+        status.reads_r1.source.as_deref(),
+        Some("read_acquisition:ERR15695857")
+    );
+    assert_eq!(
+        status.reads_r2.source.as_deref(),
+        Some("read_acquisition:ERR15695857")
+    );
+}
+
+#[test]
 fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
     let _serial = cutrun_test_env_lock()
         .lock()

@@ -120,6 +120,8 @@ Catalog path note:
   while still using the same preparation/indexing pipeline as before.
 - CUT&RUN V1/V2 now use the same discovery pattern:
   - built-in starter catalog: `assets/cutrun.json`
+  - built-in catalog shards under `assets/cutrun.d/`, including the Rostock
+    p73 `E-MTAB-15709` SRA-backed paired-end run entries
   - project/system overlays under `.gentle/catalogs/` and `/etc/gentle/catalogs/`
   - prepared-cache root defaults to `data/cutrun`
   - override cache root with `GENTLE_CUTRUN_CACHE_DIR`
@@ -3320,7 +3322,8 @@ Service and resource commands:
     `assets/publication_resources.json` and default prepared manifests under
     `data/publication_resources`:
     - Rostock p73 Clariom D transcriptome data: `E-MTAB-14704`
-    - Rostock p73 CUT&RUN sequencing data: `E-MTAB-15709`
+    - Rostock p73 CUT&RUN sequencing data: `E-MTAB-15709` / `PRJEB100610`
+      with ENA paired FASTQ URLs declared as `raw_cutrun_fastq`
     - Rostock p73 Co-IP/MS proteomics data: `PXD058816`
     - `resources prepare-publication-dataset` writes `manifest.json`,
       `download_manifest.tsv`, and `download.sh`; large file download happens
@@ -3390,7 +3393,8 @@ Service and resource commands:
     dataset id or accession.
   - Reports concrete file URLs, local paths, size checks when known, and
     warnings for accessions whose public archive file list still needs
-    refreshing.
+    refreshing. The Rostock CUT&RUN entry now reports the ENA FASTQ files but
+    does not download them unless asked.
 - `resources prepare-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH] [--download-files] [--max-files N] [--category NAME|--categories CSV]`
   - Writes a deterministic `manifest.json`, `download_manifest.tsv`, and
     executable `download.sh` under `data/publication_resources/DATASET_ID`.
@@ -3401,7 +3405,8 @@ Service and resource commands:
     and downloads for smoke checks.
   - `--category`/`--categories` restrict the planned files before download;
     for the Rostock Clariom D data, `raw_microarray` selects just the CEL
-    payloads and `metadata` selects the MAGE-TAB files.
+    payloads and `metadata` selects the MAGE-TAB files. For the Rostock
+    CUT&RUN data, `raw_cutrun_fastq` selects the public paired ENA FASTQs.
 - `Rscript scripts/analyze_p73_clariomd_probe_level.R [DATASET_DIR] [OUTPUT_DIR]`
   - External-analysis helper for the Rostock `E-MTAB-14704` Clariom D CEL
     resource.

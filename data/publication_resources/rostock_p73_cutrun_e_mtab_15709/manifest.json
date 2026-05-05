@@ -21,20 +21,191 @@
     "title": "SK-Mel-29 p73 isoform CUT&RUN sequencing data",
     "description": "CUT&RUN sequencing data for SK-Mel-29 cells expressing TAp73alpha, DNp73beta, or control, associated with the p73 multimodal profiling study.",
     "landing_url": "https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-15709",
-    "api_url": "https://www.ebi.ac.uk/biostudies/api/v1/studies/E-MTAB-15709",
-    "file_listing_url": "https://ftp.ebi.ac.uk/biostudies/fire/E-MTAB-/709/E-MTAB-15709/Files/",
-    "declared_file_count": 0,
-    "categories": [],
+    "api_url": "https://www.ebi.ac.uk/ena/portal/api/filereport?accession=PRJEB100610&result=read_run&format=json",
+    "file_listing_url": "https://www.ebi.ac.uk/ena/portal/api/filereport?accession=PRJEB100610&result=read_run&fields=run_accession,experiment_accession,sample_alias,library_layout,fastq_ftp,fastq_bytes,fastq_md5&format=tsv",
+    "declared_file_count": 24,
+    "categories": [
+      "raw_cutrun_fastq"
+    ],
     "notes": [
       "The publication records E-MTAB-15709 as the CUT&RUN ArrayExpress accession.",
-      "During local verification on 2026-05-03, the BioStudies API returned an EBI 500 page and the guessed public FTP Files directory returned 404.",
-      "GENtle tracks the accession and writes a metadata/download-planning manifest, but the raw file URLs should be refreshed from BioStudies/ENA once the archive exposes them."
+      "NCBI SRA E-utilities resolved E-MTAB-15709 to ERP182066/PRJEB100610 and twelve public paired-end runs on 2026-05-05.",
+      "ENA Portal API exposed concrete paired FASTQ URLs, byte counts, and MD5 checksums on 2026-05-05; GENtle records the download URLs but keeps full CUT&RUN acquisition explicit because the payload is multi-GB."
     ]
   },
-  "files": [],
+  "files": [
+    {
+      "file_name": "ERR15695857_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/057/ERR15695857/ERR15695857_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "591M",
+      "size_bytes": 591249078
+    },
+    {
+      "file_name": "ERR15695857_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/057/ERR15695857/ERR15695857_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "612M",
+      "size_bytes": 612347258
+    },
+    {
+      "file_name": "ERR15695855_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/055/ERR15695855/ERR15695855_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "628M",
+      "size_bytes": 628012125
+    },
+    {
+      "file_name": "ERR15695855_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/055/ERR15695855/ERR15695855_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "646M",
+      "size_bytes": 645979529
+    },
+    {
+      "file_name": "ERR15695856_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/056/ERR15695856/ERR15695856_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "562M",
+      "size_bytes": 561939584
+    },
+    {
+      "file_name": "ERR15695856_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/056/ERR15695856/ERR15695856_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "571M",
+      "size_bytes": 570726652
+    },
+    {
+      "file_name": "ERR15695854_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/054/ERR15695854/ERR15695854_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "479M",
+      "size_bytes": 479304832
+    },
+    {
+      "file_name": "ERR15695854_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/054/ERR15695854/ERR15695854_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "487M",
+      "size_bytes": 487084234
+    },
+    {
+      "file_name": "ERR15695852_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/052/ERR15695852/ERR15695852_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "575M",
+      "size_bytes": 574598631
+    },
+    {
+      "file_name": "ERR15695852_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/052/ERR15695852/ERR15695852_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "586M",
+      "size_bytes": 586123551
+    },
+    {
+      "file_name": "ERR15695853_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/053/ERR15695853/ERR15695853_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "538M",
+      "size_bytes": 538065978
+    },
+    {
+      "file_name": "ERR15695853_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/053/ERR15695853/ERR15695853_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "549M",
+      "size_bytes": 549147756
+    },
+    {
+      "file_name": "ERR15695860_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/060/ERR15695860/ERR15695860_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "551M",
+      "size_bytes": 551080498
+    },
+    {
+      "file_name": "ERR15695860_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/060/ERR15695860/ERR15695860_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "573M",
+      "size_bytes": 573307451
+    },
+    {
+      "file_name": "ERR15695858_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/058/ERR15695858/ERR15695858_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "685M",
+      "size_bytes": 684643378
+    },
+    {
+      "file_name": "ERR15695858_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/058/ERR15695858/ERR15695858_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "712M",
+      "size_bytes": 712348044
+    },
+    {
+      "file_name": "ERR15695859_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/059/ERR15695859/ERR15695859_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "654M",
+      "size_bytes": 653837270
+    },
+    {
+      "file_name": "ERR15695859_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/059/ERR15695859/ERR15695859_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "685M",
+      "size_bytes": 684627974
+    },
+    {
+      "file_name": "ERR15695851_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/051/ERR15695851/ERR15695851_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "587M",
+      "size_bytes": 587479370
+    },
+    {
+      "file_name": "ERR15695851_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/051/ERR15695851/ERR15695851_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "613M",
+      "size_bytes": 612549726
+    },
+    {
+      "file_name": "ERR15695849_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/049/ERR15695849/ERR15695849_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "615M",
+      "size_bytes": 614533988
+    },
+    {
+      "file_name": "ERR15695849_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/049/ERR15695849/ERR15695849_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "645M",
+      "size_bytes": 645193844
+    },
+    {
+      "file_name": "ERR15695850_1.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/050/ERR15695850/ERR15695850_1.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "611M",
+      "size_bytes": 610569864
+    },
+    {
+      "file_name": "ERR15695850_2.fastq.gz",
+      "url": "https://ftp.sra.ebi.ac.uk/vol1/fastq/ERR156/050/ERR15695850/ERR15695850_2.fastq.gz",
+      "category": "raw_cutrun_fastq",
+      "size_label": "640M",
+      "size_bytes": 640063808
+    }
+  ],
   "notes": [
     "The publication records E-MTAB-15709 as the CUT&RUN ArrayExpress accession.",
-    "During local verification on 2026-05-03, the BioStudies API returned an EBI 500 page and the guessed public FTP Files directory returned 404.",
-    "GENtle tracks the accession and writes a metadata/download-planning manifest, but the raw file URLs should be refreshed from BioStudies/ENA once the archive exposes them."
+    "NCBI SRA E-utilities resolved E-MTAB-15709 to ERP182066/PRJEB100610 and twelve public paired-end runs on 2026-05-05.",
+    "ENA Portal API exposed concrete paired FASTQ URLs, byte counts, and MD5 checksums on 2026-05-05; GENtle records the download URLs but keeps full CUT&RUN acquisition explicit because the payload is multi-GB."
   ]
 }
