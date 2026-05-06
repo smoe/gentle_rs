@@ -4108,6 +4108,150 @@ mod tests {
         );
     }
 
+    fn assert_forwarded_services_dispatch_matches_shared_shell_execution(
+        forwarded_args: Vec<String>,
+    ) {
+        fn strip_generated_at_unix_ms(value: &mut serde_json::Value) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    map.remove("generated_at_unix_ms");
+                    for value in map.values_mut() {
+                        strip_generated_at_unix_ms(value);
+                    }
+                }
+                serde_json::Value::Array(values) => {
+                    for value in values {
+                        strip_generated_at_unix_ms(value);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+        let mut forwarded_output_stable = forwarded_output;
+        let mut shared_output_stable = shared_output;
+        strip_generated_at_unix_ms(&mut forwarded_output_stable);
+        strip_generated_at_unix_ms(&mut shared_output_stable);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output_stable, shared_output_stable);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_services_status_dispatch_matches_shared_shell_execution() {
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "status".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_providers_list_dispatch_matches_shared_shell_execution() {
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "providers".to_string(),
+            "list".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_project_preflight_dispatch_matches_shared_shell_execution() {
+        let request = serde_json::json!({
+            "schema": "gentle.external_service_request.v1",
+            "provider": "geneart",
+            "service_kind": "cloned_gene",
+            "source_target": {
+                "kind": "inline_dna",
+                "sequence": "ATGGCTTAA"
+            },
+            "vector_spec": {
+                "helper_profile_id": "Plasmid pUC19 (online)"
+            },
+            "return_spec": {
+                "requested_payloads": ["genbank", "quote_metadata"]
+            }
+        })
+        .to_string();
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "project-preflight".to_string(),
+            request,
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_project_quote_dispatch_matches_shared_shell_execution() {
+        let request = serde_json::json!({
+            "schema": "gentle.external_service_request.v1",
+            "provider": "geneart",
+            "service_kind": "cloned_gene",
+            "source_target": {
+                "kind": "inline_dna",
+                "sequence": "ATGGCTTAA"
+            },
+            "vector_spec": {
+                "helper_profile_id": "Plasmid pUC19 (online)"
+            },
+            "return_spec": {
+                "requested_payloads": ["genbank", "quote_metadata"]
+            }
+        })
+        .to_string();
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "project-quote".to_string(),
+            request,
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_handoff_dispatch_matches_shared_shell_execution() {
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "handoff".to_string(),
+            "--scope".to_string(),
+            "telegram".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn test_forwarded_services_guide_dispatch_matches_shared_shell_execution() {
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "guide".to_string(),
+            "--channel".to_string(),
+            "telegram".to_string(),
+            "--section".to_string(),
+            "tfbs".to_string(),
+            "--gene".to_string(),
+            "TERT".to_string(),
+        ]);
+    }
+
     #[test]
     fn test_forwarded_genbank_fetch_dispatch_matches_shared_shell_execution() {
         let _env_lock = TEST_ENV_LOCK.lock().expect("env lock");
