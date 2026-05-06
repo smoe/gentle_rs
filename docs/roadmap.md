@@ -508,6 +508,10 @@ without blocking this publication.
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).
+  - Direct CLI adapter splitting has started with the legacy `resources ...`
+    handler and usage block extracted to `src/bin/gentle_cli/resources.rs`,
+    preserving shell forwarding and manual parsing behavior while reducing the
+    monolithic `run()` body.
 - Planning meta-layer shell/CLI baseline is now available:
   - direct/shared-shell command family: `planning ...`
   - profile/objective/suggestion/sync contracts:
