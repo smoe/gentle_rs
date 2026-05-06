@@ -4,11 +4,11 @@
 //! ontology/resource namespaces such as GO, but are not limited by them.
 
 use gentle_protocol::{
-    GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_LIST_REPORT_SCHEMA,
-    GENE_GROUP_RESOLVE_REPORT_SCHEMA, GENE_GROUP_SHOW_REPORT_SCHEMA, GeneGroupCatalog,
-    GeneGroupCatalogSourceReport, GeneGroupDoctorReport, GeneGroupExternalResource,
-    GeneGroupListEntry, GeneGroupListReport, GeneGroupRecord, GeneGroupResolveReport,
-    GeneGroupShowReport,
+    GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,
+    GENE_GROUP_LIST_REPORT_SCHEMA, GENE_GROUP_RESOLVE_REPORT_SCHEMA, GENE_GROUP_SHOW_REPORT_SCHEMA,
+    GeneGroupCatalog, GeneGroupCatalogSourceReport, GeneGroupDoctorReport, GeneGroupDraftReport,
+    GeneGroupExternalMapping, GeneGroupExternalResource, GeneGroupListEntry, GeneGroupListReport,
+    GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
 };
 use sha1::{Digest, Sha1};
 use std::collections::{BTreeMap, BTreeSet};
@@ -39,6 +39,24 @@ pub struct GeneGroupCatalogIndex {
     warnings: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct GeneGroupDraftOptions {
+    pub description: String,
+    pub id: Option<String>,
+    pub label: Option<String>,
+    pub short_description: Option<String>,
+    pub organism: Option<String>,
+    pub taxon_id: Option<String>,
+    pub symbol_namespace: Option<String>,
+    pub aliases: Vec<String>,
+    pub tags: Vec<String>,
+    pub usages: Vec<String>,
+    pub members: Vec<String>,
+    pub go_mappings: Vec<String>,
+    pub provenance: Option<String>,
+    pub output_path: Option<String>,
+}
+
 /// Stable human-facing label for default gene-group discovery.
 pub fn default_gene_group_catalog_discovery_label() -> &'static str {
     "default gene-group catalog discovery"
@@ -57,6 +75,84 @@ fn normalize_lookup(raw: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn slugify_identifier(raw: &str) -> String {
+    let mut out = String::new();
+    let mut previous_underscore = false;
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            previous_underscore = false;
+        } else if !previous_underscore && !out.is_empty() {
+            out.push('_');
+            previous_underscore = true;
+        }
+    }
+    while out.ends_with('_') {
+        out.pop();
+    }
+    if out.is_empty() {
+        "draft_gene_group".to_string()
+    } else {
+        out
+    }
+}
+
+fn first_sentence(raw: &str) -> String {
+    raw.split(['.', '\n'])
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .unwrap_or(raw.trim())
+        .to_string()
+}
+
+fn derive_label_from_description(description: &str) -> String {
+    let sentence = first_sentence(description);
+    let words = sentence
+        .split_whitespace()
+        .take(10)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let label = words
+        .trim_matches(|ch: char| !ch.is_ascii_alphanumeric())
+        .trim();
+    if label.is_empty() {
+        "Draft gene group".to_string()
+    } else {
+        let mut chars = label.chars();
+        match chars.next() {
+            Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+            None => "Draft gene group".to_string(),
+        }
+    }
+}
+
+fn derive_short_description(description: &str) -> String {
+    let sentence = first_sentence(description);
+    if sentence.chars().count() <= 180 {
+        sentence
+    } else {
+        let mut out = sentence.chars().take(177).collect::<String>();
+        out.push_str("...");
+        out
+    }
+}
+
+fn normalized_unique(values: Vec<String>) -> Vec<String> {
+    let mut seen = BTreeSet::<String>::new();
+    let mut out = vec![];
+    for value in values {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let key = normalize_lookup(trimmed);
+        if seen.insert(key) {
+            out.push(trimmed.to_string());
+        }
+    }
+    out
 }
 
 fn gene_group_catalog_discovery_candidates() -> Vec<GeneGroupCatalogSourceCandidate> {
@@ -552,6 +648,159 @@ pub fn resolve_gene_group(
     })
 }
 
+pub fn draft_gene_group(options: GeneGroupDraftOptions) -> Result<GeneGroupDraftReport, String> {
+    let description = options.description.trim();
+    if description.is_empty() {
+        return Err("gene-groups draft requires a non-empty --description".to_string());
+    }
+    let label = options
+        .label
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| derive_label_from_description(description));
+    let id = options
+        .id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(slugify_identifier)
+        .unwrap_or_else(|| slugify_identifier(&label));
+    let short_description = options
+        .short_description
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| derive_short_description(description));
+    let aliases = normalized_unique(options.aliases);
+    let mut tags = normalized_unique(options.tags);
+    if tags.is_empty() {
+        tags.push("draft".to_string());
+    }
+    let mut usages = normalized_unique(options.usages);
+    if usages.is_empty() {
+        usages.push("gene_group".to_string());
+    }
+    let provenance = options.provenance.clone().unwrap_or_else(|| {
+        "AI/user-assisted draft from gene-groups draft; requires review before promotion."
+            .to_string()
+    });
+    let members = normalized_unique(options.members)
+        .into_iter()
+        .map(|symbol| GeneGroupMember {
+            symbol,
+            evidence_note: Some(
+                "Draft candidate membership; review evidence before promoting this group."
+                    .to_string(),
+            ),
+            confidence: Some("draft_candidate".to_string()),
+            status: Some("draft".to_string()),
+            provenance: Some(provenance.clone()),
+            ..GeneGroupMember::default()
+        })
+        .collect::<Vec<_>>();
+    let external_mappings = normalized_unique(options.go_mappings)
+        .into_iter()
+        .map(|go_id| {
+            if !is_valid_go_id(&go_id) {
+                return Err(format!(
+                    "Invalid --go mapping '{go_id}' for gene-groups draft (expected GO:0000000)"
+                ));
+            }
+            Ok(GeneGroupExternalMapping {
+                namespace: "GO".to_string(),
+                id: go_id,
+                relationship: Some("draft_external_anchor".to_string()),
+                note: Some(
+                    "Draft GO mapping supplied during gene-group drafting; review before promotion."
+                        .to_string(),
+                ),
+                ..GeneGroupExternalMapping::default()
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let mut external_resources = vec![];
+    if !external_mappings.is_empty() {
+        external_resources.push(GeneGroupExternalResource {
+            id: "gene_ontology".to_string(),
+            label: "Gene Ontology".to_string(),
+            namespace: "GO".to_string(),
+            role: "external_ontology_mapping_namespace".to_string(),
+            homepage_url: Some("https://geneontology.org/".to_string()),
+            notes: vec![
+                "Draft fragment declares GO as an external mapping namespace only.".to_string(),
+            ],
+        });
+    }
+    let group = GeneGroupRecord {
+        id,
+        label,
+        aliases,
+        short_description,
+        long_definition: description.to_string(),
+        organism: options.organism.filter(|value| !value.trim().is_empty()),
+        taxon_id: options.taxon_id.filter(|value| !value.trim().is_empty()),
+        symbol_namespace: options
+            .symbol_namespace
+            .filter(|value| !value.trim().is_empty()),
+        usages,
+        tags,
+        members,
+        external_mappings,
+        curation_status: "draft".to_string(),
+        source_kind: Some("ai_assisted_draft".to_string()),
+        provenance: Some(provenance),
+        notes: vec![
+            "Generated as a review-gated draft; do not treat as curated until promoted by a user or project policy.".to_string(),
+        ],
+        ..GeneGroupRecord::default()
+    };
+    let catalog_fragment = GeneGroupCatalog {
+        schema: GENE_GROUP_CATALOG_SCHEMA.to_string(),
+        external_resources,
+        groups: vec![group.clone()],
+    };
+    let input_description_sha1 = format!("{:x}", Sha1::digest(description.as_bytes()));
+    let mut report = GeneGroupDraftReport {
+        schema: GENE_GROUP_DRAFT_REPORT_SCHEMA.to_string(),
+        generation_method: "deterministic_review_gated_draft".to_string(),
+        review_required: true,
+        input_description_sha1,
+        output_path: options.output_path.clone(),
+        group,
+        catalog_fragment,
+        warnings: vec![],
+    };
+    if report.catalog_fragment.groups[0].members.is_empty() {
+        report.warnings.push(
+            "Draft has no candidate members yet; add members before using it for analysis."
+                .to_string(),
+        );
+    }
+    if let Some(path) = options
+        .output_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let parent = Path::new(path)
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        fs::create_dir_all(parent).map_err(|e| {
+            format!("Could not create gene-group draft output directory for '{path}': {e}")
+        })?;
+        let mut text = serde_json::to_string_pretty(&report.catalog_fragment)
+            .map_err(|e| format!("Could not serialize gene-group draft fragment: {e}"))?;
+        text.push('\n');
+        fs::write(path, text)
+            .map_err(|e| format!("Could not write gene-group draft fragment '{path}': {e}"))?;
+    }
+    Ok(report)
+}
+
 pub fn resolve_tf_query_gene_group(query: &str) -> Option<LoadedGeneGroupRecord> {
     let catalog = load_gene_group_catalog(None).ok()?;
     let normalized = normalize_lookup(query);
@@ -879,12 +1128,45 @@ mod tests {
         assert_eq!(report.matched_group_count, 1);
         assert_eq!(report.groups[0].id, "yamanaka_factors");
 
+        let splicing = resolve_gene_group("regulation of alternative splicing", None)
+            .expect("resolve splicing");
+        assert_eq!(splicing.matched_group_count, 1);
+        assert_eq!(splicing.groups[0].id, "regulation_of_alternative_splicing");
+        assert!(
+            splicing.groups[0]
+                .external_mappings
+                .iter()
+                .any(|mapping| mapping.namespace == "GO" && mapping.id == "GO:0000381")
+        );
+
         let list = list_gene_groups(None, Some("ontology")).expect("list ontology");
         assert!(
             list.external_resources
                 .iter()
                 .any(|resource| resource.namespace == "GO")
         );
+    }
+
+    #[test]
+    fn draft_gene_group_writes_review_gated_fragment() {
+        let dir = tempdir().expect("tempdir");
+        let output = dir.path().join("draft.json");
+        let report = draft_gene_group(GeneGroupDraftOptions {
+            description: "Genes regulating alternative splice-site selection in a project-specific pancreatic cancer context.".to_string(),
+            members: vec!["RBFOX2".to_string(), "PTBP1".to_string()],
+            go_mappings: vec!["GO:0000381".to_string()],
+            output_path: Some(output.to_string_lossy().to_string()),
+            ..GeneGroupDraftOptions::default()
+        })
+        .expect("draft gene group");
+        assert_eq!(report.schema, GENE_GROUP_DRAFT_REPORT_SCHEMA);
+        assert!(report.review_required);
+        assert_eq!(report.catalog_fragment.groups.len(), 1);
+        assert_eq!(report.catalog_fragment.groups[0].curation_status, "draft");
+        assert_eq!(report.catalog_fragment.groups[0].members.len(), 2);
+        let written = fs::read_to_string(output).expect("read draft");
+        assert!(written.contains("\"schema\": \"gentle.gene_group_catalog.v1\""));
+        assert!(written.contains("GO:0000381"));
     }
 
     #[test]
