@@ -2942,7 +2942,7 @@ mod tests {
     #[test]
     fn tutorial_generate_is_deterministic() {
         let _serial = lock_jaspar_registry_for_test();
-        crate::tf_motifs::reload();
+        crate::tf_motifs::reload_builtin_for_test();
         let source = example_dir();
         let manifest = tutorial_manifest_path();
         let repo_root = Path::new(".");
@@ -2965,7 +2965,7 @@ mod tests {
     #[test]
     fn tutorial_generated_chapter_includes_narrative_concepts_and_objectives() {
         let _serial = lock_jaspar_registry_for_test();
-        crate::tf_motifs::reload();
+        crate::tf_motifs::reload_builtin_for_test();
         let source = example_dir();
         let manifest = tutorial_manifest_path();
         let repo_root = Path::new(".");
@@ -3209,7 +3209,7 @@ mod tests {
     #[test]
     fn tutorial_check_passes_on_committed_tree() {
         let _serial = lock_jaspar_registry_for_test();
-        crate::tf_motifs::reload();
+        crate::tf_motifs::reload_builtin_for_test();
         check_tutorial_generated(
             &example_dir(),
             &tutorial_manifest_path(),
@@ -3222,7 +3222,7 @@ mod tests {
     #[test]
     fn tutorial_core_executes_runtime() {
         let _serial = lock_jaspar_registry_for_test();
-        crate::tf_motifs::reload();
+        crate::tf_motifs::reload_builtin_for_test();
         let manifest =
             load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
         let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
