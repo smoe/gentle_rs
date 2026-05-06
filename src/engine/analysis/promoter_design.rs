@@ -1312,6 +1312,14 @@ impl GentleEngine {
         }
     }
 
+    fn stabilize_similarity_report_float(value: f64) -> f64 {
+        if !value.is_finite() {
+            return value;
+        }
+        const SCALE: f64 = 1_000_000_000_000.0;
+        (value * SCALE).round() / SCALE
+    }
+
     fn summarize_tfbs_track_similarity_row(
         anchor: &TfbsScoreTrackRow,
         candidate: &TfbsScoreTrackRow,
@@ -1341,22 +1349,22 @@ impl GentleEngine {
             candidate_tf_id: candidate.tf_id.clone(),
             candidate_tf_name: candidate.tf_name.clone(),
             overlap_window_count,
-            raw_pearson: Self::pearson_correlation(
+            raw_pearson: Self::stabilize_similarity_report_float(Self::pearson_correlation(
                 &anchor_signal[..overlap_window_count],
                 &candidate_signal[..overlap_window_count],
-            ),
-            smoothed_pearson: Self::pearson_correlation(
+            )),
+            smoothed_pearson: Self::stabilize_similarity_report_float(Self::pearson_correlation(
                 &anchor_smoothed[..overlap_window_count],
                 &candidate_smoothed[..overlap_window_count],
-            ),
-            raw_spearman: Self::spearman_correlation(
+            )),
+            raw_spearman: Self::stabilize_similarity_report_float(Self::spearman_correlation(
                 &anchor_signal[..overlap_window_count],
                 &candidate_signal[..overlap_window_count],
-            ),
-            smoothed_spearman: Self::spearman_correlation(
+            )),
+            smoothed_spearman: Self::stabilize_similarity_report_float(Self::spearman_correlation(
                 &anchor_smoothed[..overlap_window_count],
                 &candidate_smoothed[..overlap_window_count],
-            ),
+            )),
             signed_primary_peak_offset_bp: Self::summarize_tfbs_track_primary_peak_offset_bp(
                 anchor, candidate,
             ),
