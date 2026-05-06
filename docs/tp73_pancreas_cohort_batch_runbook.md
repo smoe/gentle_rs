@@ -11,6 +11,9 @@ single-run runbook first when validating a new machine. Use this cohort runbook
 once the toolchain, SRA retrieval, FASTA conversion, RNA-read interpretation,
 and phase-2 alignment are known to work for one accession.
 
+Plotting script details and generic single-gene/gene-family examples live in
+`docs/pancreas_gene_plotting.md`.
+
 ## Scripted Path
 
 Prefer the repository helper for the live pancreatic TP73 cohort run:
@@ -97,6 +100,9 @@ python3 scripts/plot_tp73_pancreas_cohort.py \
 The SVG plot is dependency-free. If PNG/PDF conversion is needed on Debian,
 install `librsvg2-bin` and run `rsvg-convert`, or use Inkscape.
 
+New figure commands should prefer `scripts/plot_pancreas_gene_screen.py`;
+`scripts/plot_tp73_pancreas_cohort.py` remains as a TP73 compatibility wrapper.
+
 ## Generic Follow-On Gene Screens
 
 Once the shared pancreatic FASTA files already exist, use the gene-agnostic
@@ -125,8 +131,12 @@ scripts/pancreas_gene_rna_screen.sh summarize "$RUN_ROOT"
 python3 scripts/plot_pancreas_gene_screen.py \
   "$RUN_ROOT/figures/e2f1_pancreas_figure_source.tsv" \
   --gene E2F1 \
+  --bar-column strict_seed_passed_reads \
   --output "$RUN_ROOT/figures/e2f1_pancreas_overview.svg"
 ```
+
+For multi-gene comparison figures, use `scripts/plot_pancreas_gene_family.py`;
+see `docs/pancreas_gene_plotting.md` for `GENE=PATH` examples.
 
 Useful defaults:
 
