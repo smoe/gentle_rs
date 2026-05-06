@@ -116,6 +116,13 @@ die() {
   exit 1
 }
 
+trap_rm_rf_on_exit() {
+  local path="$1"
+  local quoted
+  printf -v quoted '%q' "$path"
+  trap "rm -rf -- $quoted" EXIT
+}
+
 require_executable() {
   local tool="$1"
   if [[ "$tool" == */* ]]; then
@@ -778,7 +785,7 @@ run_one_sample_impl() {
   if ! mkdir "$lock_dir" 2>/dev/null; then
     die "Worker lock exists for $run: $lock_dir"
   fi
-  trap 'rm -rf "$lock_dir"' EXIT
+  trap_rm_rf_on_exit "$lock_dir"
 
   if [ -s "$summary_json" ]; then
     log "Summary already exists for $run: $summary_json"
@@ -1133,7 +1140,7 @@ run_screen() {
   mkdir -p "$RUN_ROOT"/{logs,manifests,reports,resources,runs,tmp,figures}
   local run_lock="$RUN_ROOT/.run.lock"
   mkdir "$run_lock" || die "Could not acquire run lock: $run_lock"
-  trap 'rm -rf "$run_lock"' EXIT
+  trap_rm_rf_on_exit "$run_lock"
 
   log "Run root: $RUN_ROOT"
   resolve_ncbi_gene_locus
