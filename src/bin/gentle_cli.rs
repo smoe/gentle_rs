@@ -2,6 +2,8 @@
 
 #[path = "gentle_cli/args.rs"]
 mod gentle_cli_args;
+#[path = "gentle_cli/hosts.rs"]
+mod gentle_cli_hosts;
 #[path = "gentle_cli/reference.rs"]
 mod gentle_cli_reference;
 #[path = "gentle_cli/resources.rs"]
@@ -617,7 +619,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
-  gentle_cli hosts list [--catalog PATH] [--filter TEXT]\n\n  \
+{hosts_usage}\
   gentle_cli genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]\n  \
   gentle_cli genomes install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]\n  \
   gentle_cli helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]\n\n  \
@@ -767,6 +769,7 @@ fn usage() {
   Shell help:\n  \
   {shell_help}",
         shell_help = shell_help_text(),
+        hosts_usage = gentle_cli_hosts::USAGE,
         resources_usage = gentle_cli_resources::USAGE,
         services_usage = gentle_cli_services::USAGE
     );
@@ -1423,62 +1426,7 @@ fn run() -> Result<(), String> {
             &state_path,
             &global,
         ),
-        "hosts" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err("hosts requires a subcommand".to_string());
-            }
-            match args[cmd_idx + 1].as_str() {
-                "list" => {
-                    let mut catalog_path: Option<String> = None;
-                    let mut filter: Option<String> = None;
-                    let mut idx = cmd_idx + 2;
-                    while idx < args.len() {
-                        match args[idx].as_str() {
-                            "--catalog" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(
-                                        "Missing PATH after --catalog for hosts list".to_string()
-                                    );
-                                }
-                                catalog_path = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            "--filter" => {
-                                if idx + 1 >= args.len() {
-                                    return Err(
-                                        "Missing TEXT after --filter for hosts list".to_string()
-                                    );
-                                }
-                                filter = Some(args[idx + 1].clone());
-                                idx += 2;
-                            }
-                            other => {
-                                return Err(format!("Unknown option '{}' for hosts list", other));
-                            }
-                        }
-                    }
-                    let entries = GentleEngine::list_host_profile_catalog_entries(
-                        explicit_catalog_arg(&catalog_path),
-                        filter.as_deref(),
-                    )
-                    .map_err(|e| e.to_string())?;
-                    let profile_ids = entries
-                        .iter()
-                        .map(|entry| entry.profile_id.clone())
-                        .collect::<Vec<_>>();
-                    print_json(&json!({
-                        "catalog_path": explicit_catalog_arg(&catalog_path)
-                            .unwrap_or(DEFAULT_HOST_PROFILE_CATALOG_PATH),
-                        "filter": filter,
-                        "profile_count": profile_ids.len(),
-                        "profile_ids": profile_ids,
-                        "entries": entries,
-                    }))
-                }
-                other => Err(format!("Unknown hosts subcommand '{}'", other)),
-            }
-        }
+        "hosts" => gentle_cli_hosts::handle_hosts_family(&args, cmd_idx),
         "resources" => gentle_cli_resources::handle_resources_family(&args, cmd_idx),
         "services" => gentle_cli_services::handle_services_family(&args, cmd_idx),
         "shell" => {
@@ -3290,6 +3238,28 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_forwarded_shell_command_routes_hosts_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "hosts".to_string(),
+            "list".to_string(),
+            "--catalog".to_string(),
+            "assets/host_profiles.json".to_string(),
+            "--filter".to_string(),
+            "deoR".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(
+            parsed,
+            Some(ShellCommand::HostsList {
+                catalog_path,
+                filter,
+            }) if catalog_path.as_deref() == Some("assets/host_profiles.json")
+                && filter.as_deref() == Some("deoR")
+        ));
+    }
+
+    #[test]
     fn test_parse_forwarded_shell_command_routes_import_pool_through_shared_parser() {
         let args = vec![
             "gentle_cli".to_string(),
@@ -4253,6 +4223,40 @@ mod tests {
             "--gene".to_string(),
             "TERT".to_string(),
         ]);
+    }
+
+    #[test]
+    fn test_forwarded_hosts_list_dispatch_matches_shared_shell_execution() {
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "hosts".to_string(),
+            "list".to_string(),
+            "--catalog".to_string(),
+            "assets/host_profiles.json".to_string(),
+            "--filter".to_string(),
+            "deoR".to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
     }
 
     #[test]
