@@ -32,6 +32,7 @@ BAR_COLUMNS = {
     "strict_seed_passed_reads": "strict seed-passed reads",
     "strict_seed_accepted_target_reads": "strict seed-passed target reads",
     "accepted_target_reads": "accepted target reads",
+    "accepted_tp73_reads": "accepted TP73 target reads",
 }
 
 
@@ -192,7 +193,7 @@ def polyline(points: list[tuple[float, float]], color: str, dash: str = "") -> s
 
 
 def max_read_length_column(bar_column: str) -> tuple[str, str]:
-    if bar_column == "accepted_target_reads":
+    if bar_column in {"accepted_target_reads", "accepted_tp73_reads"}:
         return "accepted_target_max_read_bp", "max accepted target read length (bp)"
     return "strict_seed_passed_max_read_bp", "max strict seed-passed read length (bp)"
 
