@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-05-05
+Last updated: 2026-05-06
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -3990,6 +3990,38 @@ Planned work:
 Goal: build a vendor-neutral external-service layer in GENtle, with GeneArt as
 the first concrete provider, without turning helper/planning/protein workflows
 into a GeneArt-only island.
+
+GENtle-evolution plan:
+
+- Treat GeneArt as the first real external-service proving track, not as a
+  GeneArt-specific product island. The durable GENtle deliverables are reusable
+  provider/CRO/eProcurement contracts, synthesisability checks, lineage-safe
+  external artifacts, agent-readable handoff bundles, and planning decisions
+  that can later support other providers.
+- Near-term work should make the existing deterministic local routes excellent:
+  `services providers list`, `services project-preflight`, and
+  `services project-quote` should produce GeneArt-ready but provider-neutral
+  packets without contacting Thermo Fisher, submitting carts/orders, polling
+  status, or persisting credentials.
+- The first pull-forward candidate is a shared synthesisability/complexity
+  doctor, because it benefits GENtle even when no vendor integration is used:
+  report GC extremes, homopolymers, repeat burden, ambiguous bases, difficult
+  motifs, length/service-kind mismatches, and local-build-vs-outsource hints.
+- Helper/vector semantics should become vector-onboarding packets rather than
+  staying passive catalog metadata: helper profiles should drive custom-vector
+  summaries, insertion-site notes, host-system compatibility, marker/promoter
+  metadata, delivery expectations, and procurement channels.
+- External-service artifacts should become first-class GENtle lineage artifacts:
+  redacted quote packets, provider project/order ids, receipts, QAD/checksum
+  records, returned FASTA/GenBank/protein payloads, and links back to the
+  originating construct or protein-to-DNA handoff.
+- GUI, MCP, ClawBio, JS, and Lua surfaces should remain downstream of the
+  shared shell/engine contracts. Add richer GUI and agent affordances only
+  after the CLI/shared-shell request, preflight, quote, status, and artifact
+  schemas are stable.
+- For the upcoming release, do not pull in live GeneArt submission. The only
+  eligible pull-forward work is provider-neutral handoff/doctor polish and
+  deterministic examples/tests that improve GENtle's own reproducibility.
 
 Grounding checked on 2026-05-05:
 
