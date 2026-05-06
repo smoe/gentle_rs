@@ -49,7 +49,7 @@
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_artifact_manifest.json": "0cb88613b5851d9d19a2c6d01e1195ccc48a66e6",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json": "cd6f53a7f4c78b3e5096ce8678beee574185a7b9",
     "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg": "b35113f6bae05715c0759d55acd5b78503f5a9c0",
-    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json": "ab9e1044b3126eb7304309c78c136cbb79dd19a4",
+    "artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json": "552e99f01f41c48e015e9739e17ae4ec9aa6f4fc",
     "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "3e9128010c0c977a79dd93f4c7cc78a10096e68b",
     "chapters/02_find_and_extend_genomic_target_local_catalog.md": "13cdd55d0b92c8c25c6b04ed760ad566fcaa5258",
     "chapters/03_load_and_digest_pgex.md": "f4b6d5e322e60212b014e12b9de9c86a6ce56bc6",
