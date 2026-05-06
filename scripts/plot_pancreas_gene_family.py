@@ -88,7 +88,7 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         metavar="GENE=PATH",
-        help="Repeatable pancreas_gene_rna_screen.py figure-source TSV for one gene.",
+        help="Repeatable pancreas_gene_rna_screen.sh figure-source TSV for one gene.",
     )
     parser.add_argument(
         "--genes",
