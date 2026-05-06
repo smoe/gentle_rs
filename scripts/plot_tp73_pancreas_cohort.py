@@ -26,7 +26,17 @@ def parse_args() -> argparse.Namespace:
         description=(
             "Render TP73 pancreas cohort read-length and TP73-support SVG plots. "
             "This wrapper forwards to plot_pancreas_gene_screen.py."
-        )
+        ),
+        epilog=(
+            "Bar-column semantics:\n"
+            "  strict_seed_passed_reads\n"
+            "    Reads that pass the first seed phase before any sequence-alignment\n"
+            "    confirmation. This is the default view.\n\n"
+            "  accepted_tp73_reads\n"
+            "    Downstream accepted TP73-support count from older cohort TSVs,\n"
+            "    after target-support confirmation."
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument(
         "input_tsv",
@@ -54,8 +64,7 @@ def parse_args() -> argparse.Namespace:
         default="strict_seed_passed_reads",
         choices=["strict_seed_passed_reads", "accepted_tp73_reads"],
         help=(
-            "TP73 count column used for blue bars. The default is the conservative "
-            "strict seed-passed count."
+            "TP73 count column used for blue bars. See the bar-column semantics below."
         ),
     )
     parser.add_argument(

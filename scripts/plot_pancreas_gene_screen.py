@@ -34,11 +34,29 @@ BAR_COLUMNS = {
     "accepted_target_reads": "accepted target reads",
     "accepted_tp73_reads": "accepted TP73 target reads",
 }
+BAR_COLUMN_HELP = """Bar-column semantics:
+  strict_seed_passed_reads
+    Reads that pass the first seed-matching phase only. This is the pre-alignment
+    view and the default when you want to compare early candidate support.
+
+  strict_seed_accepted_target_reads
+    Reads that passed the strict seed phase and also remained target-supporting
+    in the downstream confirmation/export contract.
+
+  accepted_target_reads
+    Generic accepted-target support count from figure-source TSVs. This is a
+    downstream accepted/alignment-confirmed view, not the raw seed-pass count.
+
+  accepted_tp73_reads
+    Legacy TP73-specific alias for accepted-target support in older cohort TSVs.
+"""
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Render a generic pancreas gene-screen SVG from figure-source TSV."
+        description="Render a generic pancreas gene-screen SVG from figure-source TSV.",
+        epilog=BAR_COLUMN_HELP,
+        formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument("input_tsv", help="Input TSV from pancreas_gene_rna_screen.sh summarize.")
     parser.add_argument(
@@ -60,9 +78,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--bar-column",
-        default="strict_seed_accepted_target_reads",
+        default="strict_seed_passed_reads",
         choices=sorted(BAR_COLUMNS),
-        help="Read-count column used for blue bars.",
+        help="Read-count column used for blue bars. See the bar-column semantics below.",
     )
     parser.add_argument(
         "--title",
@@ -192,17 +210,23 @@ def polyline(points: list[tuple[float, float]], color: str, dash: str = "") -> s
     )
 
 
-def max_read_length_column(bar_column: str) -> tuple[str, str]:
-    if bar_column in {"accepted_target_reads", "accepted_tp73_reads"}:
-        return "accepted_target_max_read_bp", "max accepted target read length (bp)"
-    return "strict_seed_passed_max_read_bp", "max strict seed-passed read length (bp)"
+def max_read_length_columns(bar_column: str) -> tuple[str, str | None, str]:
+    if bar_column == "accepted_tp73_reads":
+        return (
+            "accepted_tp73_max_read_bp",
+            "accepted_target_max_read_bp",
+            "max accepted TP73 read length (bp)",
+        )
+    if bar_column == "accepted_target_reads":
+        return "accepted_target_max_read_bp", None, "max accepted target read length (bp)"
+    return "strict_seed_passed_max_read_bp", None, "max strict seed-passed read length (bp)"
 
 
 def render_svg(rows: list[dict[str, str]], args: argparse.Namespace, source_path: Path) -> str:
     gene = infer_gene(source_path, args.gene)
     title = args.title or f"{gene} support across pancreatic cancer Nanopore cDNA samples"
     bar_label = f"{gene} {BAR_COLUMNS[args.bar_column]}"
-    max_length_key, max_length_label = max_read_length_column(args.bar_column)
+    max_length_key, max_length_fallback, max_length_label = max_read_length_columns(args.bar_column)
 
     labels = [sample_label(row, args.label_column, idx) for idx, row in enumerate(rows)]
     n = len(rows)
@@ -239,7 +263,14 @@ def render_svg(rows: list[dict[str, str]], args: argparse.Namespace, source_path
         return top_y + top_h - ((math.log10(value) - log_min) / (log_max - log_min)) * top_h
 
     counts = [number(row, args.bar_column) or 0.0 for row in rows]
-    max_lengths = [number(row, max_length_key) for row in rows]
+    max_lengths = [
+        number(row, max_length_key)
+        if number(row, max_length_key) is not None
+        else number(row, max_length_fallback)
+        if max_length_fallback
+        else None
+        for row in rows
+    ]
     count_max = nice_linear_max(max(counts) * 1.15 if counts else 1.0)
     length_positive = [value for value in max_lengths if value is not None and value > 0]
     length_max = nice_linear_max(max(length_positive) * 1.15 if length_positive else 1.0)
