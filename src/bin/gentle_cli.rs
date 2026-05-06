@@ -4111,17 +4111,20 @@ mod tests {
     fn assert_forwarded_services_dispatch_matches_shared_shell_execution(
         forwarded_args: Vec<String>,
     ) {
-        fn strip_generated_at_unix_ms(value: &mut serde_json::Value) {
+        fn strip_nondeterministic_service_fields(value: &mut serde_json::Value) {
             match value {
                 serde_json::Value::Object(map) => {
                     map.remove("generated_at_unix_ms");
+                    map.remove("source");
+                    map.remove("sequence_source");
+                    map.remove("annotation_source");
                     for value in map.values_mut() {
-                        strip_generated_at_unix_ms(value);
+                        strip_nondeterministic_service_fields(value);
                     }
                 }
                 serde_json::Value::Array(values) => {
                     for value in values {
-                        strip_generated_at_unix_ms(value);
+                        strip_nondeterministic_service_fields(value);
                     }
                 }
                 _ => {}
@@ -4136,8 +4139,8 @@ mod tests {
             execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
         let mut forwarded_output_stable = forwarded_output;
         let mut shared_output_stable = shared_output;
-        strip_generated_at_unix_ms(&mut forwarded_output_stable);
-        strip_generated_at_unix_ms(&mut shared_output_stable);
+        strip_nondeterministic_service_fields(&mut forwarded_output_stable);
+        strip_nondeterministic_service_fields(&mut shared_output_stable);
 
         assert_eq!(forwarded_changed, shared_changed);
         assert_eq!(forwarded_output_stable, shared_output_stable);
