@@ -123,6 +123,14 @@ trap_rm_rf_on_exit() {
   trap "rm -rf -- $quoted" EXIT
 }
 
+quote_command_line() {
+  local arg
+  for arg in "$@"; do
+    printf '%q ' "$arg"
+  done
+  printf '\n'
+}
+
 require_executable() {
   local tool="$1"
   if [[ "$tool" == */* ]]; then
@@ -477,9 +485,14 @@ prepare_preflight_fastas() {
 
 run_preflight() {
   local -a gentle cmd
-  local fasta seed_fragment
+  local fasta seed_fragment optimize_preflight preflight_json preflight_stderr preflight_command
   gentle=("$GENTLE_BIN" --state "$BASE_STATE" --progress-stderr)
   prepare_preflight_fastas
+  optimize_preflight="$OPTIMIZE_PARAMETERS"
+  if [ "$OPTIMIZE_PARAMETERS" = "1" ] && [ "${#CONTROL_FASTAS[@]}" -eq 0 ]; then
+    optimize_preflight=0
+    log "No control transcript FASTA provided for $GENE_ID; running one-pass preflight without parameter optimization"
+  fi
 
   cmd=("${gentle[@]}" rna-reads preflight-isoforms "$SEQ_ID" "$SEED_FEATURE_ID" --scope "$SCOPE")
   for fasta in "${MUST_PASS_FASTAS[@]}"; do
@@ -491,20 +504,27 @@ run_preflight() {
   for fasta in "${CONTROL_FASTAS[@]}"; do
     cmd+=(--control-transcript-fasta "$fasta")
   done
-  if [ "$OPTIMIZE_PARAMETERS" = "1" ]; then
+  if [ "$optimize_preflight" = "1" ]; then
     cmd+=(--optimize-parameters --max-control-match-probability "$MAX_CONTROL_MATCH_PROBABILITY")
   fi
 
   log "Run $GENE_ID isoform preflight"
-  "${cmd[@]}" \
-    > "$RUN_ROOT/reports/${GENE_SAFE}.preflight.json" \
-    2> "$RUN_ROOT/logs/${GENE_SAFE}.preflight.stderr.log"
+  preflight_json="$RUN_ROOT/reports/${GENE_SAFE}.preflight.json"
+  preflight_stderr="$RUN_ROOT/logs/${GENE_SAFE}.preflight.stderr.log"
+  preflight_command="$RUN_ROOT/reports/${GENE_SAFE}.preflight.command.txt"
+  quote_command_line "${cmd[@]}" > "$preflight_command"
+  log "Preflight command: $preflight_command"
+  if ! "${cmd[@]}" > "$preflight_json" 2> "$preflight_stderr"; then
+    log "ERROR: $GENE_ID preflight failed; stderr tail follows ($preflight_stderr)"
+    tail -n 80 "$preflight_stderr" >&2 || true
+    die "$GENE_ID isoform preflight failed"
+  fi
 
   seed_fragment="$(
     jq -r '.threshold_recommendation.seed_filter_cli_fragment // empty' \
       "$RUN_ROOT/reports/${GENE_SAFE}.preflight.json"
   )"
-  if [ -z "$seed_fragment" ] || [ "$OPTIMIZE_PARAMETERS" != "1" ]; then
+  if [ -z "$seed_fragment" ] || [ "$optimize_preflight" != "1" ]; then
     seed_fragment="$DEFAULT_SEED_FRAGMENT"
     log "Using default/explicit seed args for $GENE_ID"
   else
