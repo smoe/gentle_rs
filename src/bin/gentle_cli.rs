@@ -2,6 +2,8 @@
 
 #[path = "gentle_cli/args.rs"]
 mod gentle_cli_args;
+#[path = "gentle_cli/candidates.rs"]
+mod gentle_cli_candidates;
 #[path = "gentle_cli/hosts.rs"]
 mod gentle_cli_hosts;
 #[path = "gentle_cli/reference.rs"]
@@ -645,25 +647,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] macros template-delete TEMPLATE_NAME\n  \
   gentle_cli [--state PATH|--project PATH] macros template-import PATH\n  \
   gentle_cli [--state PATH|--project PATH] macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]\n\n  \
-  gentle_cli [--state PATH|--project PATH] candidates list\n  \
-  gentle_cli [--state PATH|--project PATH] candidates delete SET_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates generate-between-anchors SET_NAME SEQ_ID --length N (--anchor-a-pos N|--anchor-a-json JSON) (--anchor-b-pos N|--anchor-b-json JSON) [--step N] [--limit N]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates show SET_NAME [--limit N] [--offset N]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates metrics SET_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] candidates score SET_NAME METRIC_NAME EXPRESSION\n  \
-  gentle_cli [--state PATH|--project PATH] candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates top-k INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET\n  \
-  gentle_cli [--state PATH|--project PATH] candidates macro SCRIPT_OR_@FILE\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-list\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-show TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-delete TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]\n\n  \
+{candidates_usage}\
   gentle_cli [--state PATH|--project PATH] guides list\n  \
   gentle_cli [--state PATH|--project PATH] guides show GUIDE_SET_ID [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] guides put GUIDE_SET_ID (--json JSON|@FILE|--file PATH)\n  \
@@ -769,6 +753,7 @@ fn usage() {
   Shell help:\n  \
   {shell_help}",
         shell_help = shell_help_text(),
+        candidates_usage = gentle_cli_candidates::USAGE,
         hosts_usage = gentle_cli_hosts::USAGE,
         resources_usage = gentle_cli_resources::USAGE,
         services_usage = gentle_cli_services::USAGE
@@ -1449,49 +1434,12 @@ fn run() -> Result<(), String> {
             }
             print_json(&run.output)
         }
-        "candidates" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err("candidates requires a subcommand".to_string());
-            }
-            let tokens = args[cmd_idx..].to_vec();
-            let shell_command = parse_shell_tokens(&tokens)?;
-            let is_candidates_command = matches!(
-                shell_command,
-                ShellCommand::CandidatesList
-                    | ShellCommand::CandidatesDelete { .. }
-                    | ShellCommand::CandidatesGenerate { .. }
-                    | ShellCommand::CandidatesGenerateBetweenAnchors { .. }
-                    | ShellCommand::CandidatesShow { .. }
-                    | ShellCommand::CandidatesMetrics { .. }
-                    | ShellCommand::CandidatesScoreExpression { .. }
-                    | ShellCommand::CandidatesScoreDistance { .. }
-                    | ShellCommand::CandidatesScoreWeightedObjective { .. }
-                    | ShellCommand::CandidatesTopK { .. }
-                    | ShellCommand::CandidatesParetoFrontier { .. }
-                    | ShellCommand::CandidatesFilter { .. }
-                    | ShellCommand::CandidatesSetOp { .. }
-                    | ShellCommand::CandidatesMacro { .. }
-                    | ShellCommand::CandidatesTemplateList
-                    | ShellCommand::CandidatesTemplateShow { .. }
-                    | ShellCommand::CandidatesTemplateUpsert { .. }
-                    | ShellCommand::CandidatesTemplateDelete { .. }
-                    | ShellCommand::CandidatesTemplateRun { .. }
-            );
-            if !is_candidates_command {
-                return Err("Expected a candidates subcommand".to_string());
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let run =
-                execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
-            if run.state_changed {
-                engine
-                    .state()
-                    .save_to_path(&state_path)
-                    .map_err(|e| e.to_string())?;
-            }
-            print_json(&run.output)
-        }
+        "candidates" => gentle_cli_candidates::handle_candidates_family(
+            &args,
+            cmd_idx,
+            &state_path,
+            &shell_options,
+        ),
         "capabilities" => {
             print_json(&GentleEngine::capabilities())?;
             Ok(())
