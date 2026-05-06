@@ -4,8 +4,8 @@
   "gene_symbol": "TP73",
   "transcript_geometry_mode": "cds",
   "assembly": "GRCh38.p14",
-  "source": "RefSeq-derived TP73 DEx2,3Np73 alpha/beta transcript panel from local NCBI GenBank TP73 locus fixture",
-  "notes": "This panel carries two derived, non-accessioned TP73 transcript models requested for RNA-read transcript-catalog review: D_{Ex2,3}Np73alpha and D_{Ex2,3}Np73beta. Each sequence joins the full-length TAp73 5' exon directly to the fourth transcript exon, skipping the second and third transcript exons of the selected full-length RefSeq source transcript. Because the skipped region contains the TAp73 start codon, the CDS spans below refer to the downstream p73-frame ORF starting at cDNA position 154. These records are intended as explicit curated transcript evidence for hashing/preflight/concatemer review, not as hard-coded TP73 behavior in the RNA mapper.",
+  "source": "RefSeq-derived TP73 DEx2,3Np73 alpha/beta transcript panel from local NCBI GenBank TP73 locus fixture plus local IEGT plasmid evidence",
+  "notes": "This panel carries two derived, non-accessioned TP73 transcript models requested for RNA-read transcript-catalog review: D_{Ex2,3}Np73alpha and D_{Ex2,3}Np73beta. Each sequence joins the full-length TAp73 5' exon directly to the fourth transcript exon, skipping the second and third transcript exons of the selected full-length RefSeq source transcript. Because the skipped region contains the TAp73 start codon, the CDS spans below refer to the downstream p73-frame ORF starting at cDNA position 154. These records are intended as explicit curated transcript evidence for hashing/preflight/concatemer review, not as hard-coded TP73 behavior in the RNA mapper. The beta record also carries an IEGT plasmid-contained coding cDNA as local construct evidence.",
   "evidence": [
     {
       "evidence_id": "refseq_tp73_local_genbank_2026_05_02",
@@ -41,6 +41,19 @@
       "cds_start_1based": 154,
       "cds_end_1based": 1440,
       "retrieved_on": "2026-05-02"
+    },
+    {
+      "evidence_id": "iegt_plasmid_dex2_3_p73beta_cdna_2026_05_06",
+      "source_type": "Local lab plasmid coding cDNA sequence",
+      "accession": "IEGT_DEx2_3_p73beta_plasmid_cDNA_v1",
+      "label": "IEGT plasmid DEx2_3_p73beta coding cDNA",
+      "description": "User-supplied coding cDNA from an IEGT plasmid containing D_Ex2/3_p73beta. This is retained as explicit local construct evidence and compared against the RefSeq-derived DEx2_3Np73beta model.",
+      "sequence_path": "data/resources/tp73_dex2_3_p73beta_iegt_plasmid_cdna.fasta",
+      "sequence_length_bp": 1287,
+      "sequence_sha256": "e1051bec2696df76dbc28a27ce2e8c4468d2aae2a24188d7f131358e060345c4",
+      "cds_start_1based": 1,
+      "cds_end_1based": 1287,
+      "retrieved_on": "2026-05-06"
     }
   ],
   "evaluations": [
@@ -94,6 +107,38 @@
           ]
         }
       ]
+    },
+    {
+      "evaluation_id": "tp73_dex2_3_p73beta_iegt_plasmid_cdna_2026_05_06",
+      "title": "IEGT plasmid DEx2_3_p73beta coding cDNA compared with the RefSeq-derived beta model",
+      "created_on": "2026-05-06",
+      "method": "Aligned the user-supplied IEGT plasmid coding cDNA against the CDS interval of the RefSeq-derived DEx2_3Np73beta sequence stored in data/resources/tp73_delta_ex2_3_refseq_derived_transcripts.fasta.",
+      "status": "warning",
+      "summary": "The IEGT plasmid coding cDNA is 1287 bp and predicts the same 428 aa DEx2_3Np73beta protein. It differs from the RefSeq-derived beta CDS by one synonymous base at coding position 306 (ACC -> ACT; Thr102 unchanged).",
+      "source_evidence_ids": [
+        "refseq_nm001204184_delta_ex2_3_beta_derived",
+        "iegt_plasmid_dex2_3_p73beta_cdna_2026_05_06"
+      ],
+      "isoform_ids": [
+        "dex2_3np73beta"
+      ],
+      "rows": [
+        {
+          "isoform_id": "dex2_3np73beta",
+          "evidence_id": "iegt_plasmid_dex2_3_p73beta_cdna_2026_05_06",
+          "compared_to": "TP73_DEx2_3_beta_refseq_derived CDS 154..1440",
+          "status": "local_plasmid_cds_single_synonymous_difference",
+          "summary": "The plasmid sequence aligns to the modeled DEx2_3Np73beta CDS after the 153 bp retained 5' exon segment and has one silent C-to-T coding difference.",
+          "metrics": [
+            {"key": "coding_sequence_length_bp", "value": "1287"},
+            {"key": "expected_protein_length_aa", "value": "428"},
+            {"key": "cds_identity", "value": "1286/1287"},
+            {"key": "cds_identity_percent", "value": "99.92"},
+            {"key": "derived_model_offset_0based", "value": "153"},
+            {"key": "coding_difference", "value": "c.306C>T; ACC->ACT; Thr102 unchanged"}
+          ]
+        }
+      ]
     }
   ],
   "isoforms": [
@@ -117,12 +162,31 @@
       "transcript_ids": [
         "TP73_DEx2_3_beta_refseq_derived",
         "NM_001204184.2_delta_ex2_3",
-        "DEx2_3Np73beta"
+        "DEx2_3Np73beta",
+        "IEGT_DEx2_3_p73beta_plasmid_cDNA_v1",
+        "tp73_dex2_3_p73beta_iegt_plasmid_cdna_v1"
       ],
       "transactivation_class": "dominant_negative_delta_ex2_3",
       "expected_length_aa": 428,
       "reference_start_aa": 1,
       "reference_end_aa": 428,
+      "curation": {
+        "source_kind": "lab_curated",
+        "source_label": "RefSeq-derived DEx2_3Np73beta model with local IEGT plasmid coding cDNA evidence",
+        "evidence": [
+          "RefSeq-derived exon-chain model",
+          "IEGT plasmid-contained D_Ex2/3_p73beta coding cDNA"
+        ],
+        "validation_tags": [
+          "local_plasmid_sequence_recorded",
+          "single_synonymous_cds_difference"
+        ],
+        "public_database_status": "non-accessioned local transcript/construct model; public source transcript is used only as derivation anchor",
+        "notes": [
+          "The local plasmid cDNA predicts the same 428 aa protein as the RefSeq-derived beta CDS.",
+          "The single coding difference is synonymous: c.306C>T; ACC->ACT; Thr102 unchanged."
+        ]
+      },
       "domains": []
     }
   ]

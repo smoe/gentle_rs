@@ -13182,6 +13182,9 @@ fn test_validate_tp73_isoform_panel_resource_exposes_local_curation() {
     assert_eq!(report.gene_symbol, "TP73");
     assert_eq!(report.curation_source_kind.as_deref(), Some("lab_curated"));
     assert_eq!(report.curated_isoform_count, 15);
+    assert!(report.evidence_count >= 1);
+    assert!(report.evaluation_count >= 1);
+    assert!(report.evaluation_row_count >= 1);
     assert!(report.isoforms.iter().any(|row| row.label == "Ex2-p73α"));
     assert!(report.isoforms.iter().any(|row| row.label == "Ex3-p73α"));
     let ex2 = report
@@ -13195,11 +13198,54 @@ fn test_validate_tp73_isoform_panel_resource_exposes_local_curation() {
             .iter()
             .any(|tag| tag == "lab_discovered_ex2_ex3_context")
     );
+    let ta_alpha = report
+        .isoforms
+        .iter()
+        .find(|row| row.isoform_id == "tp73_ta_alpha")
+        .expect("TA alpha row");
+    assert!(
+        ta_alpha
+            .validation_tags
+            .iter()
+            .any(|tag| tag == "local_construct_sequence_recorded")
+    );
     assert!(
         report
             .issues
             .iter()
             .any(|issue| issue.code == "missing_domains")
+    );
+}
+
+#[test]
+fn test_validate_tp73_delta_ex2_3_panel_tracks_local_plasmid_beta_cds() {
+    let report = GentleEngine::validate_isoform_panel_resource(
+        "assets/panels/tp73_delta_ex2_3_isoforms_v1.json",
+        Some("tp73_delta_ex2_3_isoforms_v1"),
+    )
+    .expect("validate TP73 delta Ex2/3 local panel");
+    assert_eq!(report.schema, "gentle.isoform_panel_validation_report.v1");
+    assert_eq!(report.panel_id, "tp73_delta_ex2_3_isoforms_v1");
+    assert_eq!(report.gene_symbol, "TP73");
+    assert_eq!(report.evidence_count, 4);
+    assert_eq!(report.evaluation_count, 2);
+    assert_eq!(report.evaluation_row_count, 3);
+    assert_eq!(report.curated_isoform_count, 1);
+    let beta = report
+        .isoforms
+        .iter()
+        .find(|row| row.isoform_id == "dex2_3np73beta")
+        .expect("DEx2/3 beta row");
+    assert_eq!(beta.expected_length_aa, Some(428));
+    assert!(
+        beta.validation_tags
+            .iter()
+            .any(|tag| tag == "local_plasmid_sequence_recorded")
+    );
+    assert!(
+        beta.validation_tags
+            .iter()
+            .any(|tag| tag == "single_synonymous_cds_difference")
     );
 }
 
