@@ -606,8 +606,36 @@ build_sample_manifest() {
   if [ "$(tail -n +2 "$sample_manifest" | wc -l | tr -d ' ')" = "0" ]; then
     die "No usable FASTA rows found in $MANIFEST under $FASTA_ROOT"
   fi
+  validate_sample_manifest "$sample_manifest"
   log "Wrote sample manifest: $sample_manifest"
   column -t -s $'\t' "$sample_manifest" >&2 || cat "$sample_manifest" >&2
+}
+
+validate_sample_manifest() {
+  local sample_manifest="$1"
+  local duplicate_runs
+  duplicate_runs="$(
+    awk -F '\t' '
+      NR == 1 { next }
+      $1 == "" { next }
+      {
+        count[$1] += 1
+        rows[$1] = rows[$1] sprintf("  line %d: run=%s sample_id=%s sample_name=%s report_id=%s input=%s\n", NR, $1, $2, $3, $6, $5)
+      }
+      END {
+        for (run in count) {
+          if (count[run] > 1) {
+            printf "%s\t%d\n%s", run, count[run], rows[run]
+          }
+        }
+      }
+    ' "$sample_manifest"
+  )"
+  if [ -n "$duplicate_runs" ]; then
+    log "ERROR: duplicate run_accession values in generated sample manifest: $sample_manifest"
+    printf '%s\n' "$duplicate_runs" >&2
+    die "Duplicate run_accession values are not supported because each run uses one runs/RUN_ACCESSION work directory"
+  fi
 }
 
 write_run_env() {
@@ -943,6 +971,24 @@ run_one_sample() {
   return "$rc"
 }
 
+print_failed_worker_summaries() {
+  local root="$1"
+  local run_dir run_name exit_code step stderr_log
+  for run_dir in "$root"/runs/*; do
+    [ -d "$run_dir" ] || continue
+    run_name="$(basename "$run_dir")"
+    exit_code="$(cat "$run_dir/worker.exit" 2>/dev/null || printf 'missing')"
+    [ "$exit_code" != "0" ] || continue
+    step="$(cat "$run_dir/CURRENT_STEP.txt" 2>/dev/null || printf 'unknown step')"
+    log "FAILED worker: run=$run_name exit=$exit_code step=$step"
+    for stderr_log in "$run_dir"/logs/*.worker.stderr.log "$run_dir"/logs/*.interpret.stderr.log "$run_dir"/logs/*.align_report.stderr.log; do
+      [ -s "$stderr_log" ] || continue
+      log "stderr tail: $stderr_log"
+      tail -n 30 "$stderr_log" >&2 || true
+    done
+  done
+}
+
 active_jobs_count() {
   jobs -pr | wc -l | tr -d ' '
 }
@@ -1202,6 +1248,7 @@ run_screen() {
   log "Workers finished: launched=$launched failures=$failures"
   summarize_run_root "$RUN_ROOT" || true
   if [ "$failures" -ne 0 ]; then
+    print_failed_worker_summaries "$RUN_ROOT"
     die "$failures sample worker(s) failed; inspect $RUN_ROOT/runs/*/logs"
   fi
   log "Completed $GENE_ID screen"
