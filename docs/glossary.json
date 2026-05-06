@@ -1474,6 +1474,80 @@
          "usage": "resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]"
       },
       {
+         "aliases": [],
+         "engine_operations": [
+            "ResolveTfQueries"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "resources resolve-tf-query",
+         "summary": "Resolve user-facing TF, group, alias, or family-like tokens against the local motif registry and catalog-backed TF-query groups.",
+         "usage": "resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_groups list",
+            "genegroups list"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-groups list",
+         "summary": "List deterministic local gene-group catalog entries, including lab-facing groups that may map to external ontology resources such as GO.",
+         "usage": "gene-groups list [--catalog PATH] [--filter TEXT] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_groups show",
+            "genegroups show"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-groups show",
+         "summary": "Show one gene-group catalog entry with memberships, curation status, external mappings, and source provenance.",
+         "usage": "gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene_groups resolve",
+            "genegroups resolve"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-groups resolve",
+         "summary": "Resolve a user token against gene-group ids, labels, and aliases before using it in downstream group-aware analyses.",
+         "usage": "gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]"
+      },
+      {
+         "aliases": [
+            "gene-groups validate",
+            "gene_groups doctor",
+            "genegroups doctor"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-groups doctor",
+         "summary": "Validate gene-group catalog overlays, reporting duplicate ids, alias collisions, malformed memberships, mapping issues, and source provenance.",
+         "usage": "gene-groups doctor [--catalog PATH] [--output OUTPUT.json]"
+      },
+      {
          "aliases": [
             "resources publication-datasets"
          ],

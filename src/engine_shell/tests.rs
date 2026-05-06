@@ -11075,6 +11075,108 @@ fn execute_resources_resolve_tf_query_reports_builtin_groups_and_aliases() {
 }
 
 #[test]
+fn parse_gene_groups_list_show_resolve_and_doctor_commands() {
+    let list = parse_shell_line("gene-groups list --filter stemness --output groups.json")
+        .expect("parse gene-groups list");
+    match list {
+        ShellCommand::GeneGroupsList {
+            catalog_path,
+            filter,
+            output,
+        } => {
+            assert_eq!(catalog_path, None);
+            assert_eq!(filter.as_deref(), Some("stemness"));
+            assert_eq!(output.as_deref(), Some("groups.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let show =
+        parse_shell_line("gene-groups show yamanaka_factors --catalog assets/gene_groups.json")
+            .expect("parse gene-groups show");
+    match show {
+        ShellCommand::GeneGroupsShow {
+            group_id,
+            catalog_path,
+            output,
+        } => {
+            assert_eq!(group_id, "yamanaka_factors");
+            assert_eq!(catalog_path.as_deref(), Some("assets/gene_groups.json"));
+            assert_eq!(output, None);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let resolve =
+        parse_shell_line("gene-groups resolve stemness").expect("parse gene-groups resolve");
+    assert!(matches!(resolve, ShellCommand::GeneGroupsResolve { .. }));
+
+    let doctor = parse_shell_line("gene-groups doctor --catalog assets/gene_groups.json")
+        .expect("parse gene-groups doctor");
+    assert!(matches!(doctor, ShellCommand::GeneGroupsDoctor { .. }));
+}
+
+#[test]
+fn execute_gene_groups_commands_expose_builtin_go_resource_and_groups() {
+    let mut engine = GentleEngine::new();
+    let list = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GeneGroupsList {
+            catalog_path: None,
+            filter: Some("stemness".to_string()),
+            output: None,
+        },
+    )
+    .expect("gene-groups list");
+
+    assert!(!list.state_changed);
+    assert_eq!(
+        list.output["schema"].as_str(),
+        Some("gentle.gene_group_list.v1")
+    );
+    assert_eq!(
+        list.output["groups"][0]["id"].as_str(),
+        Some("yamanaka_factors")
+    );
+    assert!(
+        list.output["external_resources"]
+            .as_array()
+            .expect("external resources")
+            .iter()
+            .any(|row| row["namespace"].as_str() == Some("GO"))
+    );
+
+    let resolve = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GeneGroupsResolve {
+            query: "Yamanaka factors".to_string(),
+            catalog_path: None,
+            output: None,
+        },
+    )
+    .expect("gene-groups resolve");
+    assert_eq!(
+        resolve.output["schema"].as_str(),
+        Some("gentle.gene_group_resolve.v1")
+    );
+    assert_eq!(resolve.output["matched_group_count"].as_u64(), Some(1));
+
+    let doctor = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GeneGroupsDoctor {
+            catalog_path: Some("assets/gene_groups.json".to_string()),
+            output: None,
+        },
+    )
+    .expect("gene-groups doctor");
+    assert_eq!(
+        doctor.output["schema"].as_str(),
+        Some("gentle.gene_group_doctor.v1")
+    );
+    assert_eq!(doctor.output["error_count"].as_u64(), Some(0));
+}
+
+#[test]
 fn execute_features_tfbs_score_track_correlation_svg_shell_command_writes_svg_and_report() {
     let mut state = ProjectState::default();
     state.sequences.insert(

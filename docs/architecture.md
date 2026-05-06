@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-05-02
+Last updated: 2026-05-06
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -1290,6 +1290,47 @@ Sequence-linked construct reasoning graph direction:
   - richer ontology-backed vocabularies are expected later, but the first
     catalog-semantic layer should already preserve enough typed structure that
     future ontology mapping is additive rather than a rewrite
+
+Gene-group knowledge-layer rule:
+
+- Public ontologies such as Gene Ontology are reference/evidence namespaces, not
+  the sole authority for how GENtle users may group genes.
+- GENtle needs a local, deterministic, catalog-extensible gene-group layer for
+  lab-facing concepts that are useful in experimental reasoning even when they
+  are not accepted terms in a public ontology, such as reprogramming-factor
+  shorthand, clinical/research panels, family aliases, or project-specific
+  gene cohorts.
+- A gene-group record should keep:
+  - stable id, label, aliases, short description, and long definition
+  - scope, including organism/taxon, symbol namespace, and optional reference
+    genome/transcript-source expectations
+  - membership rows with canonical gene symbol/id, optional species-specific
+    identifiers, evidence notes, confidence/status, and provenance
+  - external mappings such as GO, Reactome, MSigDB, HPO, MeSH, UniProt keyword,
+    or lab/project namespaces when available
+  - curation status (`draft`, `reviewed`, `curated`, `deprecated`) and source
+    provenance sufficient for offline debugging and reproducible reports
+- GO mappings are therefore additive anchors: a GENtle group may point to GO
+  terms where useful, but lack of a GO term must not prevent a lab-useful group
+  from existing locally.
+- Gene Ontology should be represented through the same resource/catalog
+  discipline as other external data: a declared namespace/resource in the
+  catalog metadata, explicit mappings on records, and doctor/debug output for
+  malformed or unsupported mappings.
+- AI-assisted gene-group creation is allowed only as a provenance-marked draft
+  workflow:
+  - the user supplies a long definition / scope
+  - an agent may propose a stable id, label, short description, aliases, and
+    candidate gene memberships
+  - the proposal is stored as a draft catalog fragment with generation
+    provenance, evidence summaries, unresolved/marginal candidates, and a
+    review state
+  - GENtle must not treat AI-proposed memberships as curated facts until a user
+    or project policy promotes them
+- Downstream operations consume resolved catalog records, not hidden prompt
+  state. This keeps group-based promoter/TFBS comparisons, motif-order queries,
+  RNA-read cohorts, CUT&RUN summaries, MCP tools, and ClawBio reports
+  deterministic and inspectable.
 
 Decision-trace capture/export contract (detailed plan):
 

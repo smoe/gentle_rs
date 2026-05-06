@@ -547,7 +547,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `gene-groups list/show/resolve/doctor`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -1945,6 +1945,10 @@ Shared shell command:
     - `resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]`
     - `resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]`
+    - `gene-groups list [--catalog PATH] [--filter TEXT] [--output OUTPUT.json]`
+    - `gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]`
+    - `gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]`
+    - `gene-groups doctor [--catalog PATH] [--output OUTPUT.json]`
     - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
@@ -3469,7 +3473,7 @@ Service and resource commands:
   - `TOKEN` accepts:
     - exact motif ids or TF names,
     - common aliases such as `OCT4`,
-    - built-in functional groups such as `Yamanaka factors` / `stemness`,
+    - catalog-backed functional groups such as `Yamanaka factors` / `stemness`,
     - and family-like queries such as `KLF family`.
   - Default background length: `10000 bp`.
   - Default seed: one built-in deterministic seed so agent/CLI runs remain reproducible.
@@ -3479,10 +3483,26 @@ Service and resource commands:
   - This is the lightweight inspection route for:
     - exact ids/names,
     - aliases such as `OCT4`,
-    - functional groups such as `Yamanaka factors` / `stemness`,
+    - catalog-backed functional groups such as `Yamanaka factors` / `stemness`,
     - and family-like queries such as `KLF family`.
   - Output includes per-query resolution rows plus the expanded motif ids so
     ClawBio/CLI users can audit what a natural-language TF query mapped to.
+- `gene-groups list [--catalog PATH] [--filter TEXT] [--output OUTPUT.json]`
+  - Lists deterministic local gene-group catalog entries.
+  - Default discovery uses built-in, system, user, and project overlays.
+  - The built-in catalog declares Gene Ontology as an external resource
+    namespace (`GO`) and seeds groups such as `yamanaka_factors`.
+  - `resources status` reports `gene_ontology` as a declared external mapping
+    namespace; GO download/indexing is not implemented in this slice.
+- `gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]`
+  - Shows one group with aliases, members, curation status, external mappings,
+    and source provenance.
+- `gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]`
+  - Resolves a user token against group ids, labels, and aliases.
+- `gene-groups doctor [--catalog PATH] [--output OUTPUT.json]`
+  - Validates catalog overlays and reports duplicate ids, alias collisions,
+    malformed memberships, malformed GO ids, mapping/resource issues, and
+    source digests.
 - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
   - Benchmarks the full active local JASPAR registry through one deterministic
     shared background and writes an export-ready drift snapshot.

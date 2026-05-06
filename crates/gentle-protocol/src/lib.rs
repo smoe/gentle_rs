@@ -7,6 +7,7 @@
 
 pub mod construct_reasoning;
 pub mod dna_ladder;
+pub mod gene_groups;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -32,6 +33,13 @@ pub use construct_reasoning::{
 pub use dna_ladder::{
     DNALadder, DNALadderBand, DNALadders, Ladder, LadderBand, LadderCatalog, LadderMolecule,
     RNALadder, RNALadderBand, RNALadders, default_dna_ladders, default_rna_ladders,
+};
+pub use gene_groups::{
+    GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_LIST_REPORT_SCHEMA,
+    GENE_GROUP_RESOLVE_REPORT_SCHEMA, GENE_GROUP_SHOW_REPORT_SCHEMA, GeneGroupCatalog,
+    GeneGroupCatalogSourceReport, GeneGroupDoctorReport, GeneGroupExternalMapping,
+    GeneGroupExternalResource, GeneGroupListEntry, GeneGroupListReport, GeneGroupMember,
+    GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
 };
 
 /// Stable identifier for one sequence entry stored in project state.
