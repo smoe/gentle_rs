@@ -440,6 +440,10 @@ impl TfMotifDb {
         if let Some(db) = Self::try_load_path(RUNTIME_TF_MOTIF_PATH) {
             return db;
         }
+        Self::load_builtin()
+    }
+
+    fn load_builtin() -> Self {
         Self::from_json(BUILTIN_TF_MOTIFS_JSON).unwrap_or_default()
     }
 
@@ -520,6 +524,13 @@ pub fn reload() {
 pub fn reload_from_path(path: Option<&str>) {
     if let Ok(mut db) = TF_MOTIFS.write() {
         *db = TfMotifDb::load_from_path(path);
+    }
+}
+
+#[cfg(test)]
+pub fn reload_builtin_for_test() {
+    if let Ok(mut db) = TF_MOTIFS.write() {
+        *db = TfMotifDb::load_builtin();
     }
 }
 
