@@ -1549,6 +1549,22 @@
       },
       {
          "aliases": [
+            "gene_groups draft",
+            "genegroups draft",
+            "gene-group draft"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "gene-groups draft",
+         "summary": "Create a review-gated gene-group catalog fragment from an explicit description, optional candidate members, and optional external mappings such as GO.",
+         "usage": "gene-groups draft --description TEXT [--member SYMBOL] [--members A,B,C] [--go GO:NNNNNNN] [--output GROUP.json]"
+      },
+      {
+         "aliases": [
             "resources publication-datasets"
          ],
          "engine_operations": [],

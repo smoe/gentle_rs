@@ -13,6 +13,8 @@ pub const GENE_GROUP_SHOW_REPORT_SCHEMA: &str = "gentle.gene_group_show.v1";
 pub const GENE_GROUP_RESOLVE_REPORT_SCHEMA: &str = "gentle.gene_group_resolve.v1";
 /// Report schema for validating gene-group catalog overlays.
 pub const GENE_GROUP_DOCTOR_REPORT_SCHEMA: &str = "gentle.gene_group_doctor.v1";
+/// Report schema for creating a review-gated draft gene-group fragment.
+pub const GENE_GROUP_DRAFT_REPORT_SCHEMA: &str = "gentle.gene_group_draft.v1";
 
 /// External ontology/resource namespace that gene groups may map to.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -221,4 +223,20 @@ pub struct GeneGroupDoctorReport {
     pub warnings: Vec<String>,
     #[serde(default)]
     pub errors: Vec<String>,
+}
+
+/// Draft report for one generated catalog fragment.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GeneGroupDraftReport {
+    pub schema: String,
+    pub generation_method: String,
+    pub review_required: bool,
+    pub input_description_sha1: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_path: Option<String>,
+    pub group: GeneGroupRecord,
+    pub catalog_fragment: GeneGroupCatalog,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }

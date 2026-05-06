@@ -934,6 +934,22 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         output: Option<String>,
     },
+    GeneGroupsDraft {
+        description: String,
+        id: Option<String>,
+        label: Option<String>,
+        short_description: Option<String>,
+        organism: Option<String>,
+        taxon_id: Option<String>,
+        symbol_namespace: Option<String>,
+        aliases: Vec<String>,
+        tags: Vec<String>,
+        usages: Vec<String>,
+        members: Vec<String>,
+        go_mappings: Vec<String>,
+        provenance: Option<String>,
+        output: Option<String>,
+    },
     ResourcesListPublicationDatasets {
         filter: Option<String>,
         catalog_path: Option<String>,
@@ -6351,6 +6367,26 @@ impl ShellCommand {
                 catalog_path
                     .as_deref()
                     .unwrap_or(gene_groups::DEFAULT_GENE_GROUP_DISCOVERY_TOKEN),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneGroupsDraft {
+                id,
+                label,
+                members,
+                go_mappings,
+                output,
+                ..
+            } => format!(
+                "draft review-gated gene group{}{} (members={}, GO mappings={}, output='{}')",
+                id.as_deref()
+                    .map(|value| format!(" id='{value}'"))
+                    .unwrap_or_default(),
+                label
+                    .as_deref()
+                    .map(|value| format!(" label='{value}'"))
+                    .unwrap_or_default(),
+                members.len(),
+                go_mappings.len(),
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ResourcesListPublicationDatasets {
@@ -16898,7 +16934,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "gene-groups requires a subcommand: list, show, resolve, or doctor".to_string(),
+            "gene-groups requires a subcommand: list, show, resolve, doctor, or draft".to_string(),
         );
     }
     match tokens[1].as_str() {
@@ -17056,8 +17092,176 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
                 output,
             })
         }
+        "draft" => {
+            let mut description: Option<String> = None;
+            let mut id: Option<String> = None;
+            let mut label: Option<String> = None;
+            let mut short_description: Option<String> = None;
+            let mut organism: Option<String> = None;
+            let mut taxon_id: Option<String> = None;
+            let mut symbol_namespace: Option<String> = None;
+            let mut aliases: Vec<String> = vec![];
+            let mut tags: Vec<String> = vec![];
+            let mut usages: Vec<String> = vec![];
+            let mut members: Vec<String> = vec![];
+            let mut go_mappings: Vec<String> = vec![];
+            let mut provenance: Option<String> = None;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--description" => {
+                        description = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--description",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--id" => {
+                        id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--id",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--label" => {
+                        label = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--label",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--short-description" => {
+                        short_description = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--short-description",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--organism" => {
+                        organism = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--organism",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--taxon-id" => {
+                        taxon_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--taxon-id",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--namespace" | "--symbol-namespace" => {
+                        symbol_namespace = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--symbol-namespace",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--alias" => {
+                        aliases.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--alias",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--tag" => {
+                        tags.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tag",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--usage" => {
+                        usages.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--usage",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--member" => {
+                        members.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--member",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--members" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--members", "gene-groups draft")?;
+                        members.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--go" => {
+                        go_mappings.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--go",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--provenance" => {
+                        provenance = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--provenance",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--output" | "--path" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for gene-groups draft"));
+                    }
+                }
+            }
+            let description = description
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    "gene-groups draft requires --description TEXT [--output PATH]".to_string()
+                })?;
+            Ok(ShellCommand::GeneGroupsDraft {
+                description,
+                id,
+                label,
+                short_description,
+                organism,
+                taxon_id,
+                symbol_namespace,
+                aliases,
+                tags,
+                usages,
+                members,
+                go_mappings,
+                provenance,
+                output,
+            })
+        }
         other => Err(format!(
-            "Unknown gene-groups subcommand '{other}' (expected list, show, resolve, doctor)"
+            "Unknown gene-groups subcommand '{other}' (expected list, show, resolve, doctor, draft)"
         )),
     }
 }
@@ -23439,6 +23643,44 @@ fn execute_export_import_and_resource_command(
                 state_changed: false,
                 output: serde_json::to_value(report)
                     .map_err(|e| format!("Could not serialize gene-group doctor report: {e}"))?,
+            })
+        }
+        ShellCommand::GeneGroupsDraft {
+            description,
+            id,
+            label,
+            short_description,
+            organism,
+            taxon_id,
+            symbol_namespace,
+            aliases,
+            tags,
+            usages,
+            members,
+            go_mappings,
+            provenance,
+            output,
+        } => {
+            let report = gene_groups::draft_gene_group(gene_groups::GeneGroupDraftOptions {
+                description: description.clone(),
+                id: id.clone(),
+                label: label.clone(),
+                short_description: short_description.clone(),
+                organism: organism.clone(),
+                taxon_id: taxon_id.clone(),
+                symbol_namespace: symbol_namespace.clone(),
+                aliases: aliases.clone(),
+                tags: tags.clone(),
+                usages: usages.clone(),
+                members: members.clone(),
+                go_mappings: go_mappings.clone(),
+                provenance: provenance.clone(),
+                output_path: output.clone(),
+            })?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize gene-group draft report: {e}"))?,
             })
         }
         ShellCommand::ResourcesListPublicationDatasets {
@@ -31735,6 +31977,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::GeneGroupsShow { .. }
             | ShellCommand::GeneGroupsResolve { .. }
             | ShellCommand::GeneGroupsDoctor { .. }
+            | ShellCommand::GeneGroupsDraft { .. }
             | ShellCommand::ResourcesListPublicationDatasets { .. }
             | ShellCommand::ResourcesPublicationDatasetStatus { .. }
             | ShellCommand::ResourcesPreparePublicationDataset { .. }
@@ -32368,6 +32611,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::GeneGroupsShow { .. }
         | ShellCommand::GeneGroupsResolve { .. }
         | ShellCommand::GeneGroupsDoctor { .. }
+        | ShellCommand::GeneGroupsDraft { .. }
         | ShellCommand::ResourcesListPublicationDatasets { .. }
         | ShellCommand::ResourcesPublicationDatasetStatus { .. }
         | ShellCommand::ResourcesPreparePublicationDataset { .. }

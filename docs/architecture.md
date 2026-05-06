@@ -1322,9 +1322,9 @@ Gene-group knowledge-layer rule:
   - the user supplies a long definition / scope
   - an agent may propose a stable id, label, short description, aliases, and
     candidate gene memberships
-  - the proposal is stored as a draft catalog fragment with generation
-    provenance, evidence summaries, unresolved/marginal candidates, and a
-    review state
+  - the shared `gene-groups draft` route stores the proposal as a draft catalog
+    fragment with generation provenance, an input-description hash, candidate
+    memberships/external mappings, warnings, and `review_required=true`
   - GENtle must not treat AI-proposed memberships as curated facts until a user
     or project policy promotes them
 - Downstream operations consume resolved catalog records, not hidden prompt
