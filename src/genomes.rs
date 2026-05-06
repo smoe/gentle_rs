@@ -249,21 +249,21 @@ pub fn doctor_helper_construct_vocabulary(
     inspector.finish()
 }
 
-fn configured_builtin_asset_root() -> PathBuf {
+pub(crate) fn configured_builtin_asset_root() -> PathBuf {
     std::env::var_os(BUILTIN_ASSET_ROOT_ENV)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
 
-fn configured_system_config_root() -> PathBuf {
+pub(crate) fn configured_system_config_root() -> PathBuf {
     std::env::var_os(SYSTEM_CONFIG_ROOT_ENV)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/etc/gentle"))
 }
 
-fn configured_user_config_root() -> Option<PathBuf> {
+pub(crate) fn configured_user_config_root() -> Option<PathBuf> {
     if let Some(root) = std::env::var_os("XDG_CONFIG_HOME").filter(|value| !value.is_empty()) {
         return Some(PathBuf::from(root).join("gentle"));
     }
@@ -290,7 +290,7 @@ fn discover_project_root_from_cwd() -> Option<PathBuf> {
     git_root.or(cargo_root)
 }
 
-fn configured_project_root() -> Option<PathBuf> {
+pub(crate) fn configured_project_root() -> Option<PathBuf> {
     if let Some(root) = std::env::var_os(PROJECT_ROOT_ENV).filter(|value| !value.is_empty()) {
         return Some(PathBuf::from(root));
     }

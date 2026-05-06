@@ -3992,6 +3992,91 @@ Planned work:
      first-class demo/catalog targets beyond the current pUC19- and
      luciferase-centered examples
 
+### Catalog-extensible gene-group / ontology bridge track (planned, high priority post-release)
+
+Goal: let GENtle reason over sets of genes using deterministic local catalogs
+while still mapping to public ontologies such as Gene Ontology where useful.
+This track covers lab-facing gene groups that public ontologies deliberately
+do not model well, for example reprogramming-factor shorthand, clinical/research
+panels, family aliases, disease-context cohorts, and project-local gene sets.
+
+Architecture decision now recorded:
+
+- Gene Ontology is an external evidence/mapping namespace, not GENtle's only
+  source of grouping truth.
+- GENtle-owned gene-group catalogs provide deterministic, local,
+  net-independent, debuggable knowledge that GUI/CLI/MCP/ClawBio/agent routes
+  consume directly.
+- AI agents may draft gene-group terms and candidate memberships from a long
+  user-provided definition, but those suggestions remain provenance-marked
+  draft catalog fragments until reviewed or promoted.
+- Downstream operations must consume resolved catalog records rather than
+  hidden prompt state, so group-based regulatory analyses remain reproducible.
+
+Current baseline:
+
+- Shared protocol structs now define `gentle.gene_group_catalog.v1` plus
+  list/show/resolve/doctor report schemas in `gentle-protocol`.
+- Built-in catalog `assets/gene_groups.json` declares Gene Ontology as an
+  external resource namespace (`GO`) and seeds:
+  - `yamanaka_factors`
+  - `p53_family`
+- `resources status` now also reports `gene_ontology` as a declared external
+  database/mapping namespace, without claiming GO download/index support.
+- `gene-groups list/show/resolve/doctor` shared-shell routes now expose the
+  deterministic built-in -> system -> user -> project overlay discovery chain.
+- The doctor route reports source status, fragment SHA-1 digests, duplicate
+  ids, alias collisions, malformed memberships, malformed GO ids, duplicate
+  external resources, and mapping/resource warnings.
+- `resources resolve-tf-query` now consumes catalog-backed gene groups marked
+  for `tf_query` usage before falling back to family-like motif registry
+  matching, while preserving `builtin_group` semantics for built-in rows.
+
+Planned work:
+
+1. Broaden `gentle.gene_group_catalog.v1` after the first baseline:
+   - stable id, label, aliases, short description, long definition
+   - organism/taxon, symbol namespace, and optional reference/transcript-source
+     expectations
+   - membership rows with canonical gene symbol/id, evidence note, confidence,
+     status, and provenance
+   - external mappings (`GO`, Reactome, MSigDB, HPO, MeSH, UniProt keyword,
+     lab/project namespace) as additive anchors, not required authorities
+   - catalog source/provenance fields compatible with built-in -> system ->
+     user -> project overlay discovery
+2. Add reference-aware symbol validation:
+   - let `gene-groups doctor` optionally validate member symbols against a
+     prepared reference or selected gene symbol namespace
+   - report unresolved symbols as warnings/errors with source provenance
+3. Promote catalog-backed TF-query reporting:
+   - expose whether a token came from exact motif id/name, gene-group catalog,
+     alias, family-like expansion, or unresolved input without breaking older
+     `builtin_group` compatibility rows
+4. Add AI-assisted drafting as a separate, review-gated route:
+   - proposed shape:
+     `gene-groups draft --description TEXT [--organism TAXON] [--namespace NAMESPACE] --output GROUP.json`
+   - output should include the model/provider/date when available, input
+     description hash, proposed id/label/short description/aliases,
+     candidate memberships, evidence notes, confidence labels, and unresolved
+     candidates
+   - draft output must not modify curated catalogs by default
+   - a later promote/import route can require explicit user confirmation or
+     project policy before the group becomes trusted input
+5. Add group-aware regulatory operations:
+   - resolve one or more groups to prepared-reference genes
+   - extract promoter/upstream windows with transcript-aware orientation
+   - summarize TFBS enrichment/depletion across group windows versus matched
+     context/background windows
+   - inspect motif order / spacing patterns within upstream windows
+   - emit JSON/TSV first so later SVG/PNG and ClawBio narratives can be
+     composed from stable data
+6. Add GUI and ClawBio affordances after the shared routes are stable:
+   - group browser with source/provenance badges and membership drill-down
+   - promoter/TFBS group-analysis launch points that show resolved genes before
+     running
+   - ClawBio examples such as "show stemness-factor motif support upstream of
+     this gene set" without hard-coding any one biological story
+
 ### External-service / GeneArt integration track (planned post-release)
 
 Goal: build a vendor-neutral external-service layer in GENtle, with GeneArt as

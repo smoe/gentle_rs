@@ -38,11 +38,11 @@ const COMMON_MOTIF_ALIASES: &[(&str, &str)] = &[
 
 #[derive(Debug, Clone)]
 pub struct TfQueryGroupDefinition {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
-    pub aliases: &'static [&'static str],
-    pub member_queries: &'static [&'static str],
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    pub aliases: Vec<String>,
+    pub member_queries: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -64,38 +64,6 @@ pub struct TfQueryResolution {
     pub matches: Vec<TfQueryResolvedMotif>,
     pub unresolved_reason: Option<String>,
 }
-
-const BUILTIN_TF_QUERY_GROUPS: &[TfQueryGroupDefinition] = &[
-    TfQueryGroupDefinition {
-        id: "yamanaka_factors",
-        label: "Yamanaka factors",
-        description: "Canonical core reprogramming / stemness-associated factors used for induced pluripotency: OCT4/POU5F1, SOX2, KLF4, and MYC.",
-        aliases: &[
-            "yamanaka",
-            "yamanaka factors",
-            "core yamanaka",
-            "stemness",
-            "stemness factors",
-            "pluripotency",
-            "pluripotency factors",
-            "reprogramming factors",
-        ],
-        member_queries: &["POU5F1", "SOX2", "KLF4", "MYC"],
-    },
-    TfQueryGroupDefinition {
-        id: "p53_family",
-        label: "p53 family",
-        description: "The canonical p53 transcription-factor family represented in the local motif registry: TP53, TP63, and TP73.",
-        aliases: &[
-            "p53 family",
-            "tp family",
-            "tp53 family",
-            "tp factors",
-            "tp53 tp63 tp73",
-        ],
-        member_queries: &["TP53", "TP63", "TP73"],
-    },
-];
 
 #[derive(Debug, Clone, Deserialize)]
 struct TfMotifSnapshot {
@@ -211,19 +179,22 @@ fn common_alias_targets() -> HashMap<String, String> {
         .collect()
 }
 
-fn builtin_group_by_query(query: &str) -> Option<&'static TfQueryGroupDefinition> {
+fn catalog_group_by_query(query: &str) -> Option<crate::gene_groups::LoadedGeneGroupRecord> {
     let normalized = normalize_query_lookup(query);
     if normalized.is_empty() {
         return None;
     }
-    BUILTIN_TF_QUERY_GROUPS.iter().find(|group| {
-        normalize_query_lookup(group.id) == normalized
-            || normalize_query_lookup(group.label) == normalized
-            || group
-                .aliases
-                .iter()
-                .any(|alias| normalize_query_lookup(alias) == normalized)
-    })
+    crate::gene_groups::list_tf_query_gene_groups()
+        .into_iter()
+        .find(|group| {
+            normalize_query_lookup(&group.record.id) == normalized
+                || normalize_query_lookup(&group.record.label) == normalized
+                || group
+                    .record
+                    .aliases
+                    .iter()
+                    .any(|alias| normalize_query_lookup(alias) == normalized)
+        })
 }
 
 #[derive(Debug, Clone, Default)]
@@ -611,11 +582,11 @@ pub fn resolve_tf_query(query: &str) -> TfQueryResolution {
         };
     }
 
-    if let Some(group) = builtin_group_by_query(&trimmed) {
+    if let Some(group) = catalog_group_by_query(&trimmed) {
         let mut matches = vec![];
         let mut seen = BTreeSet::new();
-        for member in group.member_queries {
-            if let Some(motif) = resolve_motif_definition(member) {
+        for member in &group.record.members {
+            if let Some(motif) = resolve_motif_definition(&member.symbol) {
                 if seen.insert(motif.id.clone()) {
                     matches.push(TfQueryResolvedMotif {
                         motif_id: motif.id,
@@ -629,14 +600,14 @@ pub fn resolve_tf_query(query: &str) -> TfQueryResolution {
         return TfQueryResolution {
             query: trimmed,
             normalized_query,
-            resolution_kind: "builtin_group".to_string(),
-            label: Some(group.label.to_string()),
-            description: Some(group.description.to_string()),
-            aliases: group
-                .aliases
-                .iter()
-                .map(|value| value.to_string())
-                .collect(),
+            resolution_kind: if group.source_scope == "built-in" {
+                "builtin_group".to_string()
+            } else {
+                "gene_group_catalog".to_string()
+            },
+            label: Some(group.record.label),
+            description: Some(group.record.long_definition),
+            aliases: group.record.aliases,
             matches,
             unresolved_reason: None,
         };
@@ -683,7 +654,21 @@ pub fn expand_tf_query_to_motif_ids(query: &str) -> Vec<String> {
 }
 
 pub fn list_tf_query_groups() -> Vec<TfQueryGroupDefinition> {
-    BUILTIN_TF_QUERY_GROUPS.to_vec()
+    crate::gene_groups::list_tf_query_gene_groups()
+        .into_iter()
+        .map(|group| TfQueryGroupDefinition {
+            id: group.record.id,
+            label: group.record.label,
+            description: group.record.long_definition,
+            aliases: group.record.aliases,
+            member_queries: group
+                .record
+                .members
+                .into_iter()
+                .map(|member| member.symbol)
+                .collect(),
+        })
+        .collect()
 }
 
 #[cfg(test)]

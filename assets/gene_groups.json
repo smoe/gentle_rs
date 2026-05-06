@@ -1,0 +1,152 @@
+{
+  "schema": "gentle.gene_group_catalog.v1",
+  "external_resources": [
+    {
+      "id": "gene_ontology",
+      "label": "Gene Ontology",
+      "namespace": "GO",
+      "role": "external_ontology_mapping_namespace",
+      "homepage_url": "https://geneontology.org/",
+      "notes": [
+        "GENtle treats GO as an external resource namespace for mappings and provenance, not as the only authority for lab-facing gene groups.",
+        "A GENtle group may map to GO terms where useful, but local groups may also exist without GO coverage."
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "yamanaka_factors",
+      "label": "Yamanaka factors",
+      "aliases": [
+        "yamanaka",
+        "yamanaka factor",
+        "yamanaka factors",
+        "core yamanaka",
+        "stemness",
+        "stemness factors",
+        "pluripotency",
+        "pluripotency factors",
+        "reprogramming factors",
+        "OSKM"
+      ],
+      "short_description": "Canonical OSKM reprogramming-factor shorthand.",
+      "long_definition": "Canonical core reprogramming / stemness-associated transcription factors used as a lab shorthand for induced pluripotency workflows: OCT4/POU5F1, SOX2, KLF4, and MYC. GENtle stores this as a local gene group because it is experimentally useful even though it is not itself a public ontology term.",
+      "organism": "human",
+      "taxon_id": "9606",
+      "symbol_namespace": "HGNC",
+      "usages": [
+        "tf_query",
+        "promoter_tfbs",
+        "gene_group"
+      ],
+      "tags": [
+        "transcription_factor",
+        "reprogramming",
+        "stemness",
+        "pluripotency"
+      ],
+      "members": [
+        {
+          "symbol": "POU5F1",
+          "aliases": [
+            "OCT4",
+            "OCT-4"
+          ],
+          "evidence_note": "Canonical OCT4/POU5F1 member of the OSKM reprogramming-factor shorthand.",
+          "confidence": "curated",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed."
+        },
+        {
+          "symbol": "SOX2",
+          "evidence_note": "Canonical SOX2 member of the OSKM reprogramming-factor shorthand.",
+          "confidence": "curated",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed."
+        },
+        {
+          "symbol": "KLF4",
+          "evidence_note": "Canonical KLF4 member of the OSKM reprogramming-factor shorthand.",
+          "confidence": "curated",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed."
+        },
+        {
+          "symbol": "MYC",
+          "aliases": [
+            "c-MYC"
+          ],
+          "evidence_note": "Canonical MYC member of the OSKM reprogramming-factor shorthand.",
+          "confidence": "curated",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed."
+        }
+      ],
+      "external_mappings": [],
+      "curation_status": "curated",
+      "source_kind": "built_in_local_knowledge",
+      "provenance": "Seeded from GENtle's previous built-in TF-query group so existing Yamanaka/stemness motif behavior can move toward catalog-backed resolution.",
+      "notes": [
+        "This is a GENtle-owned lab-facing group, not a GO term.",
+        "GO annotations may describe individual member functions, but this shorthand remains local catalog knowledge."
+      ]
+    },
+    {
+      "id": "p53_family",
+      "label": "p53 family",
+      "aliases": [
+        "p53 family",
+        "tp family",
+        "tp53 family",
+        "tp factors",
+        "tp53 tp63 tp73"
+      ],
+      "short_description": "Canonical p53 transcription-factor family represented in the local motif registry.",
+      "long_definition": "Human p53 transcription-factor family shorthand covering TP53, TP63, and TP73 for motif, promoter, and local family-comparison workflows.",
+      "organism": "human",
+      "taxon_id": "9606",
+      "symbol_namespace": "HGNC",
+      "usages": [
+        "tf_query",
+        "promoter_tfbs",
+        "gene_group"
+      ],
+      "tags": [
+        "transcription_factor",
+        "p53_family",
+        "tumor_suppression",
+        "development"
+      ],
+      "members": [
+        {
+          "symbol": "TP53",
+          "evidence_note": "Canonical p53-family member.",
+          "confidence": "curated",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed."
+        },
+        {
+          "symbol": "TP63",
+          "evidence_note": "Canonical p53-family member.",
+          "confidence": "curated",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed."
+        },
+        {
+          "symbol": "TP73",
+          "evidence_note": "Canonical p53-family member.",
+          "confidence": "curated",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed."
+        }
+      ],
+      "external_mappings": [],
+      "curation_status": "curated",
+      "source_kind": "built_in_local_knowledge",
+      "provenance": "Seeded from GENtle's previous built-in TF-query group.",
+      "notes": [
+        "This family shorthand can be mapped to external resources later, but the local group is independently useful for promoter and motif inspection."
+      ]
+    }
+  ]
+}

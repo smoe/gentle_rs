@@ -49,6 +49,7 @@ pub struct ResourceCatalogReport {
     pub generated_at_unix_ms: u128,
     pub rebase: ResourceSnapshotStatus,
     pub jaspar: ResourceSnapshotStatus,
+    pub gene_ontology: ExternalDatabaseStatus,
     pub attract: AttractResourceStatus,
     pub publication_datasets: PublicationResourceCollectionStatus,
     pub ucsc_rmsk: UcscRmskResourceStatus,
@@ -439,6 +440,21 @@ fn jaspar_status() -> ResourceSnapshotStatus {
     }
 }
 
+fn gene_ontology_status() -> ExternalDatabaseStatus {
+    ExternalDatabaseStatus {
+        resource_id: "gene_ontology".to_string(),
+        display_name: "Gene Ontology".to_string(),
+        support_status: "declared_mapping_namespace".to_string(),
+        homepage: "https://geneontology.org/".to_string(),
+        download_url: None,
+        notes: vec![
+            "GENtle currently treats GO as an external ontology/resource namespace for gene-group mappings and provenance.".to_string(),
+            "GO is not yet downloaded or indexed by GENtle; local gene-group catalogs may map to GO terms where useful.".to_string(),
+            "Lab-facing groups can exist without GO coverage and remain deterministic catalog records.".to_string(),
+        ],
+    }
+}
+
 fn count_attract_snapshot_items(text: &str) -> Result<usize, String> {
     let parsed: Value =
         serde_json::from_str(text).map_err(|e| format!("Could not parse ATtRACT JSON: {e}"))?;
@@ -690,6 +706,7 @@ pub fn resource_catalog_status() -> ResourceCatalogReport {
         generated_at_unix_ms: now_unix_ms(),
         rebase: rebase_status(),
         jaspar: jaspar_status(),
+        gene_ontology: gene_ontology_status(),
         attract: attract_status(),
         publication_datasets: publication_resource_collection_status(),
         ucsc_rmsk: ucsc_rmsk_status(),

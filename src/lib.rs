@@ -50,6 +50,8 @@ pub mod feature_expert;
 pub mod feature_location;
 /// GC-content computations and display helpers.
 pub mod gc_contents;
+/// Catalog-extensible gene-group knowledge records and validation helpers.
+pub mod gene_groups;
 /// Genome catalog, preparation, indexing, extraction, and BLAST integration.
 pub mod genomes;
 /// Gibson assembly planning contracts and deterministic preview derivation.

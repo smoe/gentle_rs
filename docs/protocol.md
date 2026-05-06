@@ -198,7 +198,7 @@ Behavior notes:
 - motif tokens in `motifs[]` resolve through the same shared TF-query layer:
   - exact motif ids / TF names
   - aliases such as `OCT4`
-  - built-in functional groups such as `Yamanaka factors` / `stemness`
+  - catalog-backed functional groups such as `Yamanaka factors` / `stemness`
   - family-like queries such as `KLF family`
 - compact motif entries without PFM rows are supplemented from the bundled
   full-PFM table when the match is unambiguous. Consensus-derived matrices are
@@ -566,6 +566,76 @@ Behavior notes:
   - `SummarizeTfbsScoreTracks`
   - `SummarizeTfbsTrackSimilarity`
   - `ScanTfbsHits`
+
+## Gene group catalog contract
+
+Implemented baseline:
+
+- schema: `gentle.gene_group_catalog.v1`
+- purpose: deterministic, local, catalog-extensible gene groups that can map to
+  public ontologies without being limited to them
+- built-in catalog: `assets/gene_groups.json`
+- default discovery: built-in `assets/gene_groups.json`, built-in
+  `assets/gene_groups.d`, system/user/project `catalogs/gene_groups.json`, and
+  system/user/project `catalogs/gene_groups.d`
+
+Rationale:
+
+- Gene Ontology and related public resources are valuable external mappings,
+  but GENtle also needs lab-facing groups such as reprogramming-factor panels,
+  clinical/research cohorts, family aliases, and project-local gene sets.
+- The authoritative runtime input should be a reviewed catalog record, not a
+  hidden agent prompt or one-off GUI list.
+- AI-assisted generation is useful as a drafting path, but draft memberships
+  must carry provenance and review state before downstream analyses treat them
+  as trusted facts.
+- Gene Ontology is represented as an external resource namespace (`GO`) in the
+  catalog metadata, analogous to other GENtle external resources. A group may
+  map to GO when useful, but the catalog can also hold lab terms without GO
+  coverage.
+- `resources status` also reports `gene_ontology` as a declared external
+  database/mapping namespace. This is intentionally not a GO download/index
+  implementation yet.
+
+Expected record shape:
+
+- `id`, `label`, `aliases[]`, `short_description`, `long_definition`
+- `organism` / taxon and gene-symbol namespace
+- optional reference-genome or transcript-source expectations
+- `members[]` with canonical gene symbol/id, optional external identifiers,
+  evidence notes, confidence/status, and provenance
+- `external_mappings[]` for GO, Reactome, MSigDB, HPO, MeSH, UniProt keyword,
+  and lab/project namespaces
+- `curation_status` such as `draft`, `reviewed`, `curated`, or `deprecated`
+
+Current shared-shell routes:
+
+```bash
+gentle_cli shell 'gene-groups list [--catalog PATH] [--filter TEXT] [--output OUTPUT.json]'
+gentle_cli shell 'gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]'
+gentle_cli shell 'gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]'
+gentle_cli shell 'gene-groups doctor [--catalog PATH] [--output OUTPUT.json]'
+```
+
+The initial built-in rows seed the previous hard-coded TF-query groups:
+
+- `yamanaka_factors`
+- `p53_family`
+
+`resources resolve-tf-query` now consults catalog-backed groups marked with
+`usages=["tf_query", ...]` before falling back to family-like motif-registry
+matching. Existing built-in rows still report `resolution_kind=builtin_group`
+for compatibility.
+
+Planned AI-assisted drafting should be a separate explicit route, for example:
+
+```bash
+gentle_cli shell 'gene-groups draft --description TEXT [--organism TAXON] [--namespace NAMESPACE] --output GROUP.json'
+```
+
+The draft route should write a catalog fragment and evidence summary, not mutate
+trusted catalogs by default. A later import/promote step can require explicit
+review before a drafted group becomes authoritative.
 
 ## Stateless sequence-scan contract
 

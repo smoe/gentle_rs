@@ -86,6 +86,7 @@ use crate::{
     enzymes::active_restriction_enzymes,
     enzymes::is_type_iis_capable_enzyme_name,
     feature_location::collect_location_ranges_usize,
+    gene_groups,
     genomes::{
         GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, PreparedCacheCleanupMode,
         PreparedCacheCleanupRequest, configured_helper_genome_cache_dir,
@@ -912,6 +913,25 @@ pub enum ShellCommand {
     },
     ResourcesResolveTfQuery {
         queries: Vec<String>,
+        output: Option<String>,
+    },
+    GeneGroupsList {
+        catalog_path: Option<String>,
+        filter: Option<String>,
+        output: Option<String>,
+    },
+    GeneGroupsShow {
+        group_id: String,
+        catalog_path: Option<String>,
+        output: Option<String>,
+    },
+    GeneGroupsResolve {
+        query: String,
+        catalog_path: Option<String>,
+        output: Option<String>,
+    },
+    GeneGroupsDoctor {
+        catalog_path: Option<String>,
         output: Option<String>,
     },
     ResourcesListPublicationDatasets {
@@ -6282,6 +6302,55 @@ impl ShellCommand {
                 "resolve {} TF quer{} against the local motif registry (output='{}')",
                 queries.len(),
                 if queries.len() == 1 { "y" } else { "ies" },
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneGroupsList {
+                catalog_path,
+                filter,
+                output,
+            } => format!(
+                "list gene groups{} (catalog='{}', output='{}')",
+                filter
+                    .as_deref()
+                    .map(|value| format!(" matching '{}'", value))
+                    .unwrap_or_default(),
+                catalog_path
+                    .as_deref()
+                    .unwrap_or(gene_groups::DEFAULT_GENE_GROUP_DISCOVERY_TOKEN),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneGroupsShow {
+                group_id,
+                catalog_path,
+                output,
+            } => format!(
+                "show gene group '{}' (catalog='{}', output='{}')",
+                group_id,
+                catalog_path
+                    .as_deref()
+                    .unwrap_or(gene_groups::DEFAULT_GENE_GROUP_DISCOVERY_TOKEN),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneGroupsResolve {
+                query,
+                catalog_path,
+                output,
+            } => format!(
+                "resolve gene-group token '{}' (catalog='{}', output='{}')",
+                query,
+                catalog_path
+                    .as_deref()
+                    .unwrap_or(gene_groups::DEFAULT_GENE_GROUP_DISCOVERY_TOKEN),
+                output.as_deref().unwrap_or("-"),
+            ),
+            Self::GeneGroupsDoctor {
+                catalog_path,
+                output,
+            } => format!(
+                "validate gene-group catalog overlays (catalog='{}', output='{}')",
+                catalog_path
+                    .as_deref()
+                    .unwrap_or(gene_groups::DEFAULT_GENE_GROUP_DISCOVERY_TOKEN),
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ResourcesListPublicationDatasets {
@@ -16826,6 +16895,173 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "gene-groups requires a subcommand: list, show, resolve, or doctor".to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            let mut catalog_path: Option<String> = None;
+            let mut filter: Option<String> = None;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "gene-groups list",
+                        )?);
+                    }
+                    "--filter" => {
+                        filter = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--filter",
+                            "gene-groups list",
+                        )?);
+                    }
+                    "--output" | "--path" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "gene-groups list",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for gene-groups list"));
+                    }
+                }
+            }
+            Ok(ShellCommand::GeneGroupsList {
+                catalog_path,
+                filter,
+                output,
+            })
+        }
+        "show" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "gene-groups show requires GROUP_ID [--catalog PATH] [--output PATH]"
+                        .to_string(),
+                );
+            }
+            let group_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut output: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "gene-groups show",
+                        )?);
+                    }
+                    "--output" | "--path" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "gene-groups show",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for gene-groups show"));
+                    }
+                }
+            }
+            Ok(ShellCommand::GeneGroupsShow {
+                group_id,
+                catalog_path,
+                output,
+            })
+        }
+        "resolve" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err(
+                    "gene-groups resolve requires TOKEN [--catalog PATH] [--output PATH]"
+                        .to_string(),
+                );
+            }
+            let query = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut output: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "gene-groups resolve",
+                        )?);
+                    }
+                    "--output" | "--path" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "gene-groups resolve",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for gene-groups resolve"));
+                    }
+                }
+            }
+            Ok(ShellCommand::GeneGroupsResolve {
+                query,
+                catalog_path,
+                output,
+            })
+        }
+        "doctor" | "validate" => {
+            let mut catalog_path: Option<String> = None;
+            let mut output: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "gene-groups doctor",
+                        )?);
+                    }
+                    "--output" | "--path" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output",
+                            "gene-groups doctor",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for gene-groups doctor"));
+                    }
+                }
+            }
+            Ok(ShellCommand::GeneGroupsDoctor {
+                catalog_path,
+                output,
+            })
+        }
+        other => Err(format!(
+            "Unknown gene-groups subcommand '{other}' (expected list, show, resolve, doctor)"
+        )),
+    }
+}
+
 /// Parse tokenized shell input into one canonical `ShellCommand`.
 ///
 /// Start here when debugging shell grammar or adapter parity: GUI Shell and
@@ -18513,6 +18749,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
         "routines" => parse_routines_command(tokens),
+        "gene-groups" | "gene_groups" | "genegroups" => parse_gene_groups_command(tokens),
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
@@ -23122,6 +23359,86 @@ fn execute_export_import_and_resource_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": op_result }),
+            })
+        }
+        ShellCommand::GeneGroupsList {
+            catalog_path,
+            filter,
+            output,
+        } => {
+            let report = gene_groups::list_gene_groups(catalog_path.as_deref(), filter.as_deref())?;
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&report)
+                    .map_err(|e| format!("Could not serialize gene-group list: {e}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write gene-group list '{path}': {e}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize gene-group list: {e}"))?,
+            })
+        }
+        ShellCommand::GeneGroupsShow {
+            group_id,
+            catalog_path,
+            output,
+        } => {
+            let report = gene_groups::show_gene_group(group_id, catalog_path.as_deref())?;
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&report)
+                    .map_err(|e| format!("Could not serialize gene-group entry: {e}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write gene-group entry '{path}': {e}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize gene-group entry: {e}"))?,
+            })
+        }
+        ShellCommand::GeneGroupsResolve {
+            query,
+            catalog_path,
+            output,
+        } => {
+            let report = gene_groups::resolve_gene_group(query, catalog_path.as_deref())?;
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&report)
+                    .map_err(|e| format!("Could not serialize gene-group resolution: {e}"))?;
+                text.push('\n');
+                fs::write(path, text)
+                    .map_err(|e| format!("Could not write gene-group resolution '{path}': {e}"))?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize gene-group resolution: {e}"))?,
+            })
+        }
+        ShellCommand::GeneGroupsDoctor {
+            catalog_path,
+            output,
+        } => {
+            let report = gene_groups::doctor_gene_group_catalog(catalog_path.as_deref());
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&report)
+                    .map_err(|e| format!("Could not serialize gene-group doctor report: {e}"))?;
+                text.push('\n');
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write gene-group doctor report '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize gene-group doctor report: {e}"))?,
             })
         }
         ShellCommand::ResourcesListPublicationDatasets {
@@ -31414,6 +31731,10 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::ResourcesBenchmarkJaspar { .. }
             | ShellCommand::ResourcesListJaspar { .. }
             | ShellCommand::ResourcesResolveTfQuery { .. }
+            | ShellCommand::GeneGroupsList { .. }
+            | ShellCommand::GeneGroupsShow { .. }
+            | ShellCommand::GeneGroupsResolve { .. }
+            | ShellCommand::GeneGroupsDoctor { .. }
             | ShellCommand::ResourcesListPublicationDatasets { .. }
             | ShellCommand::ResourcesPublicationDatasetStatus { .. }
             | ShellCommand::ResourcesPreparePublicationDataset { .. }
@@ -32043,6 +32364,10 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesBenchmarkJaspar { .. }
         | ShellCommand::ResourcesListJaspar { .. }
         | ShellCommand::ResourcesResolveTfQuery { .. }
+        | ShellCommand::GeneGroupsList { .. }
+        | ShellCommand::GeneGroupsShow { .. }
+        | ShellCommand::GeneGroupsResolve { .. }
+        | ShellCommand::GeneGroupsDoctor { .. }
         | ShellCommand::ResourcesListPublicationDatasets { .. }
         | ShellCommand::ResourcesPublicationDatasetStatus { .. }
         | ShellCommand::ResourcesPreparePublicationDataset { .. }

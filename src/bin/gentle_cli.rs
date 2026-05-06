@@ -784,6 +784,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "agents",
     "ui",
     "routines",
+    "gene-groups",
     "planning",
     "gibson",
     "panels",
