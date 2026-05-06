@@ -3676,8 +3676,14 @@ mod tests {
         area.inspect_cutrun_regulatory_support_for_active_sequence();
 
         assert!(
+            area.op_status.contains("CUT&RUN regulatory support for 'seq1'"),
+            "expected CUT&RUN summary status, got: {}",
             area.op_status
-                .contains("CUT&RUN regulatory support for 'seq1'")
+        );
+        assert!(
+            area.op_status.contains("merged 1 source(s)"),
+            "expected merged-source count in status, got: {}",
+            area.op_status
         );
         let report = area
             .cached_cutrun_regulatory_support
