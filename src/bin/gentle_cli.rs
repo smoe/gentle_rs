@@ -6,6 +6,8 @@ mod gentle_cli_args;
 mod gentle_cli_candidates;
 #[path = "gentle_cli/hosts.rs"]
 mod gentle_cli_hosts;
+#[path = "gentle_cli/protocol_cartoon.rs"]
+mod gentle_cli_protocol_cartoon;
 #[path = "gentle_cli/reference.rs"]
 mod gentle_cli_reference;
 #[path = "gentle_cli/resources.rs"]
@@ -34,7 +36,6 @@ use gentle::{
         GenomeGeneRecord, PrepareGenomeProgress, default_catalog_discovery_label,
         default_catalog_discovery_token, default_helper_semantics_vocabulary_discovery_label,
     },
-    protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_rows},
     resource_status::resource_catalog_status,
     service_readiness::service_readiness_status,
     svg_png::{SvgPngRenderOptions, render_svg_file_to_png},
@@ -556,12 +557,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] render-rna-svg SEQ_ID OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] rna-info SEQ_ID\n  \
   gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon list\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon template-validate TEMPLATE.json\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon template-export PROTOCOL_ID OUTPUT.json\n\n  \
+{protocol_cartoon_usage}\
   gentle_cli [--state PATH|--project PATH] gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]\n  \
   gentle_cli [--state PATH|--project PATH] gibson apply PLAN_JSON_OR_@FILE\n\n  \
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
@@ -755,6 +751,7 @@ fn usage() {
         shell_help = shell_help_text(),
         candidates_usage = gentle_cli_candidates::USAGE,
         hosts_usage = gentle_cli_hosts::USAGE,
+        protocol_cartoon_usage = gentle_cli_protocol_cartoon::USAGE,
         resources_usage = gentle_cli_resources::USAGE,
         services_usage = gentle_cli_services::USAGE
     );
@@ -1723,193 +1720,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         "protocol-cartoon" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err(
-                    "protocol-cartoon requires a subcommand: list, render-svg, render-template-svg, template-validate, render-with-bindings, template-export"
-                        .to_string(),
-                );
-            }
-            match args[cmd_idx + 1].as_str() {
-                "list" => {
-                    if args.len() != cmd_idx + 2 {
-                        return Err(
-                            "protocol-cartoon list takes no additional arguments".to_string()
-                        );
-                    }
-                    print_json(&protocol_cartoon_catalog_rows())
-                }
-                "render-svg" => {
-                    if args.len() != cmd_idx + 4 {
-                        return Err(
-                            "protocol-cartoon render-svg requires: PROTOCOL_ID OUTPUT.svg"
-                                .to_string(),
-                        );
-                    }
-                    let protocol_id = args[cmd_idx + 2].trim();
-                    if protocol_id.is_empty() {
-                        return Err("protocol-cartoon render-svg requires non-empty PROTOCOL_ID"
-                            .to_string());
-                    }
-                    let output = &args[cmd_idx + 3];
-                    let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
-                        format!(
-                            "Unknown protocol cartoon '{protocol_id}' (run: protocol-cartoon list)"
-                        )
-                    })?;
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::RenderProtocolCartoonSvg {
-                            protocol,
-                            path: output.to_string(),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(msg) = result.messages.first() {
-                        println!("{msg}");
-                    }
-                    Ok(())
-                }
-                "render-template-svg" => {
-                    if args.len() != cmd_idx + 4 {
-                        return Err(
-                            "protocol-cartoon render-template-svg requires: TEMPLATE.json OUTPUT.svg"
-                                .to_string(),
-                        );
-                    }
-                    let template_path = args[cmd_idx + 2].trim();
-                    if template_path.is_empty() {
-                        return Err(
-                            "protocol-cartoon render-template-svg requires non-empty TEMPLATE.json"
-                                .to_string(),
-                        );
-                    }
-                    let output = &args[cmd_idx + 3];
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::RenderProtocolCartoonTemplateSvg {
-                            template_path: args[cmd_idx + 2].clone(),
-                            path: output.to_string(),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(msg) = result.messages.first() {
-                        println!("{msg}");
-                    }
-                    Ok(())
-                }
-                "template-validate" => {
-                    if args.len() != cmd_idx + 3 {
-                        return Err("protocol-cartoon template-validate requires: TEMPLATE.json"
-                            .to_string());
-                    }
-                    let template_path = args[cmd_idx + 2].trim();
-                    if template_path.is_empty() {
-                        return Err(
-                            "protocol-cartoon template-validate requires non-empty TEMPLATE.json"
-                                .to_string(),
-                        );
-                    }
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::ValidateProtocolCartoonTemplate {
-                            template_path: args[cmd_idx + 2].clone(),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(msg) = result.messages.first() {
-                        println!("{msg}");
-                    }
-                    Ok(())
-                }
-                "render-with-bindings" => {
-                    if args.len() != cmd_idx + 5 {
-                        return Err(
-                            "protocol-cartoon render-with-bindings requires: TEMPLATE.json BINDINGS.json OUTPUT.svg"
-                                .to_string(),
-                        );
-                    }
-                    let template_path = args[cmd_idx + 2].trim();
-                    if template_path.is_empty() {
-                        return Err(
-                            "protocol-cartoon render-with-bindings requires non-empty TEMPLATE.json"
-                                .to_string(),
-                        );
-                    }
-                    let bindings_path = args[cmd_idx + 3].trim();
-                    if bindings_path.is_empty() {
-                        return Err(
-                            "protocol-cartoon render-with-bindings requires non-empty BINDINGS.json"
-                                .to_string(),
-                        );
-                    }
-                    let output = &args[cmd_idx + 4];
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::RenderProtocolCartoonTemplateWithBindingsSvg {
-                            template_path: args[cmd_idx + 2].clone(),
-                            bindings_path: args[cmd_idx + 3].clone(),
-                            path: output.to_string(),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(msg) = result.messages.first() {
-                        println!("{msg}");
-                    }
-                    Ok(())
-                }
-                "template-export" => {
-                    if args.len() != cmd_idx + 4 {
-                        return Err(
-                            "protocol-cartoon template-export requires: PROTOCOL_ID OUTPUT.json"
-                                .to_string(),
-                        );
-                    }
-                    let protocol_id = args[cmd_idx + 2].trim();
-                    if protocol_id.is_empty() {
-                        return Err(
-                            "protocol-cartoon template-export requires non-empty PROTOCOL_ID"
-                                .to_string(),
-                        );
-                    }
-                    let protocol = ProtocolCartoonKind::parse_id(protocol_id).ok_or_else(|| {
-                        format!(
-                            "Unknown protocol cartoon '{protocol_id}' (run: protocol-cartoon list)"
-                        )
-                    })?;
-                    let output = &args[cmd_idx + 3];
-                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-                    let result = engine
-                        .apply(Operation::ExportProtocolCartoonTemplateJson {
-                            protocol,
-                            path: output.to_string(),
-                        })
-                        .map_err(|e| e.to_string())?;
-                    engine
-                        .state()
-                        .save_to_path(&state_path)
-                        .map_err(|e| e.to_string())?;
-                    if let Some(msg) = result.messages.first() {
-                        println!("{msg}");
-                    }
-                    Ok(())
-                }
-                other => Err(format!(
-                    "Unknown protocol-cartoon subcommand '{other}' (expected list, render-svg, render-template-svg, template-validate, render-with-bindings, template-export)"
-                )),
-            }
+            gentle_cli_protocol_cartoon::handle_protocol_cartoon_family(&args, cmd_idx, &state_path)
         }
         "render-pool-gel-svg" | "render-gel-svg" => {
             let cmd_name = args[cmd_idx].as_str();

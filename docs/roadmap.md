@@ -511,11 +511,13 @@ without blocking this publication.
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).
   - Direct CLI adapter splitting has started with the legacy `candidates ...`,
-    `hosts ...`, `resources ...`, and `services ...` handlers and usage blocks
-    extracted to `src/bin/gentle_cli/candidates.rs`,
-    `src/bin/gentle_cli/hosts.rs`, `src/bin/gentle_cli/resources.rs`, and
-    `src/bin/gentle_cli/services.rs`, preserving shell forwarding and manual
-    parsing behavior while reducing the monolithic `run()` body.
+    `hosts ...`, `protocol-cartoon ...`, `resources ...`, and `services ...`
+    handlers and usage blocks extracted to
+    `src/bin/gentle_cli/candidates.rs`, `src/bin/gentle_cli/hosts.rs`,
+    `src/bin/gentle_cli/protocol_cartoon.rs`,
+    `src/bin/gentle_cli/resources.rs`, and
+    `src/bin/gentle_cli/services.rs`, preserving shell forwarding/direct
+    manual parsing behavior while reducing the monolithic `run()` body.
 - Planning meta-layer shell/CLI baseline is now available:
   - direct/shared-shell command family: `planning ...`
   - profile/objective/suggestion/sync contracts:
