@@ -743,6 +743,7 @@ write_final_summary() {
             q25: quantile_len($counts; 0.25),
             q50: quantile_len($counts; 0.50),
             q75: quantile_len($counts; 0.75),
+            q90: quantile_len($counts; 0.90),
             q100: last_observed($counts)
           }
         };
@@ -1106,6 +1107,34 @@ status_run_root() {
   done < "$sample_manifest"
 }
 
+refresh_missing_q90_final_summaries() {
+  local sample_manifest="$RUN_ROOT/manifests/${GENE_SAFE}_pancreas_inputs.tsv"
+  local run sample_id sample_name note read_fasta report_id rest
+  local run_dir show_json gene_json audit_json summary_json
+  require_file "$sample_manifest"
+
+  while IFS=$'\t' read -r run sample_id sample_name note read_fasta report_id rest; do
+    if [ -z "${run:-}" ] || [ "$run" = "run_accession" ]; then
+      continue
+    fi
+    run_dir="$RUN_ROOT/runs/$run"
+    show_json="$run_dir/post_interpret/json/$report_id.show_report.json"
+    gene_json="$run_dir/post_interpret/json/$report_id.$GENE_ID.gene_support.$COMPLETE_RULE.json"
+    audit_json="$run_dir/post_interpret/json/$report_id.$GENE_ID.gene_support.$COMPLETE_RULE.audit.json"
+    summary_json="$run_dir/reports/$report_id.final_summary.json"
+    [ -s "$show_json" ] || continue
+    [ -s "$gene_json" ] || continue
+    [ -s "$audit_json" ] || continue
+    if [ ! -s "$summary_json" ] \
+      || ! jq -e '.read_length_summaries.all_reads.quantiles_bp | has("q90")' "$summary_json" >/dev/null 2>&1
+    then
+      log "Refresh final summary with q90 read-length quantiles: $summary_json"
+      write_final_summary "$run" "$sample_id" "$sample_name" "$note" \
+        "$report_id" "$show_json" "$gene_json" "$audit_json" "$summary_json"
+    fi
+  done < "$sample_manifest"
+}
+
 summarize_run_root() {
   load_existing_run_env "$1"
   local reports_dir="$RUN_ROOT/reports"
@@ -1115,6 +1144,7 @@ summarize_run_root() {
   local figure_tsv="$figures_dir/${GENE_SAFE}_pancreas_figure_source.tsv"
   local summary_files="$RUN_ROOT/manifests/final_summary_files.txt"
   mkdir -p "$reports_dir" "$figures_dir"
+  refresh_missing_q90_final_summaries
 
   find "$RUN_ROOT/runs" -path "*/reports/*.final_summary.json" | sort > "$summary_files"
   if [ ! -s "$summary_files" ]; then
@@ -1128,7 +1158,7 @@ summarize_run_root() {
   jq -s '.' "${summary_paths[@]}" > "$summaries_json"
 
   {
-    printf 'run_accession\tsample_id\tsample_name\treport_id\tread_count_total\tstrict_seed_passed_reads\tstrict_seed_accepted_target_rows\tstrict_seed_complete_target_rows\tstrict_seed_full_length_near_rows\tretained_report_rows\tretained_aligned_rows\taccepted_target_count\taccepted_target_fraction_total\taccepted_target_fraction_aligned\tfragment_count\tcomplete_near_count\tcomplete_strict_count\tcomplete_exact_count\tall_mean_bp\tall_q0_bp\tall_q25_bp\tall_q50_bp\tall_q75_bp\tall_q100_bp\tstrict_seed_mean_bp\tstrict_seed_q100_bp\taccepted_mean_bp\taccepted_max_bp\n'
+    printf 'run_accession\tsample_id\tsample_name\treport_id\tread_count_total\tstrict_seed_passed_reads\tstrict_seed_accepted_target_rows\tstrict_seed_complete_target_rows\tstrict_seed_full_length_near_rows\tretained_report_rows\tretained_aligned_rows\taccepted_target_count\taccepted_target_fraction_total\taccepted_target_fraction_aligned\tfragment_count\tcomplete_near_count\tcomplete_strict_count\tcomplete_exact_count\tall_mean_bp\tall_q0_bp\tall_q25_bp\tall_q50_bp\tall_q75_bp\tall_q90_bp\tall_q100_bp\tstrict_seed_mean_bp\tstrict_seed_q90_bp\tstrict_seed_q100_bp\taccepted_mean_bp\taccepted_max_bp\n'
     jq -r '
       .[]
       | [
@@ -1155,8 +1185,10 @@ summarize_run_root() {
           .read_length_summaries.all_reads.quantiles_bp.q25,
           .read_length_summaries.all_reads.quantiles_bp.q50,
           .read_length_summaries.all_reads.quantiles_bp.q75,
+          .read_length_summaries.all_reads.quantiles_bp.q90,
           .read_length_summaries.all_reads.quantiles_bp.q100,
           .read_length_summaries.strict_seed_passed.mean_bp,
+          .read_length_summaries.strict_seed_passed.quantiles_bp.q90,
           .read_length_summaries.strict_seed_passed.quantiles_bp.q100,
           .gene_support.accepted_target_read_lengths.mean_length_bp,
           .gene_support.accepted_target_read_lengths.max_length_bp
@@ -1166,7 +1198,7 @@ summarize_run_root() {
   } > "$summary_tsv"
 
   {
-    printf 'run_accession\tsample_id\tsample_name\ttotal_reads\tall_q0_bp\tall_q25_bp\tall_q50_bp\tall_q75_bp\tall_q100_bp\tall_mean_bp\tstrict_seed_passed_reads\tstrict_seed_accepted_target_reads\tstrict_seed_passed_max_read_bp\tstrict_seed_passed_mean_read_bp\taccepted_target_reads\taccepted_target_per_million\taccepted_target_max_read_bp\taccepted_target_mean_read_bp\n'
+    printf 'run_accession\tsample_id\tsample_name\ttotal_reads\tall_q0_bp\tall_q25_bp\tall_q50_bp\tall_q75_bp\tall_q90_bp\tall_q100_bp\tall_mean_bp\tstrict_seed_passed_reads\tstrict_seed_accepted_target_reads\tstrict_seed_passed_q90_read_bp\tstrict_seed_passed_max_read_bp\tstrict_seed_passed_mean_read_bp\taccepted_target_reads\taccepted_target_per_million\taccepted_target_max_read_bp\taccepted_target_mean_read_bp\n'
     jq -r '
       .[]
       | [
@@ -1178,10 +1210,12 @@ summarize_run_root() {
           .read_length_summaries.all_reads.quantiles_bp.q25,
           .read_length_summaries.all_reads.quantiles_bp.q50,
           .read_length_summaries.all_reads.quantiles_bp.q75,
+          .read_length_summaries.all_reads.quantiles_bp.q90,
           .read_length_summaries.all_reads.quantiles_bp.q100,
           .read_length_summaries.all_reads.mean_bp,
           .strict_seed_passed_reads,
           .strict_seed_accepted_target_rows,
+          .read_length_summaries.strict_seed_passed.quantiles_bp.q90,
           .read_length_summaries.strict_seed_passed.quantiles_bp.q100,
           .read_length_summaries.strict_seed_passed.mean_bp,
           .gene_support.accepted_target_count,
