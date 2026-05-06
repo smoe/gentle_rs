@@ -21,6 +21,7 @@ READ_LENGTH_SERIES = [
     ("all_q25_bp", "q25", "#2563eb", ""),
     ("all_q50_bp", "q50", "#111827", ""),
     ("all_q75_bp", "q75", "#f59e0b", ""),
+    ("all_q90_bp", "q90", "#7c3aed", "8,4"),
     ("all_q100_bp", "q100", "#dc2626", ""),
     ("all_mean_bp", "mean", "#059669", "6,4"),
 ]
@@ -105,6 +106,26 @@ def sample_label(row: dict[str, str], label_column: str, index: int) -> str:
     if label == row.get("run_accession", "") and row.get("sample_name", "").strip():
         label = row["run_accession"].strip()
     return label
+
+
+def warn_nonmonotone_read_lengths(rows: list[dict[str, str]], source_path: Path) -> None:
+    order = ["all_q0_bp", "all_q25_bp", "all_q50_bp", "all_q75_bp", "all_q90_bp", "all_q100_bp"]
+    for row in rows:
+        previous_key = None
+        previous_value = None
+        for key in order:
+            current = number(row, key)
+            if current is None:
+                continue
+            if previous_value is not None and current < previous_value:
+                label = row.get("run_accession") or row.get("sample_id") or row.get("sample_name") or "row"
+                print(
+                    f"WARNING: non-monotone read-length quantiles in {source_path}: "
+                    f"{label} {previous_key}={previous_value:g} > {key}={current:g}",
+                    file=sys.stderr,
+                )
+            previous_key = key
+            previous_value = current
 
 
 def nice_linear_max(value: float) -> float:
@@ -271,7 +292,7 @@ def render_svg(rows: list[dict[str, str]], args: argparse.Namespace, source_path
     parts.append(f'<line x1="{top_x}" y1="{top_y + top_h}" x2="{top_x + chart_w}" y2="{top_y + top_h}" class="axis"/>')
     parts.append(svg_text(26, top_y + top_h / 2, "read length (bp, log scale)", 12, "#475569", "middle", extra='transform="rotate(-90 26 %.1f)"' % (top_y + top_h / 2)))
 
-    legend_x = top_x + chart_w - 470
+    legend_x = top_x + chart_w - 545
     legend_y = top_y - 28
     for idx, (_key, label, color, dash) in enumerate(READ_LENGTH_SERIES):
         lx = legend_x + idx * 76
@@ -343,7 +364,7 @@ def render_svg(rows: list[dict[str, str]], args: argparse.Namespace, source_path
         svg_text(
             38,
             height - 34,
-            f"Source: {source_path} | q0/q25/q50/q75/q100/mean from all reads; TP73 max from accepted target reads.",
+            f"Source: {source_path} | q0/q25/q50/q75/q90/q100/mean from all reads; TP73 max from accepted target reads.",
             11,
             "#64748b",
         )
@@ -367,6 +388,7 @@ def main() -> int:
         return 2
     output_path = Path(args.output) if args.output else input_path.with_suffix(".svg")
     rows = read_rows(input_path)
+    warn_nonmonotone_read_lengths(rows, input_path)
     svg = render_svg(rows, args, input_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(svg, encoding="utf-8")

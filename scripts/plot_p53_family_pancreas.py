@@ -50,6 +50,10 @@ OUTPUT_FIELDS = [
     "seed_passed_per_million",
     "accepted_target_count",
     "accepted_target_per_million",
+    "support_length_source",
+    "support_high_read_bp",
+    "support_max_read_bp",
+    "support_mean_read_bp",
     "source",
 ]
 
@@ -140,6 +144,19 @@ def optional_number_text(value: object) -> str:
     return f"{numeric:.6g}"
 
 
+def optional_float(row: dict[str, object], *keys: str) -> float | None:
+    for key in keys:
+        if key not in row:
+            continue
+        raw = row.get(key)
+        if raw is None or str(raw).strip() == "":
+            continue
+        parsed = to_float(raw, math.nan)
+        if not math.isnan(parsed):
+            return parsed
+    return None
+
+
 def extract_srr(*values: object) -> str:
     for value in values:
         match = re.search(r"SRR\d+", str(value or ""))
@@ -195,8 +212,44 @@ def normalize_support_row(
         "seed_passed_per_million": (seed * 1_000_000.0 / total) if total > 0 else 0.0,
         "accepted_target_count": int(accepted) if float(accepted).is_integer() else accepted,
         "accepted_target_per_million": (accepted * 1_000_000.0 / total) if total > 0 else 0.0,
+        "support_length_source": "",
+        "support_high_read_bp": "",
+        "support_max_read_bp": "",
+        "support_mean_read_bp": "",
         "source": str(source),
     }
+    seed_high = optional_float(
+        row,
+        "strict_seed_passed_q90_read_bp",
+        "seed_passed_q90_read_bp",
+        "strict_seed_q90_bp",
+    )
+    seed_max = optional_float(
+        row,
+        "strict_seed_passed_max_read_bp",
+        "seed_passed_max_read_bp",
+        "strict_seed_q100_bp",
+    )
+    seed_mean = optional_float(
+        row,
+        "strict_seed_passed_mean_read_bp",
+        "seed_passed_mean_read_bp",
+        "strict_seed_mean_bp",
+    )
+    if seed_high is not None or seed_max is not None or seed_mean is not None:
+        out["support_length_source"] = "strict_seed_passed"
+        out["support_high_read_bp"] = optional_number_text(seed_high)
+        out["support_max_read_bp"] = optional_number_text(seed_max)
+        out["support_mean_read_bp"] = optional_number_text(seed_mean)
+    else:
+        accepted_high = optional_float(row, "accepted_target_q90_read_bp", "accepted_target_p95_read_bp")
+        accepted_max = optional_float(row, "accepted_target_max_read_bp")
+        accepted_mean = optional_float(row, "accepted_target_mean_read_bp")
+        if accepted_high is not None or accepted_max is not None or accepted_mean is not None:
+            out["support_length_source"] = "accepted_target"
+            out["support_high_read_bp"] = optional_number_text(accepted_high)
+            out["support_max_read_bp"] = optional_number_text(accepted_max)
+            out["support_mean_read_bp"] = optional_number_text(accepted_mean)
     for key in (
         "all_q0_bp",
         "all_q25_bp",
@@ -208,6 +261,46 @@ def normalize_support_row(
     ):
         out[key] = optional_number_text(row.get(key, ""))
     return out
+
+
+def maybe_fill_lengths_from_gene_support(
+    row_out: dict[str, object],
+    source_row: dict[str, object],
+    source_path: Path,
+) -> None:
+    """Fill target-support read lengths from a gene-support summary JSON.
+
+    Batch-map rows do not currently carry seed-passed read length histograms.
+    They do, however, point at a gene-support summary with accepted-target read
+    length distributions. Those are explicitly marked as accepted_target so the
+    plot does not pretend they are whole-library or seed-passed quantiles.
+    """
+    if row_out.get("support_length_source"):
+        return
+    path_text = first_text(source_row, "gene_support_summary_json_path")
+    if not path_text:
+        return
+    candidate = Path(path_text)
+    if not candidate.is_absolute():
+        candidate = source_path.parent / candidate
+    if not candidate.exists():
+        return
+    try:
+        summary = json.loads(candidate.read_text())
+    except Exception:
+        return
+    lengths = summary.get("accepted_target_read_lengths") or {}
+    if not isinstance(lengths, dict):
+        return
+    high = optional_float(lengths, "q90_length_bp", "p95_length_bp", "q75_length_bp")
+    max_len = optional_float(lengths, "max_length_bp")
+    mean = optional_float(lengths, "mean_length_bp")
+    if high is None and max_len is None and mean is None:
+        return
+    row_out["support_length_source"] = "accepted_target"
+    row_out["support_high_read_bp"] = optional_number_text(high)
+    row_out["support_max_read_bp"] = optional_number_text(max_len)
+    row_out["support_mean_read_bp"] = optional_number_text(mean)
 
 
 def load_tp53_rows(path: Path, is_json: bool) -> list[dict[str, object]]:
@@ -225,15 +318,15 @@ def load_tp53_rows(path: Path, is_json: bool) -> list[dict[str, object]]:
             continue
         if str(row.get("gene") or "").strip().upper() not in {"", "TP53"}:
             continue
-        rows.append(
-            normalize_support_row(
-                gene="TP53",
-                source=path,
-                row=row,
-                seed_keys=("read_count_seed_passed", "seed_passed_reads"),
-                accepted_keys=("accepted_target_count",),
-            )
+        normalized = normalize_support_row(
+            gene="TP53",
+            source=path,
+            row=row,
+            seed_keys=("read_count_seed_passed", "seed_passed_reads"),
+            accepted_keys=("accepted_target_count",),
         )
+        maybe_fill_lengths_from_gene_support(normalized, row, path)
+        rows.append(normalized)
     return rows
 
 
@@ -278,6 +371,26 @@ def write_family_tsv(rows: list[dict[str, object]], path: Path) -> None:
         writer = csv.DictWriter(handle, delimiter="\t", fieldnames=OUTPUT_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def validate_read_length_quantiles(rows: list[dict[str, object]], source_label: str) -> None:
+    order = ["all_q0_bp", "all_q25_bp", "all_q50_bp", "all_q75_bp", "all_q90_bp", "all_q100_bp"]
+    for row in rows:
+        previous_key = None
+        previous_value = None
+        for key in order:
+            current = value(row, key)
+            if current is None:
+                continue
+            if previous_value is not None and current < previous_value:
+                print(
+                    "WARNING: non-monotone all-read length quantiles in "
+                    f"{source_label}: gene={row.get('gene')} run={row.get('run_accession')} "
+                    f"{previous_key}={previous_value:g} > {key}={current:g}",
+                    file=sys.stderr,
+                )
+            previous_key = key
+            previous_value = current
 
 
 def value(row: dict[str, object], key: str) -> float | None:
@@ -426,9 +539,25 @@ def render_svg(
         for row in rows_by_gene_run.values()
     ]
     metric_max = nice_linear_max(max(metric_values) * 1.15 if metric_values else 1.0)
+    support_length_values = [
+        raw
+        for row in rows_by_gene_run.values()
+        for key in ("support_high_read_bp", "support_max_read_bp")
+        if (raw := value(row, key)) is not None and raw > 0
+    ]
+    support_length_max = (
+        nice_linear_max(max(support_length_values) * 1.15)
+        if support_length_values
+        else 0.0
+    )
 
     def y_bar(raw: float) -> float:
         return bottom_y + bottom_h - (raw / metric_max) * bottom_h
+
+    def y_support_len(raw: float) -> float:
+        if support_length_max <= 0:
+            return bottom_y + bottom_h
+        return bottom_y + bottom_h - (raw / support_length_max) * bottom_h
 
     metric_label = (
         "strict seed-passed reads per million total reads"
@@ -489,16 +618,28 @@ def render_svg(
         parts.append(f'<line x1="{top_x}" y1="{y:.1f}" x2="{top_x + chart_w}" y2="{y:.1f}" class="grid"/>')
         parts.append(svg_text(top_x - 12, y + 4, format_metric(raw, metric), 12, "#64748b", "end"))
     parts.append(f'<line x1="{top_x}" y1="{bottom_y}" x2="{top_x}" y2="{bottom_y + bottom_h}" class="axis"/>')
+    if support_length_max > 0:
+        parts.append(f'<line x1="{top_x + chart_w}" y1="{bottom_y}" x2="{top_x + chart_w}" y2="{bottom_y + bottom_h}" class="axis"/>')
     parts.append(f'<line x1="{top_x}" y1="{bottom_y + bottom_h}" x2="{top_x + chart_w}" y2="{bottom_y + bottom_h}" class="axis"/>')
     parts.append(svg_text(28, bottom_y + bottom_h / 2, metric_label, 12, "#475569", "middle", extra='transform="rotate(-90 28 %.1f)"' % (bottom_y + bottom_h / 2)))
+    if support_length_max > 0:
+        for tick in [0.25, 0.5, 0.75, 1.0]:
+            raw = support_length_max * tick
+            parts.append(svg_text(top_x + chart_w + 12, y_support_len(raw) + 4, format_bp(raw), 12, "#7c2d12", "start"))
+        parts.append(svg_text(top_x + chart_w + 84, bottom_y + bottom_h / 2, "supporting read length (bp)", 12, "#7c2d12", "middle", extra='transform="rotate(90 %.1f %.1f)"' % (top_x + chart_w + 84, bottom_y + bottom_h / 2)))
 
     legend_x = top_x + chart_w - 265
     legend_y = bottom_y - 43
-    parts.append(f'<rect x="{legend_x - 12:.1f}" y="{legend_y - 17:.1f}" width="275" height="32" rx="8" fill="#ffffff" stroke="#e2e8f0"/>')
+    legend_width = 410 if support_length_max > 0 else 275
+    parts.append(f'<rect x="{legend_x - 12:.1f}" y="{legend_y - 17:.1f}" width="{legend_width}" height="32" rx="8" fill="#ffffff" stroke="#e2e8f0"/>')
     for idx, gene in enumerate(GENES):
         lx = legend_x + idx * 86
         parts.append(f'<rect x="{lx:.1f}" y="{legend_y - 9:.1f}" width="16" height="12" rx="2" fill="{GENE_COLORS[gene]}"/>')
         parts.append(svg_text(lx + 22, legend_y + 2, gene, 12, "#334155", weight="700"))
+    if support_length_max > 0:
+        lx = legend_x + 270
+        parts.append(f'<circle cx="{lx:.1f}" cy="{legend_y - 3:.1f}" r="4" fill="#111827" stroke="white" stroke-width="1"/>')
+        parts.append(svg_text(lx + 10, legend_y + 2, "high/max read bp", 12, "#334155"))
 
     group_w = min(58.0, chart_w / max(n, 1) * 0.58)
     bar_gap = 2.5
@@ -519,6 +660,21 @@ def render_svg(
             parts.append("</rect>")
             if count_raw is not None and count_raw > 0:
                 parts.append(svg_text(x + bar_w / 2.0, y - 5, f"{count_raw:.0f}", 10, label_fill, "middle", weight="700"))
+            if support_length_max > 0 and row:
+                high_len = value(row, "support_high_read_bp")
+                max_len = value(row, "support_max_read_bp")
+                cx = x + bar_w / 2.0
+                if high_len is not None and high_len > 0:
+                    cy = y_support_len(high_len)
+                    parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3.8" fill="{fill}" stroke="white" stroke-width="1.3">')
+                    parts.append(f'<title>{escape(gene)} {escape(run)} {escape(str(row.get("support_length_source") or "support"))} high read length: {high_len:.0f} bp</title>')
+                    parts.append("</circle>")
+                if max_len is not None and max_len > 0:
+                    cy = y_support_len(max_len)
+                    points = f"{cx:.1f},{cy - 5:.1f} {cx + 5:.1f},{cy:.1f} {cx:.1f},{cy + 5:.1f} {cx - 5:.1f},{cy:.1f}"
+                    parts.append(f'<polygon points="{points}" fill="none" stroke="{fill}" stroke-width="1.7">')
+                    parts.append(f'<title>{escape(gene)} {escape(run)} {escape(str(row.get("support_length_source") or "support"))} max read length: {max_len:.0f} bp</title>')
+                    parts.append("</polygon>")
 
     for idx, run in enumerate(runs):
         x = x_positions[idx]
@@ -528,7 +684,7 @@ def render_svg(
         parts.append(svg_text(x, bottom_y + bottom_h + 27, label, 12, "#334155", "end", extra=f'transform="rotate(-45 {x:.1f} {bottom_y + bottom_h + 27:.1f})"'))
 
     parts.append(svg_text(38, height - 42, f"Canonical source table: {output_tsv}", 10, "#64748b"))
-    parts.append(svg_text(38, height - 24, "accepted_target_count is retained in the TSV but deliberately not used as the main family-support scale.", 10, "#64748b"))
+    parts.append(svg_text(38, height - 24, "accepted_target_count is retained in the TSV but deliberately not used as the main family-support scale; length points use strict seed-passed lengths where available, otherwise accepted-target lengths.", 10, "#64748b"))
     parts.append("</svg>")
     return "\n".join(parts) + "\n"
 
@@ -551,6 +707,7 @@ def main() -> int:
     rows.extend(load_figure_rows("TP73", tp73_path))
     merge_read_length_context(rows)
     rows.sort(key=lambda row: (sort_key_for_run(str(row.get("run_accession") or "")), str(row.get("gene") or "")))
+    validate_read_length_quantiles(rows, "p53-family canonical table")
 
     write_family_tsv(rows, output_tsv)
     svg = render_svg(rows, output_tsv, args.metric, args.label_column, args.title)

@@ -15,8 +15,9 @@ cutrun.d/:: Additional built-in CUT&RUN catalog shards. The Rostock p73 `E-MTAB-
 host_profiles.json:: Starter host/strain catalog for construct-reasoning inspection in GUI/agent-facing workflows.
 blast_defaults.json:: Default BLAST option layer (`task`, `max_hits`, optional thresholds) used when no project/request override is provided.
 panels/tp53_isoforms_v1.json:: Curated TP53 isoform architecture panel used by isoform expert and protein-gel examples.
-panels/tp73_isoforms_v1.json:: Local TP73 isoform curation seed that records lab/public hybrid transcript-class knowledge for assay design without treating public disease-transcript coverage as complete.
+panels/tp73_isoforms_v1.json:: Local TP73 isoform curation seed that records lab/public hybrid transcript-class knowledge for assay design without treating public disease-transcript coverage as complete; it now also carries a local IEGT Rostock TAp73alpha coding-cDNA evidence record whose exact source cell line is still pending clarification.
 panels/tp73_long_range_cdna_virtual_panel_v1.json:: Local TP73 long-range cDNA selector panel that explicitly materializes virtual 5' x 3' isoform combinations absent from the bundled public RefSeq-style annotation; the companion FASTA stores the theoretical cDNA sequences.
+panels/tp73_delta_ex2_3_isoforms_v1.json:: Local TP73 DEx2,3 alpha/beta panel with RefSeq-derived exon-chain models and an IEGT plasmid-contained D_Ex2/3_p73beta coding-cDNA evidence record.
 jaspar.motifs.json:: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
 ncoils.matrix::
 

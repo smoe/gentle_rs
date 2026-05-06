@@ -320,8 +320,10 @@ without blocking this publication.
 - A companion TP73 D_{Ex2,3}Np73 alpha/beta supplement now lives at
   `data/resources/tp73_delta_ex2_3_refseq_derived_transcripts.fasta`, with
   deterministic RefSeq exon-chain provenance in
-  `assets/panels/tp73_delta_ex2_3_isoforms_v1.json`; this keeps the
-  non-accessioned exon-skip hypotheses available to RNA-read hashing and
+  `assets/panels/tp73_delta_ex2_3_isoforms_v1.json`; the same panel now also
+  records the IEGT plasmid-contained D_Ex2/3_p73beta coding cDNA, including
+  its one synonymous CDS difference from the derived beta model. This keeps
+  the non-accessioned exon-skip hypotheses available to RNA-read hashing and
   transcript-catalog review without adding TP73-specific mapper logic.
 - GUI tutorial-project opening is now backgrounded instead of blocking the main
   event loop:
@@ -3846,6 +3848,10 @@ Planned work:
        isoform-class knowledge, including Ex2/Ex3 TP73 variants, while
        explicitly warning that public healthy-tissue annotation is not
        exhaustive disease-expression evidence
+     - that same TP73 panel now also records a user-supplied IEGT Rostock
+       TAp73alpha coding cDNA as explicit local construct evidence, with the
+       exact originating cell line intentionally left unresolved/pending
+       rather than being silently flattened into a public transcript claim
      - `assets/panels/tp73_long_range_cdna_virtual_panel_v1.json` and its
        companion FASTA now materialize a TP73 local-knowledge long-range cDNA
        selector panel: public RefSeq-backed 5' x 3' combinations remain marked
