@@ -511,7 +511,8 @@ without blocking this publication.
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).
   - Direct CLI adapter splitting has started with the legacy `resources ...`
-    handler and usage block extracted to `src/bin/gentle_cli/resources.rs`,
+    and `services ...` handlers and usage blocks extracted to
+    `src/bin/gentle_cli/resources.rs` and `src/bin/gentle_cli/services.rs`,
     preserving shell forwarding and manual parsing behavior while reducing the
     monolithic `run()` body.
 - Planning meta-layer shell/CLI baseline is now available:

@@ -6,6 +6,8 @@ mod gentle_cli_args;
 mod gentle_cli_reference;
 #[path = "gentle_cli/resources.rs"]
 mod gentle_cli_resources;
+#[path = "gentle_cli/services.rs"]
+mod gentle_cli_services;
 
 use gentle::{
     about,
@@ -757,12 +759,7 @@ fn usage() {
   gentle_cli planning sync pull JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n  \
   gentle_cli planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n\n\
 {resources_usage}\
-  gentle_cli services status\n  \
-  gentle_cli services providers list\n  \
-  gentle_cli services project-preflight REQUEST_JSON_OR_@FILE\n  \
-  gentle_cli services project-quote REQUEST_JSON_OR_@FILE\n\n  \
-  gentle_cli services handoff [--scope NAME] [--output PATH]\n  \
-  gentle_cli services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]\n\n  \
+{services_usage}\
   gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
   gentle_cli cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
@@ -770,7 +767,8 @@ fn usage() {
   Shell help:\n  \
   {shell_help}",
         shell_help = shell_help_text(),
-        resources_usage = gentle_cli_resources::USAGE
+        resources_usage = gentle_cli_resources::USAGE,
+        services_usage = gentle_cli_services::USAGE
     );
 }
 
@@ -1482,18 +1480,7 @@ fn run() -> Result<(), String> {
             }
         }
         "resources" => gentle_cli_resources::handle_resources_family(&args, cmd_idx),
-        "services" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err("services requires a subcommand: status".to_string());
-            }
-            match args[cmd_idx + 1].as_str() {
-                "status" => print_json(&service_readiness_status()?),
-                other => Err(format!(
-                    "Unknown services subcommand '{other}' (expected status)"
-                )),
-            }
-        }
+        "services" => gentle_cli_services::handle_services_family(&args, cmd_idx),
         "shell" => {
             if args.len() <= cmd_idx + 1 {
                 usage();
@@ -3288,6 +3275,18 @@ mod tests {
             err.contains("Unknown option '--bad-flag' for resources sync-rebase"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_services_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "providers".to_string(),
+            "list".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(parsed, Some(ShellCommand::ServicesProvidersList)));
     }
 
     #[test]
