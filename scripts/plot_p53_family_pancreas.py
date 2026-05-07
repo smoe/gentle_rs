@@ -55,18 +55,13 @@ def parse_args() -> argparse.Namespace:
         help="Grouped-bar height metric.",
     )
     parser.add_argument(
-        "--summary-mode",
-        choices=["samples", "genes"],
-        default="samples",
+        "--support-length-stat",
+        choices=["max", "mean"],
+        default="max",
         help=(
-            "Plot layout: 'samples' draws neighboring TP53/TP63/TP73 bars for "
-            "every sample; 'genes' draws one aggregate bar per gene."
+            "Gene-supporting read-length statistic drawn as one colored line per "
+            "gene in the lower panel. Whole-library q90 stays in the upper panel."
         ),
-    )
-    parser.add_argument(
-        "--hide-support-lengths",
-        action="store_true",
-        help="Suppress the supporting-read length overlay.",
     )
     parser.add_argument(
         "--label-column",
@@ -100,8 +95,8 @@ def main() -> int:
             "TP53,TP63,TP73",
             "--metric",
             args.metric,
-            "--summary-mode",
-            args.summary_mode,
+            "--support-length-stat",
+            args.support_length_stat,
             "--label-column",
             args.label_column,
             "--title",
@@ -112,8 +107,6 @@ def main() -> int:
     )
     if args.output_tsv:
         command.extend(["--output-tsv", args.output_tsv])
-    if args.hide_support_lengths:
-        command.append("--hide-support-lengths")
     return subprocess.call(command)
 
 

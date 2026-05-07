@@ -100,13 +100,10 @@ Useful options:
 - `--metric per_million`: normalize bars as seed-passed reads per million total
   reads. Raw read counts are still printed above bars.
 - `--metric raw`: use raw seed-passed read counts as bar height.
-- `--summary-mode samples`: draw neighboring gene bars for every sample. This
-  is the detailed cohort-structure view and remains the default.
-- `--summary-mode genes`: aggregate the cohort and draw one bar per gene. This
-  is the compact family-comparison view for release/ad-hoc summaries.
-- `--hide-support-lengths`: suppress the secondary supporting-read-length
-  overlay. This is often clearer for compact family summaries where the primary
-  point is relative abundance.
+- `--support-length-stat max|mean`: choose the gene-supporting read-length
+  statistic drawn as one colored line per gene in the lower support panel. The
+  default is `max`, matching the single-gene overview convention. Whole-library
+  q90 remains library context only and is drawn in the upper panel when present.
 - `--label-column sample_id|sample_name|run_accession`: x-axis labels.
 - `--output-tsv PATH`: canonical merged family table. Defaults to the SVG path
   with `.tsv` extension.
@@ -122,14 +119,16 @@ The canonical family TSV uses these main fields:
 - optional supporting-read length fields
 - `source`, pointing back to the input table/report
 
-The grouped SVG keeps `seed_passed_reads` as the primary support measure. The
-`accepted_target_count` values are retained in the TSV for auditability but are
-not used as the main family-support scale, because those counts can mean a
+The grouped SVG keeps `seed_passed_reads` as the primary support measure. For a
+three-gene p53-family comparison, every sample therefore has three neighboring
+bars. `accepted_target_count` values are retained in the TSV for auditability but
+are not used as the main family-support scale, because those counts can mean a
 later, less conservative downstream contract than the strict seed gate.
-When supporting-read length markers are shown, the plotter now uses only rows
-with strict seed-passed read-length provenance for those markers; accepted-target
-fallback lengths remain in the TSV but are not drawn as if they were strict seed
-evidence.
+Gene-supporting read lengths are drawn as one colored line per gene in the same
+lower panel. This overlay uses the selected support statistic (`max` by default)
+from seed-passed rows when present, with accepted-target lengths retained as a
+fallback/provenance-marked source in older batch reports. The all-read q90 line
+belongs only to the upper whole-library read-length panel.
 
 ## Compatibility Wrappers
 
@@ -182,8 +181,8 @@ python3 scripts/plot_pancreas_gene_family.py \
   --figure-source TP63="$TP63_ROOT/figures/tp63_pancreas_figure_source.tsv" \
   --figure-source TP73="$TP73_ROOT/figures/tp73_pancreas_figure_source.tsv" \
   --genes TP53,TP63,TP73 \
-  --summary-mode genes \
-  --hide-support-lengths \
+  --metric per_million \
+  --support-length-stat max \
   --output "$WORK/figures/p53_family_seed_passed_grouped.svg"
 ```
 
