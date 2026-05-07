@@ -14620,6 +14620,24 @@ fn parse_services_external_provider_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
+    let doctor = parse_shell_line(
+        "services providers doctor --catalog assets/external_service_providers.json --output providers.doctor.json",
+    )
+    .expect("parse services providers doctor");
+    match doctor {
+        ShellCommand::ServicesProvidersDoctor {
+            catalog_path,
+            output,
+        } => {
+            assert_eq!(
+                catalog_path.as_deref(),
+                Some("assets/external_service_providers.json")
+            );
+            assert_eq!(output.as_deref(), Some("providers.doctor.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
     let preflight = parse_shell_line("services project-preflight @geneart_request.json")
         .expect("parse services project-preflight");
     match preflight {
@@ -15740,6 +15758,13 @@ fn execute_services_external_provider_catalog_and_geneart_preflight() {
         Some("geneart")
     );
     assert!(
+        catalog.output["providers"]
+            .as_array()
+            .expect("providers")
+            .iter()
+            .any(|provider| provider["provider"].as_str() == Some("metabion"))
+    );
+    assert!(
         catalog.output["providers"][0]["capabilities"]
             .as_array()
             .expect("provider capabilities")
@@ -15788,6 +15813,206 @@ fn execute_services_external_provider_catalog_and_geneart_preflight() {
     assert_eq!(
         preflight.output["direct_submission_available"].as_bool(),
         Some(false)
+    );
+}
+
+#[test]
+fn execute_services_provider_config_doctor_reports_metabion_config() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let td = tempdir().expect("tempdir");
+    let output_path = td.path().join("provider_config_doctor.json");
+    let report = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProvidersDoctor {
+            catalog_path: Some("assets/external_service_providers.json".to_string()),
+            output: Some(output_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute services providers doctor");
+    assert!(!report.state_changed);
+    assert_eq!(
+        report.output["schema"].as_str(),
+        Some("gentle.external_service_provider_config_doctor.v1")
+    );
+    assert_eq!(report.output["error_count"].as_u64(), Some(0));
+    assert_eq!(report.output["provider_count"].as_u64(), Some(2));
+    assert!(output_path.exists());
+}
+
+#[test]
+fn execute_services_metabion_preflight_and_quote_are_handoff_only() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let request = serde_json::json!({
+        "schema": "gentle.external_service_request.v1",
+        "provider": "metabion",
+        "service_kind": "dna_oligo_single_tube",
+        "source_target": {
+            "kind": "inline_dna",
+            "name": "qpcr_probe_candidate",
+            "sequence": "ACGTACGTACGTACGTACGT"
+        },
+        "delivery_options": {
+            "yield_range": "25 nmol",
+            "purification": "desalted",
+            "delivery_form": "dry"
+        },
+        "return_spec": {
+            "requested_payloads": ["quote_metadata", "handoff_bundle"]
+        }
+    })
+    .to_string();
+
+    let preflight = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProjectPreflight {
+            request_json: request.clone(),
+        },
+    )
+    .expect("execute metabion services project-preflight");
+    assert!(!preflight.state_changed);
+    assert_eq!(preflight.output["provider"].as_str(), Some("metabion"));
+    assert_eq!(
+        preflight.output["service_kind"].as_str(),
+        Some("dna_oligo_single_tube")
+    );
+    assert_eq!(preflight.output["eligible"].as_bool(), Some(true));
+    assert_eq!(
+        preflight.output["quote_handoff_available"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        preflight.output["direct_submission_available"].as_bool(),
+        Some(false)
+    );
+    assert!(
+        preflight.output["supported_submission_modes"]
+            .as_array()
+            .expect("submission modes")
+            .iter()
+            .any(|mode| mode.as_str() == Some("wop_handoff"))
+    );
+
+    let quote = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProjectQuote {
+            request_json: request,
+        },
+    )
+    .expect("execute metabion services project-quote");
+    assert!(!quote.state_changed);
+    assert_eq!(quote.output["quote_status"].as_str(), Some("handoff_ready"));
+    assert_eq!(
+        quote.output["preflight"]["direct_submission_available"].as_bool(),
+        Some(false)
+    );
+    let payload_kinds = quote.output["service_ready_bundle"]["inline_payloads"]
+        .as_array()
+        .expect("inline payloads")
+        .iter()
+        .filter_map(|payload| payload["payload_kind"].as_str())
+        .collect::<Vec<_>>();
+    assert!(payload_kinds.contains(&"normalized_line_items_json"));
+    assert!(payload_kinds.contains(&"normalized_line_items_csv"));
+    assert!(payload_kinds.contains(&"email_draft_markdown"));
+    assert!(payload_kinds.contains(&"guided_wop_checklist"));
+    assert!(
+        quote.output["warnings"]
+            .as_array()
+            .expect("warnings")
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .is_some_and(|text| text.contains("not available as a local template fixture")))
+    );
+    assert!(
+        quote.output["service_ready_bundle"]["notes"]
+            .as_array()
+            .expect("bundle notes")
+            .iter()
+            .any(|note| note
+                .as_str()
+                .is_some_and(|text| text.contains("Do not persist PO numbers")))
+    );
+}
+
+#[test]
+fn execute_services_metabion_preflight_reports_required_source_fields() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let request = serde_json::json!({
+        "schema": "gentle.external_service_request.v1",
+        "provider": "metabion",
+        "service_kind": "dna_oligo_single_tube",
+        "source_target": {
+            "kind": "inline_dna"
+        },
+        "return_spec": {
+            "requested_payloads": ["quote_metadata"]
+        }
+    })
+    .to_string();
+
+    let preflight = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProjectPreflight {
+            request_json: request,
+        },
+    )
+    .expect("execute metabion blocked services project-preflight");
+    assert!(!preflight.state_changed);
+    assert_eq!(preflight.output["eligible"].as_bool(), Some(false));
+    assert_eq!(
+        preflight.output["capability_status"].as_str(),
+        Some("blocked")
+    );
+    assert!(
+        preflight.output["blocking_issues"]
+            .as_array()
+            .expect("blocking issues")
+            .iter()
+            .any(|issue| issue
+                .as_str()
+                .is_some_and(|text| text.contains("source_target.sequence")))
+    );
+}
+
+#[test]
+fn execute_services_metabion_mblock_quote_uses_fragment_config() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let request = serde_json::json!({
+        "schema": "gentle.external_service_request.v1",
+        "provider": "metabion",
+        "service_kind": "dna_fragment",
+        "source_target": {
+            "kind": "inline_dna",
+            "name": "synthetic_fragment",
+            "sequence": "ATGGCTGCTGCTTAA"
+        },
+        "return_spec": {
+            "requested_payloads": ["quote_metadata", "handoff_bundle"]
+        }
+    })
+    .to_string();
+
+    let quote = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProjectQuote {
+            request_json: request,
+        },
+    )
+    .expect("execute metabion m-block services project-quote");
+    assert!(!quote.state_changed);
+    assert_eq!(quote.output["quote_status"].as_str(), Some("handoff_ready"));
+    let csv_payload = quote.output["service_ready_bundle"]["inline_payloads"]
+        .as_array()
+        .expect("inline payloads")
+        .iter()
+        .find(|payload| payload["payload_kind"].as_str() == Some("normalized_line_items_csv"))
+        .expect("line item csv");
+    assert!(
+        csv_payload["text"]
+            .as_str()
+            .expect("csv text")
+            .contains("m-block DNA Fragments & Libraries")
     );
 }
 

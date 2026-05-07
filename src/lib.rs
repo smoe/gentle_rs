@@ -44,6 +44,8 @@ pub mod ensembl_protein;
 pub mod enzymes;
 /// Shared exon length and coding-frame cue helpers.
 pub mod exon_frame;
+/// Overlay-discoverable external-service provider configuration catalogs.
+pub mod external_service_providers;
 /// Expert-view data contracts for feature-centric deep-inspection UIs.
 pub mod feature_expert;
 /// Feature location/strand utilities used across render and engine code.

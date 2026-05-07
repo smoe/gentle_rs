@@ -4085,7 +4085,7 @@ Planned work:
    - ClawBio examples such as "show stemness-factor motif support upstream of
      this gene set" without hard-coding any one biological story
 
-### External-service / GeneArt integration track (planned post-release)
+### External-service provider/CRO integration track (planned post-release)
 
 Goal: build a vendor-neutral external-service layer in GENtle, with GeneArt as
 the first concrete provider, without turning helper/planning/protein workflows
@@ -4098,6 +4098,10 @@ GENtle-evolution plan:
   provider/CRO/eProcurement contracts, synthesisability checks, lineage-safe
   external artifacts, agent-readable handoff bundles, and planning decisions
   that can later support other providers.
+- Treat Metabion as the second provider and the proof that provider behavior
+  must be catalog-driven: DNA single-tube oligos and m-block DNA fragments/
+  libraries should be represented as WOP/email+Excel handoff routes without
+  adding vendor-specific command surfaces.
 - Near-term work should make the existing deterministic local routes excellent:
   `services providers list`, `services project-preflight`, and
   `services project-quote` should produce GeneArt-ready but provider-neutral
@@ -4165,11 +4169,19 @@ Architecture position:
   callers should provide a `return_spec` describing whether they want GenBank,
   FASTA, amino-acid sequence, quote metadata, status, vendor ids, or a full
   artifact bundle back from GENtle.
+- Provider behavior should be user-maintainable through
+  `gentle.external_service_provider_config.v1` overlay catalogs:
+  built-in assets first, then system, user, and project overrides. GUI, CLI,
+  MCP, ClawBio, JS, and Lua should consume the resulting shared provider
+  catalog rather than duplicate vendor labels, WOP/email details, validation
+  rules, or template mappings.
 
 Implementation status as of 2026-05-05:
 
 - First vendor-neutral contracts are present in `gentle-protocol`:
   `gentle.external_service_provider_catalog.v1`,
+  `gentle.external_service_provider_config.v1`,
+  `gentle.external_service_provider_config_doctor.v1`,
   `gentle.external_service_request.v1`,
   `gentle.external_service_preflight.v1`, and
   `gentle.external_service_quote.v1`.
@@ -4181,12 +4193,22 @@ Implementation status as of 2026-05-05:
   `services project-quote` are implemented as deterministic local shared-shell
   routes. They do not contact GeneArt, submit carts/orders, poll status, fetch
   QAD, or persist credentials.
+- `services providers doctor [--catalog PATH] [--output PATH]` validates
+  overlay-discovered provider config sources with source provenance, checksums,
+  and deterministic schema/required-field errors.
 - The first GeneArt catalog records:
   - API-documented but not yet implemented direct tracks for
     `dna_fragment`, `cloned_gene`, and `plasmid_reorder`
   - quote/handoff-first tracks for `mutagenesis` and `protein_expression`
   - provider dashboard/API/service documentation links and explicit account
     enablement warnings
+- The second provider, Metabion, is now cataloged through
+  `assets/external_service_providers.json` with WOP/email+Excel handoff support
+  for `dna_oligo_single_tube` and `dna_fragment` mapped to m-block DNA
+  fragments/libraries. Quote output generates redacted request JSON,
+  normalized line-item JSON/CSV, email-draft markdown, and guided WOP checklist
+  payloads. No WOP scraping, direct submission, credentials, PO, shipping, or
+  billing persistence is implemented.
 
 Portable schemas:
 
@@ -4228,6 +4250,7 @@ Shared command family:
 
 - Extend the existing `services` family instead of inventing a parallel CLI:
   - `services providers list`
+  - `services providers doctor [--catalog PATH] [--output PATH]`
   - `services project-preflight REQUEST_JSON_OR_@FILE`
   - `services project-quote REQUEST_JSON_OR_@FILE`
   - later: `services project-submit REQUEST_JSON_OR_@FILE [--mode cart|direct]`
