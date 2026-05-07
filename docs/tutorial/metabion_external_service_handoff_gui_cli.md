@@ -139,14 +139,40 @@ Treat warnings as useful handoff context, not noise. For example, missing local
 vendor Excel templates should be warnings because the WOP/email route is still
 usable with explicit human review.
 
-## Step 5: Preflight and Quote the m-block Example
+## Step 5: Export the Oligo Handoff Bundle
+
+When the preview looks sensible, write the same handoff payloads as files. The
+example path is under ignored `artifacts/` so a tutorial run does not dirty the
+repository.
+
+```bash
+cargo run --quiet --bin gentle_cli -- services project-quote \
+  @docs/examples/external_services/metabion_oligo_single_tube_request.json \
+  --output-dir artifacts/external_services/metabion_oligo_demo
+```
+
+Expected files:
+
+- `quote_report.json`
+- `01_handoff_markdown.md`
+- `02_redacted_request_json.json`
+- `03_normalized_line_items_json.json`
+- `04_normalized_line_items_csv.csv`
+- `05_email_draft_markdown.md`
+- `06_guided_wop_checklist.md`
+
+The returned quote report should also list those files in
+`service_ready_bundle.local_files[]`.
+
+## Step 6: Preflight and Quote the m-block Example
 
 ```bash
 cargo run --quiet --bin gentle_cli -- services project-preflight \
   @docs/examples/external_services/metabion_mblock_request.json
 
 cargo run --quiet --bin gentle_cli -- services project-quote \
-  @docs/examples/external_services/metabion_mblock_request.json
+  @docs/examples/external_services/metabion_mblock_request.json \
+  --output-dir artifacts/external_services/metabion_mblock_demo
 ```
 
 Expected difference from the oligo example:
@@ -157,7 +183,7 @@ Expected difference from the oligo example:
   applicable,
 - direct submission remains unavailable.
 
-## Step 6: Repeat the Same Review in the GUI
+## Step 7: Repeat the Same Review in the GUI
 
 Open GENtle and use the shared GUI inspector:
 
@@ -176,12 +202,15 @@ Then:
 6. Press `Preflight`.
 7. Press `Prepare Quote Handoff`.
 8. Inspect the payload previews and warnings.
+9. Leave or edit the `Output dir` field.
+10. Press `Export Handoff Bundle`.
+11. Confirm the generated files are listed under `Bundle files`.
 
 The GUI should not contain provider-specific business logic. If the GUI and CLI
 disagree, treat that as a bug in shared-shell plumbing or presentation, not as
 a vendor-specific GUI feature to patch separately.
 
-## Step 7: Optional Project Policy Overlay
+## Step 8: Optional Project Policy Overlay
 
 Provider behavior is meant to be locally maintainable without changing the
 GENtle source tree. To rehearse that path, copy the example overlay into a
@@ -202,7 +231,7 @@ Expected outcome:
 
 Remove or adapt the overlay before real use if it is not your lab policy.
 
-## Step 8: What to Send to Metabion Later
+## Step 9: What to Send to Metabion Later
 
 After the GENtle representation feels internally sane, a vendor-review email
 can be prepared from the generated artifacts. The useful review bundle is:
@@ -231,6 +260,8 @@ Mark this tutorial successful when all of these are true:
 - both quote calls return `handoff_ready`,
 - quote output contains normalized line-item JSON/CSV and human-readable draft
   payloads,
+- exported quote bundles contain `quote_report.json` and generated local
+  payload files,
 - GUI and CLI describe the same provider/service choices,
 - no step performs vendor submission or stores commercial secrets.
 

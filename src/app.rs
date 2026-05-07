@@ -1290,6 +1290,7 @@ struct ExternalServicesUiState {
     preflight_output: Option<serde_json::Value>,
     quote_output: Option<serde_json::Value>,
     selected_quote_payload: usize,
+    quote_output_dir: String,
 }
 
 impl Default for ExternalServicesUiState {
@@ -1305,6 +1306,8 @@ impl Default for ExternalServicesUiState {
             preflight_output: None,
             quote_output: None,
             selected_quote_payload: 0,
+            quote_output_dir: "artifacts/external_services/metabion_dna_oligo_single_tube_handoff"
+                .to_string(),
         }
     }
 }
@@ -49303,6 +49306,46 @@ mod tests {
         );
         assert_eq!(preflight["provider"].as_str(), Some("metabion"));
         assert_eq!(preflight["eligible"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn external_services_quote_export_writes_bundle_files() {
+        let temp = tempdir().expect("tempdir");
+        let mut app = GENtleApp::default();
+        app.open_external_services_dialog();
+        app.external_services_ui.selected_provider = "metabion".to_string();
+        app.external_services_ui.selected_service_kind = "dna_oligo_single_tube".to_string();
+        app.reset_external_services_request_from_selection();
+        let output_dir = temp.path().join("metabion_gui_export");
+        app.external_services_ui.quote_output_dir = output_dir.to_string_lossy().to_string();
+
+        app.export_external_services_quote_bundle();
+
+        assert!(output_dir.join("quote_report.json").is_file());
+        assert!(output_dir.join("01_handoff_markdown.md").is_file());
+        assert!(
+            output_dir
+                .join("04_normalized_line_items_csv.csv")
+                .is_file()
+        );
+        let quote = app
+            .external_services_ui
+            .quote_output
+            .as_ref()
+            .expect("quote output");
+        assert_eq!(quote["quote_status"].as_str(), Some("handoff_ready"));
+        assert!(
+            quote["service_ready_bundle"]["local_files"]
+                .as_array()
+                .expect("local files")
+                .iter()
+                .any(|file| file["artifact_kind"].as_str() == Some("quote_report_json"))
+        );
+        assert!(
+            app.external_services_ui
+                .status
+                .contains("Exported quote handoff bundle")
+        );
     }
 
     #[test]
