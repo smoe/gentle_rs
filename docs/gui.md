@@ -195,9 +195,13 @@ contracts, not a separate ordering implementation.
   creates a provider-neutral starter request for the selected provider/service.
 - `Preflight` runs `services project-preflight`; `Prepare Quote Handoff` runs
   `services project-quote`.
+- `Export Handoff Bundle` runs `services project-quote --output-dir DIR` and
+  writes deterministic local handoff files, with generated paths reflected in
+  the returned quote bundle's `local_files[]`.
 - Quote output previews inline handoff payloads such as redacted request JSON,
   normalized line-item JSON/CSV, email draft markdown, and guided WOP checklist
-  when the active provider config supplies those mappings.
+  when the active provider config supplies those mappings. When a bundle has
+  been exported, the same panel also lists the generated files.
 - The window never scrapes portals, submits orders, looks up credentials, or
   stores PO/account/shipping/billing details in project state.
 

@@ -24,7 +24,8 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
-    env,
+    env, fs,
+    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -1083,6 +1084,138 @@ pub fn external_service_project_quote(
         warnings,
         preflight,
     })
+}
+
+fn external_service_payload_extension(payload: &ExternalServiceInlinePayload) -> &'static str {
+    let content_type = payload.content_type.to_ascii_lowercase();
+    let payload_kind = payload.payload_kind.to_ascii_lowercase();
+    if content_type.contains("json") || payload_kind.contains("json") {
+        "json"
+    } else if content_type.contains("csv") || payload_kind.contains("csv") {
+        "csv"
+    } else if content_type.contains("markdown")
+        || payload_kind.contains("markdown")
+        || payload_kind.contains("checklist")
+    {
+        "md"
+    } else if content_type.contains("html") {
+        "html"
+    } else {
+        "txt"
+    }
+}
+
+fn safe_external_service_artifact_stem(value: &str) -> String {
+    let mut out = String::new();
+    let mut previous_was_sep = false;
+    for ch in value.chars() {
+        let mapped = if ch.is_ascii_alphanumeric() {
+            Some(ch.to_ascii_lowercase())
+        } else if ch == '-' || ch == '_' {
+            Some('_')
+        } else {
+            Some('_')
+        };
+        if let Some(mapped) = mapped {
+            if mapped == '_' {
+                if previous_was_sep {
+                    continue;
+                }
+                previous_was_sep = true;
+            } else {
+                previous_was_sep = false;
+            }
+            out.push(mapped);
+        }
+    }
+    let trimmed = out.trim_matches('_').to_string();
+    if trimmed.is_empty() {
+        "payload".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn path_to_report_string(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
+/// Materialize inline quote payloads as a deterministic file bundle.
+///
+/// The quote report remains the source of truth: generated file references are
+/// appended to `service_ready_bundle.local_files`, and the final
+/// `quote_report.json` contains those references. This is intentionally still a
+/// local handoff/export step, not vendor submission.
+pub fn write_external_service_quote_bundle(
+    report: &mut ExternalServiceQuoteReport,
+    output_dir: impl AsRef<Path>,
+) -> Result<(), String> {
+    let output_dir = output_dir.as_ref();
+    fs::create_dir_all(output_dir).map_err(|error| {
+        format!(
+            "Could not create external-service quote bundle directory '{}': {error}",
+            output_dir.display()
+        )
+    })?;
+    let output_dir = output_dir.canonicalize().map_err(|error| {
+        format!(
+            "Could not resolve external-service quote bundle directory '{}': {error}",
+            output_dir.display()
+        )
+    })?;
+
+    let mut generated_files = Vec::new();
+    for (idx, payload) in report
+        .service_ready_bundle
+        .inline_payloads
+        .iter()
+        .enumerate()
+    {
+        let stem = safe_external_service_artifact_stem(&payload.payload_kind);
+        let extension = external_service_payload_extension(payload);
+        let file_name = format!("{:02}_{}.{}", idx + 1, stem, extension);
+        let path: PathBuf = output_dir.join(file_name);
+        fs::write(&path, payload.text.as_bytes()).map_err(|error| {
+            format!(
+                "Could not write external-service quote payload '{}': {error}",
+                path.display()
+            )
+        })?;
+        generated_files.push(ExternalServiceArtifactRef {
+            artifact_kind: payload.payload_kind.clone(),
+            path: path_to_report_string(&path),
+            checksum_sha256: None,
+            description: payload.description.clone(),
+        });
+    }
+
+    report
+        .service_ready_bundle
+        .local_files
+        .extend(generated_files);
+    let quote_report_path = output_dir.join("quote_report.json");
+    report
+        .service_ready_bundle
+        .local_files
+        .push(ExternalServiceArtifactRef {
+            artifact_kind: "quote_report_json".to_string(),
+            path: path_to_report_string(&quote_report_path),
+            checksum_sha256: None,
+            description:
+                "Complete external-service quote report with generated bundle file references."
+                    .to_string(),
+        });
+
+    let mut text = serde_json::to_string_pretty(report)
+        .map_err(|error| format!("Could not serialize external-service quote report: {error}"))?;
+    text.push('\n');
+    fs::write(&quote_report_path, text).map_err(|error| {
+        format!(
+            "Could not write external-service quote report '{}': {error}",
+            quote_report_path.display()
+        )
+    })?;
+    Ok(())
 }
 
 fn summarize_availability_status(lifecycle_status: &str) -> String {

@@ -1156,7 +1156,7 @@ than GeneArt-, metabion-, or portal-specific fields.
     warnings, and deterministic validation errors
 - `gentle.external_service_request.v1`
   - accepted by `services project-preflight REQUEST_JSON_OR_@FILE` and
-    `services project-quote REQUEST_JSON_OR_@FILE`
+    `services project-quote REQUEST_JSON_OR_@FILE [--output-dir DIR]`
   - fields: `schema`, `provider`, `service_kind`, `source_target`,
     optional `optimization_target`, optional `vector_spec`, optional
     `delivery_options`, optional `commercial_context_ref`, `return_spec`,
@@ -1196,6 +1196,11 @@ than GeneArt-, metabion-, or portal-specific fields.
     m-block DNA fragments/libraries as quote/handoff artifacts only; template
     URLs are advisory, and missing local templates produce warnings rather than
     hard quote-handoff failures
+  - when `--output-dir DIR` is supplied, inline handoff payloads are also
+    materialized as deterministic local files under `DIR`; the returned quote
+    report records those generated files in
+    `service_ready_bundle.local_files[]` and writes a complete
+    `quote_report.json` into the same bundle directory
 
 ## JASPAR expert contract
 

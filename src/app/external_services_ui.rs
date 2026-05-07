@@ -31,6 +31,10 @@ impl GENtleApp {
         if self.external_services_ui.request_json.trim().is_empty() {
             self.reset_external_services_request_from_selection();
         }
+        if self.external_services_ui.quote_output_dir.trim().is_empty() {
+            self.external_services_ui.quote_output_dir =
+                self.default_external_service_quote_output_dir();
+        }
         self.mark_window_open_or_focus(Self::external_services_viewport_id(), was_open);
     }
 
@@ -104,6 +108,43 @@ impl GENtleApp {
                     .cloned()
                     .or_else(|| provider.capabilities.first().cloned())
             })
+    }
+
+    fn safe_external_service_output_segment(value: &str) -> String {
+        let mut out = String::new();
+        let mut previous_was_sep = false;
+        for ch in value.chars() {
+            let mapped = if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            };
+            if mapped == '_' {
+                if previous_was_sep {
+                    continue;
+                }
+                previous_was_sep = true;
+            } else {
+                previous_was_sep = false;
+            }
+            out.push(mapped);
+        }
+        let trimmed = out.trim_matches('_');
+        if trimmed.is_empty() {
+            "handoff".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn default_external_service_quote_output_dir(&self) -> String {
+        let provider = Self::safe_external_service_output_segment(
+            self.external_services_ui.selected_provider.as_str(),
+        );
+        let service_kind = Self::safe_external_service_output_segment(
+            self.external_services_ui.selected_service_kind.as_str(),
+        );
+        format!("artifacts/external_services/{provider}_{service_kind}_handoff")
     }
 
     fn ensure_external_services_selection_from_catalog(&mut self) {
@@ -235,6 +276,8 @@ impl GENtleApp {
         self.external_services_ui.preflight_output = None;
         self.external_services_ui.quote_output = None;
         self.external_services_ui.selected_quote_payload = 0;
+        self.external_services_ui.quote_output_dir =
+            self.default_external_service_quote_output_dir();
         self.external_services_ui.status = format!(
             "Prepared editable request template for {} / {}",
             self.external_services_ui.selected_provider,
@@ -272,6 +315,7 @@ impl GENtleApp {
     fn run_external_services_quote(&mut self) {
         let command = ShellCommand::ServicesProjectQuote {
             request_json: self.external_services_ui.request_json.clone(),
+            output_dir: None,
         };
         match self.execute_shared_shell_command_json(&command) {
             Ok((output, _)) => {
@@ -294,6 +338,45 @@ impl GENtleApp {
             Err(err) => {
                 self.external_services_ui.status =
                     format!("External-service quote handoff failed: {err}");
+            }
+        }
+    }
+
+    pub(super) fn export_external_services_quote_bundle(&mut self) {
+        if self.external_services_ui.quote_output_dir.trim().is_empty() {
+            self.external_services_ui.quote_output_dir =
+                self.default_external_service_quote_output_dir();
+        }
+        let output_dir = self
+            .external_services_ui
+            .quote_output_dir
+            .trim()
+            .to_string();
+        let command = ShellCommand::ServicesProjectQuote {
+            request_json: self.external_services_ui.request_json.clone(),
+            output_dir: Some(output_dir.clone()),
+        };
+        match self.execute_shared_shell_command_json(&command) {
+            Ok((output, _)) => {
+                let quote_status = output
+                    .get("quote_status")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string();
+                let file_count = output
+                    .pointer("/service_ready_bundle/local_files")
+                    .and_then(serde_json::Value::as_array)
+                    .map(Vec::len)
+                    .unwrap_or(0);
+                self.external_services_ui.quote_output = Some(output);
+                self.external_services_ui.selected_quote_payload = 0;
+                self.external_services_ui.status = format!(
+                    "Exported quote handoff bundle to {output_dir}: status={quote_status}, files={file_count}"
+                );
+            }
+            Err(err) => {
+                self.external_services_ui.status =
+                    format!("External-service quote bundle export failed: {err}");
             }
         }
     }
@@ -455,6 +538,26 @@ impl GENtleApp {
             .show(ui, |ui| {
                 ui.monospace(text);
             });
+        let local_files = quote
+            .pointer("/service_ready_bundle/local_files")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if !local_files.is_empty() {
+            ui.separator();
+            ui.strong("Bundle files");
+            for file in &local_files {
+                let kind = file
+                    .get("artifact_kind")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("artifact");
+                let path = file
+                    .get("path")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("-");
+                ui.monospace(format!("{kind}: {path}"));
+            }
+        }
     }
 
     fn render_external_services_contents(&mut self, ui: &mut Ui) {
@@ -535,6 +638,23 @@ impl GENtleApp {
                 .clicked()
             {
                 self.run_external_services_quote();
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Output dir");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.external_services_ui.quote_output_dir)
+                    .desired_width(420.0),
+            )
+            .on_hover_text(
+                "Directory for generated quote handoff files; defaults under ignored artifacts/",
+            );
+            if ui
+                .button("Export Handoff Bundle")
+                .on_hover_text("Run `services project-quote --output-dir DIR` and write bundle files locally; no order is submitted")
+                .clicked()
+            {
+                self.export_external_services_quote_bundle();
             }
         });
 

@@ -18,3 +18,14 @@ Current examples:
 Both examples are local, deterministic, and non-mutating. GENtle prepares
 review artifacts only; it does not submit orders, scrape WOP, store
 credentials, or persist PO/shipping/billing details.
+
+To write a local handoff bundle from either request, use:
+
+```bash
+cargo run --quiet --bin gentle_cli -- services project-quote \
+  @docs/examples/external_services/metabion_oligo_single_tube_request.json \
+  --output-dir artifacts/external_services/metabion_oligo_demo
+```
+
+The output directory is created if needed and the returned quote report records
+generated files in `service_ready_bundle.local_files[]`.

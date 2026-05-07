@@ -4235,6 +4235,12 @@ Implementation status as of 2026-05-05:
   capability list, preflight, quote-handoff payloads, GUI parity, and project
   overlay behavior, while keeping direct submission and commercial secrets out
   of scope.
+- Quote handoff bundles can now be exported as local files via
+  `services project-quote REQUEST_JSON_OR_@FILE --output-dir DIR` and the GUI's
+  `Export Handoff Bundle` action. Generated payload files and
+  `quote_report.json` are recorded back into the shared
+  `service_ready_bundle.local_files[]` list so CLI, GUI, ClawBio, and agents see
+  the same artifact references.
 
 Portable schemas:
 
@@ -4278,7 +4284,7 @@ Shared command family:
   - `services providers list`
   - `services providers doctor [--catalog PATH] [--output PATH]`
   - `services project-preflight REQUEST_JSON_OR_@FILE`
-  - `services project-quote REQUEST_JSON_OR_@FILE`
+  - `services project-quote REQUEST_JSON_OR_@FILE [--output-dir DIR]`
   - later: `services project-submit REQUEST_JSON_OR_@FILE [--mode cart|direct]`
   - later: `services project-status PROVIDER PROJECT_ID`
   - later: `services project-artifacts PROVIDER PROJECT_ID`

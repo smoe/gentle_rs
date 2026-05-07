@@ -11,7 +11,7 @@ pub(super) const USAGE: &str = "\
   gentle_cli services providers list
   gentle_cli services providers doctor [--catalog PATH] [--output PATH]
   gentle_cli services project-preflight REQUEST_JSON_OR_@FILE
-  gentle_cli services project-quote REQUEST_JSON_OR_@FILE
+  gentle_cli services project-quote REQUEST_JSON_OR_@FILE [--output-dir DIR]
 
   gentle_cli services handoff [--scope NAME] [--output PATH]
   gentle_cli services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]
