@@ -147,6 +147,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--support-length-genes",
+        default=None,
+        help=(
+            "Optional comma-separated gene list for support-read length symbols. "
+            "Bars are still drawn for all genes."
+        ),
+    )
+    parser.add_argument(
         "--label-column",
         choices=["sample_id", "sample_name", "run_accession"],
         default="sample_id",
@@ -277,20 +285,47 @@ def normalize_support_row(
     seed_high = optional_float(
         row,
         "strict_seed_passed_q90_read_bp",
+        "strict_seed_passed_q90_read_length_bp",
+        "strict_seed_passed_q90_bp",
         "seed_passed_q90_read_bp",
+        "seed_passed_q90_read_length_bp",
+        "seed_passed_q90_bp",
         "strict_seed_q90_bp",
+        "strict_seed_q90_read_bp",
+        "strict_seed_q90_read_length_bp",
     )
     seed_max = optional_float(
         row,
         "strict_seed_passed_max_read_bp",
+        "strict_seed_passed_max_read_length_bp",
+        "strict_seed_passed_q100_read_bp",
+        "strict_seed_passed_q100_read_length_bp",
+        "strict_seed_passed_q100_bp",
+        "strict_seed_passed_max_bp",
         "seed_passed_max_read_bp",
+        "seed_passed_max_read_length_bp",
+        "seed_passed_q100_read_bp",
+        "seed_passed_q100_read_length_bp",
+        "seed_passed_q100_bp",
+        "seed_passed_max_bp",
         "strict_seed_q100_bp",
+        "strict_seed_q100_read_bp",
+        "strict_seed_q100_read_length_bp",
+        "strict_seed_max_read_bp",
+        "strict_seed_max_read_length_bp",
+        "strict_seed_max_bp",
     )
     seed_mean = optional_float(
         row,
         "strict_seed_passed_mean_read_bp",
+        "strict_seed_passed_mean_read_length_bp",
+        "strict_seed_passed_mean_bp",
         "seed_passed_mean_read_bp",
+        "seed_passed_mean_read_length_bp",
+        "seed_passed_mean_bp",
         "strict_seed_mean_bp",
+        "strict_seed_mean_read_bp",
+        "strict_seed_mean_read_length_bp",
     )
     if seed_high is not None or seed_max is not None or seed_mean is not None:
         out["support_length_source"] = "strict_seed_passed"
@@ -298,9 +333,38 @@ def normalize_support_row(
         out["support_max_read_bp"] = optional_number_text(seed_max)
         out["support_mean_read_bp"] = optional_number_text(seed_mean)
     else:
-        accepted_high = optional_float(row, "accepted_target_q90_read_bp", "accepted_target_p95_read_bp")
-        accepted_max = optional_float(row, "accepted_target_max_read_bp")
-        accepted_mean = optional_float(row, "accepted_target_mean_read_bp")
+        accepted_high = optional_float(
+            row,
+            "accepted_target_q90_read_bp",
+            "accepted_target_q90_read_length_bp",
+            "accepted_target_p95_read_bp",
+            "accepted_target_p95_read_length_bp",
+            "accepted_tp73_q90_read_bp",
+            "accepted_tp73_q90_read_length_bp",
+        )
+        accepted_max = optional_float(
+            row,
+            "accepted_target_max_read_bp",
+            "accepted_target_max_read_length_bp",
+            "accepted_target_q100_read_bp",
+            "accepted_target_q100_read_length_bp",
+            "accepted_target_max_bp",
+            "accepted_tp73_max_read_bp",
+            "accepted_tp73_max_read_length_bp",
+            "accepted_tp73_q100_read_bp",
+            "accepted_tp73_q100_read_length_bp",
+            "accepted_max_bp",
+        )
+        accepted_mean = optional_float(
+            row,
+            "accepted_target_mean_read_bp",
+            "accepted_target_mean_read_length_bp",
+            "accepted_target_mean_bp",
+            "accepted_tp73_mean_read_bp",
+            "accepted_tp73_mean_read_length_bp",
+            "accepted_tp73_mean_bp",
+            "accepted_mean_bp",
+        )
         if accepted_high is not None or accepted_max is not None or accepted_mean is not None:
             out["support_length_source"] = "accepted_target"
             out["support_high_read_bp"] = optional_number_text(accepted_high)
@@ -555,6 +619,7 @@ def render_svg(
     support_length_source: str,
     support_length_scale: str,
     support_length_display: str,
+    support_length_genes: set[str],
 ) -> str:
     rows_by_gene_run = {
         (str(row.get("gene")), str(row.get("run_accession"))): row
@@ -620,10 +685,14 @@ def render_svg(
             return True
         return str(row.get("support_length_source") or "") == "strict_seed_passed"
 
+    def support_gene_allowed(gene: str) -> bool:
+        return not support_length_genes or gene.upper() in support_length_genes
+
     support_length_values = [
         raw
         for row in rows_by_gene_run.values()
-        if support_source_allowed(row)
+        if support_gene_allowed(str(row.get("gene") or ""))
+        and support_source_allowed(row)
         and (raw := value(row, support_length_key)) is not None and raw > 0
     ]
     support_length_raw_max = max(support_length_values) if support_length_values else 0.0
@@ -769,6 +838,8 @@ def render_svg(
 
     if support_length_raw_max > 0:
         for gene_idx, gene in enumerate(genes):
+            if not support_gene_allowed(gene):
+                continue
             points: list[tuple[float, float, str, float, str]] = []
             for idx, run in enumerate(runs):
                 row = rows_by_gene_run.get((gene, run))
@@ -864,6 +935,11 @@ def main() -> int:
     merge_read_length_context(rows)
     rows.sort(key=lambda row: (sort_key_for_run(str(row.get("run_accession") or "")), str(row.get("gene") or "")))
     validate_read_length_quantiles(rows, "gene-family canonical table")
+    support_length_genes = {
+        gene.strip().upper()
+        for gene in (args.support_length_genes or "").split(",")
+        if gene.strip()
+    }
 
     write_family_tsv(rows, output_tsv)
     svg = render_svg(
@@ -878,6 +954,7 @@ def main() -> int:
         args.support_length_source,
         args.support_length_scale,
         args.support_length_display,
+        support_length_genes,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(svg, encoding="utf-8")

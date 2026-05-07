@@ -117,6 +117,10 @@ Useful options:
   are drawn as independent symbols or connected lines. The default is `points`,
   because sparse seed-passed samples should not imply a continuous trend across
   missing samples.
+- `--support-length-genes TP63,TP73`: optionally draw support-read length
+  symbols for only a subset of genes while keeping all gene bars. This is useful
+  when one older input lacks strict seed-passed length summaries or only has
+  downstream accepted-target fallback lengths.
 - `--label-column sample_id|sample_name|run_accession`: x-axis labels.
 - `--output-tsv PATH`: canonical merged family table. Defaults to the SVG path
   with `.tsv` extension.
@@ -204,6 +208,7 @@ python3 scripts/plot_pancreas_gene_family.py \
   --support-length-source strict_seed_passed \
   --support-length-scale log \
   --support-length-display points \
+  --support-length-genes TP63,TP73 \
   --output "$WORK/figures/p53_family_seed_passed_grouped.svg"
 ```
 
