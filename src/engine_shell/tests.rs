@@ -41,6 +41,7 @@ use crate::test_support::{
     write_stored_zip_archive,
 };
 use gb_io::seq::{Feature, Location};
+use serde::Deserialize;
 use std::env;
 use std::fs;
 #[cfg(unix)]
@@ -53,6 +54,498 @@ use tempfile::tempdir;
 
 static JASPAR_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
 static ATTRACT_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
+
+#[derive(Debug, Deserialize)]
+struct GlossaryFixture {
+    commands: Vec<GlossaryCommandFixture>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GlossaryCommandFixture {
+    path: String,
+    usage: String,
+    interfaces: Vec<String>,
+}
+
+fn glossary_fixture() -> GlossaryFixture {
+    serde_json::from_str(include_str!("../../docs/glossary.json")).expect("parse glossary fixture")
+}
+
+fn is_cli_glossary_command(command: &GlossaryCommandFixture) -> bool {
+    command
+        .interfaces
+        .iter()
+        .any(|interface| interface == "cli-shell" || interface == "cli-direct")
+}
+
+fn option_flags_from_usage(usage: &str) -> Vec<(String, Option<String>)> {
+    let normalized = usage
+        .replace(['[', ']', '(', ')', '`'], " ")
+        .replace("...", " ");
+    let tokens = normalized
+        .split_whitespace()
+        .map(|token| token.trim_matches(|c: char| c == ',' || c == ';'))
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    let mut flags = Vec::new();
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        let token = tokens[idx];
+        if !token.starts_with("--") {
+            idx += 1;
+            continue;
+        }
+        for raw_flag in token.split('|') {
+            let flag =
+                raw_flag.trim_matches(|c: char| c == ',' || c == ';' || c == '\'' || c == '"');
+            if !flag.starts_with("--") {
+                continue;
+            }
+            let value = tokens
+                .get(idx + 1)
+                .and_then(|next| option_value_for_following_token(flag, next));
+            flags.push((flag.to_string(), value));
+        }
+        idx += 1;
+    }
+    flags.sort_by(|left, right| left.0.cmp(&right.0));
+    flags.dedup_by(|left, right| left.0 == right.0);
+    flags
+}
+
+fn option_value_for_following_token(flag: &str, raw_next: &str) -> Option<String> {
+    let next =
+        raw_next.trim_matches(|c: char| c == '[' || c == ']' || c == '(' || c == ')' || c == ',');
+    if next.is_empty()
+        || next == "|"
+        || next.starts_with("--")
+        || next.starts_with('[')
+        || next.starts_with('(')
+    {
+        return None;
+    }
+    if next == "..."
+        || matches!(
+            flag,
+            "--all"
+                | "--allow-auto-exec"
+                | "--allow-negative"
+                | "--allow-reverse-complement"
+                | "--append"
+                | "--apply-5prime-g-extension"
+                | "--block"
+                | "--both"
+                | "--cdna-poly-t-flip"
+                | "--clear"
+                | "--clear-existing"
+                | "--commercial-only"
+                | "--continue-on-error"
+                | "--desc"
+                | "--deduplicate-fragments"
+                | "--download-files"
+                | "--drop-intermediate-fastq"
+                | "--execute-all"
+                | "--fail-fast"
+                | "--fetch-remote"
+                | "--helpers"
+                | "--include-genomic-annotation"
+                | "--include-orphans"
+                | "--include-qualifiers"
+                | "--include-remote-metadata"
+                | "--include-source"
+                | "--latest"
+                | "--materialize-products"
+                | "--no-cdna-poly-t-flip"
+                | "--no-deduplicate-fragments"
+                | "--no-include-genomic-annotation"
+                | "--no-peaks"
+                | "--no-qc"
+                | "--no-resume-from-checkpoint"
+                | "--no-roi-seed-capture"
+                | "--no-signal"
+                | "--normalize"
+                | "--no-normalize"
+                | "--passed-only"
+                | "--predict-only"
+                | "--prepare-sra"
+                | "--references"
+                | "--resume-from-checkpoint"
+                | "--roi-seed-capture"
+                | "--strict"
+                | "--validate-only"
+                | "--with-report"
+        )
+    {
+        return None;
+    }
+    Some(sample_value_for_usage_token(flag, next))
+}
+
+fn sample_value_for_usage_token(flag: &str, token: &str) -> String {
+    if flag == "--strand" && token.contains("+|-") {
+        return "+".to_string();
+    }
+    if let Some(choice) = token.split('|').next().filter(|choice| !choice.is_empty()) {
+        if choice != token {
+            let choice = choice.trim_matches('\'');
+            return if choice == "START..END" {
+                "1..10".to_string()
+            } else if choice.chars().all(|ch| ch.is_ascii_digit()) {
+                choice.to_string()
+            } else if choice
+                .chars()
+                .any(|ch| ch.is_ascii_lowercase() || matches!(ch, '_' | '-' | '.'))
+            {
+                choice.to_string()
+            } else {
+                sample_value_for_usage_token(flag, choice)
+            };
+        }
+    }
+    if token
+        .chars()
+        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '_' | '-' | '.'))
+        && token
+            .chars()
+            .any(|ch| ch.is_ascii_lowercase() || matches!(ch, '_' | '-' | '.'))
+    {
+        return token.to_string();
+    }
+    match flag {
+        "--allele" => "reference".to_string(),
+        "--analysis-format" | "--format" => "fasta".to_string(),
+        "--backend" => "internal".to_string(),
+        "--category" | "--categories" => "demo".to_string(),
+        "--cohort" => "all".to_string(),
+        "--collection" => "vertebrates".to_string(),
+        "--collapse" => "gene".to_string(),
+        "--complete-rule" => "near".to_string(),
+        "--coordinate-mode" => "auto".to_string(),
+        "--correlation-metric" => "pearson".to_string(),
+        "--direction" => "max".to_string(),
+        "--effect-filter" => "all_aligned".to_string(),
+        "--emit" => "local".to_string(),
+        "--feature-boundary" => "any".to_string(),
+        "--feature-geometry" => "feature_span".to_string(),
+        "--fragment-max-parts" => "0".to_string(),
+        "--geometry" => "repeat_midpoint".to_string(),
+        "--input-port" => "input:sequence".to_string(),
+        "--kind" => "gene".to_string(),
+        "--layout" | "--read-layout" => "single_end".to_string(),
+        "--level" => "probeset".to_string(),
+        "--mode" => "global".to_string(),
+        "--model" => "at_richness".to_string(),
+        "--molecule" => "dna".to_string(),
+        "--origin-mode" => "single_gene".to_string(),
+        "--output-port" => "output:sequence".to_string(),
+        "--path" | "--output" | "--script" => "out.json".to_string(),
+        "--plate" => "96".to_string(),
+        "--preset" => "compact_cards".to_string(),
+        "--profile" => "nanopore_cdna_v1".to_string(),
+        "--pwm-mapping" => "strict_same_length".to_string(),
+        "--ranking-metric" => "raw_pearson".to_string(),
+        "--report-mode" => "seed_passed_only".to_string(),
+        "--return" => "genbank".to_string(),
+        "--scale" => "linear".to_string(),
+        "--scope" => "all_overlapping_any_strand".to_string(),
+        "--score-bin-variant" | "--variant" => "all_scored".to_string(),
+        "--score-kind" => "llr_bits".to_string(),
+        "--selection" => "seed_passed".to_string(),
+        "--source" => "auto".to_string(),
+        "--sort" => "rank".to_string(),
+        "--speed-mark" => "fast".to_string(),
+        "--speed-profile" => "human".to_string(),
+        "--state-mode" => "none".to_string(),
+        "--status" => "pending".to_string(),
+        "--strand" => "any".to_string(),
+        "--strand-relation" => "any".to_string(),
+        "--target-gene" | "--target-gene-id" | "--gene" => "TP73".to_string(),
+        "--template" => "storage_pcr_tube_rack".to_string(),
+        "--tie-break" => "seq_start_end".to_string(),
+        "--topology" => "linear".to_string(),
+        "--transcript-order" => "transcript_id".to_string(),
+        "--input" | "--request" if token.contains("JSON") => "{}".to_string(),
+        _ => match token {
+            "A1" | "B1" => token.to_string(),
+            "CSV" => "A,B".to_string(),
+            "DNA" | "QUERY_SEQUENCE" | "SEQ" => "ACGTACGTACGT".to_string(),
+            "EXPRESSION" => "gc_fraction".to_string(),
+            "F" | "Q" | "VALUE" => "0.5".to_string(),
+            "JSON"
+            | "JSON_OR_@FILE"
+            | "REQUEST_JSON_OR_@FILE"
+            | "SCRIPT_OR_@FILE"
+            | "WORKFLOW.json"
+            | "<workflow-json-or-@file>"
+            | "<operation-json-or-@file>" => "{}".to_string(),
+            "FILE.json" | "GROUP.json" | "OUTPUT.json" | "TEMPLATE.json" => "out.json".to_string(),
+            "ID" | "REPORT_ID" | "RUN_ID" | "TRACE_ID" => "id".to_string(),
+            "i,j,k" => "1,2".to_string(),
+            "+" | "-" => token.to_string(),
+            "KEY=VALUE" => "key=value".to_string(),
+            "N" | "M" | "ROWS" | "COLUMNS" | "START" | "END" | "START_0BASED" | "END_0BASED"
+            | "START_1BASED" | "END_1BASED" | "FEATURE_ID" | "CUT_POS_1BASED" | "RESIDUE_START"
+            | "RESIDUE_END" | "LENGTH_BP" | "LEFT_END_0BASED" | "RECORD_INDEX" => "1".to_string(),
+            "START..END" | "RANGE" => "1..10".to_string(),
+            "PROTOCOL_ID" => "gibson.two_fragment".to_string(),
+            "TARGET" => "prepared-references".to_string(),
+            "TEXT" | "NAME" | "TOKEN" | "QUERY" | "SYMBOL" | "SPECIES" | "SECTION" | "CLASS"
+            | "FAMILY" | "ALIAS" | "CHR" | "PREFIX" | "ROUTINE_ID" | "SUGGESTION_ID"
+            | "GROUP_ID" | "GUIDE_SET_ID" | "OLIGO_SET_ID" | "TEMPLATE_ID" | "MOTIF"
+            | "PANEL_ID" | "PROJECTION_ID" | "ENTRY_ID" | "DATASET_ID" | "GENOME_ID"
+            | "HELPER_ID" | "SEQ_ID" | "TRANSCRIPT_ID" => "demo".to_string(),
+            "INDEX" => "0".to_string(),
+            value if value.ends_with(".svg") => "out.svg".to_string(),
+            value if value.ends_with(".png") => "out.png".to_string(),
+            value if value.ends_with(".tsv") => "out.tsv".to_string(),
+            value if value.ends_with(".fa") || value.ends_with(".fa[.gz]") => {
+                "reads.fa".to_string()
+            }
+            value if value.ends_with(".fasta") => "reads.fa".to_string(),
+            value if value.ends_with(".json") => "out.json".to_string(),
+            value if value.ends_with(".bed") => "track.bed".to_string(),
+            value if value.ends_with(".pool.gentle.json") => "pool.gentle.json".to_string(),
+            value if value.ends_with(".rmsk.json") => "rmsk.json".to_string(),
+            value if value.ends_with(".scad") => "out.scad".to_string(),
+            value if value.contains('|') => sample_value_for_usage_token(flag, value),
+            _ => "demo".to_string(),
+        },
+    }
+}
+
+fn split_required_usage_tokens(usage: &str) -> Vec<String> {
+    let mut required = String::new();
+    let mut bracket_depth = 0usize;
+    let mut paren_depth = 0usize;
+    let chars = usage.chars().collect::<Vec<_>>();
+    for (idx, ch) in chars.iter().copied().enumerate() {
+        match ch {
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            '(' if bracket_depth == 0 => {
+                paren_depth += 1;
+                required.push(' ');
+            }
+            ')' if bracket_depth == 0 => {
+                paren_depth = paren_depth.saturating_sub(1);
+                required.push(' ');
+            }
+            '|' if bracket_depth == 0
+                && paren_depth == 0
+                && chars
+                    .get(idx.wrapping_sub(1))
+                    .is_some_and(|prev| prev.is_whitespace())
+                && chars.get(idx + 1).is_some_and(|next| next.is_whitespace()) =>
+            {
+                break;
+            }
+            _ if bracket_depth == 0 => required.push(ch),
+            _ => {}
+        }
+    }
+    required
+        .replace(['(', ')', '`'], " ")
+        .split_whitespace()
+        .map(|token| {
+            token
+                .trim_matches(|c: char| c == ',' || c == ';' || c == '\'' || c == '"')
+                .trim_start_matches('<')
+                .trim_end_matches('>')
+                .to_string()
+        })
+        .filter(|token| !token.is_empty() && token != "...")
+        .collect()
+}
+
+fn command_tokens_from_glossary_usage(path: &str, usage: &str) -> Vec<String> {
+    let path_tokens = path.split_whitespace().collect::<Vec<_>>();
+    split_required_usage_tokens(usage)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, token)| {
+            let token = token
+                .split('|')
+                .next()
+                .unwrap_or(token.as_str())
+                .to_string();
+            if token.is_empty() {
+                None
+            } else if path_tokens
+                .get(idx)
+                .is_some_and(|path_token| *path_token == token)
+            {
+                Some(token)
+            } else if token.starts_with("--") {
+                Some(token)
+            } else {
+                Some(sample_value_for_usage_token("", &token))
+            }
+        })
+        .collect()
+}
+
+fn smoke_command_override(path: &str) -> Option<&'static str> {
+    match path {
+        "screenshot-window" => Some("screenshot-window out.png"),
+        "cache clear" => Some("cache clear all-prepared-in-cache"),
+        "transcripts derive" => Some("transcripts derive seq --feature-id 1"),
+        "guides put" => Some("guides put guide_set --json {}"),
+        "features tfbs-score-tracks-svg" => {
+            Some("features tfbs-score-tracks-svg seq out.svg --motif SP1")
+        }
+        "cutrun inspect-regulatory-support" => {
+            Some("cutrun inspect-regulatory-support seq --dataset dataset")
+        }
+        "seq-confirm run" => Some("seq-confirm run expected --reads read1"),
+        "seq-primer suggest" => Some("seq-primer suggest expected --primers primer1"),
+        "candidates generate-between-anchors" => Some(
+            "candidates generate-between-anchors set seq --length 20 --anchor-a-pos 1 --anchor-b-pos 40",
+        ),
+        "candidates score-weighted" => {
+            Some("candidates score-weighted input metric --term tm:1.0:max")
+        }
+        "candidates filter" => Some("candidates filter input output --metric score --min 1"),
+        "candidates set-op" => Some("candidates set-op union left right output"),
+        "macros run" => Some("macros run script_body"),
+        "macros template-put" => Some("macros template-put template --script script_body"),
+        "candidates macro" => Some("candidates macro script_body"),
+        "candidates template-put" => Some("candidates template-put template --script script_body"),
+        _ => None,
+    }
+}
+
+fn smoke_command_line_for_glossary_command(command: &GlossaryCommandFixture) -> String {
+    if let Some(line) = smoke_command_override(&command.path) {
+        return line.to_string();
+    }
+    let mut tokens = command_tokens_from_glossary_usage(&command.path, &command.usage);
+    if tokens.is_empty() {
+        tokens = command
+            .path
+            .split_whitespace()
+            .map(|token| token.to_string())
+            .collect();
+    }
+    tokens.join(" ")
+}
+
+fn skip_glossary_parse_smoke(path: &str) -> bool {
+    matches!(path, "screenshot-window")
+}
+
+fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
+    matches!(path, "inspect-feature-expert" | "render-feature-expert-svg")
+        || matches!(
+            (path, flag),
+            (
+                "genomes blast"
+                    | "genomes blast-start"
+                    | "genomes blast-track"
+                    | "helpers blast"
+                    | "helpers blast-start"
+                    | "helpers blast-track",
+                "--options-file"
+            ) | ("cutrun interpret", "--dataset")
+                | (
+                    "features tfbs-score-tracks-svg",
+                    "--end" | "--output" | "--sequence-text" | "--start"
+                )
+                | (
+                    "candidates generate-between-anchors",
+                    "--anchor-a-json" | "--anchor-b-json"
+                )
+        )
+}
+
+fn shell_command_line_with_option(base: &str, flag: &str, value: Option<&str>) -> Option<String> {
+    let base_tokens = split_shell_words(base).expect("split smoke base command");
+    if base_tokens.iter().any(|token| token == flag) {
+        return None;
+    }
+    let mut tokens = base_tokens;
+    tokens.push(flag.to_string());
+    if let Some(value) = value {
+        tokens.push(value.to_string());
+    }
+    Some(tokens.join(" "))
+}
+
+#[test]
+fn glossary_cli_usage_smoke_commands_parse() {
+    let glossary = glossary_fixture();
+    let mut failures = Vec::new();
+    for command in glossary
+        .commands
+        .iter()
+        .filter(|entry| is_cli_glossary_command(entry) && !skip_glossary_parse_smoke(&entry.path))
+    {
+        let line = smoke_command_line_for_glossary_command(command);
+        if let Err(error) = parse_shell_line(&line) {
+            failures.push(format!(
+                "{}\n  usage: {}\n  smoke: {}\n  error: {}",
+                command.path, command.usage, line, error
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "documented CLI glossary usages must parse through the shared shell parser:\n{}",
+        failures.join("\n\n")
+    );
+}
+
+#[test]
+fn glossary_cli_usage_flags_parse_one_by_one() {
+    let glossary = glossary_fixture();
+    let mut failures = Vec::new();
+    for command in glossary
+        .commands
+        .iter()
+        .filter(|entry| is_cli_glossary_command(entry) && !skip_glossary_parse_smoke(&entry.path))
+    {
+        let base = smoke_command_line_for_glossary_command(command);
+        for (flag, value) in option_flags_from_usage(&command.usage) {
+            if skip_glossary_flag_parse(&command.path, &flag) {
+                continue;
+            }
+            let Some(line) = shell_command_line_with_option(&base, &flag, value.as_deref()) else {
+                continue;
+            };
+            if let Err(error) = parse_shell_line(&line) {
+                failures.push(format!(
+                    "{} flag {}\n  usage: {}\n  smoke: {}\n  error: {}",
+                    command.path, flag, command.usage, line, error
+                ));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "documented CLI glossary flags must parse through the shared shell parser:\n{}",
+        failures.join("\n\n")
+    );
+}
+
+#[test]
+fn cli_docs_mention_all_cli_glossary_paths() {
+    let glossary = glossary_fixture();
+    let cli_docs = include_str!("../../docs/cli.md");
+    let mut failures = Vec::new();
+    for command in glossary
+        .commands
+        .iter()
+        .filter(|entry| is_cli_glossary_command(entry))
+    {
+        if !cli_docs.contains(&command.path) {
+            failures.push(command.path.clone());
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "docs/cli.md must mention every CLI glossary command path:\n{}",
+        failures.join("\n")
+    );
+}
 
 fn run_shell_test_on_large_stack(name: &str, test: fn()) {
     std::thread::Builder::new()
