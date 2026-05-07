@@ -159,6 +159,19 @@ Useful defaults:
 - `--must-pass-transcript-fasta`, `--positive-transcript-fasta`, and
   `--control-transcript-fasta` are repeatable and feed the same isoform
   preflight contract used for TP73 controls.
+- To prepare missing Ensembl cDNA controls for a gene family before a
+  controlled preflight, use the GENtle-backed fixture helper. For example, E2F1
+  positives plus E2F2-E2F8 negative controls can be generated with:
+
+  ```bash
+  scripts/fetch_ensembl_cdna_fixtures.sh \
+    --genes E2F1,E2F2,E2F3,E2F4,E2F5,E2F6,E2F7,E2F8 \
+    --out-dir test_files/fixtures/mapping
+  ```
+
+  The resulting FASTAs are accepted directly by
+  `--must-pass-transcript-fasta` / `--control-transcript-fasta`, and each file
+  has a `.provenance.json` sidecar plus an aggregate manifest.
 - If no gene-specific transcript fixture exists, the helper still records the
   preflight report but falls back to the conservative default seed-filter
   fragment.
