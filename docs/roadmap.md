@@ -512,10 +512,12 @@ without blocking this publication.
   `ladders`, `candidates`, `import-pool`).
   - Direct CLI adapter splitting has started with the legacy `candidates ...`,
     `hosts ...`, pool/gel/arrangement export commands, `protocol-cartoon ...`,
-    `resources ...`, and `services ...` handlers and usage blocks extracted to
+    direct rendering/export commands, `resources ...`, and `services ...`
+    handlers and usage blocks extracted to
     `src/bin/gentle_cli/candidates.rs`, `src/bin/gentle_cli/hosts.rs`,
     `src/bin/gentle_cli/pools.rs`,
     `src/bin/gentle_cli/protocol_cartoon.rs`,
+    `src/bin/gentle_cli/rendering.rs`,
     `src/bin/gentle_cli/resources.rs`, and
     `src/bin/gentle_cli/services.rs`, preserving shell forwarding/direct
     manual parsing behavior while reducing the monolithic `run()` body.
