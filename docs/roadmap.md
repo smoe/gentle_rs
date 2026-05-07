@@ -511,9 +511,10 @@ without blocking this publication.
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).
   - Direct CLI adapter splitting has started with the legacy `candidates ...`,
-    `hosts ...`, `protocol-cartoon ...`, `resources ...`, and `services ...`
-    handlers and usage blocks extracted to
+    `hosts ...`, pool/gel/arrangement export commands, `protocol-cartoon ...`,
+    `resources ...`, and `services ...` handlers and usage blocks extracted to
     `src/bin/gentle_cli/candidates.rs`, `src/bin/gentle_cli/hosts.rs`,
+    `src/bin/gentle_cli/pools.rs`,
     `src/bin/gentle_cli/protocol_cartoon.rs`,
     `src/bin/gentle_cli/resources.rs`, and
     `src/bin/gentle_cli/services.rs`, preserving shell forwarding/direct
