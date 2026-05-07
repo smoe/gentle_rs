@@ -983,6 +983,10 @@ pub enum ShellCommand {
     ResourcesStatus,
     ServicesStatus,
     ServicesProvidersList,
+    ServicesProvidersDoctor {
+        catalog_path: Option<String>,
+        output: Option<String>,
+    },
     ServicesProjectPreflight {
         request_json: String,
     },
@@ -6482,6 +6486,14 @@ impl ShellCommand {
                 "list external-service providers and their current GENtle capability catalog"
                     .to_string()
             }
+            Self::ServicesProvidersDoctor {
+                catalog_path,
+                output,
+            } => format!(
+                "validate external-service provider config catalog '{}' (output='{}')",
+                catalog_path.as_deref().unwrap_or("default discovery"),
+                output.as_deref().unwrap_or("-"),
+            ),
             Self::ServicesProjectPreflight { request_json } => format!(
                 "preflight external-service request from '{}'",
                 if request_json.trim_start().starts_with('{') {
@@ -19957,7 +19969,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
                 "providers" => {
                     if tokens.len() < 3 {
-                        return Err("services providers requires list".to_string());
+                        return Err("services providers requires list or doctor".to_string());
                     }
                     match tokens[2].as_str() {
                         "list" => {
@@ -19969,8 +19981,46 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             }
                             Ok(ShellCommand::ServicesProvidersList)
                         }
+                        "doctor" | "validate" => {
+                            let mut catalog_path: Option<String> = None;
+                            let mut output: Option<String> = None;
+                            let mut idx = 3usize;
+                            while idx < tokens.len() {
+                                match tokens[idx].as_str() {
+                                    "--catalog" => {
+                                        if idx + 1 >= tokens.len() {
+                                            return Err(
+                                                "Missing PATH after --catalog for services providers doctor"
+                                                    .to_string(),
+                                            );
+                                        }
+                                        catalog_path = Some(tokens[idx + 1].clone());
+                                        idx += 2;
+                                    }
+                                    "--output" | "--path" => {
+                                        if idx + 1 >= tokens.len() {
+                                            return Err(
+                                                "Missing PATH after --output for services providers doctor"
+                                                    .to_string(),
+                                            );
+                                        }
+                                        output = Some(tokens[idx + 1].clone());
+                                        idx += 2;
+                                    }
+                                    other => {
+                                        return Err(format!(
+                                            "Unknown option '{other}' for services providers doctor"
+                                        ));
+                                    }
+                                }
+                            }
+                            Ok(ShellCommand::ServicesProvidersDoctor {
+                                catalog_path,
+                                output,
+                            })
+                        }
                         other => Err(format!(
-                            "Unknown services providers subcommand '{other}' (expected list)"
+                            "Unknown services providers subcommand '{other}' (expected list or doctor)"
                         )),
                     }
                 }
@@ -23860,6 +23910,30 @@ fn execute_export_import_and_resource_command(
             output: serde_json::to_value(service_readiness::external_service_provider_catalog())
                 .map_err(|e| format!("Could not serialize service provider catalog: {e}"))?,
         }),
+        ShellCommand::ServicesProvidersDoctor {
+            catalog_path,
+            output,
+        } => {
+            let report = service_readiness::external_service_provider_config_doctor_report(
+                catalog_path.as_deref(),
+            );
+            if let Some(path) = output {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&report).map_err(|e| {
+                    format!("Could not serialize external-service provider config doctor: {e}")
+                })?;
+                text.push('\n');
+                fs::write(path, text).map_err(|e| {
+                    format!("Could not write external-service provider config doctor '{path}': {e}")
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report).map_err(|e| {
+                    format!("Could not serialize external-service provider config doctor: {e}")
+                })?,
+            })
+        }
         ShellCommand::ServicesProjectPreflight { request_json } => {
             let request = parse_json_payload(request_json)?;
             let report = service_readiness::external_service_project_preflight(&request)?;
@@ -32026,6 +32100,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::ResourcesStatus
             | ShellCommand::ServicesStatus
             | ShellCommand::ServicesProvidersList
+            | ShellCommand::ServicesProvidersDoctor { .. }
             | ShellCommand::ServicesProjectPreflight { .. }
             | ShellCommand::ServicesProjectQuote { .. }
             | ShellCommand::ServicesHandoff { .. }
@@ -32660,6 +32735,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::ResourcesStatus
         | ShellCommand::ServicesStatus
         | ShellCommand::ServicesProvidersList
+        | ShellCommand::ServicesProvidersDoctor { .. }
         | ShellCommand::ServicesProjectPreflight { .. }
         | ShellCommand::ServicesProjectQuote { .. }
         | ShellCommand::ServicesHandoff { .. }

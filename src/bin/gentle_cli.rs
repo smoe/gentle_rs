@@ -3406,6 +3406,18 @@ mod tests {
     }
 
     #[test]
+    fn test_forwarded_services_providers_doctor_dispatch_matches_shared_shell_execution() {
+        assert_forwarded_services_dispatch_matches_shared_shell_execution(vec![
+            "gentle_cli".to_string(),
+            "services".to_string(),
+            "providers".to_string(),
+            "doctor".to_string(),
+            "--catalog".to_string(),
+            "assets/external_service_providers.json".to_string(),
+        ]);
+    }
+
+    #[test]
     fn test_forwarded_services_project_preflight_dispatch_matches_shared_shell_execution() {
         let request = serde_json::json!({
             "schema": "gentle.external_service_request.v1",
