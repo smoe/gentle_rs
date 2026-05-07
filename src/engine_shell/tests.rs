@@ -11114,6 +11114,35 @@ fn parse_gene_groups_list_show_resolve_and_doctor_commands() {
     let doctor = parse_shell_line("gene-groups doctor --catalog assets/gene_groups.json")
         .expect("parse gene-groups doctor");
     assert!(matches!(doctor, ShellCommand::GeneGroupsDoctor { .. }));
+
+    let draft = parse_shell_line(
+        "gene-groups draft --description \"Regulation of alternative splicing\" --member RBFOX2 --members PTBP1,SRSF1 --candidate \"QKI=agent-suggested RNA-binding splicing regulator\" --go GO:0000381 --agent-provider Codex --agent-model test-model --output splicing_group.json",
+    )
+    .expect("parse gene-groups draft");
+    match draft {
+        ShellCommand::GeneGroupsDraft {
+            description,
+            members,
+            candidate_members,
+            go_mappings,
+            agent_provider,
+            agent_model,
+            output,
+            ..
+        } => {
+            assert_eq!(description, "Regulation of alternative splicing");
+            assert_eq!(members, vec!["RBFOX2", "PTBP1", "SRSF1"]);
+            assert_eq!(
+                candidate_members,
+                vec!["QKI=agent-suggested RNA-binding splicing regulator"]
+            );
+            assert_eq!(go_mappings, vec!["GO:0000381"]);
+            assert_eq!(agent_provider.as_deref(), Some("Codex"));
+            assert_eq!(agent_model.as_deref(), Some("test-model"));
+            assert_eq!(output.as_deref(), Some("splicing_group.json"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
 }
 
 #[test]
@@ -11161,6 +11190,27 @@ fn execute_gene_groups_commands_expose_builtin_go_resource_and_groups() {
     );
     assert_eq!(resolve.output["matched_group_count"].as_u64(), Some(1));
 
+    let splicing = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GeneGroupsResolve {
+            query: "regulation of alternative splicing".to_string(),
+            catalog_path: None,
+            output: None,
+        },
+    )
+    .expect("gene-groups resolve alternative splicing");
+    assert_eq!(
+        splicing.output["groups"][0]["id"].as_str(),
+        Some("regulation_of_alternative_splicing")
+    );
+    assert!(
+        splicing.output["groups"][0]["external_mappings"]
+            .as_array()
+            .expect("external mappings")
+            .iter()
+            .any(|row| row["id"].as_str() == Some("GO:0000381"))
+    );
+
     let doctor = execute_shell_command(
         &mut engine,
         &ShellCommand::GeneGroupsDoctor {
@@ -11174,6 +11224,68 @@ fn execute_gene_groups_commands_expose_builtin_go_resource_and_groups() {
         Some("gentle.gene_group_doctor.v1")
     );
     assert_eq!(doctor.output["error_count"].as_u64(), Some(0));
+
+    let td = tempdir().expect("tempdir");
+    let draft_path = td.path().join("draft_splicing_group.json");
+    let draft = execute_shell_command(
+        &mut engine,
+        &ShellCommand::GeneGroupsDraft {
+            description:
+                "Regulators that alter splice-site selection and alternative exon inclusion."
+                    .to_string(),
+            id: None,
+            label: Some("Regulation of alternative splicing".to_string()),
+            short_description: None,
+            organism: Some("Homo sapiens".to_string()),
+            taxon_id: Some("9606".to_string()),
+            symbol_namespace: Some("HGNC".to_string()),
+            aliases: vec!["splicing regulators".to_string()],
+            tags: vec!["alternative_splicing".to_string()],
+            usages: vec!["gene_group".to_string(), "rna_splicing".to_string()],
+            members: vec!["RBFOX2".to_string(), "PTBP1".to_string()],
+            candidate_members: vec![
+                "QKI=agent-suggested STAR-family splicing regulator".to_string(),
+            ],
+            unresolved_candidates: vec!["informal PTB-family regulator".to_string()],
+            go_mappings: vec!["GO:0000381".to_string()],
+            provenance: Some("synthetic shell regression draft".to_string()),
+            agent_provider: Some("Codex".to_string()),
+            agent_model: Some("test-model".to_string()),
+            agent_generated_at_utc: Some("2026-05-06T00:00:00Z".to_string()),
+            output: Some(draft_path.to_string_lossy().to_string()),
+        },
+    )
+    .expect("gene-groups draft");
+    assert_eq!(
+        draft.output["schema"].as_str(),
+        Some("gentle.gene_group_draft.v1")
+    );
+    assert_eq!(draft.output["review_required"].as_bool(), Some(true));
+    assert_eq!(
+        draft.output["group"]["curation_status"].as_str(),
+        Some("draft")
+    );
+    assert_eq!(draft.output["user_member_count"].as_u64(), Some(2));
+    assert_eq!(draft.output["candidate_member_count"].as_u64(), Some(1));
+    assert_eq!(
+        draft.output["candidate_members"][0]["symbol"].as_str(),
+        Some("QKI")
+    );
+    assert_eq!(
+        draft.output["unresolved_candidates"][0].as_str(),
+        Some("informal PTB-family regulator")
+    );
+    assert!(
+        draft_path.exists(),
+        "draft catalog fragment should be written"
+    );
+    let fragment: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&draft_path).expect("draft fragment"))
+            .expect("draft fragment JSON");
+    assert_eq!(
+        fragment["groups"][0]["external_mappings"][0]["id"].as_str(),
+        Some("GO:0000381")
+    );
 }
 
 #[test]

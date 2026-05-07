@@ -4024,6 +4024,8 @@ Current baseline:
   external resource namespace (`GO`) and seeds:
   - `yamanaka_factors`
   - `p53_family`
+  - `regulation_of_alternative_splicing`, anchored to `GO:0000381` as a local,
+    reviewable lab-facing group rather than a complete GO annotation import
 - `resources status` now also reports `gene_ontology` as a declared external
   database/mapping namespace, without claiming GO download/index support.
 - `gene-groups list/show/resolve/doctor` shared-shell routes now expose the
@@ -4031,6 +4033,11 @@ Current baseline:
 - The doctor route reports source status, fragment SHA-1 digests, duplicate
   ids, alias collisions, malformed memberships, malformed GO ids, duplicate
   external resources, and mapping/resource warnings.
+- `gene-groups draft` now creates review-gated catalog fragments plus
+  `gentle.gene_group_draft.v1` reports from an explicit long description and
+  optional user-supplied members, agent/literature-suggested candidates,
+  unresolved candidates, agent provenance, and GO mappings; it does not mutate
+  trusted catalogs by default.
 - `resources resolve-tf-query` now consumes catalog-backed gene groups marked
   for `tf_query` usage before falling back to family-like motif registry
   matching, while preserving `builtin_group` semantics for built-in rows.
@@ -4055,16 +4062,13 @@ Planned work:
    - expose whether a token came from exact motif id/name, gene-group catalog,
      alias, family-like expansion, or unresolved input without breaking older
      `builtin_group` compatibility rows
-4. Add AI-assisted drafting as a separate, review-gated route:
-   - proposed shape:
-     `gene-groups draft --description TEXT [--organism TAXON] [--namespace NAMESPACE] --output GROUP.json`
-   - output should include the model/provider/date when available, input
-     description hash, proposed id/label/short description/aliases,
-     candidate memberships, evidence notes, confidence labels, and unresolved
-     candidates
-   - draft output must not modify curated catalogs by default
-   - a later promote/import route can require explicit user confirmation or
-     project policy before the group becomes trusted input
+4. Extend AI-assisted drafting beyond the explicit candidate-import contract:
+   - add optional resource adapters that can turn PubMed/GO/MSigDB/Reactome
+     search results into candidate rows without requiring the human/agent to
+     pass every `--candidate` explicitly
+   - add a safe promote/import route that checks source digests, duplicate ids,
+     symbol validation, and project policy before any drafted group becomes
+     trusted input
 5. Add group-aware regulatory operations:
    - resolve one or more groups to prepared-reference genes
    - extract promoter/upstream windows with transcript-aware orientation
