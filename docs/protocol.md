@@ -5306,6 +5306,22 @@ Operation progress/cancellation semantics:
     explicit constraints
   - provide deterministic, machine-readable reports that can be consumed by
     GUI/CLI/scripting/agents
+  - bridge PCR primer roles from concept to explicit retrieval/design
+    constraints and, for accepted candidates, to in-silico oligo
+    instantiations
+- Primer lifecycle semantics:
+  - choosing a PCR creates primer roles before concrete sequences are known
+  - choosing a region/amplicon turns those roles into constraints over a
+    substance to design, retrieve, order, or select from local stock
+  - choosing a candidate primer satisfies the constraint with a concrete oligo
+    design, but does not imply wet-lab availability
+  - persisted primer reports and materialized primer sequence artifacts are
+    therefore design/provenance records; future inventory/procurement records
+    should link to them rather than replacing them
+  - multiple chosen primer/probe instantiations may later be collected into one
+    reviewed oligo order form, analogous to an assembly grouping its
+    participating parts; the order form groups line items for procurement but
+    does not itself prove that any physical oligo has arrived
 - Operation payload:
 
 ```json
