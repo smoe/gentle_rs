@@ -59,8 +59,8 @@ def parse_args() -> argparse.Namespace:
         choices=["max", "mean"],
         default="max",
         help=(
-            "Gene-supporting read-length statistic drawn as one colored line per "
-            "gene in the lower panel. Whole-library q90 stays in the upper panel."
+            "Gene-supporting read-length statistic drawn as colored symbols in "
+            "the lower panel. Whole-library q90 stays in the upper panel."
         ),
     )
     parser.add_argument(
@@ -94,6 +94,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Optional comma-separated gene list for support-read length symbols. "
             "Bars are still drawn for all TP53-family genes."
+        ),
+    )
+    parser.add_argument(
+        "--show-all-read-max",
+        action="store_true",
+        help=(
+            "Forward --show-all-read-max to the generic family plotter. By "
+            "default the whole-library q99 and q100/max read-length lines are hidden."
         ),
     )
     parser.add_argument(
@@ -148,6 +156,8 @@ def main() -> int:
         command.extend(["--output-tsv", args.output_tsv])
     if args.support_length_genes:
         command.extend(["--support-length-genes", args.support_length_genes])
+    if args.show_all_read_max:
+        command.append("--show-all-read-max")
     return subprocess.call(command)
 
 
