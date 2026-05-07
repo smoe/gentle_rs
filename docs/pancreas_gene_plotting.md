@@ -109,6 +109,10 @@ Useful options:
   read-length lines describe the same seed-passed read population as the bars.
   `any` is a diagnostic mode for older reports and can draw accepted-target
   fallback lengths, which are not directly comparable to strict seed-passed bars.
+- `--support-length-scale log|linear`: choose the lower read-length axis scale.
+  The default is `log`, matching the whole-library read-length panel and making
+  TP63/TP73-style length differences easier to compare without outlier
+  domination.
 - `--label-column sample_id|sample_name|run_accession`: x-axis labels.
 - `--output-tsv PATH`: canonical merged family table. Defaults to the SVG path
   with `.tsv` extension.
@@ -191,6 +195,7 @@ python3 scripts/plot_pancreas_gene_family.py \
   --metric per_million \
   --support-length-stat max \
   --support-length-source strict_seed_passed \
+  --support-length-scale log \
   --output "$WORK/figures/p53_family_seed_passed_grouped.svg"
 ```
 
