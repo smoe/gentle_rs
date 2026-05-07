@@ -1,0 +1,371 @@
+{
+  "schema": "gentle.external_service_provider_config.v1",
+  "summary_lines": [
+    "External-service provider behavior is loaded from overlay-discovered configuration.",
+    "Built-in providers intentionally expose quote/handoff workflows only; direct submission remains disabled unless implemented explicitly."
+  ],
+  "providers": [
+    {
+      "provider": "geneart",
+      "display_name": "Invitrogen GeneArt Services",
+      "support_status": "quote_handoff_ready_api_planned",
+      "website_url": "https://www.thermofisher.com/us/en/home/life-science/cloning/gene-synthesis.html",
+      "dashboard_url": "https://www.thermofisher.com/fr/fr/home/life-science/cloning/gene-synthesis/gene-synthesis-dashboard-guide.html",
+      "api_documentation_url": "https://assets.thermofisher.com/TFS-Assets/BID/Reference-Materials/geneart-gene-synthesis-api-presentation.pdf",
+      "capabilities": [
+        {
+          "service_kind": "dna_fragment",
+          "track": "dna",
+          "display_name": "GeneArt DNA fragment synthesis",
+          "quote_handoff_supported": true,
+          "direct_api_documented": true,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [
+            "quote_handoff",
+            "api_planned"
+          ],
+          "status_tracking": "manual_or_imported_status",
+          "artifact_kinds": [
+            "fasta",
+            "quote_metadata",
+            "provider_project_id",
+            "qad"
+          ],
+          "notes": [
+            "Direct API surfaces are documented externally, but GENtle v1 keeps this as quote/handoff only."
+          ]
+        },
+        {
+          "service_kind": "cloned_gene",
+          "track": "dna",
+          "display_name": "GeneArt cloned gene / plasmid construction",
+          "quote_handoff_supported": true,
+          "direct_api_documented": true,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [
+            "quote_handoff",
+            "api_planned"
+          ],
+          "status_tracking": "manual_or_imported_status",
+          "artifact_kinds": [
+            "genbank",
+            "fasta",
+            "quote_metadata",
+            "provider_project_id",
+            "qad"
+          ],
+          "notes": [
+            "Use sequence/container lineage artifacts as the source bundle for quote handoff."
+          ]
+        },
+        {
+          "service_kind": "plasmid_reorder",
+          "track": "dna",
+          "display_name": "GeneArt plasmid reorder / project continuation",
+          "quote_handoff_supported": true,
+          "direct_api_documented": true,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [
+            "quote_handoff",
+            "api_planned"
+          ],
+          "status_tracking": "manual_or_imported_status",
+          "artifact_kinds": [
+            "provider_project_id",
+            "provider_order_id",
+            "quote_metadata",
+            "qad"
+          ],
+          "notes": [
+            "Requests should preserve prior provider project/order identifiers when known."
+          ]
+        },
+        {
+          "service_kind": "mutagenesis",
+          "track": "dna",
+          "display_name": "GeneArt mutagenesis",
+          "quote_handoff_supported": true,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [
+            "quote_handoff"
+          ],
+          "status_tracking": "manual_or_imported_status",
+          "artifact_kinds": [
+            "sequence",
+            "mutation_table",
+            "quote_metadata"
+          ],
+          "notes": [
+            "Existing GENtle PCR-mutagenesis reports should become the service-ready source bundle."
+          ]
+        },
+        {
+          "service_kind": "protein_expression",
+          "track": "protein",
+          "display_name": "GeneArt protein expression and purification",
+          "quote_handoff_supported": true,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [
+            "quote_handoff"
+          ],
+          "status_tracking": "manual_or_imported_status",
+          "artifact_kinds": [
+            "amino_acid_sequence",
+            "codon_targeted_dna",
+            "quote_metadata"
+          ],
+          "notes": [
+            "GENtle should use protein-to-DNA handoff records as the preferred project source."
+          ]
+        }
+      ],
+      "channels": [
+        {
+          "channel": "dashboard",
+          "display_name": "GeneArt dashboard",
+          "url": "https://www.thermofisher.com/fr/fr/home/life-science/cloning/gene-synthesis/gene-synthesis-dashboard-guide.html",
+          "notes": [
+            "Manual quote/order handoff only in GENtle v1."
+          ]
+        }
+      ],
+      "validation_rules": [
+        {
+          "service_kind": "protein_expression",
+          "required_source_fields": [
+            "protein_sequence",
+            "amino_acid_sequence",
+            "protein_seq_id",
+            "seq_id",
+            "protein_to_dna_handoff_id"
+          ],
+          "required_followup": [
+            "Review protein-to-DNA/codon-optimization handoff before vendor submission."
+          ]
+        },
+        {
+          "service_kind": "plasmid_reorder",
+          "required_source_fields": [
+            "provider_project_id",
+            "provider_order_id",
+            "plasmid_id",
+            "seq_id",
+            "sequence",
+            "sequence_text"
+          ]
+        },
+        {
+          "service_kind": "mutagenesis",
+          "required_source_fields": [
+            "sequence",
+            "sequence_text",
+            "dna_sequence",
+            "seq_id",
+            "template_seq_id"
+          ],
+          "required_followup": [
+            "Provide mutation table or variant list in the source target."
+          ]
+        }
+      ],
+      "required_followup": [
+        "Review generated service-ready content before any vendor submission.",
+        "Open GeneArt dashboard/form route for quote or ordering; do not store PO/shipping/API secrets in GENtle project state."
+      ],
+      "account_enablement_notes": [
+        "Direct GeneArt API ordering requires Thermo Fisher / GeneArt account enablement outside GENtle.",
+        "GENtle does not store API credentials, purchase orders, or shipping details in project state.",
+        "This implementation creates deterministic preflight and handoff/quote packets only."
+      ],
+      "warnings": [
+        "Live GeneArt API submission/status/QAD retrieval is not implemented.",
+        "Protein expression and mutagenesis are intentionally quote/handoff first until official direct API documentation is available."
+      ]
+    },
+    {
+      "provider": "metabion",
+      "display_name": "metabion",
+      "support_status": "wop_email_excel_handoff_ready",
+      "website_url": "https://www.metabion.com/",
+      "dashboard_url": "https://wop.metabion.com/wop/",
+      "capabilities": [
+        {
+          "service_kind": "dna_oligo_single_tube",
+          "track": "dna",
+          "display_name": "metabion DNA oligo single tube",
+          "quote_handoff_supported": true,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [
+            "wop_handoff",
+            "email_excel_handoff"
+          ],
+          "status_tracking": "manual_or_imported_status",
+          "artifact_kinds": [
+            "redacted_request_json",
+            "normalized_line_items_json",
+            "normalized_line_items_csv",
+            "email_draft_markdown",
+            "guided_wop_checklist"
+          ],
+          "notes": [
+            "Ordering can proceed through WOP or email with the pre-formatted Excel order form.",
+            "GENtle v1 prepares quote/order handoff artifacts only."
+          ]
+        },
+        {
+          "service_kind": "dna_fragment",
+          "track": "dna",
+          "display_name": "metabion m-block DNA fragments & libraries",
+          "quote_handoff_supported": true,
+          "direct_api_documented": false,
+          "direct_api_implemented": false,
+          "supported_submission_modes": [
+            "wop_handoff",
+            "email_excel_handoff"
+          ],
+          "status_tracking": "manual_or_imported_status",
+          "artifact_kinds": [
+            "redacted_request_json",
+            "normalized_line_items_json",
+            "normalized_line_items_csv",
+            "email_draft_markdown",
+            "guided_wop_checklist",
+            "biosafety_questionnaire_reminder"
+          ],
+          "notes": [
+            "Mapped to metabion m-block DNA Fragments & Libraries.",
+            "Biosafety questionnaire follow-up may be required depending on sequence content and local policy."
+          ]
+        }
+      ],
+      "channels": [
+        {
+          "channel": "wop",
+          "display_name": "metabion Web Order Portal",
+          "url": "https://wop.metabion.com/wop/",
+          "notes": [
+            "Generate quote in WOP; verified accounts can download PDF quotes.",
+            "PO may be required when converting a quote into an order."
+          ]
+        },
+        {
+          "channel": "email_excel",
+          "display_name": "Email with pre-formatted Excel order file",
+          "email": "oligo@metabion.com",
+          "url": "https://www.metabion.com/knowledge-hub/downloads/order-forms",
+          "notes": [
+            "Attach the current pre-formatted Excel order form.",
+            "New customers should include shipping/billing information separately; GENtle must not store these details."
+          ]
+        },
+        {
+          "channel": "oci_contact",
+          "display_name": "Customer service for OCI/eProcurement",
+          "email": "customerservice@metabion.com",
+          "notes": [
+            "Contact customer service for OCI/Open Catalog Interface setup; no OCI automation is implemented in GENtle v1."
+          ]
+        }
+      ],
+      "product_templates": [
+        {
+          "service_kind": "dna_oligo_single_tube",
+          "product_name": "DNA Oligo single tube",
+          "channel": "email_excel",
+          "template_url": "https://www.metabion.com/knowledge-hub/downloads/order-forms",
+          "template_format": "xlsx",
+          "field_map": {
+            "name": "Name of the oligo/s",
+            "sequence": "Sequence of the oligo/s in 5'-3' orientation",
+            "yield_range": "Yield range",
+            "purification": "Purification required",
+            "delivery_form": "Delivery form",
+            "modifications": "Modifications"
+          },
+          "notes": [
+            "The order-form page lists DNA Oligo single tube as a downloadable form."
+          ]
+        },
+        {
+          "service_kind": "dna_fragment",
+          "product_name": "m-block DNA Fragments & Libraries",
+          "channel": "email_excel",
+          "template_url": "https://www.metabion.com/knowledge-hub/downloads/order-forms",
+          "template_format": "xlsx",
+          "field_map": {
+            "name": "Fragment/library name",
+            "sequence": "DNA sequence 5'-3'",
+            "delivery_form": "Delivery form",
+            "qc": "QC requirement",
+            "biosafety": "Biosafety questionnaire if applicable"
+          },
+          "notes": [
+            "The order-form page lists m-block DNA Fragments & Libraries and a Biosafety Questionnaire."
+          ]
+        }
+      ],
+      "validation_rules": [
+        {
+          "service_kind": "dna_oligo_single_tube",
+          "required_source_fields": [
+            "sequence",
+            "sequence_text",
+            "dna_sequence",
+            "oligos",
+            "line_items"
+          ],
+          "required_followup": [
+            "Confirm oligo name, 5'-3' sequence, yield range, purification, delivery form, and modifications before sending an order form."
+          ]
+        },
+        {
+          "service_kind": "dna_fragment",
+          "required_source_fields": [
+            "sequence",
+            "sequence_text",
+            "dna_sequence",
+            "fragments",
+            "line_items",
+            "construct_id",
+            "seq_id"
+          ],
+          "warnings": [
+            "m-block requests may require a biosafety questionnaire depending on sequence content and account policy."
+          ],
+          "required_followup": [
+            "Confirm whether the m-block sequence triggers a biosafety questionnaire before submitting through WOP or email.",
+            "Do not place PO numbers, account credentials, shipping, or billing details in GENtle project state."
+          ]
+        }
+      ],
+      "default_delivery_hints": [
+        "Prefer dry delivery unless the requester specifies water/buffer and concentration."
+      ],
+      "default_purification_hints": [
+        "Use request-provided purification when present; otherwise confirm with the requester/vendor before order submission."
+      ],
+      "default_qc_hints": [
+        "Use vendor default QC unless the request or local policy requires additional QC documentation."
+      ],
+      "required_followup": [
+        "No vendor order was submitted by GENtle.",
+        "Use WOP to create the quote and convert it to an order only after human review.",
+        "If using email, attach the current Excel order form from metabion and include required order fields.",
+        "PO/account/shipping/billing details stay outside GENtle project state.",
+        "For new or unverified WOP accounts, complete account verification before relying on WOP quote generation."
+      ],
+      "account_enablement_notes": [
+        "metabion WOP quote generation requires a verified online account.",
+        "Email ordering accepts pre-formatted Excel order forms sent to oligo@metabion.com.",
+        "OCI/eProcurement setup should be handled with metabion customer service outside GENtle."
+      ],
+      "warnings": [
+        "GENtle v1 does not scrape WOP, submit orders, or store credentials.",
+        "Vendor templates are referenced by URL; local template-backed generation is optional and may be unavailable."
+      ]
+    }
+  ]
+}

@@ -209,6 +209,11 @@ External-service integration rule:
 - Provider-specific adapters (for example GeneArt) translate those contracts to
   official APIs or dashboard handoff packets; GUI/CLI/MCP/ClawBio must not
   hard-code vendor-specific biology or commerce behavior.
+- Routine provider behavior, channel definitions, template mappings, validation
+  rules, delivery/QC hints, and required follow-up policies belong in
+  overlay-discovered provider config catalogs (`assets/`, system, user, then
+  project) rather than in GUI/CLI adapters. Later catalog sources may override
+  earlier provider ids, and doctor routes should expose provenance/debug output.
 - Credentials, purchase-order values, shipping details, and account enablement
   state stay out of project state. Project state may retain only explicit
   provider project/order identifiers, redacted receipts, lineage links, and

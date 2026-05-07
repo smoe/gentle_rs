@@ -1119,9 +1119,9 @@ appear as `external_tool:*` rows rather than as normalized data-snapshot rows.
 ## External service contracts
 
 GENtle exposes vendor/CRO integrations through provider-neutral records owned
-by the engine. GeneArt is the first cataloged provider, but GUI/CLI/MCP and
-ClawBio callers should depend on these schemas rather than GeneArt-specific
-fields.
+by the engine. Provider behavior is loaded from overlay-discoverable config
+catalogs so GUI/CLI/MCP and ClawBio callers depend on shared schemas rather
+than GeneArt-, metabion-, or portal-specific fields.
 
 - `gentle.external_service_provider_catalog.v1`
   - returned by `services providers list` and embedded in `services status`
@@ -1135,6 +1135,25 @@ fields.
     `quote_handoff_supported`, `direct_api_documented`,
     `direct_api_implemented`, `supported_submission_modes[]`,
     `status_tracking`, `artifact_kinds[]`, and `notes[]`
+- `gentle.external_service_provider_config.v1`
+  - loaded by the shared services layer to build provider catalog/preflight/
+    quote behavior
+  - discovery order follows the catalog overlay policy:
+    `assets/external_service_providers.json`, `assets/external_service_providers.d/`,
+    `/etc/gentle/catalogs/external_service_providers.json`, matching system
+    `.d/`, `~/.config/gentle/catalogs/external_service_providers.json`,
+    matching user `.d/`, and project-local
+    `.gentle/catalogs/external_service_providers.json` plus `.d/`
+  - later sources override earlier provider ids; the doctor route reports
+    source provenance and schema/validation errors
+  - provider rows include metadata/capabilities, channel definitions such as
+    `wop`, `email_excel`, or `oci_contact`, product-template mappings,
+    validation rules, default delivery/purification/QC hints, and required
+    follow-up policies
+- `gentle.external_service_provider_config_doctor.v1`
+  - returned by `services providers doctor [--catalog PATH] [--output PATH]`
+  - reports inspected sources, parsed source/provider counts, SHA1 checksums,
+    warnings, and deterministic validation errors
 - `gentle.external_service_request.v1`
   - accepted by `services project-preflight REQUEST_JSON_OR_@FILE` and
     `services project-quote REQUEST_JSON_OR_@FILE`
@@ -1159,6 +1178,8 @@ fields.
     and `request_summary[]`
   - in the first GeneArt slice this is local and deterministic; it does not
     contact Thermo Fisher/GeneArt
+  - in the metabion slice this is also local and deterministic; WOP/email/Excel
+    routes are represented as handoff channels, not automated submission
 - `gentle.external_service_quote.v1`
   - returned by `services project-quote`
   - fields include `quote_status`, `quote_mode`, the embedded preflight
@@ -1166,9 +1187,15 @@ fields.
     `service_ready_bundle`, `return_spec`, and `warnings[]`
   - `service_ready_bundle.schema` is
     `gentle.external_service_artifact_bundle.v1`; V1 uses inline payloads for
-    human-reviewable handoff markdown and redacted request JSON
+    human-reviewable handoff markdown and redacted request JSON, and configured
+    providers may also add normalized line-item JSON/CSV, email-draft markdown,
+    and guided portal/WOP checklists
   - no vendor order, cart submission, direct API upload, status polling, or QAD
     retrieval is performed until a later confirmed direct-integration phase
+  - Metabion v1 supports `provider = metabion` for DNA single-tube oligos and
+    m-block DNA fragments/libraries as quote/handoff artifacts only; template
+    URLs are advisory, and missing local templates produce warnings rather than
+    hard quote-handoff failures
 
 ## JASPAR expert contract
 

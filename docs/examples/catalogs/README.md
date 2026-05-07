@@ -3,6 +3,33 @@
 This directory contains non-executable catalog fragments that demonstrate how
 to extend GENtle's catalog-backed knowledge layer outside the source tree.
 
+## External-Service Providers
+
+`external_service_providers_project_overlay.json` demonstrates a project-local
+provider override for the config schema
+`gentle.external_service_provider_config.v1`. To use the same shape in a real
+project, place it under:
+
+```text
+.gentle/catalogs/external_service_providers.d/metabion_local_policy.json
+```
+
+Provider discovery is overlay-based: built-in assets load first, then system,
+user, and project catalogs. Later files override the same `provider` id, so a
+lab can adjust WOP/email channels, template field names, validation rules,
+delivery defaults, or required follow-up text without changing GENtle source
+code.
+
+Validate the active chain with:
+
+```bash
+gentle_cli services providers doctor
+```
+
+The example keeps the v1 safety posture: it prepares deterministic quote/
+handoff artifacts only and does not submit orders, scrape portals, or store
+PO/account/shipping/billing details.
+
 ## Helper Semantics Vocabulary
 
 `helper_semantics_vocabulary_extension.json` is a project-local vocabulary

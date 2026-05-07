@@ -46,6 +46,9 @@ mod root_ui;
 #[path = "app/configuration_ui.rs"]
 mod configuration_ui;
 
+#[path = "app/external_services_ui.rs"]
+mod external_services_ui;
+
 use std::{
     collections::hash_map::DefaultHasher,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -1088,6 +1091,7 @@ pub struct GENtleApp {
     command_palette_query: String,
     command_palette_selected: usize,
     command_palette_focus_query: bool,
+    external_services_ui: ExternalServicesUiState,
     show_jobs_panel: bool,
     history_ui: HistoryUiState,
     hover_status_name: String,
@@ -1272,6 +1276,37 @@ enum ConfigurationTab {
 #[derive(Clone, Debug, Default)]
 struct HistoryUiState {
     show_panel: bool,
+}
+
+#[derive(Clone, Debug)]
+struct ExternalServicesUiState {
+    show_panel: bool,
+    selected_provider: String,
+    selected_service_kind: String,
+    request_json: String,
+    status: String,
+    provider_catalog_output: Option<serde_json::Value>,
+    provider_doctor_output: Option<serde_json::Value>,
+    preflight_output: Option<serde_json::Value>,
+    quote_output: Option<serde_json::Value>,
+    selected_quote_payload: usize,
+}
+
+impl Default for ExternalServicesUiState {
+    fn default() -> Self {
+        Self {
+            show_panel: false,
+            selected_provider: "metabion".to_string(),
+            selected_service_kind: "dna_oligo_single_tube".to_string(),
+            request_json: String::new(),
+            status: String::new(),
+            provider_catalog_output: None,
+            provider_doctor_output: None,
+            preflight_output: None,
+            quote_output: None,
+            selected_quote_payload: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2410,6 +2445,7 @@ enum CommandPaletteAction {
     OpenUniprot,
     OpenGenbank,
     OpenConfiguration,
+    OpenExternalServices,
     OpenGibson,
     OpenPlanning,
     OpenRoutineAssistant,
@@ -2829,6 +2865,7 @@ impl Default for GENtleApp {
             command_palette_query: String::new(),
             command_palette_selected: 0,
             command_palette_focus_query: false,
+            external_services_ui: ExternalServicesUiState::default(),
             show_jobs_panel: false,
             history_ui: HistoryUiState::default(),
             hover_status_name: String::new(),
@@ -3029,6 +3066,10 @@ impl GENtleApp {
 
     fn background_jobs_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Background Jobs Viewport")
+    }
+
+    fn external_services_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle External Services Viewport")
     }
 
     fn history_viewport_id() -> ViewportId {
@@ -5115,6 +5156,15 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenConfiguration,
             },
             CommandPaletteEntry {
+                title: "External Services".to_string(),
+                detail:
+                    "Inspect providers, preflight service requests, and prepare quote handoff bundles"
+                        .to_string(),
+                keywords: "services provider metabion geneart quote handoff wop email excel oligo m-block external vendor cro"
+                    .to_string(),
+                action: CommandPaletteAction::OpenExternalServices,
+            },
+            CommandPaletteEntry {
                 title: "Gibson".to_string(),
                 detail: "Plan one destination-first Gibson assembly with cartoon preview."
                     .to_string(),
@@ -5214,6 +5264,7 @@ Error: `{err}`"
             CommandPaletteAction::OpenUniprot => self.open_uniprot_dialog(),
             CommandPaletteAction::OpenGenbank => self.open_genbank_dialog(),
             CommandPaletteAction::OpenConfiguration => self.open_configuration_dialog(),
+            CommandPaletteAction::OpenExternalServices => self.open_external_services_dialog(),
             CommandPaletteAction::OpenGibson => self.open_gibson_dialog(),
             CommandPaletteAction::OpenPlanning => self.open_planning_dialog(),
             CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
@@ -33002,6 +33053,19 @@ Error: `{err}`"
                     }
                 }
             });
+            ui.menu_button("Services", |ui| {
+                if ui
+                    .button("External Services...")
+                    .on_hover_text(
+                        "Inspect provider catalog, validate service requests, and prepare quote handoff bundles",
+                    )
+                    .clicked()
+                {
+                    self.open_external_services_dialog();
+                    ui.close();
+                }
+                ui.small("Shared shell routes: services providers/preflight/quote");
+            });
             ui.menu_button("Windows", |ui| {
                 let jobs_panel_resp = self.track_hover_status(
                     ui.button(if self.show_jobs_panel {
@@ -44692,6 +44756,7 @@ impl GENtleApp {
             self.render_planning_dialog(ctx);
             self.render_routine_assistant_dialog(ctx);
             self.render_agent_assistant_dialog(ctx);
+            self.render_external_services_dialog(ctx);
             self.render_configuration_dialog(ctx);
             self.render_help_dialog(ctx);
             self.render_about_dialog(ctx);
@@ -49093,6 +49158,17 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_includes_external_services_entry() {
+        let app = GENtleApp::default();
+        let entries = app.collect_command_palette_entries();
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.title == "External Services")
+        );
+    }
+
+    #[test]
     fn command_palette_includes_pcr_designer_entry() {
         let app = GENtleApp::default();
         let entries = app.collect_command_palette_entries();
@@ -49154,6 +49230,79 @@ mod tests {
         );
 
         assert!(app.show_planning_dialog);
+    }
+
+    #[test]
+    fn execute_command_palette_action_opens_external_services_dialog() {
+        let mut app = GENtleApp::default();
+
+        app.execute_command_palette_action(
+            &egui::Context::default(),
+            CommandPaletteAction::OpenExternalServices,
+        );
+
+        assert!(app.external_services_ui.show_panel);
+        assert!(
+            app.external_services_ui
+                .provider_catalog_output
+                .as_ref()
+                .and_then(|catalog| catalog.get("providers"))
+                .and_then(serde_json::Value::as_array)
+                .map(|providers| providers
+                    .iter()
+                    .any(|provider| provider["provider"].as_str() == Some("metabion")))
+                .unwrap_or(false)
+        );
+        assert!(
+            app.external_services_ui
+                .request_json
+                .contains("\"provider\": \"metabion\"")
+        );
+    }
+
+    #[test]
+    fn external_services_request_template_uses_selected_provider_capability() {
+        let mut app = GENtleApp::default();
+        app.open_external_services_dialog();
+        app.external_services_ui.selected_provider = "metabion".to_string();
+        app.external_services_ui.selected_service_kind = "dna_fragment".to_string();
+
+        app.reset_external_services_request_from_selection();
+
+        assert!(
+            app.external_services_ui
+                .request_json
+                .contains("\"provider\": \"metabion\"")
+        );
+        assert!(
+            app.external_services_ui
+                .request_json
+                .contains("\"service_kind\": \"dna_fragment\"")
+        );
+        assert!(app.external_services_ui.request_json.contains("fragment_1"));
+    }
+
+    #[test]
+    fn external_services_preflight_uses_shared_shell_contract() {
+        let mut app = GENtleApp::default();
+        app.open_external_services_dialog();
+        app.external_services_ui.selected_provider = "metabion".to_string();
+        app.external_services_ui.selected_service_kind = "dna_oligo_single_tube".to_string();
+        app.reset_external_services_request_from_selection();
+
+        app.run_external_services_preflight();
+
+        let preflight = app
+            .external_services_ui
+            .preflight_output
+            .as_ref()
+            .expect("preflight output");
+        assert_eq!(
+            preflight["schema"].as_str(),
+            Some("gentle.external_service_preflight.v1")
+        );
+        assert_eq!(preflight["provider"].as_str(), Some("metabion"));
+        assert_eq!(preflight["eligible"].as_bool(), Some(true));
     }
 
     #[test]

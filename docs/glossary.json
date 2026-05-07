@@ -1642,6 +1642,20 @@
          "usage": "services providers list"
       },
       {
+         "aliases": [
+            "services providers validate"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "services providers doctor",
+         "summary": "Validate overlay-discovered external-service provider config catalogs and report source provenance.",
+         "usage": "services providers doctor [--catalog PATH] [--output PATH]"
+      },
+      {
          "aliases": [],
          "engine_operations": [],
          "interfaces": [
@@ -1650,7 +1664,7 @@
             "cli-direct"
          ],
          "path": "services project-preflight",
-         "summary": "Validate one vendor-neutral external-service request and report GeneArt quote/direct-submission capability.",
+         "summary": "Validate one vendor-neutral external-service request against the active provider config catalog.",
          "usage": "services project-preflight REQUEST_JSON_OR_@FILE"
       },
       {
@@ -1662,7 +1676,7 @@
             "cli-direct"
          ],
          "path": "services project-quote",
-         "summary": "Build a service-ready external handoff bundle for a preflightable GeneArt request without submitting an order.",
+         "summary": "Build a service-ready external handoff bundle for a preflightable provider request without submitting an order.",
          "usage": "services project-quote REQUEST_JSON_OR_@FILE"
       },
       {

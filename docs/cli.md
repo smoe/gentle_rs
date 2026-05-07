@@ -3217,8 +3217,9 @@ Service and resource commands:
     helper backbones (currently `Plasmid pUC19 (online)`), and active external
     resource snapshots in one record.
   - Also embeds the external-service provider catalog under
-    `external_providers`, currently with GeneArt as the first quote/handoff
-    provider.
+    `external_providers`; provider behavior is loaded from the overlay
+    catalog rooted at `assets/external_service_providers.json` and matching
+    system/user/project override directories.
   - Reference/helper rows now expose canonical lifecycle fields:
     - `resource_key`
     - `display_name`
@@ -3239,11 +3240,20 @@ Service and resource commands:
     fetch, prepare, or render.
 - `services providers list`
   - Returns `gentle.external_service_provider_catalog.v1`.
-  - V1 catalogs `provider = geneart` with DNA fragments, cloned genes,
-    plasmid reorder, mutagenesis, and protein-expression capabilities.
-  - DNA fragment, cloned-gene, and plasmid-reorder rows record documented
-    direct API surfaces as planned, but live ordering is not enabled by this
-    command.
+  - V1 catalogs `provider = geneart` plus configured overlay providers such as
+    `provider = metabion`.
+  - GeneArt rows include DNA fragments, cloned genes, plasmid reorder,
+    mutagenesis, and protein-expression capabilities.
+  - Metabion rows initially include DNA single-tube oligos and m-block DNA
+    fragments/libraries as WOP/email+Excel handoff routes.
+  - Direct API/order/portal submission is not enabled by this command.
+- `services providers doctor [--catalog PATH] [--output PATH]`
+  - Returns `gentle.external_service_provider_config_doctor.v1`.
+  - Validates the external-service provider config catalog discovery chain, or
+    one explicit catalog file via `--catalog`.
+  - Reports source scope/path, provider counts, SHA1 checksums, and
+    deterministic schema/required-field errors.
+  - With `--output`, also writes the JSON doctor report to disk.
 - `services project-preflight REQUEST_JSON_OR_@FILE`
   - Parses `gentle.external_service_request.v1` and returns
     `gentle.external_service_preflight.v1`.
@@ -3258,9 +3268,14 @@ Service and resource commands:
     inline service-ready handoff bundle.
   - No vendor order, cart submission, API upload, credential lookup, or
     purchase/shipping action is performed in this slice.
+  - Configured providers add deterministic handoff payloads. For Metabion,
+    quote output includes normalized line-item JSON/CSV, an email-draft
+    markdown payload, and a guided WOP checklist; missing local vendor
+    templates are warnings, not hard failures.
   - `return_spec.requested_payloads[]` lets ClawBio/MCP callers state whether
     they want GenBank/FASTA/protein payloads, quote metadata, vendor ids, or a
     full artifact bundle as later implementations grow.
+
 - `services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]`
   - Builds a Telegram-compatible bench-user guide with schema
     `gentle.telegram_guide.v1`.
@@ -3301,6 +3316,12 @@ Service and resource commands:
   - When `--output` is provided, the same JSON payload is written to disk and
     listed as the best-first `preferred_artifacts[]` entry so ClawBio can bundle
     it as an auditable installation report.
+
+Tutorial companion:
+
+- `docs/tutorial/metabion_external_service_handoff_gui_cli.md` walks through
+  provider doctor, capability listing, preflight, quote-handoff generation, and
+  GUI parity using bundled synthetic Metabion oligo and m-block request JSON.
 - `resources status`
   - Reports which integrated external resource snapshots are active right now.
   - Covers built-in/runtime status for `REBASE` and `JASPAR`, including item
