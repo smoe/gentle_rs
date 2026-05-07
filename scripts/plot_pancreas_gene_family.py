@@ -138,6 +138,15 @@ def parse_args() -> argparse.Namespace:
         help="Scale for the lower support-read-length axis. Default: log.",
     )
     parser.add_argument(
+        "--support-length-display",
+        choices=["points", "lines"],
+        default="points",
+        help=(
+            "How to draw support-read lengths in the lower panel. Default: "
+            "points, because missing samples make connecting lines misleading."
+        ),
+    )
+    parser.add_argument(
         "--label-column",
         choices=["sample_id", "sample_name", "run_accession"],
         default="sample_id",
@@ -545,6 +554,7 @@ def render_svg(
     support_length_stat: str,
     support_length_source: str,
     support_length_scale: str,
+    support_length_display: str,
 ) -> str:
     rows_by_gene_run = {
         (str(row.get("gene")), str(row.get("run_accession"))): row
@@ -730,8 +740,9 @@ def render_svg(
         parts.append(svg_text(lx + 22, legend_y + 2, gene, 12, "#334155", weight="700"))
     if support_length_raw_max > 0:
         lx = legend_x + len(genes) * legend_gene_w
-        parts.append(f'<line x1="{lx - 2:.1f}" y1="{legend_y - 3:.1f}" x2="{lx + 20:.1f}" y2="{legend_y - 3:.1f}" stroke="#111827" stroke-width="2.4"/>')
-        parts.append(f'<circle cx="{lx + 9:.1f}" cy="{legend_y - 3:.1f}" r="3.5" fill="#111827" stroke="white" stroke-width="1"/>')
+        if support_length_display == "lines":
+            parts.append(f'<line x1="{lx - 2:.1f}" y1="{legend_y - 3:.1f}" x2="{lx + 20:.1f}" y2="{legend_y - 3:.1f}" stroke="#111827" stroke-width="2.4"/>')
+        parts.append(f'<circle cx="{lx + 9:.1f}" cy="{legend_y - 3:.1f}" r="3.8" fill="#111827" stroke="white" stroke-width="1"/>')
         parts.append(svg_text(lx + 28, legend_y + 2, f"{support_length_stat} read bp", 12, "#334155"))
 
     desired_group_w = max(58.0, len(genes) * 18.0 + max(0, len(genes) - 1) * 2.5)
@@ -757,7 +768,7 @@ def render_svg(
                 parts.append(svg_text(x + bar_w / 2.0, y - 5, f"{count_raw:.0f}", 10, label_fill, "middle", weight="700"))
 
     if support_length_raw_max > 0:
-        for gene in genes:
+        for gene_idx, gene in enumerate(genes):
             points: list[tuple[float, float, str, float, str]] = []
             for idx, run in enumerate(runs):
                 row = rows_by_gene_run.get((gene, run))
@@ -765,8 +776,10 @@ def render_svg(
                 if raw is None or raw <= 0:
                     continue
                 source = str(row.get("support_length_source") or "support")
-                points.append((x_positions[idx], y_support_len(raw), run, raw, source))
-            if len(points) >= 2:
+                base_x = x_positions[idx] - group_w / 2.0
+                point_x = base_x + gene_idx * (bar_w + bar_gap) + bar_w / 2.0
+                points.append((point_x, y_support_len(raw), run, raw, source))
+            if support_length_display == "lines" and len(points) >= 2:
                 coords = " ".join(f"{x:.1f},{y:.1f}" for x, y, _run, _raw, _source in points)
                 parts.append(
                     f'<polyline points="{coords}" fill="none" stroke="{gene_colors[gene]}" '
@@ -864,6 +877,7 @@ def main() -> int:
         args.support_length_stat,
         args.support_length_source,
         args.support_length_scale,
+        args.support_length_display,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(svg, encoding="utf-8")

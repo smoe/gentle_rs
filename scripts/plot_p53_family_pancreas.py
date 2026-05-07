@@ -80,6 +80,15 @@ def parse_args() -> argparse.Namespace:
         help="Scale for the lower support-read-length axis. Default: log.",
     )
     parser.add_argument(
+        "--support-length-display",
+        choices=["points", "lines"],
+        default="points",
+        help=(
+            "How to draw support-read lengths in the lower panel. Default: "
+            "points, because missing samples make connecting lines misleading."
+        ),
+    )
+    parser.add_argument(
         "--label-column",
         choices=["sample_id", "sample_name", "run_accession"],
         default="sample_id",
@@ -117,6 +126,8 @@ def main() -> int:
             args.support_length_source,
             "--support-length-scale",
             args.support_length_scale,
+            "--support-length-display",
+            args.support_length_display,
             "--label-column",
             args.label_column,
             "--title",
