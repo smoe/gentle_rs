@@ -74,6 +74,12 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--support-length-scale",
+        choices=["log", "linear"],
+        default="log",
+        help="Scale for the lower support-read-length axis. Default: log.",
+    )
+    parser.add_argument(
         "--label-column",
         choices=["sample_id", "sample_name", "run_accession"],
         default="sample_id",
@@ -109,6 +115,8 @@ def main() -> int:
             args.support_length_stat,
             "--support-length-source",
             args.support_length_source,
+            "--support-length-scale",
+            args.support_length_scale,
             "--label-column",
             args.label_column,
             "--title",

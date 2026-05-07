@@ -132,6 +132,12 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--support-length-scale",
+        choices=["log", "linear"],
+        default="log",
+        help="Scale for the lower support-read-length axis. Default: log.",
+    )
+    parser.add_argument(
         "--label-column",
         choices=["sample_id", "sample_name", "run_accession"],
         default="sample_id",
@@ -538,6 +544,7 @@ def render_svg(
     title: str,
     support_length_stat: str,
     support_length_source: str,
+    support_length_scale: str,
 ) -> str:
     rows_by_gene_run = {
         (str(row.get("gene")), str(row.get("run_accession"))): row
@@ -609,19 +616,32 @@ def render_svg(
         if support_source_allowed(row)
         and (raw := value(row, support_length_key)) is not None and raw > 0
     ]
-    support_length_max = (
+    support_length_raw_max = max(support_length_values) if support_length_values else 0.0
+    support_length_axis_max = (
         nice_linear_max(max(support_length_values) * 1.15)
-        if support_length_values
+        if support_length_values and support_length_scale == "linear"
         else 0.0
     )
+    support_log_min = 0
+    support_log_max = 1
+    if support_length_values and support_length_scale == "log":
+        support_log_min = math.floor(math.log10(min(support_length_values)))
+        support_log_max = math.ceil(math.log10(max(support_length_values)))
+        if support_log_min == support_log_max:
+            support_log_max += 1
+        support_length_label = support_length_label.replace("(bp)", "(bp, log scale)")
 
     def y_bar(raw: float) -> float:
         return bottom_y + bottom_h - (raw / metric_max) * bottom_h
 
     def y_support_len(raw: float) -> float:
-        if support_length_max <= 0:
+        if support_length_raw_max <= 0:
             return bottom_y + bottom_h
-        return bottom_y + bottom_h - (raw / support_length_max) * bottom_h
+        if support_length_scale == "log":
+            return bottom_y + bottom_h - (
+                (math.log10(raw) - support_log_min) / (support_log_max - support_log_min)
+            ) * bottom_h
+        return bottom_y + bottom_h - (raw / support_length_axis_max) * bottom_h
 
     metric_label = (
         "strict seed-passed reads per million total reads"
@@ -683,18 +703,23 @@ def render_svg(
         parts.append(f'<line x1="{top_x}" y1="{y:.1f}" x2="{top_x + chart_w}" y2="{y:.1f}" class="grid"/>')
         parts.append(svg_text(top_x - 12, y + 4, format_metric(raw, metric), 12, "#64748b", "end"))
     parts.append(f'<line x1="{top_x}" y1="{bottom_y}" x2="{top_x}" y2="{bottom_y + bottom_h}" class="axis"/>')
-    if support_length_max > 0:
+    if support_length_raw_max > 0:
         parts.append(f'<line x1="{top_x + chart_w}" y1="{bottom_y}" x2="{top_x + chart_w}" y2="{bottom_y + bottom_h}" class="axis"/>')
     parts.append(f'<line x1="{top_x}" y1="{bottom_y + bottom_h}" x2="{top_x + chart_w}" y2="{bottom_y + bottom_h}" class="axis"/>')
     parts.append(svg_text(28, bottom_y + bottom_h / 2, metric_label, 12, "#475569", "middle", extra='transform="rotate(-90 28 %.1f)"' % (bottom_y + bottom_h / 2)))
-    if support_length_max > 0:
-        for tick in [0.25, 0.5, 0.75, 1.0]:
-            raw = support_length_max * tick
-            parts.append(svg_text(top_x + chart_w + 12, y_support_len(raw) + 4, format_bp(raw), 12, "#7c2d12", "start"))
+    if support_length_raw_max > 0:
+        if support_length_scale == "log":
+            for decade in range(support_log_min, support_log_max + 1):
+                raw = 10**decade
+                parts.append(svg_text(top_x + chart_w + 12, y_support_len(raw) + 4, format_bp(raw), 12, "#7c2d12", "start"))
+        else:
+            for tick in [0.25, 0.5, 0.75, 1.0]:
+                raw = support_length_axis_max * tick
+                parts.append(svg_text(top_x + chart_w + 12, y_support_len(raw) + 4, format_bp(raw), 12, "#7c2d12", "start"))
         parts.append(svg_text(top_x + chart_w + 84, bottom_y + bottom_h / 2, support_length_label, 12, "#7c2d12", "middle", extra='transform="rotate(90 %.1f %.1f)"' % (top_x + chart_w + 84, bottom_y + bottom_h / 2)))
 
     legend_gene_w = 86
-    legend_extra_w = 140 if support_length_max > 0 else 0
+    legend_extra_w = 140 if support_length_raw_max > 0 else 0
     legend_width = len(genes) * legend_gene_w + legend_extra_w + 22
     legend_x = top_x + chart_w - legend_width + 12
     legend_y = bottom_y - 43
@@ -703,7 +728,7 @@ def render_svg(
         lx = legend_x + idx * legend_gene_w
         parts.append(f'<rect x="{lx:.1f}" y="{legend_y - 9:.1f}" width="16" height="12" rx="2" fill="{gene_colors[gene]}"/>')
         parts.append(svg_text(lx + 22, legend_y + 2, gene, 12, "#334155", weight="700"))
-    if support_length_max > 0:
+    if support_length_raw_max > 0:
         lx = legend_x + len(genes) * legend_gene_w
         parts.append(f'<line x1="{lx - 2:.1f}" y1="{legend_y - 3:.1f}" x2="{lx + 20:.1f}" y2="{legend_y - 3:.1f}" stroke="#111827" stroke-width="2.4"/>')
         parts.append(f'<circle cx="{lx + 9:.1f}" cy="{legend_y - 3:.1f}" r="3.5" fill="#111827" stroke="white" stroke-width="1"/>')
@@ -731,7 +756,7 @@ def render_svg(
             if count_raw is not None and count_raw > 0:
                 parts.append(svg_text(x + bar_w / 2.0, y - 5, f"{count_raw:.0f}", 10, label_fill, "middle", weight="700"))
 
-    if support_length_max > 0:
+    if support_length_raw_max > 0:
         for gene in genes:
             points: list[tuple[float, float, str, float, str]] = []
             for idx, run in enumerate(runs):
@@ -838,6 +863,7 @@ def main() -> int:
         args.title,
         args.support_length_stat,
         args.support_length_source,
+        args.support_length_scale,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(svg, encoding="utf-8")
