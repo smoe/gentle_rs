@@ -4128,6 +4128,10 @@ GENtle-evolution plan:
   redacted quote packets, provider project/order ids, receipts, QAD/checksum
   records, returned FASTA/GenBank/protein payloads, and links back to the
   originating construct or protein-to-DNA handoff.
+- Primer/probe order forms should be one of those first-class artifacts: a
+  provider-neutral batch of oligo line items collected from one or more
+  primer/qPCR reports, suitable for Metabion/GeneArt translation after review
+  but not equivalent to direct ordering until explicit confirmation is given.
 - GUI, MCP, ClawBio, JS, and Lua surfaces should remain downstream of the
   shared shell/engine contracts. Add richer GUI and agent affordances only
   after the CLI/shared-shell request, preflight, quote, status, and artifact
@@ -5823,6 +5827,21 @@ Repeated multi-tool gaps to prioritize:
        scoring beyond the current shared Thermo Fisher-style
        Allawi/SantaLucia nearest-neighbor baseline
      - saved/reusable primer sets with explicit versioning
+     - first-class primer/oligo material lifecycle:
+       - preserve the architecture distinction between PCR primer concept,
+         retrieval/design constraint, in-silico instantiation, and physical
+         stock
+       - link material records to `primer_report_id`/`qpcr_report_id`, pair or
+         assay rank, role (`forward`, `reverse`, `probe`), sequence, and
+         provenance
+       - add a provider-neutral oligo order-form artifact that groups multiple
+         reviewed primer/probe instantiations into one procurement batch, in
+         analogy to assembly/arrangement artifacts grouping experimental parts
+       - keep order-form grouping explicit and auditable: stable line-item
+         order, shared order metadata, lineage links, and visible
+         de-duplication/keep-separate decisions for reused oligos
+       - expose review/order/receive/local-availability/consumption states
+         without treating current primer-design reports as physical inventory
      - async-capable batch off-target/specificity checks so primer-pair
        selection can run multiple BLAST searches through agent/MCP/CLI routes
        with progress/cancel parity

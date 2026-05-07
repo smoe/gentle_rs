@@ -592,6 +592,10 @@ Guide-design capability status:
 Primer-design report capability status:
 
 - `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs`, `DesignQpcrAssays`, `BuildTranscriptQpcrPanel`, `AssessPrimerPairSpecificity`, and the post-design cloning handoff operation `PrepareRestrictionCloningPcrHandoff`, plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`), a local BLAST specificity confirmation route (`primers specificity`), a non-mutating restriction-cloning handoff request seeder (`primers seed-restriction-cloning-handoff`), vector suggestion helpers (`primers restriction-cloning-vector-suggestions`), and persisted report inspect/export helpers for primer, qPCR, and restriction-cloning handoff reports. `--progress` now also streams `progress primers ...` lines for shared-shell primer/qPCR design commands, not only raw `op` / `workflow` JSON execution.
+- Saved primer/qPCR reports and materialized primer/probe sequences are
+  in-silico design instantiations: they satisfy a PCR/qPCR design constraint,
+  but they do not mean the physical oligo has been ordered, received, or found
+  in local inventory.
 - `gentle-cloning` ClawBio skill: exposes typed request modes over the same
   shared PCR/qPCR/TaqMan surface, including Primer3/backend preflight, PCR and
   qPCR seed helpers, `DesignPrimerPairs`/`DesignQpcrAssays` payload execution,

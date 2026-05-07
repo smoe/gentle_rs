@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-05-06
+Last updated: 2026-05-07
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -41,6 +41,45 @@ Wet-lab semantic rule (target model):
 - A container may hold multiple candidate molecules/fragments.
 - Filter-like steps (PCR, gel extraction, in silico selection) produce a new
   container with a narrower candidate set.
+
+Primer/oligo identity rule (target model):
+
+- A PCR primer should not be modeled as only a DNA string.
+- In a cloning workflow, a primer appears in progressively more concrete forms:
+  - concept: once PCR is chosen, the workflow requires primer roles such as
+    forward and reverse primer; qPCR additionally requires a probe role when a
+    probe-based assay is selected.
+  - retrieval/design constraint: once the region or amplicon to amplify has
+    been selected, each role becomes a constraint on a substance to retrieve,
+    design, order, or select from local stock. This constraint includes the
+    binding window, orientation, acceptable length/Tm/GC/specificity,
+    admissible tails or modifications, and local/vendor availability.
+  - instantiation: once a candidate is chosen, the constraint is satisfied by a
+    concrete oligo design with sequence, coordinates, diagnostics, provenance,
+    and later material status.
+- Current primer-design operations bridge the constraint-to-instantiation
+  boundary in silico: `DesignPrimerPairs` and `DesignQpcrAssays` persist
+  deterministic reports and may materialize graph-visible primer/probe sequence
+  artifacts for accepted candidates.
+- Such in-silico instantiations are not evidence that the oligo exists in the
+  lab. Future inventory/procurement support should track material states such
+  as `designed`, `reviewed`, `ordered`, `received`, `available_locally`, and
+  `consumed` without changing the underlying PCR biology operation.
+- Primer/probe ordering should be modeled as a batch artifact, analogous to an
+  assembly or arrangement: multiple concrete oligo instantiations can belong
+  together in one reviewed order form because they share one experimental
+  purpose, provider route, commercial context, or bench timing.
+- An oligo order form is neither a wet-lab container nor a silent vendor
+  submission. It is a logistics/procurement artifact with stable line-item
+  order, shared order metadata (for example scale, purification, delivery
+  channel, provider route), and links back to the primer/qPCR reports, pair or
+  assay ranks, roles, and sequences that justified each line item.
+- Identical or near-identical oligos from different PCR intents may be
+  de-duplicated or intentionally kept separate only by an explicit review step;
+  the default should preserve provenance and make grouping decisions visible.
+- GUI, CLI, JS, Lua, Python, MCP, and agent routes must preserve this
+  distinction. No adapter may silently equate a planned primer or persisted
+  design artifact with physical stock.
 
 Rack-placement rule (target model):
 
@@ -222,6 +261,11 @@ External-service integration rule:
   require explicit confirmation, stronger than ordinary local project
   mutations. Quote/dashboard handoff remains the safe default when API support
   or account enablement is uncertain.
+- Primer/probe order forms should enter this layer as provider-neutral
+  order-batch artifacts. Provider adapters may translate the batch into a
+  Metabion WOP/email+Excel packet, a GeneArt dashboard/API request, or another
+  configured route, but the project-facing artifact remains one reviewed batch
+  of oligo line items with lineage links.
 - External-service operations that wait on remote processing should use the
   same inspectable progress/status/cancel/artifact posture as other
   long-running GENtle work, even if provider-side cancellation is represented
@@ -1529,6 +1573,9 @@ inspection/export paths:
     - one derived sequence per forward/reverse primer in each accepted pair
     - one container per primer pair (forward + reverse members)
     - lineage edges from template sequence to each created primer sequence
+    - these outputs are in-silico primer instantiations, not proof that the
+      corresponding physical oligos have been ordered, received, or found in
+      local stock
   - `PcrOverlapExtensionMutagenesis` materializes graph-visible staged outputs:
     - outer/inner primer sequences
     - stage-1 left/right fragments and stage-2 mutant product
