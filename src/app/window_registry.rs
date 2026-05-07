@@ -173,6 +173,16 @@ impl GENtleApp {
                 detail: "Action launcher".to_string(),
             });
         }
+        if self.external_services_ui.show_panel {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::external_services_viewport_id(),
+                ),
+                viewport_id: Self::external_services_viewport_id(),
+                title: "External Services".to_string(),
+                detail: "Provider catalog, preflight, and quote handoff workspace".to_string(),
+            });
+        }
         if self.history_ui.show_panel {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(Self::history_viewport_id()),
@@ -602,6 +612,8 @@ impl GENtleApp {
         } else if viewport_id == Self::command_palette_viewport_id() {
             self.show_command_palette_dialog = true;
             self.command_palette_focus_query = true;
+        } else if viewport_id == Self::external_services_viewport_id() {
+            self.external_services_ui.show_panel = true;
         } else if viewport_id == Self::history_viewport_id() {
             self.history_ui.show_panel = true;
         } else if viewport_id == Self::prepare_genome_viewport_id() {

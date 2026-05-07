@@ -4209,6 +4209,12 @@ Implementation status as of 2026-05-05:
   normalized line-item JSON/CSV, email-draft markdown, and guided WOP checklist
   payloads. No WOP scraping, direct submission, credentials, PO, shipping, or
   billing persistence is implemented.
+- The GUI now has a first External Services workspace reachable via
+  `Services -> External Services...` and the command palette. It consumes the
+  same shared-shell routes (`services providers list`, `services providers
+  doctor`, `services project-preflight`, `services project-quote`), so provider
+  pickers and Metabion/GeneArt service rows remain catalog-driven rather than
+  hard-coded in GUI code.
 
 Portable schemas:
 
