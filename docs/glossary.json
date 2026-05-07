@@ -396,7 +396,7 @@
          ],
          "path": "cache clear",
          "summary": "Conservatively clear derived cache artifacts or prepared installs within selected reference/helper cache roots.",
-         "usage": "cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--include-orphans]"
+         "usage": "cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]"
       },
       {
          "aliases": [],
@@ -2739,7 +2739,7 @@
          ],
          "path": "primers test-cdna-pcr",
          "summary": "Test supplied PCR primers against transcript-derived cDNA templates for one splicing group and optionally export a transcript-map SVG.",
-         "usage": "primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+         "usage": "primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]..."
       },
       {
          "aliases": [],
@@ -2753,7 +2753,7 @@
          ],
          "path": "primers test-cdna-qpcr",
          "summary": "Test supplied qPCR primers and probe against transcript-derived cDNA templates for one splicing group and optionally export a transcript-map SVG.",
-         "usage": "primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]"
+         "usage": "primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]..."
       },
       {
          "aliases": [
@@ -3051,7 +3051,7 @@
          ],
          "path": "features tfbs-score-tracks-svg",
          "summary": "Render one stacked SVG plot of continuous TFBS/PSSM score tracks over a selected sequence span.",
-         "usage": "features tfbs-score-tracks-svg (SEQ_ID OUTPUT.svg|--sequence-text DNA --output OUTPUT.svg) --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--topology linear|circular] [--id-hint TEXT] [--score-kind llr_bits|llr_quantile|true_log_odds_bits|true_log_odds_quantile] [--allow-negative]"
+         "usage": "features tfbs-score-tracks-svg (SEQ_ID OUTPUT.svg|--sequence-text DNA --output OUTPUT.svg) --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--topology linear|circular] [--id-hint TEXT] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]"
       },
       {
          "aliases": [],
@@ -3513,7 +3513,7 @@
          ],
          "path": "rna-reads interpret",
          "summary": "Interpret RNA reads (Nanopore cDNA phase-1 profile) against splicing-derived transcript templates.",
-         "usage": "rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+         "usage": "rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--seed-stride-bp N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
       },
       {
          "aliases": [],
@@ -3541,7 +3541,7 @@
          ],
          "path": "rna-reads align-report",
          "summary": "Run retained-hit alignment phase and refresh report mappings/support summaries.",
-         "usage": "rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+         "usage": "rna-reads align-report REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
       },
       {
          "aliases": [],
@@ -3555,7 +3555,7 @@
          ],
          "path": "rna-reads preflight-isoforms",
          "summary": "Preflight target RNA-read isoform seed support against explicit control transcript variants.",
-         "usage": "rna-reads preflight-isoforms SEQ_ID FEATURE_ID [--scope SCOPE] [--positive-transcript-fasta PATH ...] [--must-pass-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]"
+         "usage": "rna-reads preflight-isoforms SEQ_ID FEATURE_ID [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--positive-transcript-fasta PATH ...] [--must-pass-transcript-fasta PATH ...] [--control-transcript-fasta PATH ...] [--optimize-parameters] [--max-control-match-probability F] [seed filter options]"
       },
       {
          "aliases": [],
@@ -3580,6 +3580,18 @@
          "path": "rna-reads show-report",
          "summary": "Inspect one persisted RNA-read interpretation report by ID.",
          "usage": "rna-reads show-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads show-alignment",
+         "summary": "Inspect one retained RNA-read alignment row by stored record index.",
+         "usage": "rna-reads show-alignment REPORT_ID RECORD_INDEX"
       },
       {
          "aliases": [],
@@ -3619,7 +3631,45 @@
          ],
          "path": "rna-reads inspect-alignments",
          "summary": "Inspect ranked aligned hits from one RNA-read report.",
-         "usage": "rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k]"
+         "usage": "rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads inspect-concatemers",
+         "summary": "Inspect candidate concatenemer/split-read evidence from one RNA-read report.",
+         "usage": "rna-reads inspect-concatemers REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--internal-homopolymer-min-bp N] [--end-margin-bp N] [--max-primary-query-cov F] [--min-secondary-identity F] [--max-secondary-query-overlap F] [--adapter-fasta PATH] [--adapter-min-match-bp N] [--fragment-min-bp N] [--fragment-max-parts N] [--fragment-min-identity F] [--fragment-min-query-cov F] [--transcript-fasta PATH]... [--transcript-index PATH]..."
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads build-transcript-index",
+         "summary": "Build a reusable transcript FASTA k-mer index for RNA-read concatemer inspection.",
+         "usage": "rna-reads build-transcript-index OUTPUT.json [--kmer-len N] --transcript-fasta PATH [--transcript-fasta PATH ...]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "MaterializeRnaReadHitSequences"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads materialize-hits",
+         "summary": "Materialize selected RNA-read hit sequences from a saved report.",
+         "usage": "rna-reads materialize-hits REPORT_ID [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--output-prefix PREFIX]"
       },
       {
          "aliases": [],
@@ -3647,7 +3697,7 @@
          ],
          "path": "rna-reads export-hits-fasta",
          "summary": "Export selected interpreted RNA-read hit sequences to FASTA.",
-         "usage": "rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]"
+         "usage": "rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]"
       },
       {
          "aliases": [],
@@ -3666,6 +3716,20 @@
       {
          "aliases": [],
          "engine_operations": [
+            "ExportRnaReadTargetQuality"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-target-quality",
+         "summary": "Export per-target RNA-read support quality summaries to SVG or JSON.",
+         "usage": "rna-reads export-target-quality REPORT_ID OUTPUT.{svg|json} --gene GENE_ID [--gene GENE_ID ...] [--complete-rule near|strict|exact]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "ExportRnaReadExonPathsTsv"
          ],
          "interfaces": [
@@ -3675,7 +3739,7 @@
          ],
          "path": "rna-reads export-paths-tsv",
          "summary": "Export per-read exon-path rows from one RNA-read report.",
-         "usage": "rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+         "usage": "rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]"
       },
       {
          "aliases": [],
@@ -3689,7 +3753,7 @@
          ],
          "path": "rna-reads export-abundance-tsv",
          "summary": "Export exon/junction abundance tables from one RNA-read report.",
-         "usage": "rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+         "usage": "rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--record-indices i,j,k] [--subset-spec TEXT]"
       },
       {
          "aliases": [],
@@ -3703,7 +3767,7 @@
          ],
          "path": "rna-reads export-score-density-svg",
          "summary": "Export RNA-read seed-hit score-density chart to SVG.",
-         "usage": "rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]"
+         "usage": "rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]"
       },
       {
          "aliases": [],
@@ -3717,7 +3781,7 @@
          ],
          "path": "rna-reads export-alignments-tsv",
          "summary": "Export ranked RNA-read alignment rows to TSV.",
-         "usage": "rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N]"
+         "usage": "rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]"
       },
       {
          "aliases": [],
