@@ -25,6 +25,10 @@ def parse_args() -> argparse.Namespace:
     )
     tp53 = parser.add_mutually_exclusive_group(required=True)
     tp53.add_argument(
+        "--tp53-canonical-summary",
+        help="Canonical TP53 gene-screen summary TSV.",
+    )
+    tp53.add_argument(
         "--tp53-batch-report",
         help="TP53 out/batch_report.json from rna-reads batch-map.",
     )
@@ -32,14 +36,22 @@ def parse_args() -> argparse.Namespace:
         "--tp53-batch-summary",
         help="TP53 out/batch_summary.tsv from rna-reads batch-map.",
     )
-    parser.add_argument(
+    tp63 = parser.add_mutually_exclusive_group(required=True)
+    tp63.add_argument(
+        "--tp63-canonical-summary",
+        help="Canonical TP63 gene-screen summary TSV.",
+    )
+    tp63.add_argument(
         "--tp63-figure-source",
-        required=True,
         help="TP63 pancreas figure-source TSV from pancreas_gene_rna_screen.sh summarize.",
     )
-    parser.add_argument(
+    tp73 = parser.add_mutually_exclusive_group(required=True)
+    tp73.add_argument(
+        "--tp73-canonical-summary",
+        help="Canonical TP73 gene-screen summary TSV.",
+    )
+    tp73.add_argument(
         "--tp73-figure-source",
-        required=True,
         help="TP73 pancreas figure-source TSV.",
     )
     parser.add_argument("-o", "--output", required=True, help="Output SVG path.")
@@ -122,16 +134,22 @@ def main() -> int:
     args = parse_args()
     script = Path(__file__).with_name("plot_pancreas_gene_family.py")
     command = [sys.executable, str(script)]
-    if args.tp53_batch_report:
+    if args.tp53_canonical_summary:
+        command.extend(["--canonical-summary", args.tp53_canonical_summary])
+    elif args.tp53_batch_report:
         command.extend(["--batch-report", f"TP53={args.tp53_batch_report}"])
     else:
         command.extend(["--batch-summary", f"TP53={args.tp53_batch_summary}"])
+    if args.tp63_canonical_summary:
+        command.extend(["--canonical-summary", args.tp63_canonical_summary])
+    else:
+        command.extend(["--figure-source", f"TP63={args.tp63_figure_source}"])
+    if args.tp73_canonical_summary:
+        command.extend(["--canonical-summary", args.tp73_canonical_summary])
+    else:
+        command.extend(["--figure-source", f"TP73={args.tp73_figure_source}"])
     command.extend(
         [
-            "--figure-source",
-            f"TP63={args.tp63_figure_source}",
-            "--figure-source",
-            f"TP73={args.tp73_figure_source}",
             "--genes",
             "TP53,TP63,TP73",
             "--metric",

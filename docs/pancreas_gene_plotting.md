@@ -73,8 +73,19 @@ shown as neighboring bars for each sample. It first writes a canonical merged
 family TSV, then renders an SVG. This makes the figure inputs auditable and
 lets later scripts reuse the normalized table.
 
-Inputs are supplied as repeatable `GENE=PATH` pairs. The script accepts three
-source styles:
+Preferred input is the canonical gene-screen summary TSV emitted by both
+producers:
+
+- native `rna-reads batch-map`: `out/gene_screen_summary.tsv`
+- `scripts/pancreas_gene_rna_screen.sh summarize`:
+  `reports/<gene>_pancreas.gene_screen_summary.tsv`
+
+Use `--canonical-summary PATH` for these files. They already carry the `gene`
+column and the same `gentle.rna_read_gene_screen_summary.v1` schema, so family
+figures no longer need to guess whether a field came from the seed phase or an
+alignment/accepted-target fallback.
+
+Legacy inputs remain supported as repeatable `GENE=PATH` pairs:
 
 - `--batch-report GENE=PATH`: an RNA-read batch `out/batch_report.json`.
 - `--batch-summary GENE=PATH`: an RNA-read batch `out/batch_summary.tsv`.
@@ -85,9 +96,9 @@ Example for the p53 family:
 
 ```bash
 python3 scripts/plot_pancreas_gene_family.py \
-  --batch-report TP53="$TP53_ROOT/out/batch_report.json" \
-  --figure-source TP63="$TP63_ROOT/figures/tp63_pancreas_figure_source.tsv" \
-  --figure-source TP73="$TP73_ROOT/figures/tp73_pancreas_figure_source.tsv" \
+  --canonical-summary "$TP53_ROOT/out/gene_screen_summary.tsv" \
+  --canonical-summary "$TP63_ROOT/reports/tp63_pancreas.gene_screen_summary.tsv" \
+  --canonical-summary "$TP73_ROOT/reports/tp73_pancreas.gene_screen_summary.tsv" \
   --genes TP53,TP63,TP73 \
   --metric per_million \
   --output "$WORK/figures/p53_family_seed_passed_grouped.svg" \
@@ -98,6 +109,8 @@ Useful options:
 
 - `--genes TP53,TP63,TP73`: explicit display order. If omitted, input order is
   used and any extra genes found in the rows are appended.
+- `--canonical-summary PATH`: repeatable canonical input. Prefer this for new
+  TP53-family and follow-up figures.
 - `--metric per_million`: normalize bars as seed-passed reads per million total
   reads. Raw read counts are still printed above bars.
 - `--metric raw`: use raw seed-passed read counts as bar height.
@@ -198,9 +211,9 @@ Legacy command:
 
 ```bash
 python3 scripts/plot_p53_family_pancreas.py \
-  --tp53-batch-report "$TP53_ROOT/out/batch_report.json" \
-  --tp63-figure-source "$TP63_ROOT/figures/tp63_pancreas_figure_source.tsv" \
-  --tp73-figure-source "$TP73_ROOT/figures/tp73_pancreas_figure_source.tsv" \
+  --tp53-canonical-summary "$TP53_ROOT/out/gene_screen_summary.tsv" \
+  --tp63-canonical-summary "$TP63_ROOT/reports/tp63_pancreas.gene_screen_summary.tsv" \
+  --tp73-canonical-summary "$TP73_ROOT/reports/tp73_pancreas.gene_screen_summary.tsv" \
   --output "$WORK/figures/p53_family_seed_passed_grouped.svg"
 ```
 
@@ -208,9 +221,9 @@ Equivalent canonical command:
 
 ```bash
 python3 scripts/plot_pancreas_gene_family.py \
-  --batch-report TP53="$TP53_ROOT/out/batch_report.json" \
-  --figure-source TP63="$TP63_ROOT/figures/tp63_pancreas_figure_source.tsv" \
-  --figure-source TP73="$TP73_ROOT/figures/tp73_pancreas_figure_source.tsv" \
+  --canonical-summary "$TP53_ROOT/out/gene_screen_summary.tsv" \
+  --canonical-summary "$TP63_ROOT/reports/tp63_pancreas.gene_screen_summary.tsv" \
+  --canonical-summary "$TP73_ROOT/reports/tp73_pancreas.gene_screen_summary.tsv" \
   --genes TP53,TP63,TP73 \
   --metric per_million \
   --support-length-stat max \

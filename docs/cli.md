@@ -735,8 +735,15 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
       `sra_accession`.
     - FASTA rows produce persisted RNA-read reports plus
       `batch_report.json`, `batch_summary.tsv`, `sample_sheet.tsv`,
-      `isoform_support.tsv`, `concatemer_partner_summary.tsv`, and per-sample
-      gene-support/concatemer JSON artifacts under `--out-dir`.
+      `gene_screen_summary.tsv`, `isoform_support.tsv`,
+      `concatemer_partner_summary.tsv`, and per-sample gene-support/concatemer
+      JSON artifacts under `--out-dir`.
+    - `gene_screen_summary.tsv` uses schema
+      `gentle.rna_read_gene_screen_summary.v1` and is the preferred
+      figure/statistics substrate for cross-gene family plots because it
+      records the conservative seed-passed count, all-read q90/q95/q99 length
+      quantiles, seed-passed read-length summaries, accepted-target fallback
+      fields, and source provenance in one consistent table.
     - by default, SRA-only rows are planned, not fetched: they are marked
       `needs_preparation` and written to `sra_preparation_plan.tsv` plus
       `sra_preparation_commands.sh`.

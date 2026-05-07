@@ -6712,10 +6712,15 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - if `origin_mode` is omitted, one requested gene uses `single_gene` and
       multiple requested/target genes use `multi_gene_sparse`
     - `RunRnaReadBatchMap` writes one bundle under `out_dir`:
-      `batch_report.json`, `batch_summary.tsv`, `sample_sheet.tsv`,
-      `isoform_support.tsv`, `concatemer_partner_summary.tsv`, optional SRA
-      preparation/read-acquisition files, and per-sample gene-support /
-      concatemer JSON
+      `batch_report.json`, `batch_summary.tsv`,
+      `gene_screen_summary.tsv`, `sample_sheet.tsv`, `isoform_support.tsv`,
+      `concatemer_partner_summary.tsv`, optional SRA preparation/read-acquisition
+      files, and per-sample gene-support / concatemer JSON
+    - `gene_screen_summary.tsv` uses schema
+      `gentle.rna_read_gene_screen_summary.v1`; it normalizes the native
+      batch-map output to the same conservative seed-passed support table used
+      by the pancreas gene-screen shell helper, including all-read q90/q95/q99
+      length context and seed-passed support-read length summaries
     - `batch_summary.tsv` is the sample-level dashboard substrate; it includes
       status/error/warning fields, read counts/fractions, origin-class counts,
       requested/matched/missing genes, accepted-target and other-gene metrics,

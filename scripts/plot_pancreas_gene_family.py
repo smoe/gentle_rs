@@ -43,10 +43,18 @@ DEFAULT_READ_LENGTH_SERIES = [
     series for series in READ_LENGTH_SERIES if series[0] not in {"all_q99_bp", "all_q100_bp"}
 ]
 OUTPUT_FIELDS = [
+    "schema",
     "gene",
     "run_accession",
     "sample_id",
     "sample_name",
+    "source_kind",
+    "source_path",
+    "analysis_phase",
+    "report_id",
+    "seq_id",
+    "seed_feature_id",
+    "input_path",
     "total_reads",
     "all_q0_bp",
     "all_q25_bp",
@@ -59,8 +67,16 @@ OUTPUT_FIELDS = [
     "all_mean_bp",
     "seed_passed_reads",
     "seed_passed_per_million",
+    "seed_passed_q90_bp",
+    "seed_passed_q95_bp",
+    "seed_passed_q99_bp",
+    "seed_passed_max_bp",
+    "seed_passed_mean_bp",
     "accepted_target_count",
     "accepted_target_per_million",
+    "accepted_target_max_bp",
+    "accepted_target_mean_bp",
+    "align_selection",
     "support_length_source",
     "support_high_read_bp",
     "support_max_read_bp",
@@ -75,6 +91,16 @@ def parse_args() -> argparse.Namespace:
             "Render a grouped gene-family pancreas SVG from already-produced "
             "GENtle batch reports and figure-source TSVs."
         )
+    )
+    parser.add_argument(
+        "--canonical-summary",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help=(
+            "Repeatable canonical gentle.rna_read_gene_screen_summary.v1 TSV. "
+            "Prefer this when available; it already carries the gene column."
+        ),
     )
     parser.add_argument(
         "--batch-report",
@@ -283,15 +309,31 @@ def normalize_support_row(
             accepted = to_float(row.get(key))
             break
     out: dict[str, object] = {
+        "schema": first_text(row, "schema") or "gentle.rna_read_gene_screen_summary.v1",
         "gene": gene,
         "run_accession": run,
         "sample_id": first_text(row, "sample_id"),
         "sample_name": first_text(row, "sample_name"),
+        "source_kind": first_text(row, "source_kind") or "legacy_input",
+        "source_path": first_text(row, "source_path") or str(source),
+        "analysis_phase": first_text(row, "analysis_phase"),
+        "report_id": first_text(row, "report_id"),
+        "seq_id": first_text(row, "seq_id"),
+        "seed_feature_id": first_text(row, "seed_feature_id"),
+        "input_path": first_text(row, "input_path"),
         "total_reads": int(total) if float(total).is_integer() else total,
         "seed_passed_reads": int(seed) if float(seed).is_integer() else seed,
         "seed_passed_per_million": (seed * 1_000_000.0 / total) if total > 0 else 0.0,
+        "seed_passed_q90_bp": first_text(row, "seed_passed_q90_bp"),
+        "seed_passed_q95_bp": first_text(row, "seed_passed_q95_bp"),
+        "seed_passed_q99_bp": first_text(row, "seed_passed_q99_bp"),
+        "seed_passed_max_bp": first_text(row, "seed_passed_max_bp"),
+        "seed_passed_mean_bp": first_text(row, "seed_passed_mean_bp"),
         "accepted_target_count": int(accepted) if float(accepted).is_integer() else accepted,
         "accepted_target_per_million": (accepted * 1_000_000.0 / total) if total > 0 else 0.0,
+        "accepted_target_max_bp": first_text(row, "accepted_target_max_bp"),
+        "accepted_target_mean_bp": first_text(row, "accepted_target_mean_bp"),
+        "align_selection": first_text(row, "align_selection"),
         "support_length_source": "",
         "support_high_read_bp": "",
         "support_max_read_bp": "",
@@ -366,6 +408,9 @@ def normalize_support_row(
         out["support_high_read_bp"] = optional_number_text(seed_high)
         out["support_max_read_bp"] = optional_number_text(seed_max)
         out["support_mean_read_bp"] = optional_number_text(seed_mean)
+        out["seed_passed_q90_bp"] = out["seed_passed_q90_bp"] or optional_number_text(seed_high)
+        out["seed_passed_max_bp"] = out["seed_passed_max_bp"] or optional_number_text(seed_max)
+        out["seed_passed_mean_bp"] = out["seed_passed_mean_bp"] or optional_number_text(seed_mean)
     else:
         accepted_high = optional_float(
             row,
@@ -404,6 +449,8 @@ def normalize_support_row(
             out["support_high_read_bp"] = optional_number_text(accepted_high)
             out["support_max_read_bp"] = optional_number_text(accepted_max)
             out["support_mean_read_bp"] = optional_number_text(accepted_mean)
+            out["accepted_target_max_bp"] = out["accepted_target_max_bp"] or optional_number_text(accepted_max)
+            out["accepted_target_mean_bp"] = out["accepted_target_mean_bp"] or optional_number_text(accepted_mean)
     for key in (
         "all_q0_bp",
         "all_q25_bp",
@@ -417,6 +464,25 @@ def normalize_support_row(
     ):
         out[key] = optional_number_text(row.get(key, ""))
     return out
+
+
+def load_canonical_rows(path: Path) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for row in read_tsv(path):
+        gene = first_text(row, "gene").strip().upper()
+        if not gene:
+            gene = path.stem.split("_", 1)[0].upper()
+        normalized = normalize_support_row(
+            gene=gene,
+            source=path,
+            row=row,
+            seed_keys=("seed_passed_reads", "strict_seed_passed_reads", "read_count_seed_passed"),
+            accepted_keys=("accepted_target_count", "accepted_target_reads"),
+        )
+        normalized["source_kind"] = normalized.get("source_kind") or "canonical_summary"
+        normalized["source_path"] = normalized.get("source_path") or str(path)
+        rows.append(normalized)
+    return rows
 
 
 def maybe_fill_lengths_from_gene_support(
@@ -529,7 +595,10 @@ def write_family_tsv(rows: list[dict[str, object]], path: Path) -> None:
     with path.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, delimiter="\t", fieldnames=OUTPUT_FIELDS)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(
+            {field: row.get(field, "") for field in OUTPUT_FIELDS}
+            for row in rows
+        )
 
 
 def validate_read_length_quantiles(rows: list[dict[str, object]], source_label: str) -> None:
@@ -939,6 +1008,17 @@ def main() -> int:
 
     rows = []
     input_genes: list[str] = []
+    for value_text in args.canonical_summary:
+        path = Path(value_text)
+        if not path.exists():
+            print(f"Input not found: {path}", file=sys.stderr)
+            return 2
+        canonical_rows = load_canonical_rows(path)
+        for row in canonical_rows:
+            gene = str(row.get("gene") or "").upper()
+            if gene and gene not in input_genes:
+                input_genes.append(gene)
+        rows.extend(canonical_rows)
     for value_text in args.batch_report:
         gene, path = parse_gene_path(value_text, "--batch-report")
         if not path.exists():
@@ -961,7 +1041,11 @@ def main() -> int:
         input_genes.append(gene)
         rows.extend(load_figure_rows(gene, path))
     if not rows:
-        print("No input rows loaded; provide at least one --batch-report, --batch-summary, or --figure-source.", file=sys.stderr)
+        print(
+            "No input rows loaded; provide at least one --canonical-summary, "
+            "--batch-report, --batch-summary, or --figure-source.",
+            file=sys.stderr,
+        )
         return 2
 
     if args.genes:

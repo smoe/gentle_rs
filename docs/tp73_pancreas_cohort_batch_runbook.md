@@ -175,6 +175,9 @@ Primary outputs live under the timestamped run root:
 - alignment-dependent per-sample `runs/$RUN/post_interpret/{json,tsv,svg}/...`
   files only when `--with-alignment` is used
 - `reports/*_pancreas.summary.tsv`
+- `reports/*_pancreas.gene_screen_summary.tsv`, the canonical
+  `gentle.rna_read_gene_screen_summary.v1` source table shared with native
+  `rna-reads batch-map`; prefer this for multi-gene/family plots
 - `figures/*_pancreas_figure_source.tsv`
 - `figures/*_pancreas_overview.svg` when rendered with
   `scripts/plot_pancreas_gene_screen.py`

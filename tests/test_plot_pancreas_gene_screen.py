@@ -173,6 +173,46 @@ class PlotPancreasGeneScreenTests(unittest.TestCase):
             self.assertIn("all_q95_bp", default_tsv_header)
             self.assertIn("all_q99_bp", default_tsv_header)
 
+    def test_family_plotter_prefers_canonical_gene_screen_summary(self) -> None:
+        canonical = textwrap.dedent(
+            """\
+            schema\tgene\trun_accession\tsample_id\tsample_name\tsource_kind\tsource_path\tanalysis_phase\treport_id\tseq_id\tseed_feature_id\tinput_path\ttotal_reads\tall_q0_bp\tall_q25_bp\tall_q50_bp\tall_q75_bp\tall_q90_bp\tall_q95_bp\tall_q99_bp\tall_q100_bp\tall_mean_bp\tseed_passed_reads\tseed_passed_per_million\tseed_passed_q90_bp\tseed_passed_q95_bp\tseed_passed_q99_bp\tseed_passed_max_bp\tseed_passed_mean_bp\taccepted_target_count\taccepted_target_per_million\taccepted_target_max_bp\taccepted_target_mean_bp\talign_selection
+            gentle.rna_read_gene_screen_summary.v1\tTP53\tSRR1\tS1\tSample 1\trna_reads_batch_map\tbatch_report.json\twith_alignment\ttp53_SRR1\tseq_a\t1\treads.fa\t1000\t100\t200\t300\t400\t500\t550\t590\t600\t350\t10\t10000\t700\t750\t790\t800\t650\t8\t8000\t900\t710\tseed_passed
+            gentle.rna_read_gene_screen_summary.v1\tTP63\tSRR1\tS1\tSample 1\tpancreas_gene_rna_screen\tfinal_summaries.json\tseed_only\ttp63_SRR1\tseq_b\t1\t\t1000\t100\t200\t300\t400\t500\t550\t590\t600\t350\t2\t2000\t450\t475\t490\t500\t460\t\t\t\t\tseed_passed
+            """
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            input_tsv = tmp_path / "gene_screen_summary.tsv"
+            output_svg = tmp_path / "family.svg"
+            output_tsv = tmp_path / "family.tsv"
+            input_tsv.write_text(canonical, encoding="utf-8")
+
+            subprocess.run(
+                [
+                    "python3",
+                    str(REPO_ROOT / "scripts" / "plot_pancreas_gene_family.py"),
+                    "--canonical-summary",
+                    str(input_tsv),
+                    "--genes",
+                    "TP53,TP63",
+                    "--output",
+                    str(output_svg),
+                    "--output-tsv",
+                    str(output_tsv),
+                ],
+                check=True,
+                cwd=REPO_ROOT,
+            )
+
+            output_text = output_tsv.read_text(encoding="utf-8")
+            svg = output_svg.read_text(encoding="utf-8")
+            self.assertIn("schema\tgene\trun_accession", output_text.splitlines()[0])
+            self.assertIn("gentle.rna_read_gene_screen_summary.v1\tTP53\tSRR1", output_text)
+            self.assertIn("strict_seed_passed", output_text)
+            self.assertIn("TP53 / TP63 seed-passed support", svg)
+
 
 class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
     def test_gene_screen_help_documents_seed_only_default(self) -> None:
@@ -204,10 +244,23 @@ class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
 
         self.assertIn('SCREEN_PHASE="${SCREEN_PHASE:-seed_only}"', script)
         self.assertIn('ALIGN_SELECTION="${ALIGN_SELECTION:-seed_passed}"', script)
+        self.assertIn('--seed-only)\n        SCREEN_PHASE="seed_only"', script)
+        self.assertIn('--with-alignment)\n        SCREEN_PHASE="with_alignment"', script)
         self.assertIn('if [ "$SCREEN_PHASE" = "seed_only" ]; then', script)
         self.assertIn('SCREEN_PHASE="with_alignment"', script)
         self.assertIn("--concatemer-limit is ignored in seed-only mode", script)
         self.assertIn('rna-reads align-report "$report_id"', script)
+
+    def test_gene_screen_script_syntax_is_valid(self) -> None:
+        subprocess.run(
+            [
+                "bash",
+                "-n",
+                str(REPO_ROOT / "scripts" / "pancreas_gene_rna_screen.sh"),
+            ],
+            check=True,
+            cwd=REPO_ROOT,
+        )
 
 
 if __name__ == "__main__":

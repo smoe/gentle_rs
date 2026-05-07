@@ -4787,6 +4787,7 @@ pub struct RnaReadSampleSheetExport {
 }
 
 pub const RNA_READ_BATCH_MAP_REPORT_SCHEMA: &str = "gentle.rna_read_batch_map_report.v1";
+pub const RNA_READ_GENE_SCREEN_SUMMARY_SCHEMA: &str = "gentle.rna_read_gene_screen_summary.v1";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -4842,6 +4843,22 @@ pub struct RnaReadBatchMapSampleRow {
     pub seed_pass_fraction: f64,
     pub aligned_fraction: f64,
     pub mean_read_length_bp: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all_q0_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all_q25_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all_q50_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all_q75_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all_q90_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all_q95_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all_q99_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all_q100_bp: Option<usize>,
     #[serde(default)]
     pub origin_class_counts: BTreeMap<String, usize>,
     #[serde(default)]
@@ -4873,6 +4890,20 @@ pub struct RnaReadBatchMapSampleRow {
     pub internal_poly_a_count: usize,
     pub internal_poly_t_count: usize,
     pub phase1_partial_origin_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_passed_q90_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_passed_q95_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_passed_q99_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_passed_max_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_passed_mean_bp: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_target_max_bp: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_target_mean_bp: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -4946,6 +4977,7 @@ pub struct RnaReadBatchMapReport {
     pub continue_on_error: bool,
     pub batch_report_json_path: String,
     pub batch_summary_tsv_path: String,
+    pub gene_screen_summary_tsv_path: String,
     pub sample_sheet_tsv_path: String,
     pub isoform_support_tsv_path: String,
     pub concatemer_partner_summary_tsv_path: String,
