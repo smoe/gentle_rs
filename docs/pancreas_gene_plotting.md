@@ -104,6 +104,11 @@ Useful options:
   statistic drawn as one colored line per gene in the lower support panel. The
   default is `max`, matching the single-gene overview convention. Whole-library
   q90 remains library context only and is drawn in the upper panel when present.
+- `--support-length-source strict_seed_passed|any`: choose which support-length
+  provenance can be drawn. The default is `strict_seed_passed`, so the lower
+  read-length lines describe the same seed-passed read population as the bars.
+  `any` is a diagnostic mode for older reports and can draw accepted-target
+  fallback lengths, which are not directly comparable to strict seed-passed bars.
 - `--label-column sample_id|sample_name|run_accession`: x-axis labels.
 - `--output-tsv PATH`: canonical merged family table. Defaults to the SVG path
   with `.tsv` extension.
@@ -125,10 +130,12 @@ bars. `accepted_target_count` values are retained in the TSV for auditability bu
 are not used as the main family-support scale, because those counts can mean a
 later, less conservative downstream contract than the strict seed gate.
 Gene-supporting read lengths are drawn as one colored line per gene in the same
-lower panel. This overlay uses the selected support statistic (`max` by default)
-from seed-passed rows when present, with accepted-target lengths retained as a
-fallback/provenance-marked source in older batch reports. The all-read q90 line
-belongs only to the upper whole-library read-length panel.
+lower panel. By default, this overlay uses the selected support statistic (`max`
+by default) only from strict seed-passed rows, so it describes the same read
+population as the bars. Accepted-target fallback lengths are retained in the TSV
+for older batch reports, but are drawn only when `--support-length-source any` is
+selected explicitly. The all-read q90 line belongs only to the upper
+whole-library read-length panel.
 
 ## Compatibility Wrappers
 
@@ -183,6 +190,7 @@ python3 scripts/plot_pancreas_gene_family.py \
   --genes TP53,TP63,TP73 \
   --metric per_million \
   --support-length-stat max \
+  --support-length-source strict_seed_passed \
   --output "$WORK/figures/p53_family_seed_passed_grouped.svg"
 ```
 

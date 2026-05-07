@@ -64,6 +64,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--support-length-source",
+        choices=["strict_seed_passed", "any"],
+        default="strict_seed_passed",
+        help=(
+            "Which support-read length provenance may be drawn. The default only "
+            "plots lengths measured on the same strict seed-passed population as "
+            "the bars; 'any' also allows older accepted-target fallback lengths."
+        ),
+    )
+    parser.add_argument(
         "--label-column",
         choices=["sample_id", "sample_name", "run_accession"],
         default="sample_id",
@@ -97,6 +107,8 @@ def main() -> int:
             args.metric,
             "--support-length-stat",
             args.support_length_stat,
+            "--support-length-source",
+            args.support_length_source,
             "--label-column",
             args.label_column,
             "--title",
