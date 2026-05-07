@@ -113,6 +113,20 @@ def parse_args() -> argparse.Namespace:
         help="Grouped-bar height metric. Raw read counts are printed inside bars in both modes.",
     )
     parser.add_argument(
+        "--summary-mode",
+        choices=["samples", "genes"],
+        default="samples",
+        help=(
+            "Plot layout: 'samples' draws neighboring gene bars for every sample; "
+            "'genes' aggregates the cohort and draws one bar per gene."
+        ),
+    )
+    parser.add_argument(
+        "--hide-support-lengths",
+        action="store_true",
+        help="Suppress the supporting-read length overlay in the lower panel.",
+    )
+    parser.add_argument(
         "--label-column",
         choices=["sample_id", "sample_name", "run_accession"],
         default="sample_id",
@@ -475,6 +489,16 @@ def format_metric(raw: float, metric: str) -> str:
     return f"{raw:.2f}"
 
 
+def format_metric_axis(raw: float, metric: str) -> str:
+    if metric == "raw":
+        if raw >= 1000:
+            return f"{raw / 1000.0:.1f}k".replace(".0k", "k")
+        return f"{raw:.0f}"
+    if raw >= 10:
+        return f"{raw:.1f}"
+    return f"{raw:.2f}"
+
+
 def svg_text(
     x: float,
     y: float,
@@ -516,6 +540,7 @@ def render_svg(
     metric: str,
     label_column: str,
     title: str,
+    show_support_lengths: bool,
 ) -> str:
     rows_by_gene_run = {
         (str(row.get("gene")), str(row.get("run_accession"))): row
@@ -569,7 +594,9 @@ def render_svg(
         raw
         for row in rows_by_gene_run.values()
         for key in ("support_high_read_bp", "support_max_read_bp")
-        if (raw := value(row, key)) is not None and raw > 0
+        if show_support_lengths
+        and str(row.get("support_length_source") or "") == "strict_seed_passed"
+        and (raw := value(row, key)) is not None and raw > 0
     ]
     support_length_max = (
         nice_linear_max(max(support_length_values) * 1.15)
@@ -694,6 +721,9 @@ def render_svg(
             if support_length_max > 0 and row:
                 high_len = value(row, "support_high_read_bp")
                 max_len = value(row, "support_max_read_bp")
+                if str(row.get("support_length_source") or "") != "strict_seed_passed":
+                    high_len = None
+                    max_len = None
                 cx = x + bar_w / 2.0
                 if high_len is not None and high_len > 0:
                     cy = y_support_len(high_len)
@@ -715,7 +745,178 @@ def render_svg(
         parts.append(svg_text(x, bottom_y + bottom_h + 27, label, 12, "#334155", "end", extra=f'transform="rotate(-45 {x:.1f} {bottom_y + bottom_h + 27:.1f})"'))
 
     parts.append(svg_text(38, height - 42, f"Canonical source table: {output_tsv}", 10, "#64748b"))
-    parts.append(svg_text(38, height - 24, "accepted_target_count is retained in the TSV but deliberately not used as the main family-support scale; length points use strict seed-passed lengths where available, otherwise accepted-target lengths.", 10, "#64748b"))
+    parts.append(svg_text(38, height - 24, "accepted_target_count is retained in the TSV but deliberately not used as the main family-support scale; optional length points use strict seed-passed read-length summaries only.", 10, "#64748b"))
+    parts.append("</svg>")
+    return "\n".join(parts) + "\n"
+
+
+def aggregate_gene_rows(rows: list[dict[str, object]], genes: list[str]) -> list[dict[str, object]]:
+    aggregated: list[dict[str, object]] = []
+    for gene in genes:
+        gene_rows = [row for row in rows if str(row.get("gene") or "") == gene]
+        total_reads = sum(value(row, "total_reads") or 0.0 for row in gene_rows)
+        seed_reads = sum(value(row, "seed_passed_reads") or 0.0 for row in gene_rows)
+        accepted_reads = sum(value(row, "accepted_target_count") or 0.0 for row in gene_rows)
+        strict_rows = [
+            row
+            for row in gene_rows
+            if str(row.get("support_length_source") or "") == "strict_seed_passed"
+        ]
+        support_high = max(
+            [raw for row in strict_rows if (raw := value(row, "support_high_read_bp")) is not None],
+            default=None,
+        )
+        support_max = max(
+            [raw for row in strict_rows if (raw := value(row, "support_max_read_bp")) is not None],
+            default=None,
+        )
+        weighted_mean_numer = 0.0
+        weighted_mean_denom = 0.0
+        for row in strict_rows:
+            mean = value(row, "support_mean_read_bp")
+            weight = value(row, "seed_passed_reads") or 0.0
+            if mean is not None and weight > 0:
+                weighted_mean_numer += mean * weight
+                weighted_mean_denom += weight
+        support_mean = (
+            weighted_mean_numer / weighted_mean_denom
+            if weighted_mean_denom > 0
+            else None
+        )
+        aggregated.append(
+            {
+                "gene": gene,
+                "sample_rows": len(gene_rows),
+                "total_reads": total_reads,
+                "seed_passed_reads": seed_reads,
+                "seed_passed_per_million": (seed_reads * 1_000_000.0 / total_reads) if total_reads > 0 else 0.0,
+                "accepted_target_count": accepted_reads,
+                "accepted_target_per_million": (accepted_reads * 1_000_000.0 / total_reads) if total_reads > 0 else 0.0,
+                "support_high_read_bp": support_high,
+                "support_max_read_bp": support_max,
+                "support_mean_read_bp": support_mean,
+            }
+        )
+    return aggregated
+
+
+def render_gene_summary_svg(
+    rows: list[dict[str, object]],
+    genes: list[str],
+    gene_colors: dict[str, str],
+    output_tsv: Path,
+    metric: str,
+    title: str,
+    show_support_lengths: bool,
+) -> str:
+    summaries = aggregate_gene_rows(rows, genes)
+    width = max(920, 190 * max(len(genes), 1) + 280)
+    height = 650
+    margin_left = 110
+    margin_right = 150 if show_support_lengths else 80
+    chart_x = margin_left
+    chart_y = 130
+    chart_w = width - margin_left - margin_right
+    chart_h = 360
+    metric_key = "seed_passed_per_million" if metric == "per_million" else "seed_passed_reads"
+    metric_values = [value(row, metric_key) or 0.0 for row in summaries]
+    metric_max = nice_linear_max(max(metric_values) * 1.2 if metric_values else 1.0)
+    support_length_values = [
+        raw
+        for row in summaries
+        for key in ("support_high_read_bp", "support_max_read_bp")
+        if show_support_lengths and (raw := value(row, key)) is not None and raw > 0
+    ]
+    support_length_max = (
+        nice_linear_max(max(support_length_values) * 1.15)
+        if support_length_values
+        else 0.0
+    )
+
+    def y_metric(raw: float) -> float:
+        return chart_y + chart_h - (raw / metric_max) * chart_h
+
+    def y_support(raw: float) -> float:
+        if support_length_max <= 0:
+            return chart_y + chart_h
+        return chart_y + chart_h - (raw / support_length_max) * chart_h
+
+    metric_label = (
+        "strict seed-passed reads per million total reads"
+        if metric == "per_million"
+        else "strict seed-passed reads"
+    )
+    bar_gap = 44.0
+    bar_w = min(92.0, (chart_w - bar_gap * max(len(genes) - 1, 0)) / max(len(genes), 1) * 0.72)
+    x_step = chart_w / max(len(genes), 1)
+    x_positions = [chart_x + x_step * idx + x_step / 2.0 for idx in range(len(genes))]
+
+    parts: list[str] = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img">',
+        "<defs>",
+        "<style>.axis{stroke:#334155;stroke-width:1.2}.grid{stroke:#e2e8f0;stroke-width:1}.note{fill:#64748b}</style>",
+        "</defs>",
+        f'<rect width="{width}" height="{height}" fill="#fbfaf7"/>',
+        svg_text(38, 42, title, 24, weight="700"),
+        svg_text(
+            38,
+            70,
+            "One bar per gene; bars aggregate strict seed-passed reads across all sample rows.",
+            13,
+            "#475569",
+        ),
+    ]
+    family_label = " / ".join(genes)
+    parts.append(svg_text(chart_x, chart_y - 28, f"{family_label} cohort summary", 17, weight="700"))
+    for tick in [0.0, 0.25, 0.5, 0.75, 1.0]:
+        raw = metric_max * tick
+        y = y_metric(raw)
+        parts.append(f'<line x1="{chart_x}" y1="{y:.1f}" x2="{chart_x + chart_w}" y2="{y:.1f}" class="grid"/>')
+        parts.append(svg_text(chart_x - 12, y + 4, format_metric_axis(raw, metric), 12, "#64748b", "end"))
+        if support_length_max > 0:
+            support_raw = support_length_max * tick
+            parts.append(svg_text(chart_x + chart_w + 12, y_support(support_raw) + 4, format_bp(support_raw), 12, "#7c2d12", "start"))
+    parts.append(f'<line x1="{chart_x}" y1="{chart_y}" x2="{chart_x}" y2="{chart_y + chart_h}" class="axis"/>')
+    parts.append(f'<line x1="{chart_x}" y1="{chart_y + chart_h}" x2="{chart_x + chart_w}" y2="{chart_y + chart_h}" class="axis"/>')
+    if support_length_max > 0:
+        parts.append(f'<line x1="{chart_x + chart_w}" y1="{chart_y}" x2="{chart_x + chart_w}" y2="{chart_y + chart_h}" class="axis"/>')
+    parts.append(svg_text(30, chart_y + chart_h / 2, metric_label, 12, "#475569", "middle", extra='transform="rotate(-90 30 %.1f)"' % (chart_y + chart_h / 2)))
+    if support_length_max > 0:
+        parts.append(svg_text(chart_x + chart_w + 90, chart_y + chart_h / 2, "strict seed-passed read length (bp)", 12, "#7c2d12", "middle", extra='transform="rotate(90 %.1f %.1f)"' % (chart_x + chart_w + 90, chart_y + chart_h / 2)))
+
+    for idx, row in enumerate(summaries):
+        gene = str(row.get("gene") or "")
+        x = x_positions[idx] - bar_w / 2.0
+        metric_raw = value(row, metric_key) or 0.0
+        count_raw = value(row, "seed_passed_reads") or 0.0
+        y = y_metric(metric_raw)
+        h = chart_y + chart_h - y
+        fill = gene_colors[gene]
+        parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{max(h, 1.0):.1f}" rx="8" fill="{fill}" opacity="0.86">')
+        parts.append(f'<title>{escape(gene)}: {count_raw:.0f} seed-passed reads; {metric_raw:.4g} {"per million" if metric == "per_million" else "raw"}; sample rows={int(value(row, "sample_rows") or 0)}</title>')
+        parts.append("</rect>")
+        parts.append(svg_text(x + bar_w / 2.0, y - 8, f"{count_raw:.0f}", 13, fill, "middle", weight="700"))
+        parts.append(svg_text(x + bar_w / 2.0, chart_y + chart_h + 30, gene, 16, "#334155", "middle", weight="700"))
+        parts.append(svg_text(x + bar_w / 2.0, chart_y + chart_h + 50, f"{metric_raw:.2f}/M" if metric == "per_million" else f"{metric_raw:.0f}", 12, "#64748b", "middle"))
+        if support_length_max > 0:
+            high_len = value(row, "support_high_read_bp")
+            max_len = value(row, "support_max_read_bp")
+            cx = x + bar_w / 2.0
+            if high_len is not None and high_len > 0:
+                cy = y_support(high_len)
+                parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="5" fill="{fill}" stroke="white" stroke-width="1.5">')
+                parts.append(f'<title>{escape(gene)} strict seed-passed high read length: {high_len:.0f} bp</title>')
+                parts.append("</circle>")
+            if max_len is not None and max_len > 0:
+                cy = y_support(max_len)
+                points = f"{cx:.1f},{cy - 7:.1f} {cx + 7:.1f},{cy:.1f} {cx:.1f},{cy + 7:.1f} {cx - 7:.1f},{cy:.1f}"
+                parts.append(f'<polygon points="{points}" fill="none" stroke="{fill}" stroke-width="2.0">')
+                parts.append(f'<title>{escape(gene)} strict seed-passed max read length: {max_len:.0f} bp</title>')
+                parts.append("</polygon>")
+
+    parts.append(svg_text(38, height - 48, f"Canonical sample-level source table: {output_tsv}", 10, "#64748b"))
+    parts.append(svg_text(38, height - 30, "Aggregate bars use sum(seed_passed_reads) / sum(total_reads); optional length points are shown only when strict seed-passed length summaries are present.", 10, "#64748b"))
     parts.append("</svg>")
     return "\n".join(parts) + "\n"
 
@@ -775,7 +976,27 @@ def main() -> int:
     validate_read_length_quantiles(rows, "gene-family canonical table")
 
     write_family_tsv(rows, output_tsv)
-    svg = render_svg(rows, genes, gene_colors, output_tsv, args.metric, args.label_column, args.title)
+    if args.summary_mode == "genes":
+        svg = render_gene_summary_svg(
+            rows,
+            genes,
+            gene_colors,
+            output_tsv,
+            args.metric,
+            args.title,
+            not args.hide_support_lengths,
+        )
+    else:
+        svg = render_svg(
+            rows,
+            genes,
+            gene_colors,
+            output_tsv,
+            args.metric,
+            args.label_column,
+            args.title,
+            not args.hide_support_lengths,
+        )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(svg, encoding="utf-8")
     print(f"Wrote {output_tsv}")
