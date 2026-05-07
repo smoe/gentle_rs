@@ -113,6 +113,10 @@ Useful options:
   The default is `log`, matching the whole-library read-length panel and making
   TP63/TP73-style length differences easier to compare without outlier
   domination.
+- `--support-length-display points|lines`: choose whether support-read lengths
+  are drawn as independent symbols or connected lines. The default is `points`,
+  because sparse seed-passed samples should not imply a continuous trend across
+  missing samples.
 - `--label-column sample_id|sample_name|run_accession`: x-axis labels.
 - `--output-tsv PATH`: canonical merged family table. Defaults to the SVG path
   with `.tsv` extension.
@@ -133,13 +137,16 @@ three-gene p53-family comparison, every sample therefore has three neighboring
 bars. `accepted_target_count` values are retained in the TSV for auditability but
 are not used as the main family-support scale, because those counts can mean a
 later, less conservative downstream contract than the strict seed gate.
-Gene-supporting read lengths are drawn as one colored line per gene in the same
-lower panel. By default, this overlay uses the selected support statistic (`max`
-by default) only from strict seed-passed rows, so it describes the same read
-population as the bars. Accepted-target fallback lengths are retained in the TSV
-for older batch reports, but are drawn only when `--support-length-source any` is
-selected explicitly. The all-read q90 line belongs only to the upper
-whole-library read-length panel.
+Gene-supporting read lengths are drawn as colored symbols over the corresponding
+gene bars in the same lower panel. By default, this overlay uses the selected
+support statistic (`max` by default) only from strict seed-passed rows, so it
+describes the same read population as the bars. Accepted-target fallback lengths
+are retained in the TSV for older batch reports, but are drawn only when
+`--support-length-source any` is selected explicitly. Connecting symbols with
+`--support-length-display lines` is available as a diagnostic view, but the
+release-facing default is unconnected points because missing samples should stay
+visibly missing. The all-read q90 line belongs only to the upper whole-library
+read-length panel.
 
 ## Compatibility Wrappers
 
@@ -196,6 +203,7 @@ python3 scripts/plot_pancreas_gene_family.py \
   --support-length-stat max \
   --support-length-source strict_seed_passed \
   --support-length-scale log \
+  --support-length-display points \
   --output "$WORK/figures/p53_family_seed_passed_grouped.svg"
 ```
 
