@@ -89,6 +89,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--support-length-genes",
+        default=None,
+        help=(
+            "Optional comma-separated gene list for support-read length symbols. "
+            "Bars are still drawn for all TP53-family genes."
+        ),
+    )
+    parser.add_argument(
         "--label-column",
         choices=["sample_id", "sample_name", "run_accession"],
         default="sample_id",
@@ -138,6 +146,8 @@ def main() -> int:
     )
     if args.output_tsv:
         command.extend(["--output-tsv", args.output_tsv])
+    if args.support_length_genes:
+        command.extend(["--support-length-genes", args.support_length_genes])
     return subprocess.call(command)
 
 
