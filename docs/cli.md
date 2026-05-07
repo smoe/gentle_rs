@@ -1949,7 +1949,7 @@ Shared shell command:
     - `gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]`
     - `gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]`
     - `gene-groups doctor [--catalog PATH] [--output OUTPUT.json]`
-    - `gene-groups draft --description TEXT [--member SYMBOL] [--members A,B,C] [--go GO:NNNNNNN] [--output GROUP.json]`
+    - `gene-groups draft --description TEXT [--member SYMBOL] [--candidate SYMBOL=EVIDENCE] [--go GO:NNNNNNN] [--output GROUP.json]`
     - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
@@ -3506,12 +3506,16 @@ Service and resource commands:
   - Validates catalog overlays and reports duplicate ids, alias collisions,
     malformed memberships, malformed GO ids, mapping/resource issues, and
     source digests.
-- `gene-groups draft --description TEXT [--id ID] [--label LABEL] [--short-description TEXT] [--organism NAME] [--taxon-id N] [--namespace NAMESPACE] [--alias TEXT] [--tag TEXT] [--usage TEXT] [--member SYMBOL] [--members A,B,C] [--go GO:NNNNNNN] [--provenance TEXT] [--output GROUP.json]`
+- `gene-groups draft --description TEXT [--id ID] [--label LABEL] [--short-description TEXT] [--organism NAME] [--taxon-id N] [--namespace NAMESPACE] [--alias TEXT] [--tag TEXT] [--usage TEXT] [--member SYMBOL] [--members A,B,C] [--candidate SYMBOL=EVIDENCE] [--unresolved-candidate TEXT] [--go GO:NNNNNNN] [--agent-provider NAME] [--agent-model NAME] [--agent-generated-at UTC] [--provenance TEXT] [--output GROUP.json]`
   - Creates a review-gated catalog fragment from an explicit long description
     and optional candidate members/mappings.
+  - `--member` marks user-supplied candidates; `--candidate SYMBOL=EVIDENCE`
+    marks agent/literature-suggested candidates and preserves the evidence
+    note in the member row.
   - Output is `gentle.gene_group_draft.v1` with `review_required=true`, the
-    description hash, the proposed group record, warnings, and the output path
-    when a fragment was written.
+    description hash, agent provenance when supplied, member counts,
+    candidate-member rows, unresolved candidates, the proposed group record,
+    warnings, and the output path when a fragment was written.
   - The command never promotes the group into a trusted catalog by itself; add
     the generated fragment to a user/project catalog only after review.
 - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`

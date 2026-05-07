@@ -39,3 +39,30 @@ semantic fields use one of the overlay aliases, for example:
 `helpers list --filter mbp` and downstream structured helper-catalog consumers
 will then see a normalized `component_kind=solubility_tag` term enriched with
 the vocabulary label/description and any vocabulary-provided routine hints.
+
+## Gene-Group Drafts
+
+`neoneurogenesis_metastatic_cancer_neuroimmune_axis_draft.json` is a
+review-gated trial output from:
+
+```bash
+gentle_cli gene-groups draft \
+  --description "Genes and receptor pathways induced or co-opted in metastatic cancers that support tumor innervation, perineural migration, neural niche formation, and nerve-associated immune evasion..." \
+  --candidate "NGF=tumors can release nerve growth factor to stimulate nerve growth and invasion-associated neoneurogenesis" \
+  --candidate "EFNB1=exosome-packaged EphrinB1 potentiates tumor innervation/axonogenesis in head-and-neck cancer models" \
+  --agent-provider Codex \
+  --agent-model GPT-5 \
+  --output docs/examples/catalogs/neoneurogenesis_metastatic_cancer_neuroimmune_axis_draft.json
+```
+
+The file is intentionally still `curation_status=draft`. It demonstrates how an
+AI/literature-assisted session can produce a local catalog fragment with
+candidate symbols, evidence notes, agent provenance, and a typo/alias bridge
+(`neuneurogenesis`) without making those candidates trusted GENtle facts.
+
+The trial candidate set was informed by open review/primary sources on
+tumor-induced neoneurogenesis, perineural invasion, tumor exosome-mediated
+innervation, beta-adrenergic immune suppression, semaphorin/Plexin-B1 tumor
+biology, and the TAp73alpha-HDAC2/REST-GABBR2 melanoma metastasis axis.
+Expert review should decide which candidates are retained, split into
+subgroups, or rejected before adding this fragment to a project/user catalog.

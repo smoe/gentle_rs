@@ -1561,7 +1561,7 @@
          ],
          "path": "gene-groups draft",
          "summary": "Create a review-gated gene-group catalog fragment from an explicit description, optional candidate members, and optional external mappings such as GO.",
-         "usage": "gene-groups draft --description TEXT [--member SYMBOL] [--members A,B,C] [--go GO:NNNNNNN] [--output GROUP.json]"
+         "usage": "gene-groups draft --description TEXT [--member SYMBOL] [--candidate SYMBOL=EVIDENCE] [--go GO:NNNNNNN] [--output GROUP.json]"
       },
       {
          "aliases": [
