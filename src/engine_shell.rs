@@ -992,6 +992,7 @@ pub enum ShellCommand {
     },
     ServicesProjectQuote {
         request_json: String,
+        output_dir: Option<String>,
     },
     ServicesHandoff {
         scope: Option<String>,
@@ -6502,13 +6503,17 @@ impl ShellCommand {
                     request_json
                 }
             ),
-            Self::ServicesProjectQuote { request_json } => format!(
-                "build external-service quote/handoff packet from '{}'",
+            Self::ServicesProjectQuote {
+                request_json,
+                output_dir,
+            } => format!(
+                "build external-service quote/handoff packet from '{}' (output_dir='{}')",
                 if request_json.trim_start().starts_with('{') {
                     "inline JSON"
                 } else {
                     request_json
-                }
+                },
+                output_dir.as_deref().unwrap_or("-")
             ),
             Self::ServicesHandoff { scope, output } => format!(
                 "build service handoff report for chat gateways (scope='{}', output='{}')",
@@ -20035,13 +20040,43 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     })
                 }
                 "project-quote" => {
-                    if tokens.len() != 3 {
-                        return Err(
-                            "services project-quote requires REQUEST_JSON_OR_@FILE".to_string()
-                        );
+                    let mut request_json: Option<String> = None;
+                    let mut output_dir: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--output-dir" | "--bundle-dir" | "--output" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err(
+                                        "Missing DIR after --output-dir for services project-quote"
+                                            .to_string(),
+                                    );
+                                }
+                                output_dir = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other if other.starts_with("--") => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for services project-quote"
+                                ));
+                            }
+                            value => {
+                                if request_json.is_some() {
+                                    return Err(format!(
+                                        "Unexpected extra argument '{value}' for services project-quote"
+                                    ));
+                                }
+                                request_json = Some(value.to_string());
+                                idx += 1;
+                            }
+                        }
                     }
+                    let request_json = request_json.ok_or_else(|| {
+                        "services project-quote requires REQUEST_JSON_OR_@FILE".to_string()
+                    })?;
                     Ok(ShellCommand::ServicesProjectQuote {
-                        request_json: tokens[2].clone(),
+                        request_json,
+                        output_dir,
                     })
                 }
                 "handoff" | "doctor" => {
@@ -23943,9 +23978,15 @@ fn execute_export_import_and_resource_command(
                     .map_err(|e| format!("Could not serialize external service preflight: {e}"))?,
             })
         }
-        ShellCommand::ServicesProjectQuote { request_json } => {
+        ShellCommand::ServicesProjectQuote {
+            request_json,
+            output_dir,
+        } => {
             let request = parse_json_payload(request_json)?;
-            let report = service_readiness::external_service_project_quote(&request)?;
+            let mut report = service_readiness::external_service_project_quote(&request)?;
+            if let Some(output_dir) = output_dir.as_deref() {
+                service_readiness::write_external_service_quote_bundle(&mut report, output_dir)?;
+            }
             Ok(ShellRunResult {
                 state_changed: false,
                 output: serde_json::to_value(report)

@@ -1677,7 +1677,7 @@
          ],
          "path": "services project-quote",
          "summary": "Build a service-ready external handoff bundle for a preflightable provider request without submitting an order.",
-         "usage": "services project-quote REQUEST_JSON_OR_@FILE"
+         "usage": "services project-quote REQUEST_JSON_OR_@FILE [--output-dir DIR]"
       },
       {
          "aliases": [],
