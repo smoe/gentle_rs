@@ -147,6 +147,226 @@
       "notes": [
         "This family shorthand can be mapped to external resources later, but the local group is independently useful for promoter and motif inspection."
       ]
+    },
+    {
+      "id": "regulation_of_alternative_splicing",
+      "label": "Regulation of alternative splicing",
+      "aliases": [
+        "alternative splicing regulators",
+        "alternative mRNA splicing regulators",
+        "regulation of alternative splicing",
+        "regulation of alternative mRNA splicing",
+        "splice site selection",
+        "splicing regulators",
+        "RNA splicing regulators"
+      ],
+      "short_description": "Curated starter group for RNA-binding and splicing-regulatory genes commonly used when discussing regulation of alternative splicing.",
+      "long_definition": "Starter GENtle gene group for lab-facing discussion of genes whose products are commonly treated as regulators of alternative exon inclusion, splice-site selection, or cell-state-specific alternative mRNA splicing. This group is anchored to GO:0000381 but is not a full GO annotation import; it is a compact, reviewable local seed intended for promoter/regulatory, RNA-read, and cohort questions.",
+      "organism": "human",
+      "taxon_id": "9606",
+      "symbol_namespace": "HGNC",
+      "usages": [
+        "gene_group",
+        "rna_splicing",
+        "regulatory_context",
+        "promoter_tfbs"
+      ],
+      "tags": [
+        "RNA_binding",
+        "alternative_splicing",
+        "splice_site_selection",
+        "post_transcriptional_regulation"
+      ],
+      "members": [
+        {
+          "symbol": "RBFOX1",
+          "evidence_note": "RNA-binding FOX-family splicing regulator often used as a canonical alternative-splicing regulator.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "RBFOX2",
+          "evidence_note": "RNA-binding FOX-family splicing regulator with broad alternative-splicing roles.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "NOVA1",
+          "evidence_note": "NOVA-family RNA-binding alternative-splicing regulator.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "NOVA2",
+          "evidence_note": "NOVA-family RNA-binding alternative-splicing regulator.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "PTBP1",
+          "evidence_note": "Polypyrimidine tract-binding protein with well-known alternative-splicing regulatory roles.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "PTBP2",
+          "evidence_note": "Neuronal paralog of PTBP1 with alternative-splicing regulatory roles.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "SRSF1",
+          "evidence_note": "SR-family splicing factor frequently used in alternative-splicing regulation discussions.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "SRSF2",
+          "evidence_note": "SR-family splicing factor with alternative-splicing regulatory roles.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "SRSF3",
+          "evidence_note": "SR-family splicing factor with alternative exon-selection roles.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "SRSF7",
+          "evidence_note": "SR-family splicing factor with GO-backed regulation-of-alternative-splicing annotations.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "HNRNPA1",
+          "evidence_note": "hnRNP-family RNA-binding protein commonly implicated in alternative splice-site selection.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "HNRNPK",
+          "evidence_note": "hnRNP-family RNA-binding protein with regulatory roles in RNA processing and splicing contexts.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "QKI",
+          "evidence_note": "STAR-family RNA-binding protein frequently used in alternative-splicing regulatory contexts.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "ESRP1",
+          "evidence_note": "Epithelial splicing regulator with cell-state-specific alternative-splicing roles.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "ESRP2",
+          "evidence_note": "Epithelial splicing regulator paralog with alternative-splicing roles.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "MBNL1",
+          "evidence_note": "Muscleblind-like RNA-binding protein and alternative-splicing regulator.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "MBNL2",
+          "evidence_note": "Muscleblind-like RNA-binding protein and alternative-splicing regulator.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "CELF1",
+          "evidence_note": "CELF-family RNA-binding protein with established alternative-splicing regulatory roles.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "CELF2",
+          "evidence_note": "CELF-family RNA-binding protein with alternative-splicing regulatory roles.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "ELAVL1",
+          "evidence_note": "RNA-binding protein included as a compact starter member for post-transcriptional regulatory/splicing-context questions.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "TRA2B",
+          "evidence_note": "Transformer-2 family splicing regulator.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "KHDRBS1",
+          "aliases": [
+            "SAM68"
+          ],
+          "evidence_note": "STAR-family RNA-binding splicing regulator commonly known as SAM68.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "FUS",
+          "evidence_note": "RNA-binding protein with roles in RNA processing and alternative-splicing regulation contexts.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        },
+        {
+          "symbol": "TIA1",
+          "evidence_note": "RNA-binding protein used in splicing-regulatory and RNA-processing contexts.",
+          "confidence": "reviewed_seed",
+          "status": "included",
+          "provenance": "GENtle built-in local-knowledge seed anchored to GO:0000381."
+        }
+      ],
+      "external_mappings": [
+        {
+          "namespace": "GO",
+          "id": "GO:0000381",
+          "label": "regulation of alternative mRNA splicing, via spliceosome",
+          "relationship": "anchored_to_external_term",
+          "url": "https://amigo.geneontology.org/amigo/term/GO:0000381",
+          "note": "GENtle uses this as an external ontology anchor, not as a complete imported GO annotation set."
+        }
+      ],
+      "curation_status": "reviewed_seed",
+      "source_kind": "built_in_local_knowledge",
+      "provenance": "AI-assisted GENtle seed, anchored to GO:0000381 and intended for review/extension through catalog overlays.",
+      "notes": [
+        "This is intentionally compact and not a replacement for a full GO annotation import.",
+        "Use project/user overlays to add cell-type-specific or experiment-specific splicing regulators."
+      ]
     }
   ]
 }

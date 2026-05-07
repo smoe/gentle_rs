@@ -547,7 +547,7 @@ CLI resolution order:
 
 Resource update capability status:
 
-- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `gene-groups list/show/resolve/doctor`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`, `resources sync-ucsc-rmsk`, `resources install-ucsc-rmsk`, `resources prepare-ucsc-rmsk-index`, `resources suggest-ucsc-rmsk-index`, `resources sync-jaspar-remote-metadata`, `resources summarize-jaspar`, `resources resolve-tf-query`, `gene-groups list/show/resolve/doctor/draft`, `resources benchmark-jaspar`, `resources list-jaspar`, `resources list-publication-datasets`, `resources status-publication-dataset`, `resources prepare-publication-dataset`, `resources inspect-jaspar`)
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
@@ -1949,6 +1949,7 @@ Shared shell command:
     - `gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]`
     - `gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]`
     - `gene-groups doctor [--catalog PATH] [--output OUTPUT.json]`
+    - `gene-groups draft --description TEXT [--member SYMBOL] [--candidate SYMBOL=EVIDENCE] [--go GO:NNNNNNN] [--output GROUP.json]`
     - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
     - `resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]`
     - `resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]`
@@ -3492,6 +3493,8 @@ Service and resource commands:
   - Default discovery uses built-in, system, user, and project overlays.
   - The built-in catalog declares Gene Ontology as an external resource
     namespace (`GO`) and seeds groups such as `yamanaka_factors`.
+  - The built-in catalog also seeds `regulation_of_alternative_splicing`,
+    anchored to `GO:0000381` while remaining local reviewable GENtle knowledge.
   - `resources status` reports `gene_ontology` as a declared external mapping
     namespace; GO download/indexing is not implemented in this slice.
 - `gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]`
@@ -3503,6 +3506,18 @@ Service and resource commands:
   - Validates catalog overlays and reports duplicate ids, alias collisions,
     malformed memberships, malformed GO ids, mapping/resource issues, and
     source digests.
+- `gene-groups draft --description TEXT [--id ID] [--label LABEL] [--short-description TEXT] [--organism NAME] [--taxon-id N] [--namespace NAMESPACE] [--alias TEXT] [--tag TEXT] [--usage TEXT] [--member SYMBOL] [--members A,B,C] [--candidate SYMBOL=EVIDENCE] [--unresolved-candidate TEXT] [--go GO:NNNNNNN] [--agent-provider NAME] [--agent-model NAME] [--agent-generated-at UTC] [--provenance TEXT] [--output GROUP.json]`
+  - Creates a review-gated catalog fragment from an explicit long description
+    and optional candidate members/mappings.
+  - `--member` marks user-supplied candidates; `--candidate SYMBOL=EVIDENCE`
+    marks agent/literature-suggested candidates and preserves the evidence
+    note in the member row.
+  - Output is `gentle.gene_group_draft.v1` with `review_required=true`, the
+    description hash, agent provenance when supplied, member counts,
+    candidate-member rows, unresolved candidates, the proposed group record,
+    warnings, and the output path when a fragment was written.
+  - The command never promotes the group into a trusted catalog by itself; add
+    the generated fragment to a user/project catalog only after review.
 - `resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]`
   - Benchmarks the full active local JASPAR registry through one deterministic
     shared background and writes an export-ready drift snapshot.

@@ -35,11 +35,11 @@ pub use dna_ladder::{
     RNALadder, RNALadderBand, RNALadders, default_dna_ladders, default_rna_ladders,
 };
 pub use gene_groups::{
-    GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_LIST_REPORT_SCHEMA,
-    GENE_GROUP_RESOLVE_REPORT_SCHEMA, GENE_GROUP_SHOW_REPORT_SCHEMA, GeneGroupCatalog,
-    GeneGroupCatalogSourceReport, GeneGroupDoctorReport, GeneGroupExternalMapping,
-    GeneGroupExternalResource, GeneGroupListEntry, GeneGroupListReport, GeneGroupMember,
-    GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
+    GENE_GROUP_CATALOG_SCHEMA, GENE_GROUP_DOCTOR_REPORT_SCHEMA, GENE_GROUP_DRAFT_REPORT_SCHEMA,
+    GENE_GROUP_LIST_REPORT_SCHEMA, GENE_GROUP_RESOLVE_REPORT_SCHEMA, GENE_GROUP_SHOW_REPORT_SCHEMA,
+    GeneGroupCatalog, GeneGroupCatalogSourceReport, GeneGroupDoctorReport, GeneGroupDraftReport,
+    GeneGroupExternalMapping, GeneGroupExternalResource, GeneGroupListEntry, GeneGroupListReport,
+    GeneGroupMember, GeneGroupRecord, GeneGroupResolveReport, GeneGroupShowReport,
 };
 
 /// Stable identifier for one sequence entry stored in project state.
