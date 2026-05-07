@@ -118,6 +118,13 @@ scripts/pancreas_gene_rna_screen.sh run E2F1 --jobs 4
 scripts/pancreas_gene_rna_screen.sh run POU2F1 --jobs 4
 ```
 
+The generic helper defaults to seed-only screening. That is deliberate for
+exploratory genes: it counts conservative seed-passing evidence and prepares the
+summary/figure TSVs without spending hours aligning every retained row for
+abundant or broadly seeded loci. Add `--with-alignment --align-selection
+seed_passed` only after the seed-only run shows an evidence set small enough to
+map in phase 2.
+
 The helper prints a monitor command as soon as the run directory is initialized.
 The same status table can also be queried manually:
 
@@ -142,6 +149,11 @@ Useful defaults:
 
 - `--jobs N` runs up to `N` sample workers at once; one worker is one
   single-core `gentle_cli` RNA-read mapping process.
+- `--seed-only` is the default and stops after RNA-read interpretation plus
+  seed-evidence summaries.
+- `--with-alignment` opts into phase-2 retained-read mapping; its default
+  `--align-selection` is `seed_passed`, not `all`, to avoid aligning broad
+  retained candidate lists accidentally.
 - `--genbank-path PATH` bypasses NCBI if a curated locus file is already
   available.
 - `--must-pass-transcript-fasta`, `--positive-transcript-fasta`, and
@@ -159,7 +171,9 @@ Primary outputs live under the timestamped run root:
 - `manifests/*_pancreas_inputs.tsv`
 - `reports/*.preflight.json` and `reports/*.preflight.summary.json`
 - per-sample `runs/$RUN/checkpoints/*.checkpoint.json`
-- per-sample `runs/$RUN/post_interpret/{json,tsv,svg}/...`
+- seed-only per-sample `runs/$RUN/post_interpret/json/*.show_report.json`
+- alignment-dependent per-sample `runs/$RUN/post_interpret/{json,tsv,svg}/...`
+  files only when `--with-alignment` is used
 - `reports/*_pancreas.summary.tsv`
 - `figures/*_pancreas_figure_source.tsv`
 - `figures/*_pancreas_overview.svg` when rendered with

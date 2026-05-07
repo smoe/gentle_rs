@@ -51,8 +51,11 @@ one persuasive end-to-end proof path.
   `scripts/pancreas_gene_rna_screen.sh` helper rather than adding new
   per-gene wrappers. It resolves a HUGO symbol to a compact NCBI GenBank locus,
   keeps per-sample GENtle states isolated, runs samples in parallel via
-  `--jobs`, and writes interim checkpoints/logs plus summary and figure-source
-  TSVs for TP53/TP63/E2F1/POU2F1-style cohort triage.
+  `--jobs`, and now defaults to seed-only cohort triage: interpretation,
+  checkpoints/logs, final summaries, and figure-source TSVs are produced
+  without phase-2 alignment. Add `--with-alignment --align-selection
+  seed_passed` only after the seed-only result is small enough to justify
+  retained-read mapping.
 - Keep CUT&RUN pre-release work to a small TP73-adjacent smoke/proof slice:
   reuse existing prepared-dataset projection, ROI read interpretation,
   regulatory-support inspection, existing TFBS scan/score-track surfaces, and

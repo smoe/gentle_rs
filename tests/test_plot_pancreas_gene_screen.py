@@ -174,5 +174,41 @@ class PlotPancreasGeneScreenTests(unittest.TestCase):
             self.assertIn("all_q99_bp", default_tsv_header)
 
 
+class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
+    def test_gene_screen_help_documents_seed_only_default(self) -> None:
+        result = subprocess.run(
+            [
+                "bash",
+                str(REPO_ROOT / "scripts" / "pancreas_gene_rna_screen.sh"),
+                "help",
+            ],
+            check=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertIn("--seed-only", result.stdout)
+        self.assertIn(
+            "Interpret reads and summarize seed evidence only (default)",
+            result.stdout,
+        )
+        self.assertIn("--with-alignment", result.stdout)
+        self.assertIn("--align-selection MODE", result.stdout)
+        self.assertIn("stop after the seed phase", result.stdout)
+
+    def test_gene_screen_script_defaults_to_seed_only_phase(self) -> None:
+        script = (REPO_ROOT / "scripts" / "pancreas_gene_rna_screen.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('SCREEN_PHASE="${SCREEN_PHASE:-seed_only}"', script)
+        self.assertIn('ALIGN_SELECTION="${ALIGN_SELECTION:-seed_passed}"', script)
+        self.assertIn('if [ "$SCREEN_PHASE" = "seed_only" ]; then', script)
+        self.assertIn('SCREEN_PHASE="with_alignment"', script)
+        self.assertIn("--concatemer-limit is ignored in seed-only mode", script)
+        self.assertIn('rna-reads align-report "$report_id"', script)
+
+
 if __name__ == "__main__":
     unittest.main()

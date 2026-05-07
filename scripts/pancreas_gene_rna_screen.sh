@@ -5,7 +5,7 @@
 # - it resolves a HUGO symbol to a compact NCBI GenBank genomic locus,
 # - loads that locus into one base GENtle state,
 # - copies the base state per sample,
-# - runs RNA-read interpretation/alignment in parallel across samples, and
+# - runs RNA-read seed interpretation in parallel across samples, and
 # - keeps interim checkpoints, logs, audit JSON, TSV exports, and figure-ready
 #   summaries under one timestamped run directory.
 
@@ -31,7 +31,8 @@ INPUT_FORMAT="${INPUT_FORMAT:-fasta}"
 ORIGIN_MODE="${ORIGIN_MODE:-single_gene}"
 REPORT_MODE="${REPORT_MODE:-seed_passed_only}"
 COMPLETE_RULE="${COMPLETE_RULE:-near}"
-ALIGN_SELECTION="${ALIGN_SELECTION:-all}"
+SCREEN_PHASE="${SCREEN_PHASE:-seed_only}"
+ALIGN_SELECTION="${ALIGN_SELECTION:-seed_passed}"
 ALIGN_BAND_BP="${ALIGN_BAND_BP:-24}"
 ALIGN_MIN_IDENTITY="${ALIGN_MIN_IDENTITY:-0.60}"
 MAX_SECONDARY_MAPPINGS="${MAX_SECONDARY_MAPPINGS:-5}"
@@ -68,7 +69,8 @@ Usage:
 
 Examples:
   scripts/pancreas_gene_rna_screen.sh run E2F1 --jobs 4
-  scripts/pancreas_gene_rna_screen.sh run POU2F1 --jobs 4 --align-min-identity 0.60
+  scripts/pancreas_gene_rna_screen.sh run POU2F1 --jobs 4
+  scripts/pancreas_gene_rna_screen.sh run TP73 --jobs 4 --with-alignment --align-selection seed_passed
   scripts/pancreas_gene_rna_screen.sh status /home/clawbio/work/tp73_pancreas_benchmark/gene_screens/e2f1_pancreas_screen_...
 
 Default inputs:
@@ -94,9 +96,17 @@ Options for run:
   --no-auto-fixture                Do not auto-use test_files/.../ensembl_human_gene_all.fasta.
   --no-optimize-parameters         Run preflight for reporting but use default seed args.
   --seed-args "..."                Explicit seed-filter fragment.
+  --seed-only                      Interpret reads and summarize seed evidence only (default).
+  --with-alignment                 Run phase-2 retained-read alignment and downstream reports.
+  --align-selection MODE           all|seed_passed|aligned for --with-alignment; default seed_passed.
   --align-min-identity F           Default 0.60.
   --max-secondary-mappings N       Default 5.
   --concatemer-limit N             Optional per-sample concatemer audit; default 0.
+
+By default, gene screens stop after the seed phase. This keeps cohort-scale
+triage fast and avoids accidentally aligning every retained row for abundant
+or broadly seeded genes. Use --with-alignment only after a seed-only run has
+identified a small enough evidence set worth phase-2 alignment.
 
 The script uses existing FASTA.gz files. It intentionally does not download SRA
 or recreate FASTA; use the TP73 cohort helper for those data-management steps.
@@ -229,6 +239,18 @@ parse_run_args() {
         OPTIMIZE_PARAMETERS=0
         shift 2
         ;;
+      --seed-only)
+        SCREEN_PHASE="seed_only"
+        shift
+        ;;
+      --with-alignment)
+        SCREEN_PHASE="with_alignment"
+        shift
+        ;;
+      --align-selection)
+        ALIGN_SELECTION="${2:-}"
+        shift 2
+        ;;
       --align-min-identity)
         ALIGN_MIN_IDENTITY="${2:-}"
         shift 2
@@ -265,6 +287,20 @@ parse_run_args() {
   case "$CONCATEMER_LIMIT" in
     ''|*[!0-9]*)
       die "--concatemer-limit must be a non-negative integer"
+      ;;
+  esac
+  case "$SCREEN_PHASE" in
+    seed_only|with_alignment)
+      ;;
+    *)
+      die "SCREEN_PHASE must be seed_only or with_alignment"
+      ;;
+  esac
+  case "$ALIGN_SELECTION" in
+    all|seed_passed|aligned)
+      ;;
+    *)
+      die "--align-selection must be one of: all, seed_passed, aligned"
       ;;
   esac
 
@@ -661,6 +697,7 @@ export SCOPE="$SCOPE"
 export ORIGIN_MODE="$ORIGIN_MODE"
 export REPORT_MODE="$REPORT_MODE"
 export COMPLETE_RULE="$COMPLETE_RULE"
+export SCREEN_PHASE="$SCREEN_PHASE"
 export ALIGN_SELECTION="$ALIGN_SELECTION"
 export ALIGN_BAND_BP="$ALIGN_BAND_BP"
 export ALIGN_MIN_IDENTITY="$ALIGN_MIN_IDENTITY"
@@ -704,6 +741,8 @@ write_final_summary() {
     --arg note "$note" \
     --arg gene_id "$GENE_ID" \
     --arg report_id "$report_id" \
+    --arg analysis_phase "$SCREEN_PHASE" \
+    --arg align_selection "$ALIGN_SELECTION" \
     --slurpfile show "$show_json" \
     --slurpfile gene "$gene_json" \
     --slurpfile audit "$audit_json" '
@@ -761,6 +800,8 @@ write_final_summary() {
         sample_name: $sample_name,
         note: $note,
         gene_id: $gene_id,
+        analysis_phase: $analysis_phase,
+        align_selection: $align_selection,
         report_id: ($report.report_id // $report_id),
         read_count_total: ($report.read_count_total // 0),
         strict_seed_passed_reads: ($report.read_count_seed_passed // 0),
@@ -829,6 +870,7 @@ run_one_sample_impl() {
   local gene_json="$run_dir/post_interpret/json/$report_id.$GENE_ID.gene_support.$COMPLETE_RULE.json"
   local audit_json="$run_dir/post_interpret/json/$report_id.$GENE_ID.gene_support.$COMPLETE_RULE.audit.json"
   local summary_json="$run_dir/reports/$report_id.final_summary.json"
+  local seed_only_note_json="$run_dir/post_interpret/json/$report_id.seed_only.json"
   local lock_dir="$run_dir/.worker.lock"
   local -a gentle seed_args
 
@@ -865,6 +907,28 @@ run_one_sample_impl() {
     --max-secondary-mappings "$MAX_SECONDARY_MAPPINGS" \
     > "$run_dir/reports/$report_id.interpret.command.json" \
     2> "$run_dir/logs/$report_id.interpret.stderr.log"
+
+  if [ "$SCREEN_PHASE" = "seed_only" ]; then
+    sample_step "$run_dir" "[$run] export seed-only report for $GENE_ID"
+    "${gentle[@]}" rna-reads show-report "$report_id" \
+      > "$show_json" \
+      2> "$run_dir/logs/$report_id.show_report.stderr.log"
+    printf '{}\n' > "$gene_json"
+    printf '{"rows":[]}\n' > "$audit_json"
+    jq -n \
+      --arg mode "$SCREEN_PHASE" \
+      --arg selection "$ALIGN_SELECTION" \
+      --arg reason "cohort-scale screen stops after seed interpretation; run with --with-alignment for phase-2 mapping" \
+      '{analysis_phase: $mode, align_selection_if_enabled: $selection, note: $reason}' \
+      > "$seed_only_note_json"
+
+    sample_step "$run_dir" "[$run] write seed-only final summary"
+    write_final_summary "$run" "$sample_id" "$sample_name" "$note" \
+      "$report_id" "$show_json" "$gene_json" "$audit_json" "$summary_json"
+    printf '0\n' > "$run_dir/worker.exit"
+    sample_step "$run_dir" "[$run] complete"
+    return 0
+  fi
 
   sample_step "$run_dir" "[$run] align retained rows for $GENE_ID"
   "${gentle[@]}" rna-reads align-report "$report_id" \
@@ -1094,6 +1158,13 @@ load_existing_run_env() {
   require_file "$RUN_ROOT/run.env"
   # shellcheck disable=SC1090,SC1091
   source "$RUN_ROOT/run.env"
+  # Run roots created before SCREEN_PHASE existed always ran phase-2 alignment.
+  if ! grep -q '^export SCREEN_PHASE=' "$RUN_ROOT/run.env"; then
+    SCREEN_PHASE="with_alignment"
+  fi
+  if ! grep -q '^export ALIGN_SELECTION=' "$RUN_ROOT/run.env"; then
+    ALIGN_SELECTION="all"
+  fi
 }
 
 status_run_root() {
@@ -1261,13 +1332,16 @@ run_screen() {
   write_run_env
   write_monitor_script >/dev/null
   print_monitor_hint
+  if [ "$SCREEN_PHASE" = "seed_only" ] && [ "$CONCATEMER_LIMIT" -gt 0 ]; then
+    log "NOTE: --concatemer-limit is ignored in seed-only mode; use --with-alignment for concatemer audits"
+  fi
 
   local sample_manifest="$RUN_ROOT/manifests/${GENE_SAFE}_pancreas_inputs.tsv"
   local pids=""
   local launched=0
   local run sample_id sample_name note read_fasta report_id rest
 
-  log "Start $GENE_ID screen with $JOBS parallel worker(s)"
+  log "Start $GENE_ID screen with $JOBS parallel worker(s); phase=$SCREEN_PHASE; report_mode=$REPORT_MODE; align_selection=$ALIGN_SELECTION"
   while IFS=$'\t' read -r run sample_id sample_name note read_fasta report_id rest; do
     if [ -z "${run:-}" ] || [ "$run" = "run_accession" ]; then
       continue
