@@ -1214,6 +1214,7 @@ summarize_run_root() {
   local figures_dir="$RUN_ROOT/figures"
   local summaries_json="$reports_dir/${GENE_SAFE}_pancreas.final_summaries.json"
   local summary_tsv="$reports_dir/${GENE_SAFE}_pancreas.summary.tsv"
+  local gene_screen_tsv="$reports_dir/${GENE_SAFE}_pancreas.gene_screen_summary.tsv"
   local figure_tsv="$figures_dir/${GENE_SAFE}_pancreas_figure_source.tsv"
   local summary_files="$RUN_ROOT/manifests/final_summary_files.txt"
   mkdir -p "$reports_dir" "$figures_dir"
@@ -1310,8 +1311,62 @@ summarize_run_root() {
     ' "$summaries_json"
   } > "$figure_tsv"
 
+  {
+    printf 'schema\tgene\trun_accession\tsample_id\tsample_name\tsource_kind\tsource_path\tanalysis_phase\treport_id\tseq_id\tseed_feature_id\tinput_path\ttotal_reads\tall_q0_bp\tall_q25_bp\tall_q50_bp\tall_q75_bp\tall_q90_bp\tall_q95_bp\tall_q99_bp\tall_q100_bp\tall_mean_bp\tseed_passed_reads\tseed_passed_per_million\tseed_passed_q90_bp\tseed_passed_q95_bp\tseed_passed_q99_bp\tseed_passed_max_bp\tseed_passed_mean_bp\taccepted_target_count\taccepted_target_per_million\taccepted_target_max_bp\taccepted_target_mean_bp\talign_selection\n'
+    jq -r \
+      --arg schema 'gentle.rna_read_gene_screen_summary.v1' \
+      --arg gene "$GENE_ID" \
+      --arg source_path "$summaries_json" \
+      --arg seq_id "$SEQ_ID" \
+      --arg seed_feature_id "$SEED_FEATURE_ID" '
+      .[]
+      | [
+          $schema,
+          $gene,
+          .run_accession,
+          .sample_id,
+          .sample_name,
+          "pancreas_gene_rna_screen",
+          $source_path,
+          .analysis_phase,
+          .report_id,
+          $seq_id,
+          $seed_feature_id,
+          null,
+          .read_count_total,
+          .read_length_summaries.all_reads.quantiles_bp.q0,
+          .read_length_summaries.all_reads.quantiles_bp.q25,
+          .read_length_summaries.all_reads.quantiles_bp.q50,
+          .read_length_summaries.all_reads.quantiles_bp.q75,
+          .read_length_summaries.all_reads.quantiles_bp.q90,
+          .read_length_summaries.all_reads.quantiles_bp.q95,
+          .read_length_summaries.all_reads.quantiles_bp.q99,
+          .read_length_summaries.all_reads.quantiles_bp.q100,
+          .read_length_summaries.all_reads.mean_bp,
+          .strict_seed_passed_reads,
+          (if (.read_count_total // 0) > 0
+           then ((.strict_seed_passed_reads // 0) * 1000000 / .read_count_total)
+           else null end),
+          .read_length_summaries.strict_seed_passed.quantiles_bp.q90,
+          .read_length_summaries.strict_seed_passed.quantiles_bp.q95,
+          .read_length_summaries.strict_seed_passed.quantiles_bp.q99,
+          .read_length_summaries.strict_seed_passed.quantiles_bp.q100,
+          .read_length_summaries.strict_seed_passed.mean_bp,
+          .gene_support.accepted_target_count,
+          (if (.read_count_total // 0) > 0 and (.gene_support.accepted_target_count != null)
+           then (.gene_support.accepted_target_count * 1000000 / .read_count_total)
+           else null end),
+          .gene_support.accepted_target_read_lengths.max_length_bp,
+          .gene_support.accepted_target_read_lengths.mean_length_bp,
+          .align_selection
+        ]
+      | @tsv
+    ' "$summaries_json"
+  } > "$gene_screen_tsv"
+
   log "Wrote summary JSON: $summaries_json"
   log "Wrote summary TSV:  $summary_tsv"
+  log "Wrote canonical gene-screen TSV: $gene_screen_tsv"
   log "Wrote figure TSV:   $figure_tsv"
 }
 

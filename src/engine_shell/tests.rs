@@ -23398,9 +23398,15 @@ fn execute_rna_reads_batch_map_writes_bundle_and_sra_plan() {
     assert_eq!(result.output["sample_count"].as_u64(), Some(2));
     assert_eq!(result.output["ok_count"].as_u64(), Some(1));
     assert_eq!(result.output["needs_preparation_count"].as_u64(), Some(1));
+    assert!(
+        result.output["gene_screen_summary_tsv_path"]
+            .as_str()
+            .is_some_and(|value| value.ends_with("gene_screen_summary.tsv"))
+    );
     assert!(engine.get_rna_read_report("rna_batch_sample_a").is_ok());
 
     let batch_summary = out_dir.join("batch_summary.tsv");
+    let gene_screen_summary = out_dir.join("gene_screen_summary.tsv");
     let isoform_support = out_dir.join("isoform_support.tsv");
     let partner_summary = out_dir.join("concatemer_partner_summary.tsv");
     let sample_sheet = out_dir.join("sample_sheet.tsv");
@@ -23408,6 +23414,7 @@ fn execute_rna_reads_batch_map_writes_bundle_and_sra_plan() {
     let batch_json = out_dir.join("batch_report.json");
     for path in [
         &batch_summary,
+        &gene_screen_summary,
         &isoform_support,
         &partner_summary,
         &sample_sheet,
@@ -23418,7 +23425,15 @@ fn execute_rna_reads_batch_map_writes_bundle_and_sra_plan() {
     }
     let summary_text = fs::read_to_string(batch_summary).expect("read batch summary");
     assert!(summary_text.contains("aligned_other_gene_count"));
+    assert!(summary_text.contains("all_q90_bp"));
+    assert!(summary_text.contains("seed_passed_q99_bp"));
     assert!(summary_text.contains("sample_sra\t"));
+    let gene_screen_text =
+        fs::read_to_string(gene_screen_summary).expect("read gene-screen summary");
+    assert!(gene_screen_text.contains("gentle.rna_read_gene_screen_summary.v1"));
+    assert!(gene_screen_text.contains("seed_passed_per_million"));
+    assert!(gene_screen_text.contains("accepted_target_per_million"));
+    assert!(gene_screen_text.contains("rna_reads_batch_map"));
     let isoform_text = fs::read_to_string(isoform_support).expect("read isoform support");
     assert!(isoform_text.contains("complete_near_count"));
     assert!(isoform_text.contains("TP53"));

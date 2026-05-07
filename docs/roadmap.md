@@ -4972,9 +4972,13 @@ Status:
       alignment, gene-support, audit, sample-sheet, and concatemer-inspection
       engine paths rather than duplicating biology in the batch wrapper
     - each bundle writes `batch_report.json`, `batch_summary.tsv`,
-      `sample_sheet.tsv`, `isoform_support.tsv`,
+      `gene_screen_summary.tsv`, `sample_sheet.tsv`, `isoform_support.tsv`,
       `concatemer_partner_summary.tsv`, optional SRA preparation/read
       acquisition artifacts, and per-sample gene-support/concatemer JSON
+    - native batch-map and `pancreas_gene_rna_screen.sh summarize` now share
+      the canonical `gentle.rna_read_gene_screen_summary.v1` TSV for
+      cross-gene/family plotting, keeping conservative seed-passed support and
+      read-length provenance out of plot-specific heuristics
     - the TSVs are intentionally figure-ready but figure-free: sample-level
       dashboards, isoform completeness/fragment plots, partner-gene bars, and
       suspicious-fusion heatmaps can now be derived later without rerunning

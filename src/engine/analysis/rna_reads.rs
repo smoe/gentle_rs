@@ -6215,11 +6215,23 @@ impl GentleEngine {
         concatemer_json_path: &Path,
         isoform_support_count: usize,
     ) -> RnaReadBatchMapSampleRow {
-        let mean_read_length_bp = if report.read_count_total == 0 {
-            0.0
+        let all_read_count = Self::sum_read_length_counts(&report.read_length_counts_all);
+        let all_mean_bp = if all_read_count == 0 {
+            None
         } else {
-            Self::sum_read_length_bases(&report.read_length_counts_all) as f64
-                / report.read_count_total as f64
+            Some(
+                Self::sum_read_length_bases(&report.read_length_counts_all) as f64
+                    / all_read_count as f64,
+            )
+        };
+        let seed_read_count = Self::sum_read_length_counts(&report.read_length_counts_seed_passed);
+        let seed_mean_bp = if seed_read_count == 0 {
+            None
+        } else {
+            Some(
+                Self::sum_read_length_bases(&report.read_length_counts_seed_passed) as f64
+                    / seed_read_count as f64,
+            )
         };
         let accepted_bases = summary.accepted_target_read_lengths.mean_length_bp
             * summary.accepted_target_read_lengths.sample_count as f64;
@@ -6270,7 +6282,63 @@ impl GentleEngine {
             } else {
                 report.read_count_aligned as f64 / report.read_count_total as f64
             },
-            mean_read_length_bp,
+            mean_read_length_bp: all_mean_bp.unwrap_or(0.0),
+            all_q0_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.0,
+                )
+            }),
+            all_q25_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.25,
+                )
+            }),
+            all_q50_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.50,
+                )
+            }),
+            all_q75_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.75,
+                )
+            }),
+            all_q90_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.90,
+                )
+            }),
+            all_q95_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.95,
+                )
+            }),
+            all_q99_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    0.99,
+                )
+            }),
+            all_q100_bp: (all_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_all,
+                    all_read_count,
+                    1.0,
+                )
+            }),
             origin_class_counts: report.origin_class_counts.clone(),
             requested_gene_ids: summary.requested_gene_ids.clone(),
             matched_gene_ids: summary.matched_gene_ids.clone(),
@@ -6313,8 +6381,115 @@ impl GentleEngine {
             internal_poly_a_count: inspection.internal_poly_a_count,
             internal_poly_t_count: inspection.internal_poly_t_count,
             phase1_partial_origin_count: inspection.phase1_partial_origin_count,
+            seed_passed_q90_bp: (seed_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_seed_passed,
+                    seed_read_count,
+                    0.90,
+                )
+            }),
+            seed_passed_q95_bp: (seed_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_seed_passed,
+                    seed_read_count,
+                    0.95,
+                )
+            }),
+            seed_passed_q99_bp: (seed_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_seed_passed,
+                    seed_read_count,
+                    0.99,
+                )
+            }),
+            seed_passed_max_bp: (seed_read_count > 0).then(|| {
+                Self::quantile_read_length_from_counts(
+                    &report.read_length_counts_seed_passed,
+                    seed_read_count,
+                    1.0,
+                )
+            }),
+            seed_passed_mean_bp: seed_mean_bp,
+            accepted_target_max_bp: (summary.accepted_target_count > 0)
+                .then_some(summary.accepted_target_read_lengths.max_length_bp),
+            accepted_target_mean_bp: (summary.accepted_target_count > 0)
+                .then_some(summary.accepted_target_read_lengths.mean_length_bp),
             ..Default::default()
         }
+    }
+
+    fn rna_read_batch_optional_usize(value: Option<usize>) -> String {
+        value.map(|value| value.to_string()).unwrap_or_default()
+    }
+
+    fn rna_read_batch_optional_f64(value: Option<f64>) -> String {
+        value.map(|value| format!("{value:.6}")).unwrap_or_default()
+    }
+
+    fn rna_read_batch_per_million(count: usize, total: usize) -> f64 {
+        if total == 0 {
+            0.0
+        } else {
+            count as f64 * 1_000_000.0 / total as f64
+        }
+    }
+
+    fn rna_read_batch_extract_srr_token(text: &str) -> Option<String> {
+        let bytes = text.as_bytes();
+        for idx in 0..bytes.len() {
+            if idx + 3 >= bytes.len() || &bytes[idx..idx + 3] != b"SRR" {
+                continue;
+            }
+            let mut end = idx + 3;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end > idx + 3 {
+                return Some(text[idx..end].to_string());
+            }
+        }
+        None
+    }
+
+    fn rna_read_batch_run_accession(row: &RnaReadBatchMapSampleRow) -> String {
+        for value in [
+            row.sra_accession.as_deref(),
+            row.report_id.as_deref(),
+            row.input_path.as_deref(),
+            Some(row.sample_id.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Some(token) = Self::rna_read_batch_extract_srr_token(value) {
+                return token;
+            }
+        }
+        row.sra_accession
+            .clone()
+            .unwrap_or_else(|| row.sample_id.clone())
+    }
+
+    fn rna_read_batch_gene_label(
+        row: &RnaReadBatchMapSampleRow,
+        fallback_gene_ids: &[String],
+    ) -> String {
+        let ids = if row.requested_gene_ids.is_empty() {
+            fallback_gene_ids
+        } else {
+            &row.requested_gene_ids
+        };
+        ids.join(",")
+    }
+
+    fn write_tsv_fields(
+        writer: &mut BufWriter<File>,
+        path: &Path,
+        fields: Vec<String>,
+        context: &str,
+    ) -> Result<(), EngineError> {
+        writeln!(writer, "{}", fields.join("\t"))
+            .map_err(|e| Self::rna_read_batch_io_error(path, context, e))
     }
 
     fn write_rna_read_batch_summary_tsv(
@@ -6324,11 +6499,78 @@ impl GentleEngine {
         let file = File::create(path)
             .map_err(|e| Self::rna_read_batch_io_error(path, "create batch summary TSV", e))?;
         let mut writer = BufWriter::new(file);
-        writeln!(
-            writer,
-            "sample_id\tsample_name\tsample_description\tstatus\terror\twarnings_json\telapsed_ms\treport_id\tseq_id\tseed_feature_id\tinput_path\tsra_accession\ttotal_reads\tseed_passed_reads\taligned_reads\tseed_pass_fraction\taligned_fraction\tmean_read_length_bp\torigin_class_counts_json\trequested_gene_ids_json\tmatched_gene_ids_json\tmissing_gene_ids_json\taccepted_target_count\taccepted_target_fraction_total\taccepted_target_fraction_aligned\taligned_other_gene_count\taligned_other_gene_fraction_aligned\tfragment_count\tcomplete_near_count\tcomplete_strict_count\tcomplete_exact_count\tmean_assigned_read_length_bp\tisoform_support_count\tconcatemer_inspected_count\tconcatemer_suspicious_count\tconcatemer_strong_count\tconcatemer_multi_gene_fragment_count\ttarget_partner_gene_fragment_count\tinternal_adapter_match_count\tdisjoint_secondary_mapping_count\tlow_primary_coverage_count\tinternal_poly_a_count\tinternal_poly_t_count\tphase1_partial_origin_count\tgene_support_summary_json_path\tgene_support_audit_json_path\tconcatemer_json_path"
-        )
-        .map_err(|e| Self::rna_read_batch_io_error(path, "write batch summary TSV header", e))?;
+        Self::write_tsv_fields(
+            &mut writer,
+            path,
+            [
+                "sample_id",
+                "sample_name",
+                "sample_description",
+                "status",
+                "error",
+                "warnings_json",
+                "elapsed_ms",
+                "report_id",
+                "seq_id",
+                "seed_feature_id",
+                "input_path",
+                "sra_accession",
+                "total_reads",
+                "seed_passed_reads",
+                "aligned_reads",
+                "seed_pass_fraction",
+                "aligned_fraction",
+                "mean_read_length_bp",
+                "all_q0_bp",
+                "all_q25_bp",
+                "all_q50_bp",
+                "all_q75_bp",
+                "all_q90_bp",
+                "all_q95_bp",
+                "all_q99_bp",
+                "all_q100_bp",
+                "seed_passed_q90_bp",
+                "seed_passed_q95_bp",
+                "seed_passed_q99_bp",
+                "seed_passed_max_bp",
+                "seed_passed_mean_bp",
+                "accepted_target_max_bp",
+                "accepted_target_mean_bp",
+                "origin_class_counts_json",
+                "requested_gene_ids_json",
+                "matched_gene_ids_json",
+                "missing_gene_ids_json",
+                "accepted_target_count",
+                "accepted_target_fraction_total",
+                "accepted_target_fraction_aligned",
+                "aligned_other_gene_count",
+                "aligned_other_gene_fraction_aligned",
+                "fragment_count",
+                "complete_near_count",
+                "complete_strict_count",
+                "complete_exact_count",
+                "mean_assigned_read_length_bp",
+                "isoform_support_count",
+                "concatemer_inspected_count",
+                "concatemer_suspicious_count",
+                "concatemer_strong_count",
+                "concatemer_multi_gene_fragment_count",
+                "target_partner_gene_fragment_count",
+                "internal_adapter_match_count",
+                "disjoint_secondary_mapping_count",
+                "low_primary_coverage_count",
+                "internal_poly_a_count",
+                "internal_poly_t_count",
+                "phase1_partial_origin_count",
+                "gene_support_summary_json_path",
+                "gene_support_audit_json_path",
+                "concatemer_json_path",
+            ]
+            .iter()
+            .map(|value| value.to_string())
+            .collect(),
+            "write batch summary TSV header",
+        )?;
         for row in rows {
             let warnings_json = Self::rna_read_batch_json_string(&row.warnings, "warnings")?;
             let origin_json =
@@ -6339,64 +6581,204 @@ impl GentleEngine {
                 Self::rna_read_batch_json_string(&row.matched_gene_ids, "matched genes")?;
             let missing_json =
                 Self::rna_read_batch_json_string(&row.missing_gene_ids, "missing genes")?;
-            writeln!(
-                writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                Self::sanitize_tsv_cell(&row.sample_id),
-                Self::sanitize_tsv_cell(row.sample_name.as_deref().unwrap_or("")),
-                Self::sanitize_tsv_cell(row.sample_description.as_deref().unwrap_or("")),
-                row.status.as_str(),
-                Self::sanitize_tsv_cell(row.error.as_deref().unwrap_or("")),
-                Self::sanitize_tsv_cell(&warnings_json),
-                row.elapsed_ms.map(|value| value.to_string()).unwrap_or_default(),
-                Self::sanitize_tsv_cell(row.report_id.as_deref().unwrap_or("")),
-                Self::sanitize_tsv_cell(&row.seq_id),
-                row.seed_feature_id,
-                Self::sanitize_tsv_cell(row.input_path.as_deref().unwrap_or("")),
-                Self::sanitize_tsv_cell(row.sra_accession.as_deref().unwrap_or("")),
-                row.read_count_total,
-                row.read_count_seed_passed,
-                row.read_count_aligned,
-                row.seed_pass_fraction,
-                row.aligned_fraction,
-                row.mean_read_length_bp,
-                Self::sanitize_tsv_cell(&origin_json),
-                Self::sanitize_tsv_cell(&requested_json),
-                Self::sanitize_tsv_cell(&matched_json),
-                Self::sanitize_tsv_cell(&missing_json),
-                row.accepted_target_count,
-                row.accepted_target_fraction_total,
-                row.accepted_target_fraction_aligned,
-                row.aligned_other_gene_count,
-                row.aligned_other_gene_fraction_aligned,
-                row.fragment_count,
-                row.complete_count,
-                row.complete_strict_count,
-                row.complete_exact_count,
-                row.mean_assigned_read_length_bp,
-                row.isoform_support_count,
-                row.concatemer_inspected_count,
-                row.concatemer_suspicious_count,
-                row.concatemer_strong_count,
-                row.concatemer_multi_gene_fragment_count,
-                row.target_partner_gene_fragment_count,
-                row.internal_adapter_match_count,
-                row.disjoint_secondary_mapping_count,
-                row.low_primary_coverage_count,
-                row.internal_poly_a_count,
-                row.internal_poly_t_count,
-                row.phase1_partial_origin_count,
-                Self::sanitize_tsv_cell(
-                    row.gene_support_summary_json_path.as_deref().unwrap_or("")
-                ),
-                Self::sanitize_tsv_cell(row.gene_support_audit_json_path.as_deref().unwrap_or("")),
-                Self::sanitize_tsv_cell(row.concatemer_json_path.as_deref().unwrap_or("")),
-            )
-            .map_err(|e| Self::rna_read_batch_io_error(path, "write batch summary TSV row", e))?;
+            Self::write_tsv_fields(
+                &mut writer,
+                path,
+                vec![
+                    Self::sanitize_tsv_cell(&row.sample_id),
+                    Self::sanitize_tsv_cell(row.sample_name.as_deref().unwrap_or("")),
+                    Self::sanitize_tsv_cell(row.sample_description.as_deref().unwrap_or("")),
+                    row.status.as_str().to_string(),
+                    Self::sanitize_tsv_cell(row.error.as_deref().unwrap_or("")),
+                    Self::sanitize_tsv_cell(&warnings_json),
+                    row.elapsed_ms
+                        .map(|value| value.to_string())
+                        .unwrap_or_default(),
+                    Self::sanitize_tsv_cell(row.report_id.as_deref().unwrap_or("")),
+                    Self::sanitize_tsv_cell(&row.seq_id),
+                    row.seed_feature_id.to_string(),
+                    Self::sanitize_tsv_cell(row.input_path.as_deref().unwrap_or("")),
+                    Self::sanitize_tsv_cell(row.sra_accession.as_deref().unwrap_or("")),
+                    row.read_count_total.to_string(),
+                    row.read_count_seed_passed.to_string(),
+                    row.read_count_aligned.to_string(),
+                    format!("{:.6}", row.seed_pass_fraction),
+                    format!("{:.6}", row.aligned_fraction),
+                    format!("{:.6}", row.mean_read_length_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q0_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q25_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q50_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q75_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q90_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q95_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q99_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q100_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q90_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q95_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q99_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_max_bp),
+                    Self::rna_read_batch_optional_f64(row.seed_passed_mean_bp),
+                    Self::rna_read_batch_optional_usize(row.accepted_target_max_bp),
+                    Self::rna_read_batch_optional_f64(row.accepted_target_mean_bp),
+                    Self::sanitize_tsv_cell(&origin_json),
+                    Self::sanitize_tsv_cell(&requested_json),
+                    Self::sanitize_tsv_cell(&matched_json),
+                    Self::sanitize_tsv_cell(&missing_json),
+                    row.accepted_target_count.to_string(),
+                    format!("{:.6}", row.accepted_target_fraction_total),
+                    format!("{:.6}", row.accepted_target_fraction_aligned),
+                    row.aligned_other_gene_count.to_string(),
+                    format!("{:.6}", row.aligned_other_gene_fraction_aligned),
+                    row.fragment_count.to_string(),
+                    row.complete_count.to_string(),
+                    row.complete_strict_count.to_string(),
+                    row.complete_exact_count.to_string(),
+                    format!("{:.6}", row.mean_assigned_read_length_bp),
+                    row.isoform_support_count.to_string(),
+                    row.concatemer_inspected_count.to_string(),
+                    row.concatemer_suspicious_count.to_string(),
+                    row.concatemer_strong_count.to_string(),
+                    row.concatemer_multi_gene_fragment_count.to_string(),
+                    row.target_partner_gene_fragment_count.to_string(),
+                    row.internal_adapter_match_count.to_string(),
+                    row.disjoint_secondary_mapping_count.to_string(),
+                    row.low_primary_coverage_count.to_string(),
+                    row.internal_poly_a_count.to_string(),
+                    row.internal_poly_t_count.to_string(),
+                    row.phase1_partial_origin_count.to_string(),
+                    Self::sanitize_tsv_cell(
+                        row.gene_support_summary_json_path.as_deref().unwrap_or(""),
+                    ),
+                    Self::sanitize_tsv_cell(
+                        row.gene_support_audit_json_path.as_deref().unwrap_or(""),
+                    ),
+                    Self::sanitize_tsv_cell(row.concatemer_json_path.as_deref().unwrap_or("")),
+                ],
+                "write batch summary TSV row",
+            )?;
         }
         writer
             .flush()
             .map_err(|e| Self::rna_read_batch_io_error(path, "flush batch summary TSV", e))
+    }
+
+    fn write_rna_read_gene_screen_summary_tsv(
+        path: &Path,
+        rows: &[RnaReadBatchMapSampleRow],
+        fallback_gene_ids: &[String],
+        source_path: &Path,
+        align_selection: RnaReadHitSelection,
+    ) -> Result<(), EngineError> {
+        let file = File::create(path).map_err(|e| {
+            Self::rna_read_batch_io_error(path, "create gene-screen summary TSV", e)
+        })?;
+        let mut writer = BufWriter::new(file);
+        Self::write_tsv_fields(
+            &mut writer,
+            path,
+            [
+                "schema",
+                "gene",
+                "run_accession",
+                "sample_id",
+                "sample_name",
+                "source_kind",
+                "source_path",
+                "analysis_phase",
+                "report_id",
+                "seq_id",
+                "seed_feature_id",
+                "input_path",
+                "total_reads",
+                "all_q0_bp",
+                "all_q25_bp",
+                "all_q50_bp",
+                "all_q75_bp",
+                "all_q90_bp",
+                "all_q95_bp",
+                "all_q99_bp",
+                "all_q100_bp",
+                "all_mean_bp",
+                "seed_passed_reads",
+                "seed_passed_per_million",
+                "seed_passed_q90_bp",
+                "seed_passed_q95_bp",
+                "seed_passed_q99_bp",
+                "seed_passed_max_bp",
+                "seed_passed_mean_bp",
+                "accepted_target_count",
+                "accepted_target_per_million",
+                "accepted_target_max_bp",
+                "accepted_target_mean_bp",
+                "align_selection",
+            ]
+            .iter()
+            .map(|value| value.to_string())
+            .collect(),
+            "write gene-screen summary TSV header",
+        )?;
+        let source_path = Self::rna_read_batch_path_string(source_path);
+        for row in rows {
+            Self::write_tsv_fields(
+                &mut writer,
+                path,
+                vec![
+                    RNA_READ_GENE_SCREEN_SUMMARY_SCHEMA.to_string(),
+                    Self::sanitize_tsv_cell(&Self::rna_read_batch_gene_label(
+                        row,
+                        fallback_gene_ids,
+                    )),
+                    Self::sanitize_tsv_cell(&Self::rna_read_batch_run_accession(row)),
+                    Self::sanitize_tsv_cell(&row.sample_id),
+                    Self::sanitize_tsv_cell(row.sample_name.as_deref().unwrap_or("")),
+                    "rna_reads_batch_map".to_string(),
+                    Self::sanitize_tsv_cell(&source_path),
+                    "with_alignment".to_string(),
+                    Self::sanitize_tsv_cell(row.report_id.as_deref().unwrap_or("")),
+                    Self::sanitize_tsv_cell(&row.seq_id),
+                    row.seed_feature_id.to_string(),
+                    Self::sanitize_tsv_cell(row.input_path.as_deref().unwrap_or("")),
+                    row.read_count_total.to_string(),
+                    Self::rna_read_batch_optional_usize(row.all_q0_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q25_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q50_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q75_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q90_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q95_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q99_bp),
+                    Self::rna_read_batch_optional_usize(row.all_q100_bp),
+                    format!("{:.6}", row.mean_read_length_bp),
+                    row.read_count_seed_passed.to_string(),
+                    format!(
+                        "{:.6}",
+                        Self::rna_read_batch_per_million(
+                            row.read_count_seed_passed,
+                            row.read_count_total,
+                        )
+                    ),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q90_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q95_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_q99_bp),
+                    Self::rna_read_batch_optional_usize(row.seed_passed_max_bp),
+                    Self::rna_read_batch_optional_f64(row.seed_passed_mean_bp),
+                    row.accepted_target_count.to_string(),
+                    format!(
+                        "{:.6}",
+                        Self::rna_read_batch_per_million(
+                            row.accepted_target_count,
+                            row.read_count_total,
+                        )
+                    ),
+                    Self::rna_read_batch_optional_usize(row.accepted_target_max_bp),
+                    Self::rna_read_batch_optional_f64(row.accepted_target_mean_bp),
+                    align_selection.as_str().to_string(),
+                ],
+                "write gene-screen summary TSV row",
+            )?;
+        }
+        writer
+            .flush()
+            .map_err(|e| Self::rna_read_batch_io_error(path, "flush gene-screen summary TSV", e))
     }
 
     fn write_rna_read_batch_isoform_tsv(
@@ -6611,6 +6993,7 @@ impl GentleEngine {
 
         let batch_report_json_path = out_root.join("batch_report.json");
         let batch_summary_tsv_path = out_root.join("batch_summary.tsv");
+        let gene_screen_summary_tsv_path = out_root.join("gene_screen_summary.tsv");
         let sample_sheet_tsv_path = out_root.join("sample_sheet.tsv");
         let isoform_support_tsv_path = out_root.join("isoform_support.tsv");
         let concatemer_partner_summary_tsv_path = out_root.join("concatemer_partner_summary.tsv");
@@ -6915,6 +7298,13 @@ impl GentleEngine {
             )?;
         }
         Self::write_rna_read_batch_summary_tsv(&batch_summary_tsv_path, &rows)?;
+        Self::write_rna_read_gene_screen_summary_tsv(
+            &gene_screen_summary_tsv_path,
+            &rows,
+            &gene_ids,
+            &batch_report_json_path,
+            align_selection,
+        )?;
         Self::write_rna_read_batch_isoform_tsv(&isoform_support_tsv_path, &isoform_support_rows)?;
         Self::write_rna_read_batch_partner_tsv(
             &concatemer_partner_summary_tsv_path,
@@ -6970,6 +7360,9 @@ impl GentleEngine {
             continue_on_error,
             batch_report_json_path: Self::rna_read_batch_path_string(&batch_report_json_path),
             batch_summary_tsv_path: Self::rna_read_batch_path_string(&batch_summary_tsv_path),
+            gene_screen_summary_tsv_path: Self::rna_read_batch_path_string(
+                &gene_screen_summary_tsv_path,
+            ),
             sample_sheet_tsv_path: Self::rna_read_batch_path_string(&sample_sheet_tsv_path),
             isoform_support_tsv_path: Self::rna_read_batch_path_string(&isoform_support_tsv_path),
             concatemer_partner_summary_tsv_path: Self::rna_read_batch_path_string(
