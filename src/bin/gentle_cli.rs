@@ -21,6 +21,7 @@ mod gentle_cli_services;
 
 use gentle::{
     about,
+    cli_support::load_state_or_default,
     engine::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress, Engine,
@@ -827,15 +828,7 @@ fn read_text_input(path_or_url: &str) -> Result<String, String> {
 }
 
 fn load_state(path: &str) -> Result<ProjectState, String> {
-    if !std::path::Path::new(path).exists() {
-        return Ok(ProjectState::default());
-    }
-    let raw =
-        fs::read_to_string(path).map_err(|e| format!("Could not read state file '{path}': {e}"))?;
-    if raw.trim().is_empty() {
-        return Ok(ProjectState::default());
-    }
-    ProjectState::load_from_path(path).map_err(|e| e.to_string())
+    load_state_or_default(path)
 }
 
 fn print_json<T: Serialize>(value: &T) -> Result<(), String> {

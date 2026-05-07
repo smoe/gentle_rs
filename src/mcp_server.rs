@@ -7,6 +7,7 @@
 
 use crate::{
     about,
+    cli_support::load_state_or_default,
     engine::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, Engine, GentleEngine, Operation, ProjectState, Workflow,
     },
@@ -26,7 +27,6 @@ use crate::{
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
-use std::path::Path;
 
 const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "gentle_mcp";
@@ -77,11 +77,7 @@ fn run_server_loop<R: BufRead, W: Write>(
 }
 
 fn load_state(path: &str) -> Result<ProjectState, String> {
-    if Path::new(path).exists() {
-        ProjectState::load_from_path(path).map_err(|e| e.to_string())
-    } else {
-        Ok(ProjectState::default())
-    }
+    load_state_or_default(path)
 }
 
 fn read_framed_json<R: BufRead>(reader: &mut R) -> Result<Option<Value>, String> {

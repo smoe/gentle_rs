@@ -1,17 +1,13 @@
 //! JavaScript shell binary entry point over shared engine operations.
 
-use gentle::about;
 use gentle::js_interface::JavaScriptInterface;
+use gentle::{
+    about,
+    cli_support::{SingleProjectCliOptions, parse_single_project_cli_args},
+};
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 use std::{env, error::Error};
-
-#[derive(Debug, Default)]
-struct CliArgs {
-    show_help: bool,
-    show_version: bool,
-    project_path: Option<String>,
-}
 
 fn print_help() {
     println!(
@@ -22,48 +18,9 @@ If PATH is provided, the project is loaded into global variable 'project'."
     );
 }
 
-fn parse_cli_args(args: &[String]) -> Result<CliArgs, String> {
-    let mut parsed = CliArgs::default();
-    let mut idx = 0usize;
-    while idx < args.len() {
-        match args[idx].as_str() {
-            "--help" | "-h" => {
-                parsed.show_help = true;
-                idx += 1;
-            }
-            "--version" | "-V" => {
-                parsed.show_version = true;
-                idx += 1;
-            }
-            "--project" => {
-                if idx + 1 >= args.len() {
-                    return Err("Missing PATH after --project".to_string());
-                }
-                parsed.project_path = Some(args[idx + 1].clone());
-                idx += 2;
-            }
-            arg if arg.starts_with('-') => {
-                return Err(format!("Unknown option '{arg}'"));
-            }
-            path => {
-                if parsed.project_path.is_some() {
-                    return Err(format!(
-                        "Multiple project paths provided ('{}' and '{}')",
-                        parsed.project_path.as_deref().unwrap_or_default(),
-                        path
-                    ));
-                }
-                parsed.project_path = Some(path.to_string());
-                idx += 1;
-            }
-        }
-    }
-    Ok(parsed)
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
-    let cli = match parse_cli_args(&args) {
+    let cli = match parse_single_project_cli_args(&args, SingleProjectCliOptions::standard()) {
         Ok(parsed) => parsed,
         Err(e) => {
             eprintln!("{e}");
