@@ -165,6 +165,21 @@
       "notes": "Conceptual and operational guide for GUI assistant, CLI/shared shell, MCP, and external coding agents."
     },
     {
+      "id": "metabion_external_service_handoff_gui_cli",
+      "title": "Prepare a Metabion Handoff from Shared External-Service Contracts",
+      "path": "docs/tutorial/metabion_external_service_handoff_gui_cli.md",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "cloning_planning"
+      ],
+      "notes": "Safe handoff rehearsal for Metabion oligo and m-block requests through the shared provider catalog, preflight, and quote bundle contracts; no vendor submission."
+    },
+    {
       "id": "simple_pcr_selection_gui",
       "title": "Simple PCR From a Selected Core Region",
       "path": "docs/tutorial/simple_pcr_selection_gui.md",

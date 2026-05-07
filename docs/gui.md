@@ -205,6 +205,10 @@ This is the intended place to review whether GENtle represents provider
 products and handoff constraints fairly before deeper provider collaboration or
 future direct integrations.
 
+Tutorial companion:
+
+- [`docs/tutorial/metabion_external_service_handoff_gui_cli.md`](./tutorial/metabion_external_service_handoff_gui_cli.md)
+
 ## Configuration Window
 
 GENtle provides a project-level configuration window (not per-sequence).

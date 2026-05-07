@@ -3268,6 +3268,7 @@ Service and resource commands:
   - `return_spec.requested_payloads[]` lets ClawBio/MCP callers state whether
     they want GenBank/FASTA/protein payloads, quote metadata, vendor ids, or a
     full artifact bundle as later implementations grow.
+
 - `services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]`
   - Builds a Telegram-compatible bench-user guide with schema
     `gentle.telegram_guide.v1`.
@@ -3308,6 +3309,12 @@ Service and resource commands:
   - When `--output` is provided, the same JSON payload is written to disk and
     listed as the best-first `preferred_artifacts[]` entry so ClawBio can bundle
     it as an auditable installation report.
+
+Tutorial companion:
+
+- `docs/tutorial/metabion_external_service_handoff_gui_cli.md` walks through
+  provider doctor, capability listing, preflight, quote-handoff generation, and
+  GUI parity using bundled synthetic Metabion oligo and m-block request JSON.
 - `resources status`
   - Reports which integrated external resource snapshots are active right now.
   - Covers built-in/runtime status for `REBASE` and `JASPAR`, including item

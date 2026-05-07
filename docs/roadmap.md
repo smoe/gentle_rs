@@ -4215,6 +4215,13 @@ Implementation status as of 2026-05-05:
   doctor`, `services project-preflight`, `services project-quote`), so provider
   pickers and Metabion/GeneArt service rows remain catalog-driven rather than
   hard-coded in GUI code.
+- A first manual/hybrid tutorial now rehearses the Metabion handoff path across
+  CLI and GUI:
+  `docs/tutorial/metabion_external_service_handoff_gui_cli.md`. It uses bundled
+  synthetic oligo and m-block request JSON examples, verifies provider doctor,
+  capability list, preflight, quote-handoff payloads, GUI parity, and project
+  overlay behavior, while keeping direct submission and commercial secrets out
+  of scope.
 
 Portable schemas:
 
