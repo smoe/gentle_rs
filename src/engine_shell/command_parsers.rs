@@ -2461,6 +2461,17 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                         idx += 1;
                         motifs.push(parse_required_value(tokens, &mut idx, "--motif")?);
                     }
+                    "--motifs" => {
+                        idx += 1;
+                        let raw = parse_required_value(tokens, &mut idx, "--motifs")?;
+                        for token in raw
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                        {
+                            motifs.push(token.to_string());
+                        }
+                    }
                     "--score-kind" => {
                         idx += 1;
                         let raw = parse_required_value(tokens, &mut idx, "--score-kind")?;
