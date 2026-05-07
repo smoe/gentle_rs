@@ -99,6 +99,12 @@ If you want to use GENtle with agents, MCP, or the command line:
 - Use the agent interfaces tutorial:
   [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md)
 
+If you want to rehearse a safe external-service handoff before contacting or
+ordering from a provider:
+
+- Use the Metabion external-service handoff tutorial:
+  [`docs/tutorial/metabion_external_service_handoff_gui_cli.md`](./metabion_external_service_handoff_gui_cli.md)
+
 If you want one short direct-sequence inspection test across GUI, CLI, and
 ClawBio:
 
@@ -187,6 +193,7 @@ Treat the tutorial catalog as three confidence bands:
 | [`docs/tutorial/sequencing_confirmation_trace_cli.md`](./sequencing_confirmation_trace_cli.md) | CLI walkthrough + shell parity | `manual/hybrid` | Imported trace inspection, trace-aware sequencing confirmation, report export | Hand-written local walkthrough for `seq-trace import|list|show` plus `seq-confirm run --trace-id ...` on one deterministic bundled ABI fixture. |
 | [`docs/tutorial/rna_read_batch_gene_support_cli.md`](./rna_read_batch_gene_support_cli.md) | CLI walkthrough + shared-shell parity | `manual/hybrid` | Batch cDNA cohort comparison for one target gene | Hand-written batch workflow for many `fa.gz` / `fasta.gz` inputs, report alignment, target-gene abundance summaries, exon-pair co-presence, and assigned-read mean-length export. |
 | [`docs/tutorial/tp73_uniprot_projection_audit_cli.md`](./tp73_uniprot_projection_audit_cli.md) | CLI walkthrough + shared-shell parity | `manual/hybrid` | TP73 UniProt/Ensembl projection audit, primitive composition, parity verification | Hand-written CLI-first audit of projected TP73 protein evidence with transcript accounting, exon/CDS comparison, peptide comparison, parity check, and a local unsent maintainer-email draft. |
+| [`docs/tutorial/metabion_external_service_handoff_gui_cli.md`](./metabion_external_service_handoff_gui_cli.md) | GUI + CLI walkthrough | `manual/hybrid` | Safe Metabion oligo/m-block quote-handoff rehearsal | Hand-written shared-contract tutorial for provider doctor, capability list, preflight, quote bundle, GUI parity, and project overlay checks. |
 | [`docs/tutorial/landscape_overview.md`](./landscape_overview.md) | Operational reference tutorial | `manual/reference` | Tutorial planning, onboarding sequencing, contributor navigation | Graphical map of current tutorial dependencies, roadmap-grounded additions, and heuristic human-feedback intensity. |
 | [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md) | Operational reference tutorial | `manual/reference` | CLI, MCP, in-app agent assistant, external coding agents | Conceptual and operational guide rather than an executable biology walkthrough. |
 
@@ -280,6 +287,15 @@ Use the labels above as trust/maintenance signals:
 1. Read [`docs/agent_interfaces_tutorial.md`](../agent_interfaces_tutorial.md)
 2. Verify capabilities with `gentle_cli help` or MCP `tools/list`
 3. Use executable tutorials as the reproducible backing layer
+
+### Path F2: External-service handoff rehearsal
+
+1. Read [`docs/tutorial/metabion_external_service_handoff_gui_cli.md`](./metabion_external_service_handoff_gui_cli.md)
+2. Run `services providers doctor` and `services providers list`
+3. Preflight the bundled oligo and m-block request JSON examples
+4. Generate quote-handoff bundles and inspect normalized JSON/CSV, email draft,
+   WOP checklist, warnings, and required follow-up
+5. Repeat the same review in `Services -> External Services...`
 
 ### Path G: GUI-first sequencing confirmation
 
