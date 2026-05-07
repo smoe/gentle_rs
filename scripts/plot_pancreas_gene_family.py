@@ -34,8 +34,13 @@ READ_LENGTH_SERIES = [
     ("all_q50_bp", "q50", "#111827", ""),
     ("all_q75_bp", "q75", "#f59e0b", ""),
     ("all_q90_bp", "q90", "#7c3aed", "8,4"),
+    ("all_q95_bp", "q95", "#0ea5e9", "4,3"),
+    ("all_q99_bp", "q99", "#be123c", "3,3"),
     ("all_q100_bp", "q100", "#dc2626", ""),
     ("all_mean_bp", "mean", "#059669", "6,4"),
+]
+DEFAULT_READ_LENGTH_SERIES = [
+    series for series in READ_LENGTH_SERIES if series[0] not in {"all_q99_bp", "all_q100_bp"}
 ]
 OUTPUT_FIELDS = [
     "gene",
@@ -48,6 +53,8 @@ OUTPUT_FIELDS = [
     "all_q50_bp",
     "all_q75_bp",
     "all_q90_bp",
+    "all_q95_bp",
+    "all_q99_bp",
     "all_q100_bp",
     "all_mean_bp",
     "seed_passed_reads",
@@ -117,8 +124,8 @@ def parse_args() -> argparse.Namespace:
         choices=["max", "mean"],
         default="max",
         help=(
-            "Gene-supporting read-length statistic drawn as one colored line per "
-            "gene in the lower panel. Whole-library q90 stays in the upper panel."
+            "Gene-supporting read-length statistic drawn as colored symbols in "
+            "the lower panel. Whole-library q90 stays in the upper panel."
         ),
     )
     parser.add_argument(
@@ -152,6 +159,15 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Optional comma-separated gene list for support-read length symbols. "
             "Bars are still drawn for all genes."
+        ),
+    )
+    parser.add_argument(
+        "--show-all-read-max",
+        action="store_true",
+        help=(
+            "Draw the whole-library q99 and q100/max read-length lines in the "
+            "upper panel. They are hidden by default because extreme read "
+            "lengths are outlier statistics."
         ),
     )
     parser.add_argument(
@@ -287,12 +303,30 @@ def normalize_support_row(
         "strict_seed_passed_q90_read_bp",
         "strict_seed_passed_q90_read_length_bp",
         "strict_seed_passed_q90_bp",
+        "strict_seed_passed_q95_read_bp",
+        "strict_seed_passed_q95_read_length_bp",
+        "strict_seed_passed_q95_bp",
+        "strict_seed_passed_q99_read_bp",
+        "strict_seed_passed_q99_read_length_bp",
+        "strict_seed_passed_q99_bp",
         "seed_passed_q90_read_bp",
         "seed_passed_q90_read_length_bp",
         "seed_passed_q90_bp",
+        "seed_passed_q95_read_bp",
+        "seed_passed_q95_read_length_bp",
+        "seed_passed_q95_bp",
+        "seed_passed_q99_read_bp",
+        "seed_passed_q99_read_length_bp",
+        "seed_passed_q99_bp",
         "strict_seed_q90_bp",
         "strict_seed_q90_read_bp",
         "strict_seed_q90_read_length_bp",
+        "strict_seed_q95_bp",
+        "strict_seed_q95_read_bp",
+        "strict_seed_q95_read_length_bp",
+        "strict_seed_q99_bp",
+        "strict_seed_q99_read_bp",
+        "strict_seed_q99_read_length_bp",
     )
     seed_max = optional_float(
         row,
@@ -376,6 +410,8 @@ def normalize_support_row(
         "all_q50_bp",
         "all_q75_bp",
         "all_q90_bp",
+        "all_q95_bp",
+        "all_q99_bp",
         "all_q100_bp",
         "all_mean_bp",
     ):
@@ -497,7 +533,16 @@ def write_family_tsv(rows: list[dict[str, object]], path: Path) -> None:
 
 
 def validate_read_length_quantiles(rows: list[dict[str, object]], source_label: str) -> None:
-    order = ["all_q0_bp", "all_q25_bp", "all_q50_bp", "all_q75_bp", "all_q90_bp", "all_q100_bp"]
+    order = [
+        "all_q0_bp",
+        "all_q25_bp",
+        "all_q50_bp",
+        "all_q75_bp",
+        "all_q90_bp",
+        "all_q95_bp",
+        "all_q99_bp",
+        "all_q100_bp",
+    ]
     for row in rows:
         previous_key = None
         previous_value = None
@@ -622,6 +667,7 @@ def render_svg(
     support_length_scale: str,
     support_length_display: str,
     support_length_genes: set[str],
+    show_all_read_max: bool,
 ) -> str:
     rows_by_gene_run = {
         (str(row.get("gene")), str(row.get("run_accession"))): row
@@ -648,12 +694,14 @@ def render_svg(
     if n == 1:
         x_positions = [top_x + chart_w / 2.0]
 
+    read_length_series = READ_LENGTH_SERIES if show_all_read_max else DEFAULT_READ_LENGTH_SERIES
+
     read_values = [
         number
         for run in runs
         for row in [next((rows_by_gene_run.get((gene, run)) for gene in genes if rows_by_gene_run.get((gene, run))), None)]
         if row
-        for key, _label, _color, _dash in READ_LENGTH_SERIES
+        for key, _label, _color, _dash in read_length_series
         if (number := value(row, key)) is not None and number > 0
     ]
     show_read_panel = bool(read_values)
@@ -758,14 +806,14 @@ def render_svg(
         parts.append(f'<line x1="{top_x}" y1="{top_y + top_h}" x2="{top_x + chart_w}" y2="{top_y + top_h}" class="axis"/>')
         parts.append(svg_text(26, top_y + top_h / 2, "read length (bp, log scale)", 12, "#475569", "middle", extra='transform="rotate(-90 26 %.1f)"' % (top_y + top_h / 2)))
 
-        legend_x = top_x + chart_w - 505
+        legend_x = top_x + chart_w - 430
         legend_y = top_y - 30
-        for idx, (_key, label, color, dash) in enumerate(READ_LENGTH_SERIES):
+        for idx, (_key, label, color, dash) in enumerate(read_length_series):
             lx = legend_x + idx * 77
             parts.append(f'<line x1="{lx:.1f}" y1="{legend_y:.1f}" x2="{lx + 22:.1f}" y2="{legend_y:.1f}" stroke="{color}" stroke-width="2.5" stroke-dasharray="{dash}"/>')
             parts.append(svg_text(lx + 28, legend_y + 4, label, 12, "#334155"))
 
-        for key, _label, color, dash in READ_LENGTH_SERIES:
+        for key, _label, color, dash in read_length_series:
             points = []
             for idx, run in enumerate(runs):
                 row = next((rows_by_gene_run.get((gene, run)) for gene in genes if rows_by_gene_run.get((gene, run))), None)
@@ -878,7 +926,7 @@ def render_svg(
 
     parts.append(svg_text(38, height - 42, f"Canonical source table: {output_tsv}", 10, "#64748b"))
     source_note = "strict seed-passed only" if support_length_source == "strict_seed_passed" else "any provenance, including accepted-target fallback"
-    parts.append(svg_text(38, height - 24, f"accepted_target_count is retained in the TSV but not used as the main support scale; lower-panel lines show {support_length_stat} support-read length ({source_note}).", 10, "#64748b"))
+    parts.append(svg_text(38, height - 24, f"accepted_target_count is retained in the TSV but not used as the main support scale; lower-panel symbols show {support_length_stat} support-read length ({source_note}).", 10, "#64748b"))
     parts.append("</svg>")
     return "\n".join(parts) + "\n"
 
@@ -957,6 +1005,7 @@ def main() -> int:
         args.support_length_scale,
         args.support_length_display,
         support_length_genes,
+        args.show_all_read_max,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(svg, encoding="utf-8")

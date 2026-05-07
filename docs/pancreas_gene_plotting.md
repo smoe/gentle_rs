@@ -58,7 +58,8 @@ The output SVG contains two panels:
 
 - whole-library read-length context from all-read quantiles/mean
   (`all_q0_bp`, `all_q25_bp`, `all_q50_bp`, `all_q75_bp`, `all_q90_bp`,
-  `all_q100_bp`, `all_mean_bp`), drawn on a logarithmic read-length axis;
+  `all_q95_bp`, `all_q99_bp`, `all_q100_bp`, `all_mean_bp`), drawn on a
+  logarithmic read-length axis;
 - the selected single-gene support count as bars, with supporting-read maximum
   length overlaid when the relevant length column is available.
 
@@ -121,6 +122,12 @@ Useful options:
   symbols for only a subset of genes while keeping all gene bars. This is useful
   when one older input lacks strict seed-passed length summaries or only has
   downstream accepted-target fallback lengths.
+- `--show-all-read-max`: include the whole-library `all_q99_bp` and
+  `all_q100_bp`/maximum-read lines in the upper read-length panel. They are
+  hidden by default in family plots because extreme read lengths are outlier
+  statistics and tend to dominate the visual impression without helping the
+  gene-support comparison. `all_q95_bp` is collected and displayed by default as
+  the calmer upper-tail context line.
 - `--label-column sample_id|sample_name|run_accession`: x-axis labels.
 - `--output-tsv PATH`: canonical merged family table. Defaults to the SVG path
   with `.tsv` extension.
@@ -130,7 +137,9 @@ The canonical family TSV uses these main fields:
 
 - `gene`, `run_accession`, `sample_id`, `sample_name`
 - `total_reads`
-- all-read length fields (`all_q0_bp` through `all_q100_bp`, plus `all_mean_bp`)
+- all-read length fields (`all_q0_bp`, `all_q25_bp`, `all_q50_bp`,
+  `all_q75_bp`, `all_q90_bp`, `all_q95_bp`, `all_q99_bp`, `all_q100_bp`, plus
+  `all_mean_bp`)
 - `seed_passed_reads` and `seed_passed_per_million`
 - `accepted_target_count` and `accepted_target_per_million`
 - optional supporting-read length fields
@@ -226,6 +235,8 @@ all_q25_bp
 all_q50_bp
 all_q75_bp
 all_q90_bp
+all_q95_bp
+all_q99_bp
 all_q100_bp
 all_mean_bp
 strict_seed_passed_reads
