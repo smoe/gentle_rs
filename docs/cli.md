@@ -2827,6 +2827,12 @@ Isoform architecture panel workflow:
     - these are useful for one-off live Ensembl gene retrieval without whole
       reference preparation; prepared `genomes extract-gene|region|promoter`
       remains the preferred route for reproducible locus-context work
+    - `scripts/fetch_ensembl_cdna_fixtures.sh` wraps this route for RNA-read
+      preflight controls: it fetches the Ensembl gene entry, imports the locus,
+      derives all transcript cDNAs with `transcripts derive`, exports them to
+      `ensembl_<species>_<gene-token>_all.fasta`, and records sidecar provenance
+      suitable for `--must-pass-transcript-fasta` /
+      `--control-transcript-fasta`
   - direct Ensembl region/ROI route:
     - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
     - compact coordinates are accepted as

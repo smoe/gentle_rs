@@ -263,5 +263,63 @@ class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
         )
 
 
+class EnsemblCdnaFixtureScriptTests(unittest.TestCase):
+    def test_fetch_ensembl_cdna_fixture_help_documents_e2f_default(self) -> None:
+        result = subprocess.run(
+            [
+                "bash",
+                str(REPO_ROOT / "scripts" / "fetch_ensembl_cdna_fixtures.sh"),
+                "--help",
+            ],
+            check=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertIn("E2F1 E2F2 E2F3 E2F4 E2F5 E2F6 E2F7 E2F8", result.stdout)
+        self.assertIn("ensembl_<species-label>_<gene-token>_all.fasta", result.stdout)
+        self.assertIn("GENtle for Ensembl gene retrieval", result.stdout)
+        self.assertIn(".provenance.json", result.stdout)
+
+    def test_fetch_ensembl_cdna_fixture_dry_run_uses_gentle_commands(self) -> None:
+        result = subprocess.run(
+            [
+                "bash",
+                str(REPO_ROOT / "scripts" / "fetch_ensembl_cdna_fixtures.sh"),
+                "--dry-run",
+                "--genes",
+                "E2F1,E2F2",
+                "--out-dir",
+                "/tmp/gentle-fixtures",
+                "--work-dir",
+                "/tmp/gentle-work",
+                "--gentle-bin",
+                "/tmp/gentle_cli",
+            ],
+            check=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertIn("Dry run: no files will be written.", result.stdout)
+        self.assertIn("ensembl-gene fetch E2F1 --species homo_sapiens", result.stdout)
+        self.assertIn("ensembl-gene import-sequence ensembl_human_e2f1", result.stdout)
+        self.assertIn("transcripts derive ensembl_human_e2f1_locus", result.stdout)
+        self.assertIn("/tmp/gentle-fixtures/ensembl_human_e2f2_all.fasta", result.stdout)
+
+    def test_fetch_ensembl_cdna_fixture_script_syntax_is_valid(self) -> None:
+        subprocess.run(
+            [
+                "bash",
+                "-n",
+                str(REPO_ROOT / "scripts" / "fetch_ensembl_cdna_fixtures.sh"),
+            ],
+            check=True,
+            cwd=REPO_ROOT,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

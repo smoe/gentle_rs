@@ -3706,6 +3706,10 @@ Notes:
 13. RNA mapping benchmark-fixture curation is still incomplete:
    - compact committed pack now exists at `test_files/fixtures/mapping/` and
      is used by deterministic TP73 seed-filter tests
+   - `scripts/fetch_ensembl_cdna_fixtures.sh` now provides a GENtle-backed
+     live Ensembl retrieval path for exploratory transcript FASTA controls
+     such as E2F1/E2F2-E2F8, with sidecar provenance and an aggregate fixture
+     manifest
    - legacy `test_files/mapping/True_TP73/` and
      `test_files/mapping/False_TP73/` corpora still
      need full pinned-source provenance capture before broader CI adoption
