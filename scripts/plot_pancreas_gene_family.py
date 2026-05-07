@@ -122,6 +122,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--support-length-source",
+        choices=["strict_seed_passed", "any"],
+        default="strict_seed_passed",
+        help=(
+            "Which support-read length provenance may be drawn. The default only "
+            "plots lengths measured on the same strict seed-passed population as "
+            "the bars; 'any' also allows older accepted-target fallback lengths."
+        ),
+    )
+    parser.add_argument(
         "--label-column",
         choices=["sample_id", "sample_name", "run_accession"],
         default="sample_id",
@@ -527,6 +537,7 @@ def render_svg(
     label_column: str,
     title: str,
     support_length_stat: str,
+    support_length_source: str,
 ) -> str:
     rows_by_gene_run = {
         (str(row.get("gene")), str(row.get("run_accession"))): row
@@ -581,13 +592,22 @@ def render_svg(
         "mean": "support_mean_read_bp",
     }[support_length_stat]
     support_length_label = {
-        "max": "gene-supporting max read length (bp)",
-        "mean": "gene-supporting mean read length (bp)",
+        "max": "strict seed-passed max read length (bp)",
+        "mean": "strict seed-passed mean read length (bp)",
     }[support_length_stat]
+    if support_length_source == "any":
+        support_length_label = support_length_label.replace("strict seed-passed", "gene-supporting")
+
+    def support_source_allowed(row: dict[str, object]) -> bool:
+        if support_length_source == "any":
+            return True
+        return str(row.get("support_length_source") or "") == "strict_seed_passed"
+
     support_length_values = [
         raw
         for row in rows_by_gene_run.values()
-        if (raw := value(row, support_length_key)) is not None and raw > 0
+        if support_source_allowed(row)
+        and (raw := value(row, support_length_key)) is not None and raw > 0
     ]
     support_length_max = (
         nice_linear_max(max(support_length_values) * 1.15)
@@ -716,7 +736,7 @@ def render_svg(
             points: list[tuple[float, float, str, float, str]] = []
             for idx, run in enumerate(runs):
                 row = rows_by_gene_run.get((gene, run))
-                raw = value(row, support_length_key) if row else None
+                raw = value(row, support_length_key) if row and support_source_allowed(row) else None
                 if raw is None or raw <= 0:
                     continue
                 source = str(row.get("support_length_source") or "support")
@@ -746,7 +766,8 @@ def render_svg(
         parts.append(svg_text(x, bottom_y + bottom_h + 27, label, 12, "#334155", "end", extra=f'transform="rotate(-45 {x:.1f} {bottom_y + bottom_h + 27:.1f})"'))
 
     parts.append(svg_text(38, height - 42, f"Canonical source table: {output_tsv}", 10, "#64748b"))
-    parts.append(svg_text(38, height - 24, f"accepted_target_count is retained in the TSV but not used as the main support scale; lower-panel lines show {support_length_stat} gene-supporting read length when available.", 10, "#64748b"))
+    source_note = "strict seed-passed only" if support_length_source == "strict_seed_passed" else "any provenance, including accepted-target fallback"
+    parts.append(svg_text(38, height - 24, f"accepted_target_count is retained in the TSV but not used as the main support scale; lower-panel lines show {support_length_stat} support-read length ({source_note}).", 10, "#64748b"))
     parts.append("</svg>")
     return "\n".join(parts) + "\n"
 
@@ -816,6 +837,7 @@ def main() -> int:
         args.label_column,
         args.title,
         args.support_length_stat,
+        args.support_length_source,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(svg, encoding="utf-8")
