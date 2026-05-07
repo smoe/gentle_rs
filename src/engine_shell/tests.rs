@@ -15140,11 +15140,17 @@ fn parse_services_external_provider_commands() {
         other => panic!("unexpected command: {other:?}"),
     }
 
-    let quote = parse_shell_line("services project-quote @geneart_request.json")
-        .expect("parse services project-quote");
+    let quote = parse_shell_line(
+        "services project-quote @geneart_request.json --output-dir artifacts/geneart_quote",
+    )
+    .expect("parse services project-quote");
     match quote {
-        ShellCommand::ServicesProjectQuote { request_json } => {
+        ShellCommand::ServicesProjectQuote {
+            request_json,
+            output_dir,
+        } => {
             assert_eq!(request_json, "@geneart_request.json");
+            assert_eq!(output_dir.as_deref(), Some("artifacts/geneart_quote"));
         }
         other => panic!("unexpected command: {other:?}"),
     }
@@ -16389,6 +16395,7 @@ fn execute_services_metabion_preflight_and_quote_are_handoff_only() {
         &mut engine,
         &ShellCommand::ServicesProjectQuote {
             request_json: request,
+            output_dir: None,
         },
     )
     .expect("execute metabion services project-quote");
@@ -16490,6 +16497,7 @@ fn execute_services_metabion_mblock_quote_uses_fragment_config() {
         &mut engine,
         &ShellCommand::ServicesProjectQuote {
             request_json: request,
+            output_dir: None,
         },
     )
     .expect("execute metabion m-block services project-quote");
@@ -16506,6 +16514,70 @@ fn execute_services_metabion_mblock_quote_uses_fragment_config() {
             .as_str()
             .expect("csv text")
             .contains("m-block DNA Fragments & Libraries")
+    );
+}
+
+#[test]
+fn execute_services_project_quote_output_dir_writes_handoff_bundle_files() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let td = tempdir().expect("tempdir");
+    let output_dir = td.path().join("metabion_bundle");
+    let request = serde_json::json!({
+        "schema": "gentle.external_service_request.v1",
+        "provider": "metabion",
+        "service_kind": "dna_oligo_single_tube",
+        "source_target": {
+            "kind": "inline_dna",
+            "name": "tutorial_oligo",
+            "sequence": "ACGTACGTACGTACGTACGT"
+        },
+        "return_spec": {
+            "requested_payloads": ["quote_metadata", "handoff_bundle"]
+        }
+    })
+    .to_string();
+
+    let quote = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesProjectQuote {
+            request_json: request,
+            output_dir: Some(output_dir.to_string_lossy().to_string()),
+        },
+    )
+    .expect("execute services project-quote with output dir");
+    assert!(!quote.state_changed);
+    assert_eq!(quote.output["quote_status"].as_str(), Some("handoff_ready"));
+    assert!(output_dir.join("quote_report.json").is_file());
+    assert!(output_dir.join("01_handoff_markdown.md").is_file());
+    assert!(output_dir.join("02_redacted_request_json.json").is_file());
+    assert!(
+        output_dir
+            .join("04_normalized_line_items_csv.csv")
+            .is_file()
+    );
+
+    let local_files = quote.output["service_ready_bundle"]["local_files"]
+        .as_array()
+        .expect("local files");
+    assert!(local_files.iter().any(|file| {
+        file["artifact_kind"].as_str() == Some("quote_report_json")
+            && file["path"]
+                .as_str()
+                .is_some_and(|path| path.ends_with("quote_report.json"))
+    }));
+    assert!(local_files.iter().any(|file| {
+        file["artifact_kind"].as_str() == Some("normalized_line_items_csv")
+            && file["path"]
+                .as_str()
+                .is_some_and(|path| path.ends_with("04_normalized_line_items_csv.csv"))
+    }));
+
+    let report_text =
+        fs::read_to_string(output_dir.join("quote_report.json")).expect("read quote report");
+    let report: serde_json::Value = serde_json::from_str(&report_text).expect("quote report JSON");
+    assert_eq!(
+        report["service_ready_bundle"]["schema"].as_str(),
+        Some("gentle.external_service_artifact_bundle.v1")
     );
 }
 
@@ -16530,6 +16602,7 @@ fn execute_services_geneart_quote_reports_handoff_bundle() {
         &mut engine,
         &ShellCommand::ServicesProjectQuote {
             request_json: request,
+            output_dir: None,
         },
     )
     .expect("execute services project-quote");
@@ -16766,7 +16839,7 @@ fn execute_services_telegram_guide_cloning_offers_simple_pcr() {
             .as_array()
             .map(|actions| {
                 actions.iter().any(|action| {
-            action["kind"].as_str() == Some("simple_pcr_primer_design")
+                action["kind"].as_str() == Some("simple_pcr_primer_design")
                 && action["shell_line"].as_str()
                     == Some(
                         "workflow @docs/examples/workflows/simple_pcr_primer_design_offline.json",
@@ -16790,7 +16863,7 @@ fn execute_services_telegram_guide_cloning_offers_simple_pcr() {
                         })
                     })
                     .unwrap_or(false)
-        })
+            })
             })
             .unwrap_or(false)
     );

@@ -3284,7 +3284,7 @@ Service and resource commands:
   - Use `@request.json` for realistic requests, especially when
     `source_target`, `vector_spec`, `delivery_options`, or `return_spec`
     contain nested JSON.
-- `services project-quote REQUEST_JSON_OR_@FILE`
+- `services project-quote REQUEST_JSON_OR_@FILE [--output-dir DIR]`
   - Builds `gentle.external_service_quote.v1` with dashboard/form links and an
     inline service-ready handoff bundle.
   - No vendor order, cart submission, API upload, credential lookup, or
@@ -3293,6 +3293,9 @@ Service and resource commands:
     quote output includes normalized line-item JSON/CSV, an email-draft
     markdown payload, and a guided WOP checklist; missing local vendor
     templates are warnings, not hard failures.
+  - With `--output-dir DIR`, the same inline payloads are written as local
+    bundle files and the returned quote report records them in
+    `service_ready_bundle.local_files[]` alongside `quote_report.json`.
   - `return_spec.requested_payloads[]` lets ClawBio/MCP callers state whether
     they want GenBank/FASTA/protein payloads, quote metadata, vendor ids, or a
     full artifact bundle as later implementations grow.
