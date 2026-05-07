@@ -327,7 +327,7 @@ def normalize_support_row(
         "strict_seed_mean_read_bp",
         "strict_seed_mean_read_length_bp",
     )
-    if seed_high is not None or seed_max is not None or seed_mean is not None:
+    if seed > 0 and (seed_high is not None or seed_max is not None or seed_mean is not None):
         out["support_length_source"] = "strict_seed_passed"
         out["support_high_read_bp"] = optional_number_text(seed_high)
         out["support_max_read_bp"] = optional_number_text(seed_max)
@@ -365,7 +365,7 @@ def normalize_support_row(
             "accepted_tp73_mean_bp",
             "accepted_mean_bp",
         )
-        if accepted_high is not None or accepted_max is not None or accepted_mean is not None:
+        if accepted > 0 and (accepted_high is not None or accepted_max is not None or accepted_mean is not None):
             out["support_length_source"] = "accepted_target"
             out["support_high_read_bp"] = optional_number_text(accepted_high)
             out["support_max_read_bp"] = optional_number_text(accepted_max)
@@ -396,6 +396,8 @@ def maybe_fill_lengths_from_gene_support(
     plot does not pretend they are whole-library or seed-passed quantiles.
     """
     if row_out.get("support_length_source"):
+        return
+    if to_float(row_out.get("accepted_target_count")) <= 0:
         return
     path_text = first_text(source_row, "gene_support_summary_json_path")
     if not path_text:
