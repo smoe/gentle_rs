@@ -18,6 +18,10 @@ this as a confidence map for the current GUI surface.
   been prepared locally.
 - Visual explanation/export paths such as lineage SVG, protocol cartoons,
   dotplots, and isoform architecture.
+- External-service quote/handoff inspection through `Services -> External
+  Services...`, using the same provider catalog, preflight, and quote payload
+  contracts as CLI/agent/ClawBio routes. Metabion and GeneArt appear only via
+  the shared provider catalog; the GUI does not duplicate vendor logic.
 
 ### Works with caveats
 
@@ -169,6 +173,41 @@ Manual GUI stability checklist for macOS hosted mode:
 - Use `Window -> GENtle Open Windows...` or `GENtle -> GENtle Windows...` to
   focus a background hosted window and verify it rises above the project
   workspace.
+
+## External Services Window
+
+Access:
+
+- Main menu: `Services -> External Services...`
+- Command palette: `External Services`
+
+The External Services window is a GUI inspector for shared-shell service
+contracts, not a separate ordering implementation.
+
+- `Refresh Providers` runs `services providers list` and populates the provider
+  picker from `gentle.external_service_provider_catalog.v1`.
+- `Provider Config Doctor` runs `services providers doctor` against the active
+  built-in/system/user/project overlay discovery chain.
+- The provider and service-kind pickers are catalog-driven. Metabion appears
+  when configured, with initial DNA oligo and m-block fragment handoff rows.
+- The request editor holds one editable
+  `gentle.external_service_request.v1` JSON payload. `Use Selected Template`
+  creates a provider-neutral starter request for the selected provider/service.
+- `Preflight` runs `services project-preflight`; `Prepare Quote Handoff` runs
+  `services project-quote`.
+- Quote output previews inline handoff payloads such as redacted request JSON,
+  normalized line-item JSON/CSV, email draft markdown, and guided WOP checklist
+  when the active provider config supplies those mappings.
+- The window never scrapes portals, submits orders, looks up credentials, or
+  stores PO/account/shipping/billing details in project state.
+
+This is the intended place to review whether GENtle represents provider
+products and handoff constraints fairly before deeper provider collaboration or
+future direct integrations.
+
+Tutorial companion:
+
+- [`docs/tutorial/metabion_external_service_handoff_gui_cli.md`](./tutorial/metabion_external_service_handoff_gui_cli.md)
 
 ## Configuration Window
 

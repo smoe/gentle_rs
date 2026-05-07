@@ -52,6 +52,12 @@ pub type RunId = String;
 /// Provider capability catalog for vendor/CRO/eProcurement integrations.
 pub const EXTERNAL_SERVICE_PROVIDER_CATALOG_SCHEMA: &str =
     "gentle.external_service_provider_catalog.v1";
+/// Overlay-discoverable provider behavior/configuration catalog.
+pub const EXTERNAL_SERVICE_PROVIDER_CONFIG_SCHEMA: &str =
+    "gentle.external_service_provider_config.v1";
+/// Doctor report for external-service provider configuration overlays.
+pub const EXTERNAL_SERVICE_PROVIDER_CONFIG_DOCTOR_SCHEMA: &str =
+    "gentle.external_service_provider_config_doctor.v1";
 /// Portable request contract for external-service preflight and handoff.
 pub const EXTERNAL_SERVICE_REQUEST_SCHEMA: &str = "gentle.external_service_request.v1";
 /// Local capability/eligibility report for an external-service request.
@@ -82,6 +88,102 @@ pub struct ExternalServiceProviderRecord {
     pub capabilities: Vec<ExternalServiceCapability>,
     pub account_enablement_notes: Vec<String>,
     pub warnings: Vec<String>,
+}
+
+/// Overlay-discoverable provider configuration used to build provider records.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceProviderConfigCatalog {
+    pub schema: String,
+    pub providers: Vec<ExternalServiceProviderConfigRecord>,
+    pub summary_lines: Vec<String>,
+}
+
+/// One provider configuration row, including provider-specific handoff mapping.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceProviderConfigRecord {
+    pub provider: String,
+    pub display_name: String,
+    pub support_status: String,
+    pub website_url: String,
+    pub dashboard_url: String,
+    pub api_documentation_url: Option<String>,
+    pub capabilities: Vec<ExternalServiceCapability>,
+    pub channels: Vec<ExternalServiceChannelConfig>,
+    pub product_templates: Vec<ExternalServiceProductTemplateMapping>,
+    pub validation_rules: Vec<ExternalServiceValidationRule>,
+    pub default_delivery_hints: Vec<String>,
+    pub default_purification_hints: Vec<String>,
+    pub default_qc_hints: Vec<String>,
+    pub required_followup: Vec<String>,
+    pub account_enablement_notes: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+/// Vendor contact or handoff channel such as WOP or email+Excel.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceChannelConfig {
+    pub channel: String,
+    pub display_name: String,
+    pub url: Option<String>,
+    pub email: Option<String>,
+    pub notes: Vec<String>,
+}
+
+/// Mapping from a provider-neutral service kind to a vendor order template.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceProductTemplateMapping {
+    pub service_kind: String,
+    pub product_name: String,
+    pub channel: String,
+    pub template_url: Option<String>,
+    pub template_format: Option<String>,
+    pub local_template_path: Option<String>,
+    pub field_map: BTreeMap<String, String>,
+    pub notes: Vec<String>,
+}
+
+/// Deterministic provider-specific validation rule for request preflight.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceValidationRule {
+    pub service_kind: String,
+    pub required_source_fields: Vec<String>,
+    pub required_delivery_fields: Vec<String>,
+    pub warnings: Vec<String>,
+    pub required_followup: Vec<String>,
+}
+
+/// One provider-configuration source inspected by the doctor route.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceProviderConfigSourceReport {
+    pub scope: String,
+    pub path: String,
+    pub status: String,
+    pub provider_count: usize,
+    pub sha1: Option<String>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+/// Doctor report for external-service provider configuration overlays.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalServiceProviderConfigDoctorReport {
+    pub schema: String,
+    pub catalog_label: String,
+    pub source_count: usize,
+    pub parsed_source_count: usize,
+    pub provider_count: usize,
+    pub warning_count: usize,
+    pub error_count: usize,
+    pub sources: Vec<ExternalServiceProviderConfigSourceReport>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
 }
 
 /// One service kind offered by an external provider.

@@ -6,19 +6,24 @@
 
 use crate::{
     engine::GentleEngine,
+    external_service_providers::{
+        LoadedExternalServiceProviderConfig, doctor_external_service_provider_config,
+        external_service_provider_config_index,
+    },
     genomes::{GenomeCatalog, PrepareGenomeActivityStatus},
     resource_status::{ExternalToolResourceStatus, ResourceCatalogReport, resource_catalog_status},
 };
 use gentle_protocol::{
     EXTERNAL_SERVICE_PREFLIGHT_SCHEMA, EXTERNAL_SERVICE_PROVIDER_CATALOG_SCHEMA,
     EXTERNAL_SERVICE_QUOTE_SCHEMA, EXTERNAL_SERVICE_REQUEST_SCHEMA, ExternalServiceArtifactBundle,
-    ExternalServiceCapability, ExternalServiceInlinePayload, ExternalServiceLink,
-    ExternalServicePreflightReport, ExternalServiceProviderCatalog, ExternalServiceProviderRecord,
-    ExternalServiceQuoteReport, ExternalServiceRequest,
+    ExternalServiceArtifactRef, ExternalServiceInlinePayload, ExternalServiceLink,
+    ExternalServicePreflightReport, ExternalServiceProviderCatalog, ExternalServiceQuoteReport,
+    ExternalServiceRequest,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeMap,
     env,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -28,14 +33,6 @@ pub const SERVICE_HANDOFF_SCHEMA: &str = "gentle.service_handoff.v1";
 pub const TELEGRAM_GUIDE_SCHEMA: &str = "gentle.telegram_guide.v1";
 pub const DEFAULT_REFERENCE_GENOME_IDS: &[&str] = &["Human GRCh38 Ensembl 116"];
 pub const DEFAULT_HELPER_IDS: &[&str] = &["Plasmid pUC19 (online)"];
-const GENEART_PROVIDER_ID: &str = "geneart";
-const GENEART_DISPLAY_NAME: &str = "Invitrogen GeneArt Services";
-const GENEART_DASHBOARD_URL: &str = "https://www.thermofisher.com/fr/fr/home/life-science/cloning/gene-synthesis/gene-synthesis-dashboard-guide.html";
-const GENEART_SERVICES_URL: &str =
-    "https://www.thermofisher.com/us/en/home/life-science/cloning/gene-synthesis.html";
-const GENEART_API_PDF_URL: &str = "https://assets.thermofisher.com/TFS-Assets/BID/Reference-Materials/geneart-gene-synthesis-api-presentation.pdf";
-const GENEART_MUTAGENESIS_URL: &str = "https://www.thermofisher.com/us/en/home/life-science/cloning/gene-synthesis/directed-evolution/geneart-mutagenesis-service.html";
-const GENEART_PROTEIN_URL: &str = "https://www.thermofisher.com/tr/en/home/life-science/cloning/gene-synthesis/geneart-protein-expression-purification-services.html";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ServiceReadinessReport {
@@ -205,158 +202,24 @@ fn normalize_service_token(raw: &str) -> String {
     raw.trim().to_ascii_lowercase().replace(['-', ' '], "_")
 }
 
-fn geneart_capability(
-    service_kind: &str,
-    track: &str,
-    display_name: &str,
-    quote_handoff_supported: bool,
-    direct_api_documented: bool,
-    supported_submission_modes: &[&str],
-    status_tracking: &str,
-    artifact_kinds: &[&str],
-    notes: &[&str],
-) -> ExternalServiceCapability {
-    ExternalServiceCapability {
-        service_kind: service_kind.to_string(),
-        track: track.to_string(),
-        display_name: display_name.to_string(),
-        quote_handoff_supported,
-        direct_api_documented,
-        direct_api_implemented: false,
-        supported_submission_modes: supported_submission_modes
-            .iter()
-            .map(|value| (*value).to_string())
-            .collect(),
-        status_tracking: status_tracking.to_string(),
-        artifact_kinds: artifact_kinds
-            .iter()
-            .map(|value| (*value).to_string())
-            .collect(),
-        notes: notes.iter().map(|value| (*value).to_string()).collect(),
-    }
-}
-
-fn geneart_capabilities() -> Vec<ExternalServiceCapability> {
-    vec![
-        geneart_capability(
-            "dna_fragment",
-            "dna",
-            "GeneArt Strings DNA Fragments",
-            true,
-            true,
-            &["quote_handoff", "cart_api_planned", "direct_api_planned"],
-            "api_status_qad_documented_for_supported_dna_projects",
-            &["fasta", "quote_metadata", "provider_project_id", "qad"],
-            &[
-                "The February 2025 GeneArt API deck documents diagnostics, optimization, validation, upload, cart, direct ordering, status, and QAD for fragments.",
-                "GENtle currently exposes quote/handoff planning only; live API submission is deliberately not enabled in this slice.",
-            ],
-        ),
-        geneart_capability(
-            "cloned_gene",
-            "dna",
-            "GeneArt Gene Synthesis",
-            true,
-            true,
-            &["quote_handoff", "cart_api_planned", "direct_api_planned"],
-            "api_status_qad_documented_for_supported_dna_projects",
-            &[
-                "genbank",
-                "fasta",
-                "quote_metadata",
-                "provider_project_id",
-                "qad",
-            ],
-            &[
-                "The February 2025 GeneArt API deck documents direct clone/gene-synthesis project validation and ordering.",
-                "Vector and delivery options should flow from helper profiles when available.",
-            ],
-        ),
-        geneart_capability(
-            "plasmid_reorder",
-            "dna",
-            "GeneArt plasmid reorder",
-            true,
-            true,
-            &["quote_handoff", "cart_api_planned", "direct_api_planned"],
-            "api_status_qad_documented_for_supported_dna_projects",
-            &["provider_project_id", "quote_metadata", "qad"],
-            &[
-                "The February 2025 GeneArt API deck lists plasmid reorder as a supported project type.",
-                "Requests should preserve prior provider project/order identifiers when known.",
-            ],
-        ),
-        geneart_capability(
-            "mutagenesis",
-            "dna",
-            "GeneArt mutagenesis service",
-            true,
-            false,
-            &["quote_handoff"],
-            "manual_or_imported_status",
-            &["mutation_table", "genbank", "quote_metadata"],
-            &[
-                "Current public material describes form/email/portal quote routes rather than a public mutagenesis API.",
-                "Existing GENtle PCR-mutagenesis reports should become the service-ready source bundle.",
-            ],
-        ),
-        geneart_capability(
-            "protein_expression",
-            "protein",
-            "GeneArt protein expression and purification",
-            true,
-            false,
-            &["quote_handoff"],
-            "manual_or_imported_status",
-            &[
-                "amino_acid_sequence",
-                "codon_targeted_dna",
-                "quote_metadata",
-            ],
-            &[
-                "Current public material describes request-a-quote/dashboard workflows rather than a protein-order API.",
-                "GENtle should use protein-to-DNA handoff records as the preferred project source.",
-            ],
-        ),
-    ]
-}
-
 pub fn external_service_provider_catalog() -> ExternalServiceProviderCatalog {
-    let provider = ExternalServiceProviderRecord {
-        provider: GENEART_PROVIDER_ID.to_string(),
-        display_name: GENEART_DISPLAY_NAME.to_string(),
-        support_status: "quote_handoff_ready_api_planned".to_string(),
-        website_url: GENEART_SERVICES_URL.to_string(),
-        dashboard_url: GENEART_DASHBOARD_URL.to_string(),
-        api_documentation_url: Some(GENEART_API_PDF_URL.to_string()),
-        capabilities: geneart_capabilities(),
-        account_enablement_notes: vec![
-            "Direct GeneArt API ordering requires Thermo Fisher / GeneArt account enablement outside GENtle.".to_string(),
-            "GENtle does not store API credentials, purchase orders, or shipping details in project state.".to_string(),
-            "This first implementation creates deterministic preflight and handoff/quote packets only.".to_string(),
-        ],
-        warnings: vec![
-            "Live GeneArt API submission/status/QAD retrieval is not implemented in this slice.".to_string(),
-            "Protein expression and mutagenesis are intentionally quote/handoff first until official API docs expose matching direct submission surfaces.".to_string(),
-        ],
-    };
-    ExternalServiceProviderCatalog {
-        schema: EXTERNAL_SERVICE_PROVIDER_CATALOG_SCHEMA.to_string(),
-        generated_at_unix_ms: now_unix_ms(),
-        providers: vec![provider],
-        summary_lines: vec![
-            "GeneArt provider catalog is available with vendor-neutral request/preflight/quote contracts.".to_string(),
-            "DNA fragments, cloned genes, and plasmid reorder are modeled as API-documented but not yet live-submittable from GENtle.".to_string(),
-            "Mutagenesis and protein expression are modeled as quote/handoff/status workflows first.".to_string(),
-        ],
+    match external_service_provider_config_index() {
+        Ok(index) => index.to_provider_catalog(now_unix_ms()),
+        Err(err) => ExternalServiceProviderCatalog {
+            schema: EXTERNAL_SERVICE_PROVIDER_CATALOG_SCHEMA.to_string(),
+            generated_at_unix_ms: now_unix_ms(),
+            providers: vec![],
+            summary_lines: vec![format!(
+                "External-service provider config could not be loaded: {err}"
+            )],
+        },
     }
 }
 
-fn geneart_capability_for(service_kind: &str) -> Option<ExternalServiceCapability> {
-    let normalized = normalize_service_token(service_kind);
-    geneart_capabilities()
-        .into_iter()
-        .find(|capability| capability.service_kind == normalized)
+pub fn external_service_provider_config_doctor_report(
+    catalog_path: Option<&str>,
+) -> gentle_protocol::ExternalServiceProviderConfigDoctorReport {
+    doctor_external_service_provider_config(catalog_path)
 }
 
 fn value_string_for_key<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
@@ -436,42 +299,108 @@ fn service_source_issue(service_kind: &str, source_target: &Value) -> Option<Str
     }
 }
 
-fn external_service_links_for(service_kind: &str) -> Vec<ExternalServiceLink> {
+fn request_has_any_source_field(value: &Value, fields: &[String]) -> bool {
+    if fields.is_empty() {
+        return false;
+    }
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    fields.iter().any(|field| {
+        object.get(field).is_some_and(|candidate| match candidate {
+            Value::Null => false,
+            Value::String(text) => !text.trim().is_empty(),
+            Value::Array(rows) => !rows.is_empty(),
+            Value::Object(map) => !map.is_empty(),
+            _ => true,
+        })
+    })
+}
+
+fn configured_service_source_issue(
+    provider_config: &LoadedExternalServiceProviderConfig,
+    service_kind: &str,
+    source_target: &Value,
+) -> Option<String> {
+    let rule = provider_config.validation_rule_for(service_kind)?;
+    if rule.required_source_fields.is_empty()
+        || request_has_any_source_field(source_target, &rule.required_source_fields)
+    {
+        return None;
+    }
+    Some(format!(
+        "{} {} requests need one of source_target.{}",
+        provider_config.record.display_name,
+        normalize_service_token(service_kind),
+        rule.required_source_fields.join(", source_target.")
+    ))
+}
+
+fn external_service_links_for(
+    provider_config: &LoadedExternalServiceProviderConfig,
+    service_kind: &str,
+) -> Vec<ExternalServiceLink> {
     let normalized = normalize_service_token(service_kind);
-    let mut links = vec![
-        ExternalServiceLink {
-            label: "GeneArt Services Dashboard".to_string(),
-            url: GENEART_DASHBOARD_URL.to_string(),
-            purpose: "Create quotes, review dashboard projects, manage vectors, and track orders manually.".to_string(),
-        },
-        ExternalServiceLink {
-            label: "GeneArt services overview".to_string(),
-            url: GENEART_SERVICES_URL.to_string(),
-            purpose: "Review current GeneArt service offerings before submitting a request.".to_string(),
-        },
-    ];
-    match normalized.as_str() {
-        "dna_fragment" | "cloned_gene" | "plasmid_reorder" => {
+    let mut links = vec![];
+    if !provider_config.record.dashboard_url.trim().is_empty() {
+        links.push(ExternalServiceLink {
+            label: format!("{} dashboard / portal", provider_config.record.display_name),
+            url: provider_config.record.dashboard_url.clone(),
+            purpose:
+                "Manual quote/order handoff route; GENtle does not submit credentials or orders."
+                    .to_string(),
+        });
+    }
+    if !provider_config.record.website_url.trim().is_empty() {
+        links.push(ExternalServiceLink {
+            label: format!("{} overview", provider_config.record.display_name),
+            url: provider_config.record.website_url.clone(),
+            purpose: "Review current provider service offerings before any human submission."
+                .to_string(),
+        });
+    }
+    for channel in &provider_config.record.channels {
+        if let Some(url) = channel.url.as_deref().filter(|url| !url.trim().is_empty()) {
             links.push(ExternalServiceLink {
-                label: "GeneArt Gene Synthesis API presentation".to_string(),
-                url: GENEART_API_PDF_URL.to_string(),
-                purpose: "Official overview of documented diagnostics, upload/order, status, and QAD API surfaces.".to_string(),
+                label: channel.display_name.clone(),
+                url: url.to_string(),
+                purpose: channel.notes.join(" "),
             });
         }
-        "mutagenesis" => links.push(ExternalServiceLink {
-            label: "GeneArt mutagenesis service".to_string(),
-            url: GENEART_MUTAGENESIS_URL.to_string(),
-            purpose: "Current quote/form/email/portal route for GeneArt mutagenesis services."
-                .to_string(),
-        }),
-        "protein_expression" => links.push(ExternalServiceLink {
-            label: "GeneArt protein expression service".to_string(),
-            url: GENEART_PROTEIN_URL.to_string(),
-            purpose:
-                "Current request-a-quote route for GeneArt protein expression and purification."
+    }
+    if let Some(template) = provider_config.product_template_for(&normalized) {
+        if let Some(url) = template
+            .template_url
+            .as_deref()
+            .filter(|url| !url.trim().is_empty())
+        {
+            links.push(ExternalServiceLink {
+                label: format!(
+                    "{} template/catalog",
+                    if template.product_name.is_empty() {
+                        normalized.as_str()
+                    } else {
+                        template.product_name.as_str()
+                    }
+                ),
+                url: url.to_string(),
+                purpose: "Vendor template or order-form catalog for the selected service kind."
                     .to_string(),
-        }),
-        _ => {}
+            });
+        }
+    }
+    if let Some(url) = provider_config
+        .record
+        .api_documentation_url
+        .as_deref()
+        .filter(|url| !url.trim().is_empty())
+    {
+        links.push(ExternalServiceLink {
+            label: format!("{} API documentation", provider_config.record.display_name),
+            url: url.to_string(),
+            purpose: "Provider API documentation; live direct submission remains disabled unless implemented explicitly."
+                .to_string(),
+        });
     }
     links
 }
@@ -554,11 +483,32 @@ fn external_service_project_preflight_for_request(
     if service_kind.is_empty() {
         blocking_issues.push("External-service request requires service_kind".to_string());
     }
-    if provider != GENEART_PROVIDER_ID {
-        if !provider.is_empty() {
+    let provider_index = match external_service_provider_config_index() {
+        Ok(index) => index,
+        Err(err) => {
             blocking_issues.push(format!(
-                "Provider '{}' is not supported yet; available provider: geneart",
-                request.provider
+                "External-service provider config could not be loaded: {err}"
+            ));
+            return ExternalServicePreflightReport {
+                schema: EXTERNAL_SERVICE_PREFLIGHT_SCHEMA.to_string(),
+                generated_at_unix_ms: now_unix_ms(),
+                provider,
+                service_kind,
+                capability_status: "provider_config_error".to_string(),
+                eligible: false,
+                blocking_issues,
+                warnings,
+                request_summary: summarize_external_service_request(request),
+                ..Default::default()
+            };
+        }
+    };
+    let Some(provider_config) = provider_index.provider(&provider) else {
+        if !provider.is_empty() {
+            let available = provider_index.provider_ids().join(", ");
+            blocking_issues.push(format!(
+                "Provider '{}' is not supported by the active config catalog; available providers: {}",
+                request.provider, available
             ));
         }
         return ExternalServicePreflightReport {
@@ -573,40 +523,45 @@ fn external_service_project_preflight_for_request(
             request_summary: summarize_external_service_request(request),
             ..Default::default()
         };
-    }
-    let Some(capability) = geneart_capability_for(&service_kind) else {
+    };
+    let Some(capability) = provider_config.capability_for(&service_kind) else {
         blocking_issues.push(format!(
-            "GeneArt service_kind '{}' is not in the current provider capability catalog",
-            request.service_kind
+            "{} service_kind '{}' is not in the current provider capability catalog",
+            provider_config.record.display_name, request.service_kind
         ));
         return ExternalServicePreflightReport {
             schema: EXTERNAL_SERVICE_PREFLIGHT_SCHEMA.to_string(),
             generated_at_unix_ms: now_unix_ms(),
             provider,
-            provider_display_name: GENEART_DISPLAY_NAME.to_string(),
+            provider_display_name: provider_config.record.display_name.clone(),
             service_kind,
             capability_status: "unsupported_service_kind".to_string(),
             eligible: false,
             blocking_issues,
             warnings,
-            dashboard_links: external_service_links_for(&request.service_kind),
+            dashboard_links: external_service_links_for(provider_config, &request.service_kind),
             request_summary: summarize_external_service_request(request),
             ..Default::default()
         };
     };
-    if let Some(issue) = service_source_issue(&service_kind, &request.source_target) {
+    let source_issue = if provider_config.validation_rule_for(&service_kind).is_some() {
+        configured_service_source_issue(provider_config, &service_kind, &request.source_target)
+    } else {
+        service_source_issue(&service_kind, &request.source_target)
+    };
+    if let Some(issue) = source_issue {
         blocking_issues.push(issue);
     }
     if capability.direct_api_documented && !capability.direct_api_implemented {
-        warnings.push(
-            "GeneArt direct API support is documented for this service kind, but GENtle currently exposes only deterministic quote/handoff preflight for it.".to_string(),
-        );
+        warnings.push(format!(
+            "{} direct API support is documented for this service kind, but GENtle currently exposes only deterministic quote/handoff preflight for it.",
+            provider_config.record.display_name
+        ));
     }
-    if matches!(service_kind.as_str(), "mutagenesis" | "protein_expression") {
-        warnings.push(
-            "This GeneArt service kind is intentionally quote/handoff first until official direct API documentation is available.".to_string(),
-        );
+    if let Some(rule) = provider_config.validation_rule_for(&service_kind) {
+        warnings.extend(rule.warnings);
     }
+    warnings.extend(provider_config.record.warnings.clone());
     let eligible = blocking_issues.is_empty();
     let capability_status = if !eligible {
         "blocked"
@@ -618,27 +573,40 @@ fn external_service_project_preflight_for_request(
         "unsupported"
     }
     .to_string();
-    let estimated_turnaround = match service_kind.as_str() {
+    let estimated_turnaround = if !provider_config.record.default_delivery_hints.is_empty() {
+        Some(provider_config.record.default_delivery_hints.join(" "))
+    } else {
+        match service_kind.as_str() {
         "protein_expression" => {
             Some("quote follow-up documented; production advertised as as little as 3 weeks depending on project scope".to_string())
         }
         "mutagenesis" => Some("quote/form follow-up required; provider page lists service-specific processing times".to_string()),
         _ => Some("provider validation/quote may return project-specific price and turnaround when submitted through GeneArt".to_string()),
+        }
     };
-    let mut required_followup = vec![
-        "Review generated service-ready content before any vendor submission.".to_string(),
-        "Open GeneArt dashboard/form route for quote or ordering; do not store PO/shipping/API secrets in GENtle project state.".to_string(),
-    ];
-    if capability.direct_api_documented {
+    let mut required_followup = provider_config.record.required_followup.clone();
+    if required_followup.is_empty() {
         required_followup.push(
-            "For future direct API use, request GeneArt API enablement from Thermo Fisher/GeneArt support and configure credentials outside project state.".to_string(),
+            "Review generated service-ready content before any vendor submission.".to_string(),
         );
+        required_followup.push(
+            "Use provider dashboard/form routes for quote creation until direct submission is implemented and explicitly confirmed.".to_string(),
+        );
+    }
+    if let Some(rule) = provider_config.validation_rule_for(&service_kind) {
+        required_followup.extend(rule.required_followup);
+    }
+    if capability.direct_api_documented {
+        required_followup.push(format!(
+            "For future direct API use, request {} API/account enablement outside project state.",
+            provider_config.record.display_name
+        ));
     }
     ExternalServicePreflightReport {
         schema: EXTERNAL_SERVICE_PREFLIGHT_SCHEMA.to_string(),
         generated_at_unix_ms: now_unix_ms(),
         provider,
-        provider_display_name: GENEART_DISPLAY_NAME.to_string(),
+        provider_display_name: provider_config.record.display_name.clone(),
         service_kind,
         capability_status,
         eligible,
@@ -648,11 +616,12 @@ fn external_service_project_preflight_for_request(
         blocking_issues,
         warnings,
         estimated_turnaround,
-        estimated_cost_hint: Some(
-            "GENtle has no live price API enabled; use GeneArt dashboard quote output as the authoritative commercial record.".to_string(),
-        ),
+        estimated_cost_hint: Some(format!(
+            "GENtle has no live price API enabled; use {} quote output as the authoritative commercial record.",
+            provider_config.record.display_name
+        )),
         required_followup,
-        dashboard_links: external_service_links_for(&request.service_kind),
+        dashboard_links: external_service_links_for(provider_config, &request.service_kind),
         request_summary: summarize_external_service_request(request),
     }
 }
@@ -710,6 +679,284 @@ fn service_quote_markdown(
     lines.join("\n")
 }
 
+fn string_from_value_keys<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    let object = value.as_object()?;
+    for key in keys {
+        if let Some(text) = object.get(*key).and_then(Value::as_str) {
+            if !text.trim().is_empty() {
+                return Some(text.trim());
+            }
+        }
+    }
+    None
+}
+
+fn delivery_string(request: &ExternalServiceRequest, keys: &[&str], default: &str) -> String {
+    request
+        .delivery_options
+        .as_ref()
+        .and_then(|value| string_from_value_keys(value, keys))
+        .unwrap_or(default)
+        .to_string()
+}
+
+fn collect_source_line_items(request: &ExternalServiceRequest) -> Vec<BTreeMap<String, String>> {
+    let mut rows = vec![];
+    if let Some(items) = request
+        .source_target
+        .as_object()
+        .and_then(|object| object.get("line_items"))
+        .and_then(Value::as_array)
+    {
+        for (idx, item) in items.iter().enumerate() {
+            let mut row = BTreeMap::<String, String>::new();
+            let name = string_from_value_keys(item, &["name", "id", "label"])
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("item_{}", idx + 1));
+            row.insert("name".to_string(), name);
+            if let Some(sequence) =
+                string_from_value_keys(item, &["sequence", "sequence_text", "dna_sequence"])
+            {
+                row.insert("sequence_5_to_3".to_string(), sequence.to_string());
+                row.insert("length_nt".to_string(), sequence.len().to_string());
+            }
+            if let Some(note) = string_from_value_keys(item, &["note", "description"]) {
+                row.insert("note".to_string(), note.to_string());
+            }
+            rows.push(row);
+        }
+    }
+    if rows.is_empty() {
+        let mut row = BTreeMap::<String, String>::new();
+        let name =
+            string_from_value_keys(&request.source_target, &["name", "id", "label", "seq_id"])
+                .unwrap_or("item_1");
+        row.insert("name".to_string(), name.to_string());
+        if let Some(sequence) = string_from_value_keys(
+            &request.source_target,
+            &["sequence", "sequence_text", "dna_sequence"],
+        ) {
+            row.insert("sequence_5_to_3".to_string(), sequence.to_string());
+            row.insert("length_nt".to_string(), sequence.len().to_string());
+        }
+        rows.push(row);
+    }
+    rows
+}
+
+fn normalized_service_line_items(
+    request: &ExternalServiceRequest,
+    provider_config: &LoadedExternalServiceProviderConfig,
+) -> Vec<BTreeMap<String, String>> {
+    let template = provider_config.product_template_for(&request.service_kind);
+    let product_name = template
+        .as_ref()
+        .map(|template| template.product_name.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(request.service_kind.as_str())
+        .to_string();
+    let purification = delivery_string(
+        request,
+        &["purification", "purification_required"],
+        provider_config
+            .record
+            .default_purification_hints
+            .first()
+            .map(String::as_str)
+            .unwrap_or("confirm before submission"),
+    );
+    let delivery_form = delivery_string(
+        request,
+        &["delivery_form", "delivery", "form"],
+        provider_config
+            .record
+            .default_delivery_hints
+            .first()
+            .map(String::as_str)
+            .unwrap_or("confirm before submission"),
+    );
+    let qc = delivery_string(
+        request,
+        &["qc", "quality_control"],
+        provider_config
+            .record
+            .default_qc_hints
+            .first()
+            .map(String::as_str)
+            .unwrap_or("vendor default"),
+    );
+    collect_source_line_items(request)
+        .into_iter()
+        .enumerate()
+        .map(|(idx, mut row)| {
+            row.entry("line_no".to_string())
+                .or_insert_with(|| (idx + 1).to_string());
+            row.insert(
+                "provider".to_string(),
+                provider_config.record.provider.clone(),
+            );
+            row.insert("service_kind".to_string(), request.service_kind.clone());
+            row.insert("product_name".to_string(), product_name.clone());
+            row.insert("purification".to_string(), purification.clone());
+            row.insert("delivery_form".to_string(), delivery_form.clone());
+            row.insert("qc".to_string(), qc.clone());
+            if let Some(yield_range) = request
+                .delivery_options
+                .as_ref()
+                .and_then(|value| string_from_value_keys(value, &["yield_range", "scale"]))
+            {
+                row.insert("yield_range".to_string(), yield_range.to_string());
+            }
+            row
+        })
+        .collect()
+}
+
+fn csv_escape(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn line_items_csv(rows: &[BTreeMap<String, String>]) -> String {
+    let mut headers = rows
+        .iter()
+        .flat_map(|row| row.keys().cloned())
+        .collect::<Vec<_>>();
+    headers.sort();
+    headers.dedup();
+    let mut lines = vec![headers.join(",")];
+    for row in rows {
+        lines.push(
+            headers
+                .iter()
+                .map(|header| csv_escape(row.get(header).map(String::as_str).unwrap_or("")))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+    }
+    lines.join("\n")
+}
+
+fn email_draft_markdown(
+    request: &ExternalServiceRequest,
+    preflight: &ExternalServicePreflightReport,
+    provider_config: &LoadedExternalServiceProviderConfig,
+    rows: &[BTreeMap<String, String>],
+) -> String {
+    let email = provider_config
+        .channel_for("email_excel")
+        .and_then(|channel| channel.email)
+        .unwrap_or_else(|| "provider email from active config".to_string());
+    let subject = format!(
+        "Quote/order handoff for {} {}",
+        provider_config.record.display_name, preflight.service_kind
+    );
+    let mut lines = vec![
+        "# Email Draft".to_string(),
+        String::new(),
+        format!("- To: `{email}`"),
+        format!("- Subject: `{subject}`"),
+        "- Attach: current vendor Excel/order template if available locally.".to_string(),
+        "- Do not include PO/account/shipping/billing details in GENtle project state.".to_string(),
+        String::new(),
+        "## Body".to_string(),
+        String::new(),
+        format!(
+            "Dear {},",
+            provider_config.record.display_name
+        ),
+        String::new(),
+        "Please find attached/prepared the order information for quote preparation. The line-item summary is included below for review before transfer into the official template.".to_string(),
+        String::new(),
+        format!("- Service kind: `{}`", request.service_kind),
+        format!("- Line items: {}", rows.len()),
+        "- Purchase-order and account details will be provided by the authorized requester outside GENtle.".to_string(),
+        String::new(),
+        "Kind regards,".to_string(),
+        String::new(),
+        "GENtle handoff operator".to_string(),
+    ];
+    lines.push(String::new());
+    lines.push("## Line Items".to_string());
+    for row in rows {
+        let name = row.get("name").map(String::as_str).unwrap_or("item");
+        let length = row.get("length_nt").map(String::as_str).unwrap_or("n/a");
+        lines.push(format!("- `{name}` ({length} nt)"));
+    }
+    lines.join("\n")
+}
+
+fn wop_checklist_markdown(
+    preflight: &ExternalServicePreflightReport,
+    provider_config: &LoadedExternalServiceProviderConfig,
+    rows: &[BTreeMap<String, String>],
+) -> String {
+    let wop_url = provider_config
+        .channel_for("wop")
+        .and_then(|channel| channel.url)
+        .unwrap_or_else(|| provider_config.record.dashboard_url.clone());
+    let mut lines = vec![
+        format!("# Guided WOP Checklist: {}", provider_config.record.display_name),
+        String::new(),
+        format!("- Provider: `{}`", preflight.provider),
+        format!("- Service kind: `{}`", preflight.service_kind),
+        format!("- WOP/dashboard URL: `{wop_url}`"),
+        format!("- Prepared line items: {}", rows.len()),
+        String::new(),
+        "## Checkpoints".to_string(),
+        "- Open WOP manually; GENtle does not scrape or submit through the portal.".to_string(),
+        "- Enter or upload each line item from the normalized CSV/JSON artifact.".to_string(),
+        "- Generate a quote/PDF in WOP when account verification permits it.".to_string(),
+        "- If converting quote to order, provide PO and account details only in the vendor portal or authorized procurement system.".to_string(),
+        "- Import quote/order identifiers back into GENtle later only as redacted advisory metadata.".to_string(),
+    ];
+    lines.extend(
+        preflight
+            .required_followup
+            .iter()
+            .map(|item| format!("- {item}")),
+    );
+    lines.join("\n")
+}
+
+fn provider_config_for_report(provider: &str) -> Option<LoadedExternalServiceProviderConfig> {
+    external_service_provider_config_index()
+        .ok()
+        .and_then(|index| index.provider(provider).cloned())
+}
+
+fn local_template_artifacts_for(
+    provider_config: &LoadedExternalServiceProviderConfig,
+    service_kind: &str,
+) -> Vec<ExternalServiceArtifactRef> {
+    let Some(template) = provider_config.product_template_for(service_kind) else {
+        return vec![];
+    };
+    let Some(path) = template.local_template_path.as_deref() else {
+        return vec![];
+    };
+    if !std::path::Path::new(path).is_file() {
+        return vec![];
+    }
+    vec![ExternalServiceArtifactRef {
+        artifact_kind: "vendor_order_template".to_string(),
+        path: path.to_string(),
+        checksum_sha256: None,
+        description: format!(
+            "Local template for {} {} handoff; copy into the vendor channel after human review.",
+            provider_config.record.display_name,
+            if template.product_name.trim().is_empty() {
+                service_kind
+            } else {
+                template.product_name.as_str()
+            }
+        ),
+    }]
+}
+
 pub fn external_service_project_quote(
     request_json: &str,
 ) -> Result<ExternalServiceQuoteReport, String> {
@@ -720,6 +967,87 @@ pub fn external_service_project_quote(
     if !eligible {
         warnings.push("Quote handoff is blocked until preflight issues are resolved.".to_string());
     }
+    let provider_config = provider_config_for_report(&preflight.provider);
+    if let Some(config) = provider_config.as_ref() {
+        if let Some(template) = config.product_template_for(&preflight.service_kind) {
+            if template.local_template_path.is_none() {
+                warnings.push(format!(
+                    "{} template is referenced at '{}' but is not available as a local template fixture; generated JSON/CSV/email/WOP artifacts remain usable.",
+                    template.product_name,
+                    template.template_url.clone().unwrap_or_else(|| "no URL configured".to_string())
+                ));
+            } else if let Some(path) = template.local_template_path.as_deref() {
+                if !std::path::Path::new(path).is_file() {
+                    warnings.push(format!(
+                        "Configured local template '{}' is missing; generated JSON/CSV/email/WOP artifacts remain usable.",
+                        path
+                    ));
+                }
+            }
+        }
+    }
+    let line_items = provider_config
+        .as_ref()
+        .map(|config| normalized_service_line_items(&request, config))
+        .unwrap_or_default();
+    let mut inline_payloads = vec![
+        ExternalServiceInlinePayload {
+            payload_kind: "handoff_markdown".to_string(),
+            content_type: "text/markdown".to_string(),
+            text: service_quote_markdown(&request, &preflight),
+            description:
+                "Human-reviewable service handoff summary for dashboard/form quote workflows."
+                    .to_string(),
+        },
+        ExternalServiceInlinePayload {
+            payload_kind: "redacted_request_json".to_string(),
+            content_type: "application/json".to_string(),
+            text: serde_json::to_string_pretty(&json!({
+                "provider": &request.provider,
+                "service_kind": &request.service_kind,
+                "source_target": &request.source_target,
+                "optimization_target": &request.optimization_target,
+                "vector_spec": &request.vector_spec,
+                "delivery_options": &request.delivery_options,
+                "commercial_context_ref_present": request.commercial_context_ref.is_some(),
+                "return_spec": &request.return_spec,
+            }))
+            .unwrap_or_else(|_| "{}".to_string()),
+            description: "Machine-readable redacted request payload; commercial context is represented only by presence/absence.".to_string(),
+        },
+    ];
+    if let Some(config) = provider_config.as_ref() {
+        inline_payloads.push(ExternalServiceInlinePayload {
+            payload_kind: "normalized_line_items_json".to_string(),
+            content_type: "application/json".to_string(),
+            text: serde_json::to_string_pretty(&line_items).unwrap_or_else(|_| "[]".to_string()),
+            description: "Provider-neutral line items normalized for vendor template transfer."
+                .to_string(),
+        });
+        inline_payloads.push(ExternalServiceInlinePayload {
+            payload_kind: "normalized_line_items_csv".to_string(),
+            content_type: "text/csv".to_string(),
+            text: line_items_csv(&line_items),
+            description: "CSV companion for manual transfer into vendor order forms.".to_string(),
+        });
+        inline_payloads.push(ExternalServiceInlinePayload {
+            payload_kind: "email_draft_markdown".to_string(),
+            content_type: "text/markdown".to_string(),
+            text: email_draft_markdown(&request, &preflight, config, &line_items),
+            description: "Reviewable email draft for email+template order handoff.".to_string(),
+        });
+        inline_payloads.push(ExternalServiceInlinePayload {
+            payload_kind: "guided_wop_checklist".to_string(),
+            content_type: "text/markdown".to_string(),
+            text: wop_checklist_markdown(&preflight, config, &line_items),
+            description: "Manual Web Order Portal checklist; no portal automation is performed."
+                .to_string(),
+        });
+    }
+    let local_files = provider_config
+        .as_ref()
+        .map(|config| local_template_artifacts_for(config, &preflight.service_kind))
+        .unwrap_or_default();
     let bundle = ExternalServiceArtifactBundle {
         schema: "gentle.external_service_artifact_bundle.v1".to_string(),
         provider: preflight.provider.clone(),
@@ -729,34 +1057,12 @@ pub fn external_service_project_quote(
             preflight.provider,
             preflight.service_kind
         ),
-        local_files: vec![],
-        inline_payloads: vec![
-            ExternalServiceInlinePayload {
-                payload_kind: "handoff_markdown".to_string(),
-                content_type: "text/markdown".to_string(),
-                text: service_quote_markdown(&request, &preflight),
-                description: "Human-reviewable service handoff summary for dashboard/form quote workflows.".to_string(),
-            },
-            ExternalServiceInlinePayload {
-                payload_kind: "redacted_request_json".to_string(),
-                content_type: "application/json".to_string(),
-                text: serde_json::to_string_pretty(&json!({
-                    "provider": &request.provider,
-                    "service_kind": &request.service_kind,
-                    "source_target": &request.source_target,
-                    "optimization_target": &request.optimization_target,
-                    "vector_spec": &request.vector_spec,
-                    "delivery_options": &request.delivery_options,
-                    "commercial_context_ref_present": request.commercial_context_ref.is_some(),
-                    "return_spec": &request.return_spec,
-                }))
-                .unwrap_or_else(|_| "{}".to_string()),
-                description: "Machine-readable redacted request payload; commercial context is represented only by presence/absence.".to_string(),
-            },
-        ],
+        local_files,
+        inline_payloads,
         notes: vec![
             "No vendor order was submitted by this report.".to_string(),
             "Use provider dashboard/form routes for quote creation until direct API support is implemented and explicitly confirmed.".to_string(),
+            "Do not persist PO numbers, account credentials, shipping, billing, or commercial secrets in GENtle project state.".to_string(),
         ],
     };
     Ok(ExternalServiceQuoteReport {
