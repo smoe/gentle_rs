@@ -6,13 +6,13 @@
 //! only meaningful for the direct render-dotplot command.
 
 use gentle::{
+    cli_support::svg_png_summary_json,
     engine::{
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, GentleEngine, Operation,
         RenderSvgMode,
     },
     svg_png::{SvgPngRenderOptions, render_svg_file_to_png},
 };
-use serde_json::json;
 use std::path::Path;
 
 use super::*;
@@ -99,17 +99,7 @@ fn handle_svg_png(args: &[String], cmd_idx: usize) -> Result<(), String> {
             drop_dotplot_metadata,
         },
     )?;
-    print_json(&json!({
-        "status": "ok",
-        "mode": "svg-png",
-        "input_path": summary.input_path,
-        "output_path": summary.output_path,
-        "scale": summary.scale,
-        "drop_dotplot_metadata": summary.drop_dotplot_metadata,
-        "width": summary.width,
-        "height": summary.height,
-        "font_face_count": summary.font_face_count,
-    }))
+    print_json(&svg_png_summary_json(&summary))
 }
 
 fn handle_render_svg(args: &[String], cmd_idx: usize, state_path: &str) -> Result<(), String> {

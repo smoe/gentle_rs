@@ -2,6 +2,7 @@
 
 use gentle::{
     about,
+    cli_support::parse_state_path_cli_args,
     mcp_server::{DEFAULT_MCP_STATE_PATH, run_stdio_server},
 };
 use std::env;
@@ -25,39 +26,20 @@ Default state path: {default_state}\n",
     );
 }
 
-fn parse_state_path(args: &[String]) -> Result<Option<String>, String> {
-    let mut state_path: Option<String> = None;
-    let mut idx = 1usize;
-    while idx < args.len() {
-        match args[idx].as_str() {
-            "--state" | "--project" => {
-                if idx + 1 >= args.len() {
-                    return Err(format!("Missing PATH after {}", args[idx]));
-                }
-                state_path = Some(args[idx + 1].clone());
-                idx += 2;
-            }
-            "--help" | "-h" => return Ok(None),
-            "--version" | "-V" => return Ok(None),
-            other => {
-                return Err(format!("Unknown argument '{other}'. Use --help for usage."));
-            }
-        }
-    }
-    Ok(state_path)
-}
-
 fn run() -> Result<(), String> {
-    let args = env::args().collect::<Vec<_>>();
-    if args.iter().any(|a| a == "--help" || a == "-h") {
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    let parsed = parse_state_path_cli_args(&args)?;
+    if parsed.show_help {
         usage();
         return Ok(());
     }
-    if args.iter().any(|a| a == "--version" || a == "-V") {
+    if parsed.show_version {
         println!("{}", about::version_cli_text());
         return Ok(());
     }
-    let state_path = parse_state_path(&args)?.unwrap_or_else(|| DEFAULT_MCP_STATE_PATH.to_string());
+    let state_path = parsed
+        .state_path
+        .unwrap_or_else(|| DEFAULT_MCP_STATE_PATH.to_string());
     run_stdio_server(&state_path)
 }
 

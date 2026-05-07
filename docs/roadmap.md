@@ -521,6 +521,10 @@ without blocking this publication.
     `src/bin/gentle_cli/resources.rs`, and
     `src/bin/gentle_cli/services.rs`, preserving shell forwarding/direct
     manual parsing behavior while reducing the monolithic `run()` body.
+  - Cross-binary command-line support is now shared through
+    `src/cli_support.rs` for the small native/JS/Lua/MCP binary parsers,
+    state-loading defaults, and the shared `svg-png` JSON summary shape,
+    without making `gentle_cli`'s legacy direct-command adapter the shared API.
 - Planning meta-layer shell/CLI baseline is now available:
   - direct/shared-shell command family: `planning ...`
   - profile/objective/suggestion/sync contracts:

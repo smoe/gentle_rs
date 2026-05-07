@@ -1,5 +1,6 @@
 //! Documentation helper binary that renders workflow examples into generated snippets.
 
+use gentle::cli_support::svg_png_summary_json;
 use gentle::svg_png::{SvgPngRenderOptions, render_svg_file_to_png};
 use gentle::workflow_examples::{
     DEFAULT_TUTORIAL_CATALOG_META_PATH, DEFAULT_TUTORIAL_CATALOG_PATH,
@@ -271,17 +272,7 @@ fn run_svg_png_mode(
             drop_dotplot_metadata,
         },
     )?;
-    let summary = json!({
-        "status": "ok",
-        "mode": "svg-png",
-        "input_path": summary.input_path,
-        "output_path": summary.output_path,
-        "scale": summary.scale,
-        "drop_dotplot_metadata": summary.drop_dotplot_metadata,
-        "width": summary.width,
-        "height": summary.height,
-        "font_face_count": summary.font_face_count,
-    });
+    let summary = svg_png_summary_json(&summary);
     let pretty = serde_json::to_string_pretty(&summary)
         .map_err(|e| format!("Could not serialize svg-png summary: {e}"))?;
     println!("{pretty}");

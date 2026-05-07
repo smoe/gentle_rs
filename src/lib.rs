@@ -24,6 +24,8 @@ pub mod amino_acids;
 pub mod app;
 /// ATtRACT RNA-binding motif registry and runtime snapshot helpers.
 pub mod attract_motifs;
+/// Small shared helpers for GENtle command-line binaries.
+pub mod cli_support;
 /// Shared DNA display configuration and visibility policies.
 pub mod dna_display;
 /// DNA/RNA ladder catalogs and migration helper utilities.

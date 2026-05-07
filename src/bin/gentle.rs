@@ -1,7 +1,10 @@
 //! GUI binary entry point that boots the native GENtle desktop application.
 
 use eframe::{NativeOptions, egui};
-use gentle::{about, app};
+use gentle::{
+    about, app,
+    cli_support::{SingleProjectCliOptions, parse_single_project_cli_args},
+};
 use std::{
     backtrace::Backtrace,
     env,
@@ -123,14 +126,6 @@ fn install_panic_logging() {
     }));
 }
 
-#[derive(Debug, Default)]
-struct CliArgs {
-    show_help: bool,
-    show_version: bool,
-    project_path: Option<String>,
-    allow_screenshots: bool,
-}
-
 fn print_help() {
     println!(
         "Usage:\n  \
@@ -140,54 +135,12 @@ PATH can be a project file such as 'project.gentle.json'."
     );
 }
 
-fn parse_cli_args(args: &[String]) -> Result<CliArgs, String> {
-    let mut parsed = CliArgs::default();
-    let mut idx = 0usize;
-    while idx < args.len() {
-        match args[idx].as_str() {
-            "--help" | "-h" => {
-                parsed.show_help = true;
-                idx += 1;
-            }
-            "--version" | "-V" => {
-                parsed.show_version = true;
-                idx += 1;
-            }
-            "--project" => {
-                if idx + 1 >= args.len() {
-                    return Err("Missing PATH after --project".to_string());
-                }
-                parsed.project_path = Some(args[idx + 1].clone());
-                idx += 2;
-            }
-            "--allow-screenshots" => {
-                return Err("--allow-screenshots is disabled by security policy".to_string());
-            }
-            arg if arg.starts_with('-') => {
-                return Err(format!("Unknown option '{arg}'"));
-            }
-            path => {
-                if parsed.project_path.is_some() {
-                    return Err(format!(
-                        "Multiple project paths provided ('{}' and '{}')",
-                        parsed.project_path.as_deref().unwrap_or_default(),
-                        path
-                    ));
-                }
-                parsed.project_path = Some(path.to_string());
-                idx += 1;
-            }
-        }
-    }
-    Ok(parsed)
-}
-
 fn main() -> eframe::Result<()> {
     install_panic_logging();
     configure_macos_process_name();
 
     let args: Vec<String> = env::args().skip(1).collect();
-    let cli = match parse_cli_args(&args) {
+    let cli = match parse_single_project_cli_args(&args, SingleProjectCliOptions::gui()) {
         Ok(parsed) => parsed,
         Err(e) => {
             eprintln!("{e}");
@@ -203,10 +156,6 @@ fn main() -> eframe::Result<()> {
         println!("{}", about::version_cli_text());
         return Ok(());
     }
-    if cli.allow_screenshots {
-        eprintln!("--allow-screenshots is not supported in this build");
-    }
-
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([800.0, 600.0])
         .with_min_inner_size([300.0, 220.0]);
