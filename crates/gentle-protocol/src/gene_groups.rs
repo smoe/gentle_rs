@@ -234,6 +234,20 @@ pub struct GeneGroupDraftReport {
     pub review_required: bool,
     pub input_description_sha1: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_generated_at_utc: Option<String>,
+    #[serde(default)]
+    pub user_member_count: usize,
+    #[serde(default)]
+    pub candidate_member_count: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidate_members: Vec<GeneGroupMember>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unresolved_candidates: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_path: Option<String>,
     pub group: GeneGroupRecord,
     pub catalog_fragment: GeneGroupCatalog,

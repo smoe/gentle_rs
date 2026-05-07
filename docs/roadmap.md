@@ -4032,8 +4032,9 @@ Current baseline:
   external resources, and mapping/resource warnings.
 - `gene-groups draft` now creates review-gated catalog fragments plus
   `gentle.gene_group_draft.v1` reports from an explicit long description and
-  optional candidate members/GO mappings; it does not mutate trusted catalogs
-  by default.
+  optional user-supplied members, agent/literature-suggested candidates,
+  unresolved candidates, agent provenance, and GO mappings; it does not mutate
+  trusted catalogs by default.
 - `resources resolve-tf-query` now consumes catalog-backed gene groups marked
   for `tf_query` usage before falling back to family-like motif registry
   matching, while preserving `builtin_group` semantics for built-in rows.
@@ -4058,14 +4059,13 @@ Planned work:
    - expose whether a token came from exact motif id/name, gene-group catalog,
      alias, family-like expansion, or unresolved input without breaking older
      `builtin_group` compatibility rows
-4. Extend AI-assisted drafting beyond the deterministic local shell contract:
-   - add an optional agent-assisted candidate finder that can propose members
-     and evidence notes from literature/resource context, while keeping local
-     deterministic drafting available offline
-   - output should include the model/provider/date when available and separate
-     model-suggested candidates from user-supplied members
-   - add unresolved candidate reporting and explicit promotion/import policy
-     before any drafted group becomes trusted input
+4. Extend AI-assisted drafting beyond the explicit candidate-import contract:
+   - add optional resource adapters that can turn PubMed/GO/MSigDB/Reactome
+     search results into candidate rows without requiring the human/agent to
+     pass every `--candidate` explicitly
+   - add a safe promote/import route that checks source digests, duplicate ids,
+     symbol validation, and project policy before any drafted group becomes
+     trusted input
 5. Add group-aware regulatory operations:
    - resolve one or more groups to prepared-reference genes
    - extract promoter/upstream windows with transcript-aware orientation

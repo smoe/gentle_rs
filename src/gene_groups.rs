@@ -52,8 +52,13 @@ pub struct GeneGroupDraftOptions {
     pub tags: Vec<String>,
     pub usages: Vec<String>,
     pub members: Vec<String>,
+    pub candidate_members: Vec<String>,
+    pub unresolved_candidates: Vec<String>,
     pub go_mappings: Vec<String>,
     pub provenance: Option<String>,
+    pub agent_provider: Option<String>,
+    pub agent_model: Option<String>,
+    pub agent_generated_at_utc: Option<String>,
     pub output_path: Option<String>,
 }
 
@@ -153,6 +158,24 @@ fn normalized_unique(values: Vec<String>) -> Vec<String> {
         }
     }
     out
+}
+
+fn parse_draft_candidate(raw: &str) -> Option<(String, Option<String>)> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let (symbol, evidence_note) = trimmed
+        .split_once('=')
+        .map(|(symbol, note)| (symbol.trim(), Some(note.trim())))
+        .unwrap_or((trimmed, None));
+    if symbol.is_empty() {
+        return None;
+    }
+    let note = evidence_note
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    Some((symbol.to_string(), note))
 }
 
 fn gene_group_catalog_discovery_candidates() -> Vec<GeneGroupCatalogSourceCandidate> {
@@ -687,7 +710,7 @@ pub fn draft_gene_group(options: GeneGroupDraftOptions) -> Result<GeneGroupDraft
         "AI/user-assisted draft from gene-groups draft; requires review before promotion."
             .to_string()
     });
-    let members = normalized_unique(options.members)
+    let user_members = normalized_unique(options.members)
         .into_iter()
         .map(|symbol| GeneGroupMember {
             symbol,
@@ -701,6 +724,66 @@ pub fn draft_gene_group(options: GeneGroupDraftOptions) -> Result<GeneGroupDraft
             ..GeneGroupMember::default()
         })
         .collect::<Vec<_>>();
+    let agent_provenance = {
+        let mut parts = vec!["agent-assisted candidate draft".to_string()];
+        if let Some(provider) = options
+            .agent_provider
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            parts.push(format!("provider={provider}"));
+        }
+        if let Some(model) = options
+            .agent_model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            parts.push(format!("model={model}"));
+        }
+        if let Some(generated_at) = options
+            .agent_generated_at_utc
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            parts.push(format!("generated_at_utc={generated_at}"));
+        }
+        parts.push("requires review before promotion".to_string());
+        parts.join("; ")
+    };
+    let mut candidate_seen = BTreeSet::<String>::new();
+    let candidate_members = options
+        .candidate_members
+        .iter()
+        .filter_map(|raw| parse_draft_candidate(raw))
+        .filter_map(|(symbol, evidence_note)| {
+            let key = normalize_lookup(&symbol);
+            if !candidate_seen.insert(key) {
+                return None;
+            }
+            Some(GeneGroupMember {
+                symbol,
+                evidence_note: Some(evidence_note.unwrap_or_else(|| {
+                    "Agent-suggested candidate membership; review evidence before promoting this group."
+                        .to_string()
+                })),
+                confidence: Some("agent_suggested".to_string()),
+                status: Some("draft".to_string()),
+                provenance: Some(agent_provenance.clone()),
+                ..GeneGroupMember::default()
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut member_seen = BTreeSet::<String>::new();
+    let mut members = vec![];
+    for member in user_members.iter().chain(candidate_members.iter()) {
+        if member_seen.insert(normalize_lookup(&member.symbol)) {
+            members.push(member.clone());
+        }
+    }
+    let unresolved_candidates = normalized_unique(options.unresolved_candidates);
     let external_mappings = normalized_unique(options.go_mappings)
         .into_iter()
         .map(|go_id| {
@@ -768,6 +851,17 @@ pub fn draft_gene_group(options: GeneGroupDraftOptions) -> Result<GeneGroupDraft
         generation_method: "deterministic_review_gated_draft".to_string(),
         review_required: true,
         input_description_sha1,
+        agent_provider: options
+            .agent_provider
+            .filter(|value| !value.trim().is_empty()),
+        agent_model: options.agent_model.filter(|value| !value.trim().is_empty()),
+        agent_generated_at_utc: options
+            .agent_generated_at_utc
+            .filter(|value| !value.trim().is_empty()),
+        user_member_count: user_members.len(),
+        candidate_member_count: candidate_members.len(),
+        candidate_members,
+        unresolved_candidates,
         output_path: options.output_path.clone(),
         group,
         catalog_fragment,
@@ -778,6 +872,12 @@ pub fn draft_gene_group(options: GeneGroupDraftOptions) -> Result<GeneGroupDraft
             "Draft has no candidate members yet; add members before using it for analysis."
                 .to_string(),
         );
+    }
+    if !report.unresolved_candidates.is_empty() {
+        report.warnings.push(format!(
+            "Draft records {} unresolved candidate(s); review/normalize before promotion.",
+            report.unresolved_candidates.len()
+        ));
     }
     if let Some(path) = options
         .output_path
@@ -1154,16 +1254,26 @@ mod tests {
         let report = draft_gene_group(GeneGroupDraftOptions {
             description: "Genes regulating alternative splice-site selection in a project-specific pancreatic cancer context.".to_string(),
             members: vec!["RBFOX2".to_string(), "PTBP1".to_string()],
+            candidate_members: vec![
+                "QKI=agent-suggested STAR-family splicing regulator".to_string()
+            ],
+            unresolved_candidates: vec!["ambiguous PTB family".to_string()],
             go_mappings: vec!["GO:0000381".to_string()],
+            agent_provider: Some("Codex".to_string()),
+            agent_model: Some("test-model".to_string()),
             output_path: Some(output.to_string_lossy().to_string()),
             ..GeneGroupDraftOptions::default()
         })
         .expect("draft gene group");
         assert_eq!(report.schema, GENE_GROUP_DRAFT_REPORT_SCHEMA);
         assert!(report.review_required);
+        assert_eq!(report.user_member_count, 2);
+        assert_eq!(report.candidate_member_count, 1);
+        assert_eq!(report.candidate_members[0].symbol, "QKI");
+        assert_eq!(report.unresolved_candidates, vec!["ambiguous PTB family"]);
         assert_eq!(report.catalog_fragment.groups.len(), 1);
         assert_eq!(report.catalog_fragment.groups[0].curation_status, "draft");
-        assert_eq!(report.catalog_fragment.groups[0].members.len(), 2);
+        assert_eq!(report.catalog_fragment.groups[0].members.len(), 3);
         let written = fs::read_to_string(output).expect("read draft");
         assert!(written.contains("\"schema\": \"gentle.gene_group_catalog.v1\""));
         assert!(written.contains("GO:0000381"));

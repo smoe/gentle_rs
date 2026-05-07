@@ -615,7 +615,7 @@ gentle_cli shell 'gene-groups list [--catalog PATH] [--filter TEXT] [--output OU
 gentle_cli shell 'gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]'
 gentle_cli shell 'gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]'
 gentle_cli shell 'gene-groups doctor [--catalog PATH] [--output OUTPUT.json]'
-gentle_cli shell 'gene-groups draft --description TEXT [--member SYMBOL] [--go GO:NNNNNNN] [--output GROUP.json]'
+gentle_cli shell 'gene-groups draft --description TEXT [--member SYMBOL] [--candidate SYMBOL=EVIDENCE] [--go GO:NNNNNNN] [--output GROUP.json]'
 ```
 
 The initial built-in rows seed the previous hard-coded TF-query groups:
@@ -635,14 +635,15 @@ AI/user-assisted drafting is an explicit review-gated route, not a hidden
 mutation of trusted catalogs:
 
 ```bash
-gentle_cli shell 'gene-groups draft --description TEXT [--id ID] [--label LABEL] [--short-description TEXT] [--organism NAME] [--taxon-id N] [--namespace NAMESPACE] [--alias TEXT] [--tag TEXT] [--usage TEXT] [--member SYMBOL] [--members A,B,C] [--go GO:NNNNNNN] [--provenance TEXT] [--output GROUP.json]'
+gentle_cli shell 'gene-groups draft --description TEXT [--id ID] [--label LABEL] [--short-description TEXT] [--organism NAME] [--taxon-id N] [--namespace NAMESPACE] [--alias TEXT] [--tag TEXT] [--usage TEXT] [--member SYMBOL] [--members A,B,C] [--candidate SYMBOL=EVIDENCE] [--unresolved-candidate TEXT] [--go GO:NNNNNNN] [--agent-provider NAME] [--agent-model NAME] [--agent-generated-at UTC] [--provenance TEXT] [--output GROUP.json]'
 ```
 
 The draft route writes a `gentle.gene_group_catalog.v1` catalog fragment plus a
 `gentle.gene_group_draft.v1` report with `review_required=true`, the input
-description hash, warnings, and the proposed local record. It does not mutate
-trusted catalogs by default. A later import/promote step can require explicit
-review before a drafted group becomes authoritative.
+description hash, user/member counts, agent-suggested candidate members,
+unresolved candidates, warnings, and the proposed local record. It does not
+mutate trusted catalogs by default. A later import/promote step can require
+explicit review before a drafted group becomes authoritative.
 
 ## Stateless sequence-scan contract
 

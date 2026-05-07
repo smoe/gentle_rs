@@ -946,8 +946,13 @@ pub enum ShellCommand {
         tags: Vec<String>,
         usages: Vec<String>,
         members: Vec<String>,
+        candidate_members: Vec<String>,
+        unresolved_candidates: Vec<String>,
         go_mappings: Vec<String>,
         provenance: Option<String>,
+        agent_provider: Option<String>,
+        agent_model: Option<String>,
+        agent_generated_at_utc: Option<String>,
         output: Option<String>,
     },
     ResourcesListPublicationDatasets {
@@ -6373,11 +6378,12 @@ impl ShellCommand {
                 id,
                 label,
                 members,
+                candidate_members,
                 go_mappings,
                 output,
                 ..
             } => format!(
-                "draft review-gated gene group{}{} (members={}, GO mappings={}, output='{}')",
+                "draft review-gated gene group{}{} (members={}, candidates={}, GO mappings={}, output='{}')",
                 id.as_deref()
                     .map(|value| format!(" id='{value}'"))
                     .unwrap_or_default(),
@@ -6386,6 +6392,7 @@ impl ShellCommand {
                     .map(|value| format!(" label='{value}'"))
                     .unwrap_or_default(),
                 members.len(),
+                candidate_members.len(),
                 go_mappings.len(),
                 output.as_deref().unwrap_or("-"),
             ),
@@ -17104,8 +17111,13 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
             let mut tags: Vec<String> = vec![];
             let mut usages: Vec<String> = vec![];
             let mut members: Vec<String> = vec![];
+            let mut candidate_members: Vec<String> = vec![];
+            let mut unresolved_candidates: Vec<String> = vec![];
             let mut go_mappings: Vec<String> = vec![];
             let mut provenance: Option<String> = None;
+            let mut agent_provider: Option<String> = None;
+            let mut agent_model: Option<String> = None;
+            let mut agent_generated_at_utc: Option<String> = None;
             let mut output: Option<String> = None;
             let mut idx = 2usize;
             while idx < tokens.len() {
@@ -17208,6 +17220,22 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
                                 .map(str::to_string),
                         );
                     }
+                    "--candidate" | "--suggested-member" | "--agent-candidate" => {
+                        candidate_members.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--candidate",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--unresolved-candidate" => {
+                        unresolved_candidates.push(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--unresolved-candidate",
+                            "gene-groups draft",
+                        )?);
+                    }
                     "--go" => {
                         go_mappings.push(parse_option_path(
                             tokens,
@@ -17221,6 +17249,30 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
                             tokens,
                             &mut idx,
                             "--provenance",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--agent-provider" => {
+                        agent_provider = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--agent-provider",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--agent-model" | "--model" => {
+                        agent_model = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--agent-model",
+                            "gene-groups draft",
+                        )?);
+                    }
+                    "--agent-generated-at" | "--agent-generated-at-utc" => {
+                        agent_generated_at_utc = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--agent-generated-at",
                             "gene-groups draft",
                         )?);
                     }
@@ -17255,8 +17307,13 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
                 tags,
                 usages,
                 members,
+                candidate_members,
+                unresolved_candidates,
                 go_mappings,
                 provenance,
+                agent_provider,
+                agent_model,
+                agent_generated_at_utc,
                 output,
             })
         }
@@ -23657,8 +23714,13 @@ fn execute_export_import_and_resource_command(
             tags,
             usages,
             members,
+            candidate_members,
+            unresolved_candidates,
             go_mappings,
             provenance,
+            agent_provider,
+            agent_model,
+            agent_generated_at_utc,
             output,
         } => {
             let report = gene_groups::draft_gene_group(gene_groups::GeneGroupDraftOptions {
@@ -23673,8 +23735,13 @@ fn execute_export_import_and_resource_command(
                 tags: tags.clone(),
                 usages: usages.clone(),
                 members: members.clone(),
+                candidate_members: candidate_members.clone(),
+                unresolved_candidates: unresolved_candidates.clone(),
                 go_mappings: go_mappings.clone(),
                 provenance: provenance.clone(),
+                agent_provider: agent_provider.clone(),
+                agent_model: agent_model.clone(),
+                agent_generated_at_utc: agent_generated_at_utc.clone(),
                 output_path: output.clone(),
             })?;
             Ok(ShellRunResult {
