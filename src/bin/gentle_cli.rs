@@ -6,6 +6,8 @@ mod gentle_cli_args;
 mod gentle_cli_candidates;
 #[path = "gentle_cli/hosts.rs"]
 mod gentle_cli_hosts;
+#[path = "gentle_cli/pools.rs"]
+mod gentle_cli_pools;
 #[path = "gentle_cli/protocol_cartoon.rs"]
 mod gentle_cli_protocol_cartoon;
 #[path = "gentle_cli/reference.rs"]
@@ -21,9 +23,8 @@ use gentle::{
         DEFAULT_HOST_PROFILE_CATALOG_PATH, DEFAULT_JASPAR_PRESENTATION_RANDOM_SEED,
         DEFAULT_JASPAR_PRESENTATION_RANDOM_SEQUENCE_LENGTH_BP, DbSnpFetchProgress,
         DotplotOverlayAnchorExonRef, DotplotOverlayXAxisMode, Engine, EngineStateSummary,
-        GelBufferModel, GelRunConditions, GelTopologyForm, GenomeAnnotationScope,
-        GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine, Operation,
-        OperationProgress, PrimerDesignProgress, ProjectState, RenderSvgMode,
+        GenomeAnnotationScope, GenomeGeneExtractMode, GenomeTrackImportProgress, GentleEngine,
+        Operation, OperationProgress, PrimerDesignProgress, ProjectState, RenderSvgMode,
         RnaReadInterpretProgress, SharedAssetActivityStatus, TfbsProgress,
     },
     engine_shell::{
@@ -97,66 +98,6 @@ fn operation_catalog_arg(catalog_path: &Option<String>, helper_mode: bool) -> Op
     explicit_catalog_arg(catalog_path)
         .map(|value| value.to_string())
         .or_else(|| helper_mode.then(|| default_catalog_discovery_token(true).to_string()))
-}
-
-fn apply_pool_member_topology_hint(
-    member_topology: &str,
-    dna: &mut gentle::dna_sequence::DNAsequence,
-) -> Result<(), String> {
-    let Some(form) = GelTopologyForm::from_hint(member_topology) else {
-        return Ok(());
-    };
-    if form.is_circular() {
-        dna.set_circular(true);
-    }
-    if !matches!(form, GelTopologyForm::Linear | GelTopologyForm::Circular) {
-        let mut value = serde_json::to_value(&*dna)
-            .map_err(|e| format!("Could not serialize sequence for topology hint: {e}"))?;
-        if let Some(obj) = value.as_object_mut() {
-            if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
-                let comments = seq_obj
-                    .entry("comments".to_string())
-                    .or_insert_with(|| json!([]));
-                if let Some(arr) = comments.as_array_mut() {
-                    arr.push(json!(format!("gel_topology={}", form.as_str())));
-                }
-            }
-        }
-        *dna = serde_json::from_value(value)
-            .map_err(|e| format!("Could not apply topology hint to sequence: {e}"))?;
-    }
-    Ok(())
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PoolEnd {
-    end_type: String,
-    forward_5: String,
-    forward_3: String,
-    reverse_5: String,
-    reverse_3: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PoolMember {
-    seq_id: String,
-    #[serde(default)]
-    human_id: String,
-    name: Option<String>,
-    sequence: String,
-    length_bp: usize,
-    topology: String,
-    ends: PoolEnd,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PoolExport {
-    schema: String,
-    pool_id: String,
-    #[serde(default)]
-    human_id: String,
-    member_count: usize,
-    members: Vec<PoolMember>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -562,10 +503,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] gibson apply PLAN_JSON_OR_@FILE\n\n  \
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
-  gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]\n  \
-  gentle_cli [--state PATH|--project PATH] arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]\n  \
+{pools_usage}\
   gentle_cli [--state PATH|--project PATH] racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]\n  \
   gentle_cli [--state PATH|--project PATH] racks place-arrangement ARR_ID --rack RACK_ID\n  \
   gentle_cli [--state PATH|--project PATH] racks move RACK_ID --from A1 --to B1 [--block]\n  \
@@ -584,9 +522,6 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] screenshot-window OUTPUT.png (disabled by security policy)\n\n  \
   gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
   gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \
-  gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
   gentle_cli genomes list [--catalog PATH] [--filter TEXT]\n  \
   gentle_cli genomes validate-catalog [--catalog PATH]\n  \
   gentle_cli genomes update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
@@ -751,6 +686,7 @@ fn usage() {
         shell_help = shell_help_text(),
         candidates_usage = gentle_cli_candidates::USAGE,
         hosts_usage = gentle_cli_hosts::USAGE,
+        pools_usage = gentle_cli_pools::USAGE,
         protocol_cartoon_usage = gentle_cli_protocol_cartoon::USAGE,
         resources_usage = gentle_cli_resources::USAGE,
         services_usage = gentle_cli_services::USAGE
@@ -1299,47 +1235,6 @@ fn genome_gene_matches_filter(
         .unwrap_or(false)
 }
 
-fn unique_id(
-    existing: &std::collections::HashMap<String, gentle::dna_sequence::DNAsequence>,
-    base: &str,
-) -> String {
-    if !existing.contains_key(base) {
-        return base.to_string();
-    }
-    let mut i = 2usize;
-    loop {
-        let candidate = format!("{base}_{i}");
-        if !existing.contains_key(&candidate) {
-            return candidate;
-        }
-        i += 1;
-    }
-}
-
-fn apply_member_overhang(
-    member: &PoolMember,
-    dna: &mut gentle::dna_sequence::DNAsequence,
-) -> Result<(), String> {
-    let mut value =
-        serde_json::to_value(&*dna).map_err(|e| format!("Could not serialize sequence: {e}"))?;
-    let obj = value
-        .as_object_mut()
-        .ok_or_else(|| "Internal serialization shape error".to_string())?;
-    obj.insert(
-        "overhang".to_string(),
-        json!({
-            "forward_3": member.ends.forward_3.as_bytes(),
-            "forward_5": member.ends.forward_5.as_bytes(),
-            "reverse_3": member.ends.reverse_3.as_bytes(),
-            "reverse_5": member.ends.reverse_5.as_bytes(),
-        }),
-    );
-    let patched: gentle::dna_sequence::DNAsequence =
-        serde_json::from_value(value).map_err(|e| format!("Could not restore overhang: {e}"))?;
-    *dna = patched;
-    Ok(())
-}
-
 fn main() {
     if let Err(e) = run() {
         eprintln!("{e}");
@@ -1722,405 +1617,8 @@ fn run() -> Result<(), String> {
         "protocol-cartoon" => {
             gentle_cli_protocol_cartoon::handle_protocol_cartoon_family(&args, cmd_idx, &state_path)
         }
-        "render-pool-gel-svg" | "render-gel-svg" => {
-            let cmd_name = args[cmd_idx].as_str();
-            if args.len() <= cmd_idx + 2 {
-                usage();
-                return Err(format!(
-                    "{cmd_name} requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID] [--agarose-pct FLOAT] [--buffer tae|tbe] [--topology-aware true|false]"
-                ));
-            }
-            let ids = match args[cmd_idx + 1].trim() {
-                "-" | "_" => vec![],
-                raw => raw
-                    .split(',')
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>(),
-            };
-            let output = &args[cmd_idx + 2];
-            let mut ladders: Option<Vec<String>> = None;
-            let mut container_ids: Option<Vec<String>> = None;
-            let mut arrangement_id: Option<String> = None;
-            let mut conditions = GelRunConditions::default();
-            let mut idx = cmd_idx + 3;
-            while idx < args.len() {
-                match args[idx].as_str() {
-                    "--ladders" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --ladders".to_string());
-                        }
-                        let parsed = args[idx + 1]
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>();
-                        if !parsed.is_empty() {
-                            ladders = Some(parsed);
-                        }
-                        idx += 2;
-                    }
-                    "--containers" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --containers".to_string());
-                        }
-                        let parsed = args[idx + 1]
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>();
-                        if !parsed.is_empty() {
-                            container_ids = Some(parsed);
-                        }
-                        idx += 2;
-                    }
-                    "--arrangement" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --arrangement".to_string());
-                        }
-                        let value = args[idx + 1].trim();
-                        if !value.is_empty() {
-                            arrangement_id = Some(value.to_string());
-                        }
-                        idx += 2;
-                    }
-                    "--agarose-pct" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --agarose-pct".to_string());
-                        }
-                        conditions.agarose_percent =
-                            args[idx + 1].trim().parse::<f32>().map_err(|e| {
-                                format!("Invalid agarose percent '{}': {e}", args[idx + 1])
-                            })?;
-                        idx += 2;
-                    }
-                    "--buffer" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --buffer".to_string());
-                        }
-                        conditions.buffer_model =
-                            match args[idx + 1].trim().to_ascii_lowercase().as_str() {
-                                "tae" => GelBufferModel::Tae,
-                                "tbe" => GelBufferModel::Tbe,
-                                other => {
-                                    return Err(format!(
-                                        "Unknown buffer '{other}' for {cmd_name} (expected tae|tbe)"
-                                    ));
-                                }
-                            };
-                        idx += 2;
-                    }
-                    "--topology-aware" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --topology-aware".to_string());
-                        }
-                        conditions.topology_aware =
-                            parse_bool_flag(&args[idx + 1]).ok_or_else(|| {
-                                format!(
-                                    "Boolean value '{}' is invalid (expected true|false|1|0|yes|no|on|off)",
-                                    args[idx + 1]
-                                )
-                            })?;
-                        idx += 2;
-                    }
-                    other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for {cmd_name} (expected --ladders/--containers/--arrangement/--agarose-pct/--buffer/--topology-aware)"
-                        ));
-                    }
-                }
-            }
-            if ids.is_empty()
-                && container_ids.as_ref().map_or(true, |v| v.is_empty())
-                && arrangement_id.is_none()
-            {
-                return Err(format!(
-                    "{cmd_name} requires sequence ids, --containers, or --arrangement"
-                ));
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::RenderPoolGelSvg {
-                    inputs: ids,
-                    path: output.to_string(),
-                    ladders,
-                    container_ids,
-                    arrangement_id,
-                    conditions: Some(conditions.normalized()),
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
-        }
-        "arrange-serial" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err(
-                    "arrange-serial requires: CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]"
-                        .to_string(),
-                );
-            }
-            let container_ids = args[cmd_idx + 1]
-                .split(',')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>();
-            if container_ids.is_empty() {
-                return Err("arrange-serial requires at least one container id".to_string());
-            }
-            let mut arrangement_id: Option<String> = None;
-            let mut name: Option<String> = None;
-            let mut ladders: Option<Vec<String>> = None;
-            let mut idx = cmd_idx + 2;
-            while idx < args.len() {
-                match args[idx].as_str() {
-                    "--id" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --id".to_string());
-                        }
-                        let value = args[idx + 1].trim();
-                        if !value.is_empty() {
-                            arrangement_id = Some(value.to_string());
-                        }
-                        idx += 2;
-                    }
-                    "--name" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --name".to_string());
-                        }
-                        let value = args[idx + 1].trim();
-                        if !value.is_empty() {
-                            name = Some(value.to_string());
-                        }
-                        idx += 2;
-                    }
-                    "--ladders" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --ladders".to_string());
-                        }
-                        let parsed = args[idx + 1]
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>();
-                        if !parsed.is_empty() {
-                            ladders = Some(parsed);
-                        }
-                        idx += 2;
-                    }
-                    other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for arrange-serial (expected --id/--name/--ladders)"
-                        ));
-                    }
-                }
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::CreateArrangementSerial {
-                    container_ids,
-                    arrangement_id,
-                    name,
-                    ladders,
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
-        }
-        "arrange-set-ladders" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err(
-                    "arrange-set-ladders requires: ARR_ID [--ladders NAME[,NAME]]".to_string(),
-                );
-            }
-            let arrangement_id = args[cmd_idx + 1].trim().to_string();
-            if arrangement_id.is_empty() {
-                return Err("arrange-set-ladders requires a non-empty ARR_ID".to_string());
-            }
-            let mut ladders: Option<Vec<String>> = None;
-            let mut idx = cmd_idx + 2;
-            while idx < args.len() {
-                match args[idx].as_str() {
-                    "--ladders" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --ladders".to_string());
-                        }
-                        ladders = Some(
-                            args[idx + 1]
-                                .split(',')
-                                .map(|s| s.trim())
-                                .filter(|s| !s.is_empty())
-                                .map(|s| s.to_string())
-                                .collect::<Vec<_>>(),
-                        );
-                        idx += 2;
-                    }
-                    other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for arrange-set-ladders (expected --ladders)"
-                        ));
-                    }
-                }
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::SetArrangementLadders {
-                    arrangement_id,
-                    ladders: ladders.filter(|values| !values.is_empty()),
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            if let Some(msg) = result.messages.first() {
-                println!("{msg}");
-            }
-            Ok(())
-        }
-        "export-pool" => {
-            if args.len() <= cmd_idx + 2 {
-                usage();
-                return Err(
-                    "export-pool requires: IDS OUTPUT.pool.gentle.json [HUMAN_ID]".to_string(),
-                );
-            }
-            let ids = args[cmd_idx + 1]
-                .split(',')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>();
-            if ids.is_empty() {
-                return Err("export-pool requires at least one sequence id".to_string());
-            }
-            let output = &args[cmd_idx + 2];
-            let human_id = args.get(cmd_idx + 3).cloned();
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::ExportPool {
-                    inputs: ids,
-                    path: output.to_string(),
-                    pool_id: Some("pool_export".to_string()),
-                    human_id,
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            print_json(&result)
-        }
-        "export-run-bundle" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err(
-                    "export-run-bundle requires: OUTPUT.run_bundle.json [--run-id RUN_ID]"
-                        .to_string(),
-                );
-            }
-            let output = args[cmd_idx + 1].clone();
-            let mut run_id: Option<String> = None;
-            let mut idx = cmd_idx + 2;
-            while idx < args.len() {
-                match args[idx].as_str() {
-                    "--run-id" => {
-                        if idx + 1 >= args.len() {
-                            return Err("Missing value after --run-id".to_string());
-                        }
-                        let value = args[idx + 1].trim();
-                        if !value.is_empty() {
-                            run_id = Some(value.to_string());
-                        }
-                        idx += 2;
-                    }
-                    other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for export-run-bundle (expected --run-id)"
-                        ));
-                    }
-                }
-            }
-            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine
-                .apply(Operation::ExportProcessRunBundle {
-                    path: output,
-                    run_id,
-                })
-                .map_err(|e| e.to_string())?;
-            engine
-                .state()
-                .save_to_path(&state_path)
-                .map_err(|e| e.to_string())?;
-            print_json(&result)
-        }
-        "import-pool" => {
-            if args.len() <= cmd_idx + 1 {
-                usage();
-                return Err("import-pool requires: INPUT.pool.gentle.json [PREFIX]".to_string());
-            }
-            let input = &args[cmd_idx + 1];
-            let prefix = args
-                .get(cmd_idx + 2)
-                .cloned()
-                .unwrap_or_else(|| "pool".to_string());
-            let text = fs::read_to_string(input)
-                .map_err(|e| format!("Could not read pool file '{input}': {e}"))?;
-            let pool: PoolExport = serde_json::from_str(&text)
-                .map_err(|e| format!("Invalid pool JSON '{input}': {e}"))?;
-            if pool.schema != "gentle.pool.v1" {
-                return Err(format!(
-                    "Unsupported pool schema '{}', expected 'gentle.pool.v1'",
-                    pool.schema
-                ));
-            }
-
-            let mut state = load_state(&state_path)?;
-            for (idx, member) in pool.members.iter().enumerate() {
-                let mut dna = gentle::dna_sequence::DNAsequence::from_sequence(&member.sequence)
-                    .map_err(|e| format!("Invalid DNA in pool member '{}': {e}", member.seq_id))?;
-                if let Some(name) = &member.name {
-                    let mut value = serde_json::to_value(&dna)
-                        .map_err(|e| format!("Could not serialize sequence: {e}"))?;
-                    if let Some(obj) = value.as_object_mut() {
-                        if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
-                            seq_obj.insert("name".to_string(), json!(name));
-                        }
-                    }
-                    dna = serde_json::from_value(value)
-                        .map_err(|e| format!("Could not set sequence name: {e}"))?;
-                }
-                apply_pool_member_topology_hint(&member.topology, &mut dna)?;
-                apply_member_overhang(member, &mut dna)?;
-                dna.update_computed_features();
-                let base = format!("{prefix}_{}", idx + 1);
-                let id = unique_id(&state.sequences, &base);
-                state.sequences.insert(id, dna);
-            }
-            state.save_to_path(&state_path).map_err(|e| e.to_string())?;
-            println!(
-                "Imported pool '{}' ({} members) into '{}'",
-                pool.pool_id, pool.member_count, state_path
-            );
-            Ok(())
+        cmd if gentle_cli_pools::is_pool_command(cmd) => {
+            gentle_cli_pools::handle_pool_family(cmd, &args, cmd_idx, &state_path)
         }
         "op" => {
             if args.len() <= cmd_idx + 1 {
