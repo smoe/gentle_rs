@@ -45,6 +45,9 @@ AUTO_FETCH_FIXTURES="${AUTO_FETCH_FIXTURES:-0}"
 FIXTURE_DIR="${FIXTURE_DIR:-$GENTLE_REPO/test_files/fixtures/mapping}"
 FIXTURE_SPECIES="${FIXTURE_SPECIES:-homo_sapiens}"
 FIXTURE_SPECIES_LABEL="${FIXTURE_SPECIES_LABEL:-human}"
+AUTO_PARALOG_CONTROLS="${AUTO_PARALOG_CONTROLS:-0}"
+PARALOG_CONTROL_SPECIES="${PARALOG_CONTROL_SPECIES:-$FIXTURE_SPECIES}"
+PARALOG_CONTROL_TARGET_SPECIES="${PARALOG_CONTROL_TARGET_SPECIES:-$FIXTURE_SPECIES}"
 DEFAULT_SEED_FRAGMENT="${DEFAULT_SEED_FRAGMENT:---kmer-len 10 --seed-stride-bp 1 --min-seed-hit-fraction 0.300 --min-weighted-seed-hit-fraction 0.050 --min-unique-matched-kmers 12 --min-chain-consistency-fraction 0.40 --max-median-transcript-gap 4.00 --min-confirmed-transitions 1 --min-transition-support-fraction 0.05 --cdna-poly-t-flip --poly-t-prefix-min-bp 18}"
 
 GENBANK_PATH=""
@@ -64,6 +67,7 @@ declare -a CONTROL_FASTAS=()
 declare -a MUST_PASS_GENES=()
 declare -a POSITIVE_GENES=()
 declare -a CONTROL_GENES=()
+declare -a PARALOG_CONTROL_GENES=()
 
 usage() {
   cat <<'EOF'
@@ -105,6 +109,8 @@ Options for run:
   --must-pass-gene GENE            Fetch/use Ensembl cDNA fixture as must-pass panel.
   --positive-gene GENE             Fetch/use Ensembl cDNA fixture as softer positive panel.
   --control-gene GENE              Fetch/use Ensembl cDNA fixture as control panel.
+  --control-human-paralogs         Fetch Ensembl human paralogs of GENE as controls.
+  --control-paralogs               Fetch Ensembl same-species paralogs of GENE as controls.
   --auto-fetch-fixtures            Fetch missing Ensembl cDNA fixtures through GENtle.
   --fixture-dir DIR                Fixture FASTA directory; default test_files/fixtures/mapping.
   --no-auto-fixture                Do not auto-use test_files/.../ensembl_human_gene_all.fasta.
@@ -278,6 +284,20 @@ parse_run_args() {
       --control-gene|--control-transcript-gene)
         CONTROL_GENES+=("${2:-}")
         shift 2
+        ;;
+      --control-human-paralogs)
+        AUTO_PARALOG_CONTROLS=1
+        PARALOG_CONTROL_SPECIES="homo_sapiens"
+        PARALOG_CONTROL_TARGET_SPECIES="homo_sapiens"
+        AUTO_FETCH_FIXTURES=1
+        shift
+        ;;
+      --control-paralogs)
+        AUTO_PARALOG_CONTROLS=1
+        PARALOG_CONTROL_SPECIES="$FIXTURE_SPECIES"
+        PARALOG_CONTROL_TARGET_SPECIES="$FIXTURE_SPECIES"
+        AUTO_FETCH_FIXTURES=1
+        shift
         ;;
       --auto-fetch-fixtures)
         AUTO_FETCH_FIXTURES=1
@@ -739,10 +759,84 @@ resolve_seed_feature() {
   log "SEED_FEATURE_ID=$SEED_FEATURE_ID"
 }
 
+append_unique_paralog_control_gene() {
+  local gene="$1"
+  local existing
+  [ -n "$gene" ] || return 1
+  for existing in "${CONTROL_GENES[@]}"; do
+    if [ "$existing" = "$gene" ]; then
+      return 1
+    fi
+  done
+  for existing in "${PARALOG_CONTROL_GENES[@]}"; do
+    if [ "$existing" = "$gene" ]; then
+      return 1
+    fi
+  done
+  PARALOG_CONTROL_GENES+=("$gene")
+  return 0
+}
+
+collect_paralog_control_genes() {
+  [ "$AUTO_PARALOG_CONTROLS" = "1" ] || return 0
+
+  local paralog_script list_file json_file tsv_file stderr_log gene added total
+  paralog_script="$SCRIPT_DIR/list_ensembl_paralogs.py"
+  list_file="$RUN_ROOT/manifests/${GENE_SAFE}.ensembl_paralog_control_genes.txt"
+  json_file="$RUN_ROOT/reports/${GENE_SAFE}.ensembl_paralog_controls.raw.json"
+  tsv_file="$RUN_ROOT/reports/${GENE_SAFE}.ensembl_paralog_controls.tsv"
+  stderr_log="$RUN_ROOT/logs/${GENE_SAFE}.ensembl_paralog_controls.stderr.log"
+
+  if [ ! -s "$paralog_script" ]; then
+    log "WARNING: Ensembl paralog helper is missing; continuing without automatic paralog controls: $paralog_script"
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    log "WARNING: python3 is not available; continuing without automatic paralog controls"
+    return 0
+  fi
+
+  log "Retrieve Ensembl same-species paralog controls for $GENE_ID ($PARALOG_CONTROL_SPECIES -> $PARALOG_CONTROL_TARGET_SPECIES)"
+  if ! python3 "$paralog_script" "$GENE_ID" \
+    --species "$PARALOG_CONTROL_SPECIES" \
+    --target-species "$PARALOG_CONTROL_TARGET_SPECIES" \
+    --json-output "$json_file" \
+    > "$list_file" \
+    2> "$stderr_log"; then
+    log "WARNING: Ensembl paralog lookup failed for $GENE_ID; continuing without automatic paralog controls"
+    tail -n 40 "$stderr_log" >&2 || true
+    return 0
+  fi
+
+  python3 "$paralog_script" "$GENE_ID" \
+    --from-json "$json_file" \
+    --target-species "$PARALOG_CONTROL_TARGET_SPECIES" \
+    --format tsv \
+    > "$tsv_file" \
+    2>> "$stderr_log" || true
+
+  added=0
+  total=0
+  while IFS= read -r gene; do
+    [ -n "$gene" ] || continue
+    total=$((total + 1))
+    if append_unique_paralog_control_gene "$gene"; then
+      added=$((added + 1))
+    fi
+  done < "$list_file"
+
+  if [ "$total" -eq 0 ]; then
+    log "No Ensembl same-species paralog controls found for $GENE_ID"
+  else
+    log "Auto-added $added/$total Ensembl paralog control gene(s) for $GENE_ID; ids=$list_file details=$tsv_file"
+  fi
+}
+
 prepare_preflight_fastas() {
   ensure_transcript_fixture() {
     local gene="$1"
     local role="$2"
+    local required="${3:-required}"
     local species_token gene_token fixture_path fixture_fetcher fixture_work stdout_log stderr_log
     species_token="$(fixture_token "$FIXTURE_SPECIES_LABEL")"
     gene_token="$(fixture_token "$gene")"
@@ -751,10 +845,21 @@ prepare_preflight_fastas() {
       printf '%s\n' "$fixture_path"
       return 0
     fi
-    [ "$AUTO_FETCH_FIXTURES" = "1" ] \
-      || die "Missing $role transcript fixture for $gene: $fixture_path (use --auto-fetch-fixtures to retrieve it)"
+    if [ "$AUTO_FETCH_FIXTURES" != "1" ]; then
+      if [ "$required" = "optional" ]; then
+        log "WARNING: Missing optional $role transcript fixture for $gene: $fixture_path"
+        return 1
+      fi
+      die "Missing $role transcript fixture for $gene: $fixture_path (use --auto-fetch-fixtures to retrieve it)"
+    fi
     fixture_fetcher="$SCRIPT_DIR/fetch_ensembl_cdna_fixtures.sh"
-    [ -x "$fixture_fetcher" ] || die "Missing executable fixture fetcher: $fixture_fetcher"
+    if [ ! -x "$fixture_fetcher" ]; then
+      if [ "$required" = "optional" ]; then
+        log "WARNING: Missing executable fixture fetcher for optional $role control: $fixture_fetcher"
+        return 1
+      fi
+      die "Missing executable fixture fetcher: $fixture_fetcher"
+    fi
     fixture_work="$RUN_ROOT/resources/ensembl_cdna_fixtures"
     stdout_log="$RUN_ROOT/logs/fetch_fixture_$(fixture_token "$gene").stdout.log"
     stderr_log="$RUN_ROOT/logs/fetch_fixture_$(fixture_token "$gene").stderr.log"
@@ -770,6 +875,10 @@ prepare_preflight_fastas() {
       2> "$stderr_log"; then
       log "Fixture fetch for $gene failed; stdout=$stdout_log stderr=$stderr_log"
       tail -n 40 "$stderr_log" >&2 || true
+      if [ "$required" = "optional" ]; then
+        log "WARNING: Skipping optional $role control $gene because its Ensembl cDNA fixture could not be fetched"
+        return 1
+      fi
       die "Could not fetch Ensembl cDNA fixture for $gene"
     fi
     if [ ! -s "$fixture_path" ]; then
@@ -780,6 +889,10 @@ prepare_preflight_fastas() {
       tail -n 40 "$stderr_log" >&2 || true
       log "Matching fixture files currently under $FIXTURE_DIR:"
       find "$FIXTURE_DIR" -maxdepth 1 -type f -iname "*${gene_token}*" -print >&2 || true
+      if [ "$required" = "optional" ]; then
+        log "WARNING: Skipping optional $role control $gene because no fetched fixture was written"
+        return 1
+      fi
       die "Missing fetched Ensembl cDNA fixture for $gene"
     fi
     printf '%s\n' "$fixture_path"
@@ -794,6 +907,7 @@ prepare_preflight_fastas() {
       log "Auto-added transcript fixture for $GENE_ID: $resolved_fixture"
     fi
   fi
+  collect_paralog_control_genes
 
   for gene in "${MUST_PASS_GENES[@]}"; do
     [ -n "$gene" ] || continue
@@ -806,6 +920,12 @@ prepare_preflight_fastas() {
   for gene in "${CONTROL_GENES[@]}"; do
     [ -n "$gene" ] || continue
     CONTROL_FASTAS+=("$(ensure_transcript_fixture "$gene" "control")")
+  done
+  for gene in "${PARALOG_CONTROL_GENES[@]}"; do
+    [ -n "$gene" ] || continue
+    if fasta="$(ensure_transcript_fixture "$gene" "paralog-control" optional)"; then
+      CONTROL_FASTAS+=("$fasta")
+    fi
   done
 
   for fasta in "${MUST_PASS_FASTAS[@]}" "${POSITIVE_FASTAS[@]}" "${CONTROL_FASTAS[@]}"; do

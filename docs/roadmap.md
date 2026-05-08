@@ -4630,6 +4630,16 @@ Status:
     admitting p53-family controls. The report now also surfaces
     control-derived threshold margins and paste-ready `rna-reads interpret`
     seed-filter fragments for cluster/headless mapping runs.
+  - Follow-up specificity layer: retrieve curated Ensembl same-species paralogs
+    first and add them as explicit RNA-read seed-filter controls before using
+    broader BLAST/near-neighbor exclusion. The BLAST fallback should then test
+    target-gene transcript fixtures or representative retained reads against a
+    broader transcript/reference database, collect recurrent high-quality
+    non-target hits as explicit control FASTAs/gene panels, and rerun preflight
+    so good false hits are excluded deterministically rather than discovered
+    ad hoc during downstream interpretation. This is particularly relevant for
+    renamed/alias-prone close controls such as the PATZ1/PATZ2 family and for
+    conserved domains shared across transcription-factor families.
   - A from-scratch TP73 pancreatic cancer Nanopore cDNA benchmark runbook now
     lives at `docs/tp73_pancreas_benchmark_runbook.md`, tying SRA retrieval,
     FASTQ/FASTA conversion, TP73 positive controls, TP53/TP63 negative

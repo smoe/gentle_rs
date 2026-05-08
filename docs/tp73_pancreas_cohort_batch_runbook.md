@@ -205,15 +205,32 @@ Useful defaults:
 - `--must-pass-gene`, `--positive-gene`, and `--control-gene` are convenience
   aliases for Ensembl cDNA fixture panels. With `--auto-fetch-fixtures`, missing
   fixture FASTAs are retrieved through GENtle before the preflight. For example,
-  a PATZ1 screen controlled by PATZ2 can be started as:
+  an E2F1 screen controlled by the known E2F2 family member can be started as:
+
+  ```bash
+  scripts/pancreas_gene_rna_screen.sh run E2F1 \
+    --jobs 6 \
+    --seed-only \
+    --manifest "$WORK/manifests/pancreas_runs.unique_first.tsv" \
+    --auto-fetch-fixtures \
+    --control-gene E2F2
+  ```
+
+- `--control-human-paralogs` asks Ensembl Compara for same-species human
+  paralogs of the target gene, stores the raw homology payload and a TSV under
+  the run's `reports/` directory, fetches those cDNA fixtures, and adds them as
+  preflight controls before any BLAST-style near-neighbor search is needed. This
+  is the preferred first specificity pass when a gene symbol has renamed or
+  alias-prone family members. Explicit `--control-gene` fixtures remain strict;
+  automatically discovered paralog controls are best-effort and skipped with a
+  warning if a specific cDNA fixture is unavailable:
 
   ```bash
   scripts/pancreas_gene_rna_screen.sh run PATZ1 \
     --jobs 6 \
     --seed-only \
     --manifest "$WORK/manifests/pancreas_runs.unique_first.tsv" \
-    --auto-fetch-fixtures \
-    --control-gene PATZ2
+    --control-human-paralogs
   ```
 
 - To prepare missing Ensembl cDNA controls for a gene family before a
