@@ -590,6 +590,19 @@ def merge_read_length_context(rows: list[dict[str, object]]) -> None:
                 row[key] = context[key]
 
 
+def enforce_support_length_source(rows: list[dict[str, object]], source_mode: str) -> None:
+    """Keep exported support-length provenance aligned with the plotted policy."""
+    if source_mode == "any":
+        return
+    for row in rows:
+        if str(row.get("support_length_source") or "") == "strict_seed_passed":
+            continue
+        row["support_length_source"] = ""
+        row["support_high_read_bp"] = ""
+        row["support_max_read_bp"] = ""
+        row["support_mean_read_bp"] = ""
+
+
 def write_family_tsv(rows: list[dict[str, object]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as handle:
@@ -1067,6 +1080,7 @@ def main() -> int:
     }
 
     merge_read_length_context(rows)
+    enforce_support_length_source(rows, args.support_length_source)
     rows.sort(key=lambda row: (sort_key_for_run(str(row.get("run_accession") or "")), str(row.get("gene") or "")))
     validate_read_length_quantiles(rows, "gene-family canonical table")
     support_length_genes = {
