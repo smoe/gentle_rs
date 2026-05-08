@@ -41,6 +41,10 @@ CONCATEMER_LIMIT="${CONCATEMER_LIMIT:-0}"
 OPTIMIZE_PARAMETERS="${OPTIMIZE_PARAMETERS:-1}"
 MAX_CONTROL_MATCH_PROBABILITY="${MAX_CONTROL_MATCH_PROBABILITY:-0.0}"
 AUTO_FIXTURE="${AUTO_FIXTURE:-1}"
+AUTO_FETCH_FIXTURES="${AUTO_FETCH_FIXTURES:-0}"
+FIXTURE_DIR="${FIXTURE_DIR:-$GENTLE_REPO/test_files/fixtures/mapping}"
+FIXTURE_SPECIES="${FIXTURE_SPECIES:-homo_sapiens}"
+FIXTURE_SPECIES_LABEL="${FIXTURE_SPECIES_LABEL:-human}"
 DEFAULT_SEED_FRAGMENT="${DEFAULT_SEED_FRAGMENT:---kmer-len 10 --seed-stride-bp 1 --min-seed-hit-fraction 0.300 --min-weighted-seed-hit-fraction 0.050 --min-unique-matched-kmers 12 --min-chain-consistency-fraction 0.40 --max-median-transcript-gap 4.00 --min-confirmed-transitions 1 --min-transition-support-fraction 0.05 --cdna-poly-t-flip --poly-t-prefix-min-bp 18}"
 
 GENBANK_PATH=""
@@ -57,6 +61,9 @@ SEED_ARGS_FILE=""
 declare -a MUST_PASS_FASTAS=()
 declare -a POSITIVE_FASTAS=()
 declare -a CONTROL_FASTAS=()
+declare -a MUST_PASS_GENES=()
+declare -a POSITIVE_GENES=()
+declare -a CONTROL_GENES=()
 
 usage() {
   cat <<'EOF'
@@ -93,6 +100,11 @@ Options for run:
   --must-pass-transcript-fasta P   Repeatable positive isoform panel for preflight.
   --positive-transcript-fasta P    Repeatable softer positive panel for preflight.
   --control-transcript-fasta P     Repeatable control panel for preflight.
+  --must-pass-gene GENE            Fetch/use Ensembl cDNA fixture as must-pass panel.
+  --positive-gene GENE             Fetch/use Ensembl cDNA fixture as softer positive panel.
+  --control-gene GENE              Fetch/use Ensembl cDNA fixture as control panel.
+  --auto-fetch-fixtures            Fetch missing Ensembl cDNA fixtures through GENtle.
+  --fixture-dir DIR                Fixture FASTA directory; default test_files/fixtures/mapping.
   --no-auto-fixture                Do not auto-use test_files/.../ensembl_human_gene_all.fasta.
   --no-optimize-parameters         Run preflight for reporting but use default seed args.
   --seed-args "..."                Explicit seed-filter fragment.
@@ -163,6 +175,10 @@ lower_token() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
+fixture_token() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_' '_'
+}
+
 upper_token() {
   printf '%s' "$1" | tr '[:lower:]' '[:upper:]'
 }
@@ -224,6 +240,26 @@ parse_run_args() {
         ;;
       --control-transcript-fasta)
         CONTROL_FASTAS+=("${2:-}")
+        shift 2
+        ;;
+      --must-pass-gene|--must-pass-transcript-gene)
+        MUST_PASS_GENES+=("${2:-}")
+        shift 2
+        ;;
+      --positive-gene|--positive-transcript-gene)
+        POSITIVE_GENES+=("${2:-}")
+        shift 2
+        ;;
+      --control-gene|--control-transcript-gene)
+        CONTROL_GENES+=("${2:-}")
+        shift 2
+        ;;
+      --auto-fetch-fixtures)
+        AUTO_FETCH_FIXTURES=1
+        shift
+        ;;
+      --fixture-dir)
+        FIXTURE_DIR="${2:-}"
         shift 2
         ;;
       --no-auto-fixture)
@@ -505,14 +541,59 @@ resolve_seed_feature() {
 }
 
 prepare_preflight_fastas() {
-  local auto_fixture
-  auto_fixture="test_files/fixtures/mapping/ensembl_human_${GENE_SAFE}_all.fasta"
-  if [ "$AUTO_FIXTURE" = "1" ] && [ -s "$auto_fixture" ]; then
-    MUST_PASS_FASTAS+=("$auto_fixture")
-    log "Auto-added transcript fixture for $GENE_ID: $auto_fixture"
+  ensure_transcript_fixture() {
+    local gene="$1"
+    local role="$2"
+    local species_token gene_token fixture_path fixture_fetcher fixture_work
+    species_token="$(fixture_token "$FIXTURE_SPECIES_LABEL")"
+    gene_token="$(fixture_token "$gene")"
+    fixture_path="$FIXTURE_DIR/ensembl_${species_token}_${gene_token}_all.fasta"
+    if [ -s "$fixture_path" ]; then
+      printf '%s\n' "$fixture_path"
+      return 0
+    fi
+    [ "$AUTO_FETCH_FIXTURES" = "1" ] \
+      || die "Missing $role transcript fixture for $gene: $fixture_path (use --auto-fetch-fixtures to retrieve it)"
+    fixture_fetcher="$SCRIPT_DIR/fetch_ensembl_cdna_fixtures.sh"
+    [ -x "$fixture_fetcher" ] || die "Missing executable fixture fetcher: $fixture_fetcher"
+    fixture_work="$RUN_ROOT/resources/ensembl_cdna_fixtures"
+    log "Auto-fetch Ensembl cDNA fixture for $gene ($role): $fixture_path"
+    "$fixture_fetcher" \
+      --gene "$gene" \
+      --species "$FIXTURE_SPECIES" \
+      --species-label "$FIXTURE_SPECIES_LABEL" \
+      --out-dir "$FIXTURE_DIR" \
+      --work-dir "$fixture_work" \
+      --gentle-bin "$GENTLE_BIN" \
+      > "$RUN_ROOT/logs/fetch_fixture_$(fixture_token "$gene").stdout.log" \
+      2> "$RUN_ROOT/logs/fetch_fixture_$(fixture_token "$gene").stderr.log"
+    [ -s "$fixture_path" ] || die "Fixture fetch for $gene completed but did not write $fixture_path"
+    printf '%s\n' "$fixture_path"
+  }
+
+  local auto_fixture gene fasta resolved_fixture
+  auto_fixture="$FIXTURE_DIR/ensembl_$(fixture_token "$FIXTURE_SPECIES_LABEL")_$(fixture_token "$GENE_ID")_all.fasta"
+  if [ "$AUTO_FIXTURE" = "1" ]; then
+    if [ -s "$auto_fixture" ] || [ "$AUTO_FETCH_FIXTURES" = "1" ]; then
+      resolved_fixture="$(ensure_transcript_fixture "$GENE_ID" "must-pass")"
+      MUST_PASS_FASTAS+=("$resolved_fixture")
+      log "Auto-added transcript fixture for $GENE_ID: $resolved_fixture"
+    fi
   fi
 
-  local fasta
+  for gene in "${MUST_PASS_GENES[@]}"; do
+    [ -n "$gene" ] || continue
+    MUST_PASS_FASTAS+=("$(ensure_transcript_fixture "$gene" "must-pass")")
+  done
+  for gene in "${POSITIVE_GENES[@]}"; do
+    [ -n "$gene" ] || continue
+    POSITIVE_FASTAS+=("$(ensure_transcript_fixture "$gene" "positive")")
+  done
+  for gene in "${CONTROL_GENES[@]}"; do
+    [ -n "$gene" ] || continue
+    CONTROL_FASTAS+=("$(ensure_transcript_fixture "$gene" "control")")
+  done
+
   for fasta in "${MUST_PASS_FASTAS[@]}" "${POSITIVE_FASTAS[@]}" "${CONTROL_FASTAS[@]}"; do
     [ -n "$fasta" ] || continue
     require_file "$fasta"

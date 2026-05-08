@@ -159,6 +159,20 @@ Useful defaults:
 - `--must-pass-transcript-fasta`, `--positive-transcript-fasta`, and
   `--control-transcript-fasta` are repeatable and feed the same isoform
   preflight contract used for TP73 controls.
+- `--must-pass-gene`, `--positive-gene`, and `--control-gene` are convenience
+  aliases for Ensembl cDNA fixture panels. With `--auto-fetch-fixtures`, missing
+  fixture FASTAs are retrieved through GENtle before the preflight. For example,
+  a PATZ1 screen controlled by PATZ2 can be started as:
+
+  ```bash
+  scripts/pancreas_gene_rna_screen.sh run PATZ1 \
+    --jobs 6 \
+    --seed-only \
+    --manifest "$WORK/manifests/pancreas_runs.unique_first.tsv" \
+    --auto-fetch-fixtures \
+    --control-gene PATZ2
+  ```
+
 - To prepare missing Ensembl cDNA controls for a gene family before a
   controlled preflight, use the GENtle-backed fixture helper. For example, E2F1
   positives plus E2F2-E2F8 negative controls can be generated with:

@@ -323,6 +323,8 @@ class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
             "Interpret reads and summarize seed evidence only (default)",
             result.stdout,
         )
+        self.assertIn("--auto-fetch-fixtures", result.stdout)
+        self.assertIn("--control-gene GENE", result.stdout)
         self.assertIn("--with-alignment", result.stdout)
         self.assertIn("--align-selection MODE", result.stdout)
         self.assertIn("stop after the seed phase", result.stdout)

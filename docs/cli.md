@@ -2844,6 +2844,10 @@ Isoform architecture panel workflow:
       `ensembl_<species>_<gene-token>_all.fasta`, and records sidecar provenance
       suitable for `--must-pass-transcript-fasta` /
       `--control-transcript-fasta`
+    - `scripts/pancreas_gene_rna_screen.sh run` can call the same fixture
+      helper when `--auto-fetch-fixtures` is provided; `--must-pass-gene`,
+      `--positive-gene`, and `--control-gene` then resolve to Ensembl cDNA
+      FASTA fixtures automatically before the RNA-read preflight
   - direct Ensembl region/ROI route:
     - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
     - compact coordinates are accepted as
