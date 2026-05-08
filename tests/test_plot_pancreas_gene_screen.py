@@ -1,3 +1,4 @@
+import csv
 import subprocess
 import tempfile
 import textwrap
@@ -212,6 +213,95 @@ class PlotPancreasGeneScreenTests(unittest.TestCase):
             self.assertIn("gentle.rna_read_gene_screen_summary.v1\tTP53\tSRR1", output_text)
             self.assertIn("strict_seed_passed", output_text)
             self.assertIn("TP53 / TP63 seed-passed support", svg)
+
+    def test_family_plotter_keeps_accepted_target_lengths_out_of_strict_seed_export(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            gene_support = tmp_path / "tp53.gene_support.summary.json"
+            gene_support.write_text(
+                textwrap.dedent(
+                    """\
+                    {
+                      "accepted_target_count": 8,
+                      "accepted_target_read_lengths": {
+                        "q90_length_bp": 900,
+                        "max_length_bp": 1200,
+                        "mean_length_bp": 800
+                      }
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
+            batch_summary = tmp_path / "batch_summary.tsv"
+            batch_summary.write_text(
+                "\t".join(
+                    [
+                        "sample_id",
+                        "sample_name",
+                        "run_accession",
+                        "total_reads",
+                        "seed_passed_reads",
+                        "accepted_target_count",
+                        "gene_support_summary_json_path",
+                    ]
+                )
+                + "\n"
+                + "\t".join(["S1", "Sample 1", "SRR1", "1000", "10", "8", str(gene_support)])
+                + "\n",
+                encoding="utf-8",
+            )
+            output_svg = tmp_path / "family.svg"
+            output_tsv = tmp_path / "family.tsv"
+
+            subprocess.run(
+                [
+                    "python3",
+                    str(REPO_ROOT / "scripts" / "plot_pancreas_gene_family.py"),
+                    "--batch-summary",
+                    f"TP53={batch_summary}",
+                    "--genes",
+                    "TP53",
+                    "--output",
+                    str(output_svg),
+                    "--output-tsv",
+                    str(output_tsv),
+                ],
+                check=True,
+                cwd=REPO_ROOT,
+            )
+
+            with output_tsv.open(newline="", encoding="utf-8") as handle:
+                row = next(csv.DictReader(handle, delimiter="\t"))
+            self.assertEqual(row["seed_passed_reads"], "10")
+            self.assertEqual(row["accepted_target_count"], "8")
+            self.assertEqual(row["support_length_source"], "")
+            self.assertEqual(row["support_max_read_bp"], "")
+
+            any_output_svg = tmp_path / "family_any.svg"
+            any_output_tsv = tmp_path / "family_any.tsv"
+            subprocess.run(
+                [
+                    "python3",
+                    str(REPO_ROOT / "scripts" / "plot_pancreas_gene_family.py"),
+                    "--batch-summary",
+                    f"TP53={batch_summary}",
+                    "--genes",
+                    "TP53",
+                    "--support-length-source",
+                    "any",
+                    "--output",
+                    str(any_output_svg),
+                    "--output-tsv",
+                    str(any_output_tsv),
+                ],
+                check=True,
+                cwd=REPO_ROOT,
+            )
+            with any_output_tsv.open(newline="", encoding="utf-8") as handle:
+                any_row = next(csv.DictReader(handle, delimiter="\t"))
+            self.assertEqual(any_row["support_length_source"], "accepted_target")
+            self.assertEqual(any_row["support_max_read_bp"], "1200")
 
 
 class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
