@@ -48,6 +48,33 @@ cargo build --release --bin gentle_cli
 GENTLE=(/home/clawbio/GENtle/target/release/gentle_cli --state "$STATE" --progress-stderr)
 ```
 
+Gene-group context is captured as part of the evidence bundle, but it does not
+define the mapper. TP73 remains only the concrete benchmark gene; the same
+release path can later be repeated for any reviewed local or overlay-discovered
+GENtle gene group.
+
+```bash
+mkdir -p "$WORK/reports/gene_groups"
+
+"${GENTLE[@]}" shell 'gene-groups doctor' \
+  > "$WORK/reports/gene_groups/gene_groups.doctor.json"
+
+"${GENTLE[@]}" shell 'gene-groups show p53_family' \
+  > "$WORK/reports/gene_groups/p53_family.show.json"
+
+jq -r '.group.members[] | select((.status // "included") == "included") | .symbol' \
+  "$WORK/reports/gene_groups/p53_family.show.json" \
+  > "$WORK/reports/gene_groups/p53_family.members.txt"
+```
+
+Use project or user gene-group overlays when the relevant lab term is not a
+public Gene Ontology term or when the group should follow a particular local
+definition. The benchmark should preserve the resolved group snapshot beside
+the preflight report so later readers know which reviewed context was active.
+Do not hard-code external resources into the runbook: use whichever reviewed
+catalog, transcript FASTA, GenBank locus, Ensembl preparation, or local overlay
+is appropriate for the experiment and record it in the evidence bundle.
+
 Recommended tool preflight:
 
 ```bash
@@ -312,6 +339,8 @@ jq '{
   echo "- state: $STATE"
   echo "- report: $REPORT_ID"
   echo "- read FASTA: $READ_FASTA"
+  echo "- gene-group doctor: $WORK/reports/gene_groups/gene_groups.doctor.json"
+  echo "- p53-family group snapshot: $WORK/reports/gene_groups/p53_family.show.json"
   echo "- preflight: $WORK/reports/$REPORT_ID.preflight.json"
   echo "- final summary: $WORK/reports/$REPORT_ID.final_summary.json"
   echo "- top alignments: $WORK/post_interpret/json/$REPORT_ID.aligned.top200.json"

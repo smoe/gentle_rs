@@ -174,6 +174,43 @@ release-facing default is unconnected points because missing samples should stay
 visibly missing. The all-read q90 line belongs only to the upper whole-library
 read-length panel.
 
+### Gene-Group-Driven Input Selection
+
+For release and follow-on comparisons, prefer deriving the gene order from a
+reviewed GENtle gene-group catalog record rather than from an ad-hoc hand list.
+The group may be built in, supplied by a user/project overlay, or anchored to an
+external resource such as Gene Ontology without depending on that resource being
+the only authority.
+
+```bash
+mkdir -p "$WORK/gene_groups"
+
+target/release/gentle_cli shell 'gene-groups show p53_family' \
+  > "$WORK/gene_groups/p53_family.show.json"
+
+jq -r '.group.members[] | select((.status // "included") == "included") | .symbol' \
+  "$WORK/gene_groups/p53_family.show.json" \
+  > "$WORK/gene_groups/p53_family.genes.txt"
+
+GENES="$(paste -sd, "$WORK/gene_groups/p53_family.genes.txt")"
+
+python3 scripts/plot_pancreas_gene_family.py \
+  --canonical-summary "$TP53_ROOT/reports/tp53_pancreas.gene_screen_summary.tsv" \
+  --canonical-summary "$TP63_ROOT/reports/tp63_pancreas.gene_screen_summary.tsv" \
+  --canonical-summary "$TP73_ROOT/reports/tp73_pancreas.gene_screen_summary.tsv" \
+  --genes "$GENES" \
+  --metric per_million \
+  --output "$WORK/figures/p53_family_seed_passed_grouped.svg" \
+  --output-tsv "$WORK/figures/p53_family_seed_passed_grouped.tsv"
+```
+
+For a larger reviewed group, first run
+`scripts/pancreas_gene_rna_screen.sh group-plan GROUP`, inspect the generated
+member list and per-gene commands, then feed the completed canonical summaries
+into the family plotter. This keeps figure membership tied to an inspectable
+catalog snapshot while still allowing different transcript, genome, GenBank,
+or project-overlay resources for each gene screen.
+
 ## Compatibility Wrappers
 
 ### TP73 Wrapper

@@ -1,4 +1,5 @@
 import csv
+import os
 import subprocess
 import tempfile
 import textwrap
@@ -328,6 +329,8 @@ class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
         self.assertIn("--with-alignment", result.stdout)
         self.assertIn("--align-selection MODE", result.stdout)
         self.assertIn("stop after the seed phase", result.stdout)
+        self.assertIn("group-plan GROUP", result.stdout)
+        self.assertIn("Gene-group plans are review helpers", result.stdout)
 
     def test_gene_screen_script_defaults_to_seed_only_phase(self) -> None:
         script = (REPO_ROOT / "scripts" / "pancreas_gene_rna_screen.sh").read_text(
@@ -342,6 +345,85 @@ class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
         self.assertIn('SCREEN_PHASE="with_alignment"', script)
         self.assertIn("--concatemer-limit is ignored in seed-only mode", script)
         self.assertIn('rna-reads align-report "$report_id"', script)
+
+    def test_gene_screen_group_plan_writes_reviewable_commands(self) -> None:
+        fake_group_json = textwrap.dedent(
+            """\
+            {
+              "schema": "gentle.gene_group_show.v1",
+              "source_path": "assets/gene_groups.json",
+              "source_scope": "built-in",
+              "group": {
+                "id": "p53_family",
+                "label": "p53 family",
+                "curation_status": "curated",
+                "members": [
+                  {"symbol": "TP53", "status": "included"},
+                  {"symbol": "TP63", "status": "included"},
+                  {"symbol": "TP73", "status": "included"}
+                ]
+              }
+            }
+            """
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            fake_gentle = tmp_path / "fake_gentle_cli"
+            fake_gentle.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                "test \"$1\" = shell\n"
+                "printf '%s\\n' \"$2\" > \"$FAKE_GENTLE_LAST_CMD\"\n"
+                f"cat <<'JSON'\n{fake_group_json}JSON\n",
+                encoding="utf-8",
+            )
+            fake_gentle.chmod(0o755)
+            out_root = tmp_path / "screens"
+            out_dir = tmp_path / "plans"
+            manifest = tmp_path / "pancreas_runs.tsv"
+            fasta_root = tmp_path / "fastq"
+            last_cmd = tmp_path / "last_shell_command.txt"
+
+            subprocess.run(
+                [
+                    "bash",
+                    str(REPO_ROOT / "scripts" / "pancreas_gene_rna_screen.sh"),
+                    "group-plan",
+                    "p53_family",
+                    "--jobs",
+                    "3",
+                    "--manifest",
+                    str(manifest),
+                    "--fasta-root",
+                    str(fasta_root),
+                    "--out-root",
+                    str(out_root),
+                    "--out-dir",
+                    str(out_dir),
+                    "--seed-only",
+                ],
+                check=True,
+                cwd=REPO_ROOT,
+                env={
+                    **os.environ,
+                    "GENTLE_BIN": str(fake_gentle),
+                    "FAKE_GENTLE_LAST_CMD": str(last_cmd),
+                },
+            )
+
+            commands = (out_dir / "p53_family.commands.sh").read_text(encoding="utf-8")
+            plan = (out_dir / "p53_family.plan.md").read_text(encoding="utf-8")
+            genes = (out_dir / "p53_family.genes.txt").read_text(encoding="utf-8")
+            shell_command = last_cmd.read_text(encoding="utf-8")
+
+            self.assertIn('gene-groups show "p53_family"', shell_command)
+            self.assertEqual(["TP53", "TP63", "TP73"], genes.splitlines())
+            self.assertIn("pancreas_gene_rna_screen.sh run TP53", commands)
+            self.assertIn("--jobs 3", commands)
+            self.assertIn("--seed-only", commands)
+            self.assertIn(str(manifest), commands)
+            self.assertIn("reviewable command plan", plan)
 
     def test_gene_screen_script_syntax_is_valid(self) -> None:
         subprocess.run(

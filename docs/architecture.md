@@ -1382,6 +1382,10 @@ Gene-group knowledge-layer rule:
   state. This keeps group-based promoter/TFBS comparisons, motif-order queries,
   RNA-read cohorts, CUT&RUN summaries, MCP tools, and ClawBio reports
   deterministic and inspectable.
+- Long-running runbooks and release evidence bundles that use a group should
+  snapshot the resolved group record and catalog/overlay provenance beside the
+  generated analysis artifacts, so later readers can reproduce which reviewed
+  lab term, ontology anchor, or project-local cohort definition was active.
 
 Decision-trace capture/export contract (detailed plan):
 
