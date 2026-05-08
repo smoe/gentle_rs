@@ -2848,6 +2848,12 @@ Isoform architecture panel workflow:
       helper when `--auto-fetch-fixtures` is provided; `--must-pass-gene`,
       `--positive-gene`, and `--control-gene` then resolve to Ensembl cDNA
       FASTA fixtures automatically before the RNA-read preflight
+    - `scripts/list_ensembl_paralogs.py` queries Ensembl homology records for
+      same-species paralogues and prints one target Ensembl gene id per line by
+      default; `scripts/pancreas_gene_rna_screen.sh run --control-human-paralogs`
+      uses that helper before BLAST/near-neighbor exploration, fetches the
+      resulting cDNA fixtures, and adds available paralog fixtures as explicit
+      preflight controls
   - direct Ensembl region/ROI route:
     - `ensembl-region fetch SPECIES CHR START END [--strand +|-] [--output-id ID] [--coord-system-version VERSION]`
     - compact coordinates are accepted as

@@ -304,6 +304,74 @@ class PlotPancreasGeneScreenTests(unittest.TestCase):
             self.assertEqual(any_row["support_length_source"], "accepted_target")
             self.assertEqual(any_row["support_max_read_bp"], "1200")
 
+    def test_rebuild_gene_screen_summary_recovers_strict_seed_lengths_from_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            state = tmp_path / "legacy.gentle.json"
+            batch_summary = tmp_path / "batch_summary.tsv"
+            output_tsv = tmp_path / "gene_screen_summary.tsv"
+            state.write_text(
+                textwrap.dedent(
+                    """\
+                    {
+                      "metadata": {
+                        "rna_read_reports": {
+                          "schema": "gentle.rna_read_reports.v1",
+                          "reports": {
+                            "tp53_SRR1": {
+                              "report_id": "tp53_SRR1",
+                              "seq_id": "tp53_ncbi",
+                              "seed_feature_id": 3,
+                              "input_path": "reads.fa",
+                              "read_count_total": 5,
+                              "read_count_seed_passed": 2,
+                              "read_length_counts_all": [0, 0, 1, 1, 1, 1, 1],
+                              "read_length_counts_seed_passed": [0, 0, 0, 1, 0, 1]
+                            }
+                          }
+                        }
+                      }
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
+            batch_summary.write_text(
+                textwrap.dedent(
+                    """\
+                    sample_id\tsample_name\treport_id\tsra_accession\ttotal_reads\tseed_passed_reads\taccepted_target_count
+                    S1\tSample 1\ttp53_SRR1\tSRR1\t5\t2\t7
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            subprocess.run(
+                [
+                    "python3",
+                    str(REPO_ROOT / "scripts" / "rebuild_rna_gene_screen_summary_from_state.py"),
+                    "--gene",
+                    "TP53",
+                    "--state",
+                    str(state),
+                    "--batch-summary",
+                    str(batch_summary),
+                    "--output",
+                    str(output_tsv),
+                ],
+                check=True,
+                cwd=REPO_ROOT,
+            )
+
+            with output_tsv.open(newline="", encoding="utf-8") as handle:
+                row = next(csv.DictReader(handle, delimiter="\t"))
+            self.assertEqual(row["schema"], "gentle.rna_read_gene_screen_summary.v1")
+            self.assertEqual(row["gene"], "TP53")
+            self.assertEqual(row["seed_passed_reads"], "2")
+            self.assertEqual(row["seed_passed_q90_bp"], "5")
+            self.assertEqual(row["seed_passed_max_bp"], "5")
+            self.assertEqual(row["seed_passed_mean_bp"], "4")
+
 
 class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
     def test_gene_screen_help_documents_seed_only_default(self) -> None:
@@ -326,6 +394,7 @@ class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
         )
         self.assertIn("--auto-fetch-fixtures", result.stdout)
         self.assertIn("--control-gene GENE", result.stdout)
+        self.assertIn("--control-human-paralogs", result.stdout)
         self.assertIn("--with-alignment", result.stdout)
         self.assertIn("--align-selection MODE", result.stdout)
         self.assertIn("stop after the seed phase", result.stdout)
@@ -345,6 +414,8 @@ class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
         self.assertIn('SCREEN_PHASE="with_alignment"', script)
         self.assertIn("--concatemer-limit is ignored in seed-only mode", script)
         self.assertIn('rna-reads align-report "$report_id"', script)
+        self.assertIn('--control-human-paralogs)\n        AUTO_PARALOG_CONTROLS=1', script)
+        self.assertIn('collect_paralog_control_genes', script)
 
     def test_gene_screen_group_plan_writes_reviewable_commands(self) -> None:
         fake_group_json = textwrap.dedent(
@@ -435,6 +506,98 @@ class PancreasGeneRnaScreenScriptTests(unittest.TestCase):
             check=True,
             cwd=REPO_ROOT,
         )
+
+
+class EnsemblParalogScriptTests(unittest.TestCase):
+    def test_list_ensembl_paralogs_filters_same_species_paralog_targets(self) -> None:
+        payload = textwrap.dedent(
+            """\
+            {
+              "data": [
+                {
+                  "id": "ENSGSOURCE",
+                  "homologies": [
+                    {
+                      "type": "within_species_paralog",
+                      "target": {
+                        "id": "ENSGPARALOG1",
+                        "species": "homo_sapiens",
+                        "display_id": "PATZ2",
+                        "perc_id": 37.5,
+                        "perc_pos": 41.0
+                      }
+                    },
+                    {
+                      "type": "ortholog_one2one",
+                      "target": {
+                        "id": "ENSGORTHOLOG",
+                        "species": "homo_sapiens",
+                        "display_id": "OTHER"
+                      }
+                    },
+                    {
+                      "type": "within_species_paralog",
+                      "target": {
+                        "id": "ENSMUSG0000001",
+                        "species": "mus_musculus",
+                        "display_id": "Patz2"
+                      }
+                    },
+                    {
+                      "type": "within_species_paralog",
+                      "target": {
+                        "id": "ENSGSOURCE",
+                        "species": "homo_sapiens",
+                        "display_id": "PATZ1"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+            """
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            payload_path = Path(tmp_dir) / "homology.json"
+            payload_path.write_text(payload, encoding="utf-8")
+
+            ids = subprocess.run(
+                [
+                    "python3",
+                    str(REPO_ROOT / "scripts" / "list_ensembl_paralogs.py"),
+                    "PATZ1",
+                    "--from-json",
+                    str(payload_path),
+                    "--format",
+                    "ids",
+                ],
+                check=True,
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+            )
+            tsv = subprocess.run(
+                [
+                    "python3",
+                    str(REPO_ROOT / "scripts" / "list_ensembl_paralogs.py"),
+                    "PATZ1",
+                    "--from-json",
+                    str(payload_path),
+                    "--format",
+                    "tsv",
+                ],
+                check=True,
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(ids.stdout.strip(), "ENSGPARALOG1")
+            self.assertIn("target_id\ttarget_symbol", tsv.stdout)
+            self.assertIn("ENSGPARALOG1\tPATZ2", tsv.stdout)
+            self.assertNotIn("ENSGORTHOLOG", tsv.stdout)
+            self.assertNotIn("ENSMUSG0000001", tsv.stdout)
 
 
 class EnsemblCdnaFixtureScriptTests(unittest.TestCase):
