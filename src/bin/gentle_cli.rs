@@ -467,8 +467,8 @@ fn ensure_parent_dir(path: &str) -> Result<(), String> {
         .map_err(|e| format!("Could not create output directory for '{path}': {e}"))
 }
 
-fn usage() {
-    eprintln!(
+fn usage_text() -> String {
+    format!(
         "Usage:\n  \
   gentle_cli --help\n  \
   gentle_cli --version\n  \
@@ -615,10 +615,10 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N] [--max-hits-per-primer N] [--path OUTPUT.json]\n  \
   gentle_cli [--state PATH|--project PATH] primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N] [--max-hits-per-primer N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
+  gentle_cli [--state PATH|--project PATH] primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...\n  \
+  gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg] [--materialize-products] [--product-output-prefix PREFIX] [--product-gel-svg OUTPUT.svg] [--product-gel-ladder NAME]...\n  \
   gentle_cli [--state PATH|--project PATH] primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
+  gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json] [--svg OUTPUT.svg]\n  \
   gentle_cli [--state PATH|--project PATH] primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE\n  \
   gentle_cli [--state PATH|--project PATH] primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]\n  \
   gentle_cli [--state PATH|--project PATH] primers restriction-cloning-vector-suggestions SEQ_ID\n  \
@@ -691,7 +691,11 @@ fn usage() {
         rendering_usage = gentle_cli_rendering::USAGE,
         resources_usage = gentle_cli_resources::USAGE,
         services_usage = gentle_cli_services::USAGE
-    );
+    )
+}
+
+fn usage() {
+    eprintln!("{}", usage_text());
 }
 
 const SHELL_FORWARDED_COMMANDS: &[&str] = &[
@@ -1699,6 +1703,65 @@ mod tests {
                     .iter()
                     .any(|path| *path == *command || path.starts_with(&expected_prefix)),
                 "shell-forwarded command '{command}' is missing from docs/glossary.json"
+            );
+        }
+    }
+
+    #[test]
+    fn test_usage_text_includes_cli_glossary_paths() {
+        let glossary: serde_json::Value =
+            serde_json::from_str(include_str!("../../docs/glossary.json"))
+                .expect("parse docs/glossary.json");
+        let commands = glossary
+            .get("commands")
+            .and_then(|value| value.as_array())
+            .expect("glossary commands array");
+        let help = usage_text();
+        let mut missing = Vec::new();
+        for command in commands {
+            let interfaces = command
+                .get("interfaces")
+                .and_then(|value| value.as_array())
+                .expect("glossary command interfaces");
+            let is_cli = interfaces.iter().any(|interface| {
+                matches!(interface.as_str(), Some("cli-direct") | Some("cli-shell"))
+            });
+            if !is_cli {
+                continue;
+            }
+            let path = command
+                .get("path")
+                .and_then(|value| value.as_str())
+                .expect("glossary command path");
+            if !help.contains(path) {
+                missing.push(path.to_string());
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "gentle_cli --help must mention every CLI glossary command path:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    #[test]
+    fn test_usage_text_keeps_release_sensitive_options_current() {
+        let help = usage_text();
+        for token in [
+            "--seed-stride-bp",
+            "--record-indices i,j,k",
+            "--svg OUTPUT.svg",
+            "--materialize-products",
+            "--product-output-prefix PREFIX",
+            "--product-gel-svg OUTPUT.svg",
+            "--product-gel-ladder NAME",
+        ] {
+            assert!(help.contains(token), "missing current help token {token}");
+        }
+        for stale in ["--short-max-bp", "--long-window-bp", "--long-window-count"] {
+            assert!(
+                !help.contains(stale),
+                "gentle_cli --help still mentions stale RNA-read option {stale}"
             );
         }
     }
