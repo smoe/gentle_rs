@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-05-06
+Last updated: 2026-05-08
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -41,7 +41,8 @@ one persuasive end-to-end proof path.
 - Complete one from-scratch TP73 pancreatic cancer Nanopore cDNA benchmark run
   using `docs/tp73_pancreas_benchmark_runbook.md`, and preserve the generated
   preflight summary, final report summary, TSV exports, SVG target-quality
-  export, logs, and evidence-bundle note.
+  export, logs, resolved gene-group catalog snapshots, and evidence-bundle
+  note.
 - If abundance variation across pancreatic cancer cell lines is needed for the
   release story, keep it to the fixed-parameter cohort route in
   `docs/tp73_pancreas_cohort_batch_runbook.md`: one preflight-derived seed
@@ -4633,7 +4634,10 @@ Status:
     lives at `docs/tp73_pancreas_benchmark_runbook.md`, tying SRA retrieval,
     FASTQ/FASTA conversion, TP73 positive controls, TP53/TP63 negative
     controls, phase-1 interpretation, phase-2 alignment, and evidence exports
-    into one headless proof workflow.
+    into one headless proof workflow; the evidence bundle now also records
+    the active gene-group catalog doctor output and a p53-family group snapshot
+    so TP73 remains a concrete proof member rather than an implicit hard-coded
+    ontology/resource assumption.
   - Histogram guide overlays are now user-toggleable (`Exons`, `Introns`) for
     clearer exon-context interpretation during filtering runs.
   - Histogram coordinate mode now supports genomic axis and exonic-only compact
@@ -5029,6 +5033,12 @@ Status:
       the canonical `gentle.rna_read_gene_screen_summary.v1` TSV for
       cross-gene/family plotting, keeping conservative seed-passed support and
       read-length provenance out of plot-specific heuristics
+    - `scripts/pancreas_gene_rna_screen.sh group-plan GROUP` now resolves a
+      reviewed GENtle gene-group catalog record, writes the source group JSON,
+      included-member list, and an explicit per-gene command script; the TP73
+      cohort runbook uses this to connect the release proof path to flexible
+      ontology/lab-group overlays without making Gene Ontology or any other
+      single resource authoritative
     - the TSVs are intentionally figure-ready but figure-free: sample-level
       dashboards, isoform completeness/fragment plots, partner-gene bars, and
       suspicious-fusion heatmaps can now be derived later without rerunning

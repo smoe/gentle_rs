@@ -103,17 +103,59 @@ install `librsvg2-bin` and run `rsvg-convert`, or use Inkscape.
 New figure commands should prefer `scripts/plot_pancreas_gene_screen.py`;
 `scripts/plot_tp73_pancreas_cohort.py` remains as a TP73 compatibility wrapper.
 
-## Generic Follow-On Gene Screens
+## Gene-Group Follow-On Screens
 
 Once the shared pancreatic FASTA files already exist, use the gene-agnostic
-helper for TP53/TP63/E2F1/POU2F1-style follow-up screens instead of cloning the
-TP73 wrapper again. It resolves the HUGO symbol through NCBI Gene, downloads a
-compact GenBank locus, loads that locus into a base GENtle state, then copies
-that state per sample so independent workers can run safely in parallel.
+helper for follow-up screens instead of cloning the TP73 wrapper again. The
+preferred release pattern is:
+
+- choose or draft a reviewed GENtle gene-group record;
+- preserve the resolved group snapshot;
+- screen each included member with the same helper and cohort inputs;
+- merge the canonical `gene_screen_summary.tsv` tables for family/group plots.
+
+This keeps TP73 as one concrete proof member rather than the hard-coded shape
+of the workflow. Public resources such as Gene Ontology are useful anchors when
+available, but the group can also be a lab-facing local catalog term or a
+project overlay.
+
+First inspect the active group catalog:
 
 ```bash
 cd /home/clawbio/GENtle
 
+target/release/gentle_cli shell 'gene-groups doctor' \
+  > /home/clawbio/work/tp73_pancreas_benchmark/gene_groups.doctor.json
+
+target/release/gentle_cli shell 'gene-groups show p53_family' \
+  > /home/clawbio/work/tp73_pancreas_benchmark/p53_family.show.json
+
+target/release/gentle_cli shell 'gene-groups show regulation_of_alternative_splicing' \
+  > /home/clawbio/work/tp73_pancreas_benchmark/regulation_of_alternative_splicing.show.json
+```
+
+Then generate a reviewable command plan from any active group id or alias:
+
+```bash
+scripts/pancreas_gene_rna_screen.sh group-plan p53_family --jobs 4
+scripts/pancreas_gene_rna_screen.sh group-plan regulation_of_alternative_splicing --jobs 2
+```
+
+The plan command writes:
+
+- the resolved `gene-groups show` JSON record;
+- a plain member list with included symbols;
+- a shell script with one explicit `pancreas_gene_rna_screen.sh run GENE ...`
+  command per member;
+- a Markdown review note linking the group, source catalog, curation status,
+  member list, and command script.
+
+Run only the members that make biological and compute sense for the release
+story. For example, a quick p53-family check can stay close to TP73 while an
+alternative-splicing regulator group can be screened later or only after a
+seed-only plan review shows the expected cost.
+
+```bash
 scripts/pancreas_gene_rna_screen.sh run E2F1 --jobs 4
 scripts/pancreas_gene_rna_screen.sh run POU2F1 --jobs 4
 ```
@@ -143,7 +185,8 @@ python3 scripts/plot_pancreas_gene_screen.py \
 ```
 
 For multi-gene comparison figures, use `scripts/plot_pancreas_gene_family.py`;
-see `docs/pancreas_gene_plotting.md` for `GENE=PATH` examples.
+see `docs/pancreas_gene_plotting.md` for `GENE=PATH` examples and
+gene-group-driven input selection.
 
 Useful defaults:
 

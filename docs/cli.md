@@ -3556,6 +3556,11 @@ Tutorial companion:
 - `gene-groups show GROUP_ID [--catalog PATH] [--output OUTPUT.json]`
   - Shows one group with aliases, members, curation status, external mappings,
     and source provenance.
+  - Release/runbook helpers such as
+    `scripts/pancreas_gene_rna_screen.sh group-plan GROUP` consume this same
+    shared output to write reviewable per-member RNA-screen command plans
+    without hard-coding TP73, Gene Ontology, or any other single resource as the
+    authoritative group definition.
 - `gene-groups resolve TOKEN [--catalog PATH] [--output OUTPUT.json]`
   - Resolves a user token against group ids, labels, and aliases.
 - `gene-groups doctor [--catalog PATH] [--output OUTPUT.json]`
