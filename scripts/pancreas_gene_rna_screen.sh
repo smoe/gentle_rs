@@ -544,7 +544,7 @@ prepare_preflight_fastas() {
   ensure_transcript_fixture() {
     local gene="$1"
     local role="$2"
-    local species_token gene_token fixture_path fixture_fetcher fixture_work
+    local species_token gene_token fixture_path fixture_fetcher fixture_work stdout_log stderr_log
     species_token="$(fixture_token "$FIXTURE_SPECIES_LABEL")"
     gene_token="$(fixture_token "$gene")"
     fixture_path="$FIXTURE_DIR/ensembl_${species_token}_${gene_token}_all.fasta"
@@ -557,17 +557,32 @@ prepare_preflight_fastas() {
     fixture_fetcher="$SCRIPT_DIR/fetch_ensembl_cdna_fixtures.sh"
     [ -x "$fixture_fetcher" ] || die "Missing executable fixture fetcher: $fixture_fetcher"
     fixture_work="$RUN_ROOT/resources/ensembl_cdna_fixtures"
+    stdout_log="$RUN_ROOT/logs/fetch_fixture_$(fixture_token "$gene").stdout.log"
+    stderr_log="$RUN_ROOT/logs/fetch_fixture_$(fixture_token "$gene").stderr.log"
     log "Auto-fetch Ensembl cDNA fixture for $gene ($role): $fixture_path"
-    "$fixture_fetcher" \
+    if ! "$fixture_fetcher" \
       --gene "$gene" \
       --species "$FIXTURE_SPECIES" \
       --species-label "$FIXTURE_SPECIES_LABEL" \
       --out-dir "$FIXTURE_DIR" \
       --work-dir "$fixture_work" \
       --gentle-bin "$GENTLE_BIN" \
-      > "$RUN_ROOT/logs/fetch_fixture_$(fixture_token "$gene").stdout.log" \
-      2> "$RUN_ROOT/logs/fetch_fixture_$(fixture_token "$gene").stderr.log"
-    [ -s "$fixture_path" ] || die "Fixture fetch for $gene completed but did not write $fixture_path"
+      > "$stdout_log" \
+      2> "$stderr_log"; then
+      log "Fixture fetch for $gene failed; stdout=$stdout_log stderr=$stderr_log"
+      tail -n 40 "$stderr_log" >&2 || true
+      die "Could not fetch Ensembl cDNA fixture for $gene"
+    fi
+    if [ ! -s "$fixture_path" ]; then
+      log "Fixture fetch for $gene completed but did not write $fixture_path"
+      log "Fetcher stdout: $stdout_log"
+      tail -n 40 "$stdout_log" >&2 || true
+      log "Fetcher stderr: $stderr_log"
+      tail -n 40 "$stderr_log" >&2 || true
+      log "Matching fixture files currently under $FIXTURE_DIR:"
+      find "$FIXTURE_DIR" -maxdepth 1 -type f -iname "*${gene_token}*" -print >&2 || true
+      die "Missing fetched Ensembl cDNA fixture for $gene"
+    fi
     printf '%s\n' "$fixture_path"
   }
 
