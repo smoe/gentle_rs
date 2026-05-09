@@ -7,34 +7,6 @@
 
 use super::*;
 
-pub(super) const USAGE: &str = "\
-  gentle_cli resources status
-  gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]
-  gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]
-
-  gentle_cli resources sync-ucsc-rmsk INPUT.rmsk.txt_or_txt.gz [OUTPUT.rmsk.json] [--assembly DB] [--limit N]
-  gentle_cli resources install-ucsc-rmsk [--assembly DB] [--input PATH_OR_URL] [--resource-output PATH] [--index-output PATH]
-  gentle_cli resources prepare-ucsc-rmsk-index RESOURCE.rmsk.json [OUTPUT.interval-index.json]
-  gentle_cli resources suggest-ucsc-rmsk-index [--assembly DB] [--output OUTPUT.json]
-
-  gentle_cli resources sync-jaspar-remote-metadata [--motif TOKEN ...] [--motifs CSV] [--all] [--filter TOKEN] [--limit N] [--output OUTPUT.json]
-
-  gentle_cli resources summarize-jaspar [--motif TOKEN ...] [--motifs CSV] [--all] [--random-length N] [--seed N] [--output OUTPUT.json]
-
-  gentle_cli shell 'resources resolve-tf-query QUERY [QUERY ...] [--output OUTPUT.json]'
-
-  gentle_cli resources benchmark-jaspar [--random-length N] [--seed N] [--output OUTPUT.json]
-
-  gentle_cli resources list-jaspar [--filter TOKEN] [--limit N] [--fetch-remote] [--output OUTPUT.json]
-
-  gentle_cli resources list-publication-datasets [--filter TEXT] [--catalog PATH] [--output OUTPUT.json]
-  gentle_cli resources status-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH]
-  gentle_cli resources prepare-publication-dataset DATASET_ID [--catalog PATH] [--cache-dir PATH] [--download-files] [--max-files N] [--category NAME|--categories CSV]
-
-  gentle_cli resources inspect-jaspar MOTIF [--random-length N] [--seed N] [--fetch-remote] [--output OUTPUT.json]
-
-";
-
 pub(super) fn handle_resources_family(args: &[String], cmd_idx: usize) -> Result<(), String> {
     if args.len() <= cmd_idx + 1 {
         usage();
@@ -514,12 +486,6 @@ mod tests {
 
     fn argv(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
-    }
-
-    #[test]
-    fn usage_block_keeps_publication_dataset_routes() {
-        assert!(USAGE.contains("resources list-publication-datasets"));
-        assert!(USAGE.contains("resources prepare-publication-dataset"));
     }
 
     #[test]
