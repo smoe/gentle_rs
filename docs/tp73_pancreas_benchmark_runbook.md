@@ -21,8 +21,11 @@ scripts/tp73_pancreas_rna_mapping.sh strict-start
 Run it inside `screen` or `tmux`. The script defines all paths, writes
 `run.env`, refuses to start while another RNA-read mapping process is active,
 and refuses to overwrite any state/checkpoint/log/report path that already
-exists for the selected run. The manual blocks below document what the script
-does internally and remain useful for debugging or adapting the workflow.
+exists for the selected run. After harvest, run
+`scripts/tp73_pancreas_rna_mapping.sh audit RUN_WORK` to print the canonical
+release-review artifact checklist with exact paths. The manual blocks below
+document what the script does internally and remain useful for debugging or
+adapting the workflow.
 
 ## 1. Environment
 
