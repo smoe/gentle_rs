@@ -156,6 +156,18 @@ release gate is active.
 
 Purpose: keep the roadmap release gate aligned with runnable evidence.
 
+Preferred first pass:
+
+```bash
+scripts/maintenance_chore.py release-gate
+```
+
+The first implemented scan verifies compact roadmap release-gate sections,
+local Release Gate links, core release-facing docs, and `cargo check` alignment
+between the roadmap and `docs/release.md`. It does not validate generated TP73
+proof artifacts yet; those remain manual unless a future artifact-manifest
+option is added.
+
 Evidence to inspect:
 
 - [`roadmap.md`](roadmap.md) release gate and next-session priorities.

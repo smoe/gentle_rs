@@ -57,6 +57,7 @@ TEST_PREFIXES = (
 TEST_EXACT = {
     "src/test_support.rs",
 }
+LOCAL_MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 
 
 @dataclass
@@ -274,6 +275,54 @@ def is_test_evidence_path(path: str) -> bool:
     )
 
 
+def markdown_section(lines: list[str], heading: str) -> list[str]:
+    heading_line = f"## {heading}"
+    start: Optional[int] = None
+    for idx, line in enumerate(lines):
+        if line.strip() == heading_line:
+            start = idx
+            break
+    if start is None:
+        return []
+
+    end = len(lines)
+    for idx in range(start + 1, len(lines)):
+        line = lines[idx]
+        if line.startswith("## "):
+            end = idx
+            break
+    return lines[start:end]
+
+
+def has_heading(lines: list[str], heading: str) -> bool:
+    return any(line.strip() == f"## {heading}" for line in lines)
+
+
+def release_gate_section(repo_root: Path) -> tuple[Path, list[str]]:
+    roadmap = repo_root / "docs" / "roadmap.md"
+    if not roadmap.exists():
+        return roadmap, []
+    return roadmap, markdown_section(read_lines(roadmap), "Release Gate")
+
+
+def local_markdown_links(lines: list[str]) -> list[str]:
+    links: list[str] = []
+    for line in lines:
+        for target in LOCAL_MARKDOWN_LINK_RE.findall(line):
+            target = target.strip()
+            if (
+                target.startswith("http://")
+                or target.startswith("https://")
+                or target.startswith("#")
+                or "://" in target
+            ):
+                continue
+            path_part = target.split("#", 1)[0]
+            if path_part:
+                links.append(path_part)
+    return links
+
+
 def check_git_status(repo_root: Path) -> Check:
     code, stdout, stderr = run_git(repo_root, "status", "--short")
     if code != 0:
@@ -467,6 +516,147 @@ def drift_scan(repo_root: Path, base_ref: str) -> list[Check]:
     return checks
 
 
+def check_release_gate_sections(repo_root: Path) -> Check:
+    roadmap = repo_root / "docs" / "roadmap.md"
+    if not roadmap.exists():
+        return Check(
+            name="release gate roadmap sections",
+            status="fail",
+            evidence=[f"{relative(repo_root, roadmap)} is missing"],
+            findings=["docs/roadmap.md is required for release-gate readiness."],
+            minimal_fix=["Restore docs/roadmap.md before running release-gate checks."],
+        )
+    lines = read_lines(roadmap)
+    required = ["Release Gate", "Next Session Priorities"]
+    missing = [heading for heading in required if not has_heading(lines, heading)]
+    return Check(
+        name="release gate roadmap sections",
+        status="ok" if not missing else "fail",
+        evidence=[f"checked headings in {relative(repo_root, roadmap)}"],
+        findings=[f"Missing heading: ## {heading}" for heading in missing],
+        minimal_fix=[] if not missing else ["Restore the compact roadmap release-gate structure."],
+    )
+
+
+def check_release_gate_links(repo_root: Path) -> Check:
+    roadmap, section = release_gate_section(repo_root)
+    if not section:
+        return Check(
+            name="release gate local links",
+            status="fail",
+            evidence=[f"Release Gate section not found in {relative(repo_root, roadmap)}"],
+            findings=["Cannot verify release-gate links without a Release Gate section."],
+            minimal_fix=["Restore ## Release Gate in docs/roadmap.md."],
+        )
+
+    docs_dir = repo_root / "docs"
+    links = local_markdown_links(section)
+    missing: list[str] = []
+    resolved: list[str] = []
+    for link in links:
+        target = (docs_dir / link).resolve()
+        resolved_label = f"{link} -> {relative(repo_root, target)}"
+        if target.exists():
+            resolved.append(resolved_label)
+        else:
+            missing.append(resolved_label)
+
+    return Check(
+        name="release gate local links",
+        status="ok" if not missing else "fail",
+        evidence=[f"local links in Release Gate: {len(links)}"]
+        + (resolved if resolved else ["no local links found"]),
+        findings=[f"Missing release-gate link target: {item}" for item in missing],
+        minimal_fix=[] if not missing else ["Restore or retarget missing release-gate documents."],
+    )
+
+
+def check_release_docs_present(repo_root: Path) -> Check:
+    required_paths = [
+        repo_root / "INSTALL.md",
+        repo_root / "README.md",
+        repo_root / "docs" / "release.md",
+    ]
+    release_notes = sorted(repo_root.glob("release_notes_v*.md"))
+    missing = [relative(repo_root, path) for path in required_paths if not path.exists()]
+    evidence = [f"found {relative(repo_root, path)}" for path in required_paths if path.exists()]
+    evidence.append(
+        "release notes: "
+        + (", ".join(relative(repo_root, path) for path in release_notes) if release_notes else "none")
+    )
+    if not release_notes:
+        missing.append("release_notes_v*.md")
+
+    return Check(
+        name="release-facing docs present",
+        status="ok" if not missing else "fail",
+        evidence=evidence,
+        findings=[f"Missing release-facing doc: {path}" for path in missing],
+        minimal_fix=[] if not missing else ["Restore release-facing docs before release handoff."],
+    )
+
+
+def check_cargo_gate_alignment(repo_root: Path) -> Check:
+    roadmap, section = release_gate_section(repo_root)
+    release_doc = repo_root / "docs" / "release.md"
+    roadmap_text = "\n".join(section)
+    evidence = [f"checked {relative(repo_root, roadmap)} Release Gate"]
+
+    if "cargo check" not in roadmap_text:
+        return Check(
+            name="cargo check release alignment",
+            status="ok",
+            evidence=evidence + ["roadmap Release Gate does not mention cargo check"],
+            findings=[],
+            minimal_fix=[],
+        )
+    if not release_doc.exists():
+        return Check(
+            name="cargo check release alignment",
+            status="fail",
+            evidence=evidence + [f"{relative(repo_root, release_doc)} is missing"],
+            findings=["Roadmap requires cargo check, but docs/release.md is missing."],
+            minimal_fix=["Restore docs/release.md or move release-signoff guidance to an existing doc."],
+        )
+
+    release_text = release_doc.read_text(encoding="utf-8")
+    if "cargo check" in release_text:
+        return Check(
+            name="cargo check release alignment",
+            status="ok",
+            evidence=evidence + [f"{relative(repo_root, release_doc)} contains cargo check"],
+            findings=[],
+            minimal_fix=[],
+        )
+    return Check(
+        name="cargo check release alignment",
+        status="warn",
+        evidence=evidence
+        + [
+            "roadmap Release Gate contains cargo check",
+            f"{relative(repo_root, release_doc)} does not contain cargo check",
+        ],
+        findings=[
+            "Roadmap release gate names `cargo check`, but docs/release.md does "
+            "not mirror that release-signoff command. This is a review prompt, "
+            "not proof that the release process is broken."
+        ],
+        minimal_fix=[
+            "Add `cargo check -q` to the Local Pre-Tag Smoke Checklist in docs/release.md, "
+            "or update the roadmap if the release gate changed."
+        ],
+    )
+
+
+def release_gate(repo_root: Path) -> list[Check]:
+    return [
+        check_release_gate_sections(repo_root),
+        check_release_gate_links(repo_root),
+        check_release_docs_present(repo_root),
+        check_cargo_gate_alignment(repo_root),
+    ]
+
+
 def status_counts(checks: list[Check]) -> dict[str, int]:
     counts = {"ok": 0, "warn": 0, "fail": 0}
     for check in checks:
@@ -546,6 +736,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Base ref for git diff --name-status BASE...HEAD.",
     )
 
+    release = subparsers.add_parser(
+        "release-gate",
+        help="Run release-gate readiness checks against roadmap and release docs.",
+    )
+    release.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default=argparse.SUPPRESS,
+        help="Output format.",
+    )
+
     return parser.parse_args(argv)
 
 
@@ -556,6 +757,8 @@ def main(argv: list[str]) -> int:
         checks = session_close(repo_root, args.plan)
     elif args.chore == "drift-scan":
         checks = drift_scan(repo_root, args.base_ref)
+    elif args.chore == "release-gate":
+        checks = release_gate(repo_root)
     else:
         raise AssertionError(f"unknown chore {args.chore}")
 
