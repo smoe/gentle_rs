@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-10
+
+- Added a TP73 pancreas proof-bundle `audit` handoff to
+  `scripts/tp73_pancreas_rna_mapping.sh`, including gene-group snapshot capture
+  and expanded evidence-bundle paths for release review.
+
 ## 2026-05-09
 
 - Aligned the `docs/release.md` Local Pre-Tag Smoke Checklist with the roadmap

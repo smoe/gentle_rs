@@ -30,6 +30,7 @@ Usage:
   scripts/tp73_pancreas_rna_mapping.sh strict-start
   scripts/tp73_pancreas_rna_mapping.sh status [RUN_WORK]
   scripts/tp73_pancreas_rna_mapping.sh harvest [RUN_WORK]
+  scripts/tp73_pancreas_rna_mapping.sh audit [RUN_WORK]
   scripts/tp73_pancreas_rna_mapping.sh stop [RUN_WORK]
 
 Environment overrides:
@@ -119,6 +120,9 @@ refuse_existing_strict_outputs() {
   refuse_existing_path "$RUN_WORK/reports/load_tp73_ncbi.command.json"
   refuse_existing_path "$RUN_WORK/logs/load_tp73_ncbi.stderr.log"
   refuse_existing_path "$RUN_WORK/logs/query_${GENE_ID}_gene.stderr.log"
+  refuse_existing_path "$RUN_WORK/reports/gene_groups/gene_groups.doctor.json"
+  refuse_existing_path "$RUN_WORK/reports/gene_groups/p53_family.show.json"
+  refuse_existing_path "$RUN_WORK/reports/gene_groups/p53_family.members.txt"
   refuse_existing_path "$RUN_WORK/reports/$REPORT_ID.preflight.json"
   refuse_existing_path "$RUN_WORK/logs/$REPORT_ID.preflight.stderr.log"
   refuse_existing_path "$RUN_WORK/reports/$REPORT_ID.preflight.summary.json"
@@ -153,6 +157,58 @@ refuse_existing_harvest_outputs() {
   refuse_existing_path "$RUN_WORK/logs/$REPORT_ID.$GENE_ID.target_quality.stderr.log"
   refuse_existing_path "$RUN_WORK/reports/$REPORT_ID.final_summary.json"
   refuse_existing_path "$RUN_WORK/reports/$REPORT_ID.evidence_bundle.md"
+}
+
+audit_artifact() {
+  local label="$1"
+  local path="$2"
+  if [ -n "$path" ] && [ -s "$path" ]; then
+    local bytes
+    bytes="$(wc -c < "$path" | tr -d '[:space:]')"
+    echo "- [x] $label: \`$path\` (${bytes} bytes)"
+    return 0
+  fi
+  echo "- [ ] $label: \`$path\` (missing or empty)"
+  return 1
+}
+
+audit_run() {
+  load_run_env "${1:-}"
+
+  local missing=0
+  echo "# TP73 pancreas strict RNA mapping release audit"
+  echo
+  echo "- run: $RUN"
+  echo "- gene: $GENE_ID"
+  echo "- sequence: $SEQ_ID"
+  echo "- report: $REPORT_ID"
+  echo "- run directory: $RUN_WORK"
+  echo
+  echo "## Required Release Artifacts"
+
+  audit_artifact "run environment" "$RUN_WORK/run.env" || missing=$((missing + 1))
+  audit_artifact "state" "$STATE" || missing=$((missing + 1))
+  audit_artifact "read FASTA" "$READ_FASTA" || missing=$((missing + 1))
+  audit_artifact "GENtle git commit" "$RUN_WORK/reports/gentle_git_commit.txt" || missing=$((missing + 1))
+  audit_artifact "gene-group doctor" "$RUN_WORK/reports/gene_groups/gene_groups.doctor.json" || missing=$((missing + 1))
+  audit_artifact "p53-family group snapshot" "$RUN_WORK/reports/gene_groups/p53_family.show.json" || missing=$((missing + 1))
+  audit_artifact "p53-family included members" "$RUN_WORK/reports/gene_groups/p53_family.members.txt" || missing=$((missing + 1))
+  audit_artifact "preflight" "$RUN_WORK/reports/$REPORT_ID.preflight.json" || missing=$((missing + 1))
+  audit_artifact "preflight summary" "$RUN_WORK/reports/$REPORT_ID.preflight.summary.json" || missing=$((missing + 1))
+  audit_artifact "final summary" "$RUN_WORK/reports/$REPORT_ID.final_summary.json" || missing=$((missing + 1))
+  audit_artifact "alignments TSV" "$RUN_WORK/post_interpret/tsv/$REPORT_ID.alignments.aligned.tsv" || missing=$((missing + 1))
+  audit_artifact "paths TSV" "$RUN_WORK/post_interpret/tsv/$REPORT_ID.paths.aligned.tsv" || missing=$((missing + 1))
+  audit_artifact "abundance TSV" "$RUN_WORK/post_interpret/tsv/$REPORT_ID.abundance.aligned.tsv" || missing=$((missing + 1))
+  audit_artifact "target-quality SVG" "$RUN_WORK/post_interpret/svg/$REPORT_ID.$GENE_ID.target_quality.svg" || missing=$((missing + 1))
+  audit_artifact "evidence-bundle note" "$RUN_WORK/reports/$REPORT_ID.evidence_bundle.md" || missing=$((missing + 1))
+
+  echo
+  if [ "$missing" -eq 0 ]; then
+    echo "Result: PASS - all release-review artifacts are present and non-empty."
+    return 0
+  fi
+  echo "Result: MISSING - $missing release-review artifact(s) are missing or empty."
+  return 1
 }
 
 write_run_env() {
@@ -206,7 +262,7 @@ strict_start() {
   REPORT_ID="${REPORT_ID:-tp73_strict_${RUN}_${stamp}}"
 
   refuse_existing_path "$RUN_WORK"
-  mkdir -p "$RUN_WORK"/{logs,reports,manifests,checkpoints,post_interpret/{json,tsv,svg,fasta}}
+  mkdir -p "$RUN_WORK"/{logs,reports,reports/gene_groups,manifests,checkpoints,post_interpret/{json,tsv,svg,fasta}}
   refuse_existing_strict_outputs
   write_run_env "$RUN_WORK"
 
@@ -245,6 +301,19 @@ JSON
     || die "Could not resolve seed feature ID; see $RUN_WORK/logs/query_${GENE_ID}_gene.stderr.log"
   write_run_env "$RUN_WORK"
   info "Seed feature ID: $SEED_FEATURE_ID"
+
+  "${gentle[@]}" shell 'gene-groups doctor' \
+    > "$RUN_WORK/reports/gene_groups/gene_groups.doctor.json" \
+    || die "Could not capture gene-group doctor snapshot"
+
+  "${gentle[@]}" shell 'gene-groups show p53_family' \
+    > "$RUN_WORK/reports/gene_groups/p53_family.show.json" \
+    || die "Could not capture p53-family gene-group snapshot"
+
+  jq -r '.group.members[] | select((.status // "included") == "included") | .symbol' \
+    "$RUN_WORK/reports/gene_groups/p53_family.show.json" \
+    > "$RUN_WORK/reports/gene_groups/p53_family.members.txt" \
+    || die "Could not extract included p53-family members"
 
   "${gentle[@]}" rna-reads preflight-isoforms "$SEQ_ID" "$SEED_FEATURE_ID" \
     --scope all_overlapping_any_strand \
@@ -495,10 +564,17 @@ harvest_run() {
     echo "- state: $STATE"
     echo "- report: $REPORT_ID"
     echo "- read FASTA: $READ_FASTA"
+    echo "- GENtle git commit: $RUN_WORK/reports/gentle_git_commit.txt"
+    echo "- gene-group doctor: $RUN_WORK/reports/gene_groups/gene_groups.doctor.json"
+    echo "- p53-family group snapshot: $RUN_WORK/reports/gene_groups/p53_family.show.json"
+    echo "- p53-family included members: $RUN_WORK/reports/gene_groups/p53_family.members.txt"
     echo "- preflight: $RUN_WORK/reports/$REPORT_ID.preflight.json"
+    echo "- preflight summary: $RUN_WORK/reports/$REPORT_ID.preflight.summary.json"
     echo "- final summary: $RUN_WORK/reports/$REPORT_ID.final_summary.json"
     echo "- top alignments: $RUN_WORK/post_interpret/json/$REPORT_ID.aligned.top200.json"
     echo "- alignments TSV: $RUN_WORK/post_interpret/tsv/$REPORT_ID.alignments.aligned.tsv"
+    echo "- paths TSV: $RUN_WORK/post_interpret/tsv/$REPORT_ID.paths.aligned.tsv"
+    echo "- abundance TSV: $RUN_WORK/post_interpret/tsv/$REPORT_ID.abundance.aligned.tsv"
     echo "- target quality SVG: $RUN_WORK/post_interpret/svg/$REPORT_ID.$GENE_ID.target_quality.svg"
   } > "$RUN_WORK/reports/$REPORT_ID.evidence_bundle.md"
 }
@@ -515,6 +591,9 @@ main() {
       ;;
     harvest)
       harvest_run "${1:-}"
+      ;;
+    audit)
+      audit_run "${1:-}"
       ;;
     stop)
       stop_run "${1:-}"
