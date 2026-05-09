@@ -35,6 +35,13 @@ Maintenance rule:
   shared-contract code without separate test-file evidence, recognizing plural
   Rust `_tests.rs` files, normalizing rename status display, and documenting
   inline-test and pure protocol-doc limits.
+- Added `scripts/maintenance_chore.py release-gate` as the first
+  release-readiness automation slice, checking compact roadmap release-gate
+  structure, local release-gate links, release-facing document presence, and
+  `cargo check` alignment with `docs/release.md`.
+- Hardened the release-gate scan after external review so a missing roadmap
+  returns a structured failure and titled Markdown links do not produce false
+  broken-link findings.
 - ClawBio/OpenClaw `gentle-cloning` capabilities replies gained shared
   UI-intent catalog handoff support through `ui_intent_catalog`,
   `ui_intent_catalog_error`, and `kind = ui_intent` suggested actions.
