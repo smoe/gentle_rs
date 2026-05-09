@@ -102,6 +102,7 @@ developer build.
 Required local matrix:
 
 ```bash
+cargo check -q
 cargo build --release --features script-interfaces
 cargo run --release --bin gentle -- --version
 cargo run --release --bin gentle_cli -- capabilities

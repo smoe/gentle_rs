@@ -14,6 +14,8 @@ Maintenance rule:
 
 ## 2026-05-09
 
+- Aligned the `docs/release.md` Local Pre-Tag Smoke Checklist with the roadmap
+  release gate by adding `cargo check -q` before the release build matrix.
 - Split roadmap maintenance into `roadmap.md` for next work, this changelog for
   completed work, and `decisions.md` for durable implementation decisions.
 - Added [`maintenance_chore_plan.md`](maintenance_chore_plan.md) to define
