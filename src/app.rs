@@ -7,6 +7,7 @@
 //!
 //! File map (source order):
 //! - extracted helper modules first:
+//!   - `app/agent_assistant_config.rs` for Agent Assistant templates/defaults
 //!   - `app/help_docs.rs` for markdown/help loading and rewrite helpers
 //!   - `app/window_registry.rs` for open-window listing/focus helpers and
 //!     deferred child-window placement
@@ -48,6 +49,9 @@ mod configuration_ui;
 
 #[path = "app/external_services_ui.rs"]
 mod external_services_ui;
+
+#[path = "app/agent_assistant_config.rs"]
+mod agent_assistant_config;
 
 use std::{
     collections::hash_map::DefaultHasher,
@@ -160,6 +164,13 @@ use crate::{
         validate_tutorial_manifest_against_examples,
     },
 };
+use agent_assistant_config::{
+    AGENT_PROMPT_TEMPLATE_DEFAULT_ID, agent_prompt_template_label, agent_prompt_template_options,
+    agent_prompt_template_text, default_agent_connect_timeout_secs_string,
+    default_agent_max_response_bytes_string, default_agent_max_retries_string,
+    default_agent_read_timeout_secs_string, default_agent_timeout_secs_string,
+    normalize_agent_model_name, preferred_local_agent_system_id, preferred_openai_agent_system_id,
+};
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
@@ -242,229 +253,8 @@ fn now_unix_ms_u64() -> u64 {
         .unwrap_or(0)
 }
 
-fn normalize_agent_model_name(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case(OPENAI_COMPAT_UNSPECIFIED_MODEL) {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-fn preferred_openai_agent_system_id(systems: &[AgentSystemSpec]) -> Option<String> {
-    for preferred_id in ["openai_gpt5_native", "openai_gpt5_stdio"] {
-        if systems.iter().any(|system| system.id == preferred_id) {
-            return Some(preferred_id.to_string());
-        }
-    }
-    systems
-        .iter()
-        .find(|system| matches!(system.transport, AgentSystemTransport::NativeOpenai))
-        .map(|system| system.id.clone())
-}
-
-fn preferred_local_agent_system_id(systems: &[AgentSystemSpec]) -> Option<String> {
-    for preferred_id in [
-        "local_llama_compat",
-        "msty_local_compat_template",
-        "jan_local_compat_template",
-    ] {
-        if systems.iter().any(|system| system.id == preferred_id) {
-            return Some(preferred_id.to_string());
-        }
-    }
-    systems
-        .iter()
-        .find(|system| matches!(system.transport, AgentSystemTransport::NativeOpenaiCompat))
-        .map(|system| system.id.clone())
-}
-
-const AGENT_PROMPT_TEMPLATE_DEFAULT_ID: &str = "structured";
-
-fn agent_prompt_template_options() -> &'static [(&'static str, &'static str)] {
-    &[
-        ("structured", "Structured (recommended)"),
-        ("candidate_anchors", "Candidate between anchors"),
-        ("blast_specificity", "BLAST specificity check"),
-        ("track_intersection", "Track import + prioritization"),
-        ("macro_template", "Macro/template authoring"),
-    ]
-}
-
-fn agent_prompt_template_label(id: &str) -> &'static str {
-    agent_prompt_template_options()
-        .iter()
-        .find(|(value, _)| *value == id)
-        .map(|(_, label)| *label)
-        .unwrap_or("Structured (recommended)")
-}
-
-fn agent_prompt_template_text(id: &str) -> &'static str {
-    match id {
-        "candidate_anchors" => {
-            r#"Objective:
-Generate candidate windows between two local anchors and rank them.
-
-Context:
-Project sequence ID: <SEQ_ID>
-
-Inputs:
-- seq_id: <SEQ_ID>
-- anchor A: <feature boundary or absolute position>
-- anchor B: <feature boundary or absolute position>
-
-Constraints:
-- length: 20
-- step: 1
-- GC range: 40-80%
-- additional constraints: <motifs/sites/strand>
-
-Output wanted:
-- exact `gentle_cli shell "candidates ..."` commands
-- scoring + filter + top-k steps
-- validation checklist
-
-Execution policy:
-ask-before-run"#
-        }
-        "blast_specificity" => {
-            r#"Objective:
-Run a specificity check for one sequence with BLAST.
-
-Context:
-Target catalog: genomes | helpers
-
-Inputs:
-- genome_id/helper_id: <ID>
-- query_sequence: <ACGT...>
-
-Constraints:
-- max_hits: 20
-- task: blastn-short
-
-Output wanted:
-- exact BLAST command
-- concise interpretation checklist for top hits
-
-Execution policy:
-chat-only"#
-        }
-        "track_intersection" => {
-            r#"Objective:
-Import external track evidence and prioritize candidates near track features.
-
-Context:
-Anchored sequence ID: <SEQ_ID>
-
-Inputs:
-- seq_id: <SEQ_ID>
-- track file path: <BED/BED.GZ/BIGWIG/VCF path>
-
-Constraints:
-- keep imported features in TRACK groups
-- do not modify original sequence content
-
-Output wanted:
-- exact track-import commands
-- candidate generation/scoring/filter commands near imported TRACK features
-- validation checklist
-
-Execution policy:
-ask-before-run"#
-        }
-        "macro_template" => {
-            r#"Objective:
-Create or update a reusable candidate macro template and run it with bindings.
-
-Context:
-Template name: <NAME>
-
-Inputs:
-- template parameters: <param list>
-- script intent: <generate/score/filter/top-k/...>
-
-Constraints:
-- transactional run enabled
-- deterministic tie-break policy where applicable
-
-Output wanted:
-- `candidates template-put` and `candidates template-run` commands
-- brief note on expected outputs and rollback behavior
-
-Execution policy:
-ask-before-run"#
-        }
-        _ => {
-            r#"Objective:
-<one clear goal>
-
-Context:
-<sequence/genome/helper IDs and short background>
-
-Inputs:
-- seq_id / genome_id / helper_id: ...
-- anchors or coordinates: ...
-- feature labels/kinds: ...
-
-Constraints:
-- length: ...
-- GC range: ...
-- motifs/sites to require or avoid: ...
-- strand assumptions: ...
-
-Output wanted:
-- plan
-- exact gentle_cli commands
-- validation checklist
-
-Execution policy:
-chat-only | ask-before-run | allow-auto-exec"#
-        }
-    }
-}
-
 fn default_prepare_timeout_secs_string() -> String {
     env::var(PREPARE_GENOME_TIMEOUT_SECS_ENV)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_default()
-}
-
-fn default_agent_timeout_secs_string() -> String {
-    env::var(AGENT_TIMEOUT_SECS_ENV)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_default()
-}
-
-fn default_agent_connect_timeout_secs_string() -> String {
-    env::var(AGENT_CONNECT_TIMEOUT_SECS_ENV)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_default()
-}
-
-fn default_agent_read_timeout_secs_string() -> String {
-    env::var(AGENT_READ_TIMEOUT_SECS_ENV)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_default()
-}
-
-fn default_agent_max_retries_string() -> String {
-    env::var(AGENT_MAX_RETRIES_ENV)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_default()
-}
-
-fn default_agent_max_response_bytes_string() -> String {
-    env::var(AGENT_MAX_RESPONSE_BYTES_ENV)
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())

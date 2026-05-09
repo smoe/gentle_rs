@@ -15,17 +15,6 @@ use std::{collections::HashMap, fs};
 
 use super::*;
 
-pub(super) const USAGE: &str = "\
-  gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]
-  gentle_cli [--state PATH|--project PATH] render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]
-  gentle_cli [--state PATH|--project PATH] arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]
-  gentle_cli [--state PATH|--project PATH] arrange-set-ladders ARR_ID [--ladders NAME[,NAME]]
-  gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]
-  gentle_cli [--state PATH|--project PATH] export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]
-  gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]
-
-";
-
 const POOL_COMMANDS: &[&str] = &[
     "render-pool-gel-svg",
     "render-gel-svg",
@@ -538,13 +527,6 @@ mod tests {
 
     fn argv(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
-    }
-
-    #[test]
-    fn usage_block_keeps_pool_routes() {
-        assert!(USAGE.contains("render-pool-gel-svg"));
-        assert!(USAGE.contains("arrange-set-ladders"));
-        assert!(USAGE.contains("import-pool"));
     }
 
     #[test]
