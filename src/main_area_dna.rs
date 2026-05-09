@@ -159,6 +159,7 @@ use crate::{
     },
 };
 use eframe::egui::{self, Frame, PointerState, Vec2};
+use gentle_gui::theme;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
@@ -3676,7 +3677,8 @@ mod tests {
         area.inspect_cutrun_regulatory_support_for_active_sequence();
 
         assert!(
-            area.op_status.contains("CUT&RUN regulatory support for 'seq1'"),
+            area.op_status
+                .contains("CUT&RUN regulatory support for 'seq1'"),
             "expected CUT&RUN summary status, got: {}",
             area.op_status
         );
@@ -56085,62 +56087,77 @@ impl MainAreaDna {
             } else if primary_dotplot_mode {
                 self.render_primary_dotplot_map_ui(ui);
             } else {
-                let response = if !self.is_circular() {
-                    let slider_column_width = if ENABLE_LINEAR_VERTICAL_PAN { 30.0 } else { 0.0 };
-                    let available = ui.available_size();
-                    let clip_rect = ui.clip_rect();
-                    let clip_width = clip_rect.width().max(120.0);
-                    let clip_height = clip_rect.height().max(120.0);
-                    let available_width = if available.x.is_finite() && available.x > 0.0 {
-                        available.x
-                    } else {
-                        clip_width
-                    };
-                    let available_height = if available.y.is_finite() && available.y > 0.0 {
-                        available.y
-                    } else {
-                        clip_height
-                    };
-                    let map_size = Vec2::new(
-                        (available_width - slider_column_width).clamp(120.0, clip_width),
-                        available_height.clamp(120.0, clip_height),
-                    );
-                    let response = ui.add_sized(map_size, self.map_dna.to_owned());
-                    if ENABLE_LINEAR_VERTICAL_PAN {
-                        ui.add_space(4.0);
-                        ui.vertical(|ui| {
-                            let mut vertical_pan_offset = self.current_linear_vertical_offset_px();
-                            let pan_slider = ui
-                                .add(
-                                    egui::Slider::new(&mut vertical_pan_offset, -10_000.0..=10_000.0)
-                                        .vertical()
-                                        .show_value(false),
-                                )
-                                .on_hover_text(
-                                    "Vertical map pan offset (feature-lane stack up/down in linear view)",
-                                );
-                            if pan_slider.changed() {
-                                self.set_linear_vertical_offset_px(vertical_pan_offset);
+                let dark_mode = ui.visuals().dark_mode;
+                let response = theme::canvas_frame(dark_mode)
+                    .show(ui, |ui| {
+                        if !self.is_circular() {
+                            let slider_column_width =
+                                if ENABLE_LINEAR_VERTICAL_PAN { 30.0 } else { 0.0 };
+                            let available = ui.available_size();
+                            let clip_rect = ui.clip_rect();
+                            let clip_width = clip_rect.width().max(120.0);
+                            let clip_height = clip_rect.height().max(120.0);
+                            let available_width =
+                                if available.x.is_finite() && available.x > 0.0 {
+                                    available.x
+                                } else {
+                                    clip_width
+                                };
+                            let available_height =
+                                if available.y.is_finite() && available.y > 0.0 {
+                                    available.y
+                                } else {
+                                    clip_height
+                                };
+                            let map_size = Vec2::new(
+                                (available_width - slider_column_width).clamp(120.0, clip_width),
+                                available_height.clamp(120.0, clip_height),
+                            );
+                            let response = ui.add_sized(map_size, self.map_dna.to_owned());
+                            if ENABLE_LINEAR_VERTICAL_PAN {
+                                ui.add_space(4.0);
+                                ui.vertical(|ui| {
+                                    let mut vertical_pan_offset =
+                                        self.current_linear_vertical_offset_px();
+                                    let pan_slider = ui
+                                        .add(
+                                            egui::Slider::new(
+                                                &mut vertical_pan_offset,
+                                                -10_000.0..=10_000.0,
+                                            )
+                                            .vertical()
+                                            .show_value(false),
+                                        )
+                                        .on_hover_text(
+                                            "Vertical map pan offset (feature-lane stack up/down in linear view)",
+                                        );
+                                    if pan_slider.changed() {
+                                        self.set_linear_vertical_offset_px(vertical_pan_offset);
+                                    }
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{:+.1} px",
+                                            vertical_pan_offset
+                                        ))
+                                        .monospace()
+                                        .size(10.0),
+                                    )
+                                    .on_hover_text("Current linear-map vertical pan offset");
+                                    if ui
+                                        .small_button("0")
+                                        .on_hover_text("Fit visible linear features vertically")
+                                        .clicked()
+                                    {
+                                        self.fit_linear_features_in_view();
+                                    }
+                                });
                             }
-                            ui.label(
-                                egui::RichText::new(format!("{:+.1} px", vertical_pan_offset))
-                                    .monospace()
-                                    .size(10.0),
-                            )
-                            .on_hover_text("Current linear-map vertical pan offset");
-                            if ui
-                                .small_button("0")
-                                .on_hover_text("Fit visible linear features vertically")
-                                .clicked()
-                            {
-                                self.fit_linear_features_in_view();
-                            }
-                        });
-                    }
-                    response
-                } else {
-                    ui.add(self.map_dna.to_owned())
-                };
+                            response
+                        } else {
+                            ui.add(self.map_dna.to_owned())
+                        }
+                    })
+                    .inner;
                 if response.rect.width().is_finite() && response.rect.width() > 0.0 {
                     self.last_linear_map_width_px = response.rect.width();
                 }

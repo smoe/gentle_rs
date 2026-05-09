@@ -6,4 +6,5 @@
 //! workspace split progresses.
 
 pub mod icons;
+pub mod theme;
 pub mod window_backdrop;
