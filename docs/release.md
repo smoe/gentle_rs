@@ -173,7 +173,5 @@ If a release artifact is broken:
 
 ## Internal Release Notes
 
-For internal tags, keep a versioned release-notes document at repository root,
-e.g.:
-
-- `release_notes_v0.1.0-internal.2.md`
+For internal tags, keep versioned release-note documents under
+`docs/release_notes/`.
