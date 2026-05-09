@@ -142,7 +142,9 @@ sequencing-confirmation, primer/qPCR, projection, construct-reasoning,
 RNA-read, and ClawBio/MCP parity work only through shared contracts. Useful
 work here is contract hardening, adapter-helper promotion, stack-safe helper
 splits, protocol snapshots, and targeted parity tests; defer broad crate
-surgery that is not needed for the current release proof.
+surgery that is not needed for the current release proof. Phase 2 has not
+started; the `gentle-engine` crate scaffold has been removed and will be
+re-introduced when the first execution-side module is ready to move.
 
 ## Phase D: Visualization And Workflow UX
 

@@ -15,7 +15,6 @@ build = "build.rs"
 resolver = "3"
 members = [
     "crates/gentle-protocol",
-    "crates/gentle-engine",
     "crates/gentle-render",
     "crates/gentle-shell",
     "crates/gentle-gui",
