@@ -1,6 +1,6 @@
 # Workspace / Crate Split Plan
 
-Last updated: 2026-05-02
+Last updated: 2026-05-09
 
 Purpose: describe the intended multi-crate end state for GENtle and the order
 in which the current monocrate should be split without breaking the
@@ -20,7 +20,9 @@ workspace settings by default.
 
 Current status:
 
-- the Cargo workspace scaffold and empty member crates now exist;
+- the Cargo workspace scaffold exists, but Phase 2 has not started; the
+  `gentle-engine` crate scaffold has been removed and will be re-introduced
+  when the first execution-side module is ready to move;
 - production code still mostly lives in the root crate;
 - Phase 1 has now started by extracting the first stable id aliases, shared
   enums, and `EngineError`/`ErrorCode` into `crates/gentle-protocol`;
@@ -529,7 +531,7 @@ They are important, but they should not distort the first extraction waves.
 
 The first milestone I would actually implement is:
 
-1. create a workspace with empty `gentle-protocol` and `gentle-engine` crates
+1. create a workspace with an initial `gentle-protocol` crate
 2. move only obviously stable protocol records first
 3. make the current root crate temporarily depend on those extracted crates
 4. keep GUI/shell code in place until protocol + engine boundaries prove
