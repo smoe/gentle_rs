@@ -6,11 +6,6 @@
 
 use super::*;
 
-pub(super) const USAGE: &str = "\
-  gentle_cli hosts list [--catalog PATH] [--filter TEXT]
-
-";
-
 pub(super) fn handle_hosts_family(args: &[String], cmd_idx: usize) -> Result<(), String> {
     if args.len() <= cmd_idx + 1 {
         usage();
@@ -70,13 +65,6 @@ mod tests {
 
     fn argv(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
-    }
-
-    #[test]
-    fn usage_block_keeps_hosts_list_route() {
-        assert!(USAGE.contains("gentle_cli hosts list"));
-        assert!(USAGE.contains("--catalog PATH"));
-        assert!(USAGE.contains("--filter TEXT"));
     }
 
     #[test]

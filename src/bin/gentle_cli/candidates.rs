@@ -6,29 +6,6 @@
 
 use super::*;
 
-pub(super) const USAGE: &str = "\
-  gentle_cli [--state PATH|--project PATH] candidates list
-  gentle_cli [--state PATH|--project PATH] candidates delete SET_NAME
-  gentle_cli [--state PATH|--project PATH] candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]
-  gentle_cli [--state PATH|--project PATH] candidates generate-between-anchors SET_NAME SEQ_ID --length N (--anchor-a-pos N|--anchor-a-json JSON) (--anchor-b-pos N|--anchor-b-json JSON) [--step N] [--limit N]
-  gentle_cli [--state PATH|--project PATH] candidates show SET_NAME [--limit N] [--offset N]
-  gentle_cli [--state PATH|--project PATH] candidates metrics SET_NAME
-  gentle_cli [--state PATH|--project PATH] candidates score SET_NAME METRIC_NAME EXPRESSION
-  gentle_cli [--state PATH|--project PATH] candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]
-  gentle_cli [--state PATH|--project PATH] candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]
-  gentle_cli [--state PATH|--project PATH] candidates top-k INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]
-  gentle_cli [--state PATH|--project PATH] candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]
-  gentle_cli [--state PATH|--project PATH] candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]
-  gentle_cli [--state PATH|--project PATH] candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET
-  gentle_cli [--state PATH|--project PATH] candidates macro SCRIPT_OR_@FILE
-  gentle_cli [--state PATH|--project PATH] candidates template-list
-  gentle_cli [--state PATH|--project PATH] candidates template-show TEMPLATE_NAME
-  gentle_cli [--state PATH|--project PATH] candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]
-  gentle_cli [--state PATH|--project PATH] candidates template-delete TEMPLATE_NAME
-  gentle_cli [--state PATH|--project PATH] candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]
-
-";
-
 pub(super) fn is_candidates_shell_command(shell_command: &ShellCommand) -> bool {
     matches!(
         shell_command,
@@ -87,13 +64,6 @@ mod tests {
 
     fn argv(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
-    }
-
-    #[test]
-    fn usage_block_keeps_candidate_routes() {
-        assert!(USAGE.contains("candidates list"));
-        assert!(USAGE.contains("candidates generate SET_NAME"));
-        assert!(USAGE.contains("candidates template-run"));
     }
 
     #[test]

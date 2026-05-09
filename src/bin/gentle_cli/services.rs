@@ -6,18 +6,6 @@
 
 use super::*;
 
-pub(super) const USAGE: &str = "\
-  gentle_cli services status
-  gentle_cli services providers list
-  gentle_cli services providers doctor [--catalog PATH] [--output PATH]
-  gentle_cli services project-preflight REQUEST_JSON_OR_@FILE
-  gentle_cli services project-quote REQUEST_JSON_OR_@FILE [--output-dir DIR]
-
-  gentle_cli services handoff [--scope NAME] [--output PATH]
-  gentle_cli services guide --channel telegram [--section overview|readiness|gene-context|tfbs|inline-dna|cloning|isoforms|follow-up] [--gene SYMBOL]
-
-";
-
 pub(super) fn handle_services_family(args: &[String], cmd_idx: usize) -> Result<(), String> {
     if args.len() <= cmd_idx + 1 {
         usage();
@@ -37,15 +25,6 @@ mod tests {
 
     fn argv(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
-    }
-
-    #[test]
-    fn usage_block_keeps_forwarded_service_routes() {
-        assert!(USAGE.contains("services providers list"));
-        assert!(USAGE.contains("services providers doctor"));
-        assert!(USAGE.contains("services project-preflight"));
-        assert!(USAGE.contains("services handoff"));
-        assert!(USAGE.contains("services guide --channel telegram"));
     }
 
     #[test]
