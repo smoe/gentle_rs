@@ -467,8 +467,8 @@ fn ensure_parent_dir(path: &str) -> Result<(), String> {
         .map_err(|e| format!("Could not create output directory for '{path}': {e}"))
 }
 
-fn usage() {
-    eprintln!(
+fn usage_text() -> String {
+    format!(
         "Usage:\n  \
   gentle_cli --help\n  \
   gentle_cli --version\n  \
@@ -482,216 +482,16 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] import-state PATH\n  \
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
-{rendering_usage}\
-  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID tfbs FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]\n  \
-  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID splicing FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID isoform PANEL_ID\n  \
-  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]\n  \
-  gentle_cli [--state PATH|--project PATH] panels inspect-isoform SEQ_ID PANEL_ID\n  \
-  gentle_cli [--state PATH|--project PATH] panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] panels validate-isoform PANEL_PATH [--panel-id ID]\n  \
-  gentle_cli [--state PATH|--project PATH] render-rna-svg SEQ_ID OUTPUT.svg\n  \
-  gentle_cli [--state PATH|--project PATH] rna-info SEQ_ID\n  \
-  gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
-{protocol_cartoon_usage}\
-  gentle_cli [--state PATH|--project PATH] gibson preview PLAN_JSON_OR_@FILE [--output OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] gibson apply PLAN_JSON_OR_@FILE\n\n  \
-  gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
-  gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
-{pools_usage}\
-  gentle_cli [--state PATH|--project PATH] racks create-from-arrangement ARR_ID [--rack-id ID] [--name TEXT] [--profile small_tube_4x6|plate_96|plate_384]\n  \
-  gentle_cli [--state PATH|--project PATH] racks place-arrangement ARR_ID --rack RACK_ID\n  \
-  gentle_cli [--state PATH|--project PATH] racks move RACK_ID --from A1 --to B1 [--block]\n  \
-  gentle_cli [--state PATH|--project PATH] racks show RACK_ID\n  \
-  gentle_cli [--state PATH|--project PATH] racks labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--preset compact_cards|print_a4|wide_cards]\n  \
-  gentle_cli [--state PATH|--project PATH] racks fabrication-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
-  gentle_cli [--state PATH|--project PATH] racks isometric-svg RACK_ID OUTPUT.svg [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
-  gentle_cli [--state PATH|--project PATH] racks openscad RACK_ID OUTPUT.scad [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
-  gentle_cli [--state PATH|--project PATH] racks carrier-labels-svg RACK_ID OUTPUT.svg [--arrangement ARR_ID] [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack] [--preset front_strip_and_cards|front_strip_only|module_cards_only]\n  \
-  gentle_cli [--state PATH|--project PATH] racks simulation-json RACK_ID OUTPUT.json [--template storage_pcr_tube_rack|pipetting_pcr_tube_rack]\n  \
-  gentle_cli [--state PATH|--project PATH] racks set-profile RACK_ID small_tube_4x6|plate_96|plate_384\n  \
-  gentle_cli [--state PATH|--project PATH] racks apply-template RACK_ID bench_rows|plate_columns|plate_edge_avoidance\n  \
-  gentle_cli [--state PATH|--project PATH] racks set-fill-direction RACK_ID row_major|column_major\n  \
-  gentle_cli [--state PATH|--project PATH] racks set-custom-profile RACK_ID ROWS COLUMNS\n\n  \
-  gentle_cli [--state PATH|--project PATH] racks set-blocked RACK_ID COORD[,COORD...]...|--clear\n\n  \
-  gentle_cli [--state PATH|--project PATH] screenshot-window OUTPUT.png (disabled by security policy)\n\n  \
-  gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
-  gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \
-  gentle_cli genomes list [--catalog PATH] [--filter TEXT]\n  \
-  gentle_cli genomes validate-catalog [--catalog PATH]\n  \
-  gentle_cli genomes update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
-  gentle_cli genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
-  gentle_cli genomes remove-prepared GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli genomes remove-catalog-entry GENOME_ID [--catalog PATH] [--output-catalog PATH]\n  \
-  gentle_cli genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]\n\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extract-promoter GENOME_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]\n\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
-  gentle_cli helpers list [--catalog PATH] [--filter TEXT]\n  \
-  gentle_cli helpers vocabulary list [--vocabulary PATH] [--filter TEXT]\n  \
-  gentle_cli helpers vocabulary doctor [--vocabulary PATH] [--routine-catalog PATH]\n  \
-  gentle_cli helpers validate-catalog [--catalog PATH]\n  \
-  gentle_cli helpers update-ensembl-specs [--catalog PATH] [--output-catalog PATH]\n  \
-  gentle_cli helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
-  gentle_cli helpers remove-prepared HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli helpers remove-catalog-entry HELPER_ID [--catalog PATH] [--output-catalog PATH]\n  \
-  gentle_cli helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--extract-mode gene|coding_with_promoter] [--promoter-upstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]\n\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extract-promoter HELPER_ID QUERY [--occurrence N] [--transcript-id ID] [--output-id ID] [--upstream-bp N] [--downstream-bp N] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--rmsk-index PATH] [--max-repeat-features N] [--append-repeat-features] [--catalog PATH] [--cache-dir PATH]\n\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
-{hosts_usage}\
-  gentle_cli genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]\n  \
-  gentle_cli genomes install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]\n  \
-  gentle_cli helpers ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]\n\n  \
-  gentle_cli helpers install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]\n\n  \
-  gentle_cli [--state PATH|--project PATH] tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
-  gentle_cli [--state PATH|--project PATH] tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
-  gentle_cli [--state PATH|--project PATH] tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
-  gentle_cli [--state PATH|--project PATH] arrays inspect-microarray-track MANIFEST\n\n  \
-  gentle_cli [--state PATH|--project PATH] arrays project-microarray-track SEQ_ID MANIFEST [--contrasts CSV] [--level probeset] [--min-abs-logfc N] [--max-adj-p N] [--max-features N] [--clear-existing]\n\n  \
-  gentle_cli agents list [--catalog PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]\n\n  \
-  gentle_cli ui intents\n  \
-  gentle_cli ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
-  gentle_cli ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
-  gentle_cli ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
-  gentle_cli ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]\n\n  \
-  gentle_cli [--state PATH|--project PATH] macros run SCRIPT_OR_@FILE [--transactional]\n  \
-  gentle_cli [--state PATH|--project PATH] macros instance-list\n  \
-  gentle_cli [--state PATH|--project PATH] macros instance-show MACRO_INSTANCE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-list\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-show TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port PORT_ID:KIND[:one|many][:required|optional][:description]]\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-delete TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-import PATH\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]\n\n  \
-{candidates_usage}\
-  gentle_cli [--state PATH|--project PATH] guides list\n  \
-  gentle_cli [--state PATH|--project PATH] guides show GUIDE_SET_ID [--limit N] [--offset N]\n  \
-  gentle_cli [--state PATH|--project PATH] guides put GUIDE_SET_ID (--json JSON|@FILE|--file PATH)\n  \
-  gentle_cli [--state PATH|--project PATH] guides delete GUIDE_SET_ID\n  \
-  gentle_cli [--state PATH|--project PATH] guides filter GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] guides filter-show GUIDE_SET_ID\n  \
-  gentle_cli [--state PATH|--project PATH] guides oligos-generate GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]\n  \
-  gentle_cli [--state PATH|--project PATH] guides oligos-list [--guide-set GUIDE_SET_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] guides oligos-show OLIGO_SET_ID\n  \
-  gentle_cli [--state PATH|--project PATH] guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]\n  \
-  gentle_cli [--state PATH|--project PATH] guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features formula SEQ_ID EXPR\n  \
-  gentle_cli [--state PATH|--project PATH] features query SEQ_ID [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]\n  \
-  gentle_cli [--state PATH|--project PATH] features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features repeat-query GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features repeat-cohort GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--geometry repeat_midpoint|transcript_5utr_start|pol2_promoter_upstream|cds_stop_context] [--upstream-bp N] [--downstream-bp N] [--limit N] [--catalog PATH] [--cache DIR] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features window-cohort-tfbs COHORT_JSON --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--catalog PATH] [--cache DIR] [--path FILE.json]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-score-tracks-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-score-tracks-svg --sequence-text DNA --output OUTPUT.svg [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative]\n\n  \
-  gentle_cli [--state PATH|--project PATH] shell 'features tfbs-track-similarity SEQ_ID --anchor-motif TOKEN [--candidate-motif TOKEN ...|--candidate-motifs CSV|--candidate-motif ALL] [--range START..END|--start N --end N] [--ranking-metric raw_pearson|smoothed_pearson|raw_spearman|smoothed_spearman] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--allow-negative] [--species TEXT] [--include-remote-metadata] [--limit N] [--path FILE.json]'\n\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-score-track-correlation-svg SEQ_ID OUTPUT.svg --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--score-kind llr_bits|llr_quantile|llr_background_quantile|llr_background_tail_log10|true_log_odds_bits|true_log_odds_quantile|true_log_odds_background_quantile|true_log_odds_background_tail_log10] [--correlation-metric pearson|spearman] [--allow-negative]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-scan SEQ_ID --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features tfbs-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END|--start N --end N] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path FILE.json]\n\n  \
-  gentle_cli [--state PATH|--project PATH] features restriction-scan SEQ_ID [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] features restriction-scan --sequence-text DNA [--topology linear|circular] [--id-hint TEXT] [--range START..END|--start N --end N] [--enzyme NAME] [--max-sites-per-enzyme N] [--no-cut-geometry] [--path FILE.json]\n\n  \
-  gentle_cli [--state PATH|--project PATH] variant annotate-promoters SEQ_ID [--gene-label LABEL] [--transcript-id ID] [--upstream-bp N] [--downstream-bp N] [--collapse transcript|gene]\n  \
-  gentle_cli [--state PATH|--project PATH] variant promoter-context SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--promoter-upstream-bp N] [--promoter-downstream-bp N] [--tfbs-focus-half-window-bp N] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] variant reporter-fragments SEQ_ID [--variant ID] [--gene-label LABEL] [--transcript-id ID] [--retain-downstream-from-tss-bp N] [--retain-upstream-beyond-variant-bp N] [--max-candidates N] [--path FILE.json]\n  \
-  gentle_cli [--state PATH|--project PATH] variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]\n\n  \
-  gentle_cli [--state PATH|--project PATH] primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N] [--max-hits-per-primer N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N] [--max-hits-per-primer N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers test-cdna-pcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr SEQ_ID FEATURE_ID --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--transcript-order transcript_id|genomic_first_exon|genomic_last_exon|antisense_first_exon] [--map-coordinate-mode cdna|genomic_aligned] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers transcript-qpcr-panel SEQ_ID FEATURE_ID SHARED_QPCR_REPORT_ID [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers test-cdna-qpcr-fasta CDNA_FASTA[.gz] [CDNA_FASTA[.gz] ...] --forward SEQ --reverse SEQ --probe SEQ [--transcript-id ID] [--min-amplicon-bp N] [--max-amplicon-bp N] [--max-mismatches N] [--require-3prime-exact-bases N] [--path OUTPUT.json]\n  \
-  gentle_cli [--state PATH|--project PATH] primers prepare-restriction-cloning REQUEST_JSON_OR_@FILE\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-restriction-cloning-handoff PRIMER_REPORT_ID VECTOR_SEQ_ID [--pair-rank N] [--mode single_site|directed_pair] [--forward-enzyme NAME] [--reverse-enzyme NAME] [--forward-leader SEQ] [--reverse-leader SEQ]\n  \
-  gentle_cli [--state PATH|--project PATH] primers restriction-cloning-vector-suggestions SEQ_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers list-restriction-cloning-handoffs\n  \
-  gentle_cli [--state PATH|--project PATH] primers show-restriction-cloning-handoff REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers export-restriction-cloning-handoff REPORT_ID OUTPUT.json\n  \
-  gentle_cli [--state PATH|--project PATH] primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-from-feature SEQ_ID FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-from-splicing SEQ_ID FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-qpcr-from-feature SEQ_ID FEATURE_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID [--mode shared_gene|distinguish_transcript] [--transcript-id ID] [--specificity-evidence junction_only|unique_exon_or_chain|either_prefer_junction]\n  \
-  gentle_cli [--state PATH|--project PATH] primers list-reports\n  \
-  gentle_cli [--state PATH|--project PATH] primers show-report REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers export-report REPORT_ID OUTPUT.json\n  \
-  gentle_cli [--state PATH|--project PATH] primers list-qpcr-reports\n  \
-  gentle_cli [--state PATH|--project PATH] primers show-qpcr-report REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers export-qpcr-report REPORT_ID OUTPUT.json\n\n  \
-  gentle_cli [--state PATH|--project PATH] dotplot compute SEQ_ID [--reference-seq REF_SEQ_ID] [--start N] [--end N] [--ref-start N] [--ref-end N] [--mode self_forward|self_reverse_complement|pair_forward|pair_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] dotplot overlay-compute OWNER_SEQ_ID [--reference-seq REF_SEQ_ID] --query-spec JSON_OR_@FILE [--query-spec JSON_OR_@FILE ...] [--ref-start N] [--ref-end N] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] dotplot list [SEQ_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] dotplot show DOTPLOT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] transcripts derive SEQ_ID [--feature-id N ...] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
-  gentle_cli [--state PATH|--project PATH] transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END] [--transcript ID]\n  \
-  gentle_cli [--state PATH|--project PATH] flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] flex list [SEQ_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] flex show TRACK_ID\n\n  \
-  gentle_cli [--state PATH|--project PATH] splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]\n  \
-  gentle_cli [--state PATH|--project PATH] align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]\n\n  \
-  gentle_cli [--state PATH|--project PATH] reverse-translate run PROTEIN_SEQ_ID [--output-id ID] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N]\n  \
-  gentle_cli [--state PATH|--project PATH] reverse-translate list-reports [PROTEIN_SEQ_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] reverse-translate show-report REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] reverse-translate export-report REPORT_ID OUTPUT.json\n\n  \
-  gentle_cli cutrun list [--catalog PATH] [--filter TEXT]\n  \
-  gentle_cli cutrun status DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli cutrun prepare DATASET_ID [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun project SEQ_ID DATASET_ID [--no-peaks] [--no-signal] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun interpret SEQ_ID INPUT_R1 [INPUT_R2] [--dataset DATASET_ID] [--catalog PATH] [--cache-dir PATH] [--format fasta|fastq] [--layout single_end|paired_end] [--flank-bp N] [--report-id ID] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--seed-kmer-len N] [--min-seed-matches N] [--max-mismatches N] [--min-identity F] [--max-fragment-span-bp N] [--deduplicate-fragments|--no-deduplicate-fragments]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun list-read-reports [SEQ_ID]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun show-read-report REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun export-coverage REPORT_ID OUTPUT.tsv [--kind coverage|cut_sites|fragments]\n  \
-  gentle_cli [--state PATH|--project PATH] cutrun inspect-regulatory-support SEQ_ID [--dataset DATASET_ID]... [--read-report REPORT_ID]... [--promoter-search-start N] [--promoter-search-end N] [--neighbor-window-bp N] [--species-filter NAME]... [--path OUTPUT.json]\n\n  \
-  gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT] [--seq-id SEQ_ID]\n  \
-  gentle_cli routines explain ROUTINE_ID [--catalog PATH] [--seq-id SEQ_ID]\n  \
-  gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH] [--seq-id SEQ_ID]\n\n  \
-  gentle_cli planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]\n  \
-  gentle_cli planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]\n  \
-  gentle_cli planning profile clear [--scope global|project_override|confirmed_agent_overlay]\n  \
-  gentle_cli planning objective show\n  \
-  gentle_cli planning objective set JSON_OR_@FILE\n  \
-  gentle_cli planning objective clear\n  \
-  gentle_cli planning suggestions list [--status pending|accepted|rejected]\n  \
-  gentle_cli planning suggestions accept SUGGESTION_ID\n  \
-  gentle_cli planning suggestions reject SUGGESTION_ID [--reason TEXT]\n  \
-  gentle_cli planning sync status\n  \
-  gentle_cli planning sync pull JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n  \
-  gentle_cli planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n\n\
-{resources_usage}\
-{services_usage}\
-  gentle_cli cache inspect [--references|--helpers|--both] [--cache-dir PATH ...]\n  \
-  gentle_cli cache clear blast-db-only|derived-indexes-only|selected-prepared|all-prepared-in-cache [--references|--helpers|--both] [--cache-dir PATH ...] [--prepared-id ID ...] [--prepared-path PATH ...] [--include-orphans]\n\n  \
+  gentle_cli [--state PATH|--project PATH] shell 'COMMAND ...'\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
   --project is an alias of --state for project.gentle.json files\n\n  \
-  Shell help:\n  \
+  Shared command reference (generated from docs/glossary.json):\n  \
   {shell_help}",
-        shell_help = shell_help_text(),
-        candidates_usage = gentle_cli_candidates::USAGE,
-        hosts_usage = gentle_cli_hosts::USAGE,
-        pools_usage = gentle_cli_pools::USAGE,
-        protocol_cartoon_usage = gentle_cli_protocol_cartoon::USAGE,
-        rendering_usage = gentle_cli_rendering::USAGE,
-        resources_usage = gentle_cli_resources::USAGE,
-        services_usage = gentle_cli_services::USAGE
-    );
+        shell_help = shell_help_text()
+    )
+}
+fn usage() {
+    eprintln!("{}", usage_text());
 }
 
 const SHELL_FORWARDED_COMMANDS: &[&str] = &[
@@ -1699,6 +1499,65 @@ mod tests {
                     .iter()
                     .any(|path| *path == *command || path.starts_with(&expected_prefix)),
                 "shell-forwarded command '{command}' is missing from docs/glossary.json"
+            );
+        }
+    }
+
+    #[test]
+    fn test_usage_text_includes_cli_glossary_paths() {
+        let glossary: serde_json::Value =
+            serde_json::from_str(include_str!("../../docs/glossary.json"))
+                .expect("parse docs/glossary.json");
+        let commands = glossary
+            .get("commands")
+            .and_then(|value| value.as_array())
+            .expect("glossary commands array");
+        let help = usage_text();
+        let mut missing = Vec::new();
+        for command in commands {
+            let interfaces = command
+                .get("interfaces")
+                .and_then(|value| value.as_array())
+                .expect("glossary command interfaces");
+            let is_cli = interfaces.iter().any(|interface| {
+                matches!(interface.as_str(), Some("cli-direct") | Some("cli-shell"))
+            });
+            if !is_cli {
+                continue;
+            }
+            let path = command
+                .get("path")
+                .and_then(|value| value.as_str())
+                .expect("glossary command path");
+            if !help.contains(path) {
+                missing.push(path.to_string());
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "gentle_cli --help must mention every CLI glossary command path:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    #[test]
+    fn test_usage_text_keeps_release_sensitive_options_current() {
+        let help = usage_text();
+        for token in [
+            "--seed-stride-bp",
+            "--record-indices i,j,k",
+            "--svg OUTPUT.svg",
+            "--materialize-products",
+            "--product-output-prefix PREFIX",
+            "--product-gel-svg OUTPUT.svg",
+            "--product-gel-ladder NAME",
+        ] {
+            assert!(help.contains(token), "missing current help token {token}");
+        }
+        for stale in ["--short-max-bp", "--long-window-bp", "--long-window-count"] {
+            assert!(
+                !help.contains(stale),
+                "gentle_cli --help still mentions stale RNA-read option {stale}"
             );
         }
     }
