@@ -9,16 +9,6 @@ use gentle::protocol_cartoon::{ProtocolCartoonKind, protocol_cartoon_catalog_row
 
 use super::*;
 
-pub(super) const USAGE: &str = "\
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon list
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon render-svg PROTOCOL_ID OUTPUT.svg
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon render-template-svg TEMPLATE.json OUTPUT.svg
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon template-validate TEMPLATE.json
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon render-with-bindings TEMPLATE.json BINDINGS.json OUTPUT.svg
-  gentle_cli [--state PATH|--project PATH] protocol-cartoon template-export PROTOCOL_ID OUTPUT.json
-
-";
-
 const SUBCOMMANDS: &str = "list, render-svg, render-template-svg, template-validate, render-with-bindings, template-export";
 
 pub(super) fn handle_protocol_cartoon_family(
@@ -197,13 +187,6 @@ mod tests {
 
     fn argv(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
-    }
-
-    #[test]
-    fn usage_block_keeps_protocol_cartoon_routes() {
-        assert!(USAGE.contains("protocol-cartoon list"));
-        assert!(USAGE.contains("protocol-cartoon render-with-bindings"));
-        assert!(USAGE.contains("protocol-cartoon template-export"));
     }
 
     #[test]
