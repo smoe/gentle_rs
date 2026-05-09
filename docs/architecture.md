@@ -13,7 +13,10 @@ It has two goals:
 Related shared documents:
 
 - `docs/protocol.md`: operation/state/result contracts
-- `docs/roadmap.md`: implementation status, known gaps, and execution order
+- `docs/roadmap.md`: current release gate, next priorities, and execution
+  phases
+- `docs/decisions.md`: durable architecture and implementation decisions
+- `docs/CHANGELOG.md`: completed-work history migrated out of the roadmap
 
 ## 1. Product intent
 
@@ -520,10 +523,11 @@ Rules:
   should publish the same OCI artifact that local Docker and Linux Apptainer
   users consume
 
-## 3. Implementation status and roadmap
+## 3. Implementation status, decisions, and roadmap
 
-Shared implementation status, parity matrices, known gaps, and execution order
-are now maintained in `docs/roadmap.md`.
+Current priorities and release-gate rules are maintained in `docs/roadmap.md`.
+Completed work is recorded in `docs/CHANGELOG.md`. Durable implementation
+constraints and architectural decisions are indexed in `docs/decisions.md`.
 
 ## 4. Engine model
 
