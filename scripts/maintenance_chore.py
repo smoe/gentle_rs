@@ -41,7 +41,6 @@ GENERATED_CANDIDATE_EXTENSIONS = {
 SHARED_CONTRACT_PREFIXES = (
     "src/engine/",
     "src/engine_shell/",
-    "crates/gentle-engine/",
     "crates/gentle-protocol/",
     "crates/gentle-shell/",
 )
