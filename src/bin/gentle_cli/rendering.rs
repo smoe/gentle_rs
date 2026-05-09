@@ -17,16 +17,6 @@ use std::path::Path;
 
 use super::*;
 
-pub(super) const USAGE: &str = "\
-  gentle_cli svg-png INPUT.svg OUTPUT.png [--scale N] [--drop-dotplot-metadata]
-  gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg
-  gentle_cli [--state PATH|--project PATH] render-dotplot-svg SEQ_ID DOTPLOT_ID OUTPUT.svg [--flex-track ID] [--display-threshold N] [--intensity-gain N] [--overlay-x-axis percent_length|left_aligned_bp|right_aligned_bp|shared_exon_anchor|query_anchor_bp] [--overlay-anchor-exon START..END]
-  gentle_cli [--state PATH|--project PATH] render-rna-svg SEQ_ID OUTPUT.svg
-  gentle_cli [--state PATH|--project PATH] rna-info SEQ_ID
-  gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg
-
-";
-
 const RENDERING_COMMANDS: &[&str] = &[
     "svg-png",
     "render-svg",
@@ -318,13 +308,6 @@ mod tests {
 
     fn argv(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
-    }
-
-    #[test]
-    fn usage_block_keeps_rendering_routes() {
-        assert!(USAGE.contains("svg-png INPUT.svg OUTPUT.png"));
-        assert!(USAGE.contains("render-dotplot-svg SEQ_ID DOTPLOT_ID"));
-        assert!(USAGE.contains("render-lineage-svg OUTPUT.svg"));
     }
 
     #[test]
