@@ -3050,6 +3050,12 @@ without blocking this publication.
 ### GUI baseline in place
 
 - Main lineage page with table/graph/container views.
+- Fresh lineage workspaces now default to the graph view, with a clickable
+  overview strip for sequence, pool, analysis, container, and arrangement
+  counts.
+- GUI canvas styling now has a small theme-token layer that keeps decorative
+  window colors separate from biological/analysis colors and supplies
+  light/dark-aware canvas fills/strokes.
 - Main lineage page content is vertically scrollable so graph height does not
   hide container/arrangement sections.
 - Main lineage pane now supports a draggable split between the

@@ -362,6 +362,12 @@ Window visual identity rule:
   of sequence/map labels, controls, or quantitative overlays.
 - Window-type coloring must remain stable (`main`, `sequence`, `splicing`,
   `pool`, `configuration`, `help`) and should not encode scientific semantics.
+- GUI theme tokens must keep decorative window-surface colors separate from
+  biological/analysis colors such as strand, feature, node, warning, and
+  success semantics.
+- Scientific canvas fills/strokes must be mode-aware for both light and dark
+  egui visuals instead of hard-coding a color that only works in one system
+  theme.
 - Backdrop images are expected to be monochrome or monochrome-tinted in
   rendering, with low opacity and a fast global disable path.
 

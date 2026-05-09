@@ -302,7 +302,13 @@ Both panels can be shown/hidden from the toolbar.
 The project main window (lineage page) supports two views:
 
 - `Table`: tabular lineage view with per-sequence actions
-- `Graph`: node/edge lineage visualization
+- `Graph`: node/edge lineage visualization; this is the default for fresh
+  projects and sessions without a saved lineage workspace preference
+- clickable overview counts above the view toggle summarize sequences, pools,
+  analyses, containers, and arrangements:
+  - sequence/pool/analysis counts focus the lineage graph/table area
+  - container and arrangement counts resize the existing project split to bring
+    the relevant lower section into view
 - analysis artifacts (dotplots, flexibility tracks, persisted primer/qPCR
   design reports, persisted transcript-native protein-derivation reports,
   persisted UniProt genome projections, and
@@ -327,6 +333,11 @@ The project main window (lineage page) supports two views:
   draggable horizontal divider in the main window.
 - In `Table` view, the lineage grid supports both horizontal and vertical
   scrolling; `Node`/`Op` cells use compact IDs with full values on hover.
+- The Lineage graph drawing surface uses a dedicated science-canvas frame with
+  mode-aware light/dark colors, separate from surrounding controls.
+- In DNA sequence windows, the same canvas treatment applies only to the
+  graphical map canvas; the sequence text panel and toolbar/control rows remain
+  on their normal control surfaces.
 
 Project overview screenshot:
 
@@ -1932,6 +1943,10 @@ Toolbar layout:
 - The `Selection formula` / `Apply Sel` controls now stay left-aligned on
   their own row instead of floating into the preceding button row when the
   window becomes narrower.
+- High-frequency map/display controls use existing icon assets where the
+  meaning is clear, while every icon keeps the same hover/status description
+  used for support and debugging. Text labels remain for controls without a
+  clear existing icon.
 
 Controls:
 
@@ -4880,3 +4895,7 @@ Example FASTA headers:
 - The GUI is under active development.
 - Some advanced feature-location edge cases may still require refinement.
 - Visual behavior may continue to evolve as map parity between circular and linear modes improves.
+- Future consideration: a browser/web viewer remains a v2 candidate for
+  polished report, Lineage, Dotplot, and agentic workflow viewing. It should
+  consume the same engine-owned JSON/SVG artifacts rather than replacing the
+  egui desktop workbench in this GUI polish pass.

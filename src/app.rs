@@ -163,6 +163,7 @@ use crate::{
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use gentle_gui::theme::{self, SciencePalette};
 use pulldown_cmark::{Event, LinkType, Parser, Tag};
 use regex::{Regex, RegexBuilder};
 use resvg::{self, tiny_skia, usvg};
@@ -1969,6 +1970,21 @@ enum LineageNodeKind {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ProjectOverviewTarget {
+    Lineage,
+    Containers,
+    Arrangements,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct ProjectOverviewMetric {
+    label: &'static str,
+    count: usize,
+    target: ProjectOverviewTarget,
+    hover: &'static str,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LineageCopyPayloadKind {
     NodeId,
     PrimaryId,
@@ -2493,6 +2509,7 @@ impl CommandPaletteEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct PersistedLineageGraphWorkspace {
+    graph_view: Option<bool>,
     main_split_fraction: Option<f32>,
     container_arrangement_split_fraction: Option<f32>,
     zoom: f32,
@@ -2507,6 +2524,7 @@ struct PersistedLineageGraphWorkspace {
 impl Default for PersistedLineageGraphWorkspace {
     fn default() -> Self {
         Self {
+            graph_view: Some(true),
             main_split_fraction: Some(DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION),
             container_arrangement_split_fraction: Some(
                 DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION,
@@ -2584,7 +2602,7 @@ impl Default for GENtleApp {
             window_backdrop_path_status_cache: HashMap::new(),
             current_project_path: None,
             recent_project_paths: vec![],
-            lineage_graph_view: false,
+            lineage_graph_view: true,
             lineage_main_split_fraction: DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION,
             lineage_graph_zoom: 1.0,
             lineage_graph_area_height: 420.0,
@@ -6705,6 +6723,7 @@ Error: `{err}`"
         self.lineage_containers.clear();
         self.lineage_arrangements.clear();
         self.lineage_racks.clear();
+        self.lineage_graph_view = true;
         self.lineage_main_split_fraction = DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION;
         self.lineage_graph_zoom = 1.0;
         self.lineage_graph_area_height = 420.0;
@@ -31976,6 +31995,7 @@ Error: `{err}`"
         self.lineage_containers.clear();
         self.lineage_arrangements.clear();
         self.lineage_racks.clear();
+        self.lineage_graph_view = true;
         self.lineage_main_split_fraction = DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION;
         self.lineage_graph_zoom = 1.0;
         self.lineage_graph_area_height = 420.0;
@@ -32126,6 +32146,7 @@ Error: `{err}`"
             DEFAULT_LINEAGE_CONTAINER_ARRANGEMENT_SPLIT_FRACTION;
         self.lineage_graph_scroll_offset = Vec2::ZERO;
         self.lineage_graph_pan_origin = None;
+        self.lineage_graph_view = true;
         self.lineage_graph_compact_labels = true;
         self.lineage_main_split_drag_origin = None;
         self.lineage_main_split_drag_start_y = None;
@@ -32138,6 +32159,7 @@ Error: `{err}`"
             if let Ok(workspace) =
                 serde_json::from_value::<PersistedLineageGraphWorkspace>(serialized)
             {
+                self.lineage_graph_view = workspace.graph_view.unwrap_or(true);
                 if workspace.zoom.is_finite() {
                     self.lineage_graph_zoom = workspace.zoom.clamp(0.35, 4.0);
                 }
@@ -32255,6 +32277,7 @@ Error: `{err}`"
         }
 
         let workspace = PersistedLineageGraphWorkspace {
+            graph_view: Some(self.lineage_graph_view),
             main_split_fraction: Some(self.lineage_main_split_fraction.clamp(0.2, 0.9)),
             container_arrangement_split_fraction: Some(
                 self.lineage_container_arrangement_split_fraction
@@ -32274,7 +32297,8 @@ Error: `{err}`"
             node_groups: self.lineage_node_groups.clone(),
         };
 
-        let workspace_is_default = (workspace.zoom - 1.0).abs() <= 0.0001
+        let workspace_is_default = workspace.graph_view.unwrap_or(true)
+            && (workspace.zoom - 1.0).abs() <= 0.0001
             && (workspace
                 .main_split_fraction
                 .unwrap_or(DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION)
@@ -37164,12 +37188,108 @@ Error: `{err}`"
         Some((kind, row.seq_id.clone(), artifact_id))
     }
 
+    fn project_overview_metrics(
+        rows: &[LineageRow],
+        container_count: usize,
+        arrangement_count: usize,
+    ) -> [ProjectOverviewMetric; 5] {
+        let sequence_count = rows
+            .iter()
+            .filter(|row| row.kind == LineageNodeKind::Sequence && row.pool_size <= 1)
+            .count();
+        let pool_count = rows
+            .iter()
+            .filter(|row| row.kind == LineageNodeKind::Sequence && row.pool_size > 1)
+            .count();
+        let analysis_count = rows
+            .iter()
+            .filter(|row| row.kind == LineageNodeKind::Analysis)
+            .count();
+        [
+            ProjectOverviewMetric {
+                label: "sequences",
+                count: sequence_count,
+                target: ProjectOverviewTarget::Lineage,
+                hover: "Focus the lineage graph/table sequence nodes",
+            },
+            ProjectOverviewMetric {
+                label: "pools",
+                count: pool_count,
+                target: ProjectOverviewTarget::Lineage,
+                hover: "Focus the lineage graph/table pool nodes",
+            },
+            ProjectOverviewMetric {
+                label: "analyses",
+                count: analysis_count,
+                target: ProjectOverviewTarget::Lineage,
+                hover: "Focus the lineage graph/table analysis artifacts",
+            },
+            ProjectOverviewMetric {
+                label: "containers",
+                count: container_count,
+                target: ProjectOverviewTarget::Containers,
+                hover: "Focus the container section below the lineage view",
+            },
+            ProjectOverviewMetric {
+                label: "arrangements",
+                count: arrangement_count,
+                target: ProjectOverviewTarget::Arrangements,
+                hover: "Focus the arrangement section below the lineage view",
+            },
+        ]
+    }
+
+    fn focus_project_overview_target(&mut self, target: ProjectOverviewTarget) {
+        match target {
+            ProjectOverviewTarget::Lineage => {
+                self.lineage_graph_view = true;
+                self.lineage_main_split_fraction = 0.78;
+            }
+            ProjectOverviewTarget::Containers => {
+                self.lineage_main_split_fraction = 0.36;
+                self.lineage_container_arrangement_split_fraction = 0.72;
+            }
+            ProjectOverviewTarget::Arrangements => {
+                self.lineage_main_split_fraction = 0.36;
+                self.lineage_container_arrangement_split_fraction = 0.28;
+            }
+        }
+        self.lineage_graph_area_height = 420.0;
+        self.lineage_container_area_height = 420.0;
+    }
+
+    fn render_project_overview_strip(&mut self, ui: &mut Ui) -> bool {
+        let metrics = Self::project_overview_metrics(
+            &self.lineage_rows,
+            self.lineage_containers.len(),
+            self.lineage_arrangements.len(),
+        );
+        let mut changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new("Overview").strong());
+            for metric in metrics {
+                let response = ui
+                    .button(format!("{} {}", metric.count, metric.label))
+                    .on_hover_text(metric.hover);
+                if response.clicked() {
+                    self.focus_project_overview_target(metric.target);
+                    self.app_status = format!("Focused project overview: {}", metric.label);
+                    changed = true;
+                }
+            }
+        });
+        changed
+    }
+
     fn render_main_lineage(&mut self, ui: &mut Ui) {
         self.refresh_lineage_cache_if_needed();
 
         ui.heading("Lineage Graph");
         ui.label(format!("Project: {}", self.current_project_name()));
         ui.label("Project-level sequence lineage (branch and merge aware)");
+        if self.render_project_overview_strip(ui) {
+            self.persist_lineage_graph_workspace_to_state();
+        }
         ui.horizontal_wrapped(|ui| {
             let table = self.track_hover_status(
                 ui.selectable_label(!self.lineage_graph_view, "Table")
@@ -37178,6 +37298,7 @@ Error: `{err}`"
             );
             if table.clicked() {
                 self.lineage_graph_view = false;
+                self.persist_lineage_graph_workspace_to_state();
             }
             let graph = self.track_hover_status(
                 ui.selectable_label(self.lineage_graph_view, "Graph")
@@ -37186,6 +37307,7 @@ Error: `{err}`"
             );
             if graph.clicked() {
                 self.lineage_graph_view = true;
+                self.persist_lineage_graph_workspace_to_state();
             }
         });
         ui.separator();
@@ -37356,7 +37478,7 @@ Error: `{err}`"
                     ui,
                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                 );
-                ui.collapsing("Node Groups", |ui| {
+                ui.collapsing("Advanced: Node Groups", |ui| {
                     ui.small(
                         "Group lineage nodes into disjoint sets. Members are shown indented in table view and can collapse to the representative node in graph view.",
                     );
@@ -37609,14 +37731,15 @@ Error: `{err}`"
             }
             let mut request_fit_zoom = false;
             let mut request_fit_origin = false;
+            let science_palette = SciencePalette::default();
             ui.horizontal_wrapped(|ui| {
                 ui.label("Legend:");
-                ui.colored_label(egui::Color32::from_rgb(90, 140, 210), "● single sequence");
-                ui.colored_label(egui::Color32::from_rgb(180, 120, 70), "◆ pool");
-                ui.colored_label(egui::Color32::from_rgb(98, 98, 108), "▭ macro run");
-                ui.colored_label(egui::Color32::from_rgb(108, 154, 122), "▭ arrangement");
-                ui.colored_label(egui::Color32::from_rgb(188, 146, 48), "▣ retrieval pattern");
-                ui.colored_label(egui::Color32::from_rgb(145, 145, 145), "◻ node group");
+                ui.colored_label(science_palette.sequence_node, "● single sequence");
+                ui.colored_label(science_palette.pool_node, "◆ pool");
+                ui.colored_label(science_palette.macro_node, "▭ macro run");
+                ui.colored_label(science_palette.arrangement_node, "▭ arrangement");
+                ui.colored_label(science_palette.retrieval_node, "▣ retrieval pattern");
+                ui.colored_label(science_palette.node_group, "◻ node group");
             });
             ui.horizontal_wrapped(|ui| {
                 let zoom_out_resp = self.track_hover_status(
@@ -37688,10 +37811,14 @@ Error: `{err}`"
                 |ui| {
                     ui.set_min_width(graph_panel_width);
                     ui.set_max_width(graph_panel_width);
-                    ui.small(
-                        "Shift+scroll zooms (Cmd/Ctrl+scroll still works). Option+drag pans; Space+drag pans on background. Drag nodes to reposition.",
-                    );
-                    let graph_scroll_output = egui::ScrollArea::both()
+                    let dark_mode = ui.visuals().dark_mode;
+                    theme::canvas_frame(dark_mode).show(ui, |ui| {
+                        ui.set_min_width((graph_panel_width - 16.0).max(1.0));
+                        ui.set_max_width((graph_panel_width - 16.0).max(1.0));
+                        ui.small(
+                            "Shift+scroll zooms (Cmd/Ctrl+scroll still works). Option+drag pans; Space+drag pans on background. Drag nodes to reposition.",
+                        );
+                        let graph_scroll_output = egui::ScrollArea::both()
                         .id_salt("lineage_graph_scroll")
                         .auto_shrink([false, false])
                         .scroll_offset(graph_scroll_offset)
@@ -39361,6 +39488,7 @@ Error: `{err}`"
                         measured_offset.y = measured_offset.y.clamp(0.0, max_scroll_y);
                         graph_scroll_offset = measured_offset;
                     }
+                    });
                 },
             );
         } else {
@@ -44828,11 +44956,12 @@ mod tests {
         BACKGROUND_JOBS_RETRY_SNAPSHOTS_SCROLL_ID, BackgroundJobEventPhase, BackgroundJobKind,
         CacheCleanupScope, CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab,
         ContainerRow, DEFAULT_DBSNP_TUTORIAL_RS_ID, DEFAULT_HELPER_GENOME_CACHE_DIR,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH, DbSnpFetchTask, DbSnpFetchTaskMessage, EngineError,
-        ErrorCode, GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
-        GenomeDialogScope, GenomePrepareLaunchMode, GenomePrepareTask, GenomePrepareTaskMessage,
-        GenomeTrackImportTask, GenomeTrackImportTaskMessage, GibsonUiInsertOrientation,
-        GibsonUiInsertRow, GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION, DbSnpFetchTask,
+        DbSnpFetchTaskMessage, EngineError, ErrorCode, GENtleApp, GenomeBlastOptionsPreset,
+        GenomeBlastTask, GenomeBlastTaskMessage, GenomeDialogScope, GenomePrepareLaunchMode,
+        GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
+        GenomeTrackImportTaskMessage, GibsonUiInsertOrientation, GibsonUiInsertRow,
+        GibsonUiOpeningMode, HelpDoc, HelpSearchMatch, HelpTutorialDocEntry,
         LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
         LineageAnalysisKind, LineageCopyPayloadKind, LineageNodeKind, LineageRow,
         MAX_RECENT_PROJECTS, OPENAI_API_KEY_ENV, OPERATION_HISTORY_SCROLL_ID,
@@ -44841,12 +44970,12 @@ mod tests {
         PersistedLineageNodeGroup, PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction,
         PrepareGenomeFailureRecovery, PrepareGenomeUiStepState, PrepareGenomeUiStepStatus,
         PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest, ProjectAction,
-        RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD, RACK_WORKSPACE_METADATA_KEY,
-        ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
-        ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
-        RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
-        TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
-        TutorialProjectTaskProgress, preferred_local_agent_system_id,
+        ProjectOverviewMetric, ProjectOverviewTarget, RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD,
+        RACK_WORKSPACE_METADATA_KEY, ROUTINE_DECISION_TRACE_SCHEMA,
+        ROUTINE_DECISION_TRACE_STORE_SCHEMA, ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState,
+        RetryCleanupAuditActionFilter, RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction,
+        RoutineAssistantStage, TutorialProjectOpenOutcome, TutorialProjectTask,
+        TutorialProjectTaskMessage, TutorialProjectTaskProgress, preferred_local_agent_system_id,
         preferred_openai_agent_system_id,
     };
     use crate::{
@@ -45479,6 +45608,35 @@ mod tests {
     }
 
     #[test]
+    fn lineage_workspace_defaults_to_graph_view_without_metadata() {
+        let mut app = GENtleApp::default();
+        app.lineage_graph_view = false;
+        app.load_lineage_graph_workspace_from_state();
+
+        assert!(app.lineage_graph_view);
+    }
+
+    #[test]
+    fn load_lineage_workspace_restores_persisted_table_view() {
+        let workspace = PersistedLineageGraphWorkspace {
+            graph_view: Some(false),
+            ..PersistedLineageGraphWorkspace::default()
+        };
+
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            LINEAGE_GRAPH_WORKSPACE_METADATA_KEY.to_string(),
+            serde_json::to_value(workspace).expect("serialize lineage workspace"),
+        );
+
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.load_lineage_graph_workspace_from_state();
+
+        assert!(!app.lineage_graph_view);
+    }
+
+    #[test]
     fn persist_lineage_workspace_stores_main_split_fraction() {
         let mut app = GENtleApp::default();
         app.lineage_main_split_fraction = 0.72;
@@ -45497,6 +45655,94 @@ mod tests {
             serde_json::from_value(workspace_value).expect("deserialize lineage workspace");
 
         assert_eq!(workspace.main_split_fraction, Some(0.72));
+    }
+
+    #[test]
+    fn persist_lineage_workspace_stores_explicit_table_view_choice() {
+        let mut app = GENtleApp::default();
+        app.lineage_graph_view = false;
+        app.persist_lineage_graph_workspace_to_state();
+
+        let workspace_value = app
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY)
+            .cloned()
+            .expect("workspace metadata");
+        let workspace: PersistedLineageGraphWorkspace =
+            serde_json::from_value(workspace_value).expect("deserialize lineage workspace");
+
+        assert_eq!(workspace.graph_view, Some(false));
+    }
+
+    #[test]
+    fn project_overview_metrics_count_and_route_project_areas() {
+        let mut sequence = make_lineage_row("n_seq", "seq");
+        sequence.pool_size = 1;
+        let mut pool = make_lineage_row("n_pool", "pool");
+        pool.pool_size = 3;
+        let mut analysis = make_lineage_row("n_analysis", "analysis");
+        analysis.kind = LineageNodeKind::Analysis;
+        let rows = vec![sequence, pool, analysis];
+
+        let metrics = GENtleApp::project_overview_metrics(&rows, 2, 1);
+
+        assert_eq!(
+            metrics,
+            [
+                ProjectOverviewMetric {
+                    label: "sequences",
+                    count: 1,
+                    target: ProjectOverviewTarget::Lineage,
+                    hover: "Focus the lineage graph/table sequence nodes",
+                },
+                ProjectOverviewMetric {
+                    label: "pools",
+                    count: 1,
+                    target: ProjectOverviewTarget::Lineage,
+                    hover: "Focus the lineage graph/table pool nodes",
+                },
+                ProjectOverviewMetric {
+                    label: "analyses",
+                    count: 1,
+                    target: ProjectOverviewTarget::Lineage,
+                    hover: "Focus the lineage graph/table analysis artifacts",
+                },
+                ProjectOverviewMetric {
+                    label: "containers",
+                    count: 2,
+                    target: ProjectOverviewTarget::Containers,
+                    hover: "Focus the container section below the lineage view",
+                },
+                ProjectOverviewMetric {
+                    label: "arrangements",
+                    count: 1,
+                    target: ProjectOverviewTarget::Arrangements,
+                    hover: "Focus the arrangement section below the lineage view",
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn project_overview_focus_targets_adjust_lineage_workspace() {
+        let mut app = GENtleApp::default();
+
+        app.focus_project_overview_target(ProjectOverviewTarget::Containers);
+        assert!(app.lineage_main_split_fraction < DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION);
+        assert!(app.lineage_container_arrangement_split_fraction > 0.5);
+
+        app.focus_project_overview_target(ProjectOverviewTarget::Arrangements);
+        assert!(app.lineage_main_split_fraction < DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION);
+        assert!(app.lineage_container_arrangement_split_fraction < 0.5);
+
+        app.lineage_graph_view = false;
+        app.focus_project_overview_target(ProjectOverviewTarget::Lineage);
+        assert!(app.lineage_graph_view);
+        assert!(app.lineage_main_split_fraction > DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION);
     }
 
     #[test]
