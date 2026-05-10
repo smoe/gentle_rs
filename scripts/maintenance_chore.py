@@ -576,7 +576,12 @@ def check_release_docs_present(repo_root: Path) -> Check:
         repo_root / "README.md",
         repo_root / "docs" / "release.md",
     ]
-    release_notes = sorted(repo_root.glob("release_notes_v*.md"))
+    release_notes = sorted(
+        {
+            *repo_root.glob("release_notes_v*.md"),
+            *(repo_root / "docs" / "release_notes").glob("release_notes_v*.md"),
+        }
+    )
     missing = [relative(repo_root, path) for path in required_paths if not path.exists()]
     evidence = [f"found {relative(repo_root, path)}" for path in required_paths if path.exists()]
     evidence.append(
@@ -584,7 +589,7 @@ def check_release_docs_present(repo_root: Path) -> Check:
         + (", ".join(relative(repo_root, path) for path in release_notes) if release_notes else "none")
     )
     if not release_notes:
-        missing.append("release_notes_v*.md")
+        missing.append("docs/release_notes/release_notes_v*.md")
 
     return Check(
         name="release-facing docs present",

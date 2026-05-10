@@ -1,7 +1,6 @@
 //! Lua adapter wrappers over shared engine contracts.
 
-use crate::app::GENtleApp;
-use crate::dna_sequence::DNAsequence;
+use crate::dna_sequence::{self, DNAsequence};
 use crate::engine::{
     Engine, FeatureExpertTarget, GenomeAnchorSide, GenomeAnnotationScope, GenomeGeneExtractMode,
     GentleEngine, Operation, ProjectState, Workflow,
@@ -39,7 +38,7 @@ impl LuaInterface {
 
     pub fn load_dna(path: &str) -> LuaResult<DNAsequence> {
         let mut dna =
-            GENtleApp::load_from_file(path).map_err(|e| LuaError::RuntimeError(e.to_string()))?;
+            dna_sequence::load_from_file(path).map_err(|e| LuaError::RuntimeError(e.to_string()))?;
 
         // Add default enzymes and stuff
         *dna.restriction_enzymes_mut() = active_restriction_enzymes();
