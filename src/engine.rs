@@ -25,7 +25,6 @@
 use crate::{
     DNA_LADDERS, RNA_LADDERS,
     amino_acids::{STOP_CODON, UNKNOWN_CODON},
-    app::GENtleApp,
     dna_sequence::DNAsequence,
     ensembl_protein::EnsemblProteinEntry,
     enzymes::{

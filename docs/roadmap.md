@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-05-09 - roadmap split and session-close chore runner
+Last session: 2026-05-10 - sequence loader engine-GUI seam
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -137,14 +137,15 @@ routine framework.
 
 Promote adapter-level helpers into engine-owned operations where they matter,
 keep process/run-bundle artifacts portable, and converge persisted
-computational conclusions on one provenance vocabulary. Continue XML/SnapGene,
-sequencing-confirmation, primer/qPCR, projection, construct-reasoning,
-RNA-read, and ClawBio/MCP parity work only through shared contracts. Useful
-work here is contract hardening, adapter-helper promotion, stack-safe helper
-splits, protocol snapshots, and targeted parity tests; defer broad crate
-surgery that is not needed for the current release proof. Phase 2 has not
-started; the `gentle-engine` crate scaffold has been removed and will be
-re-introduced when the first execution-side module is ready to move.
+computational conclusions on one provenance vocabulary. Sequence file loading
+now routes through the shared DNA sequence module rather than the GUI top-level
+type; continue XML/SnapGene, sequencing-confirmation, primer/qPCR, projection,
+construct-reasoning, RNA-read, and ClawBio/MCP parity work only through shared
+contracts. Useful work here is contract hardening, adapter-helper promotion,
+stack-safe helper splits, protocol snapshots, and targeted parity tests; defer
+broad crate surgery that is not needed for the current release proof. Phase 2
+has not started; the `gentle-engine` crate scaffold has been removed and will
+be re-introduced when the first execution-side module is ready to move.
 
 ## Phase D: Visualization And Workflow UX
 
