@@ -1,8 +1,7 @@
 //! JavaScript adapter wrappers over shared engine contracts.
 
 use crate::{
-    app::GENtleApp,
-    dna_sequence::DNAsequence,
+    dna_sequence::{self, DNAsequence},
     engine::{
         Engine, EngineStateSummary, FeatureExpertTarget, GentleEngine, Operation, ProjectState,
         Workflow,
@@ -371,7 +370,7 @@ fn execute_agent_plan_impl(
 #[op2]
 #[serde]
 fn load_dna(#[string] path: &str) -> Result<DNAsequence, JsAnyhow> {
-    let mut dna = GENtleApp::load_from_file(path).map_err(deno_core::anyhow::Error::from)?;
+    let mut dna = dna_sequence::load_from_file(path).map_err(deno_core::anyhow::Error::from)?;
 
     // Add default enzymes and stuff
     *dna.restriction_enzymes_mut() = active_restriction_enzymes();
