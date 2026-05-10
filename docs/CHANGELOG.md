@@ -14,6 +14,9 @@ Maintenance rule:
 
 ## 2026-05-10
 
+- Moved sequence file-loading dispatch into `dna_sequence::load_from_file` so
+  engine, JS, Lua, and tests no longer depend on `GENtleApp` for parser
+  selection.
 - Added a TP73 pancreas proof-bundle `audit` handoff to
   `scripts/tp73_pancreas_rna_mapping.sh`, including gene-group snapshot capture
   and expanded evidence-bundle paths for release review.

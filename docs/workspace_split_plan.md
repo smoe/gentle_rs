@@ -305,6 +305,11 @@ Success criterion:
 
 Move deterministic execution next, keeping tests close.
 
+Pre-Phase-2 seam already available: sequence file loading is rooted in the
+shared DNA sequence module, and the app-level file-loader method remains only as
+a compatibility shim. Engine load operations should not import the GUI top-level
+type for file parsing.
+
 Success criterion:
 
 - direct engine tests still run without egui/eframe,
@@ -422,6 +427,7 @@ Modules that are primarily deterministic biology/state logic:
 - `src/engine/`
 - `src/genomes.rs`
 - `src/dna_sequence.rs`
+- `src/gc_contents.rs`
 - `src/feature_location.rs`
 - `src/gibson_planning.rs`
 - `src/resource_sync.rs`

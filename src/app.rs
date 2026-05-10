@@ -5243,41 +5243,6 @@ Error: `{err}`"
         ret
     }
 
-    fn load_dna_from_genbank_file(filename: &str) -> Result<DNAsequence> {
-        let dna = dna_sequence::DNAsequence::from_genbank_file(filename)?
-            .pop()
-            .ok_or_else(|| anyhow!("Could not read GenBank file {filename}"))?;
-        Ok(dna)
-    }
-
-    fn load_dna_from_embl_file(filename: &str) -> Result<DNAsequence> {
-        let dna = dna_sequence::DNAsequence::from_embl_file(filename)?
-            .pop()
-            .ok_or_else(|| anyhow!("Could not read EMBL file {filename}"))?;
-        Ok(dna)
-    }
-
-    fn load_dna_from_fasta_file(filename: &str) -> Result<DNAsequence> {
-        let dna = dna_sequence::DNAsequence::from_fasta_file(filename)?
-            .pop()
-            .ok_or_else(|| anyhow!("Could not read fasta file {filename}"))?;
-        Ok(dna)
-    }
-
-    fn load_dna_from_xml_file(filename: &str) -> Result<DNAsequence> {
-        let dna = dna_sequence::DNAsequence::from_ncbi_gbseq_xml_file(filename)?
-            .pop()
-            .ok_or_else(|| anyhow!("Could not read XML file {filename}"))?;
-        Ok(dna)
-    }
-
-    fn load_dna_from_snapgene_file(filename: &str) -> Result<DNAsequence> {
-        let dna = dna_sequence::DNAsequence::from_snapgene_file(filename)?
-            .pop()
-            .ok_or_else(|| anyhow!("Could not read SnapGene file {filename}"))?;
-        Ok(dna)
-    }
-
     fn format_open_sequence_import_status(
         imported_seq_ids: &[String],
         failures: &[String],
@@ -6159,35 +6124,7 @@ Error: `{err}`"
     }
 
     pub fn load_from_file(path: &str) -> Result<DNAsequence> {
-        let extension = Path::new(path)
-            .extension()
-            .and_then(|value| value.to_str())
-            .map(|value| value.to_ascii_lowercase());
-        match extension.as_deref() {
-            Some("dna") => return Self::load_dna_from_snapgene_file(path),
-            Some("embl") | Some("emb") => return Self::load_dna_from_embl_file(path),
-            Some("gb") | Some("gbk") | Some("genbank") => {
-                return Self::load_dna_from_genbank_file(path);
-            }
-            Some("fa") | Some("fasta") | Some("fna") | Some("fas") => {
-                return Self::load_dna_from_fasta_file(path);
-            }
-            Some("xml") => return Self::load_dna_from_xml_file(path),
-            _ => {}
-        }
-
-        for loader in [
-            Self::load_dna_from_snapgene_file,
-            Self::load_dna_from_genbank_file,
-            Self::load_dna_from_embl_file,
-            Self::load_dna_from_fasta_file,
-            Self::load_dna_from_xml_file,
-        ] {
-            if let Ok(dna) = loader(path) {
-                return Ok(dna);
-            }
-        }
-        Err(anyhow!("Could not load file '{path}'"))
+        dna_sequence::load_from_file(path)
     }
 
     fn import_sequence_file_into_project(

@@ -7124,7 +7124,7 @@ impl GentleEngine {
             ),
         })?;
         let path = tmp.path().to_string_lossy().to_string();
-        let mut dna = GENtleApp::load_from_file(&path).map_err(|e| EngineError {
+        let mut dna = crate::dna_sequence::load_from_file(&path).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!(
                 "Could not parse fetched GenBank accession '{}' from '{}': {e}",
@@ -16028,7 +16028,7 @@ impl GentleEngine {
                     unreachable!("repeat cohort feature-scan operations are handled above")
                 }
                 Operation::LoadFile { path, as_id } => {
-                    let mut dna = GENtleApp::load_from_file(&path).map_err(|e| EngineError {
+                    let mut dna = crate::dna_sequence::load_from_file(&path).map_err(|e| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("Could not load sequence file '{path}': {e}"),
                     })?;
