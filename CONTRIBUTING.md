@@ -42,6 +42,9 @@ Disk-usage note:
 - Update documentation when user-visible behavior changes.
 - Prefer deterministic checks and reproducible examples when validating a
   change.
+- For move-only module-decomposition pull requests, append the merge commit SHA
+  to `.git-blame-ignore-revs` after the PR lands. Contributors can opt into the
+  convention with `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 
 ## Agentic Engineering
 

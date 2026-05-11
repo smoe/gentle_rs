@@ -340,6 +340,19 @@ Success criterion:
 
 Move egui/eframe application code last.
 
+Before that crate move, large GUI files may continue to shed cohesive
+in-root submodules without changing crate boundaries. The current app-side
+helpers include `app/help_docs.rs`, `app/window_registry.rs`,
+`app/history_ui.rs`, `app/configuration_ui.rs`,
+`app/external_services_ui.rs`, `app/agent_assistant_config.rs`, and
+`app/rack_workspace_ui.rs`; the rack workspace module owns the rack,
+arrangement-gel preview, rack-label preview, and placement-dialog blocks that
+used to live in `app.rs`. Existing sequence-window peers under
+`main_area_dna/` own auxiliary workspaces, CUT&RUN support, feature actions,
+formula controls, RNA-read support/cache helpers, and variant follow-up UI.
+Future move-only passes may add Gibson, primer/qPCR, sequencing-confirmation,
+and RNA-read mapping UI modules before the final `gentle-gui` crate extraction.
+
 Success criterion:
 
 - GUI becomes a clean top-layer crate,
