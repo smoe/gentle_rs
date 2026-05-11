@@ -22455,6 +22455,74 @@ fn parse_rna_reads_commands() {
         } if report_id == "tp73_reads" && record_index == 7
     ));
 
+    let show_alignments = parse_shell_line(
+        "rna-reads show-alignments tp73_reads --gene TP73 --gene TP53 --cohort complete --complete-rule strict --limit 5 --output tp73_alignment_batch.json",
+    )
+    .expect("parse rna-reads show-alignments");
+    assert!(matches!(
+        show_alignments,
+        ShellCommand::RnaReadsShowAlignments {
+            report_id,
+            gene_ids,
+            selected_record_indices,
+            complete_rule,
+            cohort_filter,
+            limit,
+            output_path,
+        }
+            if report_id == "tp73_reads"
+                && gene_ids == vec!["TP73".to_string(), "TP53".to_string()]
+                && selected_record_indices.is_empty()
+                && complete_rule == RnaReadGeneSupportCompleteRule::Strict
+                && cohort_filter == RnaReadGeneSupportAuditCohortFilter::Complete
+                && limit == Some(5)
+                && output_path.as_deref() == Some("tp73_alignment_batch.json")
+    ));
+
+    let show_alignments_explicit =
+        parse_shell_line("rna-reads show-alignments tp73_reads --record-indices 7,2,7 --limit 0")
+            .expect("parse explicit rna-reads show-alignments");
+    assert!(matches!(
+        show_alignments_explicit,
+        ShellCommand::RnaReadsShowAlignments {
+            report_id,
+            gene_ids,
+            selected_record_indices,
+            complete_rule,
+            cohort_filter,
+            limit,
+            output_path,
+        }
+            if report_id == "tp73_reads"
+                && gene_ids.is_empty()
+                && selected_record_indices == vec![2, 7]
+                && complete_rule == RnaReadGeneSupportCompleteRule::Near
+                && cohort_filter == RnaReadGeneSupportAuditCohortFilter::All
+                && limit == Some(0)
+                && output_path.is_none()
+    ));
+
+    assert!(
+        parse_shell_line("rna-reads show-alignments tp73_reads --record-indices 1 --gene TP73")
+            .expect_err("mixed explicit and gene selection should fail")
+            .contains("cannot be combined")
+    );
+    assert!(
+        parse_shell_line("rna-reads show-alignments tp73_reads --limit nope --gene TP73")
+            .expect_err("invalid limit should fail")
+            .contains("Invalid --limit")
+    );
+    assert!(
+        parse_shell_line("rna-reads show-alignments tp73_reads")
+            .expect_err("missing selection should fail")
+            .contains("requires either --record-indices")
+    );
+    assert!(
+        parse_shell_line("rna-reads nope")
+            .expect_err("unknown rna-reads command should list show-alignments")
+            .contains("show-alignments")
+    );
+
     let summarize = parse_shell_line(
         "rna-reads summarize-gene-support tp73_reads --gene TP73 --gene TP53 --record-indices 6,8 --complete-rule strict --output tp53_support.json",
     )
@@ -23525,6 +23593,83 @@ fn execute_rna_reads_commands_store_and_export_reports() {
         shown_alignment.output["alignment"]["aligned_target"]
             .as_str()
             .is_some_and(|value| !value.is_empty())
+    );
+
+    let shown_alignment_batch_path = fasta_dir.path().join("alignment_batch.json");
+    let shown_alignment_batch = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsShowAlignments {
+            report_id: report_id.clone(),
+            gene_ids: vec![],
+            selected_record_indices: vec![0],
+            complete_rule: RnaReadGeneSupportCompleteRule::Near,
+            cohort_filter: RnaReadGeneSupportAuditCohortFilter::All,
+            limit: Some(1),
+            output_path: Some(shown_alignment_batch_path.display().to_string()),
+        },
+    )
+    .expect("show rna-read alignment detail batch");
+    assert!(!shown_alignment_batch.state_changed);
+    assert_eq!(
+        shown_alignment_batch.output["schema"].as_str(),
+        Some("gentle.rna_read_alignment_display_batch.v1")
+    );
+    assert_eq!(
+        shown_alignment_batch.output["selection_mode"].as_str(),
+        Some("record_indices")
+    );
+    assert_eq!(shown_alignment_batch.output["limit"].as_u64(), Some(1));
+    assert_eq!(
+        shown_alignment_batch.output["entry_count"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        shown_alignment_batch.output["selected_record_indices"][0].as_u64(),
+        Some(0)
+    );
+    assert!(
+        shown_alignment_batch.output["entries"][0]["alignment"]["aligned_query"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+    assert!(
+        shown_alignment_batch.output["entries"][0]["alignment"]["aligned_target"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+    let shown_alignment_batch_file =
+        fs::read_to_string(&shown_alignment_batch_path).expect("read alignment batch output");
+    let shown_alignment_batch_file_json: serde_json::Value =
+        serde_json::from_str(&shown_alignment_batch_file).expect("parse alignment batch output");
+    assert_eq!(
+        shown_alignment_batch_file_json,
+        shown_alignment_batch.output
+    );
+
+    let shown_alignment_batch_empty = execute_shell_command(
+        &mut engine,
+        &ShellCommand::RnaReadsShowAlignments {
+            report_id: report_id.clone(),
+            gene_ids: vec![],
+            selected_record_indices: vec![0],
+            complete_rule: RnaReadGeneSupportCompleteRule::Near,
+            cohort_filter: RnaReadGeneSupportAuditCohortFilter::All,
+            limit: Some(0),
+            output_path: None,
+        },
+    )
+    .expect("show empty limited rna-read alignment detail batch");
+    assert_eq!(
+        shown_alignment_batch_empty.output["selected_record_indices"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+    assert_eq!(
+        shown_alignment_batch_empty.output["entries"]
+            .as_array()
+            .map(Vec::len),
+        Some(0)
     );
 
     let materialized = execute_shell_command(

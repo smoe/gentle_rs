@@ -11434,40 +11434,13 @@ impl GentleEngine {
         Ok((splicing, transcript_lanes))
     }
 
-    pub fn build_rna_read_alignment_display(
-        &self,
-        report_id: &str,
-        record_index: usize,
+    fn build_rna_read_alignment_display_for_hit(
+        report: &RnaReadInterpretationReport,
+        hit: &RnaReadInterpretationHit,
+        mapping: &RnaReadMappingHit,
+        dna: &DNAsequence,
+        transcript_lanes: &[SplicingTranscriptLane],
     ) -> Result<RnaReadAlignmentDisplay, EngineError> {
-        let report = self.get_rna_read_report(report_id)?;
-        let hit = report
-            .hits
-            .iter()
-            .find(|hit| hit.record_index == record_index)
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::NotFound,
-                message: format!(
-                    "RNA-read report '{}' does not contain record_index {}",
-                    report.report_id, record_index
-                ),
-            })?;
-        let mapping = hit.best_mapping.as_ref().ok_or_else(|| EngineError {
-            code: ErrorCode::NotFound,
-            message: format!(
-                "RNA-read report '{}' record_index {} has no best_mapping",
-                report.report_id, record_index
-            ),
-        })?;
-        let dna = self
-            .state
-            .sequences
-            .get(&report.seq_id)
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::NotFound,
-                message: format!("Sequence '{}' not found", report.seq_id),
-            })?;
-        let (_splicing, transcript_lanes) =
-            self.collect_rna_read_report_transcript_lanes(dna, &report)?;
         let template_lane = transcript_lanes
             .iter()
             .find(|lane| lane.transcript_feature_id == mapping.transcript_feature_id)
@@ -11516,7 +11489,7 @@ impl GentleEngine {
             code: ErrorCode::Internal,
             message: format!(
                 "Could not reconstruct RNA-read alignment detail for record_index {}",
-                record_index
+                hit.record_index
             ),
         })?;
         Ok(Self::build_alignment_display_from_computed(
@@ -11524,6 +11497,115 @@ impl GentleEngine {
             &template,
             &computed,
         ))
+    }
+
+    pub fn build_rna_read_alignment_display(
+        &self,
+        report_id: &str,
+        record_index: usize,
+    ) -> Result<RnaReadAlignmentDisplay, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let hit = report
+            .hits
+            .iter()
+            .find(|hit| hit.record_index == record_index)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "RNA-read report '{}' does not contain record_index {}",
+                    report.report_id, record_index
+                ),
+            })?;
+        let mapping = hit.best_mapping.as_ref().ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "RNA-read report '{}' record_index {} has no best_mapping",
+                report.report_id, record_index
+            ),
+        })?;
+        let dna = self
+            .state
+            .sequences
+            .get(&report.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", report.seq_id),
+            })?;
+        let (_splicing, transcript_lanes) =
+            self.collect_rna_read_report_transcript_lanes(dna, &report)?;
+        Self::build_rna_read_alignment_display_for_hit(
+            &report,
+            hit,
+            mapping,
+            dna,
+            &transcript_lanes,
+        )
+    }
+
+    pub fn build_rna_read_alignment_displays(
+        &self,
+        report_id: &str,
+        record_indices: &[usize],
+    ) -> Result<
+        (
+            Vec<RnaReadAlignmentDisplayBatchEntry>,
+            Vec<RnaReadAlignmentDisplayBatchSkippedRecord>,
+        ),
+        EngineError,
+    > {
+        let report = self.get_rna_read_report(report_id)?;
+        let dna = self
+            .state
+            .sequences
+            .get(&report.seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", report.seq_id),
+            })?;
+        let (_splicing, transcript_lanes) =
+            self.collect_rna_read_report_transcript_lanes(dna, &report)?;
+        let hits_by_record_index = report
+            .hits
+            .iter()
+            .map(|hit| (hit.record_index, hit))
+            .collect::<HashMap<_, _>>();
+        let mut entries = Vec::<RnaReadAlignmentDisplayBatchEntry>::new();
+        let mut skipped_records = Vec::<RnaReadAlignmentDisplayBatchSkippedRecord>::new();
+
+        for record_index in record_indices {
+            let hit = hits_by_record_index
+                .get(record_index)
+                .copied()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "RNA-read report '{}' does not contain record_index {}",
+                        report.report_id, record_index
+                    ),
+                })?;
+            let Some(mapping) = hit.best_mapping.as_ref() else {
+                skipped_records.push(RnaReadAlignmentDisplayBatchSkippedRecord {
+                    record_index: *record_index,
+                    header_id: hit.header_id.clone(),
+                    reason: "no_best_mapping".to_string(),
+                });
+                continue;
+            };
+            let alignment = Self::build_rna_read_alignment_display_for_hit(
+                &report,
+                hit,
+                mapping,
+                dna,
+                &transcript_lanes,
+            )?;
+            entries.push(RnaReadAlignmentDisplayBatchEntry {
+                record_index: *record_index,
+                header_id: hit.header_id.clone(),
+                alignment,
+            });
+        }
+
+        Ok((entries, skipped_records))
     }
 
     pub(super) fn align_read_to_templates(

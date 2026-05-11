@@ -7179,6 +7179,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
   - `rna-reads show-alignment REPORT_ID RECORD_INDEX`
+  - `rna-reads show-alignments REPORT_ID [--gene GENE_ID ... --cohort all|accepted|fragment|complete|rejected --complete-rule near|strict|exact | --record-indices i,j,k] [--limit N] [--output PATH]`
   - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
   - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
   - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
@@ -7206,6 +7207,17 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       - exact saved `record_index`
       - `alignment` = the portable `RnaReadAlignmentDisplay` detail record used
         by the GUI `Show alignment` pane
+    - `rna-reads show-alignments` returns a
+      `gentle.rna_read_alignment_display_batch.v1` wrapper with:
+      - `report_id`, `seq_id`, and `seed_feature_id`
+      - `selection_mode = record_indices|gene_cohort`
+      - requested/matched/missing gene ids for cohort mode
+      - `cohort_filter`, `complete_rule`, `limit`, and final
+        `selected_record_indices`
+      - `entries[]` containing `record_index`, `header_id`, and the same
+        `RnaReadAlignmentDisplay` payload as repeated `show-alignment`
+      - `skipped_records[]` and `skipped_record_indices[]` for reads without
+        `best_mapping`
     - `rna-reads summarize-gene-support` returns the full
       `gentle.rna_read_gene_support_summary.v1` payload directly, including
       `requested_gene_ids`, `matched_gene_ids`, `missing_gene_ids`,
