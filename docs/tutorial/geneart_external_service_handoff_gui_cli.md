@@ -11,6 +11,22 @@ a construct or protein-service idea can be represented as a vendor-neutral
 external-service request, preflighted locally, and exported as a reviewable
 handoff bundle.
 
+## What GeneArt Is
+
+Invitrogen GeneArt Services are Thermo Fisher Scientific's custom DNA and
+protein-expression service family. In practical GENtle terms, GeneArt is a
+provider that can receive reviewed sequence designs and project context for
+work such as synthetic DNA fragments, cloned gene synthesis, plasmid-related
+services, mutagenesis/library projects, and protein expression or purification.
+
+The vendor-facing workflow is normally commercial and account-bound: users
+design or upload project material, review optimization and provider checks,
+request quotes, and track orders through Thermo Fisher/GeneArt channels such as
+the GeneArt Services Dashboard. GENtle's role in this tutorial is deliberately
+smaller and safer: it prepares structured, reviewable handoff artifacts that
+help a person or external orchestrator decide what should be sent to the vendor
+later.
+
 The important idea is the boundary:
 
 - GENtle owns a provider-neutral request, preflight, quote, and artifact-bundle
