@@ -347,11 +347,13 @@ helpers include `app/help_docs.rs`, `app/window_registry.rs`,
 `app/external_services_ui.rs`, `app/agent_assistant_config.rs`, and
 `app/rack_workspace_ui.rs`; the rack workspace module owns the rack,
 arrangement-gel preview, rack-label preview, and placement-dialog blocks that
-used to live in `app.rs`. Existing sequence-window peers under
+used to live in `app.rs`. `app/gibson_ui.rs` owns the Gibson specialist,
+preview/apply/export handlers, and its small UI state records. Existing
+sequence-window peers under
 `main_area_dna/` own auxiliary workspaces, CUT&RUN support, feature actions,
 formula controls, RNA-read support/cache helpers, and variant follow-up UI.
-Future move-only passes may add Gibson, primer/qPCR, sequencing-confirmation,
-and RNA-read mapping UI modules before the final `gentle-gui` crate extraction.
+Future move-only passes may add primer/qPCR, sequencing-confirmation, and
+RNA-read mapping UI modules before the final `gentle-gui` crate extraction.
 
 Success criterion:
 

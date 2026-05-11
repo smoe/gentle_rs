@@ -4,3 +4,6 @@
 # reviewers can opt into history that skips mechanical file movement:
 #
 #   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# chore: GUI module-decomposition for rack workspace
+6090d1d3a9cbcc264fd2df48d26f8fc49e58d372
