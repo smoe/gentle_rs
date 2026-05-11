@@ -351,10 +351,10 @@ used to live in `app.rs`. `app/gibson_ui.rs` owns the Gibson specialist,
 preview/apply/export handlers, and its small UI state records. Existing
 sequence-window peers under
 `main_area_dna/` own auxiliary workspaces, CUT&RUN support, feature actions,
-formula controls, primer/qPCR designer state and rendering, RNA-read
-support/cache helpers, and variant follow-up UI. Future move-only passes may
-add sequencing-confirmation and RNA-read mapping UI modules before the final
-`gentle-gui` crate extraction.
+formula controls, primer/qPCR designer state and rendering, sequencing
+confirmation state/review rendering, RNA-read support/cache helpers, and
+variant follow-up UI. Future move-only passes may add an RNA-read mapping UI
+module before the final `gentle-gui` crate extraction.
 
 Success criterion:
 
