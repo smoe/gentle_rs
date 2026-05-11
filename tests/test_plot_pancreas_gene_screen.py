@@ -215,6 +215,45 @@ class PlotPancreasGeneScreenTests(unittest.TestCase):
             self.assertIn("strict_seed_passed", output_text)
             self.assertIn("TP53 / TP63 seed-passed support", svg)
 
+    def test_family_plotter_can_log_scale_seed_support_axis(self) -> None:
+        canonical = textwrap.dedent(
+            """\
+            schema\tgene\trun_accession\tsample_id\tsample_name\tsource_kind\tsource_path\tanalysis_phase\treport_id\tseq_id\tseed_feature_id\tinput_path\ttotal_reads\tall_q0_bp\tall_q25_bp\tall_q50_bp\tall_q75_bp\tall_q90_bp\tall_q95_bp\tall_q99_bp\tall_q100_bp\tall_mean_bp\tseed_passed_reads\tseed_passed_per_million\tseed_passed_q90_bp\tseed_passed_q95_bp\tseed_passed_q99_bp\tseed_passed_max_bp\tseed_passed_mean_bp\taccepted_target_count\taccepted_target_per_million\taccepted_target_max_bp\taccepted_target_mean_bp\talign_selection
+            gentle.rna_read_gene_screen_summary.v1\tE2F1\tSRR1\tS1\tSample 1\tpancreas_gene_rna_screen\te2f1.tsv\tseed_only\te2f1_SRR1\te2f1\t1\treads.fa\t1000000\t100\t200\t300\t400\t500\t550\t590\t600\t350\t1\t1\t700\t750\t790\t800\t650\t\t\t\t\tseed_passed
+            gentle.rna_read_gene_screen_summary.v1\tSRSF1\tSRR1\tS1\tSample 1\tpancreas_gene_rna_screen\tsrsf1.tsv\tseed_only\tsrsf1_SRR1\tsrsf1\t1\treads.fa\t1000000\t100\t200\t300\t400\t500\t550\t590\t600\t350\t1000\t1000\t700\t750\t790\t800\t650\t\t\t\t\tseed_passed
+            """
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            input_tsv = tmp_path / "gene_screen_summary.tsv"
+            output_svg = tmp_path / "family_log.svg"
+            output_tsv = tmp_path / "family_log.tsv"
+            input_tsv.write_text(canonical, encoding="utf-8")
+
+            subprocess.run(
+                [
+                    "python3",
+                    str(REPO_ROOT / "scripts" / "plot_pancreas_gene_family.py"),
+                    "--canonical-summary",
+                    str(input_tsv),
+                    "--genes",
+                    "E2F1,SRSF1",
+                    "--metric-scale",
+                    "log",
+                    "--output",
+                    str(output_svg),
+                    "--output-tsv",
+                    str(output_tsv),
+                ],
+                check=True,
+                cwd=REPO_ROOT,
+            )
+
+            svg = output_svg.read_text(encoding="utf-8")
+            self.assertIn("strict seed-passed reads per million total reads (log scale)", svg)
+            self.assertIn("log support scale", svg)
+
     def test_family_plotter_keeps_accepted_target_lengths_out_of_strict_seed_export(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
