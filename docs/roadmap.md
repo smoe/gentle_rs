@@ -122,6 +122,11 @@ discoverability, confirmation wording, and `ui_intent`-shaped operator handoff;
 defer autonomous planning policy or biology-specific reasoning that is not
 backed by current engine records.
 
+For ClawBio/OpenClaw specifically, keep new integration work centered on
+descriptor/runtime parity (`INTENTS.json`, `mode=intents`, examples, and
+trigger-keyword drift checks) plus explicit scope/presentation contracts rather
+than adding more biology-specific wrapper modes.
+
 ## Phase B: Cloning Routine Standardization
 
 Continue routine catalog and macro-box work after the release gate. Priorities

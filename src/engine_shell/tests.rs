@@ -16707,6 +16707,31 @@ fn execute_services_handoff_reports_actions_and_writes_json() {
 }
 
 #[test]
+fn execute_services_handoff_without_scope_uses_default_scope() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let out = execute_shell_command(
+        &mut engine,
+        &ShellCommand::ServicesHandoff {
+            scope: None,
+            output: None,
+        },
+    )
+    .expect("execute services handoff");
+    assert!(!out.state_changed);
+    assert_eq!(out.output["scope"].as_str(), Some("default"));
+    assert!(
+        out.output["warnings"]
+            .as_array()
+            .expect("warnings array")
+            .iter()
+            .any(|warning| warning
+                .as_str()
+                .unwrap_or_default()
+                .contains("pass --scope clawbio"))
+    );
+}
+
+#[test]
 fn execute_services_telegram_guide_reports_menu_and_section_actions() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let out = execute_shell_command(

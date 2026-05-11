@@ -64,6 +64,12 @@ jobs:
           cargo run --bin gentle_examples_docs -- --check
           cargo run --bin gentle_examples_docs -- tutorial-check
 
+      - name: ClawBio skill parity checks
+        run: |
+          python3 -m pip install pytest
+          python3 scripts/generate_clawbio_trigger_keywords.py --check
+          python3 -m pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
+
       - name: Workflow example runtime tests
         run: cargo test -q workflow_examples -- --test-threads=1
 
@@ -220,6 +226,12 @@ jobs:
         run: |
           cargo run --bin gentle_examples_docs -- --check
           cargo run --bin gentle_examples_docs -- tutorial-check
+
+      - name: ClawBio skill parity checks
+        run: |
+          python3 -m pip install pytest
+          python3 scripts/generate_clawbio_trigger_keywords.py --check
+          python3 -m pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
 
       - name: Workflow example runtime tests
         run: cargo test -q workflow_examples -- --test-threads=1

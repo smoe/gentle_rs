@@ -25,12 +25,14 @@ import xml.etree.ElementTree as ET
 REQUEST_SCHEMA = "gentle.clawbio_skill_request.v1"
 RESULT_SCHEMA = "gentle.clawbio_skill_result.v1"
 SKILL_INFO_SCHEMA = "gentle.clawbio_skill_info.v1"
+INTENTS_RUNTIME_SCHEMA = "gentle.clawbio_skill_intents_runtime.v1"
 SKILL_NAME = "gentle-cloning"
 INVOCATION_MARKER = "GENtle ClawBio skill wrapper invoked"
 UI_INTENT_CATALOG_SCHEMA = "gentle.ui_intents.v1"
 UI_INTENT_DISCOVERY_SHELL_LINE = "ui intents"
 SUPPORTED_REQUEST_MODES = (
     "skill-info",
+    "intents",
     "version",
     "capabilities",
     "state-summary",
@@ -90,6 +92,33 @@ PRIMER_SHELL_REQUEST_MODES = {
     "restriction-cloning-handoff-list",
     "restriction-cloning-handoff-show",
     "restriction-cloning-handoff-export",
+}
+DEPRECATED_REQUEST_MODE_EQUIVALENTS = {
+    "primer-preflight": "mode=shell with `primers preflight ...`",
+    "primer-seed-from-feature": "mode=shell with `primers seed-from-feature ...`",
+    "primer-seed-from-splicing": "mode=shell with `primers seed-from-splicing ...`",
+    "primer-design": "mode=shell with `primers design ...`",
+    "primer-report-list": "mode=shell with `primers list-reports ...`",
+    "primer-report-show": "mode=shell with `primers show-report ...`",
+    "primer-report-export": "mode=shell with `primers export-report ...`",
+    "qpcr-seed-from-feature": "mode=shell with `primers seed-qpcr-from-feature ...`",
+    "qpcr-seed-from-splicing": "mode=shell with `primers seed-qpcr-from-splicing ...`",
+    "qpcr-design": "mode=shell with `primers design-qpcr ...`",
+    "qpcr-report-list": "mode=shell with `primers list-qpcr-reports ...`",
+    "qpcr-report-show": "mode=shell with `primers show-qpcr-report ...`",
+    "qpcr-report-export": "mode=shell with `primers export-qpcr-report ...`",
+    "cdna-pcr-test": "mode=shell with `primers test-cdna-pcr ...`",
+    "cdna-qpcr-test": "mode=shell with `primers test-cdna-qpcr ...`",
+    "transcript-qpcr-panel": "mode=shell with `primers transcript-qpcr-panel ...`",
+    "restriction-cloning-pcr-handoff": "mode=shell with `primers prepare-restriction-cloning ...`",
+    "restriction-cloning-pcr-handoff-seed": "mode=shell with `primers seed-restriction-cloning-handoff ...`",
+    "restriction-cloning-vector-suggestions": "mode=shell with `primers restriction-cloning-vector-suggestions ...`",
+    "restriction-cloning-handoff-list": "mode=shell with `primers list-restriction-cloning-handoffs ...`",
+    "restriction-cloning-handoff-show": "mode=shell with `primers show-restriction-cloning-handoff ...`",
+    "restriction-cloning-handoff-export": "mode=shell with `primers export-restriction-cloning-handoff ...`",
+    "pcr-protocol-cartoon": "mode=shell with `protocol-cartoon render-svg ...`",
+    "exon-skip-plan": "mode=shell with `transcripts exon-skip-plan ...`",
+    "exon-skip-materialize": "mode=shell with `transcripts exon-skip-materialize ...`",
 }
 SVG_DIMENSION_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)")
 CLAWBIO_GRAPHICS_SCALE = 2.0
@@ -259,6 +288,10 @@ def _catalog_entry_path(script_path: Path) -> Path:
     return script_path.resolve().parent / "catalog_entry.json"
 
 
+def _intents_descriptor_path(script_path: Path) -> Path:
+    return script_path.resolve().parent / "INTENTS.json"
+
+
 def _read_catalog_entry(script_path: Path) -> dict[str, Any]:
     path = _catalog_entry_path(script_path)
     try:
@@ -279,6 +312,8 @@ def _skill_info_payload(script_path: Path) -> dict[str, Any]:
         "request_schema": REQUEST_SCHEMA,
         "result_schema": RESULT_SCHEMA,
         "supported_request_modes": list(SUPPORTED_REQUEST_MODES),
+        "intents_runtime_schema": INTENTS_RUNTIME_SCHEMA,
+        "intents_runtime_request_mode": "intents",
         "has_demo": bool(catalog_entry.get("has_demo", True)),
         "demo_command": str(
             catalog_entry.get("demo_command")
@@ -311,8 +346,148 @@ def _skill_info_chat_summary_lines(info: dict[str, Any]) -> list[str]:
         f"{name} skill version {version} ({status}).",
         f"Request schema: {info.get('request_schema')}; result schema: {info.get('result_schema')}.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
+        "Use request mode `intents` to compare the installed wrapper's live intent descriptor with ClawBio's on-disk snapshot.",
         "Use `resources status` or `services status` to check RNAfold/ViennaRNA and rnapkin executable-resource readiness.",
         CLASSICAL_GENTLE_DISAMBIGUATION,
+    ]
+
+
+def _read_intents_descriptor(script_path: Path) -> tuple[Path, str, dict[str, Any]]:
+    path = _intents_descriptor_path(script_path)
+    try:
+        descriptor_text = path.read_text(encoding="utf-8")
+    except FileNotFoundError as e:
+        raise SkillError(f"INTENTS.json descriptor was not found at '{path}'") from e
+    try:
+        descriptor = json.loads(descriptor_text)
+    except json.JSONDecodeError as e:
+        raise SkillError(f"invalid JSON in INTENTS.json descriptor '{path}': {e}") from e
+    if not isinstance(descriptor, dict):
+        raise SkillError(f"INTENTS.json descriptor '{path}' must contain an object")
+    if descriptor.get("schema") != "clawbio.skill_intents.v1":
+        raise SkillError(
+            "INTENTS.json descriptor has unexpected schema "
+            f"`{descriptor.get('schema')}`"
+        )
+    return path, descriptor_text, descriptor
+
+
+def _runtime_route_request_modes(
+    route: dict[str, Any],
+    skill_root: Path,
+) -> tuple[list[str], list[str]]:
+    request_modes: set[str] = set()
+    warnings: list[str] = []
+    for index, step in enumerate(route.get("plan") or []):
+        if not isinstance(step, dict):
+            warnings.append(f"route step {index} is not an object")
+            continue
+        if step.get("demo") is True:
+            request_modes.add("demo")
+        input_template = step.get("input_template")
+        if isinstance(input_template, dict) and isinstance(input_template.get("mode"), str):
+            request_modes.add(input_template["mode"])
+        input_path = step.get("input")
+        if isinstance(input_path, str) and input_path.strip():
+            resolved = skill_root / input_path
+            try:
+                payload = json.loads(resolved.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as e:
+                warnings.append(f"could not inspect {input_path}: {e}")
+                continue
+            mode = payload.get("mode") if isinstance(payload, dict) else None
+            if isinstance(mode, str) and mode.strip():
+                request_modes.add(mode)
+    return sorted(request_modes), warnings
+
+
+def _runtime_route_example_filenames(route: dict[str, Any]) -> list[str]:
+    filenames: list[str] = []
+    for step in route.get("plan") or []:
+        if not isinstance(step, dict):
+            continue
+        input_path = step.get("input")
+        if isinstance(input_path, str) and input_path.strip():
+            filenames.append(Path(input_path).name)
+    return filenames
+
+
+def _runtime_route_requires_slots(route: dict[str, Any]) -> bool:
+    for step in route.get("plan") or []:
+        if isinstance(step, dict) and isinstance(step.get("slots"), dict):
+            if any(
+                isinstance(slot, dict) and bool(slot.get("required"))
+                for slot in step["slots"].values()
+            ):
+                return True
+    return False
+
+
+def _intents_runtime_payload(script_path: Path) -> dict[str, Any]:
+    descriptor_path, descriptor_text, descriptor = _read_intents_descriptor(script_path)
+    skill_root = descriptor_path.parent
+    routes: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for route in descriptor.get("routes") or []:
+        if not isinstance(route, dict):
+            warnings.append("skipped non-object route in INTENTS.json")
+            continue
+        request_modes, route_warnings = _runtime_route_request_modes(route, skill_root)
+        warnings.extend(
+            f"{route.get('intent_id', '(unknown)')}: {warning}"
+            for warning in route_warnings
+        )
+        routes.append(
+            {
+                "intent_id": route.get("intent_id"),
+                "description": route.get("description", ""),
+                "trigger_terms": route.get("trigger_terms", []),
+                "demo_policy": route.get("demo_policy", "never_unless_explicit"),
+                "request_modes": request_modes,
+                "example_filenames": _runtime_route_example_filenames(route),
+                "has_input_template": any(
+                    isinstance(step, dict) and isinstance(step.get("input_template"), dict)
+                    for step in (route.get("plan") or [])
+                ),
+                "requires_slots": _runtime_route_requires_slots(route),
+                "plan_step_count": len(route.get("plan") or []),
+            }
+        )
+    return {
+        "schema": INTENTS_RUNTIME_SCHEMA,
+        "skill": descriptor.get("skill") or SKILL_NAME,
+        "intents_schema": descriptor.get("schema"),
+        "descriptor_path": str(descriptor_path),
+        "descriptor_sha256": hashlib.sha256(
+            descriptor_text.encode("utf-8")
+        ).hexdigest(),
+        "supported_request_modes": list(SUPPORTED_REQUEST_MODES),
+        "route_count": len(routes),
+        "routes": routes,
+        "warnings": warnings,
+    }
+
+
+def _intents_runtime_chat_summary_lines(payload: dict[str, Any]) -> list[str]:
+    return [
+        f"GENtle intent descriptor runtime schema: {payload.get('schema')}.",
+        f"Descriptor SHA-256: {payload.get('descriptor_sha256')}.",
+        f"Routes available: {payload.get('route_count', 0)}.",
+        "ClawBio can compare this hash with its local INTENTS.json snapshot before refreshing route metadata.",
+    ]
+
+
+def _request_mode_warnings(request: Request | None) -> list[str]:
+    if request is None:
+        return []
+    equivalent = DEPRECATED_REQUEST_MODE_EQUIVALENTS.get(request.mode)
+    if not equivalent:
+        return []
+    return [
+        (
+            f"Request mode `{request.mode}` is accepted for backward compatibility "
+            f"but is deprecated; prefer {equivalent}."
+        )
     ]
 
 
@@ -3904,6 +4079,7 @@ def _write_report(
     blocked_actions: list[dict[str, Any]] | None,
     ui_intent_catalog: dict[str, Any] | None,
     ui_intent_catalog_error: str | None,
+    warnings: list[str] | None,
 ) -> None:
     command_text = _format_command_text(command)
     stdout = run_result.stdout if run_result else ""
@@ -3938,6 +4114,8 @@ def _write_report(
         lines.append(f"- UI intent catalog targets: `{target_count}`")
     if ui_intent_catalog_error:
         lines.append(f"- UI intent catalog probe: `{ui_intent_catalog_error}`")
+    if warnings:
+        lines.append(f"- Warning count: `{len(warnings)}`")
     if error_message:
         lines.append(f"- Error: `{error_message}`")
     if failure_summary:
@@ -3985,6 +4163,9 @@ def _write_report(
     if chat_summary_lines:
         lines.extend(["", "## Chat Summary", ""])
         lines.extend(f"- {line}" for line in chat_summary_lines)
+    if warnings:
+        lines.extend(["", "## Warnings", ""])
+        lines.extend(f"- {line}" for line in warnings)
     if preferred_artifacts:
         lines.extend(["", "## Preferred Artifacts", ""])
         for artifact in preferred_artifacts:
@@ -4256,6 +4437,7 @@ def main() -> int:
     ui_intent_catalog: dict[str, Any] | None = None
     ui_intent_catalog_error: str | None = None
     auxiliary_steps: list[dict[str, Any]] = []
+    warnings: list[str] = []
 
     try:
         if args.skill_info:
@@ -4267,10 +4449,16 @@ def main() -> int:
                 raise SkillError("--input is required unless --demo or --skill-info is used")
             payload = _read_json(_resolve_existing_request_file(args.input, Path(__file__)))
             request = _coerce_request(payload)
+        warnings.extend(_request_mode_warnings(request))
 
         if request.mode == "skill-info":
             stdout_json = _skill_info_payload(Path(__file__))
             chat_summary_lines = _skill_info_chat_summary_lines(stdout_json)
+            status = "ok"
+        elif request.mode == "intents":
+            stdout_json = _intents_runtime_payload(Path(__file__))
+            chat_summary_lines = _intents_runtime_chat_summary_lines(stdout_json)
+            warnings.extend(_string_list(stdout_json.get("warnings")))
             status = "ok"
         else:
             try:
@@ -4453,6 +4641,7 @@ def main() -> int:
         blocked_actions=blocked_actions,
         ui_intent_catalog=ui_intent_catalog,
         ui_intent_catalog_error=ui_intent_catalog_error,
+        warnings=warnings,
     )
 
     command_lines = [
@@ -4505,6 +4694,7 @@ def main() -> int:
         "blocked_actions": blocked_actions,
         "ui_intent_catalog": ui_intent_catalog,
         "ui_intent_catalog_error": ui_intent_catalog_error,
+        "warnings": warnings or None,
         "error": error_message,
         "failure_summary": failure_summary,
         "preflight": {

@@ -1,133 +1,145 @@
-# ClawBio × GENtle Integration Sketch (Technical One-Pager Attachment)
+# ClawBio / GENtle Integration Contract
 
-## Objective
+GENtle presents one ClawBio skill, `gentle-cloning`, as a thin wrapper around
+deterministic `gentle_cli` command surfaces. ClawBio owns chat routing,
+confirmation policy, and platform presentation. GENtle owns command execution,
+artifact bundling, provenance, and machine-readable reports.
 
-Define a deterministic integration boundary where ClawBio orchestrates strategy and GENtle executes biology operations through stable contracts.
+## Wire Schemas
 
-## Why This Is Different From Standalone Cloning Tools
+Current schemas:
 
-Desktop cloning tools (including prior GENtle-style usage) already provide local sequence editing/design.
-The ClawBio x GENtle integration adds a separate orchestration and policy layer:
+- Request: `gentle.clawbio_skill_request.v1`
+- Result: `gentle.clawbio_skill_result.v1`
+- Skill info: `gentle.clawbio_skill_info.v1`
+- Runtime intents: `gentle.clawbio_skill_intents_runtime.v1`
+- Intent descriptor: `clawbio.skill_intents.v1`
 
-- policy-aware intent handling before execution
-- explicit non-mutating-first planning loop
-- deterministic run gating with role-based control
-- machine-readable provenance bundles for each orchestrated run
+Versioning stance:
 
-## Role Split
+- Additive request modes, result fields, runtime-intent rows, or warnings do
+  not require a v1 schema bump.
+- A backward-incompatible shape change, field removal, or semantic change to an
+  existing field requires a new schema.
+- Deprecated request modes remain accepted for at least one release window and
+  emit `warnings[]` naming the preferred thin form.
 
-- ClawBio: intent interpretation, strategy selection, constraint policy, fallback policy.
-- GENtle: deterministic execution (`shell`, `op`, `workflow`), schema-tagged outputs, reproducibility artifacts.
-- Shared middle ground: GENtle may compile prose into typed plan candidates,
-  but ClawBio still owns whether those candidates should be executed.
+ClawBio should read `INTENTS.json` from disk at startup. It should call
+`mode: "intents"` only when it wants to compare the installed wrapper's
+descriptor hash with a local snapshot or during an explicit refresh/dev check.
+Startup should not require a working GENtle runtime.
 
-## Governance and Control Model
+## Runtime Intent Refresh
 
-Control is intentionally split into three planes:
-
-- Intent plane (ClawBio):
-  - Proposes strategies and candidate command/workflow payloads.
-  - Does not get implicit execute authority.
-- Execution plane (GENtle):
-  - Executes only explicit, schema-valid commands.
-  - Keeps deterministic outputs and run artifacts.
-- Policy plane (project/lab policy owner):
-  - Enforces allow/deny scope and approval requirements before mutating runs.
-
-Minimum control baseline for integration:
-
-- explicit non-use scope for human/animal/plant genome-editing workflows
-- default advisory/read-only orchestration mode
-- explicit approval gate before mutating execution
-- local-first data boundary and explicit export only
-- immutable run-level audit artifacts and checksums
-
-## Runtime Boundary
-
-- Headless runtime: `gentle_cli` (GUI-independent).
-- ClawBio wrapper scaffold: `integrations/clawbio/skills/gentle-cloning/`.
-- Wrapper request schema: `gentle.clawbio_skill_request.v1`.
-- Wrapper result schema: `gentle.clawbio_skill_result.v1`.
-
-## Request/Result Contract
-
-Request (`gentle.clawbio_skill_request.v1`):
-- `mode`: `capabilities | state-summary | shell | op | workflow | exon-skip-plan | exon-skip-materialize | agent-plan | agent-execute-plan | raw`
-- Optional controls: `state_path`, `timeout_secs`
-- Mode payload:
-  - `shell`: `shell_line`
-  - `op`: `operation`
-  - `workflow`: `workflow` or `workflow_path`
-  - `exon-skip-plan`: source sequence/transcript plus selected exon criteria,
-    including candidate ids, intervals, `len%3`, coding-only `CDS%3`,
-    UTR/CDS context, and CDS entry-phase filters
-  - `exon-skip-materialize`: stored `plan_id`, `confirm=true`, and optional
-    `return_items[]` such as `genbank` or `amino_acid_sequence`
-  - `agent-plan`: `system_id`, `prompt`, optional planner/runtime overrides
-  - `agent-execute-plan`: `plan` or `plan_path`, `candidate_id`, optional `confirm`
-  - `raw`: `raw_args[]`
-
-Result (`gentle.clawbio_skill_result.v1`):
-- `status`: `ok | command_failed | timeout | failed | degraded_demo`
-- Includes executed command, exit code, stdout/stderr, resolver metadata, and artifact paths.
-- `stdout_json` is populated when wrapped `gentle_cli` stdout parses as JSON.
-- `chat_summary_lines[]` is populated for `gentle.sequence_context_view.v1`
-  results so chat layers can answer with the compact DNA-window summary first.
-
-## Deterministic Execution Pattern
-
-1. Inspect (non-mutating): `capabilities`, `state-summary`, `features query`, `primers preflight`.
-2. Either plan in ClawBio directly or ask GENtle to compile prose with `agent-plan`.
-3. Execute one stored candidate explicitly with `agent-execute-plan`, or run direct `op` / `workflow`.
-4. Collect artifacts for audit/replay.
-
-## Artifacts and Provenance
-
-Expected reproducibility bundle per run:
-- `report.md`
-- `result.json`
-- `reproducibility/commands.sh`
-- `reproducibility/environment.yml`
-- `reproducibility/checksums.sha256`
-
-These artifacts are the handoff unit for ranking, review, and replay.
-
-## Safety and Guardrails
-
-- No implicit mutating execution: ClawBio must choose mutating modes explicitly.
-- Keep data local by default; export is explicit.
-- Maintain recursion guardrails for agent-invoked commands.
-- ClawBio should not treat `agents ask` as its primary integration boundary;
-  the preferred shared AI-facing boundary is the typed planner plus the
-  read-only transport/preflight metadata.
-- Prefer schema-tagged JSON outputs over prose when ClawBio consumes results.
-- Treat policy denials as first-class deterministic outcomes (not hidden failures).
-
-## Minimal Wire Example
+Request:
 
 ```json
 {
   "schema": "gentle.clawbio_skill_request.v1",
-  "mode": "shell",
-  "shell_line": "features query tp73 --kind CDS --within --range 61784..63000 --label TP73 --limit 200"
+  "mode": "intents"
 }
 ```
 
-```json
-{
-  "schema": "gentle.clawbio_skill_result.v1",
-  "status": "ok",
-  "chat_summary_lines": [
-    "1 CDS feature in view"
-  ],
-  "stdout_json": {
-    "schema": "gentle.sequence_context_view.v1"
-  }
-}
+Result payload in `stdout_json`:
+
+- `schema`: `gentle.clawbio_skill_intents_runtime.v1`
+- `descriptor_sha256`: hash of installed `INTENTS.json`
+- `supported_request_modes`: wrapper modes accepted by this installation
+- `routes[]`: `intent_id`, trigger terms, request modes, examples, slot needs
+
+This mode is wrapper-owned and does not invoke `gentle_cli`.
+
+## Mode Audit
+
+| Mode | Class | Stance |
+| --- | --- | --- |
+| `skill-info` | wrapper concern | Keep; metadata without runtime dependency. |
+| `intents` | wrapper concern | Keep; runtime descriptor/hash surface without runtime dependency. |
+| `version` | thin pass-through | Keep; maps to `gentle_cli --version`. |
+| `capabilities` | thin pass-through plus probe | Keep; maps to `capabilities` and best-effort `ui intents`. |
+| `state-summary` | thin pass-through | Keep; maps to `state-summary`. |
+| `shell` | thin pass-through | Keep as preferred generic command surface. |
+| `op` | thin pass-through | Keep as preferred operation surface. |
+| `workflow` | wrapper concern | Keep; resolves workflow paths and bundles artifacts. |
+| `raw` | thin pass-through | Keep for advanced callers that already know CLI argv. |
+| `protein-residue-genomic-coordinates` | thin typed op | Keep; maps to one operation payload. |
+| `gene-protein-2d-gel` | wrapper concern | Keep; parameterized workflow synthesis plus artifact naming. |
+| `agent-plan` | safety wrapper | Keep for now; carries planner options and confirmation boundaries. |
+| `agent-execute-plan` | safety wrapper | Keep for now; carries stored plan execution options. |
+| `primer-preflight` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `primer-seed-from-feature` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `primer-seed-from-splicing` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `primer-design` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `primer-report-list` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `primer-report-show` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `primer-report-export` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `qpcr-seed-from-feature` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `qpcr-seed-from-splicing` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `qpcr-design` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `qpcr-report-list` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `qpcr-report-show` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `qpcr-report-export` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `cdna-pcr-test` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `cdna-qpcr-test` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `transcript-qpcr-panel` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `restriction-cloning-pcr-handoff` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `restriction-cloning-pcr-handoff-seed` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `restriction-cloning-vector-suggestions` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `restriction-cloning-handoff-list` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `restriction-cloning-handoff-show` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `restriction-cloning-handoff-export` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `pcr-protocol-cartoon` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `exon-skip-plan` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+| `exon-skip-materialize` | shell normalizer | Deprecate; prefer `mode: "shell"`. |
+
+Class meaning:
+
+- Thin pass-through: one request shape maps directly to one CLI shell/op/workflow
+  surface.
+- Shell normalizer: wrapper convenience over a shared shell family. These stay
+  accepted but should not grow new biology or routing semantics.
+- Wrapper concern: path resolution, artifact bundling, runtime descriptor
+  exposure, or presentation metadata that belongs at the ClawBio wrapper layer.
+
+## Deprecation Table
+
+Deprecated in `v0.1.0-internal.8`, earliest removal `v0.1.0-internal.10`:
+
+- Primer/qPCR/report/CDNA modes listed above as shell normalizers.
+- Restriction-cloning handoff helper modes listed above as shell normalizers.
+- `transcript-qpcr-panel`, `pcr-protocol-cartoon`,
+  `exon-skip-plan`, and `exon-skip-materialize`.
+
+Each deprecated mode still executes and adds a `warnings[]` entry naming the
+equivalent `mode: "shell"` form.
+
+## Drift Guards
+
+CI checks should keep the following in sync:
+
+- every `route.plan[].input` in `INTENTS.json` resolves under `examples/`;
+- every `examples/*.json` file is either routed or explicitly allowlisted as a
+  bootstrap/follow-on/dev example;
+- `SKILL.md` front-matter `trigger_keywords` is generated from
+  `INTENTS.json` trigger terms plus `trigger_keyword_additions.json`;
+- `mode: "intents"` reports the same descriptor routes and request modes the
+  installed wrapper supports.
+
+Regenerate trigger keywords with:
+
+```bash
+python3 scripts/generate_clawbio_trigger_keywords.py --write
 ```
 
-## MVP Integration Scope
+Verify without writing:
 
-- Orchestrated feature/region inspection
-- Primer-design planning and execution via deterministic workflows
-- Structured report export for downstream strategy ranking in ClawBio
+```bash
+python3 scripts/generate_clawbio_trigger_keywords.py --check
+```
+
+## Service Scope Neutrality
+
+The shared engine default for `services handoff` is provider-neutral
+`scope = "default"`. ClawBio-specific calls should pass `--scope clawbio`
+explicitly. Omitting `--scope` is accepted but emits a warning so callers can
+update without losing backward compatibility.

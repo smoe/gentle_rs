@@ -16,6 +16,9 @@ Maintenance rule:
 
 - Revised the GUI egui stack from `0.34.1` to `0.34.2` across `eframe`,
   `egui`, `egui_extras`, and the `gentle-gui` helper crate.
+- Added the ClawBio `mode=intents` runtime descriptor surface, trigger-keyword
+  generation/drift checks, and a provider-neutral default scope for
+  `services handoff`.
 
 ## 2026-05-10
 

@@ -2526,10 +2526,14 @@ pub fn service_handoff_report(
     scope: Option<&str>,
     export_path: Option<String>,
 ) -> Result<ServiceHandoffReport, String> {
+    let scope_was_omitted = scope
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_none();
     let scope = scope
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("clawbio")
+        .unwrap_or("default")
         .to_string();
     let service_readiness = service_readiness_status()?;
     let mut readiness = vec![];
@@ -2538,6 +2542,12 @@ pub fn service_handoff_report(
     let mut blocked_actions = vec![];
     let mut warnings = vec![];
     let mut has_running_prepare = false;
+    if scope_was_omitted {
+        warnings.push(
+            "services handoff without --scope now uses provider-neutral scope 'default'; pass --scope clawbio for ClawBio-specific handoff wording."
+                .to_string(),
+        );
+    }
 
     for reference in &service_readiness.references {
         readiness.push(dependency_readiness_row(reference));
