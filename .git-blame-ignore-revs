@@ -1,0 +1,6 @@
+# Merge commits for move-only module-decomposition PRs.
+#
+# After a move-only decomposition PR lands, append the merge commit SHA here so
+# reviewers can opt into history that skips mechanical file movement:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
