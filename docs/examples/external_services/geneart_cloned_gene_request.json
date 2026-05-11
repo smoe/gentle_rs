@@ -1,0 +1,42 @@
+{
+  "schema": "gentle.external_service_request.v1",
+  "provider": "geneart",
+  "service_kind": "cloned_gene",
+  "source_target": {
+    "kind": "inline_dna",
+    "name": "DEMO_DO_NOT_ORDER_geneart_synthetic_cloned_gene",
+    "sequence": "ATGGCTAGCGGTACTGATCGTACCTGACGATCGGTTACGATGCTAGCTAACTGACCGTACGATCGTACGATGCTAA",
+    "note": "Synthetic tutorial insert. Confirm construct design, vector context, biosafety policy, and vendor representation before any real quote or order."
+  },
+  "vector_spec": {
+    "helper_profile_id": "tutorial_vector_review_required",
+    "vector_name": "DEMO_DO_NOT_ORDER_reviewed_vector_placeholder",
+    "insertion_site": "review_required",
+    "host_system": "review_required"
+  },
+  "delivery_options": {
+    "delivery_form": "plasmid DNA",
+    "qc": "vendor default plus sequence confirmation if available",
+    "biosafety": "review_required"
+  },
+  "return_spec": {
+    "requested_payloads": [
+      "genbank",
+      "fasta",
+      "quote_metadata",
+      "handoff_bundle"
+    ],
+    "inline_max_bytes": 20000,
+    "redact_commercial_fields": true,
+    "prefer_artifact_bundle": true
+  },
+  "request_metadata": {
+    "tutorial": true,
+    "human_review_only": true,
+    "notes": [
+      "Synthetic tutorial request.",
+      "No vendor order, cart submission, API upload, or credential lookup should occur from this request.",
+      "Replace vector_spec with reviewed helper/profile metadata before any real vendor interaction."
+    ]
+  }
+}
