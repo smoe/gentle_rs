@@ -146,6 +146,15 @@ def parse_args() -> argparse.Namespace:
         help="Grouped-bar height metric. Raw read counts are printed inside bars in both modes.",
     )
     parser.add_argument(
+        "--metric-scale",
+        choices=["linear", "log"],
+        default="linear",
+        help=(
+            "Scale for the lower seed-passed support axis. Use log when one "
+            "highly abundant gene otherwise flattens low-abundance genes."
+        ),
+    )
+    parser.add_argument(
         "--support-length-stat",
         choices=["max", "mean"],
         default="max",
@@ -742,6 +751,7 @@ def render_svg(
     gene_colors: dict[str, str],
     output_tsv: Path,
     metric: str,
+    metric_scale: str,
     label_column: str,
     title: str,
     support_length_stat: str,
@@ -800,7 +810,15 @@ def render_svg(
         value(row, metric_key) or 0.0
         for row in rows_by_gene_run.values()
     ]
+    positive_metric_values = [raw for raw in metric_values if raw > 0]
     metric_max = nice_linear_max(max(metric_values) * 1.15 if metric_values else 1.0)
+    metric_log_min = 0
+    metric_log_max = 1
+    if metric_scale == "log" and positive_metric_values:
+        metric_log_min = math.floor(math.log10(min(positive_metric_values)))
+        metric_log_max = math.ceil(math.log10(max(positive_metric_values)))
+        if metric_log_min == metric_log_max:
+            metric_log_max += 1
     support_length_key = {
         "max": "support_max_read_bp",
         "mean": "support_mean_read_bp",
@@ -843,6 +861,12 @@ def render_svg(
         support_length_label = support_length_label.replace("(bp)", "(bp, log scale)")
 
     def y_bar(raw: float) -> float:
+        if metric_scale == "log" and positive_metric_values:
+            if raw <= 0:
+                return bottom_y + bottom_h
+            return bottom_y + bottom_h - (
+                (math.log10(raw) - metric_log_min) / (metric_log_max - metric_log_min)
+            ) * bottom_h
         return bottom_y + bottom_h - (raw / metric_max) * bottom_h
 
     def y_support_len(raw: float) -> float:
@@ -859,6 +883,8 @@ def render_svg(
         if metric == "per_million"
         else "strict seed-passed reads"
     )
+    if metric_scale == "log" and positive_metric_values:
+        metric_label += " (log scale)"
 
     parts: list[str] = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -908,11 +934,20 @@ def render_svg(
 
     family_label = " / ".join(genes)
     parts.append(svg_text(top_x, bottom_y - 24, f"{family_label} seed-passed support", 17, weight="700"))
-    for tick in [0.0, 0.25, 0.5, 0.75, 1.0]:
-        raw = metric_max * tick
-        y = y_bar(raw)
-        parts.append(f'<line x1="{top_x}" y1="{y:.1f}" x2="{top_x + chart_w}" y2="{y:.1f}" class="grid"/>')
-        parts.append(svg_text(top_x - 12, y + 4, format_metric(raw, metric), 12, "#64748b", "end"))
+    if metric_scale == "log" and positive_metric_values:
+        parts.append(f'<line x1="{top_x}" y1="{bottom_y + bottom_h:.1f}" x2="{top_x + chart_w}" y2="{bottom_y + bottom_h:.1f}" class="grid"/>')
+        parts.append(svg_text(top_x - 12, bottom_y + bottom_h + 4, "0", 12, "#64748b", "end"))
+        for decade in range(metric_log_min, metric_log_max + 1):
+            raw = 10**decade
+            y = y_bar(raw)
+            parts.append(f'<line x1="{top_x}" y1="{y:.1f}" x2="{top_x + chart_w}" y2="{y:.1f}" class="grid"/>')
+            parts.append(svg_text(top_x - 12, y + 4, format_metric(raw, metric), 12, "#64748b", "end"))
+    else:
+        for tick in [0.0, 0.25, 0.5, 0.75, 1.0]:
+            raw = metric_max * tick
+            y = y_bar(raw)
+            parts.append(f'<line x1="{top_x}" y1="{y:.1f}" x2="{top_x + chart_w}" y2="{y:.1f}" class="grid"/>')
+            parts.append(svg_text(top_x - 12, y + 4, format_metric(raw, metric), 12, "#64748b", "end"))
     parts.append(f'<line x1="{top_x}" y1="{bottom_y}" x2="{top_x}" y2="{bottom_y + bottom_h}" class="axis"/>')
     if support_length_raw_max > 0:
         parts.append(f'<line x1="{top_x + chart_w}" y1="{bottom_y}" x2="{top_x + chart_w}" y2="{bottom_y + bottom_h}" class="axis"/>')
@@ -963,7 +998,7 @@ def render_svg(
             fill = gene_colors[gene]
             label_fill = fill
             parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{max(h, 1.0):.1f}" rx="3" fill="{fill}" opacity="0.84">')
-            parts.append(f'<title>{escape(gene)} {escape(run)}: {count_raw:.0f} seed-passed reads; {metric_raw or 0.0:.4g} {"per million" if metric == "per_million" else "raw"}</title>')
+            parts.append(f'<title>{escape(gene)} {escape(run)}: {count_raw:.0f} seed-passed reads; {metric_raw or 0.0:.4g} {"per million" if metric == "per_million" else "raw"}; {metric_scale} support scale</title>')
             parts.append("</rect>")
             if count_raw is not None and count_raw > 0:
                 parts.append(svg_text(x + bar_w / 2.0, y - 5, f"{count_raw:.0f}", 10, label_fill, "middle", weight="700"))
@@ -1096,6 +1131,7 @@ def main() -> int:
         gene_colors,
         output_tsv,
         args.metric,
+        args.metric_scale,
         args.label_column,
         args.title,
         args.support_length_stat,
