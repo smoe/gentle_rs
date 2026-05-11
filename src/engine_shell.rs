@@ -59,12 +59,13 @@ use crate::{
         PromoterArtifactManifestEntry, PromoterExpressionEvidenceInput, PromoterTfbsGeneQuery,
         PromoterWindowCollapseMode, ProteinExternalOpinionSource, ProteinFeatureFilter,
         ProteinToDnaHandoffRankingGoal, QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargeting,
-        QpcrTranscriptTargetingMode, RackAuthoringTemplate, RackCarrierLabelPreset,
-        RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-        RackProfileKind, ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RenderSvgMode,
-        RepeatAnnotationFilter, RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
+        QpcrTranscriptTargetingMode, RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA,
+        RackAuthoringTemplate, RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset,
+        RackOccupant, RackPhysicalTemplateKind, RackProfileKind, ReadAcquisitionAnalysisFormat,
+        ReadAcquisitionReadLayout, RenderSvgMode, RepeatAnnotationFilter,
+        RepeatEnvironmentCohortReport, RepeatEnvironmentGeometryMode,
         RestrictionCloningPcrHandoffMode, ReverseTranslationReport,
-        ReverseTranslationReportSummary, RnaReadAlignConfig,
+        ReverseTranslationReportSummary, RnaReadAlignConfig, RnaReadAlignmentDisplayBatch,
         RnaReadAlignmentInspectionEffectFilter, RnaReadAlignmentInspectionSortKey,
         RnaReadAlignmentInspectionSubsetSpec, RnaReadConcatemerInspectionSettings,
         RnaReadGeneSupportAuditCohortFilter, RnaReadGeneSupportCompleteRule, RnaReadHitSelection,
@@ -2263,6 +2264,15 @@ pub enum ShellCommand {
     RnaReadsShowAlignment {
         report_id: String,
         record_index: usize,
+    },
+    RnaReadsShowAlignments {
+        report_id: String,
+        gene_ids: Vec<String>,
+        selected_record_indices: Vec<usize>,
+        complete_rule: RnaReadGeneSupportCompleteRule,
+        cohort_filter: RnaReadGeneSupportAuditCohortFilter,
+        limit: Option<usize>,
+        output_path: Option<String>,
     },
     RnaReadsSummarizeGeneSupport {
         report_id: String,
@@ -9982,6 +9992,30 @@ impl ShellCommand {
             } => format!(
                 "show exact RNA-read phase-2 alignment detail for '{}' record_index={}",
                 report_id, record_index
+            ),
+            Self::RnaReadsShowAlignments {
+                report_id,
+                gene_ids,
+                selected_record_indices,
+                complete_rule,
+                cohort_filter,
+                limit,
+                output_path,
+            } => format!(
+                "show exact RNA-read phase-2 alignment details for '{}' (genes={}, selected_record_indices={}, complete_rule={}, cohort={}, limit={}, output={})",
+                report_id,
+                if gene_ids.is_empty() {
+                    "<explicit>".to_string()
+                } else {
+                    gene_ids.join(",")
+                },
+                selected_record_indices.len(),
+                complete_rule.as_str(),
+                cohort_filter.as_str(),
+                limit
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "all".to_string()),
+                output_path.as_deref().unwrap_or("stdout")
             ),
             Self::RnaReadsSummarizeGeneSupport {
                 report_id,
@@ -30885,6 +30919,108 @@ fn execute_rna_reads_command(
                 }),
             })
         }
+        ShellCommand::RnaReadsShowAlignments {
+            report_id,
+            gene_ids,
+            selected_record_indices,
+            complete_rule,
+            cohort_filter,
+            limit,
+            output_path,
+        } => {
+            let (
+                selection_mode,
+                requested_gene_ids,
+                matched_gene_ids,
+                missing_gene_ids,
+                mut resolved_record_indices,
+            ) = if selected_record_indices.is_empty() {
+                let audit = engine
+                    .inspect_rna_read_gene_support(
+                        report_id,
+                        gene_ids,
+                        &[],
+                        *complete_rule,
+                        *cohort_filter,
+                    )
+                    .map_err(|e| e.to_string())?;
+                (
+                    "gene_cohort".to_string(),
+                    audit.requested_gene_ids,
+                    audit.matched_gene_ids,
+                    audit.missing_gene_ids,
+                    audit
+                        .rows
+                        .into_iter()
+                        .map(|row| row.record_index)
+                        .collect::<Vec<_>>(),
+                )
+            } else {
+                (
+                    "record_indices".to_string(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    selected_record_indices.clone(),
+                )
+            };
+            if let Some(limit) = limit {
+                resolved_record_indices.truncate(*limit);
+            }
+            let (entries, skipped_records) = engine
+                .build_rna_read_alignment_displays(report_id, &resolved_record_indices)
+                .map_err(|e| e.to_string())?;
+            let report = engine
+                .get_rna_read_report(report_id)
+                .map_err(|e| e.to_string())?;
+            let skipped_record_indices = skipped_records
+                .iter()
+                .map(|record| record.record_index)
+                .collect::<Vec<_>>();
+            let batch = RnaReadAlignmentDisplayBatch {
+                schema: RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA.to_string(),
+                report_id: report.report_id,
+                seq_id: report.seq_id,
+                seed_feature_id: report.seed_feature_id,
+                requested_gene_ids,
+                matched_gene_ids,
+                missing_gene_ids,
+                selection_mode,
+                cohort_filter: *cohort_filter,
+                complete_rule: *complete_rule,
+                selected_record_indices: resolved_record_indices,
+                limit: *limit,
+                entry_count: entries.len(),
+                skipped_record_indices,
+                skipped_records,
+                entries,
+            };
+            if let Some(path) = output_path {
+                ensure_shell_output_parent_dir(path)?;
+                let mut text = serde_json::to_string_pretty(&batch).map_err(|e| {
+                    format!(
+                        "Could not serialize RNA-read alignment display batch '{}': {e}",
+                        batch.report_id
+                    )
+                })?;
+                text.push('\n');
+                fs::write(path, text).map_err(|e| {
+                    format!(
+                        "Could not write RNA-read alignment display batch to '{}': {e}",
+                        path
+                    )
+                })?;
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(&batch).map_err(|e| {
+                    format!(
+                        "Could not serialize RNA-read alignment display batch '{}': {e}",
+                        batch.report_id
+                    )
+                })?,
+            })
+        }
         ShellCommand::RnaReadsSummarizeGeneSupport {
             report_id,
             gene_ids,
@@ -32413,6 +32549,7 @@ fn execute_shell_command_with_options_dispatch(
             | ShellCommand::RnaReadsListReports { .. }
             | ShellCommand::RnaReadsShowReport { .. }
             | ShellCommand::RnaReadsShowAlignment { .. }
+            | ShellCommand::RnaReadsShowAlignments { .. }
             | ShellCommand::RnaReadsSummarizeGeneSupport { .. }
             | ShellCommand::RnaReadsInspectGeneSupport { .. }
             | ShellCommand::RnaReadsInspectAlignments { .. }
@@ -33914,6 +34051,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::RnaReadsListReports { .. }
         | ShellCommand::RnaReadsShowReport { .. }
         | ShellCommand::RnaReadsShowAlignment { .. }
+        | ShellCommand::RnaReadsShowAlignments { .. }
         | ShellCommand::RnaReadsSummarizeGeneSupport { .. }
         | ShellCommand::RnaReadsInspectGeneSupport { .. }
         | ShellCommand::RnaReadsInspectAlignments { .. }

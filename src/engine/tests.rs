@@ -1223,6 +1223,20 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
     let gene1_tx_full_len = transcript_length_bp(&gene1_tx_full);
     let gene1_tx_skip_len = transcript_length_bp(&gene1_tx_skip);
     let gene2_tx_len = transcript_length_bp(&gene2_tx);
+    let dna = engine
+        .state()
+        .sequences
+        .get("seq_a")
+        .expect("sequence present for RNA-read templates");
+    let gene1_tx_full_sequence =
+        String::from_utf8(GentleEngine::make_transcript_template(dna, &gene1_tx_full, 3).sequence)
+            .expect("GENE1 full template sequence");
+    let gene1_tx_skip_sequence =
+        String::from_utf8(GentleEngine::make_transcript_template(dna, &gene1_tx_skip, 3).sequence)
+            .expect("GENE1 skip template sequence");
+    let gene2_tx_sequence =
+        String::from_utf8(GentleEngine::make_transcript_template(dna, &gene2_tx, 3).sequence)
+            .expect("GENE2 template sequence");
     let gene1_full_start = gene1_tx_full
         .exons
         .first()
@@ -1241,6 +1255,10 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
     let gene1_fragment_len = gene1_partial_end
         .saturating_sub(gene1_full_start)
         .saturating_add(1);
+    let gene1_fragment_sequence = gene1_tx_full_sequence
+        .chars()
+        .take(gene1_fragment_len)
+        .collect::<String>();
     let gene1_skip_start = gene1_tx_skip
         .exons
         .first()
@@ -1326,7 +1344,7 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
                 RnaReadInterpretationHit {
                     record_index: 0,
                     header_id: "gene1_full".to_string(),
-                    sequence: "A".repeat(gene1_tx_full_len),
+                    sequence: gene1_tx_full_sequence.clone(),
                     read_length_bp: gene1_tx_full_len,
                     best_mapping: Some(RnaReadMappingHit {
                         transcript_feature_id: gene1_tx_full.transcript_feature_id,
@@ -1348,7 +1366,7 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
                 RnaReadInterpretationHit {
                     record_index: 1,
                     header_id: "gene1_fragment".to_string(),
-                    sequence: "A".repeat(gene1_fragment_len),
+                    sequence: gene1_fragment_sequence.clone(),
                     read_length_bp: gene1_fragment_len,
                     best_mapping: Some(RnaReadMappingHit {
                         transcript_feature_id: gene1_tx_full.transcript_feature_id,
@@ -1382,7 +1400,7 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
                 RnaReadInterpretationHit {
                     record_index: 2,
                     header_id: "gene1_skip_complete".to_string(),
-                    sequence: "A".repeat(gene1_tx_skip_len),
+                    sequence: gene1_tx_skip_sequence.clone(),
                     read_length_bp: gene1_tx_skip_len,
                     best_mapping: Some(RnaReadMappingHit {
                         transcript_feature_id: gene1_tx_skip.transcript_feature_id,
@@ -1404,7 +1422,7 @@ fn build_rna_read_gene_support_test_engine() -> GentleEngine {
                 RnaReadInterpretationHit {
                     record_index: 3,
                     header_id: "gene2_full".to_string(),
-                    sequence: "A".repeat(gene2_tx_len),
+                    sequence: gene2_tx_sequence.clone(),
                     read_length_bp: gene2_tx_len,
                     best_mapping: Some(RnaReadMappingHit {
                         transcript_feature_id: gene2_tx.transcript_feature_id,
@@ -27138,6 +27156,118 @@ fn test_inspect_rna_read_gene_support_honors_selected_record_indices_before_coho
             .collect::<Vec<_>>(),
         vec![2, 3]
     );
+}
+
+#[test]
+fn test_rna_read_show_alignments_batch_matches_single_and_skips_unmapped() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let (entries, skipped_records) = engine
+        .build_rna_read_alignment_displays("rna_reads_gene_support", &[0, 1, 4])
+        .expect("build batch RNA-read alignment displays");
+
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| entry.record_index)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert_eq!(skipped_records.len(), 1);
+    assert_eq!(skipped_records[0].record_index, 4);
+    assert_eq!(skipped_records[0].header_id, "unaligned");
+    assert_eq!(skipped_records[0].reason, "no_best_mapping");
+
+    for entry in entries {
+        let single = engine
+            .build_rna_read_alignment_display("rna_reads_gene_support", entry.record_index)
+            .expect("single alignment display");
+        assert_eq!(
+            serde_json::to_value(&entry.alignment).expect("batch alignment json"),
+            serde_json::to_value(&single).expect("single alignment json")
+        );
+    }
+}
+
+#[test]
+fn test_rna_read_show_alignments_batch_fails_on_missing_record_index() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let error = engine
+        .build_rna_read_alignment_displays("rna_reads_gene_support", &[99])
+        .expect_err("missing record index should fail batch");
+
+    assert_eq!(error.code, ErrorCode::NotFound);
+    assert!(error.message.contains("record_index 99"));
+}
+
+#[test]
+fn test_rna_read_show_alignments_batch_uses_gene_cohort_rows() {
+    let engine = build_rna_read_gene_support_test_engine();
+    let cases = [
+        (
+            RnaReadGeneSupportAuditCohortFilter::All,
+            vec![0, 1, 2, 3, 4],
+        ),
+        (RnaReadGeneSupportAuditCohortFilter::Accepted, vec![0, 1, 2]),
+        (RnaReadGeneSupportAuditCohortFilter::Fragment, vec![1]),
+        (RnaReadGeneSupportAuditCohortFilter::Complete, vec![0, 2]),
+        (RnaReadGeneSupportAuditCohortFilter::Rejected, vec![3, 4]),
+    ];
+
+    for (cohort_filter, expected_indices) in cases {
+        let audit = engine
+            .inspect_rna_read_gene_support(
+                "rna_reads_gene_support",
+                &[String::from("GENE1")],
+                &[],
+                RnaReadGeneSupportCompleteRule::Near,
+                cohort_filter,
+            )
+            .expect("inspect gene support cohort");
+        let selected = audit
+            .rows
+            .iter()
+            .map(|row| row.record_index)
+            .collect::<Vec<_>>();
+        assert_eq!(selected, expected_indices);
+
+        let (entries, skipped_records) = engine
+            .build_rna_read_alignment_displays("rna_reads_gene_support", &selected)
+            .expect("build batch RNA-read alignment displays from cohort");
+        assert_eq!(entries.len() + skipped_records.len(), selected.len());
+        if cohort_filter == RnaReadGeneSupportAuditCohortFilter::Rejected {
+            assert_eq!(
+                entries
+                    .iter()
+                    .map(|entry| entry.record_index)
+                    .collect::<Vec<_>>(),
+                vec![3]
+            );
+            assert_eq!(
+                skipped_records
+                    .iter()
+                    .map(|record| record.record_index)
+                    .collect::<Vec<_>>(),
+                vec![4]
+            );
+        }
+    }
+
+    let empty_audit = engine
+        .inspect_rna_read_gene_support(
+            "rna_reads_gene_support",
+            &[String::from("GENE_MISSING")],
+            &[],
+            RnaReadGeneSupportCompleteRule::Near,
+            RnaReadGeneSupportAuditCohortFilter::Accepted,
+        )
+        .expect("inspect empty gene-support cohort");
+    assert_eq!(empty_audit.missing_gene_ids, vec!["GENE_MISSING".to_string()]);
+    assert!(empty_audit.rows.is_empty());
+    let (entries, skipped_records) = engine
+        .build_rna_read_alignment_displays("rna_reads_gene_support", &[])
+        .expect("build empty batch RNA-read alignment displays");
+    assert!(entries.is_empty());
+    assert!(skipped_records.is_empty());
 }
 
 #[test]

@@ -191,6 +191,8 @@ wet-lab conclusions or unconfirmed mutations.
   too easy to miss.
 - SnapGene-style plasmid-map presentation parity and dense selected-site polish.
 - Engine-owned portable findings/artifact inspection for agent-driven work.
+- GUI batch display for RNA-read gene-cohort alignments with virtualization for
+  thousands of per-read aligned-column blocks.
 - Vendor-protocol and deeper wet-lab process modeling primitives.
 - Automatic cross-gene homology anchors on top of explicit `query_anchor_bp`.
 - Catalog-extensible gene-group and ontology bridge after release proof work.
