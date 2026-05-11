@@ -16,6 +16,9 @@ Maintenance rule:
 
 - Revised the GUI egui stack from `0.34.1` to `0.34.2` across `eframe`,
   `egui`, `egui_extras`, and the `gentle-gui` helper crate.
+- Added `rna-reads show-alignments` for headless batch export of the same
+  per-read alignment display payload used by `rna-reads show-alignment` and the
+  GUI splicing-expert detail pane.
 
 ## 2026-05-10
 

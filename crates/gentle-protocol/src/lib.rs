@@ -4714,6 +4714,48 @@ pub struct RnaReadAlignmentDisplay {
     pub aligned_target: String,
 }
 
+pub const RNA_READ_ALIGNMENT_DISPLAY_BATCH_SCHEMA: &str =
+    "gentle.rna_read_alignment_display_batch.v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentDisplayBatchEntry {
+    pub record_index: usize,
+    pub header_id: String,
+    pub alignment: RnaReadAlignmentDisplay,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentDisplayBatchSkippedRecord {
+    pub record_index: usize,
+    pub header_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadAlignmentDisplayBatch {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub seed_feature_id: usize,
+    pub requested_gene_ids: Vec<String>,
+    pub matched_gene_ids: Vec<String>,
+    pub missing_gene_ids: Vec<String>,
+    pub selection_mode: String,
+    #[serde(default)]
+    pub cohort_filter: RnaReadGeneSupportAuditCohortFilter,
+    #[serde(default)]
+    pub complete_rule: RnaReadGeneSupportCompleteRule,
+    pub selected_record_indices: Vec<usize>,
+    pub limit: Option<usize>,
+    pub entry_count: usize,
+    pub skipped_record_indices: Vec<usize>,
+    pub skipped_records: Vec<RnaReadAlignmentDisplayBatchSkippedRecord>,
+    pub entries: Vec<RnaReadAlignmentDisplayBatchEntry>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadStrandAssignmentDiagnostics {

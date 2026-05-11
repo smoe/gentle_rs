@@ -683,6 +683,7 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads list-reports`
   - `rna-reads show-report`
   - `rna-reads show-alignment`
+  - `rna-reads show-alignments`
   - `rna-reads summarize-gene-support`
   - `rna-reads inspect-gene-support`
   - `rna-reads inspect-alignments`
@@ -813,6 +814,10 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `show-alignment`: non-mutating exact phase-2 pairwise alignment detail for
     one saved `record_index`, returning the same machine-readable
     `RnaReadAlignmentDisplay` contract used by the GUI detail pane.
+  - `show-alignments`: non-mutating batch wrapper over the same display builder
+    for explicit record indices or all rows in one gene-support cohort; records
+    without `best_mapping` are reported as skipped instead of aborting the
+    whole batch.
   - `inspect-concatemers`: non-mutating fragment/concatemer suspicion audit
     over persisted report hits, with optional structured subset controls:
     `--effect-filter`, `--sort`, `--search`, and `--record-indices`.
@@ -2168,6 +2173,7 @@ Shared shell command:
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
     - `rna-reads show-alignment REPORT_ID RECORD_INDEX`
+    - `rna-reads show-alignments REPORT_ID [--gene GENE_ID ... --cohort all|accepted|fragment|complete|rejected --complete-rule near|strict|exact | --record-indices i,j,k] [--limit N] [--output PATH]`
     - `rna-reads summarize-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--output PATH]`
     - `rna-reads inspect-gene-support REPORT_ID --gene GENE_ID [--gene GENE_ID ...] [--record-indices i,j,k] [--complete-rule near|strict|exact] [--cohort all|accepted|fragment|complete|rejected] [--output PATH]`
     - `rna-reads inspect-alignments REPORT_ID [--selection all|seed_passed|aligned] [--limit N] [--effect-filter all_aligned|confirmed_only|disagreement_only|reassigned_only|no_phase1_only|selected_only] [--sort rank|identity|coverage|score] [--search TEXT] [--record-indices i,j,k] [--score-bin-variant all_scored|composite_seed_gate] [--score-bin-index N] [--score-bin-count M]`
@@ -2183,6 +2189,11 @@ Shared shell command:
     - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log] [--variant all_scored|composite_seed_gate]`
     - `rna-reads export-alignments-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned] [--limit N] [--record-indices i,j,k] [--subset-spec TEXT]`
     - `rna-reads export-alignment-dotplot-svg REPORT_ID OUTPUT.svg [--selection all|seed_passed|aligned] [--max-points N]`
+    - `rna-reads show-alignments` returns
+      `gentle.rna_read_alignment_display_batch.v1` with final
+      `selected_record_indices`, per-read `entries[]` containing the same
+      display records as `show-alignment`, and `skipped_records[]` for reads
+      without `best_mapping`.
     - `rna-reads align-report` re-ranks retained hits by alignment-aware
       retention rank after mapping refresh.
     - `rna-reads inspect-alignments` returns ranked aligned rows suitable for
