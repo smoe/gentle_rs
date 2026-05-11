@@ -12,6 +12,11 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-11
+
+- Revised the GUI egui stack from `0.34.1` to `0.34.2` across `eframe`,
+  `egui`, `egui_extras`, and the `gentle-gui` helper crate.
+
 ## 2026-05-10
 
 - Moved sequence file-loading dispatch into `dna_sequence::load_from_file` so

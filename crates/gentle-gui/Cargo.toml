@@ -10,7 +10,7 @@ name = "gentle_gui"
 path = "src/lib.rs"
 
 [dependencies]
-egui = "0.34.1"
+egui = "0.34.2"
 serde = { version = "^1", features = ["derive"] }
 
 [dev-dependencies]

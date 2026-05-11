@@ -94,7 +94,7 @@ gb-io = { version = "0.9.0", features = ["serde"] }
 svg = "*"
 rayon = "*"
 anyhow = "*"
-eframe = { version = "0.34.1", features = [
+eframe = { version = "0.34.2", features = [
 	"accesskit",
 	"default_fonts",
 	"glow",
@@ -103,7 +103,7 @@ eframe = { version = "0.34.1", features = [
 	"x11",
 	"persistence",
 ] }
-egui_extras = { version = "0.34.1", features = ["all_loaders"] }
+egui_extras = { version = "0.34.2", features = ["all_loaders"] }
 egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
 image = { version = "*", features = ["jpeg", "png"] }
 resvg = "0.45.1"
