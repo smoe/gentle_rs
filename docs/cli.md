@@ -207,6 +207,7 @@ export GENTLE_CLI_CMD=/home/clawbio/ClawBio/skills/gentle-cloning/gentle_local_c
 
 cd /home/clawbio/ClawBio
 python clawbio.py run gentle-cloning --demo
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_intents_runtime.json --output /tmp/gentle_intents_runtime
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_runtime_version.json --output /tmp/gentle_runtime_version
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_genomes_list_human.json --output /tmp/gentle_list_human
 python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_helpers_list_gst.json --output /tmp/gentle_list_helpers
@@ -263,6 +264,11 @@ python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/requ
 
 Notes:
 
+- `request_intents_runtime.json` returns the installed wrapper's
+  `gentle.clawbio_skill_intents_runtime.v1` payload, including the
+  `INTENTS.json` descriptor hash and route/request-mode summary; ClawBio should
+  use it for explicit descriptor refresh or drift checks rather than as a
+  startup dependency.
 - examples carrying `state_path: ".gentle_state.json"` expect a project state
   file in the working directory
 - `request_render_svg_pgex_fasta_circular.json` is a common follow-on graphics

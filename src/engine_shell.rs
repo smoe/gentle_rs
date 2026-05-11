@@ -6517,7 +6517,7 @@ impl ShellCommand {
             ),
             Self::ServicesHandoff { scope, output } => format!(
                 "build service handoff report for chat gateways (scope='{}', output='{}')",
-                scope.as_deref().unwrap_or("clawbio"),
+                scope.as_deref().unwrap_or("default"),
                 output.as_deref().unwrap_or("-"),
             ),
             Self::ServicesGuide {

@@ -600,12 +600,18 @@ Alternative runtimes:
 ## Request schema
 
 - `schema`: `gentle.clawbio_skill_request.v1`
-- `mode`: `skill-info|version|capabilities|state-summary|shell|op|workflow|exon-skip-plan|exon-skip-materialize|raw`
+- `mode`: one of the wrapper's `supported_request_modes`; use
+  `request_skill_info.json` or `request_intents_runtime.json` to inspect the
+  installed list
 - optional: `state_path`, `timeout_secs`, `ensure_reference_prepared`
 
 Mode-specific fields:
 
 - `skill-info`: no extra fields; reports skill/catalog schema metadata without
+  invoking `gentle_cli`
+- `intents`: no extra fields; reports
+  `gentle.clawbio_skill_intents_runtime.v1` with the installed `INTENTS.json`
+  descriptor hash, route list, request modes, and referenced examples without
   invoking `gentle_cli`
 - `capabilities`: no extra fields; runs `gentle_cli capabilities` and then a
   best-effort shared `ui intents` probe so operator-handoff surfaces can reuse
@@ -615,6 +621,9 @@ Mode-specific fields:
 - `shell`: `shell_line`
 - `op`: `operation`
 - `workflow`: `workflow` or `workflow_path`
+- typed primer/qPCR/restriction/exon-skip helper modes remain accepted for
+  backward compatibility but now emit `warnings[]`; new ClawBio callers should
+  prefer `mode: "shell"` with the equivalent shared shell command
 - `exon-skip-plan`: `seq_id`, `transcript_feature_id`, optional
   `skip_candidate_ids[]`, `skip_intervals_1based[]`,
   `overlap_intervals_1based[]`, `length_mod3_values[]`,

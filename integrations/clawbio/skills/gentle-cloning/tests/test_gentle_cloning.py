@@ -26,6 +26,91 @@ def _examples_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "examples"
 
 
+# These examples are intentionally not direct top-level intent routes. They are
+# bootstrap, follow-on, direct-mode, or documentation/development examples that
+# remain callable by path but should not widen ClawBio's chat intent surface.
+INTENT_EXAMPLE_ALLOWLIST = {
+    "request_cdna_pcr_products_gel_demo_direct.json",
+    "request_cdna_qpcr_taqman_products_gel_demo_direct.json",
+    "request_dbsnp_fetch_rs9923231.json",
+    "request_ensembl_gene_fetch_tp53_human.json",
+    "request_ensembl_gene_import_sequence_tp53.json",
+    "request_ensembl_region_fetch_tp53_locus.json",
+    "request_exon_skip_materialize_return_aa.json",
+    "request_exon_skip_plan_example.json",
+    "request_export_bed_grch38_tp53_gene_models.json",
+    "request_export_bed_pgex_fasta_tfbs_restriction.json",
+    "request_export_bed_rs9923231_vkorc1_context_features.json",
+    "request_export_sequence_context_bundle_rs9923231_vkorc1.json",
+    "request_find_restriction_sites_inline_sequence_ecori_smai.json",
+    "request_genbank_fetch_pbr322.json",
+    "request_genomes_blast_grch38_short.json",
+    "request_genomes_ensembl_available_human.json",
+    "request_genomes_extract_gene_tp53.json",
+    "request_genomes_extract_gene_tp53_auto_prepare.json",
+    "request_genomes_extract_promoter_tert_auto_prepare.json",
+    "request_genomes_install_ensembl_mouse.json",
+    "request_genomes_list_human.json",
+    "request_genomes_prepare_grch38.json",
+    "request_genomes_status_grch38.json",
+    "request_helpers_blast_puc19_short.json",
+    "request_helpers_list_gst.json",
+    "request_helpers_prepare_puc19.json",
+    "request_helpers_status_puc19.json",
+    "request_hosts_list_deor.json",
+    "request_inspect_feature_expert_pgex_fasta_restriction_ecori.json",
+    "request_inspect_feature_expert_pgex_fasta_tfbs.json",
+    "request_inspect_feature_expert_tp53_isoform.json",
+    "request_inspect_feature_expert_tp53_splicing.json",
+    "request_inspect_sequence_context_rs9923231_vkorc1.json",
+    "request_protein_residue_genomic_coordinates_tp73.json",
+    "request_protocol_cartoon_gibson_svg.json",
+    "request_protocol_cartoon_pcr_oe_substitution_svg.json",
+    "request_protocol_cartoon_pcr_pair_svg.json",
+    "request_protocol_cartoon_pcr_tailed_svg.json",
+    "request_protocol_cartoon_qpcr_svg.json",
+    "request_render_feature_expert_pgex_fasta_restriction_ecori_svg.json",
+    "request_render_feature_expert_pgex_fasta_tfbs_svg.json",
+    "request_render_feature_expert_tp53_isoform_svg.json",
+    "request_render_svg_grch38_tert_promoter_stemness_sp1.json",
+    "request_render_svg_grch38_tert_tp73_promoters_stemness_sp1.json",
+    "request_render_svg_pgex_fasta_circular.json",
+    "request_render_svg_pgex_fasta_linear_restriction.json",
+    "request_render_svg_pgex_fasta_linear_tfbs.json",
+    "request_render_svg_rs9923231_vkorc1_linear.json",
+    "request_resources_resolve_tf_query_stemness_oct4_klf.json",
+    "request_resources_summarize_jaspar_sp1_rest.json",
+    "request_resources_summarize_jaspar_stemness_sp1.json",
+    "request_scan_tfbs_hits_grch38_tert_promoter_stemness_sp1.json",
+    "request_scan_tfbs_hits_inline_sequence_sp1_tp73.json",
+    "request_seed_primers_tp53_feature.json",
+    "request_seed_primers_tp53_splicing.json",
+    "request_seed_qpcr_tp53_feature.json",
+    "request_seed_qpcr_tp53_splicing.json",
+    "request_seed_qpcr_tp53_splicing_specific_junction.json",
+    "request_services_handoff.json",
+    "request_services_telegram_guide_isoforms_bach2.json",
+    "request_shell_state_summary.json",
+    "request_summarize_grch38_tert_tp73_promoters_stemness_sp1.json",
+    "request_tfbs_summary_pgex_fasta.json",
+    "request_tfbs_track_similarity_grch38_tert_promoter_sp1_stemness.json",
+    "request_version_installed.json",
+    "request_workflow_file.json",
+    "request_workflow_inline_sequence_inspection_stateless.json",
+    "request_workflow_p53_family_query_anchor_dotplot.json",
+    "request_workflow_tfbs_track_similarity_stateless.json",
+    "request_workflow_tp53_isoform_architecture_online.json",
+    "request_workflow_tp53_splicing_expert_svg.json",
+    "request_workflow_tp73_isoform_protein_2d_gel.json",
+    "request_workflow_tp73_isoform_protein_gel.json",
+    "request_workflow_tp73_tfbs_score_tracks_summary.json",
+    "request_workflow_tp73_tfbs_score_tracks_svg.json",
+    "request_workflow_tp73_variant1_trypsin_digest_gel.json",
+    "request_workflow_vkorc1_context_svg_auto_prepare.json",
+    "request_workflow_vkorc1_planning.json",
+}
+
+
 def _fake_cli_with_svg_png(main_body: str) -> str:
     return (
         "#!/usr/bin/env bash\n"
@@ -237,6 +322,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         "result_schema": "gentle.clawbio_skill_result.v1",
         "supported_request_modes": [
             "skill-info",
+            "intents",
             "version",
             "capabilities",
             "state-summary",
@@ -274,6 +360,8 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
             "agent-execute-plan",
             "raw",
         ],
+        "intents_runtime_schema": "gentle.clawbio_skill_intents_runtime.v1",
+        "intents_runtime_request_mode": "intents",
         "has_demo": True,
         "demo_command": "python clawbio.py run gentle-cloning --demo",
         "catalog_entry_path": str(
@@ -316,6 +404,7 @@ def test_skill_info_reports_catalog_version_without_gentle_cli(
         "gentle-cloning skill version 0.1.0 (mvp).",
         "Request schema: gentle.clawbio_skill_request.v1; result schema: gentle.clawbio_skill_result.v1.",
         "Use request mode `version` when you need the installed local GENtle rewrite runtime version.",
+        "Use request mode `intents` to compare the installed wrapper's live intent descriptor with ClawBio's on-disk snapshot.",
         "Use `resources status` or `services status` to check RNAfold/ViennaRNA and rnapkin executable-resource readiness.",
         "This skill reports the locally installed ClawBio GENtle rewrite runtime, not the classical GENtle desktop release line.",
     ]
@@ -359,6 +448,62 @@ def test_skill_info_request_mode_reports_catalog_version(
     assert payload["stdout_json"]["version"] == "0.1.0"
     assert payload["resolver"] is None
     assert payload["command"] is None
+
+
+def test_intents_request_mode_reports_runtime_descriptor_without_gentle_cli(
+    tmp_path: Path,
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps({"schema": "gentle.clawbio_skill_request.v1", "mode": "intents"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    output_dir = tmp_path / "intents_request"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(_skill_script()),
+            "--input",
+            str(request_path),
+            "--output",
+            str(output_dir),
+            "--gentle-cli",
+            "/definitely/missing/gentle_cli",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+    payload = json.loads(run.stdout)
+    stdout_json = payload["stdout_json"]
+    assert payload["status"] == "ok"
+    assert payload["request"]["mode"] == "intents"
+    assert payload["resolver"] is None
+    assert payload["command"] is None
+    assert stdout_json["schema"] == "gentle.clawbio_skill_intents_runtime.v1"
+    assert stdout_json["skill"] == "gentle-cloning"
+    assert stdout_json["intents_schema"] == "clawbio.skill_intents.v1"
+    assert stdout_json["route_count"] == len(stdout_json["routes"])
+    assert "intents" in stdout_json["supported_request_modes"]
+    routes = {route["intent_id"]: route for route in stdout_json["routes"]}
+    assert routes["runtime_version"]["request_modes"] == ["version"]
+    assert routes["runtime_version"]["example_filenames"] == [
+        "request_runtime_version.json"
+    ]
+    assert routes["ensembl_gene_protein_2d_gel"]["request_modes"] == [
+        "gene-protein-2d-gel"
+    ]
+    assert routes["ensembl_gene_protein_2d_gel"]["requires_slots"] is True
+    assert payload["chat_summary_lines"] == [
+        "GENtle intent descriptor runtime schema: gentle.clawbio_skill_intents_runtime.v1.",
+        f"Descriptor SHA-256: {stdout_json['descriptor_sha256']}.",
+        f"Routes available: {stdout_json['route_count']}.",
+        "ClawBio can compare this hash with its local INTENTS.json snapshot before refreshing route metadata.",
+    ]
 
 
 def test_capabilities_mode_surfaces_ui_intent_catalog_and_handoff_actions(
@@ -4828,6 +4973,58 @@ def test_catalog_entry_describes_patient_to_bench_and_reusable_reference_assets(
     assert "characteristic qpcr primers" in trigger_keywords
 
 
+def _route_input_paths(intents: dict) -> list[str]:
+    paths: list[str] = []
+    for route in intents["routes"]:
+        for step in route.get("plan", []):
+            input_path = step.get("input") if isinstance(step, dict) else None
+            if isinstance(input_path, str):
+                paths.append(input_path)
+    return paths
+
+
+def test_gentle_cloning_intents_route_inputs_exist() -> None:
+    skill_root = Path(__file__).resolve().parents[1]
+    intents = json.loads((skill_root / "INTENTS.json").read_text(encoding="utf-8"))
+
+    missing = [
+        input_path
+        for input_path in _route_input_paths(intents)
+        if not (skill_root / input_path).exists()
+    ]
+
+    assert missing == []
+
+
+def test_gentle_cloning_examples_are_routed_or_allowlisted() -> None:
+    skill_root = Path(__file__).resolve().parents[1]
+    intents = json.loads((skill_root / "INTENTS.json").read_text(encoding="utf-8"))
+    referenced = {
+        Path(input_path).name
+        for input_path in _route_input_paths(intents)
+    }
+    examples = {path.name for path in (skill_root / "examples").glob("*.json")}
+
+    unclassified = sorted(examples - referenced - INTENT_EXAMPLE_ALLOWLIST)
+
+    assert unclassified == []
+
+
+def test_gentle_cloning_skill_trigger_keywords_match_generator() -> None:
+    repo_root = Path(__file__).resolve().parents[5]
+    script = repo_root / "scripts" / "generate_clawbio_trigger_keywords.py"
+
+    run = subprocess.run(
+        [sys.executable, str(script), "--check"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr
+
+
 def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -> None:
     skill_root = Path(__file__).resolve().parents[1]
     intents = json.loads((skill_root / "INTENTS.json").read_text(encoding="utf-8"))
@@ -4847,6 +5044,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
         "lab_assistant_handoff_export",
         "demo_lab_assistant_handoff",
         "skill_info",
+        "intents_runtime",
         "telegram_guide_overview",
         "telegram_guide_readiness",
         "telegram_guide_gene_context",
@@ -4890,6 +5088,7 @@ def test_gentle_cloning_intents_descriptor_targets_existing_request_examples() -
     }
     expected_inputs = {
         "skill_info": "examples/request_skill_info.json",
+        "intents_runtime": "examples/request_intents_runtime.json",
         "telegram_guide_overview": "examples/request_services_telegram_guide.json",
         "telegram_guide_readiness": (
             "examples/request_services_telegram_guide_readiness.json"

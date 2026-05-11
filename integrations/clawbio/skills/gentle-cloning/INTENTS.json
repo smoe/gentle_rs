@@ -101,6 +101,26 @@
       ]
     },
     {
+      "intent_id": "intents_runtime",
+      "description": "Report the installed GENtle ClawBio intent descriptor, descriptor hash, request modes, and referenced examples without requiring a GENtle runtime.",
+      "trigger_terms": [
+        "intent descriptor",
+        "intents runtime",
+        "runtime intents",
+        "skill intents",
+        "descriptor hash",
+        "refresh gentle intents"
+      ],
+      "demo_policy": "never_unless_explicit",
+      "plan": [
+        {
+          "kind": "skill_run",
+          "skill": "gentle-cloning",
+          "input": "examples/request_intents_runtime.json"
+        }
+      ]
+    },
+    {
       "intent_id": "telegram_guide_overview",
       "description": "Show the Telegram-compatible GENtle guide overview with text fallback navigation.",
       "trigger_terms": [

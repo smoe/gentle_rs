@@ -38,53 +38,284 @@ metadata:
     install: []
     trigger_keywords:
       - gentle
-      - cloning workflow
-      - gibson assembly
-      - primer design
-      - pcr design
-      - simple pcr
-      - primer preflight
-      - primer3 preflight
-      - seed pcr from feature
-      - seed pcr from splicing
-      - design pcr primers
-      - design primers from json
-      - pcr constraints
-      - qpcr design
-      - taqman design
-      - design taqman assay
-      - seed qpcr from feature
-      - seed qpcr from splicing
-      - seed taqman from feature
-      - seed taqman from splicing
-      - transcript qpcr panel
-      - isoform qpcr panel
-      - characteristic qpcr primers
-      - transcript-specific qpcr primers
-      - exon junction taqman
-      - cdna pcr
-      - cdna qpcr
-      - rt-pcr
-      - test cdna pcr
-      - test cdna qpcr
-      - direct taqman test
-      - qpcr assay test
-      - taqman assay test
-      - non-specific pcr products
-      - nonspecific pcr products
-      - show pcr products on gel
-      - cdna product gel
-      - pcr protocol cartoon
-      - taqman protocol cartoon
-      - restriction cloning pcr handoff
+      - gentle cloning
+      - gentle-cloning
+      - cloning
+      - isoform guide for
+      - isoforms guide for
+      - gentle isoform guide for
+      - gentle isoforms guide for
+      - show me the gentle isoform guide for
+      - show me the gentle isoforms guide for
       - lab assistant handoff
       - lab assistant instructions
       - bench handoff
       - wet lab instructions
-      - export lab instructions
       - cloning instructions for lab assistant
-      - lab assistant demo
+      - export lab instructions
+      - prepare lab instructions
+      - assistant-ready cloning handoff
+      - demo lab assistant handoff
+      - show lab assistant handoff demo
       - cloning handoff demo
+      - gibson lab assistant demo
+      - demo wet lab instructions
+      - show cloning instructions demo
+      - skill info
+      - skill metadata
+      - gentle skill
+      - gentle skill info
+      - gentle schema
+      - intent descriptor
+      - intents runtime
+      - runtime intents
+      - skill intents
+      - descriptor hash
+      - refresh gentle intents
+      - gentle guide
+      - show guide
+      - show me the gentle guide
+      - what can gentle do
+      - help me use gentle
+      - continue guide
+      - continue readiness
+      - readiness guide
+      - data readiness guide
+      - gentle readiness guide
+      - continue gene context
+      - gene context guide
+      - gene guide
+      - locus guide
+      - continue tfbs
+      - continue promoter
+      - tfbs guide
+      - promoter guide
+      - continue pasted dna
+      - continue inline dna
+      - pasted dna guide
+      - inline dna guide
+      - continue cloning
+      - continue vectors
+      - cloning guide
+      - vector guide
+      - continue isoforms
+      - isoform guide
+      - isoforms guide
+      - gentle isoform guide
+      - gentle isoforms guide
+      - show me the gentle isoform guide
+      - show me the gentle isoforms guide
+      - protein gel guide
+      - gel guide
+      - continue follow-up
+      - continue follow up
+      - follow-up guide
+      - experimental follow-up guide
+      - validation planning guide
+      - capabilities
+      - available operations
+      - what operations
+      - what commands
+      - version
+      - runtime version
+      - installed version
+      - installed gentle
+      - gentle runtime
+      - services status
+      - service status
+      - services
+      - readiness
+      - ready
+      - local resources
+      - resources are ready
+      - rna structure resources
+      - rnafold resource
+      - viennarna resource
+      - rnapkin resource
+      - resources status
+      - resource status
+      - resources
+      - databases
+      - installed databases
+      - jaspar
+      - rebase
+      - attract
+      - rna secondary structure resources
+      - rnafold
+      - viennarna
+      - vienna rna
+      - rnapkin
+      - mfe
+      - protein residue coordinates
+      - map residue to genome
+      - protein to genome
+      - residue to genome
+      - genomic codon
+      - codon coordinates
+      - codon bases
+      - protein gel demo
+      - continue protein gel
+      - isoform protein gel demo
+      - molecular weight gel demo
+      - protein 2d gel demo
+      - continue 2d gel
+      - isoform protein 2d gel demo
+      - isoelectric point demo
+      - pi vs kda demo
+      - simple pcr
+      - simplest pcr
+      - continue pcr
+      - pcr primer design
+      - design pcr primers
+      - pcr constraints
+      - selected region pcr
+      - primer preflight
+      - primer3 preflight
+      - pcr backend status
+      - qpcr backend status
+      - taqman backend status
+      - can gentle design primers
+      - seed primers from feature
+      - seed pcr from feature
+      - pcr seed from feature
+      - primer seed feature
+      - feature to pcr seed
+      - seed primers from splicing
+      - seed pcr from splicing
+      - splicing to pcr seed
+      - transcript pcr seed
+      - primer seed splicing
+      - seed qpcr from feature
+      - seed taqman from feature
+      - feature to qpcr seed
+      - feature to taqman assay
+      - qpcr seed feature
+      - seed qpcr from splicing
+      - seed taqman from splicing
+      - shared transcript qpcr seed
+      - transcript-aware qpcr seed
+      - junction qpcr seed
+      - exon junction taqman seed
+      - run pcr primer design payload
+      - design primers from json
+      - design pcr primers from payload
+      - execute designprimerpairs
+      - primer design operation
+      - run qpcr design payload
+      - run taqman design payload
+      - design qpcr from json
+      - design taqman assay
+      - execute designqpcrassays
+      - probe based qpcr design
+      - transcript qpcr panel
+      - isoform qpcr panel
+      - characteristic qpcr primers
+      - transcript-specific qpcr primers
+      - shared reverse probe qpcr
+      - qpcr primer table
+      - forward primers per transcript
+      - test cdna pcr
+      - test cdna qpcr
+      - cdna pcr test
+      - cdna qpcr test
+      - test qpcr assay
+      - qpcr assay test
+      - cdna pcr qpcr
+      - transcript cdna assay
+      - show non-specific pcr products on a gel
+      - show nonspecific pcr products on a gel
+      - visualize non-specific pcr products
+      - visualize nonspecific pcr products
+      - pcr products gel
+      - qpcr products gel
+      - cdna product gel
+      - show cdna pcr products on gel
+      - show cdna qpcr products on gel
+      - multiple pcr products gel
+      - direct cdna pcr test
+      - test these cdna pcr primers
+      - check cdna pcr primers
+      - validate rt-pcr primers
+      - rt pcr primer test
+      - direct cdna qpcr test
+      - direct taqman test
+      - test these taqman primers
+      - test these qpcr primers and probe
+      - validate cdna taqman assay
+      - check taqman probe
+      - list primer reports
+      - list pcr primer reports
+      - show available primer reports
+      - primer reports
+      - show primer report
+      - show pcr primer report
+      - inspect primer report
+      - primer report details
+      - export primer report
+      - export pcr primer report
+      - save primer report
+      - primer report json
+      - list qpcr reports
+      - list taqman reports
+      - show available qpcr reports
+      - qpcr reports
+      - taqman reports
+      - show qpcr report
+      - show taqman report
+      - inspect qpcr report
+      - taqman report details
+      - export qpcr report
+      - export taqman report
+      - save qpcr report
+      - taqman report json
+      - pcr protocol cartoon
+      - render pcr cartoon
+      - qpcr protocol cartoon
+      - taqman protocol cartoon
+      - show taqman graphic
+      - probe qpcr graphic
+      - gene panel protein gel
+      - continue panel gel
+      - multi gene protein gel
+      - 1d protein gel
+      - molecular weight isoform panel
+      - patz1 tp73 tp53 tp63 sp1 bach2
+      - patz1 tp73 tp53 tp63 sp1 bach2 protein gel
+      - 2d protein gel
+      - protein 2d gel
+      - gene protein 2d gel
+      - ensembl protein 2d gel
+      - ensembl gene protein 2d gel
+      - isoforms from ensembl
+      - from ensembl
+      - ensembl gene protein 2d gel demo
+      - gene protein 2d gel demo
+      - parameterized protein 2d gel demo
+      - trypsin digest gel demo
+      - protease digest demo
+      - peptide gel demo
+      - gentle demo
+      - cloning demo
+      - continue gibson
+      - demo
+      - demonstration
+      - example
+      - cloning workflow
+      - gibson assembly
+      - primer design
+      - pcr design
+      - qpcr design
+      - taqman design
+      - exon junction taqman
+      - cdna pcr
+      - cdna qpcr
+      - rt-pcr
+      - taqman assay test
+      - non-specific pcr products
+      - nonspecific pcr products
+      - show pcr products on gel
+      - restriction cloning pcr handoff
+      - lab assistant demo
       - analyze dna sequence
       - restriction sites
       - tfbs score tracks
@@ -93,10 +324,6 @@ metadata:
       - jaspar motif
       - protein residue
       - map residue
-      - protein to genome
-      - residue to genome
-      - genomic codon
-      - codon coordinates
       - sequence context
       - extract gene from ensembl
       - fetch ensembl gene
@@ -109,35 +336,14 @@ metadata:
       - fetch genbank
       - design assay
       - gentle version
-      - runtime version
-      - installed gentle
-      - service status
-      - services status
-      - readiness
-      - local resources
       - database status
-      - installed databases
-      - resources status
-      - rna structure resources
-      - rnafold resource
-      - viennarna resource
-      - rnapkin resource
       - rna secondary structure
-      - rnafold
-      - viennarna
-      - rnapkin
-      - mfe
       - protein gel
-      - gene panel protein gel
-      - multi gene protein gel
-      - protein 2d gel
       - 2d gel
       - molecular weight gel
       - protein isoform
       - isoform protein gel
       - isoform protein 2d gel
-      - gene protein 2d gel
-      - ensembl protein 2d gel
       - protease digest
       - trypsin digest
       - trypsin digest gel
