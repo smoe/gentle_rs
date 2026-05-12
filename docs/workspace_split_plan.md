@@ -345,17 +345,20 @@ in-root submodules without changing crate boundaries. The current app-side
 helpers include `app/help_docs.rs`, `app/window_registry.rs`,
 `app/history_ui.rs`, `app/configuration_ui.rs`,
 `app/external_services_ui.rs`, `app/agent_assistant_config.rs`,
-`app/routine_and_agent_assistant_ui.rs`, `app/genome_catalog_ui.rs`, and
+`app/routine_and_agent_assistant_ui.rs`,
+`app/sequence_ingress_dialogs_ui.rs`, `app/genome_catalog_ui.rs`, and
 `app/rack_workspace_ui.rs`;
 the routine/agent assistant module owns the intertwined assistant dialog,
 rendering, trace, preflight, request, and polling helpers that used to live in
-`app.rs`. The genome catalog module owns the reference-genome prepare,
-retrieve, BLAST, inspector, cache-cleanup, helper-panel, and genome-track UI
-rendering helpers that used to live in `app.rs`. The rack workspace module
-owns the rack, arrangement-gel preview, rack-label preview, and
-placement-dialog blocks that used to live in `app.rs`. `app/gibson_ui.rs`
-owns the Gibson specialist, preview/apply/export handlers, and its small UI
-state records. Existing
+`app.rs`. The sequence ingress dialog module owns the GenBank, dbSNP,
+UniProt, Ensembl protein, reverse-translation, protease digest, and
+protein-to-DNA handoff dialog helpers that used to live in `app.rs`. The
+genome catalog module owns the reference-genome prepare, retrieve, BLAST,
+inspector, cache-cleanup, helper-panel, and genome-track UI rendering helpers
+that used to live in `app.rs`. The rack workspace module owns the rack,
+arrangement-gel preview, rack-label preview, and placement-dialog blocks that
+used to live in `app.rs`. `app/gibson_ui.rs` owns the Gibson specialist,
+preview/apply/export handlers, and its small UI state records. Existing
 sequence-window peers under
 `main_area_dna/` own auxiliary workspaces, CUT&RUN support, feature actions,
 formula controls, primer/qPCR designer state and rendering, sequencing
