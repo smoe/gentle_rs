@@ -22,3 +22,6 @@
 
 # chore: extract assistant UI helpers
 b14536b0a16f74c27cb006926f9f0c630a68e441
+
+# chore: extract genome catalog UI helpers
+2135e6339999577066546cf19d0b0107e614b98b
