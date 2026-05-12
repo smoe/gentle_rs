@@ -25,3 +25,6 @@ b14536b0a16f74c27cb006926f9f0c630a68e441
 
 # chore: extract genome catalog UI helpers
 2135e6339999577066546cf19d0b0107e614b98b
+
+# chore: extract sequence ingress dialog helpers
+f15d97a7744a940f649e9caa0d2fa1b977c3f815
