@@ -28,3 +28,6 @@ b14536b0a16f74c27cb006926f9f0c630a68e441
 
 # chore: extract sequence ingress dialog helpers
 f15d97a7744a940f649e9caa0d2fa1b977c3f815
+
+# chore: extract main lineage UI helpers
+c8d9a6670088e7991830c2818676c08619de37c8
