@@ -344,8 +344,11 @@ Before that crate move, large GUI files may continue to shed cohesive
 in-root submodules without changing crate boundaries. The current app-side
 helpers include `app/help_docs.rs`, `app/window_registry.rs`,
 `app/history_ui.rs`, `app/configuration_ui.rs`,
-`app/external_services_ui.rs`, `app/agent_assistant_config.rs`, and
-`app/rack_workspace_ui.rs`; the rack workspace module owns the rack,
+`app/external_services_ui.rs`, `app/agent_assistant_config.rs`,
+`app/routine_and_agent_assistant_ui.rs`, and `app/rack_workspace_ui.rs`;
+the routine/agent assistant module owns the intertwined assistant dialog,
+rendering, trace, preflight, request, and polling helpers that used to live in
+`app.rs`. The rack workspace module owns the rack,
 arrangement-gel preview, rack-label preview, and placement-dialog blocks that
 used to live in `app.rs`. `app/gibson_ui.rs` owns the Gibson specialist,
 preview/apply/export handlers, and its small UI state records. Existing
