@@ -15824,6 +15824,7 @@ Error: `{err}`"
                         seq_id,
                         panel_id,
                         path,
+                        ..
                     } => {
                         pending_svg_export_rows.push(PendingSvgExportRow {
                             source_seq_ids: vec![seq_id.clone()],

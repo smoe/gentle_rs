@@ -516,6 +516,7 @@ pub enum ShellCommand {
         seq_id: String,
         panel_id: String,
         output: String,
+        expression_tsv_path: Option<String>,
     },
     PanelsValidateIsoform {
         panel_path: String,
@@ -5560,8 +5561,13 @@ impl ShellCommand {
                 seq_id,
                 panel_id,
                 output,
+                expression_tsv_path,
             } => format!(
-                "render isoform architecture SVG for '{seq_id}' panel='{panel_id}' to '{output}'"
+                "render isoform architecture SVG for '{seq_id}' panel='{panel_id}' to '{output}'{}",
+                expression_tsv_path
+                    .as_deref()
+                    .map(|path| format!(" with expression TSV '{path}'"))
+                    .unwrap_or_default()
             ),
             Self::PanelsValidateIsoform {
                 panel_path,
@@ -14581,9 +14587,9 @@ fn parse_panels_command(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::PanelsInspectIsoform { seq_id, panel_id })
         }
         "render-isoform-svg" | "render-svg" => {
-            if tokens.len() != 5 {
+            if tokens.len() < 5 {
                 return Err(
-                    "panels render-isoform-svg requires SEQ_ID PANEL_ID OUTPUT.svg".to_string(),
+                    "panels render-isoform-svg requires SEQ_ID PANEL_ID OUTPUT.svg [--expression-tsv PATH]".to_string(),
                 );
             }
             let seq_id = tokens[2].clone();
@@ -14592,10 +14598,31 @@ fn parse_panels_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 return Err("panels render-isoform-svg PANEL_ID must not be empty".to_string());
             }
             let output = tokens[4].clone();
+            let mut expression_tsv_path: Option<String> = None;
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--expression-tsv" => {
+                        idx += 1;
+                        let Some(path) = tokens.get(idx) else {
+                            return Err("panels render-isoform-svg --expression-tsv requires PATH"
+                                .to_string());
+                        };
+                        expression_tsv_path = Some(path.clone());
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for panels render-isoform-svg"
+                        ));
+                    }
+                }
+                idx += 1;
+            }
             Ok(ShellCommand::PanelsRenderIsoformSvg {
                 seq_id,
                 panel_id,
                 output,
+                expression_tsv_path,
             })
         }
         "validate-isoform" | "validate" => {
@@ -29186,11 +29213,13 @@ fn execute_feature_expert_command(
             seq_id,
             panel_id,
             output,
+            expression_tsv_path,
         } => {
             let op_result = engine
                 .apply(Operation::RenderIsoformArchitectureSvg {
                     seq_id: seq_id.clone(),
                     panel_id: panel_id.clone(),
+                    expression_tsv_path: expression_tsv_path.clone(),
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;

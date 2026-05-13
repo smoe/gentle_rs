@@ -34,6 +34,8 @@ const COMPRESSED_EXON_INTRON_GAP: f32 = 18.0;
 const COMPRESSED_EXON_MIN_WIDTH: f32 = 28.0;
 const COMPRESSED_EXON_MAX_WIDTH: f32 = 92.0;
 const PROTEIN_CONTRIBUTION_HALF_HEIGHT: f32 = 4.5;
+const ISOFORM_EXPRESSION_CELL_W: f32 = 18.0;
+const ISOFORM_EXPRESSION_MISSING_FILL: &str = "#e5e7eb";
 
 #[derive(Debug, Clone)]
 struct ProteinDomainLabelPlacement {
@@ -1162,6 +1164,21 @@ fn splicing_transition_cell_text_hex(support_ratio: f32) -> &'static str {
     } else {
         "#64748b"
     }
+}
+
+fn isoform_expression_cell_fill(value: Option<f64>, max_value: f64) -> String {
+    let Some(value) = value else {
+        return ISOFORM_EXPRESSION_MISSING_FILL.to_string();
+    };
+    let ratio = if max_value > 0.0 {
+        (value / max_value).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let r = (239.0 - ratio * 210.0).round() as u8;
+    let g = (246.0 - ratio * 168.0).round() as u8;
+    let b = (255.0 - ratio * 39.0).round() as u8;
+    format!("#{r:02x}{g:02x}{b:02x}")
 }
 
 fn splicing_exon_length_bp(exon: &SplicingExonSummary) -> usize {
@@ -2518,6 +2535,16 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
     let lane_count = view.transcript_lanes.len().max(1);
     let lane_h = 24.0_f32;
     let lane_gap = 10.0_f32;
+    let expression_sample_count = view
+        .expression_matrix
+        .as_ref()
+        .map(|matrix| matrix.sample_labels.len())
+        .unwrap_or(0);
+    let doc_w = if expression_sample_count == 0 {
+        W
+    } else {
+        W + 96.0 + expression_sample_count as f32 * ISOFORM_EXPRESSION_CELL_W
+    };
     let top_header = 114.0_f32;
     let exon_chart_h =
         lane_count as f32 * lane_h + (lane_count.saturating_sub(1) as f32) * lane_gap;
@@ -2656,14 +2683,14 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
     };
 
     let mut doc = Document::new()
-        .set("viewBox", (0, 0, W, dyn_h))
-        .set("width", W)
+        .set("viewBox", (0, 0, doc_w, dyn_h))
+        .set("width", doc_w)
         .set("height", dyn_h)
         .add(
             Rectangle::new()
                 .set("x", 0)
                 .set("y", 0)
-                .set("width", W)
+                .set("width", doc_w)
                 .set("height", dyn_h)
                 .set("fill", "#ffffff"),
         );
@@ -2871,6 +2898,94 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
                     .set("font-size", 9)
                     .set("fill", "#374151"),
             );
+        }
+    }
+
+    if let Some(matrix) = view
+        .expression_matrix
+        .as_ref()
+        .filter(|matrix| !matrix.sample_labels.is_empty())
+    {
+        let expression_left = right + 72.0;
+        let expression_top = top_header;
+        let row_by_isoform: BTreeMap<&str, &gentle_protocol::IsoformExpressionRow> = matrix
+            .rows
+            .iter()
+            .map(|row| (row.isoform_id.as_str(), row))
+            .collect();
+        let max_value = matrix
+            .rows
+            .iter()
+            .flat_map(|row| row.values.iter().flatten())
+            .copied()
+            .fold(0.0_f64, f64::max);
+        doc = doc
+            .add(
+                Text::new("expression")
+                    .set("x", expression_left)
+                    .set("y", top_header - 30.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 12)
+                    .set("fill", "#111827")
+                    .set("data-track", "isoform-expression-title"),
+            )
+            .add(
+                Text::new(format!("max={max_value:.3}"))
+                    .set("x", expression_left)
+                    .set("y", top_header - 17.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#64748b")
+                    .set("data-track", "isoform-expression-scale"),
+            );
+        for (sample_idx, sample_label) in matrix.sample_labels.iter().enumerate() {
+            let x = expression_left + sample_idx as f32 * ISOFORM_EXPRESSION_CELL_W;
+            doc = doc.add(
+                Text::new(compact_protein_domain_label(sample_label, 10))
+                    .set("x", x + ISOFORM_EXPRESSION_CELL_W * 0.5)
+                    .set("y", top_header - 4.0)
+                    .set("text-anchor", "middle")
+                    .set("font-family", "monospace")
+                    .set("font-size", 7)
+                    .set("fill", "#475569")
+                    .set("data-track", "isoform-expression-sample-label"),
+            );
+        }
+        for (lane_idx, lane) in view.transcript_lanes.iter().enumerate() {
+            let y = expression_top + lane_idx as f32 * (lane_h + lane_gap);
+            let row = row_by_isoform.get(lane.isoform_id.as_str()).copied();
+            for (sample_idx, sample_label) in matrix.sample_labels.iter().enumerate() {
+                let x = expression_left + sample_idx as f32 * ISOFORM_EXPRESSION_CELL_W;
+                let value = row
+                    .and_then(|row| row.values.get(sample_idx))
+                    .and_then(|v| *v);
+                let fill = isoform_expression_cell_fill(value, max_value);
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x)
+                        .set("y", y)
+                        .set("width", ISOFORM_EXPRESSION_CELL_W - 2.0)
+                        .set("height", lane_h)
+                        .set("rx", 1.5)
+                        .set("ry", 1.5)
+                        .set("fill", fill)
+                        .set("stroke", "#ffffff")
+                        .set("stroke-width", 0.8)
+                        .set("data-track", "isoform-expression-cell")
+                        .set("data-isoform-id", lane.isoform_id.as_str())
+                        .set("data-sample-label", sample_label.as_str())
+                        .set(
+                            "data-expression-state",
+                            if value.is_some() { "value" } else { "missing" },
+                        )
+                        .set(
+                            "data-expression-value",
+                            value
+                                .map(|v| format!("{v:.6}"))
+                                .unwrap_or_else(|| "missing".to_string()),
+                        ),
+                );
+            }
         }
     }
 
@@ -3297,6 +3412,19 @@ fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
         );
         y += 12.0;
     }
+    if let Some(matrix) = view.expression_matrix.as_ref() {
+        for warning in matrix.warnings.iter().take(4) {
+            doc = doc.add(
+                Text::new(format!("expression warning: {warning}"))
+                    .set("x", label_x)
+                    .set("y", y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#b45309"),
+            );
+            y += 12.0;
+        }
+    }
     for (line_idx, line) in wrap_text(&view.instruction, 140).into_iter().enumerate() {
         doc = doc.add(
             Text::new(line)
@@ -3325,7 +3453,8 @@ mod tests {
     use super::*;
     use gentle_protocol::{
         IsoformArchitectureCdsAaSegment, IsoformArchitectureProteinDomain,
-        IsoformArchitectureProteinLane, IsoformArchitectureTranscriptLane, SplicingRange,
+        IsoformArchitectureProteinLane, IsoformArchitectureTranscriptLane, IsoformExpressionMatrix,
+        IsoformExpressionRow, SplicingRange,
     };
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -3403,6 +3532,7 @@ mod tests {
                 transactivation_class: None,
                 comparison: None,
             }],
+            expression_matrix: None,
             warnings: vec![],
         }
     }
@@ -3598,6 +3728,62 @@ mod tests {
             2
         );
         assert!(svg.contains("isoform-local protein axis"));
+    }
+
+    #[test]
+    fn isoform_renderer_omits_expression_heatmap_when_absent() {
+        let svg = render_isoform_architecture(&isoform_test_view("+"));
+        assert_eq!(
+            track_count(&svg, "data-track=\"isoform-expression-cell\""),
+            0
+        );
+    }
+
+    #[test]
+    fn isoform_renderer_draws_expression_heatmap_cells_and_sample_labels() {
+        let mut view = isoform_test_view("+");
+        view.expression_matrix = Some(IsoformExpressionMatrix {
+            sample_labels: vec!["S1".to_string(), "S2".to_string()],
+            rows: vec![IsoformExpressionRow {
+                isoform_id: "i1".to_string(),
+                values: vec![Some(0.0), Some(10.0)],
+            }],
+            warnings: vec![],
+        });
+
+        let svg = render_isoform_architecture(&view);
+        assert_eq!(
+            track_count(&svg, "data-track=\"isoform-expression-cell\""),
+            2
+        );
+        assert_eq!(
+            track_count(&svg, "data-track=\"isoform-expression-sample-label\""),
+            2
+        );
+        assert!(svg.contains("data-sample-label=\"S1\""));
+        assert!(svg.contains("data-expression-value=\"10.000000\""));
+        assert!(svg.contains("fill=\"#1d4ed8\""));
+    }
+
+    #[test]
+    fn isoform_renderer_marks_missing_expression_cells_with_neutral_fill() {
+        let mut view = isoform_test_view("+");
+        view.expression_matrix = Some(IsoformExpressionMatrix {
+            sample_labels: vec!["S1".to_string()],
+            rows: vec![IsoformExpressionRow {
+                isoform_id: "i1".to_string(),
+                values: vec![None],
+            }],
+            warnings: vec![],
+        });
+
+        let svg = render_isoform_architecture(&view);
+        assert_eq!(
+            track_count(&svg, "data-track=\"isoform-expression-cell\""),
+            1
+        );
+        assert!(svg.contains("data-expression-state=\"missing\""));
+        assert!(svg.contains("fill=\"#e5e7eb\""));
     }
 
     #[test]

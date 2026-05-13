@@ -2787,6 +2787,25 @@ pub struct IsoformArchitectureProteinLane {
     pub comparison: Option<TranscriptProteinComparison>,
 }
 
+/// Optional expression/readout matrix rendered beside isoform architecture lanes.
+///
+/// `rows[].values` are aligned to `sample_labels`; `None` represents a missing
+/// isoform/sample cell rather than a zero value.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct IsoformExpressionMatrix {
+    pub sample_labels: Vec<String>,
+    pub rows: Vec<IsoformExpressionRow>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+/// One isoform row in an expression matrix.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsoformExpressionRow {
+    pub isoform_id: String,
+    pub values: Vec<Option<f64>>,
+}
+
 fn default_isoform_transcript_geometry_mode() -> String {
     "exon".to_string()
 }
@@ -2805,6 +2824,8 @@ pub struct IsoformArchitectureExpertView {
     pub instruction: String,
     pub transcript_lanes: Vec<IsoformArchitectureTranscriptLane>,
     pub protein_lanes: Vec<IsoformArchitectureProteinLane>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expression_matrix: Option<IsoformExpressionMatrix>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }

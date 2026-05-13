@@ -209,8 +209,8 @@
             "cli-direct"
          ],
          "path": "panels render-isoform-svg",
-         "summary": "Render imported isoform architecture as publication-oriented SVG.",
-         "usage": "panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg"
+         "summary": "Render imported isoform architecture as publication-oriented SVG, optionally with an isoform expression TSV heatmap.",
+         "usage": "panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg [--expression-tsv PATH]"
       },
       {
          "aliases": [

@@ -2508,6 +2508,8 @@ pub enum Operation {
     RenderIsoformArchitectureSvg {
         seq_id: SeqId,
         panel_id: String,
+        #[serde(default)]
+        expression_tsv_path: Option<String>,
         path: String,
     },
     RenderRnaStructureSvg {

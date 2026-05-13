@@ -21687,6 +21687,29 @@ fn execute_panels_validate_isoform_returns_report() {
     assert!(out.output["isoform_count"].as_u64().unwrap_or(0) >= 1);
 }
 
+fn engine_with_imported_tp53_isoform_panel() -> GentleEngine {
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+    let mut engine = GentleEngine::from_state(state);
+    engine
+        .apply(Operation::ImportIsoformPanel {
+            seq_id: "seq_a".to_string(),
+            panel_path: "assets/panels/tp53_isoforms_v1.json".to_string(),
+            panel_id: Some("tp53_isoforms_v1".to_string()),
+            strict: false,
+        })
+        .expect("import panel");
+    engine
+}
+
+fn write_isoform_expression_tsv(dir: &tempfile::TempDir, name: &str, text: &str) -> String {
+    let path = dir.path().join(name);
+    fs::write(&path, text).expect("write expression tsv");
+    path.display().to_string()
+}
+
 #[test]
 fn execute_isoform_svg_routes_are_byte_identical() {
     execute_isoform_svg_routes_are_byte_identical_impl();
@@ -21720,6 +21743,7 @@ fn execute_isoform_svg_routes_are_byte_identical_impl() {
         .apply(Operation::RenderIsoformArchitectureSvg {
             seq_id: "seq_a".to_string(),
             panel_id: "tp53_isoforms_v1".to_string(),
+            expression_tsv_path: None,
             path: op_path.clone(),
         })
         .expect("render op route");
@@ -21730,6 +21754,7 @@ fn execute_isoform_svg_routes_are_byte_identical_impl() {
             seq_id: "seq_a".to_string(),
             panel_id: "tp53_isoforms_v1".to_string(),
             output: shell_path.clone(),
+            expression_tsv_path: None,
         },
     )
     .expect("render shell route");
@@ -21757,6 +21782,138 @@ fn execute_isoform_svg_routes_are_byte_identical_impl() {
         op_text, expert_text,
         "RenderIsoformArchitectureSvg and render-feature-expert-svg isoform outputs must match"
     );
+}
+
+#[test]
+fn parse_panels_render_isoform_svg_accepts_expression_tsv() {
+    let render = parse_shell_line(
+        "panels render-isoform-svg seq_a tp53_isoforms_v1 tp53.panel.svg --expression-tsv expr.tsv",
+    )
+    .expect("parse panels render-isoform-svg with expression");
+    match render {
+        ShellCommand::PanelsRenderIsoformSvg {
+            seq_id,
+            panel_id,
+            output,
+            expression_tsv_path,
+        } => {
+            assert_eq!(seq_id, "seq_a");
+            assert_eq!(panel_id, "tp53_isoforms_v1");
+            assert_eq!(output, "tp53.panel.svg");
+            assert_eq!(expression_tsv_path.as_deref(), Some("expr.tsv"));
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn execute_isoform_svg_with_expression_tsv_renders_heatmap_and_warnings() {
+    let mut engine = engine_with_imported_tp53_isoform_panel();
+    let tmp = tempdir().expect("temp dir");
+    let expression_path = write_isoform_expression_tsv(
+        &tmp,
+        "expression.tsv",
+        "isoform_id\tsample_label\tvalue\np53alpha\tS1\t1.0\np53alpha\tS2\t4.0\np53beta\tS1\t2.5\nunknown_isoform\tS1\t9.0\n",
+    );
+    let output_path = tmp
+        .path()
+        .join("isoform.expression.svg")
+        .display()
+        .to_string();
+
+    execute_shell_command(
+        &mut engine,
+        &ShellCommand::PanelsRenderIsoformSvg {
+            seq_id: "seq_a".to_string(),
+            panel_id: "tp53_isoforms_v1".to_string(),
+            output: output_path.clone(),
+            expression_tsv_path: Some(expression_path),
+        },
+    )
+    .expect("render expression heatmap");
+
+    let svg = fs::read_to_string(output_path).expect("read expression svg");
+    assert!(svg.contains("data-track=\"isoform-expression-cell\""));
+    assert!(svg.contains("data-sample-label=\"S1\""));
+    assert!(svg.contains("data-expression-state=\"missing\""));
+    assert!(svg.contains(
+        "expression warning: Ignored expression rows for unknown isoform_id(s): unknown_isoform"
+    ));
+}
+
+#[test]
+fn execute_isoform_svg_with_expression_tsv_rejects_duplicate_cells() {
+    let mut engine = engine_with_imported_tp53_isoform_panel();
+    let tmp = tempdir().expect("temp dir");
+    let expression_path = write_isoform_expression_tsv(
+        &tmp,
+        "duplicate.tsv",
+        "isoform_id\tsample_label\tvalue\np53alpha\tS1\t1.0\np53alpha\tS1\t2.0\n",
+    );
+    let output_path = tmp.path().join("duplicate.svg").display().to_string();
+
+    let err = engine
+        .apply(Operation::RenderIsoformArchitectureSvg {
+            seq_id: "seq_a".to_string(),
+            panel_id: "tp53_isoforms_v1".to_string(),
+            expression_tsv_path: Some(expression_path),
+            path: output_path,
+        })
+        .expect_err("duplicate expression cell should fail");
+    assert!(err.message.contains("duplicate value"));
+}
+
+#[test]
+fn execute_isoform_svg_with_expression_tsv_rejects_missing_required_columns() {
+    let mut engine = engine_with_imported_tp53_isoform_panel();
+    let tmp = tempdir().expect("temp dir");
+    let expression_path = write_isoform_expression_tsv(
+        &tmp,
+        "missing_column.tsv",
+        "isoform_id\tsample_label\np53alpha\tS1\n",
+    );
+    let output_path = tmp.path().join("missing_column.svg").display().to_string();
+
+    let err = engine
+        .apply(Operation::RenderIsoformArchitectureSvg {
+            seq_id: "seq_a".to_string(),
+            panel_id: "tp53_isoforms_v1".to_string(),
+            expression_tsv_path: Some(expression_path),
+            path: output_path,
+        })
+        .expect_err("missing value column should fail");
+    assert!(err.message.contains("missing required 'value' column"));
+}
+
+#[test]
+fn execute_isoform_svg_with_expression_tsv_rejects_negative_and_nonfinite_values() {
+    for (name, value, expected) in [
+        ("negative.tsv", "-1.0", "finite and non-negative"),
+        ("nan.tsv", "NaN", "finite and non-negative"),
+    ] {
+        let mut engine = engine_with_imported_tp53_isoform_panel();
+        let tmp = tempdir().expect("temp dir");
+        let expression_path = write_isoform_expression_tsv(
+            &tmp,
+            name,
+            &format!("isoform_id\tsample_label\tvalue\np53alpha\tS1\t{value}\n"),
+        );
+        let output_path = tmp.path().join(format!("{name}.svg")).display().to_string();
+
+        let err = engine
+            .apply(Operation::RenderIsoformArchitectureSvg {
+                seq_id: "seq_a".to_string(),
+                panel_id: "tp53_isoforms_v1".to_string(),
+                expression_tsv_path: Some(expression_path),
+                path: output_path,
+            })
+            .expect_err("invalid expression value should fail");
+        assert!(
+            err.message.contains(expected),
+            "expected '{expected}' in '{}'",
+            err.message
+        );
+    }
 }
 
 #[test]

@@ -16371,9 +16371,15 @@ impl GentleEngine {
                 Operation::RenderIsoformArchitectureSvg {
                     seq_id,
                     panel_id,
+                    expression_tsv_path,
                     path,
                 } => {
-                    self.render_isoform_architecture_svg_to_path(&seq_id, &panel_id, &path)?;
+                    self.render_isoform_architecture_svg_to_path(
+                        &seq_id,
+                        &panel_id,
+                        expression_tsv_path.as_deref(),
+                        &path,
+                    )?;
                     result.messages.push(format!(
                         "Wrote isoform architecture SVG for '{}' panel='{}' to '{}'",
                         seq_id, panel_id, path

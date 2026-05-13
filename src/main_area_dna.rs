@@ -7870,6 +7870,7 @@ mod tests {
             instruction: "isoform".to_string(),
             transcript_lanes: vec![],
             protein_lanes: vec![],
+            expression_matrix: None,
             warnings: vec![],
         }));
 
@@ -7903,6 +7904,7 @@ mod tests {
             instruction: "protein".to_string(),
             transcript_lanes: vec![],
             protein_lanes: vec![],
+            expression_matrix: None,
             warnings: vec![],
         };
         assert_eq!(
@@ -7927,6 +7929,7 @@ mod tests {
             instruction: "protein".to_string(),
             transcript_lanes: vec![],
             protein_lanes: vec![],
+            expression_matrix: None,
             warnings: vec![],
         };
         assert_eq!(
@@ -7955,6 +7958,7 @@ mod tests {
             instruction: "protein".to_string(),
             transcript_lanes: vec![],
             protein_lanes: vec![],
+            expression_matrix: None,
             warnings: vec![],
         }));
 
@@ -7988,6 +7992,7 @@ mod tests {
             instruction: "protein".to_string(),
             transcript_lanes: vec![],
             protein_lanes: vec![],
+            expression_matrix: None,
             warnings: vec![],
         };
         area.show_isoform_expert_window = true;
@@ -20246,6 +20251,7 @@ impl MainAreaDna {
                                         Operation::RenderIsoformArchitectureSvg {
                                             seq_id,
                                             panel_id,
+                                            expression_tsv_path: None,
                                             path: output_path,
                                         },
                                     );

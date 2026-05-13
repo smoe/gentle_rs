@@ -1857,6 +1857,7 @@ cargo run --bin gentle_cli -- shell 'set-param preferred_restriction_enzymes ["E
 cargo run --bin gentle_cli -- shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'
 cargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'
 cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'
+cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_expression.svg --expression-tsv expression.tsv'
 cargo run --bin gentle_cli -- shell 'panels validate-isoform assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'
 cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 isoform tp53_isoforms_v1
 cargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 isoform tp53_isoforms_v1 exports/tp53_isoform_architecture.svg
@@ -2811,8 +2812,12 @@ Isoform architecture panel workflow:
 - shared shell route:
   - `panels import-isoform ...`
   - `panels inspect-isoform ...`
-  - `panels render-isoform-svg ...`
+  - `panels render-isoform-svg ... [--expression-tsv PATH]`
   - `panels validate-isoform ...`
+- optional expression overlay:
+  - TSV header: `isoform_id	sample_label	value`
+  - rows with unknown `isoform_id` are ignored with SVG warnings
+  - duplicate cells or non-finite/negative values fail deterministically
 - direct expert route:
   - `inspect-feature-expert SEQ_ID isoform PANEL_ID`
   - `render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg`

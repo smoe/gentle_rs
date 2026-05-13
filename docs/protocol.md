@@ -2027,7 +2027,7 @@ Current draft operations:
     materialize `TFBS` features
   - `path` writes the same structured JSON report to disk for reuse outside the
     current adapter session
-- `RenderIsoformArchitectureSvg { seq_id, panel_id, path }`
+- `RenderIsoformArchitectureSvg { seq_id, panel_id, expression_tsv_path?, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
 - `RenderPoolGelSvg { inputs, path, ladders?, container_ids?, arrangement_id?, conditions? }`
@@ -2526,6 +2526,17 @@ Isoform-panel operation semantics (current):
   - lower protein rails no longer force one shared amino-acid axis; instead
     each isoform gets a local product axis while still staying linked back to
     the genomic panel through the colored CDS segments above
+  - optional `expression_tsv_path` adds a right-side heatmap keyed by
+    `isoform_id` and aligned to the rendered isoform rows; when omitted, the
+    SVG remains the existing architecture-only export
+- Isoform expression TSV v1 is tab-delimited with required header columns
+  `isoform_id`, `sample_label`, and `value`.
+  - values must be finite and non-negative
+  - duplicate `isoform_id` + `sample_label` cells are rejected
+  - rows for unknown isoforms are ignored with warnings in
+    `expression_matrix.warnings`
+  - the rendered matrix uses `Vec<Option<f64>>` values aligned to
+    `sample_labels`, with absent cells rendered as missing
 - `gentle.isoform_panel_resource.v1` supports optional protein reference-span
   hints per isoform:
   - `reference_start_aa` (1-based inclusive)
@@ -2622,7 +2633,7 @@ external coding agent runtime, see:
 - shared-shell isoform panel routes:
   - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
   - `panels inspect-isoform SEQ_ID PANEL_ID`
-  - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`
+  - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg [--expression-tsv PATH]`
   - `panels validate-isoform PANEL_PATH [--panel-id ID]`
 - shared-shell UniProt routes:
   - `uniprot fetch QUERY [--entry-id ID]`
