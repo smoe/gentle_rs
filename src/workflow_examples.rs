@@ -1618,6 +1618,28 @@ fn rewrite_example_paths_for_execution(
             *path = resolve_input_path(path, repo_root);
             continue;
         }
+        if let Operation::ProjectMicroarrayTrack { manifest_path, .. } = op {
+            *manifest_path = resolve_input_path(manifest_path, repo_root);
+            continue;
+        }
+        if let Operation::QueryRepeatOverlaps {
+            rmsk_index_path,
+            path,
+            ..
+        }
+        | Operation::MaterializeRepeatFeatures {
+            rmsk_index_path,
+            path,
+            ..
+        } = op
+        {
+            *rmsk_index_path = resolve_input_path(rmsk_index_path, repo_root);
+            rewrite_optional_output_path(path, run_dir);
+            if let Some(path) = path.as_deref() {
+                ensure_parent_exists(path)?;
+            }
+            continue;
+        }
         if let Operation::ImportIsoformPanel { panel_path, .. } = op {
             *panel_path = resolve_input_path(panel_path, repo_root);
             continue;
@@ -2635,6 +2657,10 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    fn first_qualifier(feature: &gb_io::seq::Feature, key: &str) -> Option<String> {
+        feature.qualifier_values(key).next().map(str::to_string)
+    }
+
     fn markdown_image_targets(markdown: &str) -> Vec<String> {
         let mut targets = Vec::new();
         for line in markdown.lines() {
@@ -2785,6 +2811,92 @@ mod tests {
         );
         assert_eq!(report["template"].as_str(), Some("simple_pcr_template"));
         assert_eq!(report["pair_count"].as_u64(), Some(5));
+    }
+
+    #[test]
+    fn workflow_examples_tp73_evidence_viewer_release_proof_writes_artifacts_and_features() {
+        let _serial = lock_jaspar_registry_for_test();
+        crate::tf_motifs::reload_builtin_for_test();
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "tp73_genome_evidence_viewer_release_proof")
+            .expect("TP73 evidence-viewer proof example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let state =
+            run_example_workflow_for_project_state(&loaded.example, Path::new("."), run_dir.path())
+                .expect("TP73 evidence-viewer proof workflow should execute");
+
+        for relative in [
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.linear.svg",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.splicing.expert.svg",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.svg",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.repeat_materialization.json",
+            "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.tfbs_score_tracks.json",
+        ] {
+            let path = run_dir.path().join(relative);
+            assert!(path.exists(), "expected workflow artifact {relative}");
+            assert!(
+                path.metadata().expect("artifact metadata").len() > 0,
+                "expected non-empty workflow artifact {relative}"
+            );
+        }
+
+        let repeat_report: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(run_dir.path().join(
+                "artifacts/tp73_evidence_viewer/tp73_evidence_viewer.repeat_materialization.json",
+            ))
+            .expect("read repeat materialization report"),
+        )
+        .expect("parse repeat materialization report");
+        assert_eq!(
+            repeat_report["schema"].as_str(),
+            Some("gentle.repeat_feature_materialization.v1")
+        );
+        assert_eq!(repeat_report["added_feature_count"].as_u64(), Some(3));
+
+        let engine = GentleEngine::from_state(state.clone());
+        let anchor = engine
+            .sequence_genome_anchor_summary("tp73_evidence_viewer")
+            .expect("TP73 proof sequence should keep its genome anchor");
+        assert_eq!(anchor.genome_id, "GRCh38.p14");
+        assert_eq!(anchor.chromosome, "1");
+        assert_eq!(anchor.start_1based, 3652516);
+        assert_eq!(anchor.end_1based, 3736201);
+
+        let dna = state
+            .sequences
+            .get("tp73_evidence_viewer")
+            .expect("TP73 proof sequence should be present");
+        let repeat_count = dna
+            .features()
+            .iter()
+            .filter(|feature| {
+                first_qualifier(feature, "gentle_generated").as_deref() == Some("ucsc_rmsk")
+            })
+            .count();
+        assert_eq!(repeat_count, 3);
+
+        assert!(dna.features().iter().any(|feature| {
+            first_qualifier(feature, "gentle_track_source").as_deref() == Some("Array")
+                && first_qualifier(feature, "gentle_array_dataset").as_deref()
+                    == Some("E-MTAB-14704")
+                && first_qualifier(feature, "feature_id").as_deref() == Some("PSR_TP73_0001")
+                && first_qualifier(feature, "logFC").is_some()
+        }));
+        assert!(dna.features().iter().any(|feature| {
+            first_qualifier(feature, "gentle_track_source").as_deref() == Some("BED")
+                && first_qualifier(feature, "gentle_track_name").as_deref()
+                    == Some("TP73 CUT&RUN proof BED")
+                && first_qualifier(feature, "score").as_deref() == Some("650.000000")
+        }));
+        assert!(dna.features().iter().any(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("TFBS")
+                || first_qualifier(feature, "gentle_generated").as_deref() == Some("tfbs_scan")
+        }));
+        assert!(state.display.show_repeat_features);
+        assert!(state.display.show_array_features);
+        assert!(state.display.show_tfbs);
     }
 
     #[test]

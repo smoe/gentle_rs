@@ -1016,6 +1016,68 @@ impl RenderDna {
         lines
     }
 
+    fn genome_track_feature_detail_lines(feature: &Feature) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut seen = BTreeSet::new();
+        for (label, keys) in [
+            ("track_source", &["gentle_track_source"][..]),
+            ("track_name", &["gentle_track_name"][..]),
+            ("track_file", &["gentle_track_file"][..]),
+            ("track_kind", &["gentle_generated"][..]),
+            ("label", &["label", "name"][..]),
+        ] {
+            Self::push_first_feature_detail_line(&mut lines, &mut seen, feature, label, keys);
+        }
+
+        let chrom = Self::feature_qualifier_text(feature, "chromosome")
+            .or_else(|| Self::feature_qualifier_text(feature, "chrom"));
+        let start = Self::feature_qualifier_text(feature, "genomic_start_1based")
+            .or_else(|| Self::feature_qualifier_text(feature, "start_1based"))
+            .or_else(|| Self::feature_qualifier_text(feature, "vcf_pos_1based"))
+            .or_else(|| {
+                Self::feature_qualifier_text(feature, "bed_start_0based")
+                    .and_then(|value| value.trim().parse::<usize>().ok())
+                    .map(|start| start.saturating_add(1).to_string())
+            });
+        let end = Self::feature_qualifier_text(feature, "genomic_end_1based")
+            .or_else(|| Self::feature_qualifier_text(feature, "end_1based"))
+            .or_else(|| Self::feature_qualifier_text(feature, "vcf_pos_1based"))
+            .or_else(|| Self::feature_qualifier_text(feature, "bed_end_0based"));
+        if let (Some(chrom), Some(start), Some(end)) = (chrom, start, end) {
+            let line = format!("genomic_interval: {chrom}:{start}..{end}");
+            if seen.insert(line.clone()) {
+                lines.push(line);
+            }
+        }
+
+        if let Ok((from, to)) = feature.location.find_bounds() {
+            if to > from {
+                let line = format!("local_interval: {}..{}", from + 1, to);
+                if seen.insert(line.clone()) {
+                    lines.push(line);
+                }
+            }
+        }
+
+        for (label, keys) in [
+            ("local_strand", &["strand"][..]),
+            ("bed_strand", &["bed_strand"][..]),
+            ("score", &["score", "bed_score"][..]),
+            ("bed_start_0based", &["bed_start_0based"][..]),
+            ("bed_end_0based", &["bed_end_0based"][..]),
+            ("vcf_id", &["vcf_id"][..]),
+            ("vcf_ref", &["vcf_ref"][..]),
+            ("vcf_alt", &["vcf_alt"][..]),
+            ("variant_class", &["vcf_variant_class"][..]),
+            ("experiment", &["experiment"][..]),
+            ("note", &["note"][..]),
+            ("db_xref", &["db_xref"][..]),
+        ] {
+            Self::push_first_feature_detail_line(&mut lines, &mut seen, feature, label, keys);
+        }
+        lines
+    }
+
     fn exon_length_frame_detail_lines(feature: &Feature) -> Vec<String> {
         if !Self::is_exon_length_frame_cue_feature(feature) {
             return vec![];
@@ -1512,6 +1574,9 @@ impl RenderDna {
         }
         if Self::is_repeat_feature(feature) {
             return Self::repeat_feature_detail_lines(feature);
+        }
+        if Self::is_track_feature(feature) {
+            return Self::genome_track_feature_detail_lines(feature);
         }
 
         let mut lines = Self::exon_length_frame_detail_lines(feature);
@@ -2021,5 +2086,50 @@ mod tests {
             line.starts_with("all_contrast_values:")
                 && line.contains("AdTAp73beta-AdGFP logFC=-0.750000")
         }));
+    }
+
+    #[test]
+    fn genome_track_feature_details_include_provenance_and_coordinates() {
+        let feature = make_feature(
+            "track",
+            &[
+                ("label", "tp73_cutrun_tap73alpha_peak"),
+                ("gentle_generated", "genome_bed_track"),
+                ("gentle_track_source", "BED"),
+                ("gentle_track_name", "TP73 CUT&RUN proof BED"),
+                (
+                    "gentle_track_file",
+                    "test_files/fixtures/evidence_viewer/tp73_cutrun_demo.bed",
+                ),
+                ("chromosome", "chr1"),
+                ("bed_start_0based", "3652700"),
+                ("bed_end_0based", "3652900"),
+                ("score", "650.000000"),
+                ("bed_strand", "+"),
+                ("strand", "+"),
+                (
+                    "note",
+                    "BED track 'TP73 CUT&RUN proof BED' from proof fixture",
+                ),
+            ],
+        );
+
+        assert_eq!(
+            RenderDna::track_group_label(&feature).as_deref(),
+            Some("BED: tp73_cutrun_demo.bed (TP73 CUT&RUN proof BED)")
+        );
+        let details = RenderDna::feature_detail_lines(&feature);
+        assert!(details.contains(&"track_source: BED".to_string()));
+        assert!(details.contains(&"track_name: TP73 CUT&RUN proof BED".to_string()));
+        assert!(details.contains(&"track_kind: genome_bed_track".to_string()));
+        assert!(details.contains(&"genomic_interval: chr1:3652701..3652900".to_string()));
+        assert!(details.contains(&"local_interval: 1..10".to_string()));
+        assert!(details.contains(&"score: 650.000000".to_string()));
+        assert!(details.contains(&"bed_strand: +".to_string()));
+        assert!(
+            details
+                .iter()
+                .any(|line| line.contains("TP73 CUT&RUN proof BED"))
+        );
     }
 }
