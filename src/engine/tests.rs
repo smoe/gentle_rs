@@ -38620,6 +38620,25 @@ fn set_display_visibility_controls_repeat_features() {
 }
 
 #[test]
+fn set_display_visibility_controls_array_features() {
+    let mut engine = GentleEngine::default();
+    assert!(engine.state().display.show_array_features);
+    let result = engine
+        .apply(Operation::SetDisplayVisibility {
+            target: DisplayTarget::ArrayFeatures,
+            visible: false,
+        })
+        .expect("set array display visibility");
+    assert!(!engine.state().display.show_array_features);
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|message| message.contains("array_features"))
+    );
+}
+
+#[test]
 fn repeat_transcript_geometry_resolves_5utr_promoter_and_cds_stop_on_both_strands() {
     let repeat_plus = RepeatAnnotationRecord {
         genome_id: "toy".to_string(),

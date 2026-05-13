@@ -110,6 +110,14 @@ Relevant executable Gibson specialist setup baseline:
     canonical single-insert Gibson plan so arrangement/gel tutorials open with
     the assembled product and stored lane arrangement already present
 
+Relevant executable release proof baseline:
+
+- `docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json`
+  - loads the public GRCh38.p14 TP73 locus and overlays tiny local repeat,
+    Clariom-style array, CUT&RUN-style BED, and TFBS fixtures for the
+    genome-anchored evidence-viewer release path
+  - runbook: `docs/tp73_genome_evidence_viewer_runbook.md`
+
 ## Test examples
 
 Run default (offline-safe) example tests:

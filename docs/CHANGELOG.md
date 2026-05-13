@@ -12,6 +12,17 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-13
+
+- Selected the TP73 genome-anchored evidence viewer as the next release aim and
+  added the offline proof workflow, public runbook, fixture provenance, and
+  generic genome-track detail polish needed for the first smoke path.
+
+## 2026-05-12
+
+- Cleared the completed interim-release block from `docs/roadmap.md` and reset
+  the roadmap to choosing the next release aim.
+
 ## 2026-05-11
 
 - Revised the GUI egui stack from `0.34.1` to `0.34.2` across `eframe`,

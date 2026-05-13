@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-05-12 - interim release shipped
+Last session: 2026-05-13 - TP73 evidence-viewer release aim selected
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -19,26 +19,46 @@ Maintenance invariant:
 
 ## Current Status
 
-An interim release is out. The previous pre-tag checklist has been retired from
-this roadmap.
+Active next-release aim: TP73 genome-anchored evidence viewer.
 
-The next release scope is intentionally open until it is discussed and narrowed
-to one primary story, one proof path, and a compact test/documentation slice.
-Once selected, that scope should be recorded here as the next active release
-plan instead of reviving the old TP73 pancreatic benchmark checklist.
+Release story: GENtle can open the public GRCh38.p14 TP73 locus and let a user
+inspect exons, introns, repeats, array/evidence tracks, CUT&RUN-style BED
+intervals, TFBS/regulatory annotations, and coordinate-build provenance in the
+DNA viewer.
+
+Proof path:
+
+- Headless regeneration:
+  `docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json`
+  loads `test_files/tp73.ncbi.gb`, overlays tiny local repeat, Clariom-style
+  array, CUT&RUN-style BED, and TFBS fixtures, and emits SVG/report artifacts.
+- Public runbook: `docs/tp73_genome_evidence_viewer_runbook.md`.
+- Fixture bundle: `test_files/fixtures/evidence_viewer/` with provenance and
+  deterministic regeneration notes.
+
+Release acceptance:
+
+- The proof workflow remains offline-safe and writes non-empty sequence,
+  splicing-expert, TFBS SVG, and repeat-materialization JSON artifacts.
+- The GUI smoke path opens the proof state, shows anchor/build status, toggles
+  repeat and array layers, and exposes informative feature details for one
+  exon, one transcript/intron context, one repeat, one array row, and one
+  CUT&RUN-style interval.
+- Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional
+  external resources; CI uses only tiny local fixtures.
 
 ## Next Session Priorities
 
-1. Choose the next release aim: one primary user-facing story, one deterministic
-   proof path, and a small set of test/documentation acceptance criteria.
-2. Convert the chosen aim into a compact release plan with explicit artifacts,
-   commands, GUI smoke expectations, and adapter-parity checks.
-3. Select at most one or two implementation threads from the active phases below
-   so the next release remains coherent rather than feature-scattered.
+1. Keep the TP73 evidence-viewer proof workflow green and offline-safe while
+   finishing release-facing documentation.
+2. Run the manual GUI smoke from the runbook and fix only evidence-viewer
+   inspection problems that block the release story.
+3. Preserve headless/GUI parity for repeat, array, CUT&RUN-style BED, TFBS, and
+   feature-detail views; avoid adding broader biology conclusions.
 4. Keep private grant material out of the GENtle source tree; only general,
    reusable GENtle improvements should return here.
-5. Continue small correctness, reproducibility, and parity fixes when they
-   support the chosen release aim or prevent obvious regressions.
+5. Prepare concise release notes around the TP73 viewer story once the smoke
+   path has passed locally.
 
 Current non-goals:
 
