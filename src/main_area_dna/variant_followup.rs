@@ -118,6 +118,7 @@ impl MainAreaDna {
             self.variant_followup_window_pending_initial_render,
         );
         self.variant_followup_window_pending_initial_render = true;
+        self.variant_followup_window_focus_requested = true;
         self.show_variant_followup_window = true;
         self.log_promoter_design_status("window state stored", true);
         self.op_status = format!("Opened Promoter design from {source}");
@@ -125,7 +126,7 @@ impl MainAreaDna {
         true
     }
 
-    fn variant_followup_viewport_id(
+    pub(super) fn variant_followup_viewport_id(
         source_seq_id: &str,
         feature_id: Option<usize>,
     ) -> egui::ViewportId {
@@ -136,7 +137,19 @@ impl MainAreaDna {
         ))
     }
 
-    fn variant_followup_window_title(ui: &VariantFollowupUiState) -> String {
+    pub(super) fn variant_followup_embedded_window_id(
+        ui: &VariantFollowupUiState,
+    ) -> egui::Id {
+        egui::Id::new(format!(
+            "variant_followup_window_embedded_{}_{}",
+            ui.source_seq_id,
+            ui.source_feature_id
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string())
+        ))
+    }
+
+    pub(super) fn variant_followup_window_title(ui: &VariantFollowupUiState) -> String {
         let label = ui.gene_label.trim();
         if !label.is_empty() {
             format!("Promoter design - {} ({})", label, ui.source_seq_id)
@@ -4388,9 +4401,11 @@ impl MainAreaDna {
         }
         if self.variant_followup_ui.source_seq_id.trim().is_empty() {
             self.show_variant_followup_window = false;
+            self.variant_followup_window_focus_requested = false;
             return;
         }
         let pending_initial_render = self.variant_followup_window_pending_initial_render;
+        let focus_requested = self.variant_followup_window_focus_requested;
         self.log_promoter_design_status("render begin", pending_initial_render);
         let title = Self::variant_followup_window_title(&self.variant_followup_ui);
         let viewport_id = Self::variant_followup_viewport_id(
@@ -4404,17 +4419,11 @@ impl MainAreaDna {
             let mut open = self.show_variant_followup_window;
             let spec = crate::egui_compat::HostedWindowSpec::new(
                 title.clone(),
-                egui::Id::new(format!(
-                    "variant_followup_window_embedded_{}_{}",
-                    self.variant_followup_ui.source_seq_id,
-                    self.variant_followup_ui
-                        .source_feature_id
-                        .map(|value| value.to_string())
-                        .unwrap_or_else(|| "none".to_string())
-                )),
+                Self::variant_followup_embedded_window_id(&self.variant_followup_ui),
                 default_size,
                 min_size,
-            );
+            )
+            .foreground(focus_requested);
             crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
@@ -4438,6 +4447,12 @@ impl MainAreaDna {
                     });
             });
             self.show_variant_followup_window = open;
+            if focus_requested {
+                if self.show_variant_followup_window {
+                    self.focus_variant_followup_window(ctx);
+                }
+                self.variant_followup_window_focus_requested = false;
+            }
             return;
         }
         let builder = egui::ViewportBuilder::default()
@@ -4449,17 +4464,11 @@ impl MainAreaDna {
                 let mut open = self.show_variant_followup_window;
                 let spec = crate::egui_compat::HostedWindowSpec::new(
                     title.clone(),
-                    egui::Id::new(format!(
-                        "variant_followup_window_embedded_{}_{}",
-                        self.variant_followup_ui.source_seq_id,
-                        self.variant_followup_ui
-                            .source_feature_id
-                            .map(|value| value.to_string())
-                            .unwrap_or_else(|| "none".to_string())
-                    )),
+                    Self::variant_followup_embedded_window_id(&self.variant_followup_ui),
                     default_size,
                     min_size,
-                );
+                )
+                .foreground(focus_requested);
                 crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
                     let backdrop_settings = current_window_backdrop_settings();
                     paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
@@ -4517,6 +4526,38 @@ impl MainAreaDna {
                 self.show_variant_followup_window = false;
             }
         });
+        if focus_requested {
+            if self.show_variant_followup_window {
+                self.focus_variant_followup_window(ctx);
+            }
+            self.variant_followup_window_focus_requested = false;
+        }
+    }
+
+    fn focus_variant_followup_window(&mut self, ctx: &egui::Context) {
+        let source_seq_id = self.variant_followup_ui.source_seq_id.trim();
+        if source_seq_id.is_empty() {
+            return;
+        }
+        let viewport_id =
+            Self::variant_followup_viewport_id(source_seq_id, self.variant_followup_ui.source_feature_id);
+        self.log_promoter_design_status(
+            "focus requested",
+            self.variant_followup_window_pending_initial_render,
+        );
+        if ctx.embed_viewports() {
+            let embedded_window_id =
+                Self::variant_followup_embedded_window_id(&self.variant_followup_ui);
+            ctx.move_to_top(egui::LayerId::new(
+                egui::Order::Foreground,
+                embedded_window_id,
+            ));
+            ctx.request_repaint();
+            return;
+        }
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+        ctx.request_repaint();
     }
 
     fn render_variant_followup_window_body(

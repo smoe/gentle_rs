@@ -243,6 +243,20 @@ impl Window {
     }
 
     #[cfg(test)]
+    pub(crate) fn seed_variant_followup_window_for_tests(
+        &mut self,
+        seq_id: &str,
+        feature_id: usize,
+        gene_label: &str,
+    ) {
+        match self {
+            Self::Dna(window) => {
+                window.seed_variant_followup_window_for_tests(seq_id, feature_id, gene_label)
+            }
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn splicing_expert_focus_requested_for_tests(&self) -> bool {
         match self {
             Self::Dna(window) => window.splicing_expert_focus_requested_for_tests(),
@@ -253,6 +267,13 @@ impl Window {
     pub(crate) fn rna_read_mapping_focus_requested_for_tests(&self) -> bool {
         match self {
             Self::Dna(window) => window.rna_read_mapping_focus_requested_for_tests(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn variant_followup_focus_requested_for_tests(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.variant_followup_focus_requested_for_tests(),
         }
     }
 }

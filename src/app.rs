@@ -30099,6 +30099,80 @@ mod tests {
     }
 
     #[test]
+    fn focusing_promoter_design_from_windows_menu_renders_child_above_sequence_window() {
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(true);
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+        let dna = DNAsequence::from_sequence("ACGTACGT").expect("sequence");
+        let mut app = GENtleApp::default();
+        let mut window = Window::new_dna(dna, "seq1".to_string(), app.engine.clone());
+        window.seed_variant_followup_window_for_tests("seq1", 17, "TP73");
+        let owner_viewport_id = app.register_window(window);
+        app.pending_focus_viewports.clear();
+        app.pending_viewport_focus_timestamps.clear();
+        let promoter_viewport_id =
+            egui::ViewportId::from_hash_of(("variant_followup_viewport", "seq1", 17usize));
+
+        app.focus_window_viewport(&ctx, promoter_viewport_id);
+
+        assert!(
+            !app.pending_focus_viewports.contains(&owner_viewport_id),
+            "embedded Promoter design focus should keep the DNA host visible without queuing it above the child workspace"
+        );
+
+        let window = app
+            .windows
+            .get(&owner_viewport_id)
+            .cloned()
+            .expect("registered sequence owner");
+        let initial_position = app
+            .pending_window_initial_positions
+            .remove(&owner_viewport_id);
+        let sequence_layer_id = egui::LayerId::new(
+            egui::Order::Middle,
+            egui::Id::new(("hosted_sequence_window", owner_viewport_id)),
+        );
+        let foreground_sequence_layer_id = egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new(("hosted_sequence_window", owner_viewport_id)),
+        );
+        let promoter_layer_id = egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("variant_followup_window_embedded_seq1_17"),
+        );
+        let stale_viewport_layer_id =
+            egui::LayerId::new(egui::Order::Middle, egui::Id::new(promoter_viewport_id));
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            ..Default::default()
+        });
+        app.show_window(&ctx, owner_viewport_id, window.clone(), initial_position);
+
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&sequence_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&foreground_sequence_layer_id)));
+        assert!(ctx.memory(|mem| mem.areas().is_visible(&promoter_layer_id)));
+        assert!(!ctx.memory(|mem| mem.areas().is_visible(&stale_viewport_layer_id)));
+        assert!(
+            ctx.memory(|mem| mem.areas().visible_layer_ids().contains(&promoter_layer_id)),
+            "focused Promoter design should render as a foreground hosted layer above its middle-order DNA host"
+        );
+        let _ = ctx.end_pass();
+
+        let window = app
+            .windows
+            .get(&owner_viewport_id)
+            .expect("registered sequence owner after render");
+        assert!(
+            !window
+                .read()
+                .expect("window")
+                .variant_followup_focus_requested_for_tests(),
+            "Promoter design foreground requests should be consumed after the first render"
+        );
+    }
+
+    #[test]
     fn detached_rna_mapping_host_is_removed_when_visible_window_owns_same_workspace() {
         let ctx = egui::Context::default();
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
