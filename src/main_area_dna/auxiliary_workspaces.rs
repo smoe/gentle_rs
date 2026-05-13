@@ -6739,6 +6739,28 @@ impl MainAreaDna {
                 ));
             }
         }
+        if self.show_variant_followup_window {
+            let seq_id = self.variant_followup_ui.source_seq_id.trim();
+            if !seq_id.is_empty() {
+                entries.push((
+                    Self::variant_followup_viewport_id(
+                        seq_id,
+                        self.variant_followup_ui.source_feature_id,
+                    ),
+                    Self::variant_followup_window_title(&self.variant_followup_ui),
+                    self.variant_followup_ui
+                        .source_feature_id
+                        .map(|feature_id| {
+                            format!(
+                                "Promoter design workspace for feature n-{feature_id} on '{seq_id}'"
+                            )
+                        })
+                        .unwrap_or_else(|| {
+                            format!("Promoter design workspace on '{seq_id}'")
+                        }),
+                ));
+            }
+        }
         if self.show_isoform_expert_window {
             if let Some(view) = self.isoform_expert_window_view.as_ref() {
                 let panel_id = self
@@ -6819,6 +6841,26 @@ impl MainAreaDna {
                 }
             }
         }
+        if self.show_variant_followup_window {
+            let seq_id = self.variant_followup_ui.source_seq_id.trim();
+            if !seq_id.is_empty()
+                && viewport_id
+                    == Self::variant_followup_viewport_id(
+                        seq_id,
+                        self.variant_followup_ui.source_feature_id,
+                    )
+            {
+                let order = if self.variant_followup_window_focus_requested {
+                    egui::Order::Foreground
+                } else {
+                    egui::Order::Middle
+                };
+                return Some(egui::LayerId::new(
+                    order,
+                    Self::variant_followup_embedded_window_id(&self.variant_followup_ui),
+                ));
+            }
+        }
         if self.show_isoform_expert_window {
             if let Some(view) = self.isoform_expert_window_view.as_ref() {
                 let panel_id = self
@@ -6858,6 +6900,19 @@ impl MainAreaDna {
                     self.rna_read_mapping_window_focus_requested = true;
                     return true;
                 }
+            }
+        }
+        if self.show_variant_followup_window {
+            let seq_id = self.variant_followup_ui.source_seq_id.trim();
+            if !seq_id.is_empty()
+                && viewport_id
+                    == Self::variant_followup_viewport_id(
+                        seq_id,
+                        self.variant_followup_ui.source_feature_id,
+                    )
+            {
+                self.variant_followup_window_focus_requested = true;
+                return true;
             }
         }
         false

@@ -17,6 +17,8 @@ Maintenance rule:
 - Selected the TP73 genome-anchored evidence viewer as the next release aim and
   added the offline proof workflow, public runbook, fixture provenance, and
   generic genome-track detail polish needed for the first smoke path.
+- Fixed hosted Promoter design foregrounding so DNA-owned auxiliary windows now
+  open above their parent sequence window instead of behind it.
 
 ## 2026-05-12
 

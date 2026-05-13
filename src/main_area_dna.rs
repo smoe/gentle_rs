@@ -9197,6 +9197,7 @@ mod tests {
         assert!(opened);
         assert!(area.show_variant_followup_window);
         assert!(area.variant_followup_window_pending_initial_render);
+        assert!(area.variant_followup_window_focus_requested);
         assert_eq!(area.variant_followup_ui.source_seq_id, "vkorc1_context");
         assert_eq!(area.variant_followup_ui.source_feature_id, Some(0));
         assert_eq!(area.variant_followup_ui.variant_label_or_id, "rs9923231");
@@ -14095,6 +14096,7 @@ pub struct MainAreaDna {
     rna_read_mapping_window_view: Option<Arc<SplicingExpertView>>,
     show_variant_followup_window: bool,
     variant_followup_window_pending_initial_render: bool,
+    variant_followup_window_focus_requested: bool,
     variant_followup_ui: VariantFollowupUiState,
     show_isoform_expert_window: bool,
     isoform_expert_window_panel_id: Option<String>,
@@ -14760,6 +14762,7 @@ impl MainAreaDna {
             rna_read_mapping_window_view: None,
             show_variant_followup_window: false,
             variant_followup_window_pending_initial_render: false,
+            variant_followup_window_focus_requested: false,
             variant_followup_ui: VariantFollowupUiState::default(),
             show_isoform_expert_window: false,
             isoform_expert_window_panel_id: None,
@@ -14890,6 +14893,21 @@ impl MainAreaDna {
     }
 
     #[cfg(test)]
+    pub(crate) fn seed_variant_followup_window_for_tests(
+        &mut self,
+        seq_id: &str,
+        feature_id: usize,
+        gene_label: &str,
+    ) {
+        self.show_variant_followup_window = true;
+        self.variant_followup_window_pending_initial_render = false;
+        self.variant_followup_window_focus_requested = false;
+        self.variant_followup_ui.source_seq_id = seq_id.to_string();
+        self.variant_followup_ui.source_feature_id = Some(feature_id);
+        self.variant_followup_ui.gene_label = gene_label.to_string();
+    }
+
+    #[cfg(test)]
     pub(crate) fn splicing_expert_focus_requested_for_tests(&self) -> bool {
         self.splicing_expert_window_focus_requested
     }
@@ -14897,6 +14915,11 @@ impl MainAreaDna {
     #[cfg(test)]
     pub(crate) fn rna_read_mapping_focus_requested_for_tests(&self) -> bool {
         self.rna_read_mapping_window_focus_requested
+    }
+
+    #[cfg(test)]
+    pub(crate) fn variant_followup_focus_requested_for_tests(&self) -> bool {
+        self.variant_followup_window_focus_requested
     }
 
     pub fn dna(&self) -> &Arc<RwLock<DNAsequence>> {
