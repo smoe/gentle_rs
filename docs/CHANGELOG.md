@@ -21,6 +21,8 @@ Maintenance rule:
   open above their parent sequence window instead of behind it.
 - Added a dedicated macOS `egui` viewport investigation pack plus a separate
   source folder for the minimal repro harness.
+- Added an optional `--expression-tsv` heatmap overlay to isoform architecture
+  SVG exports, keyed by `isoform_id`/`sample_label` values.
 
 ## 2026-05-12
 

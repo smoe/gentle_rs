@@ -31,7 +31,8 @@ use gentle_protocol::{
     AttractPwmMappingPolicy, AttractRegionClass, AttractSpeciesMatchMode,
     AttractSplicingEvidenceHitRow, AttractSplicingEvidencePolicySummary,
     AttractSplicingEvidenceSettings, AttractSplicingEvidenceSummaryRow,
-    AttractSplicingEvidenceView, SplicingIntronSignal,
+    AttractSplicingEvidenceView, IsoformExpressionMatrix, IsoformExpressionRow,
+    SplicingIntronSignal,
 };
 use sha1::{Digest, Sha1};
 
@@ -6741,6 +6742,7 @@ impl GentleEngine {
             instruction: ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION.to_string(),
             transcript_lanes,
             protein_lanes,
+            expression_matrix: None,
             warnings,
         })
     }
@@ -7825,6 +7827,152 @@ impl GentleEngine {
             instruction: ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION.to_string(),
             transcript_lanes,
             protein_lanes,
+            expression_matrix: None,
+            warnings,
+        })
+    }
+
+    fn isoform_expression_required_column(
+        headers: &csv::StringRecord,
+        name: &str,
+    ) -> Result<usize, EngineError> {
+        headers
+            .iter()
+            .position(|header| header.trim().trim_start_matches('\u{feff}') == name)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Expression TSV is missing required '{name}' column"),
+            })
+    }
+
+    fn load_isoform_expression_matrix_tsv(
+        &self,
+        path: &str,
+        view: &IsoformArchitectureExpertView,
+    ) -> Result<IsoformExpressionMatrix, EngineError> {
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(b'\t')
+            .trim(csv::Trim::All)
+            .from_path(path)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not open isoform expression TSV '{path}': {e}"),
+            })?;
+        let headers = reader.headers().map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not read isoform expression TSV header from '{path}': {e}"),
+        })?;
+        let isoform_idx = Self::isoform_expression_required_column(headers, "isoform_id")?;
+        let sample_idx = Self::isoform_expression_required_column(headers, "sample_label")?;
+        let value_idx = Self::isoform_expression_required_column(headers, "value")?;
+        let known_isoforms: BTreeSet<String> = view
+            .transcript_lanes
+            .iter()
+            .map(|lane| lane.isoform_id.clone())
+            .collect();
+        let mut seen_pairs: BTreeSet<(String, String)> = BTreeSet::new();
+        let mut sample_labels: Vec<String> = vec![];
+        let mut sample_seen: BTreeSet<String> = BTreeSet::new();
+        let mut values_by_isoform: BTreeMap<String, BTreeMap<String, f64>> = BTreeMap::new();
+        let mut unknown_isoforms: BTreeSet<String> = BTreeSet::new();
+
+        for (record_idx, result) in reader.records().enumerate() {
+            let record = result.map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not read isoform expression TSV record {} from '{path}': {e}",
+                    record_idx + 2
+                ),
+            })?;
+            let isoform_id = record.get(isoform_idx).unwrap_or("").trim().to_string();
+            let sample_label = record.get(sample_idx).unwrap_or("").trim().to_string();
+            let raw_value = record.get(value_idx).unwrap_or("").trim();
+            if isoform_id.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Expression TSV record {} has an empty isoform_id",
+                        record_idx + 2
+                    ),
+                });
+            }
+            if sample_label.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Expression TSV record {} has an empty sample_label",
+                        record_idx + 2
+                    ),
+                });
+            }
+            if !seen_pairs.insert((isoform_id.clone(), sample_label.clone())) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Expression TSV contains duplicate value for isoform_id='{isoform_id}' sample_label='{sample_label}'"
+                    ),
+                });
+            }
+            let value = raw_value.parse::<f64>().map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Expression TSV record {} has invalid numeric value '{}': {e}",
+                    record_idx + 2,
+                    raw_value
+                ),
+            })?;
+            if !value.is_finite() || value < 0.0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Expression TSV record {} value must be finite and non-negative",
+                        record_idx + 2
+                    ),
+                });
+            }
+            if !known_isoforms.contains(&isoform_id) {
+                unknown_isoforms.insert(isoform_id);
+                continue;
+            }
+            if sample_seen.insert(sample_label.clone()) {
+                sample_labels.push(sample_label.clone());
+            }
+            values_by_isoform
+                .entry(isoform_id)
+                .or_default()
+                .insert(sample_label, value);
+        }
+
+        let mut warnings = vec![];
+        if !unknown_isoforms.is_empty() {
+            warnings.push(format!(
+                "Ignored expression rows for unknown isoform_id(s): {}",
+                unknown_isoforms.into_iter().collect::<Vec<_>>().join(", ")
+            ));
+        }
+        let rows = view
+            .transcript_lanes
+            .iter()
+            .map(|lane| {
+                let values = sample_labels
+                    .iter()
+                    .map(|sample_label| {
+                        values_by_isoform
+                            .get(&lane.isoform_id)
+                            .and_then(|by_sample| by_sample.get(sample_label))
+                            .copied()
+                    })
+                    .collect();
+                IsoformExpressionRow {
+                    isoform_id: lane.isoform_id.clone(),
+                    values,
+                }
+            })
+            .collect();
+
+        Ok(IsoformExpressionMatrix {
+            sample_labels,
+            rows,
             warnings,
         })
     }
@@ -9531,19 +9679,32 @@ impl GentleEngine {
         &self,
         seq_id: &str,
         panel_id: &str,
+        expression_tsv_path: Option<&str>,
         path: &str,
     ) -> Result<IsoformArchitectureExpertView, EngineError> {
         let target = FeatureExpertTarget::IsoformArchitecture {
             panel_id: panel_id.to_string(),
         };
-        let view = self.render_feature_expert_svg_to_path(seq_id, &target, path)?;
-        match view {
-            FeatureExpertView::IsoformArchitecture(isoform) => Ok(isoform),
+        let mut view = match self.inspect_feature_expert(seq_id, &target)? {
+            FeatureExpertView::IsoformArchitecture(isoform) => isoform,
             _ => Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "Unexpected expert-view payload while rendering isoform architecture SVG"
                     .to_string(),
-            }),
+            })?,
+        };
+        if let Some(expression_tsv_path) = expression_tsv_path
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            view.expression_matrix =
+                Some(self.load_isoform_expression_matrix_tsv(expression_tsv_path, &view)?);
         }
+        let svg = render_feature_expert_svg(&FeatureExpertView::IsoformArchitecture(view.clone()));
+        std::fs::write(path, svg).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write isoform architecture SVG to '{path}': {e}"),
+        })?;
+        Ok(view)
     }
 }

@@ -3151,6 +3151,7 @@ mod tests {
                     Operation::RenderIsoformArchitectureSvg {
                         seq_id: "seq_a".to_string(),
                         panel_id: "tp53_isoforms_v1".to_string(),
+                        expression_tsv_path: None,
                         path: "exports/tp53_isoform.svg".to_string(),
                     },
                 ],

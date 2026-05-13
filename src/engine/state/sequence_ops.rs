@@ -1257,6 +1257,13 @@ impl GentleEngine {
             }
             _ => {}
         }
+        if let Operation::RenderIsoformArchitectureSvg {
+            expression_tsv_path: Some(path),
+            ..
+        } = op
+        {
+            Self::push_unique_token(&mut summary.file_paths, path);
+        }
         if let Operation::ImportGenomeBedTrack { path, .. }
         | Operation::ImportGenomeBigWigTrack { path, .. }
         | Operation::ImportGenomeVcfTrack { path, .. }
