@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-05-10 - sequence loader engine-GUI seam
+Last session: 2026-05-12 - interim release shipped
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -17,97 +17,45 @@ Maintenance invariant:
 - If a note is a durable rule, move it to [`decisions.md`](decisions.md).
 - If a note is a speculative idea, keep it as a one-line parking-lot entry.
 
-## Release Gate
+## Current Status
 
-Current rule: pre-release work is limited to release confidence,
-reproducibility, correctness regressions, and one persuasive end-to-end proof
-path. New biology features are frozen by default until the release proof is
-settled.
+An interim release is out. The previous pre-tag checklist has been retired from
+this roadmap.
 
-The release proof path is TP73 pancreatic cancer Nanopore cDNA benchmarking via
-[`tp73_pancreas_benchmark_runbook.md`](tp73_pancreas_benchmark_runbook.md).
-Preserve the generated preflight summary, final report summary, TSV exports,
-SVG target-quality export, logs, resolved gene-group catalog snapshots, and
-evidence-bundle note.
-
-If cohort-level abundance variation is needed, use the fixed-parameter route in
-[`tp73_pancreas_cohort_batch_runbook.md`](tp73_pancreas_cohort_batch_runbook.md).
-Use the preflight-derived seed filter consistently, keep per-run state copies
-isolated, and merge sample sheets for comparison.
-
-Keep CUT&RUN work to the release smoke/proof slice in
-[`cutrun_release_smoke.md`](cutrun_release_smoke.md): prepared-dataset
-projection, ROI read interpretation, regulatory-support inspection, existing
-TFBS scan/score-track surfaces, and the shared-report GUI inspector. Defer
-de-novo motif discovery, differential-expression integration, and improved
-scoring models.
-
-Before tagging, run the release-signoff slice: targeted RNA-read/preflight
-tests for TP73 positives and TP53/TP63 controls, shell/CLI command-glossary
-parity tests, workflow/example tests touched by the proof path,
-`cargo check -q`, and one broader `cargo test -q` when local time permits.
-
-Before tagging, run a small manual GUI smoke pass: launch the app, open a known
-TP73 sequence/project, open or focus RNA-read Mapping, inspect a saved RNA-read
-report, export at least one evidence artifact, and confirm scrolling/redraw is
-demonstration-safe.
-
-Keep release notes and install/run documentation aligned with the actual
-shipped artifacts and the headless/agent-first positioning.
-
-Continue only when:
-
-- The TP73 proof artifacts can be regenerated or traced from documented commands.
-- The GUI smoke path can be demonstrated without relying on hidden local state.
-- CLI, shell, MCP, and agent wording describe the same operation contracts.
-- Release-note claims name artifacts that exist in the repository or run output.
-- Any failing targeted test has a clear blocker note and owner-facing next step.
-
-Stop and fix before tag when:
-
-- A release proof command becomes nondeterministic across repeated runs.
-- A GUI action mutates state without the same shell/engine confirmation boundary.
-- A release note describes a feature that is not backed by a deterministic path.
-- A proof artifact depends on an untracked local-only file.
-- A regression affects sequence correctness, report provenance, or safety guards.
-
-Artifacts to name in the release handoff:
-
-- TP73 pancreatic benchmark state path and report summary.
-- Preflight summary and seed-filter parameters.
-- Final report TSV/SVG exports and evidence-bundle note.
-- Any cohort batch sample sheet or merged comparison sheet used for claims.
-- Manual GUI smoke notes with observed app version and input path.
-- Release-signoff command list with failures, skips, and local constraints.
-- Updated install/run/release-note files that describe the demonstrated path.
+The next release scope is intentionally open until it is discussed and narrowed
+to one primary story, one proof path, and a compact test/documentation slice.
+Once selected, that scope should be recorded here as the next active release
+plan instead of reviving the old TP73 pancreatic benchmark checklist.
 
 ## Next Session Priorities
 
-1. Complete or verify the TP73 pancreatic benchmark proof bundle and record the
-   exact artifact paths needed for release review.
-2. Run the release-signoff test slice and note any failing or skipped coverage
-   as release blockers.
-3. Perform the manual GUI smoke pass against the release proof path and record
-   only actionable regressions.
-4. Align release notes, install/run docs, and ClawBio/headless handoff wording
-   with the artifacts that actually exist.
-5. Fix only release-risk regressions or reproducibility gaps before the tag;
-   defer broader feature work to post-release phases.
+1. Choose the next release aim: one primary user-facing story, one deterministic
+   proof path, and a small set of test/documentation acceptance criteria.
+2. Convert the chosen aim into a compact release plan with explicit artifacts,
+   commands, GUI smoke expectations, and adapter-parity checks.
+3. Select at most one or two implementation threads from the active phases below
+   so the next release remains coherent rather than feature-scattered.
+4. Keep private grant material out of the GENtle source tree; only general,
+   reusable GENtle improvements should return here.
+5. Continue small correctness, reproducibility, and parity fixes when they
+   support the chosen release aim or prevent obvious regressions.
 
 Current non-goals:
 
-- Do not add new wet-lab biology modeling before the release gate is settled.
-- Do not widen ClawBio beyond catalog exposure and handoff-oriented actions.
-- Do not refactor engine modules solely to make the split cleaner.
-- Do not add GUI-only business logic for proof-path convenience.
-- Do not promote speculative assistant ideas into protocols without confirmation.
+- Do not add private proposal or unpublished grant content to this repository.
+- Do not start broad engine extraction, GUI redesign, or infrastructure work
+  before it is tied to the selected next-release story.
+- Do not add GUI-only business logic for convenience; keep shared
+  engine/shell/protocol contracts as the source of truth.
+- Do not promote speculative assistant ideas into protocols without
+  confirmation.
 
 Useful session close:
 
-- Roadmap still names only next work and open phase direction.
+- Roadmap names the selected next-release aim or explicitly says it remains
+  undecided.
 - Completed outcomes from the session are in [`CHANGELOG.md`](CHANGELOG.md).
 - Any new durable rule is in [`decisions.md`](decisions.md).
-- Release blockers are concrete, reproducible, and tied to file paths or commands.
 - Unrelated local paper/figure work remains untouched unless explicitly requested.
 
 ## Phase A: AI Communication And Safety Plane
@@ -129,8 +77,8 @@ than adding more biology-specific wrapper modes.
 
 ## Phase B: Cloning Routine Standardization
 
-Continue routine catalog and macro-box work after the release gate. Priorities
-are richer routine-family preflight, replay-friendly macro instances,
+Continue routine catalog and macro-box work when it fits the selected release
+scope. Priorities are richer routine-family preflight, replay-friendly macro instances,
 dense-lineage controls, and protocol packs that make Golden Gate, Gateway,
 TOPO, TA/GC, In-Fusion, NEBuilder HiFi, and deeper restriction variants feel
 first-class without duplicating biology in adapters. Useful work here extends
@@ -148,7 +96,7 @@ type; continue XML/SnapGene, sequencing-confirmation, primer/qPCR, projection,
 construct-reasoning, RNA-read, and ClawBio/MCP parity work only through shared
 contracts. Useful work here is contract hardening, adapter-helper promotion,
 stack-safe helper splits, protocol snapshots, and targeted parity tests; defer
-broad crate surgery that is not needed for the current release proof. Phase 2
+broad crate surgery that is not tied to the selected release story. Phase 2
 has not started; the `gentle-engine` crate scaffold has been removed and will
 be re-introduced when the first execution-side module is ready to move.
 
@@ -157,10 +105,10 @@ be re-introduced when the first execution-side module is ready to move.
 Use the GUI as the human inspection surface for engine-owned evidence. Continue
 dense DNA-map readability, alternative-splicing view polish, gel arrangement
 editing, feature editing, contextual interpretation links, visual regression
-fixtures, and scroll/zoom hardening after the release proof is stable. Useful
+fixtures, and scroll/zoom hardening when they fit the selected release story. Useful
 work here improves inspection clarity, deterministic exports, contextual links
 to evidence records, and manual-smoke reliability; defer large visual redesigns
-unrelated to release confidence.
+unrelated to the next release aim.
 
 ## Phase E: Integration Polish And Deferred Policy Items
 
@@ -195,7 +143,8 @@ wet-lab conclusions or unconfirmed mutations.
   thousands of per-read aligned-column blocks.
 - Vendor-protocol and deeper wet-lab process modeling primitives.
 - Automatic cross-gene homology anchors on top of explicit `query_anchor_bp`.
-- Catalog-extensible gene-group and ontology bridge after release proof work.
+- Catalog-extensible gene-group and ontology bridge after the next release scope
+  is selected.
 - External-service provider/CRO integration once deterministic local contracts
   are stable enough to wrap.
 - Primer-walking support and iterative read/contig data management.
@@ -206,7 +155,7 @@ wet-lab conclusions or unconfirmed mutations.
   allele-specific assay families.
 - GuideRNA off-target ranking and macro-template packaging.
 - Cross-tool parity synthesis for Serial Cloner, MacVector, and SnapGene.
-- Post-delivery hardening backlog that is not part of the release gate.
+- Post-release hardening backlog that is not tied to the next release scope.
 - Weekly/monthly maintenance chore automation rollout from
   [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
 - Browser/WebAssembly frontend portability after core/headless contracts settle.
