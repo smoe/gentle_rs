@@ -19,6 +19,8 @@ Maintenance rule:
   generic genome-track detail polish needed for the first smoke path.
 - Fixed hosted Promoter design foregrounding so DNA-owned auxiliary windows now
   open above their parent sequence window instead of behind it.
+- Added a dedicated macOS `egui` viewport investigation pack plus a separate
+  source folder for the minimal repro harness.
 
 ## 2026-05-12
 

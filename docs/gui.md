@@ -72,6 +72,9 @@ macOS auxiliary-window stability note:
 - This is a deliberate stability workaround for current `egui/eframe` native
   viewport resize/maximize regressions reproduced locally with
   `cargo run --bin gentle_egui_window_repro`.
+- The dedicated investigation pack for that repro lives under
+  `investigations/egui_macos_windowing/` so manual matrices and upstream-report
+  notes stay separate from the main GUI manual.
 - If you want to try native child windows again on macOS, start GENtle with
   `GENTLE_MACOS_NATIVE_CHILD_VIEWPORTS=1 cargo run --bin gentle`.
 - The main/root GENtle window remains native, but it now acts as a neutral

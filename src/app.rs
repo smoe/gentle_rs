@@ -23077,7 +23077,7 @@ mod tests {
                 .replace('\\', "/");
             if matches!(
                 relative.as_str(),
-                "src/egui_compat.rs" | "src/bin/gentle_egui_window_repro.rs"
+                "src/egui_compat.rs" | "src/bin/gentle_egui_window_repro/main.rs"
             ) {
                 continue;
             }
