@@ -24,6 +24,7 @@ use crate::{
         shell_topic_help_markdown, shell_topic_help_text,
     },
 };
+use gentle_protocol::{EngineError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
@@ -979,7 +980,164 @@ fn tool_list() -> Value {
             }),
         );
     }
+    if let Some(items) = tools.as_array_mut() {
+        annotate_tool_descriptors(items);
+    }
     tools
+}
+
+#[doc(hidden)]
+pub fn mcp_tool_list_for_capability_surface_tests() -> Value {
+    tool_list()
+}
+
+#[doc(hidden)]
+pub fn mcp_tool_call_for_capability_surface_tests(
+    default_state_path: &str,
+    name: &str,
+    arguments: Value,
+) -> Value {
+    tool_call_result(
+        default_state_path,
+        ToolCallParams {
+            name: name.to_string(),
+            arguments,
+        },
+    )
+}
+
+#[doc(hidden)]
+pub fn mcp_jsonrpc_error_for_capability_surface_tests(
+    code: i64,
+    message: &str,
+    data: Option<Value>,
+) -> Value {
+    jsonrpc_error(None, code, message, data)
+}
+
+fn annotate_tool_descriptors(tools: &mut [Value]) {
+    for tool in tools {
+        let Some(tool_obj) = tool.as_object_mut() else {
+            continue;
+        };
+        let name = tool_obj
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        tool_obj.insert("mutating".to_string(), tool_mutating_descriptor(&name));
+        tool_obj.insert("outputSchema".to_string(), generic_tool_output_schema());
+        let command_paths = tool_command_paths(&name);
+        if !command_paths.is_empty() {
+            if let Some(description) = glossary_summary(command_paths[0]) {
+                tool_obj.insert("description".to_string(), Value::String(description));
+            }
+            tool_obj.insert(
+                "commandPaths".to_string(),
+                Value::Array(
+                    command_paths
+                        .iter()
+                        .map(|path| Value::String((*path).to_string()))
+                        .collect(),
+                ),
+            );
+        }
+    }
+}
+
+fn tool_mutating_descriptor(name: &str) -> Value {
+    match name {
+        "agent_preflight"
+        | "agent_models"
+        | "agent_plan"
+        | "ensembl_installable_genomes"
+        | "blast_async_start"
+        | "blast_async_status"
+        | "blast_async_cancel"
+        | "blast_async_list" => Value::String("external".to_string()),
+        "agent_execute_plan"
+        | "op"
+        | "workflow"
+        | "exon_skip_plan"
+        | "exon_skip_materialize"
+        | "construct_reasoning_set_annotation_status"
+        | "construct_reasoning_write_annotation" => Value::Bool(true),
+        _ => Value::Bool(false),
+    }
+}
+
+fn tool_command_paths(name: &str) -> &'static [&'static str] {
+    match name {
+        "capabilities" => &["capabilities"],
+        "state_summary" => &["state-summary"],
+        "agent_systems" => &["agents list"],
+        "agent_preflight" => &["agents preflight"],
+        "agent_models" => &["agents discover-models"],
+        "agent_plan" => &["agents plan"],
+        "agent_execute_plan" => &["agents execute-plan"],
+        "op" => &["op"],
+        "workflow" => &["workflow"],
+        "help" => &["help"],
+        "reference_catalog_entries" => &["genomes list"],
+        "helper_catalog_entries" => &["helpers list"],
+        "helper_semantics_vocabulary" => &["helpers vocabulary list"],
+        "host_profile_catalog_entries" => &["hosts list"],
+        "ensembl_installable_genomes" => &["genomes ensembl-available"],
+        "construct_reasoning_graphs" => &["construct-reasoning list-graphs"],
+        "construct_reasoning_graph" => &["construct-reasoning show-graph"],
+        "construct_reasoning_set_annotation_status" => {
+            &["construct-reasoning set-annotation-status"]
+        }
+        "construct_reasoning_write_annotation" => &["construct-reasoning write-annotation"],
+        "ui_intents" => &["ui intents"],
+        "ui_intent" => &["ui open", "ui focus"],
+        "ui_prepared_genomes" => &["ui prepared-genomes"],
+        "ui_latest_prepared" => &["ui latest-prepared"],
+        "blast_async_start" => &["genomes blast-start", "helpers blast-start"],
+        "blast_async_status" => &["genomes blast-status", "helpers blast-status"],
+        "blast_async_cancel" => &["genomes blast-cancel", "helpers blast-cancel"],
+        "blast_async_list" => &["genomes blast-list", "helpers blast-list"],
+        "exon_skip_plan" => &["transcripts exon-skip-plan"],
+        "exon_skip_materialize" => &["transcripts exon-skip-materialize"],
+        _ => &[],
+    }
+}
+
+fn glossary_summary(path: &str) -> Option<String> {
+    let glossary = serde_json::from_str::<Value>(include_str!("../docs/glossary.json")).ok()?;
+    glossary
+        .get("commands")?
+        .as_array()?
+        .iter()
+        .find(|entry| entry.get("path").and_then(Value::as_str) == Some(path))?
+        .get("summary")?
+        .as_str()
+        .map(ToString::to_string)
+}
+
+fn engine_error_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "code": {
+                "type": "string",
+                "enum": ["InvalidInput", "NotFound", "Unsupported", "Io", "Internal"]
+            },
+            "message": { "type": "string" }
+        },
+        "required": ["code", "message"],
+        "additionalProperties": false
+    })
+}
+
+fn generic_tool_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+            "error": engine_error_schema()
+        }
+    })
 }
 
 fn jsonrpc_response(id: Value, result: Value) -> Value {
@@ -991,13 +1149,21 @@ fn jsonrpc_response(id: Value, result: Value) -> Value {
 }
 
 fn jsonrpc_error(id: Option<Value>, code: i64, message: &str, data: Option<Value>) -> Value {
+    let engine_error = mcp_engine_error(jsonrpc_error_code_to_engine_error_code(code), message);
+    let mut data_value = data.unwrap_or_else(|| json!({}));
+    if let Some(obj) = data_value.as_object_mut() {
+        obj.insert("engine_error".to_string(), json!(engine_error));
+    } else {
+        data_value = json!({
+            "details": data_value,
+            "engine_error": engine_error
+        });
+    }
     let mut error = json!({
         "code": code,
         "message": message
     });
-    if let Some(data) = data {
-        error["data"] = data;
-    }
+    error["data"] = data_value;
     json!({
         "jsonrpc": "2.0",
         "id": id.unwrap_or(Value::Null),
@@ -1006,6 +1172,22 @@ fn jsonrpc_error(id: Option<Value>, code: i64, message: &str, data: Option<Value
 }
 
 fn tool_result_text(text: String, format: &'static str, is_error: bool) -> Value {
+    if is_error {
+        return json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": text
+                }
+            ],
+            "structuredContent": {
+                "format": format,
+                "text": text,
+                "error": mcp_engine_error(classify_mcp_error_message(&text), &text)
+            },
+            "isError": true
+        });
+    }
     json!({
         "content": [
             {
@@ -1022,6 +1204,11 @@ fn tool_result_text(text: String, format: &'static str, is_error: bool) -> Value
 }
 
 fn tool_result_json(value: Value, is_error: bool) -> Value {
+    let value = if is_error {
+        normalize_error_structured_content(value)
+    } else {
+        value
+    };
     let text = serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string());
     json!({
         "content": [
@@ -1033,6 +1220,84 @@ fn tool_result_json(value: Value, is_error: bool) -> Value {
         "structuredContent": value,
         "isError": is_error
     })
+}
+
+fn normalize_error_structured_content(mut value: Value) -> Value {
+    if value
+        .get("error")
+        .is_some_and(|error| is_engine_error_payload(error))
+    {
+        return value;
+    }
+    let message = value
+        .get("error")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .unwrap_or_else(|| {
+            serde_json::to_string(&value).unwrap_or_else(|_| "MCP tool failed".to_string())
+        });
+    let error = mcp_engine_error(classify_mcp_error_message(&message), &message);
+    if let Some(obj) = value.as_object_mut() {
+        if let Some(raw_error) = obj.remove("error") {
+            obj.insert("raw_error".to_string(), raw_error);
+        }
+        obj.insert("error".to_string(), json!(error));
+        value
+    } else {
+        json!({
+            "error": error,
+            "value": value
+        })
+    }
+}
+
+fn is_engine_error_payload(value: &Value) -> bool {
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    obj.get("code").and_then(Value::as_str).is_some()
+        && obj.get("message").and_then(Value::as_str).is_some()
+}
+
+fn mcp_engine_error(code: ErrorCode, message: &str) -> EngineError {
+    EngineError {
+        code,
+        message: message.to_string(),
+    }
+}
+
+fn jsonrpc_error_code_to_engine_error_code(code: i64) -> ErrorCode {
+    match code {
+        -32600 | -32602 | -32700 => ErrorCode::InvalidInput,
+        -32601 => ErrorCode::NotFound,
+        _ => ErrorCode::Internal,
+    }
+}
+
+fn classify_mcp_error_message(message: &str) -> ErrorCode {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("not found") || lower.contains("unknown mcp tool") {
+        ErrorCode::NotFound
+    } else if lower.contains("unsupported") {
+        ErrorCode::Unsupported
+    } else if lower.contains("could not read")
+        || lower.contains("could not write")
+        || lower.contains("could not save")
+        || lower.contains("could not load")
+        || lower.contains("io error")
+    {
+        ErrorCode::Io
+    } else if lower.contains("argument")
+        || lower.contains("requires")
+        || lower.contains("invalid")
+        || lower.contains("parse")
+        || lower.contains("expected")
+        || lower.contains("refusing")
+    {
+        ErrorCode::InvalidInput
+    } else {
+        ErrorCode::Internal
+    }
 }
 
 fn parse_topic(raw: Option<&Value>) -> Result<Option<Vec<String>>, String> {
