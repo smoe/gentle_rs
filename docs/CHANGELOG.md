@@ -17,6 +17,9 @@ Maintenance rule:
 - Made `AlignSequences` accept inline ASCII `SequenceScanTarget` operands for
   stateless pairwise alignment while preserving legacy `query_seq_id` /
   `target_seq_id` workflows.
+- Added a protocol-owned capability registry for CLI/MCP/JavaScript/Lua
+  discovery and normalized CLI/MCP adapter failures into structured
+  `EngineError` payloads.
 
 ## 2026-05-13
 

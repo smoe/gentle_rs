@@ -23,6 +23,17 @@ Goal:
 - `supported_operations`
 - `supported_export_formats`
 - `deterministic_operation_log`
+- `capability_registry`
+
+`capability_registry` is the shared discovery surface projected by CLI, MCP,
+JavaScript, and Lua adapters. Each row has a stable `name`, glossary-sourced
+`description` where applicable, JSON-schema `input_schema`/`output_schema`,
+`mutating` (`false`, `true`, or `external`), adapter projection list, and
+optional `inline_operand_ok`.
+
+Adapter error payloads that cross machine boundaries use the shared
+`EngineError` shape (`code`, `message`) and include a serialized
+`cause_chain` array when an adapter wraps a lower-level string error.
 
 ## Protocol-first workflow examples
 

@@ -43,6 +43,7 @@ use gentle::{
     resource_status::resource_catalog_status,
     service_readiness::service_readiness_status,
 };
+use gentle_protocol::{EngineError, ErrorCode};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -491,7 +492,7 @@ fn usage_text() -> String {
     )
 }
 fn usage() {
-    eprintln!("{}", usage_text());
+    println!("{}", usage_text());
 }
 
 const SHELL_FORWARDED_COMMANDS: &[&str] = &[
@@ -1016,8 +1017,30 @@ fn genome_gene_matches_filter(
 
 fn main() {
     if let Err(e) = run() {
-        eprintln!("{e}");
+        eprintln!("{}", cli_error_payload(&e));
         std::process::exit(1);
+    }
+}
+
+fn cli_error_payload(message: &str) -> String {
+    let error = EngineError::new(classify_cli_error(message), "CLI adapter command failed");
+    serde_json::to_string(&error.portable_payload(vec![message.to_string()]))
+        .unwrap_or_else(|_| message.to_string())
+}
+
+fn classify_cli_error(message: &str) -> ErrorCode {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("not found") || lower.contains("missing file") {
+        ErrorCode::NotFound
+    } else if lower.contains("could not read")
+        || lower.contains("could not write")
+        || lower.contains("permission denied")
+    {
+        ErrorCode::Io
+    } else if lower.contains("unsupported") {
+        ErrorCode::Unsupported
+    } else {
+        ErrorCode::InvalidInput
     }
 }
 
