@@ -23,6 +23,9 @@ Maintenance rule:
 - Selected the TP73 genome-anchored evidence viewer as the next release aim and
   added the offline proof workflow, public runbook, fixture provenance, and
   generic genome-track detail polish needed for the first smoke path.
+- Added a GUI/CLI/MCP parity audit and brought the glossary-backed help catalog
+  in sync for implemented agent preflight/model/planning routes plus
+  construct-reasoning graph routes.
 - Fixed hosted Promoter design foregrounding so DNA-owned auxiliary windows now
   open above their parent sequence window instead of behind it.
 - Added a dedicated macOS `egui` viewport investigation pack plus a separate

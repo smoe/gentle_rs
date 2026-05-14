@@ -823,11 +823,63 @@
          "interfaces": [
             "cli-shell",
             "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "agents preflight",
+         "summary": "Inspect transport/runtime setup for one configured agent system, optionally with a non-generating live model-list probe.",
+         "usage": "agents preflight SYSTEM_ID [--live] [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "agents discover-models",
+         "summary": "Discover model ids for one native OpenAI or OpenAI-compatible agent system.",
+         "usage": "agents discover-models SYSTEM_ID [--catalog PATH] [--base-url URL]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
             "cli-direct"
          ],
          "path": "agents ask",
          "summary": "Send prompt to one agent system and optionally execute suggested shared-shell commands.",
          "usage": "agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "agents plan",
+         "summary": "Compile prose into typed execution candidates for shell, operation, workflow, or UI-intent orchestration.",
+         "usage": "agents plan SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--max-candidates N] [--allow-mutating-candidates|--no-mutating-candidates] [--no-state-summary]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "agents execute-plan",
+         "summary": "Execute one stored agent-plan candidate without re-planning, requiring confirmation for mutating operation or workflow candidates.",
+         "usage": "agents execute-plan PLAN_JSON_OR_@FILE --candidate-id ID [--confirm]"
       },
       {
          "aliases": [],
@@ -3444,6 +3496,113 @@
          "path": "reverse-translate export-report",
          "summary": "Export one reverse-translation report as pretty-printed JSON.",
          "usage": "reverse-translate export-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [
+            "construct_reasoning build-protein-dna-handoff",
+            "constructreasoning build-protein-dna-handoff",
+            "construct-reasoning build-protein-handoff"
+         ],
+         "engine_operations": [
+            "BuildProteinToDnaHandoffReasoning"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "construct-reasoning build-protein-dna-handoff",
+         "summary": "Build and persist a construct-reasoning graph that ranks protein-to-DNA handoff candidates from transcript-native, mapped-feature, and synthetic reverse-translation evidence.",
+         "usage": "construct-reasoning build-protein-dna-handoff SEQ_ID PROTEIN_SEQ_ID [--transcript TRANSCRIPT_ID] [--projection-id ID] [--ensembl-entry ID] [--feature-query TEXT] [--ranking-goal balanced_provenance|native_fidelity|expression_optimized] [--speed-profile human|mouse|yeast|ecoli] [--speed-mark fast|slow] [--translation-table N] [--target-anneal-tm-c F] [--anneal-window-bp N] [--objective-id ID] [--graph-id ID]"
+      },
+      {
+         "aliases": [
+            "construct_reasoning list-graphs",
+            "constructreasoning list-graphs"
+         ],
+         "engine_operations": [
+            "ListConstructReasoningGraphs"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning list-graphs",
+         "summary": "List persisted construct-reasoning graphs with compact summary rows.",
+         "usage": "construct-reasoning list-graphs [SEQ_ID|--seq-id SEQ_ID]"
+      },
+      {
+         "aliases": [
+            "construct_reasoning show-graph",
+            "constructreasoning show-graph"
+         ],
+         "engine_operations": [
+            "ShowConstructReasoningGraph"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning show-graph",
+         "summary": "Show one persisted construct-reasoning graph plus compact summary details.",
+         "usage": "construct-reasoning show-graph GRAPH_ID"
+      },
+      {
+         "aliases": [
+            "construct_reasoning set-annotation-status",
+            "constructreasoning set-annotation-status"
+         ],
+         "engine_operations": [
+            "SetConstructReasoningAnnotationStatus"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning set-annotation-status",
+         "summary": "Update one persisted construct-reasoning annotation candidate to draft, accepted, rejected, or locked.",
+         "usage": "construct-reasoning set-annotation-status GRAPH_ID ANNOTATION_ID draft|accepted|rejected|locked"
+      },
+      {
+         "aliases": [
+            "construct_reasoning write-annotation",
+            "constructreasoning write-annotation"
+         ],
+         "engine_operations": [
+            "ConstructReasoningWriteAnnotation"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct",
+            "mcp"
+         ],
+         "path": "construct-reasoning write-annotation",
+         "summary": "Materialize one accepted or locked construct-reasoning annotation candidate as an ordinary sequence feature.",
+         "usage": "construct-reasoning write-annotation GRAPH_ID ANNOTATION_ID"
+      },
+      {
+         "aliases": [
+            "construct_reasoning export-graph",
+            "constructreasoning export-graph"
+         ],
+         "engine_operations": [
+            "ExportConstructReasoningGraph"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "construct-reasoning export-graph",
+         "summary": "Export one persisted construct-reasoning graph as pretty-printed JSON.",
+         "usage": "construct-reasoning export-graph GRAPH_ID OUTPUT.json"
       },
       {
          "aliases": [],
