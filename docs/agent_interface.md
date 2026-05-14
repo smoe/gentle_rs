@@ -103,15 +103,28 @@ Current MCP tool families include:
   - `workflow` (requires `confirm=true`)
   - `help`
 - catalog/introspection tools:
+  - `agent_systems`
+  - `agent_preflight`
+  - `agent_models`
+  - `agent_plan`
+  - `agent_execute_plan`
   - `reference_catalog_entries`
   - `helper_catalog_entries`
   - `helper_semantics_vocabulary`
   - `host_profile_catalog_entries`
   - `ensembl_installable_genomes`
+  - `exon_skip_plan`
+  - `exon_skip_materialize`
   - `construct_reasoning_graphs`
   - `construct_reasoning_graph`
   - `construct_reasoning_set_annotation_status`
+  - `construct_reasoning_write_annotation`
   - `helper_interpretation`
+  - `restriction_site_detail`
+  - `blast_async_start`
+  - `blast_async_status`
+  - `blast_async_cancel`
+  - `blast_async_list`
 - UI-intent tools:
   - `ui_intents`
   - `ui_intent`
@@ -129,8 +142,330 @@ Key properties:
 
 - MCP tools are thin wrappers over existing shared engine/shell paths
 - no MCP-only biology logic branch
-- mutating tools require explicit confirmation (`confirm=true`)
+- `tools/list` descriptors expose `mutating: false`, `mutating: true`, or
+  `mutating: "external"` so agents can apply their own safety boundary before
+  calling a route
+- `op`, `workflow`, and materialization-style routes require explicit
+  confirmation (`confirm=true`) at the tool boundary where supported
 - UI-intent tools are currently non-mutating query/intent routes
+
+#### Intentionally MCP-excluded shell commands
+
+`tools/list` exposes the curated typed MCP surface, not every shared shell
+command as a one-command/one-tool mirror. The following glossary-backed shell
+commands are intentionally excluded from dedicated MCP tool descriptors for now:
+they either require richer route-specific schemas, remain CLI/GUI workflow
+surfaces, or are expected to travel through typed `op`/`workflow` payloads once
+an agent has selected a deterministic operation.
+
+- `agents ask`
+- `align compute`
+- `arrange-serial`
+- `arrange-set-ladders`
+- `arrays inspect-microarray-track`
+- `arrays project-microarray-track`
+- `batch plan`
+- `batch run`
+- `cache clear`
+- `cache inspect`
+- `candidates delete`
+- `candidates filter`
+- `candidates generate`
+- `candidates generate-between-anchors`
+- `candidates list`
+- `candidates macro`
+- `candidates metrics`
+- `candidates pareto`
+- `candidates score`
+- `candidates score-distance`
+- `candidates score-weighted`
+- `candidates set-op`
+- `candidates show`
+- `candidates template-delete`
+- `candidates template-list`
+- `candidates template-put`
+- `candidates template-run`
+- `candidates template-show`
+- `candidates top-k`
+- `construct-reasoning build-protein-dna-handoff`
+- `construct-reasoning export-graph`
+- `cutrun export-coverage`
+- `cutrun inspect-regulatory-support`
+- `cutrun interpret`
+- `cutrun list`
+- `cutrun list-read-reports`
+- `cutrun prepare`
+- `cutrun project`
+- `cutrun show-read-report`
+- `cutrun status`
+- `dbsnp fetch`
+- `dotplot compute`
+- `dotplot list`
+- `dotplot overlay-compute`
+- `dotplot show`
+- `ensembl-gene fetch`
+- `ensembl-gene import-sequence`
+- `ensembl-gene list`
+- `ensembl-gene show`
+- `ensembl-protein fetch`
+- `ensembl-protein import-sequence`
+- `ensembl-protein list`
+- `ensembl-protein show`
+- `ensembl-region fetch`
+- `export-pool`
+- `export-run-bundle`
+- `features materialize-repeats`
+- `features repeat-cohort`
+- `features repeat-overlaps`
+- `features repeat-query`
+- `features tfbs-score-tracks-svg`
+- `features tfbs-summary`
+- `features window-cohort-tfbs`
+- `flex compute`
+- `flex list`
+- `flex show`
+- `genbank fetch`
+- `gene-groups doctor`
+- `gene-groups draft`
+- `gene-groups list`
+- `gene-groups resolve`
+- `gene-groups show`
+- `genomes blast`
+- `genomes blast-track`
+- `genomes extend-anchor`
+- `genomes extract-gene`
+- `genomes extract-promoter`
+- `genomes extract-region`
+- `genomes genes`
+- `genomes install-ensembl`
+- `genomes prepare`
+- `genomes preview-ensembl-specs`
+- `genomes remove-catalog-entry`
+- `genomes remove-prepared`
+- `genomes status`
+- `genomes update-ensembl-specs`
+- `genomes validate-catalog`
+- `genomes verify-anchor`
+- `gibson apply`
+- `gibson preview`
+- `guides delete`
+- `guides filter`
+- `guides filter-show`
+- `guides list`
+- `guides oligos-export`
+- `guides oligos-generate`
+- `guides oligos-list`
+- `guides oligos-show`
+- `guides protocol-export`
+- `guides put`
+- `guides show`
+- `helpers blast`
+- `helpers blast-track`
+- `helpers ensembl-available`
+- `helpers extend-anchor`
+- `helpers extract-gene`
+- `helpers extract-promoter`
+- `helpers extract-region`
+- `helpers genes`
+- `helpers install-ensembl`
+- `helpers prepare`
+- `helpers preview-ensembl-specs`
+- `helpers remove-catalog-entry`
+- `helpers remove-prepared`
+- `helpers status`
+- `helpers update-ensembl-specs`
+- `helpers validate-catalog`
+- `helpers verify-anchor`
+- `helpers vocabulary doctor`
+- `history redo`
+- `history status`
+- `history undo`
+- `import-pool`
+- `inspect-feature-expert`
+- `ladders export`
+- `ladders list`
+- `load-project`
+- `macros instance-list`
+- `macros instance-show`
+- `macros run`
+- `macros template-delete`
+- `macros template-import`
+- `macros template-list`
+- `macros template-put`
+- `macros template-run`
+- `macros template-show`
+- `panels import-isoform`
+- `panels inspect-isoform`
+- `panels render-isoform-svg`
+- `panels validate-isoform`
+- `planning objective clear`
+- `planning objective set`
+- `planning objective show`
+- `planning profile clear`
+- `planning profile set`
+- `planning profile show`
+- `planning suggestions accept`
+- `planning suggestions list`
+- `planning suggestions reject`
+- `planning sync pull`
+- `planning sync push`
+- `planning sync status`
+- `primers design`
+- `primers design-qpcr`
+- `primers export-qpcr-report`
+- `primers export-report`
+- `primers export-restriction-cloning-handoff`
+- `primers list-qpcr-reports`
+- `primers list-reports`
+- `primers list-restriction-cloning-handoffs`
+- `primers preflight`
+- `primers prepare-restriction-cloning`
+- `primers restriction-cloning-vector-suggestions`
+- `primers seed-from-feature`
+- `primers seed-from-splicing`
+- `primers seed-restriction-cloning-handoff`
+- `primers show-qpcr-report`
+- `primers show-report`
+- `primers show-restriction-cloning-handoff`
+- `primers test-cdna-pcr`
+- `primers test-cdna-qpcr`
+- `primers test-cdna-qpcr-fasta`
+- `proteases digest`
+- `proteases digest-gel-svg`
+- `proteases list`
+- `proteases show`
+- `protocol-cartoon list`
+- `protocol-cartoon render-svg`
+- `protocol-cartoon render-template-svg`
+- `protocol-cartoon render-with-bindings`
+- `protocol-cartoon template-export`
+- `protocol-cartoon template-validate`
+- `racks apply-template`
+- `racks carrier-labels-svg`
+- `racks create-from-arrangement`
+- `racks fabrication-svg`
+- `racks isometric-svg`
+- `racks labels-svg`
+- `racks move`
+- `racks move-blocks`
+- `racks move-samples`
+- `racks openscad`
+- `racks place-arrangement`
+- `racks set-blocked`
+- `racks set-custom-profile`
+- `racks set-fill-direction`
+- `racks set-profile`
+- `racks show`
+- `racks simulation-json`
+- `reads acquire cancel`
+- `reads acquire inspect`
+- `reads acquire prepare`
+- `reads acquire status`
+- `render-dotplot-svg`
+- `render-feature-expert-svg`
+- `render-lineage-svg`
+- `render-pool-gel-svg`
+- `render-rna-svg`
+- `render-svg`
+- `resources benchmark-jaspar`
+- `resources inspect-jaspar`
+- `resources install-ucsc-rmsk`
+- `resources list-jaspar`
+- `resources list-publication-datasets`
+- `resources prepare-publication-dataset`
+- `resources prepare-ucsc-rmsk-index`
+- `resources resolve-tf-query`
+- `resources status-publication-dataset`
+- `resources suggest-ucsc-rmsk-index`
+- `resources summarize-jaspar`
+- `resources sync-jaspar`
+- `resources sync-jaspar-remote-metadata`
+- `resources sync-rebase`
+- `resources sync-ucsc-rmsk`
+- `reverse-translate export-report`
+- `reverse-translate list-reports`
+- `reverse-translate run`
+- `reverse-translate show-report`
+- `rna-info`
+- `rna-reads align-report`
+- `rna-reads batch-map`
+- `rna-reads build-transcript-index`
+- `rna-reads export-abundance-tsv`
+- `rna-reads export-alignment-dotplot-svg`
+- `rna-reads export-alignments-tsv`
+- `rna-reads export-hits-fasta`
+- `rna-reads export-paths-tsv`
+- `rna-reads export-report`
+- `rna-reads export-sample-sheet`
+- `rna-reads export-score-density-svg`
+- `rna-reads export-target-quality`
+- `rna-reads inspect-alignments`
+- `rna-reads inspect-concatemers`
+- `rna-reads inspect-gene-support`
+- `rna-reads interpret`
+- `rna-reads list-reports`
+- `rna-reads materialize-hits`
+- `rna-reads preflight-isoforms`
+- `rna-reads show-alignment`
+- `rna-reads show-report`
+- `rna-reads summarize-gene-support`
+- `routines compare`
+- `routines explain`
+- `routines list`
+- `save-project`
+- `screenshot-window`
+- `seq-confirm export-report`
+- `seq-confirm export-support-tsv`
+- `seq-confirm list-reports`
+- `seq-confirm run`
+- `seq-confirm show-report`
+- `seq-primer suggest`
+- `seq-trace import`
+- `seq-trace list`
+- `seq-trace show`
+- `services guide`
+- `services handoff`
+- `services project-preflight`
+- `services project-quote`
+- `services providers doctor`
+- `services providers list`
+- `services status`
+- `set-param`
+- `splicing-refs derive`
+- `tracks import-bed`
+- `tracks import-bigwig`
+- `tracks import-vcf`
+- `tracks tracked add`
+- `tracks tracked apply`
+- `tracks tracked clear`
+- `tracks tracked list`
+- `tracks tracked remove`
+- `transcripts derive`
+- `transcripts residue-genomic-coordinates`
+- `uniprot audit-export`
+- `uniprot audit-list`
+- `uniprot audit-parity`
+- `uniprot audit-parity-export`
+- `uniprot audit-parity-list`
+- `uniprot audit-parity-show`
+- `uniprot audit-projection`
+- `uniprot audit-show`
+- `uniprot compare-ensembl-exons`
+- `uniprot compare-ensembl-peptide`
+- `uniprot feature-coding-dna`
+- `uniprot fetch`
+- `uniprot import-swissprot`
+- `uniprot list`
+- `uniprot map`
+- `uniprot projection-list`
+- `uniprot projection-show`
+- `uniprot resolve-ensembl-links`
+- `uniprot show`
+- `uniprot transcript-accounting`
+- `variant annotate-promoters`
+- `variant materialize-allele`
+- `variant promoter-context`
+- `variant reporter-fragments`
 
 ### 4) Agent Assistant bridge (`agents ...` and GUI Agent Assistant)
 
