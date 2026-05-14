@@ -10,11 +10,12 @@ pub mod dna_ladder;
 pub mod gene_groups;
 
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     error::Error,
     fmt,
+    sync::LazyLock,
 };
 
 pub use construct_reasoning::{
@@ -3639,6 +3640,31 @@ pub struct EngineError {
     pub message: String,
 }
 
+impl EngineError {
+    pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    pub fn invalid_input(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::InvalidInput, message)
+    }
+
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::Internal, message)
+    }
+
+    pub fn portable_payload(&self, cause_chain: Vec<String>) -> Value {
+        json!({
+            "code": self.code,
+            "message": self.message,
+            "cause_chain": cause_chain
+        })
+    }
+}
+
 impl fmt::Display for EngineError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}: {}", self.code, self.message)
@@ -4534,6 +4560,771 @@ pub struct Capabilities {
     pub supported_operations: Vec<String>,
     pub supported_export_formats: Vec<String>,
     pub deterministic_operation_log: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capability_registry: Vec<CapabilityDescriptor>,
+}
+
+/// Adapter families that can project a shared capability descriptor.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityAdapter {
+    Cli,
+    Mcp,
+    Js,
+    Lua,
+}
+
+impl CapabilityAdapter {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cli => "cli",
+            Self::Mcp => "mcp",
+            Self::Js => "js",
+            Self::Lua => "lua",
+        }
+    }
+}
+
+/// Mutation class consumed by adapter safety boundaries.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CapabilityMutation {
+    #[serde(rename = "false")]
+    ReadOnly,
+    #[serde(rename = "true")]
+    Mutating,
+    #[serde(rename = "external")]
+    External,
+}
+
+impl CapabilityMutation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadOnly => "false",
+            Self::Mutating => "true",
+            Self::External => "external",
+        }
+    }
+}
+
+/// Source class for a capability row in the shared registry.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilitySource {
+    GlossaryCommand,
+    EngineOperation,
+    McpTool,
+}
+
+/// Machine-readable capability row shared by CLI, MCP, JS, and Lua adapters.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapabilityDescriptor {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub description: String,
+    pub input_schema: Value,
+    pub output_schema: Value,
+    pub mutating: CapabilityMutation,
+    pub adapters: Vec<CapabilityAdapter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline_operand_ok: Option<bool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub engine_operations: Vec<String>,
+    pub source: CapabilitySource,
+}
+
+#[derive(Debug, Deserialize)]
+struct GlossaryRegistry {
+    commands: Vec<GlossaryRegistryCommand>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GlossaryRegistryCommand {
+    path: String,
+    summary: String,
+    #[serde(default)]
+    interfaces: Vec<String>,
+    #[serde(default)]
+    engine_operations: Vec<String>,
+    usage: String,
+}
+
+const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
+    "LoadFile",
+    "SaveFile",
+    "RenderSequenceSvg",
+    "RenderDotplotSvg",
+    "RenderTfbsScoreTracksSvg",
+    "RenderTfbsScoreTrackCorrelationSvg",
+    "RenderFeatureExpertSvg",
+    "RenderIsoformArchitectureSvg",
+    "RenderRnaStructureSvg",
+    "RenderLineageSvg",
+    "RenderPoolGelSvg",
+    "RenderProteinGelSvg",
+    "RenderProteinGelReportsSvg",
+    "RenderProteaseDigestGelSvg",
+    "RenderProtein2dGelSvg",
+    "RenderProtocolCartoonSvg",
+    "RenderProtocolCartoonTemplateSvg",
+    "ValidateProtocolCartoonTemplate",
+    "RenderProtocolCartoonTemplateWithBindingsSvg",
+    "ExportProtocolCartoonTemplateJson",
+    "ApplyGibsonAssemblyPlan",
+    "CreateArrangementSerial",
+    "SetArrangementLadders",
+    "SetContainerDeclaredContentsExclusive",
+    "CreateRackFromArrangement",
+    "PlaceArrangementOnRack",
+    "MoveRackPlacement",
+    "MoveRackSamples",
+    "MoveRackArrangementBlocks",
+    "SetRackProfile",
+    "ApplyRackTemplate",
+    "SetRackFillDirection",
+    "SetRackProfileCustom",
+    "SetRackBlockedCoordinates",
+    "ExportRackLabelsSvg",
+    "ExportRackFabricationSvg",
+    "ExportRackIsometricSvg",
+    "ExportRackOpenScad",
+    "ExportRackCarrierLabelsSvg",
+    "ExportRackSimulationJson",
+    "ExportDnaLadders",
+    "ExportRnaLadders",
+    "ExportPool",
+    "ExportProcessRunBundle",
+    "ExportLabAssistantInstructions",
+    "PrepareGenome",
+    "ExtractGenomeRegion",
+    "ExtractGenomeGene",
+    "ExtractGenomePromoterSlice",
+    "ExtendGenomeAnchor",
+    "ImportGenomeBedTrack",
+    "ImportGenomeBigWigTrack",
+    "ImportGenomeVcfTrack",
+    "ProjectMicroarrayTrack",
+    "ProjectGenomeInterval",
+    "ListCutRunDatasets",
+    "ShowCutRunDatasetStatus",
+    "PrepareCutRunDataset",
+    "ProjectCutRunDataset",
+    "InterpretCutRunReads",
+    "ListCutRunReadReports",
+    "ShowCutRunReadReport",
+    "ExportCutRunReadCoverage",
+    "InspectCutRunRegulatorySupport",
+    "ImportIsoformPanel",
+    "ImportUniprotSwissProt",
+    "FetchUniprotSwissProt",
+    "FetchEnsemblGene",
+    "FetchEnsemblRegion",
+    "FetchEnsemblProtein",
+    "FetchGenBankAccession",
+    "FetchDbSnpRegion",
+    "FetchUniprotLinkedGenBank",
+    "ImportUniprotEntrySequence",
+    "ImportEnsemblGeneSequence",
+    "ImportEnsemblProteinSequence",
+    "ProjectUniprotToGenome",
+    "QueryProteinResidueGenomicCoordinates",
+    "AuditUniprotProjectionConsistency",
+    "AuditUniprotProjectionParity",
+    "ImportBlastHitsTrack",
+    "DigestContainer",
+    "MergeContainersById",
+    "LigationContainer",
+    "FilterContainerByMolecularWeight",
+    "Digest",
+    "FindRestrictionSites",
+    "QueryRepeatAnnotations",
+    "QueryRepeatOverlaps",
+    "MaterializeRepeatFeatures",
+    "BuildRepeatEnvironmentCohort",
+    "MergeContainers",
+    "Ligation",
+    "Pcr",
+    "PcrAdvanced",
+    "PcrMutagenesis",
+    "DesignPrimerPairs",
+    "DesignInsertionPrimerPairs",
+    "ExportPrimerDesignReport",
+    "AssessPrimerPairSpecificity",
+    "PrepareRestrictionCloningPcrHandoff",
+    "PcrOverlapExtensionMutagenesis",
+    "DesignQpcrAssays",
+    "TestCdnaPcr",
+    "TestCdnaQpcr",
+    "TestCdnaQpcrFasta",
+    "DeriveTranscriptSequences",
+    "PlanExonSkippedIsoform",
+    "MaterializeExonSkippedIsoform",
+    "DeriveProteinSequences",
+    "ReverseTranslateProteinSequence",
+    "ProteaseDigestProteinSequence",
+    "BuildProteinToDnaHandoffReasoning",
+    "ComputeDotplot",
+    "ComputeDotplotOverlay",
+    "ComputeFlexibilityTrack",
+    "DeriveSplicingReferences",
+    "AlignSequences",
+    "ConfirmConstructReads",
+    "SuggestSequencingPrimers",
+    "ListSequencingConfirmationReports",
+    "ShowSequencingConfirmationReport",
+    "ExportSequencingConfirmationReport",
+    "ExportSequencingConfirmationSupportTsv",
+    "ReadAcquireStatus",
+    "ReadAcquirePrepare",
+    "ReadAcquireInspect",
+    "ReadAcquireCancel",
+    "InterpretRnaReads",
+    "AlignRnaReadReport",
+    "PreflightRnaReadIsoforms",
+    "ListRnaReadReports",
+    "ShowRnaReadReport",
+    "SummarizeRnaReadGeneSupport",
+    "InspectRnaReadGeneSupport",
+    "RunRnaReadBatchMap",
+    "SummarizeTfbsRegion",
+    "SummarizeTfbsScoreTracks",
+    "SummarizeTfbsTrackSimilarity",
+    "SummarizeAlternativePromoterComparison",
+    "SummarizePromoterEvidenceMatrix",
+    "SummarizeIsoformPromoterComparison",
+    "SummarizePromoterExpressionEvidence",
+    "ExportPromoterArtifactManifest",
+    "SummarizeMultiGenePromoterTfbs",
+    "RenderMultiGenePromoterTfbsSvg",
+    "ScanTfbsHits",
+    "InspectJasparEntry",
+    "SummarizeJasparEntries",
+    "ResolveTfQueries",
+    "BenchmarkJasparRegistry",
+    "ListJasparCatalog",
+    "SyncJasparRemoteMetadata",
+    "AnnotatePromoterWindows",
+    "SummarizeVariantPromoterContext",
+    "SuggestPromoterReporterFragments",
+    "MaterializeVariantAllele",
+    "ExportRnaReadReport",
+    "ExportRnaReadHitsFasta",
+    "ExportRnaReadSampleSheet",
+    "ExportRnaReadTargetQuality",
+    "ExportRnaReadExonPathsTsv",
+    "ExportRnaReadExonAbundanceTsv",
+    "ExportRnaReadScoreDensitySvg",
+    "ExportRnaReadAlignmentsTsv",
+    "ExportRnaReadAlignmentDotplotSvg",
+    "MaterializeRnaReadHitSequences",
+    "ExtractRegion",
+    "ExtractAnchoredRegion",
+    "SelectCandidate",
+    "FilterByMolecularWeight",
+    "FilterByDesignConstraints",
+    "GenerateCandidateSet",
+    "GenerateCandidateSetBetweenAnchors",
+    "DeleteCandidateSet",
+    "UpsertGuideSet",
+    "DeleteGuideSet",
+    "FilterGuidesPractical",
+    "GenerateGuideOligos",
+    "ExportGuideOligos",
+    "ExportGuideProtocolText",
+    "ExportFeaturesBed",
+    "InspectSequenceContextView",
+    "ExportSequenceContextBundle",
+    "ScoreCandidateSetExpression",
+    "ScoreCandidateSetDistance",
+    "FilterCandidateSet",
+    "CandidateSetOp",
+    "ScoreCandidateSetWeightedObjective",
+    "TopKCandidateSet",
+    "ParetoFrontierCandidateSet",
+    "UpsertWorkflowMacroTemplate",
+    "DeleteWorkflowMacroTemplate",
+    "UpsertCandidateMacroTemplate",
+    "DeleteCandidateMacroTemplate",
+    "Reverse",
+    "Complement",
+    "ReverseComplement",
+    "Branch",
+    "SetDisplayVisibility",
+    "SetLinearViewport",
+    "SetTopology",
+    "RecomputeFeatures",
+    "SetParameter",
+    "AnnotateTfbs",
+];
+
+const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
+    (
+        "capabilities",
+        "Capabilities",
+        "Return shared GENtle engine capabilities.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "state_summary",
+        "State Summary",
+        "Return a deterministic summary of the current project state.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "exon_skip_plan",
+        "Exon Skip Plan",
+        "Build and persist an inspectable exon-skip selection plan through the shared `transcripts exon-skip-plan` shell contract.",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "exon_skip_materialize",
+        "Exon Skip Materialize",
+        "Materialize one stored exon-skip plan through the shared `transcripts exon-skip-materialize` shell contract and optionally return caller-requested payloads.",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "restriction_site_detail",
+        "Restriction Site Detail",
+        "Return one restriction-site expert record through the shared `inspect-feature-expert ... restriction` shell contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "agent_systems",
+        "Agent Systems",
+        "Return configured GENtle agent systems via the shared `agents list` contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "agent_preflight",
+        "Agent Preflight",
+        "Return transport/runtime preflight details for one GENtle agent system.",
+        CapabilityMutation::External,
+    ),
+    (
+        "agent_models",
+        "Agent Models",
+        "Discover model ids for one GENtle OpenAI-compatible/native agent system.",
+        CapabilityMutation::External,
+    ),
+    (
+        "agent_plan",
+        "Agent Plan",
+        "Compile free prose into a typed GENtle execution plan via the shared `agents plan` contract.",
+        CapabilityMutation::External,
+    ),
+    (
+        "agent_execute_plan",
+        "Agent Execute Plan",
+        "Execute one stored planner candidate through the shared `agents execute-plan` contract.",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "op",
+        "Apply Operation",
+        "Apply one operation via shared engine contract and persist state (requires confirm=true).",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "workflow",
+        "Apply Workflow",
+        "Apply a workflow via shared engine contract and persist state (requires confirm=true).",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "help",
+        "Help",
+        "Return shell command reference content from docs/glossary.json.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "reference_catalog_entries",
+        "Reference Catalog Entries",
+        "Return structured reference catalog entries via the shared `genomes list` contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "helper_catalog_entries",
+        "Helper Catalog Entries",
+        "Return structured helper catalog entries, including normalized helper interpretations when available.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "helper_semantics_vocabulary",
+        "Helper Semantics Vocabulary",
+        "Return resolved helper semantics vocabulary terms, aliases, descriptions, sources, and routine hints.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "host_profile_catalog_entries",
+        "Host Profile Catalog Entries",
+        "Return structured host-profile catalog entries used by construct reasoning.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "ensembl_installable_genomes",
+        "Ensembl Installable Genomes",
+        "Return Ensembl species directories that currently appear installable because both sequence and annotation listings are present.",
+        CapabilityMutation::External,
+    ),
+    (
+        "construct_reasoning_graphs",
+        "Construct Reasoning Graphs",
+        "Return stored construct-reasoning graph summaries through the shared `construct-reasoning list-graphs` shell contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "construct_reasoning_graph",
+        "Construct Reasoning Graph",
+        "Return one stored construct-reasoning graph plus compact summary details through the shared `construct-reasoning show-graph` shell contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "construct_reasoning_set_annotation_status",
+        "Set Construct Reasoning Annotation Status",
+        "Update one stored construct-reasoning annotation candidate to draft, accepted, rejected, or locked through the shared `construct-reasoning set-annotation-status` shell contract.",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "construct_reasoning_write_annotation",
+        "Write Back Construct Reasoning Annotation",
+        "Materialize one accepted or locked generated construct-reasoning annotation candidate as an ordinary sequence feature through the shared `construct-reasoning write-annotation` shell contract.",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "helper_interpretation",
+        "Helper Interpretation",
+        "Return the normalized helper-construct interpretation for one helper id or alias.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "ui_intents",
+        "UI Intents Catalog",
+        "Return deterministic UI-intent target/command catalog (shared `ui intents` contract).",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "ui_intent",
+        "UI Intent",
+        "Resolve/record one UI intent through shared `ui open|focus` parser/executor path.",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "ui_prepared_genomes",
+        "UI Prepared Genomes Query",
+        "Return deterministic prepared-genome rows via shared `ui prepared-genomes` contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "ui_latest_prepared",
+        "UI Latest Prepared",
+        "Resolve latest prepared genome for a species via shared `ui latest-prepared` contract.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "blast_async_start",
+        "BLAST Async Start",
+        "Start one async BLAST job through the shared shell contract (`genomes/helpers blast-start`).",
+        CapabilityMutation::External,
+    ),
+    (
+        "blast_async_status",
+        "BLAST Async Status",
+        "Inspect one async BLAST job status and optional report payload.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "blast_async_cancel",
+        "BLAST Async Cancel",
+        "Request cancellation for one async BLAST job.",
+        CapabilityMutation::External,
+    ),
+    (
+        "blast_async_list",
+        "BLAST Async List",
+        "List known async BLAST jobs for genome/helper scope.",
+        CapabilityMutation::ReadOnly,
+    ),
+];
+
+static CAPABILITY_REGISTRY: LazyLock<Vec<CapabilityDescriptor>> =
+    LazyLock::new(build_capability_registry);
+
+/// Protocol-owned names for public engine operation variants.
+pub fn public_engine_operation_names() -> &'static [&'static str] {
+    PUBLIC_ENGINE_OPERATION_NAMES
+}
+
+/// Shared capability registry projected by adapters.
+pub fn capability_registry() -> &'static [CapabilityDescriptor] {
+    &CAPABILITY_REGISTRY
+}
+
+/// Return one capability descriptor by stable name and source.
+pub fn capability_descriptor(
+    source: CapabilitySource,
+    name: &str,
+) -> Option<&'static CapabilityDescriptor> {
+    capability_registry()
+        .iter()
+        .find(|descriptor| descriptor.source == source && descriptor.name == name)
+}
+
+/// Return descriptors exposed by one adapter.
+pub fn capability_registry_for_adapter(adapter: CapabilityAdapter) -> Vec<CapabilityDescriptor> {
+    capability_registry()
+        .iter()
+        .filter(|descriptor| descriptor.adapters.contains(&adapter))
+        .cloned()
+        .collect()
+}
+
+fn build_capability_registry() -> Vec<CapabilityDescriptor> {
+    let glossary: GlossaryRegistry =
+        serde_json::from_str(include_str!("../../../docs/glossary.json"))
+            .expect("docs/glossary.json must parse for capability registry");
+    let mut descriptors = vec![];
+    for command in &glossary.commands {
+        descriptors.push(glossary_command_descriptor(command));
+    }
+    for op_name in PUBLIC_ENGINE_OPERATION_NAMES {
+        descriptors.push(engine_operation_descriptor(op_name, &glossary.commands));
+    }
+    for (name, title, description, mutating) in MCP_TOOL_NAMES {
+        descriptors.push(mcp_tool_descriptor(name, title, description, *mutating));
+    }
+    descriptors
+}
+
+fn glossary_command_descriptor(command: &GlossaryRegistryCommand) -> CapabilityDescriptor {
+    CapabilityDescriptor {
+        name: command.path.clone(),
+        title: Some(title_from_stable_name(&command.path)),
+        description: command.summary.clone(),
+        input_schema: json!({
+            "type": "object",
+            "description": "Command arguments are documented by the glossary usage string.",
+            "properties": {
+                "usage": { "const": command.usage }
+            },
+            "additionalProperties": true
+        }),
+        output_schema: generic_output_schema(),
+        mutating: infer_command_mutation(&command.path, &command.engine_operations),
+        adapters: adapters_from_interfaces(&command.interfaces),
+        inline_operand_ok: inline_operand_ok_for_operations(&command.engine_operations),
+        engine_operations: command.engine_operations.clone(),
+        source: CapabilitySource::GlossaryCommand,
+    }
+}
+
+fn engine_operation_descriptor(
+    op_name: &str,
+    commands: &[GlossaryRegistryCommand],
+) -> CapabilityDescriptor {
+    let mut description = None;
+    let mut adapters = BTreeSet::from([
+        CapabilityAdapter::Cli,
+        CapabilityAdapter::Mcp,
+        CapabilityAdapter::Js,
+        CapabilityAdapter::Lua,
+    ]);
+    for command in commands {
+        if command
+            .engine_operations
+            .iter()
+            .any(|operation| operation == op_name)
+        {
+            description.get_or_insert_with(|| command.summary.clone());
+            for adapter in adapters_from_interfaces(&command.interfaces) {
+                adapters.insert(adapter);
+            }
+        }
+    }
+    CapabilityDescriptor {
+        name: op_name.to_string(),
+        title: Some(title_from_stable_name(op_name)),
+        description: description.unwrap_or_else(|| format!("GENtle engine operation `{op_name}`.")),
+        input_schema: json!({
+            "type": "object",
+            "description": format!("Serialized Operation::{op_name} payload.")
+        }),
+        output_schema: json!({
+            "type": "object",
+            "description": "Serialized OpResult payload."
+        }),
+        mutating: infer_engine_operation_mutation(op_name),
+        adapters: adapters.into_iter().collect(),
+        inline_operand_ok: inline_operand_ok_for_operation(op_name),
+        engine_operations: vec![op_name.to_string()],
+        source: CapabilitySource::EngineOperation,
+    }
+}
+
+fn mcp_tool_descriptor(
+    name: &str,
+    title: &str,
+    description: &str,
+    mutating: CapabilityMutation,
+) -> CapabilityDescriptor {
+    CapabilityDescriptor {
+        name: name.to_string(),
+        title: Some(title.to_string()),
+        description: description.to_string(),
+        input_schema: json!({
+            "type": "object",
+            "description": "See the MCP `tools/list` inputSchema for field-level details."
+        }),
+        output_schema: generic_output_schema(),
+        mutating,
+        adapters: vec![CapabilityAdapter::Mcp],
+        inline_operand_ok: None,
+        engine_operations: vec![],
+        source: CapabilitySource::McpTool,
+    }
+}
+
+fn generic_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "description": "Adapter-specific structured output payload."
+    })
+}
+
+fn title_from_stable_name(name: &str) -> String {
+    name.replace(['-', '_'], " ")
+        .split_whitespace()
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn adapters_from_interfaces(interfaces: &[String]) -> Vec<CapabilityAdapter> {
+    let mut adapters = BTreeSet::new();
+    for interface in interfaces {
+        match interface.as_str() {
+            "cli-direct" | "cli-shell" => {
+                adapters.insert(CapabilityAdapter::Cli);
+            }
+            "mcp" => {
+                adapters.insert(CapabilityAdapter::Mcp);
+            }
+            "js" => {
+                adapters.insert(CapabilityAdapter::Js);
+            }
+            "lua" => {
+                adapters.insert(CapabilityAdapter::Lua);
+            }
+            _ => {}
+        }
+    }
+    adapters.into_iter().collect()
+}
+
+fn infer_command_mutation(path: &str, operations: &[String]) -> CapabilityMutation {
+    if operations
+        .iter()
+        .any(|operation| infer_engine_operation_mutation(operation) == CapabilityMutation::External)
+        || path.starts_with("agents ask")
+        || path.starts_with("agents models")
+        || path.starts_with("agents plan")
+        || path.contains(" blast-start")
+        || path.contains(" fetch")
+    {
+        CapabilityMutation::External
+    } else if operations
+        .iter()
+        .any(|operation| infer_engine_operation_mutation(operation) == CapabilityMutation::Mutating)
+        || path.starts_with("save")
+        || path.starts_with("load")
+        || path.starts_with("import")
+        || path.starts_with("export")
+        || path.contains(" materialize")
+        || path.contains(" write")
+        || path.contains(" set-")
+        || path.contains(" sync")
+    {
+        CapabilityMutation::Mutating
+    } else {
+        CapabilityMutation::ReadOnly
+    }
+}
+
+fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
+    if operation.starts_with("Fetch")
+        || operation.starts_with("PrepareGenome")
+        || operation.starts_with("PrepareCutRun")
+        || operation.starts_with("ReadAcquire")
+        || operation.starts_with("Sync")
+        || operation.starts_with("Benchmark")
+        || operation.starts_with("InterpretCutRun")
+        || operation.starts_with("InterpretRna")
+        || operation.starts_with("RunRna")
+        || operation.starts_with("ImportGenomeBigWig")
+    {
+        CapabilityMutation::External
+    } else if operation.starts_with("Render")
+        || operation.starts_with("Export")
+        || operation.starts_with("List")
+        || operation.starts_with("Show")
+        || operation.starts_with("Inspect")
+        || operation.starts_with("Query")
+        || operation.starts_with("Summarize")
+        || operation.starts_with("Compute")
+        || operation.starts_with("Validate")
+        || operation.starts_with("Audit")
+        || operation.starts_with("Resolve")
+        || operation == "SaveFile"
+        || operation == "FindRestrictionSites"
+        || operation == "AlignSequences"
+        || operation == "AssessPrimerPairSpecificity"
+        || operation == "TestCdnaPcr"
+        || operation == "TestCdnaQpcr"
+        || operation == "TestCdnaQpcrFasta"
+        || operation == "SuggestSequencingPrimers"
+        || operation == "SuggestPromoterReporterFragments"
+        || operation == "BuildRepeatEnvironmentCohort"
+        || operation == "BuildProteinToDnaHandoffReasoning"
+    {
+        CapabilityMutation::ReadOnly
+    } else {
+        CapabilityMutation::Mutating
+    }
+}
+
+fn inline_operand_ok_for_operations(operations: &[String]) -> Option<bool> {
+    let mut saw_known = false;
+    for operation in operations {
+        if let Some(value) = inline_operand_ok_for_operation(operation) {
+            saw_known = true;
+            if value {
+                return Some(true);
+            }
+        }
+    }
+    saw_known.then_some(false)
+}
+
+fn inline_operand_ok_for_operation(operation: &str) -> Option<bool> {
+    match operation {
+        "RenderTfbsScoreTracksSvg"
+        | "FindRestrictionSites"
+        | "SummarizeTfbsScoreTracks"
+        | "SummarizeTfbsTrackSimilarity"
+        | "ScanTfbsHits"
+        | "AlignSequences" => Some(true),
+        "RenderSequenceSvg"
+        | "RenderRnaStructureSvg"
+        | "RenderTfbsScoreTrackCorrelationSvg"
+        | "ComputeDotplot"
+        | "ComputeFlexibilityTrack" => Some(false),
+        _ => None,
+    }
 }
 
 fn default_true() -> bool {

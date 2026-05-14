@@ -24,7 +24,7 @@ use crate::{
         shell_topic_help_markdown, shell_topic_help_text,
     },
 };
-use gentle_protocol::{EngineError, ErrorCode};
+use gentle_protocol::{CapabilitySource, EngineError, ErrorCode};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
@@ -980,6 +980,7 @@ fn tool_list() -> Value {
             }),
         );
     }
+    project_mcp_tools_from_registry(&mut tools);
     if let Some(items) = tools.as_array_mut() {
         annotate_tool_descriptors(items);
     }
@@ -1013,6 +1014,38 @@ pub fn mcp_jsonrpc_error_for_capability_surface_tests(
     data: Option<Value>,
 ) -> Value {
     jsonrpc_error(None, code, message, data)
+}
+
+fn project_mcp_tools_from_registry(tools: &mut Value) {
+    let Some(items) = tools.as_array_mut() else {
+        return;
+    };
+    let registry_names =
+        gentle_protocol::capability_registry_for_adapter(gentle_protocol::CapabilityAdapter::Mcp)
+            .into_iter()
+            .filter(|descriptor| descriptor.source == CapabilitySource::McpTool)
+            .map(|descriptor| descriptor.name)
+            .collect::<std::collections::BTreeSet<_>>();
+    items.retain(|tool| {
+        tool.get("name")
+            .and_then(Value::as_str)
+            .map(|name| registry_names.contains(name))
+            .unwrap_or(false)
+    });
+    for tool in items {
+        let Some(name) = tool.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(descriptor) =
+            gentle_protocol::capability_descriptor(CapabilitySource::McpTool, name)
+        else {
+            continue;
+        };
+        if let Some(title) = &descriptor.title {
+            tool["title"] = json!(title);
+        }
+        tool["description"] = json!(descriptor.description.clone());
+    }
 }
 
 fn annotate_tool_descriptors(tools: &mut [Value]) {
@@ -1123,7 +1156,11 @@ fn engine_error_schema() -> Value {
                 "type": "string",
                 "enum": ["InvalidInput", "NotFound", "Unsupported", "Io", "Internal"]
             },
-            "message": { "type": "string" }
+            "message": { "type": "string" },
+            "cause_chain": {
+                "type": "array",
+                "items": { "type": "string" }
+            }
         },
         "required": ["code", "message"],
         "additionalProperties": false
@@ -1139,7 +1176,6 @@ fn generic_tool_output_schema() -> Value {
         }
     })
 }
-
 fn jsonrpc_response(id: Value, result: Value) -> Value {
     json!({
         "jsonrpc": "2.0",
@@ -1150,13 +1186,16 @@ fn jsonrpc_response(id: Value, result: Value) -> Value {
 
 fn jsonrpc_error(id: Option<Value>, code: i64, message: &str, data: Option<Value>) -> Value {
     let engine_error = mcp_engine_error(jsonrpc_error_code_to_engine_error_code(code), message);
+    let portable_error = engine_error.portable_payload(vec![message.to_string()]);
     let mut data_value = data.unwrap_or_else(|| json!({}));
     if let Some(obj) = data_value.as_object_mut() {
-        obj.insert("engine_error".to_string(), json!(engine_error));
+        obj.insert("engine_error".to_string(), json!(engine_error.clone()));
+        obj.insert("error".to_string(), portable_error);
     } else {
         data_value = json!({
             "details": data_value,
-            "engine_error": engine_error
+            "engine_error": engine_error,
+            "error": portable_error
         });
     }
     let mut error = json!({
@@ -1172,22 +1211,22 @@ fn jsonrpc_error(id: Option<Value>, code: i64, message: &str, data: Option<Value
 }
 
 fn tool_result_text(text: String, format: &'static str, is_error: bool) -> Value {
-    if is_error {
-        return json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": text
-                }
-            ],
-            "structuredContent": {
-                "format": format,
-                "text": text,
-                "error": mcp_engine_error(classify_mcp_error_message(&text), &text)
-            },
-            "isError": true
-        });
-    }
+    let structured_content = if is_error {
+        json!({
+            "format": format,
+            "text": text.clone(),
+            "error": mcp_engine_error_payload(
+                classify_mcp_error_message(&text),
+                &text,
+                vec![text.clone()]
+            )
+        })
+    } else {
+        json!({
+            "format": format,
+            "text": text.clone()
+        })
+    };
     json!({
         "content": [
             {
@@ -1195,21 +1234,19 @@ fn tool_result_text(text: String, format: &'static str, is_error: bool) -> Value
                 "text": text
             }
         ],
-        "structuredContent": {
-            "format": format,
-            "text": text
-        },
+        "structuredContent": structured_content,
         "isError": is_error
     })
 }
 
 fn tool_result_json(value: Value, is_error: bool) -> Value {
-    let value = if is_error {
+    let structured_content = if is_error {
         normalize_error_structured_content(value)
     } else {
         value
     };
-    let text = serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string());
+    let text = serde_json::to_string_pretty(&structured_content)
+        .unwrap_or_else(|_| structured_content.to_string());
     json!({
         "content": [
             {
@@ -1217,7 +1254,7 @@ fn tool_result_json(value: Value, is_error: bool) -> Value {
                 "text": text
             }
         ],
-        "structuredContent": value,
+        "structuredContent": structured_content,
         "isError": is_error
     })
 }
@@ -1227,6 +1264,11 @@ fn normalize_error_structured_content(mut value: Value) -> Value {
         .get("error")
         .is_some_and(|error| is_engine_error_payload(error))
     {
+        if let Some(error) = value.get_mut("error").and_then(Value::as_object_mut) {
+            error
+                .entry("cause_chain".to_string())
+                .or_insert_with(|| json!([]));
+        }
         return value;
     }
     let message = value
@@ -1236,7 +1278,11 @@ fn normalize_error_structured_content(mut value: Value) -> Value {
         .unwrap_or_else(|| {
             serde_json::to_string(&value).unwrap_or_else(|_| "MCP tool failed".to_string())
         });
-    let error = mcp_engine_error(classify_mcp_error_message(&message), &message);
+    let error = mcp_engine_error_payload(
+        classify_mcp_error_message(&message),
+        &message,
+        vec![message.clone()],
+    );
     if let Some(obj) = value.as_object_mut() {
         if let Some(raw_error) = obj.remove("error") {
             obj.insert("raw_error".to_string(), raw_error);
@@ -1260,10 +1306,11 @@ fn is_engine_error_payload(value: &Value) -> bool {
 }
 
 fn mcp_engine_error(code: ErrorCode, message: &str) -> EngineError {
-    EngineError {
-        code,
-        message: message.to_string(),
-    }
+    EngineError::new(code, message)
+}
+
+fn mcp_engine_error_payload(code: ErrorCode, message: &str, cause_chain: Vec<String>) -> Value {
+    mcp_engine_error(code, message).portable_payload(cause_chain)
 }
 
 fn jsonrpc_error_code_to_engine_error_code(code: i64) -> ErrorCode {
