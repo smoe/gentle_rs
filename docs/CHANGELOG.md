@@ -12,6 +12,12 @@ Maintenance rule:
   document names, schemas, or feature names only when they help a reader
   understand what changed.
 
+## 2026-05-14
+
+- Made `AlignSequences` accept inline ASCII `SequenceScanTarget` operands for
+  stateless pairwise alignment while preserving legacy `query_seq_id` /
+  `target_seq_id` workflows.
+
 ## 2026-05-13
 
 - Selected the TP73 genome-anchored evidence viewer as the next release aim and

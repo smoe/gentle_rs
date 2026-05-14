@@ -2056,12 +2056,8 @@ pub enum ShellCommand {
         output_prefix: Option<String>,
     },
     AlignCompute {
-        query_seq_id: String,
-        target_seq_id: String,
-        query_span_start_0based: Option<usize>,
-        query_span_end_0based: Option<usize>,
-        target_span_start_0based: Option<usize>,
-        target_span_end_0based: Option<usize>,
+        query: SequenceScanTarget,
+        target: SequenceScanTarget,
         mode: PairwiseAlignmentMode,
         match_score: i32,
         mismatch_score: i32,
@@ -9512,39 +9508,60 @@ impl ShellCommand {
                     .unwrap_or("auto"),
             ),
             Self::AlignCompute {
-                query_seq_id,
-                target_seq_id,
-                query_span_start_0based,
-                query_span_end_0based,
-                target_span_start_0based,
-                target_span_end_0based,
+                query,
+                target,
                 mode,
                 match_score,
                 mismatch_score,
                 gap_open,
                 gap_extend,
-            } => format!(
-                "compute {} pairwise alignment '{}' vs '{}' (query_span={}..{}, target_span={}..{}, match={}, mismatch={}, gap_open={}, gap_extend={})",
-                mode.as_str(),
-                query_seq_id,
-                target_seq_id,
-                query_span_start_0based
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "0".to_string()),
-                query_span_end_0based
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "query_end".to_string()),
-                target_span_start_0based
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "0".to_string()),
-                target_span_end_0based
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "target_end".to_string()),
-                match_score,
-                mismatch_score,
-                gap_open,
-                gap_extend,
-            ),
+            } => {
+                let describe_target = |target: &SequenceScanTarget| match target {
+                    SequenceScanTarget::SeqId {
+                        seq_id,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    } => format!(
+                        "{}:{}..{}",
+                        seq_id,
+                        span_start_0based
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "0".to_string()),
+                        span_end_0based_exclusive
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "end".to_string())
+                    ),
+                    SequenceScanTarget::InlineSequence {
+                        id_hint,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                        ..
+                    } => format!(
+                        "{}:{}..{}",
+                        id_hint
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .unwrap_or("inline_sequence"),
+                        span_start_0based
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "0".to_string()),
+                        span_end_0based_exclusive
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "end".to_string())
+                    ),
+                };
+                format!(
+                    "compute {} pairwise alignment '{}' vs '{}' (match={}, mismatch={}, gap_open={}, gap_extend={})",
+                    mode.as_str(),
+                    describe_target(query),
+                    describe_target(target),
+                    match_score,
+                    mismatch_score,
+                    gap_open,
+                    gap_extend,
+                )
+            }
             Self::SeqTraceImport {
                 path,
                 trace_id,
@@ -29088,12 +29105,8 @@ fn execute_sequence_analysis_command(
             })
         }
         ShellCommand::AlignCompute {
-            query_seq_id,
-            target_seq_id,
-            query_span_start_0based,
-            query_span_end_0based,
-            target_span_start_0based,
-            target_span_end_0based,
+            query,
+            target,
             mode,
             match_score,
             mismatch_score,
@@ -29102,12 +29115,14 @@ fn execute_sequence_analysis_command(
         } => {
             let op_result = engine
                 .apply(Operation::AlignSequences {
-                    query_seq_id: query_seq_id.clone(),
-                    target_seq_id: target_seq_id.clone(),
-                    query_span_start_0based: *query_span_start_0based,
-                    query_span_end_0based: *query_span_end_0based,
-                    target_span_start_0based: *target_span_start_0based,
-                    target_span_end_0based: *target_span_end_0based,
+                    query: Some(query.clone()),
+                    target: Some(target.clone()),
+                    query_seq_id: None,
+                    target_seq_id: None,
+                    query_span_start_0based: None,
+                    query_span_end_0based: None,
+                    target_span_start_0based: None,
+                    target_span_end_0based: None,
                     mode: *mode,
                     match_score: *match_score,
                     mismatch_score: *mismatch_score,

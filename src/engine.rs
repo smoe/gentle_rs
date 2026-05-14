@@ -3557,8 +3557,14 @@ pub enum Operation {
         output_prefix: Option<SeqId>,
     },
     AlignSequences {
-        query_seq_id: SeqId,
-        target_seq_id: SeqId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query: Option<SequenceScanTarget>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target: Option<SequenceScanTarget>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query_seq_id: Option<SeqId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_seq_id: Option<SeqId>,
         #[serde(default)]
         query_span_start_0based: Option<usize>,
         #[serde(default)]
@@ -11911,6 +11917,110 @@ impl GentleEngine {
                     scan_topology,
                     scan_dna,
                 ))
+            }
+        }
+    }
+
+    fn sequence_scan_target_from_legacy_alignment_fields(
+        target: Option<SequenceScanTarget>,
+        seq_id: Option<SeqId>,
+        span_start_0based: Option<usize>,
+        span_end_0based: Option<usize>,
+        role: &str,
+    ) -> Result<SequenceScanTarget, EngineError> {
+        let legacy_seq_id = seq_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if let Some(target) = target {
+            if legacy_seq_id.is_some() || span_start_0based.is_some() || span_end_0based.is_some() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "AlignSequences {role} accepts either '{role}' target or legacy {role}_seq_id/span fields, not both"
+                    ),
+                });
+            }
+            return Ok(target);
+        }
+        let Some(seq_id) = legacy_seq_id else {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "AlignSequences requires {role} or non-empty legacy {role}_seq_id"
+                ),
+            });
+        };
+        Ok(SequenceScanTarget::SeqId {
+            seq_id: seq_id.to_string(),
+            span_start_0based,
+            span_end_0based_exclusive: span_end_0based,
+        })
+    }
+
+    fn resolve_pairwise_alignment_target(
+        &self,
+        target: &SequenceScanTarget,
+        context: &str,
+    ) -> Result<(String, String, Option<usize>, Option<usize>), EngineError> {
+        match target {
+            SequenceScanTarget::SeqId {
+                seq_id,
+                span_start_0based,
+                span_end_0based_exclusive,
+            } => {
+                let seq_id = seq_id.trim();
+                if seq_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("{context} requires non-empty seq_id"),
+                    });
+                }
+                let dna = self
+                    .state
+                    .sequences
+                    .get(seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?;
+                let (start, end) = Self::validate_sequence_scan_span(
+                    dna.len(),
+                    *span_start_0based,
+                    *span_end_0based_exclusive,
+                    context,
+                )?;
+                Ok((
+                    seq_id.to_string(),
+                    dna.get_forward_string(),
+                    Some(start),
+                    Some(end),
+                ))
+            }
+            SequenceScanTarget::InlineSequence {
+                sequence_text,
+                id_hint,
+                span_start_0based,
+                span_end_0based_exclusive,
+                ..
+            } => {
+                let dna = DNAsequence::from_sequence(sequence_text).map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not parse inline DNA sequence for {context}: {e}"),
+                })?;
+                let (start, end) = Self::validate_sequence_scan_span(
+                    dna.len(),
+                    *span_start_0based,
+                    *span_end_0based_exclusive,
+                    context,
+                )?;
+                let label = id_hint
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("inline_sequence")
+                    .to_string();
+                Ok((label, dna.get_forward_string(), Some(start), Some(end)))
             }
         }
     }

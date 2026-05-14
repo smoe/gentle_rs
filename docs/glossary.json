@@ -3230,8 +3230,8 @@
             "cli-direct"
          ],
          "path": "align compute",
-         "summary": "Compute one deterministic pairwise local/global sequence alignment report.",
-         "usage": "align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
+         "summary": "Compute one deterministic pairwise local/global sequence alignment report from stored or inline ASCII operands.",
+         "usage": "align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--query-range START..END] [--target-range START..END] [--query-sequence-text DNA] [--target-sequence-text DNA] [--query-id-hint TEXT] [--target-id-hint TEXT] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
       },
       {
          "aliases": [

@@ -2081,7 +2081,7 @@ Current draft operations:
 - `ComputeDotplot { seq_id, reference_seq_id?, span_start_0based?, span_end_0based?, reference_span_start_0based?, reference_span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline, self + pairwise)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
 - `DeriveSplicingReferences { seq_id, span_start_0based, span_end_0based, seed_feature_id?, scope?, output_prefix? }` (implemented baseline; emits derived DNA window + mRNA isoforms + exon-reference sequence)
-- `AlignSequences { query_seq_id, target_seq_id, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }` (implemented baseline; returns structured pairwise local/global report in `OpResult.sequence_alignment`)
+- `AlignSequences { query?, target?, query_seq_id?, target_seq_id?, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }` (implemented baseline; `query`/`target` use `SequenceScanTarget` and can be stored `seq_id` or inline ASCII; legacy `*_seq_id` + span fields remain accepted; returns structured pairwise local/global report in `OpResult.sequence_alignment`)
 - `ImportSequencingTrace { path, trace_id?, seq_id? }` (implemented baseline; imports one ABI/AB1 or SCF evidence file into the shared sequencing-trace store without mutating construct sequences)
 - `ListSequencingTraces { seq_id? }`
 - `ShowSequencingTrace { trace_id }`
@@ -6647,7 +6647,9 @@ Splicing-expert composition note:
       under the engine without collapsing these higher-level payloads into one
       another
 - Pairwise alignment operation:
-  - `AlignSequences { query_seq_id, target_seq_id, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }`
+  - `AlignSequences { query?, target?, query_seq_id?, target_seq_id?, query_span_start_0based?, query_span_end_0based?, target_span_start_0based?, target_span_end_0based?, mode?, match_score?, mismatch_score?, gap_open?, gap_extend? }`
+  - preferred operands: `query` and `target` as `SequenceScanTarget` (`SeqId` or `InlineSequence`)
+  - legacy operands: `query_seq_id`/`target_seq_id` plus optional legacy span fields remain accepted for existing workflows
   - `mode`: `global | local` (default `global`)
   - scoring defaults: `match=2`, `mismatch=-3`, `gap_open=-5`, `gap_extend=-1`
   - returns structured payload `sequence_alignment` with spans, score, coverage, identity, and CIGAR-like compact operations string
@@ -6655,6 +6657,7 @@ Splicing-expert composition note:
 - Shared-shell command family:
   - `splicing-refs derive SEQ_ID START_0BASED END_0BASED [--seed-feature-id N] [--scope all_overlapping_any_strand|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--output-prefix PREFIX]`
   - `align compute QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]`
+  - `align compute --query-sequence-text DNA --target-sequence-text DNA [--query-id-hint TEXT] [--target-id-hint TEXT] [--query-range START..END] [--target-range START..END] [--mode global|local]`
   - `attract inspect-splicing SEQ_ID FEATURE_ID [--scope ...] [--organism NAME] [--flank-bp N] [--min-score X] [--min-match-quantile Q] [--pwm-mapping strict_same_length|windowed_submatrix] [--compare-policies] [--all-transcripts] [--no-fallback]`
 
 RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
