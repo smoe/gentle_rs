@@ -135,9 +135,9 @@ use crate::{
         RoutineDecisionTraceDisambiguationAnswer, RoutineDecisionTraceDisambiguationQuestion,
         RoutineDecisionTraceExportEvent, RoutineDecisionTracePreflightSnapshot,
         RoutineDecisionTraceStore, RoutinePreferenceContextRecord, SequenceGenomeAnchorSummary,
-        TranslationSpeedMark, TranslationSpeedProfile, UniprotFeatureCodingDnaQueryMode,
-        UniprotFeatureCodingDnaQueryReport, UniprotProjectionAuditParityReport,
-        UniprotProjectionAuditReport,
+        SequenceScanTarget, TranslationSpeedMark, TranslationSpeedProfile,
+        UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
+        UniprotProjectionAuditParityReport, UniprotProjectionAuditReport,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentAction, UiIntentTarget,
@@ -22163,6 +22163,8 @@ Error: `{err}`"
                     .unwrap_or("-")
             ),
             Operation::AlignSequences {
+                query,
+                target,
                 query_seq_id,
                 target_seq_id,
                 query_span_start_0based,
@@ -22174,28 +22176,48 @@ Error: `{err}`"
                 mismatch_score,
                 gap_open,
                 gap_extend,
-            } => format!(
-                "Align sequences: query={}, target={}, mode={}, query_span={}..{}, target_span={}..{}, scores(match={}, mismatch={}, gap_open={}, gap_extend={})",
-                query_seq_id,
-                target_seq_id,
-                mode.as_str(),
-                query_span_start_0based
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-                query_span_end_0based
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-                target_span_start_0based
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-                target_span_end_0based
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-                match_score,
-                mismatch_score,
-                gap_open,
-                gap_extend
-            ),
+            } => {
+                let describe_target =
+                    |target: &Option<SequenceScanTarget>, legacy_seq_id: &Option<String>| {
+                        match target {
+                            Some(SequenceScanTarget::SeqId { seq_id, .. }) => seq_id.clone(),
+                            Some(SequenceScanTarget::InlineSequence { id_hint, .. }) => id_hint
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .unwrap_or("inline_sequence")
+                                .to_string(),
+                            None => legacy_seq_id
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .unwrap_or("-")
+                                .to_string(),
+                        }
+                    };
+                format!(
+                    "Align sequences: query={}, target={}, mode={}, query_span={}..{}, target_span={}..{}, scores(match={}, mismatch={}, gap_open={}, gap_extend={})",
+                    describe_target(query, query_seq_id),
+                    describe_target(target, target_seq_id),
+                    mode.as_str(),
+                    query_span_start_0based
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    query_span_end_0based
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    target_span_start_0based
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    target_span_end_0based
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    match_score,
+                    mismatch_score,
+                    gap_open,
+                    gap_extend
+                )
+            }
             Operation::ConfirmConstructReads {
                 expected_seq_id,
                 baseline_seq_id,

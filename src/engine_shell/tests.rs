@@ -17,15 +17,15 @@ use crate::engine::{
     BIGWIG_TO_BEDGRAPH_ENV_BIN, CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder,
     ConstructObjective, ConstructRole, Container, ContainerKind, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig, DisplayTarget,
-    EditableStatus, ExonSkipReturnKind, PrimerDesignProgress, PromoterTfbsGeneQuery,
-    ProteinExternalOpinionSource, ProteinFeatureFilter, QpcrTranscriptSpecificityEvidence,
-    QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate, RackCarrierLabelPreset,
-    RackFillDirection, RackLabelSheetPreset, RackOccupant, RackPhysicalTemplateKind,
-    RackPlacementEntry, RackProfileKind, RackProfileSnapshot, ReadAcquisitionAnalysisFormat,
-    ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode, RestrictionCloningPcrHandoffMode,
-    RnaReadAlignConfig, RnaReadInterpretationHit, RnaReadInterpretationReport, RnaReadMappingHit,
-    RnaReadOriginClass, SequenceScanTarget, TfThresholdOverride,
-    TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
+    EditableStatus, ExonSkipReturnKind, InlineSequenceTopology, PrimerDesignProgress,
+    PromoterTfbsGeneQuery, ProteinExternalOpinionSource, ProteinFeatureFilter,
+    QpcrTranscriptSpecificityEvidence, QpcrTranscriptTargetingMode, Rack, RackAuthoringTemplate,
+    RackCarrierLabelPreset, RackFillDirection, RackLabelSheetPreset, RackOccupant,
+    RackPhysicalTemplateKind, RackPlacementEntry, RackProfileKind, RackProfileSnapshot,
+    ReadAcquisitionAnalysisFormat, ReadAcquisitionReadLayout, RepeatEnvironmentGeometryMode,
+    RestrictionCloningPcrHandoffMode, RnaReadAlignConfig, RnaReadInterpretationHit,
+    RnaReadInterpretationReport, RnaReadMappingHit, RnaReadOriginClass, SequenceScanTarget,
+    TfThresholdOverride, TfbsScoreTrackCorrelationSignalSource, TfbsScoreTrackValueKind,
     TfbsTrackSimilarityRankingMetric,
 };
 use crate::ensembl_gene::{
@@ -449,6 +449,10 @@ fn skip_glossary_flag_parse(path: &str, flag: &str) -> bool {
                 | (
                     "features tfbs-score-tracks-svg",
                     "--end" | "--output" | "--sequence-text" | "--start"
+                )
+                | (
+                    "align compute",
+                    "--query-sequence-text" | "--target-sequence-text"
                 )
                 | (
                     "candidates generate-between-anchors",
@@ -22205,24 +22209,30 @@ fn parse_dotplot_and_flex_commands() {
     .expect("parse align compute");
     match align {
         ShellCommand::AlignCompute {
-            query_seq_id,
-            target_seq_id,
-            query_span_start_0based,
-            query_span_end_0based,
-            target_span_start_0based,
-            target_span_end_0based,
+            query,
+            target,
             mode,
             match_score,
             mismatch_score,
             gap_open,
             gap_extend,
         } => {
-            assert_eq!(query_seq_id, "query");
-            assert_eq!(target_seq_id, "target");
-            assert_eq!(query_span_start_0based, Some(5));
-            assert_eq!(query_span_end_0based, Some(105));
-            assert_eq!(target_span_start_0based, Some(10));
-            assert_eq!(target_span_end_0based, Some(120));
+            assert_eq!(
+                query,
+                SequenceScanTarget::SeqId {
+                    seq_id: "query".to_string(),
+                    span_start_0based: Some(5),
+                    span_end_0based_exclusive: Some(105),
+                }
+            );
+            assert_eq!(
+                target,
+                SequenceScanTarget::SeqId {
+                    seq_id: "target".to_string(),
+                    span_start_0based: Some(10),
+                    span_end_0based_exclusive: Some(120),
+                }
+            );
             assert_eq!(mode, PairwiseAlignmentMode::Local);
             assert_eq!(match_score, 3);
             assert_eq!(mismatch_score, -4);
@@ -22230,6 +22240,36 @@ fn parse_dotplot_and_flex_commands() {
             assert_eq!(gap_extend, -2);
         }
         other => panic!("expected AlignCompute, got {other:?}"),
+    }
+
+    let inline_align = parse_shell_line(
+        "align compute --query-sequence-text TTTACGTAA --query-id-hint inline_query --query-range 3..7 --target-sequence-text GGGACGTCCC --target-id-hint inline_target --target-range 3..7 --mode global",
+    )
+    .expect("parse inline align compute");
+    match inline_align {
+        ShellCommand::AlignCompute { query, target, .. } => {
+            assert_eq!(
+                query,
+                SequenceScanTarget::InlineSequence {
+                    sequence_text: "TTTACGTAA".to_string(),
+                    topology: InlineSequenceTopology::Linear,
+                    id_hint: Some("inline_query".to_string()),
+                    span_start_0based: Some(3),
+                    span_end_0based_exclusive: Some(7),
+                }
+            );
+            assert_eq!(
+                target,
+                SequenceScanTarget::InlineSequence {
+                    sequence_text: "GGGACGTCCC".to_string(),
+                    topology: InlineSequenceTopology::Linear,
+                    id_hint: Some("inline_target".to_string()),
+                    span_start_0based: Some(3),
+                    span_end_0based_exclusive: Some(7),
+                }
+            );
+        }
+        other => panic!("expected inline AlignCompute, got {other:?}"),
     }
 }
 
@@ -23435,12 +23475,16 @@ fn execute_splicing_refs_and_align_commands_inner() {
     let align = execute_shell_command(
         &mut engine,
         &ShellCommand::AlignCompute {
-            query_seq_id: "query".to_string(),
-            target_seq_id: "target".to_string(),
-            query_span_start_0based: Some(0),
-            query_span_end_0based: Some(8),
-            target_span_start_0based: None,
-            target_span_end_0based: None,
+            query: SequenceScanTarget::SeqId {
+                seq_id: "query".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based_exclusive: Some(8),
+            },
+            target: SequenceScanTarget::SeqId {
+                seq_id: "target".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            },
             mode: PairwiseAlignmentMode::Local,
             match_score: 2,
             mismatch_score: -3,
@@ -23464,6 +23508,41 @@ fn execute_splicing_refs_and_align_commands_inner() {
             .as_array()
             .map(|v| v.len()),
         Some(0)
+    );
+
+    let inline_align = execute_shell_command(
+        &mut engine,
+        &ShellCommand::AlignCompute {
+            query: SequenceScanTarget::InlineSequence {
+                sequence_text: "TTTACGTAA".to_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("inline_query".to_string()),
+                span_start_0based: Some(3),
+                span_end_0based_exclusive: Some(7),
+            },
+            target: SequenceScanTarget::InlineSequence {
+                sequence_text: "GGGACGTCCC".to_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("inline_target".to_string()),
+                span_start_0based: Some(3),
+                span_end_0based_exclusive: Some(7),
+            },
+            mode: PairwiseAlignmentMode::Global,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+        },
+    )
+    .expect("execute inline align compute");
+    assert!(!inline_align.state_changed);
+    assert_eq!(
+        inline_align.output["alignment"]["query_seq_id"].as_str(),
+        Some("inline_query")
+    );
+    assert_eq!(
+        inline_align.output["alignment"]["target_seq_id"].as_str(),
+        Some("inline_target")
     );
 }
 

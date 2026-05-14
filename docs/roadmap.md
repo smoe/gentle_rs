@@ -119,6 +119,10 @@ stack-safe helper splits, protocol snapshots, and targeted parity tests; defer
 broad crate surgery that is not tied to the selected release story. Phase 2
 has not started; the `gentle-engine` crate scaffold has been removed and will
 be re-introduced when the first execution-side module is ready to move.
+- Inline/stateless operand follow-up order from
+  [`inline_operand_audit.md`](inline_operand_audit.md): `RenderSequenceSvg`,
+  `RenderRnaStructureSvg`, `RenderTfbsScoreTrackCorrelationSvg`,
+  `ComputeDotplot`, then `ComputeFlexibilityTrack`.
 
 ## Phase D: Visualization And Workflow UX
 

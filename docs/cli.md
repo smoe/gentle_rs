@@ -4422,6 +4422,18 @@ Pairwise sequence alignment (global/local) with structured result payload:
 {"AlignSequences":{"query_seq_id":"tp73_refs_mrna_NM_001204186","target_seq_id":"tp73_refs_exon_reference","mode":"local","match_score":2,"mismatch_score":-3,"gap_open":-5,"gap_extend":-1}}
 ```
 
+The same operation can run statelessly over inline ASCII operands:
+
+```json
+{"AlignSequences":{"query":{"kind":"inline_sequence","sequence_text":"TTTACGTAA","id_hint":"inline_query","span_start_0based":3,"span_end_0based_exclusive":7},"target":{"kind":"inline_sequence","sequence_text":"GGGACGTCCC","id_hint":"inline_target","span_start_0based":3,"span_end_0based_exclusive":7},"mode":"global"}}
+```
+
+Shared shell:
+
+```bash
+gentle_cli shell 'align compute --query-sequence-text TTTACGTAA --query-id-hint inline_query --query-range 3..7 --target-sequence-text GGGACGTCCC --target-id-hint inline_target --target-range 3..7 --mode global'
+```
+
 Extract anchored region with flexible 5' boundary and fixed anchor side:
 
 ```json

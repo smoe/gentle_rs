@@ -24983,8 +24983,18 @@ fn test_align_sequences_global_sets_structured_result() {
     let mut engine = GentleEngine::from_state(state);
     let result = engine
         .apply(Operation::AlignSequences {
-            query_seq_id: "query".to_string(),
-            target_seq_id: "target".to_string(),
+            query: Some(SequenceScanTarget::SeqId {
+                seq_id: "query".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            }),
+            target: Some(SequenceScanTarget::SeqId {
+                seq_id: "target".to_string(),
+                span_start_0based: None,
+                span_end_0based_exclusive: None,
+            }),
+            query_seq_id: None,
+            target_seq_id: None,
             query_span_start_0based: None,
             query_span_end_0based: None,
             target_span_start_0based: None,
@@ -25030,8 +25040,10 @@ fn test_align_sequences_local_reports_partial_coverage() {
     let mut engine = GentleEngine::from_state(state);
     let result = engine
         .apply(Operation::AlignSequences {
-            query_seq_id: "query".to_string(),
-            target_seq_id: "target".to_string(),
+            query: None,
+            target: None,
+            query_seq_id: Some("query".to_string()),
+            target_seq_id: Some("target".to_string()),
             query_span_start_0based: None,
             query_span_end_0based: None,
             target_span_start_0based: None,
@@ -25052,6 +25064,53 @@ fn test_align_sequences_local_reports_partial_coverage() {
     assert!(report.aligned_columns >= 4);
     assert!(report.query_coverage_fraction < 1.0);
     assert!(report.target_coverage_fraction < 1.0);
+}
+
+#[test]
+fn test_align_sequences_accepts_inline_scan_targets() {
+    let mut engine = GentleEngine::default();
+    let result = engine
+        .apply(Operation::AlignSequences {
+            query: Some(SequenceScanTarget::InlineSequence {
+                sequence_text: "TTTACGTAA".to_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("inline_query".to_string()),
+                span_start_0based: Some(3),
+                span_end_0based_exclusive: Some(7),
+            }),
+            target: Some(SequenceScanTarget::InlineSequence {
+                sequence_text: "GGGACGTCCC".to_string(),
+                topology: InlineSequenceTopology::Linear,
+                id_hint: Some("inline_target".to_string()),
+                span_start_0based: Some(3),
+                span_end_0based_exclusive: Some(7),
+            }),
+            query_seq_id: None,
+            target_seq_id: None,
+            query_span_start_0based: None,
+            query_span_end_0based: None,
+            target_span_start_0based: None,
+            target_span_end_0based: None,
+            mode: PairwiseAlignmentMode::Global,
+            match_score: 2,
+            mismatch_score: -3,
+            gap_open: -5,
+            gap_extend: -1,
+        })
+        .expect("align inline sequences");
+
+    assert!(result.created_seq_ids.is_empty());
+    let report = result
+        .sequence_alignment
+        .expect("structured inline sequence alignment report");
+    assert_eq!(report.query_seq_id, "inline_query");
+    assert_eq!(report.target_seq_id, "inline_target");
+    assert_eq!(report.query_span_start_0based, 3);
+    assert_eq!(report.query_span_end_0based, 7);
+    assert_eq!(report.target_span_start_0based, 3);
+    assert_eq!(report.target_span_end_0based, 7);
+    assert_eq!(report.matches, 4);
+    assert!(engine.state().sequences.is_empty());
 }
 
 #[test]
@@ -27261,7 +27320,10 @@ fn test_rna_read_show_alignments_batch_uses_gene_cohort_rows() {
             RnaReadGeneSupportAuditCohortFilter::Accepted,
         )
         .expect("inspect empty gene-support cohort");
-    assert_eq!(empty_audit.missing_gene_ids, vec!["GENE_MISSING".to_string()]);
+    assert_eq!(
+        empty_audit.missing_gene_ids,
+        vec!["GENE_MISSING".to_string()]
+    );
     assert!(empty_audit.rows.is_empty());
     let (entries, skipped_records) = engine
         .build_rna_read_alignment_displays("rna_reads_gene_support", &[])

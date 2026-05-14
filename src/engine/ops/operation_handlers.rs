@@ -22454,6 +22454,8 @@ impl GentleEngine {
                     }
                 }
                 Operation::AlignSequences {
+                    query,
+                    target,
                     query_seq_id,
                     target_seq_id,
                     query_span_start_0based,
@@ -22466,30 +22468,40 @@ impl GentleEngine {
                     gap_open,
                     gap_extend,
                 } => {
-                    let query_dna =
-                        self.state
-                            .sequences
-                            .get(&query_seq_id)
-                            .ok_or_else(|| EngineError {
-                                code: ErrorCode::NotFound,
-                                message: format!("Sequence '{query_seq_id}' not found"),
-                            })?;
-                    let target_dna =
-                        self.state
-                            .sequences
-                            .get(&target_seq_id)
-                            .ok_or_else(|| EngineError {
-                                code: ErrorCode::NotFound,
-                                message: format!("Sequence '{target_seq_id}' not found"),
-                            })?;
-                    let query_text = query_dna.get_forward_string();
-                    let target_text = target_dna.get_forward_string();
+                    let query_target = Self::sequence_scan_target_from_legacy_alignment_fields(
+                        query,
+                        query_seq_id,
+                        query_span_start_0based,
+                        query_span_end_0based,
+                        "query",
+                    )?;
+                    let target_target = Self::sequence_scan_target_from_legacy_alignment_fields(
+                        target,
+                        target_seq_id,
+                        target_span_start_0based,
+                        target_span_end_0based,
+                        "target",
+                    )?;
+                    let (query_label, query_text, query_span_start_0based, query_span_end_0based) =
+                        self.resolve_pairwise_alignment_target(
+                            &query_target,
+                            "AlignSequences query",
+                        )?;
+                    let (
+                        target_label,
+                        target_text,
+                        target_span_start_0based,
+                        target_span_end_0based,
+                    ) = self.resolve_pairwise_alignment_target(
+                        &target_target,
+                        "AlignSequences target",
+                    )?;
                     let report = Self::compute_pairwise_alignment_report(
-                        &query_seq_id,
+                        &query_label,
                         query_text.as_str(),
                         query_span_start_0based,
                         query_span_end_0based,
-                        &target_seq_id,
+                        &target_label,
                         target_text.as_str(),
                         target_span_start_0based,
                         target_span_end_0based,
@@ -22504,8 +22516,8 @@ impl GentleEngine {
                     result.messages.push(format!(
                     "Computed {} alignment '{}' vs '{}' (score={}, identity={:.3}, query_cov={:.3}, target_cov={:.3}, cigar={})",
                     mode.as_str(),
-                    query_seq_id,
-                    target_seq_id,
+                    query_label,
+                    target_label,
                     report.score,
                     report.identity_fraction,
                     report.query_coverage_fraction,

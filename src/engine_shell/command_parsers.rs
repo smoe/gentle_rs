@@ -2062,6 +2062,45 @@ fn build_sequence_scan_target_from_feature_state(
     }
 }
 
+fn build_sequence_scan_target_from_alignment_state(
+    seq_id: Option<String>,
+    sequence_text: Option<String>,
+    topology: InlineSequenceTopology,
+    id_hint: Option<String>,
+    state: FeatureQueryOptionState,
+    context: &str,
+) -> Result<SequenceScanTarget, String> {
+    if state.range_arg.is_some() && (state.start_arg.is_some() || state.end_arg.is_some()) {
+        return Err(format!(
+            "{context} accepts either --*-range START..END or --*-start/--*-end, not both"
+        ));
+    }
+    let (span_start_0based, span_end_0based_exclusive) =
+        if let Some((start, end_exclusive)) = state.range_arg {
+            (Some(start), Some(end_exclusive))
+        } else {
+            (state.start_arg, state.end_arg)
+        };
+    match (seq_id, sequence_text) {
+        (Some(seq_id), None) => Ok(SequenceScanTarget::SeqId {
+            seq_id,
+            span_start_0based,
+            span_end_0based_exclusive,
+        }),
+        (None, Some(sequence_text)) => Ok(SequenceScanTarget::InlineSequence {
+            sequence_text,
+            topology,
+            id_hint,
+            span_start_0based,
+            span_end_0based_exclusive,
+        }),
+        (Some(_), Some(_)) => Err(format!(
+            "{context} accepts either SEQ_ID or inline sequence text, not both"
+        )),
+        (None, None) => Err(format!("{context} requires either SEQ_ID or inline sequence text")),
+    }
+}
+
 fn parse_required_value(tokens: &[String], idx: &mut usize, flag: &str) -> Result<String, String> {
     if *idx >= tokens.len() {
         return Err(format!("{flag} requires a value"));
@@ -6576,57 +6615,173 @@ pub(super) fn parse_align_command(tokens: &[String]) -> Result<ShellCommand, Str
     }
     match tokens[1].as_str() {
         "compute" => {
-            if tokens.len() < 4 {
+            if tokens.len() < 3 {
                 return Err(
-                    "align compute requires QUERY_SEQ_ID TARGET_SEQ_ID [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
+                    "align compute requires QUERY_SEQ_ID TARGET_SEQ_ID or --query-sequence-text DNA --target-sequence-text DNA [--query-start N] [--query-end N] [--target-start N] [--target-end N] [--mode global|local] [--match N] [--mismatch N] [--gap-open N] [--gap-extend N]"
                         .to_string(),
                 );
             }
-            let query_seq_id = tokens[2].trim().to_string();
-            if query_seq_id.is_empty() {
-                return Err("align compute QUERY_SEQ_ID must not be empty".to_string());
+            let mut query_seq_id: Option<String> = None;
+            let mut target_seq_id: Option<String> = None;
+            let mut idx = 2usize;
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                let value = tokens[idx].trim().to_string();
+                if value.is_empty() {
+                    return Err("align compute QUERY_SEQ_ID must not be empty".to_string());
+                }
+                query_seq_id = Some(value);
+                idx += 1;
             }
-            let target_seq_id = tokens[3].trim().to_string();
-            if target_seq_id.is_empty() {
-                return Err("align compute TARGET_SEQ_ID must not be empty".to_string());
+            if idx < tokens.len() && !tokens[idx].starts_with("--") {
+                let value = tokens[idx].trim().to_string();
+                if value.is_empty() {
+                    return Err("align compute TARGET_SEQ_ID must not be empty".to_string());
+                }
+                target_seq_id = Some(value);
+                idx += 1;
             }
-            let mut query_span_start_0based: Option<usize> = None;
-            let mut query_span_end_0based: Option<usize> = None;
-            let mut target_span_start_0based: Option<usize> = None;
-            let mut target_span_end_0based: Option<usize> = None;
+            let mut query_sequence_text: Option<String> = None;
+            let mut target_sequence_text: Option<String> = None;
+            let mut query_topology = InlineSequenceTopology::Linear;
+            let mut target_topology = InlineSequenceTopology::Linear;
+            let mut query_id_hint: Option<String> = None;
+            let mut target_id_hint: Option<String> = None;
+            let mut query_state = FeatureQueryOptionState::default();
+            let mut target_state = FeatureQueryOptionState::default();
             let mut mode = PairwiseAlignmentMode::Global;
             let mut match_score = 2i32;
             let mut mismatch_score = -3i32;
             let mut gap_open = -5i32;
             let mut gap_extend = -1i32;
-            let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
+                    "--query-seq-id" => {
+                        if query_seq_id.is_some() {
+                            return Err("align compute query seq id was specified multiple times"
+                                .to_string());
+                        }
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--query-seq-id", "align compute")?;
+                        if raw.trim().is_empty() {
+                            return Err("--query-seq-id must not be empty".to_string());
+                        }
+                        query_seq_id = Some(raw);
+                    }
+                    "--target-seq-id" => {
+                        if target_seq_id.is_some() {
+                            return Err("align compute target seq id was specified multiple times"
+                                .to_string());
+                        }
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-seq-id",
+                            "align compute",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err("--target-seq-id must not be empty".to_string());
+                        }
+                        target_seq_id = Some(raw);
+                    }
+                    "--query-sequence-text" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--query-sequence-text",
+                            "align compute",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err("--query-sequence-text must not be empty".to_string());
+                        }
+                        query_sequence_text = Some(raw);
+                    }
+                    "--target-sequence-text" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-sequence-text",
+                            "align compute",
+                        )?;
+                        if raw.trim().is_empty() {
+                            return Err("--target-sequence-text must not be empty".to_string());
+                        }
+                        target_sequence_text = Some(raw);
+                    }
+                    "--query-topology" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--query-topology",
+                            "align compute",
+                        )?;
+                        query_topology = parse_inline_sequence_topology(&raw)?;
+                    }
+                    "--target-topology" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-topology",
+                            "align compute",
+                        )?;
+                        target_topology = parse_inline_sequence_topology(&raw)?;
+                    }
+                    "--query-id-hint" => {
+                        query_id_hint = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--query-id-hint",
+                            "align compute",
+                        )?);
+                    }
+                    "--target-id-hint" => {
+                        target_id_hint = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-id-hint",
+                            "align compute",
+                        )?);
+                    }
+                    "--query-range" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--query-range", "align compute")?;
+                        if query_state.range_arg.is_some() {
+                            return Err("--query-range was specified multiple times".to_string());
+                        }
+                        query_state.range_arg = Some(parse_feature_range(&raw, "align compute")?);
+                    }
+                    "--target-range" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--target-range", "align compute")?;
+                        if target_state.range_arg.is_some() {
+                            return Err("--target-range was specified multiple times".to_string());
+                        }
+                        target_state.range_arg = Some(parse_feature_range(&raw, "align compute")?);
+                    }
                     "--query-start" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--query-start", "align compute")?;
-                        query_span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                        query_state.start_arg = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --query-start value '{raw}' for align compute: {e}")
                         })?);
                     }
                     "--query-end" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--query-end", "align compute")?;
-                        query_span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                        query_state.end_arg = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --query-end value '{raw}' for align compute: {e}")
                         })?);
                     }
                     "--target-start" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--target-start", "align compute")?;
-                        target_span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                        target_state.start_arg = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --target-start value '{raw}' for align compute: {e}")
                         })?);
                     }
                     "--target-end" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--target-end", "align compute")?;
-                        target_span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                        target_state.end_arg = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --target-end value '{raw}' for align compute: {e}")
                         })?);
                     }
@@ -6665,13 +6820,25 @@ pub(super) fn parse_align_command(tokens: &[String]) -> Result<ShellCommand, Str
                     other => return Err(format!("Unknown option '{other}' for align compute")),
                 }
             }
-            Ok(ShellCommand::AlignCompute {
+            let query = build_sequence_scan_target_from_alignment_state(
                 query_seq_id,
+                query_sequence_text,
+                query_topology,
+                query_id_hint,
+                query_state,
+                "align compute query",
+            )?;
+            let target = build_sequence_scan_target_from_alignment_state(
                 target_seq_id,
-                query_span_start_0based,
-                query_span_end_0based,
-                target_span_start_0based,
-                target_span_end_0based,
+                target_sequence_text,
+                target_topology,
+                target_id_hint,
+                target_state,
+                "align compute target",
+            )?;
+            Ok(ShellCommand::AlignCompute {
+                query,
+                target,
                 mode,
                 match_score,
                 mismatch_score,

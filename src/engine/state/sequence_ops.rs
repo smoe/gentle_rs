@@ -1102,12 +1102,22 @@ impl GentleEngine {
                 }
             }
             Operation::AlignSequences {
+                query,
+                target,
                 query_seq_id,
                 target_seq_id,
                 ..
             } => {
-                Self::push_unique_token(&mut summary.sequence_ids, query_seq_id);
-                Self::push_unique_token(&mut summary.sequence_ids, target_seq_id);
+                if let Some(SequenceScanTarget::SeqId { seq_id, .. }) = query {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                } else if let Some(seq_id) = query_seq_id.as_deref() {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+                if let Some(SequenceScanTarget::SeqId { seq_id, .. }) = target {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                } else if let Some(seq_id) = target_seq_id.as_deref() {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
             }
             Operation::ListRnaReadReports { seq_id } => {
                 if let Some(seq_id) = seq_id.as_deref() {
