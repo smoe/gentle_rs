@@ -28,6 +28,8 @@ Maintenance rule:
 - Added Splicing Expert isoform read-support inspection using saved RNA-read
   mapped-isoform triage counts, with audit/export links back to contributing
   aligned reads.
+- Fixed Agent/Routine Assistant hosted-window focus lookup so embedded macOS
+  windows are raised by their stable hosted ids instead of stale title layers.
 
 ## 2026-05-14
 

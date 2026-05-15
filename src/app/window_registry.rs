@@ -234,10 +234,14 @@ impl GENtleApp {
             return Some(Self::embedded_window_layer_from_title("Planning"));
         }
         if viewport_id == Self::routine_assistant_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title("Routine Assistant"));
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_routine_assistant_window_id(),
+            ));
         }
         if viewport_id == Self::agent_assistant_viewport_id() {
-            return Some(Self::embedded_window_layer_from_title("Agent Assistant"));
+            return Some(Self::embedded_window_layer_from_window_id(
+                Self::hosted_agent_assistant_window_id(),
+            ));
         }
         if viewport_id == Self::uniprot_viewport_id() {
             return Some(Self::embedded_window_layer_from_title("Protein Evidence"));

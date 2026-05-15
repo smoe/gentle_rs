@@ -1734,7 +1734,7 @@ impl GENtleApp {
         let viewport_id = Self::routine_assistant_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             "Routine Assistant",
-            egui::Id::new(("hosted_routine_assistant_window", viewport_id)),
+            Self::hosted_routine_assistant_window_id(),
             viewport_id,
             Vec2::new(980.0, 720.0),
             Vec2::new(720.0, 480.0),
@@ -2553,7 +2553,7 @@ impl GENtleApp {
         let viewport_id = Self::agent_assistant_viewport_id();
         let spec = self.hosted_window_spec_for_viewport(
             "Agent Assistant",
-            egui::Id::new(("hosted_agent_assistant_window", viewport_id)),
+            Self::hosted_agent_assistant_window_id(),
             viewport_id,
             Vec2::new(980.0, 720.0),
             Vec2::new(640.0, 420.0),
